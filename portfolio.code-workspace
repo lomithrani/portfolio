@@ -1,0 +1,20 @@
+{
+  "folders": [
+    {
+      "path": "Client",
+      "name": "Client"
+    },
+    {
+      "path": "Server",
+      "name": "Server"
+    },
+    {
+      "path": ".",
+      "name": "Global"
+    }
+  ],
+  "settings": {
+    "editor.tabSize": 2,
+    "editor.formatOnSave": true
+  }
+}
