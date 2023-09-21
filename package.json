@@ -3,11 +3,11 @@
   "module": "index.ts",
   "type": "module",
   "scripts": {
-    "start": "bun run index.ts"
+    "start": "bun --hot run index.ts"
   },
-  "dependencies": {},
+  "dependencies": { "mongoose": "^7.5.2" },
   "devDependencies": {
-    "bun-types": "latest"
+    "bun-types": "^1.0.2"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
