@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run --watch index.ts"
+    "dev": "bun run --watch index.ts",
+    "start": "bun run index.ts"
   },
   "dependencies": {
     "@elysiajs/bearer": "^0.7.0",
