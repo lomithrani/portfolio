@@ -8,6 +8,8 @@ await mongoose.connect(Bun.env.MONGO_URL ?? '');
 const portfolio = new Elysia()
   .use(swagger())
   .get('/', async () => await Experience.find())
-  .listen(8080)
+  .listen(3000);
+
+console.log("Server Started on 3000");
 
 export type Portfolio = typeof portfolio;
