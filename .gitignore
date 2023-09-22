@@ -170,4 +170,4 @@ dist
 
 
 # Build files
-Server/server.js
+/Server/server.js

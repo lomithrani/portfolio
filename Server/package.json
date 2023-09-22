@@ -5,8 +5,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "bun run --watch index.ts",
-    "build": "bun build --target=bun ./index.ts --outfile=server.js",
-    "start": "bun run server.js"
+    "start": "bun run index.ts"
   },
   "dependencies": {
     "@elysiajs/bearer": "^0.7.0",
