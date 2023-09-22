@@ -5,11 +5,14 @@ import { swagger } from '@elysiajs/swagger'
 
 await mongoose.connect(Bun.env.MONGO_URL ?? '');
 
-const portfolio = new Elysia()
+const app = new Elysia()
   .use(swagger())
   .get('/', async () => await Experience.find())
-  .listen(3000);
+  .listen({
+    hostname: "::",
+    port: 3000
+  });
 
-console.log("Server Started on 3000");
+  console.log(`Running at http://${app.server!.hostname}:${app.server!.port}`)
 
-export type Portfolio = typeof portfolio;
+export type Portfolio = typeof app;
