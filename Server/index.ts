@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import { Experience } from './models/experience';
 import { Elysia, t } from 'elysia'
-import { swagger } from '@elysiajs/swagger'
 import cors from '@elysiajs/cors';
 
 await mongoose.connect(Bun.env.MONGO_URL ?? '');
