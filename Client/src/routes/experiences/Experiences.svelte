@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { portfolioApiService } from "../services";
+  import { portfolioApiService } from "../../services";
   const experiencesPromise = portfolioApiService.experiences.get();
 </script>
 

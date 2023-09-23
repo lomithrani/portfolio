@@ -7,14 +7,6 @@ import cors from '@elysiajs/cors';
 await mongoose.connect(Bun.env.MONGO_URL ?? '');
 
 const app = new Elysia()
-  .use(swagger({
-    documentation: {
-      info: {
-        title: 'Portfolio api - Documentation',
-        version: '0.0.1'
-      }
-    }
-  }))
   .use(cors({
     origin: JSON.parse(Bun.env.ALLOWED_DOMAINS || '[]') as string[]
   }))
