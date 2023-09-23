@@ -1,5 +1,5 @@
 {
-  "name": "bun",
+  "name": "portfolio-api",
   "module": "index.ts",
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@elysiajs/bearer": "^0.7.0",
+    "@elysiajs/cors": "^0.7.0",
     "@elysiajs/swagger": "^0.7.2",
     "elysia": "^0.7.6",
     "mongoose": "^7.5.2"
