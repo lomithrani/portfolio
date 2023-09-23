@@ -1,5 +1,4 @@
-//import adapter from '@sveltejs/adapter-auto';
-import adapter from "@sveltejs/adapter-node";
+import adapter from "svelte-adapter-bun";
 
 import { vitePreprocess } from '@sveltejs/kit/vite';
 
