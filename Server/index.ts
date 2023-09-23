@@ -16,7 +16,7 @@ const app = new Elysia()
     }
   }))
   .use(cors({
-    origin: ["http://127.0.0.1:5173"]
+    origin: JSON.parse(Bun.env.ALLOWED_DOMAINS || '[]') as string[]
   }))
   .get(
     '/experiences',
