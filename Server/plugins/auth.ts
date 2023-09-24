@@ -36,8 +36,9 @@ export const googleAuth = new Elysia()
       const roles = (await Role.findOne({ email }))?.roles ?? ['recruiter'];
 
       setCookie('auth', await jwt.sign({ "roles": `${JSON.stringify(roles)}` }), {
-        httpOnly: true,
+        secure: true,
         maxAge: 7 * 86400,
+        sameSite: 'none'
       })
 
       return `Sign in as ${cookie.auth}`

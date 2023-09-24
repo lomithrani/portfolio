@@ -30,7 +30,7 @@
 
 		const signIn = async (credentialResponse: google.accounts.id.CredentialResponse) => {
 			const response = await api.login.post({ token: credentialResponse.credential });
-			console.log(response.data);
+			console.log(document.cookie);
 		};
 
 		google.accounts.id.initialize({
