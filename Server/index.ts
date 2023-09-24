@@ -1,27 +1,29 @@
 import mongoose from 'mongoose';
-import { Experience } from './models/experience';
-import { Elysia, t } from 'elysia'
-import cors from '@elysiajs/cors';
+import { Elysia } from 'elysia'
+import { cors } from '@elysiajs/cors';
+import { getAllExperiences, getAllExperiencesDescription } from './controllers';
+import { googleAuth } from './plugins';
 
 await mongoose.connect(Bun.env.MONGO_URL ?? '');
 
 const app = new Elysia()
+  .use(googleAuth)
   .use(cors({
-    origin: JSON.parse(Bun.env.ALLOWED_DOMAINS || '[]') as string[]
+    origin: (request: Request): boolean => {
+      const origin = request.headers.get('origin');
+      if (!origin) {
+        return false;
+      }
+      const allowedOrigins = JSON.parse(Bun.env.ALLOWED_DOMAINS || '[]') as string[];
+      return allowedOrigins.includes(origin);
+    },
   }))
-  .get(
-    '/experiences',
-    async () => await Experience.find(),
-    {
-      response: t.Array(t.Object({
-        name: t.String()
-      }), { description: "List of experiences" })
-    })
+  .get('/experiences', getAllExperiences, getAllExperiencesDescription)
   .listen({
     hostname: "::",
     port: Bun.env.PORT || 3000
   });
 
-console.log(`Running at http://${app.server!.hostname}:${app.server!.port}`)
+console.log(`Running at http://${app.server!.hostname}:${app.server!.port} CORS allowed: ${JSON.stringify(Bun.env.ALLOWED_DOMAINS)}`)
 
 export type Portfolio = typeof app;
