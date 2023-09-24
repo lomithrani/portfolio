@@ -3,6 +3,9 @@ import { Elysia } from 'elysia'
 import { cors } from '@elysiajs/cors';
 import { getAllExperiences, getAllExperiencesDescription } from './controllers';
 import { googleAuth } from './plugins';
+import { validateEnvironment } from './services/validation';
+
+validateEnvironment();
 
 await mongoose.connect(Bun.env.MONGO_URL ?? '');
 

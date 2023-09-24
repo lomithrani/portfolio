@@ -18,8 +18,6 @@ export const googleAuth = new Elysia()
       // Verify the token with Google's API
       const googleResponse = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${googleToken}`);
 
-      console.log(googleResponse);
-
       if (!googleResponse.ok) {
         set.status = 401;
         return { error: "Invalid Google token" };
