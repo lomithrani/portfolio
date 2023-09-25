@@ -2,8 +2,20 @@ import { Elysia, t } from 'elysia'
 import { jwt } from '@elysiajs/jwt'
 import { cookie } from '@elysiajs/cookie'
 import { Role } from '../models';
+import cors from '@elysiajs/cors';
 
 export const googleAuth = new Elysia()
+  .use(cors({
+    credentials: true,
+    origin: (request: Request): boolean => {
+      const origin = request.headers.get('origin');
+      if (!origin) {
+        return false;
+      }
+      const allowedOrigins = JSON.parse(Bun.env.ALLOWED_DOMAINS || '[]') as string[];
+      return allowedOrigins.includes(origin);
+    },
+  }))
   .use(cookie())
   .use(jwt({
     name: 'jwt',
@@ -36,9 +48,10 @@ export const googleAuth = new Elysia()
       const roles = (await Role.findOne({ email }))?.roles ?? ['recruiter'];
 
       setCookie('auth', await jwt.sign({ "roles": `${JSON.stringify(roles)}` }), {
+        httpOnly: true,
         secure: true,
+        sameSite: 'strict',
         maxAge: 7 * 86400,
-        sameSite: 'none'
       })
 
       return `Sign in as ${cookie.auth}`
