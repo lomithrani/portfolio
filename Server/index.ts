@@ -10,6 +10,8 @@ validateEnvironment();
 await mongoose.connect(Bun.env.MONGO_URL ?? '');
 
 const app = new Elysia()
+  .use(googleAuth)
+  .use(experiences)
   .use(cors({
     credentials: true,
     origin: (request: Request): boolean => {
