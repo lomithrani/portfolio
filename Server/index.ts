@@ -3,8 +3,7 @@ import { Elysia } from 'elysia'
 import { cors } from '@elysiajs/cors';
 import { experiences, googleAuth } from './plugins';
 import { validateEnvironment } from './services/validation';
-import type { Serve, TLSServeOptions } from 'bun'
-
+import swagger from '@elysiajs/swagger';
 
 validateEnvironment();
 
@@ -23,7 +22,11 @@ const app = new Elysia()
       const allowedOrigins = JSON.parse(Bun.env.ALLOWED_DOMAINS || '[]') as string[];
       return allowedOrigins.includes(origin);
     },
-  })).listen({
+  }))
+  .use(swagger())
+  .use(googleAuth)
+  .use(experiences)
+  .listen({
     hostname: "::",
     port: Bun.env.PORT || 3000,
     tls: Bun.env.TLS_PASSPHRASE ? {
