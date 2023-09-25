@@ -52,6 +52,7 @@ export const googleAuth = new Elysia()
         secure: true,
         sameSite: 'strict',
         maxAge: 7 * 86400,
+        domain: '.gentil.tech'
       })
 
       return `Sign in as ${cookie.auth}`
