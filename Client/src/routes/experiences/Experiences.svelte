@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { portfolioApiService } from "../../services";
-  const experiencesPromise = portfolioApiService.experiences.get();
+	import { portfolioApiService } from '../../services';
+	const experiencesPromise = portfolioApiService.experiences.get({
+		$fetch: { credentials: 'include' }
+	});
 </script>
 
 {#await experiencesPromise}
-  Calling service
+	Calling service
 {:then experiences}
-  {#each experiences.data || [] as experience}
-    <div>{experience.name}</div>
-  {/each}
+	{#each experiences.data || [] as experience}
+		<div>{experience.name}</div>
+	{/each}
 {:catch someError}
-  System error: {someError.message}.
+	System error: {someError.message}.
 {/await}

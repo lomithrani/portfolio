@@ -1,6 +1,5 @@
 import { Elysia, t } from 'elysia'
 import { jwt } from '@elysiajs/jwt'
-import { cookie } from '@elysiajs/cookie'
 import { Role } from '../models';
 import cors from '@elysiajs/cors';
 
@@ -14,18 +13,17 @@ export const googleAuth = new Elysia()
       }
       const allowedOrigins = JSON.parse(Bun.env.ALLOWED_DOMAINS || '[]') as string[];
       return allowedOrigins.includes(origin);
-    },
+    }
   }))
-  .use(cookie())
   .use(jwt({
     name: 'jwt',
     secret: Bun.env.JWT_SECRET!,
     exp: '7d'
   }))
-  .post("/login",
-    async ({ body, jwt, cookie, setCookie, set }) => {
+  .get("/login/:token",
+    async ({ params: { token }, jwt, cookie: { auth }, set }) => {
 
-      const googleToken = body.token;
+      const googleToken = token;
 
       // Verify the token with Google's API
       const googleResponse = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${googleToken}`);
@@ -47,19 +45,19 @@ export const googleAuth = new Elysia()
 
       const roles = (await Role.findOne({ email }))?.roles ?? ['recruiter'];
 
-      setCookie('auth', await jwt.sign({ "roles": `${JSON.stringify(roles)}` }), {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'strict',
-        maxAge: 7 * 86400,
-        domain: '.gentil.tech'
-      })
+      const jwtToken = await jwt.sign({ "roles": `${JSON.stringify(roles)}` })
 
-      return `Sign in as ${cookie.auth}`
+      auth.value = jwtToken;
+      auth.secure = true;
+      auth.priority = 'high';
+      auth.sameSite = 'strict';
+      auth.maxAge = 7 * 24 * 60 * 60 * 60;
+
+      return `Sign in as ${auth}`
     },
     {
-      body: t.Object({
-        token: t.String()
+      cookie: t.Cookie({
+        value: t.String()
       })
     }
   );

@@ -29,7 +29,7 @@
 		}
 
 		const signIn = async (credentialResponse: google.accounts.id.CredentialResponse) => {
-			const response = await api.login.post({ token: credentialResponse.credential });
+			await api.login[credentialResponse.credential].get({ $fetch: { credentials: 'include' } });
 			console.log(document.cookie);
 		};
 
