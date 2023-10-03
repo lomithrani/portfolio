@@ -6,6 +6,8 @@ import cors from '@elysiajs/cors';
 export const googleAuth = new Elysia()
   .use(cors({
     credentials: true,
+    methods: ['POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type'],
     origin: (request: Request): boolean => {
       const origin = request.headers.get('origin');
       if (!origin) {
@@ -20,8 +22,8 @@ export const googleAuth = new Elysia()
     secret: Bun.env.JWT_SECRET!,
     exp: '7d'
   }))
-  .get("/login/:token",
-    async ({ params: { token }, jwt, cookie: { auth }, set }) => {
+  .post("/login",
+    async ({ body: { token }, jwt, cookie: { auth }, set }) => {
 
       const googleToken = token;
 
@@ -48,16 +50,23 @@ export const googleAuth = new Elysia()
       const jwtToken = await jwt.sign({ "roles": `${JSON.stringify(roles)}` })
 
       auth.value = jwtToken;
-      auth.secure = true;
+      auth.secure = false;
+      auth.httpOnly = true;
       auth.priority = 'high';
       auth.sameSite = 'strict';
-      auth.maxAge = 7 * 24 * 60 * 60 * 60;
+      const date = new Date();
+      date.setDate(date.getDate() + 7);
 
-      return `Sign in as ${auth}`
+      auth.expires = date;
+
+      return `ok`
     },
     {
       cookie: t.Cookie({
-        value: t.String()
+        auth: t.String()
+      }),
+      body: t.Object({
+        token: t.String()
       })
     }
   );
