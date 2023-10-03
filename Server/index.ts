@@ -13,10 +13,8 @@ const app = new Elysia()
   .use(googleAuth)
   .use(experiences)
   .use(swagger())
-  .use(googleAuth)
-  .use(experiences)
   .listen({
-    hostname: "::",
+    hostname: Bun.env.HOSTNAME || "::",
     port: Bun.env.PORT || 3000,
     tls: Bun.env.TLS_PASSPHRASE ? {
       cert: Bun.file('./cert.pem'),

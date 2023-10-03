@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api } from '../services/portfolio';
+	import { portfolioApi } from '../services';
 
 	let googleReady = false;
 	let mounted = false;
@@ -29,7 +29,10 @@
 		}
 
 		const signIn = async (credentialResponse: google.accounts.id.CredentialResponse) => {
-			await api.login[credentialResponse.credential].get({ $fetch: { credentials: 'include' } });
+			await portfolioApi.login.post({
+				token: credentialResponse.credential,
+				$fetch: { credentials: 'include' }
+			});
 			console.log(document.cookie);
 		};
 

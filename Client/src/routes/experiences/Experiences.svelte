@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { portfolioApiService } from '../../services';
-	const experiencesPromise = portfolioApiService.experiences.get({
+	import { portfolioApi } from '../../services';
+	const experiencesPromise = portfolioApi.experiences.get({
 		$fetch: { credentials: 'include' }
 	});
 </script>

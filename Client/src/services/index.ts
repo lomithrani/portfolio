@@ -1,1 +1,1 @@
-export { api as portfolioApiService } from "./portfolio"
+export { api as portfolioApi } from "./portfolio"
