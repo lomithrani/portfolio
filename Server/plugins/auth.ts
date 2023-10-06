@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { jwt } from '@elysiajs/jwt'
-import { Role } from '../models';
+import { Role, UserRole } from '../models';
 import cors from '@elysiajs/cors';
 
 export const googleAuth = new Elysia()
@@ -45,7 +45,7 @@ export const googleAuth = new Elysia()
 
       const email = googleData.email;
 
-      const roles = (await Role.findOne({ email }))?.roles ?? ['recruiter'];
+      const roles = (await Role.findOne({ email }))?.roles ?? [UserRole.Recruiter];
 
       const jwtToken = await jwt.sign({ "roles": `${JSON.stringify(roles)}` })
 
@@ -59,7 +59,8 @@ export const googleAuth = new Elysia()
 
       auth.expires = date;
 
-      return `ok`
+      set.headers['expires'] = date.toISOString();
+      return roles;
     },
     {
       cookie: t.Cookie({
