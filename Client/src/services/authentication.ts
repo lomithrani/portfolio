@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import { UserRole } from "../../../Server/models";
+import type { UserRole } from "../../../Server/models";
 
 
 type AuthTracker = {
