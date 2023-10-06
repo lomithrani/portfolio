@@ -1,2 +1,2 @@
 export { Experience } from './experience'
-export { Role } from './roles'
+export { Role, UserRole } from './roles'

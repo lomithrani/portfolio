@@ -1,7 +1,33 @@
-<script>
+<script lang="ts">
 	import { page } from '$app/stores';
 	import logo from '$lib/images/svelte-logo.svg';
+	import { UserRole } from '../../../Server/models';
+	import { authTracker, hasOneOf } from '../services/authentication';
 	import Login from './Login.svelte';
+
+	const pathStartsWith = (path: string, pagePathName: string) => pagePathName.startsWith(path);
+
+	let menuItems = [
+		{
+			path: '/',
+			label: 'Experiences'
+		},
+		{
+			path: '/hire',
+			label: 'Hire',
+			restrictToRoles: [UserRole.Recruiter],
+			selected: pathStartsWith
+		},
+		{
+			path: '/admin',
+			label: 'Admin',
+			restrictToRoles: [UserRole.Admin],
+			displayToRoles: [UserRole.Admin],
+			selected: pathStartsWith
+		}
+	];
+
+	const pathAreEquals = (path: string, pagePathName: string) => pagePathName === path;
 </script>
 
 <header>
@@ -16,18 +42,18 @@
 			<path d="M0,0 L1,2 C1.5,3 1.5,3 2,3 L2,0 Z" />
 		</svg>
 		<ul>
-			<li aria-current={$page.url.pathname === '/' ? 'page' : undefined}>
-				<a href="/">Home</a>
-			</li>
-			<li aria-current={$page.url.pathname === '/about' ? 'page' : undefined}>
-				<a href="/about">About</a>
-			</li>
-			<li aria-current={$page.url.pathname.startsWith('/sverdle') ? 'page' : undefined}>
-				<a href="/sverdle">Sverdle</a>
-			</li>
-			<li aria-current={$page.url.pathname.startsWith('/experiences') ? 'page' : undefined}>
-				<a href="/experiences">Experiences</a>
-			</li>
+			{#each menuItems as { path, label, selected, restrictToRoles, displayToRoles }}
+				{#if !displayToRoles || hasOneOf(displayToRoles)}
+					<li
+						aria-current={(selected ?? pathAreEquals)(path, $page.url.pathname)
+							? 'page'
+							: undefined}
+						class:disabled={restrictToRoles != undefined && !hasOneOf(restrictToRoles)}
+					>
+						<a href={path}>{label}</a>
+					</li>
+				{/if}
+			{/each}
 		</ul>
 		<svg viewBox="0 0 2 3" aria-hidden="true">
 			<path d="M0,0 L0,3 C0.5,3 0.5,3 1,2 L2,0 Z" />
@@ -35,7 +61,9 @@
 	</nav>
 
 	<div class="corner">
-		<Login />
+		{#if !$authTracker.authenticated}
+			<Login />
+		{/if}
 	</div>
 </header>
 
@@ -126,5 +154,11 @@
 
 	a:hover {
 		color: var(--color-theme-1);
+	}
+
+	.disabled {
+		pointer-events: none;
+		cursor: not-allowed;
+		opacity: 0.5;
 	}
 </style>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { portfolioApi } from '../services';
+	import { authTracker } from '../services/authentication';
 
 	let googleReady = false;
 	let mounted = false;
@@ -29,11 +30,24 @@
 		}
 
 		const signIn = async (credentialResponse: google.accounts.id.CredentialResponse) => {
-			await portfolioApi.login.post({
+			const loginResponse = await portfolioApi.login.post({
 				token: credentialResponse.credential,
 				$fetch: { credentials: 'include' }
 			});
-			console.log(document.cookie);
+			if (loginResponse.data) {
+				console.log(loginResponse.data);
+
+				if ('error' in loginResponse.data) {
+					authTracker.set({ authenticated: false });
+					return;
+				}
+
+				authTracker.set({
+					authenticated: true,
+					roles: loginResponse.data,
+					expires: new Date(loginResponse.headers['expires'])
+				});
+			}
 		};
 
 		google.accounts.id.initialize({
