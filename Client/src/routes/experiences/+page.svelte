@@ -1,7 +1,7 @@
 <script>
-	import Experiences from "./Experiences.svelte";
-
+	import Experiences from './Experiences.svelte';
 </script>
+
 <svelte:head>
 	<title>Experiece</title>
 	<meta name="description" content="My experiences" />
@@ -9,5 +9,5 @@
 
 <div class="text-column">
 	<h1>Experiences</h1>
-  <Experiences />
+	<Experiences />
 </div>

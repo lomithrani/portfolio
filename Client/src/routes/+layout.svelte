@@ -11,7 +11,13 @@
 	</main>
 
 	<footer>
-		<p>Thanks for taking interest in my interactive resume</p>
+		<p>
+			Thanks for taking interest in my interactive resume <a
+				href="https://www.linkedin.com/in/louisgentil/"
+			>
+				Louis Gentil</a
+			>
+		</p>
 	</footer>
 </div>
 
