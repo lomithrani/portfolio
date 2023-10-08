@@ -43,12 +43,12 @@
 		</svg>
 		<ul>
 			{#each menuItems as { path, label, selected, restrictToRoles, displayToRoles }}
-				{#if !displayToRoles || hasOneOf(displayToRoles)}
+				{#if !displayToRoles || $hasOneOf(displayToRoles)}
 					<li
 						aria-current={(selected ?? pathAreEquals)(path, $page.url.pathname)
 							? 'page'
 							: undefined}
-						class:disabled={restrictToRoles != undefined && !hasOneOf(restrictToRoles)}
+						class:disabled={restrictToRoles != undefined && !$hasOneOf(restrictToRoles)}
 					>
 						<a href={path}>{label}</a>
 					</li>

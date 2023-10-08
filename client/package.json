@@ -23,7 +23,7 @@
     "@types/google.accounts": "^0.0.10",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
-    "elysia": "^0.7.12",
+    "elysia": "^0.7.15",
     "eslint": "^8.28.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-svelte": "^2.30.0",
@@ -36,7 +36,8 @@
     "typescript": "^5.0.0",
     "vite": "^4.4.2",
     "vitest": "^0.32.2",
-    "portfolio-common": "workspace:common"
+    "portfolio-common": "workspace:common",
+    "portfolio-api": "workspace:server"
   },
   "type": "module",
   "dependencies": {

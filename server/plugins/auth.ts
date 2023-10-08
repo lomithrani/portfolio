@@ -70,6 +70,5 @@ export const googleAuth = new Elysia()
       body: t.Object({
         token: t.String()
       })
-    }
-  );
+    });
 

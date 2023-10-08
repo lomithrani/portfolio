@@ -1,5 +1,5 @@
 import { edenTreaty } from '@elysiajs/eden'
-import type { Portfolio } from '../../../Server'
+import type { Portfolio } from 'portfolio-api'
 
 import { env } from '$env/dynamic/public'
 

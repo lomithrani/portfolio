@@ -1,5 +1,5 @@
-import { writable } from "svelte/store";
-import type { UserRole } from "../../../Server/models";
+import { writable, derived } from "svelte/store";
+import type { UserRole } from "portfolio-common";
 
 
 type AuthTracker = {
@@ -36,10 +36,4 @@ if (typeof window !== "undefined") {
   });
 }
 
-export function hasOneOf(roles: UserRole[]): boolean {
-  let hasRole = false;
-  authTracker.subscribe(($authTracker) => {
-    hasRole = $authTracker.roles?.some(role => roles.includes(role)) || false;
-  })();
-  return hasRole;
-}
+export const hasOneOf = derived(authTracker, $authTracker => (roles: UserRole[]) => $authTracker.roles?.some(role => roles.includes(role)) || false);

@@ -21,7 +21,7 @@ const app = new Elysia()
       key: Bun.file('./key.pem'),
       passphrase: Bun.env.TLS_PASSPHRASE
     } : undefined
-  });
+  })
 
 console.log(`Running at http://${app.server!.hostname}:${app.server!.port} CORS allowed: ${JSON.stringify(Bun.env.ALLOWED_DOMAINS)}`)
 

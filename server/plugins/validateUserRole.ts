@@ -5,7 +5,6 @@ import { UserRole } from "portfolio-common";
 
 type validationType = 'OR' | 'AND';
 
-
 export const validateUserRole = (roles: UserRole[], type: validationType = 'OR') => new Elysia()
   .use(cors({
     origin: (request: Request): boolean => {
@@ -24,7 +23,6 @@ export const validateUserRole = (roles: UserRole[], type: validationType = 'OR')
   }))
   .onBeforeHandle(async ({ cookie: { auth }, jwt, set }) => {
     const user = await jwt.verify(auth.value);
-
     if (!user) {
       set.status = "Unauthorized"
       return false;
@@ -32,10 +30,19 @@ export const validateUserRole = (roles: UserRole[], type: validationType = 'OR')
 
     const jwtRoles = JSON.parse(user['roles'] ?? "[]") as UserRole[];
 
-    if (jwtRoles.some(role => roles.includes(role))) {
-      return true;
-    }
+    switch (type) {
+      case 'OR':
+        if (roles.some(role => jwtRoles.includes(role))) {
+          return;
+        }
+        break;
+      case 'AND':
+        if (roles.every(role => jwtRoles.includes(role))) {
+          return;
+        }
+        break;
 
+    }
     set.status = 'Unauthorized';
     return false;
   });
