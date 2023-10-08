@@ -1,1 +1,10 @@
-providers = ["node-bun"]
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["bun"]
+
+[phases.Install]
+cmds =['bun i --no-save']
+
+[start]
+cmds=['bun run start']
