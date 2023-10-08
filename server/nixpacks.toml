@@ -4,7 +4,7 @@ providers = ["node"]
 nixPkgs = ["bun"]
 
 [phases.install]
-cmds =['bun i --no-save']
+cmds =["bun i --no-save"]
 
 [start]
-cmds=['cd server','bun run start']
+cmds=["cd server","bun run start"]
