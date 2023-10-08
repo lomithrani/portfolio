@@ -3,7 +3,7 @@ providers = ["node"]
 [phases.setup]
 nixPkgs = ["bun"]
 
-[phases.Install]
+[phases.install]
 cmds =['bun i --no-save']
 
 [start]
