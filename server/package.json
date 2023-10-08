@@ -1,6 +1,7 @@
 {
   "name": "portfolio-api",
   "module": "index.ts",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -14,7 +15,8 @@
     "@elysiajs/jwt": "^0.7.0",
     "@elysiajs/swagger": "^0.7.2",
     "elysia": "^0.7.12",
-    "mongoose": "^7.5.2"
+    "mongoose": "^7.5.2",
+    "portfolio-common": "workspace:common"
   },
   "devDependencies": {
     "bun-types": "^1.0.2"

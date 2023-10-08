@@ -1,7 +1,7 @@
 import cors from "@elysiajs/cors";
 import jwt from "@elysiajs/jwt";
 import Elysia from "elysia";
-import { UserRole } from "../models";
+import { UserRole } from "portfolio-common";
 
 type validationType = 'OR' | 'AND';
 
@@ -26,13 +26,16 @@ export const validateUserRole = (roles: UserRole[], type: validationType = 'OR')
     const user = await jwt.verify(auth.value);
 
     if (!user) {
-      set.status = 401
-      return 'Unauthorized'
+      set.status = "Unauthorized"
+      return false;
     }
 
     const jwtRoles = JSON.parse(user['roles'] ?? "[]") as UserRole[];
 
     if (jwtRoles.some(role => roles.includes(role))) {
-      return;
+      return true;
     }
+
+    set.status = 'Unauthorized';
+    return false;
   });
