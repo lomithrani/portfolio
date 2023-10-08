@@ -5,6 +5,3 @@ nixPkgs = ["bun"]
 
 [phases.install]
 cmds = ["bun i --no-save"]
-
-[start]
-cmds = ["bun run start:server"]
