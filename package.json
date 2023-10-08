@@ -4,5 +4,10 @@
     "client",
     "server",
     "common"
-  ]
+  ],
+  "scripts": {
+    "build:client": "cd client && bun run build",
+    "start:server": "cd server && bun run start",
+    "start:client": "cd client && PORT=${PORT:-4000} bun --bun build/index.js"
+  }
 }
