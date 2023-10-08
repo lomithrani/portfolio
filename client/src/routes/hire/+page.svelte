@@ -1,6 +1,6 @@
 <script>
 	import { hasOneOf } from '../../services/authentication';
-	import { UserRole } from '../../../../Server/models';
+	import { UserRole } from 'portfolio-common';
 </script>
 
 <svelte:head>

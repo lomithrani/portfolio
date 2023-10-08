@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import logo from '$lib/images/svelte-logo.svg';
-	import { UserRole } from '../../../Server/models';
+	import { UserRole } from 'portfolio-common';
 	import { authTracker, hasOneOf } from '../services/authentication';
 	import Login from './Login.svelte';
 

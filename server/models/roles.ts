@@ -1,10 +1,6 @@
-export enum UserRole {
-  Admin = "admin",
-  Recruiter = "recruiter",
-  Test = "test"
-}
 
 import * as mongoose from 'mongoose';
+import { UserRole } from 'portfolio-common'
 
 const roleSchema = new mongoose.Schema({
   email: { type: String, required: true },
@@ -14,6 +10,7 @@ const roleSchema = new mongoose.Schema({
     default: []
   }
 });
+
 
 export type Role = mongoose.Document & {
   email: string;

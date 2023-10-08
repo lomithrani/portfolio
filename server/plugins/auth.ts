@@ -1,7 +1,8 @@
 import { Elysia, t } from 'elysia'
 import { jwt } from '@elysiajs/jwt'
-import { Role, UserRole } from '../models';
+import { Role } from '../models';
 import cors from '@elysiajs/cors';
+import { UserRole } from 'portfolio-common';
 
 export const googleAuth = new Elysia()
   .use(cors({
