@@ -1,1 +1,1 @@
-providers = ["bun"]
+providers = ["node-bun"]
