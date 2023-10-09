@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { portfolioApi } from '../services';
-	import { authTracker } from '../services/authentication';
+	import { portfolioApi } from '$services';
+	import { authTracker } from '$services/authentication';
 
 	let googleReady = false;
 	let mounted = false;
@@ -62,7 +62,7 @@
 			document.getElementById('googleButton')!,
 			{
 				theme: 'filled_black',
-				size: 'small',
+				size: 'medium',
 				type: 'icon',
 				text: 'continue_with',
 				shape: 'pill'
