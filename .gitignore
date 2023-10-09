@@ -170,4 +170,6 @@ dist
 
 
 # Build files
-/Server/server.js
+/server/server.js
+server/cert.pem
+server/key.pem

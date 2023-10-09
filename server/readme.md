@@ -1,0 +1,3 @@
+env setup
+`ALLOWED_DOMAINS`
+`JWT_SECRET`
