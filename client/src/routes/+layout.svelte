@@ -1,59 +1,15 @@
-<script>
-	import Header from './Header.svelte';
-	import './styles.css';
+<script lang="ts">
+	import '../app.postcss';
+	import { AppShell } from '@skeletonlabs/skeleton';
+	import Header from '$components/Header.svelte';
+	import LeftBar from '$components/LeftBar.svelte';
 </script>
 
-<div class="app">
-	<Header />
-
-	<main>
-		<slot />
-	</main>
-
-	<footer>
-		<p>
-			Thanks for taking interest in my interactive resume <a
-				href="https://www.linkedin.com/in/louisgentil/"
-			>
-				Louis Gentil</a
-			>
-		</p>
-	</footer>
-</div>
-
-<style>
-	.app {
-		display: flex;
-		flex-direction: column;
-		min-height: 100vh;
-	}
-
-	main {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		padding: 1rem;
-		width: 100%;
-		max-width: 64rem;
-		margin: 0 auto;
-		box-sizing: border-box;
-	}
-
-	footer {
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		align-items: center;
-		padding: 12px;
-	}
-
-	footer a {
-		font-weight: bold;
-	}
-
-	@media (min-width: 480px) {
-		footer {
-			padding: 12px 0;
-		}
-	}
-</style>
+<AppShell>
+	<svelte:fragment slot="header"><Header /></svelte:fragment>
+	<svelte:fragment slot="sidebarLeft"><LeftBar /></svelte:fragment>
+	<svelte:fragment slot="pageHeader">Page Header</svelte:fragment>
+	<!-- Router Slot -->
+	<slot />
+	<!-- ---- / ---- -->
+</AppShell>
