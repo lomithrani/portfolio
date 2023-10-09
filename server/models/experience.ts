@@ -1,8 +1,8 @@
-import * as mongoose from 'mongoose';
+import { Schema, Types, InferSchemaType, model } from 'mongoose';
 
-const experienceSchema = new mongoose.Schema(
+const experienceSchema = new Schema(
   {
-    name: {type: String, required: true},
+    name: { type: String, required: true },
   },
   {
     methods: {
@@ -13,5 +13,5 @@ const experienceSchema = new mongoose.Schema(
   }
 );
 
-export type Experience = mongoose.InferSchemaType<typeof experienceSchema>;
-export const Experience = mongoose.model('Experience', experienceSchema);
+export type Experience = InferSchemaType<typeof experienceSchema>;
+export const Experience = model('Experience', experienceSchema);

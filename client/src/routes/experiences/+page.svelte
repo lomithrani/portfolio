@@ -1,4 +1,5 @@
 <script>
+	import Experiences from './Experiences.svelte';
 </script>
 
 <svelte:head>
@@ -8,4 +9,5 @@
 
 <div class="text-column">
 	<h1>Experiences</h1>
+	<Experiences />
 </div>
