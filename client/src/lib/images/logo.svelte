@@ -1,18 +1,24 @@
-
 <script>
-  export let width = 100;
-  export let height = 100;
-
+	export let width = 100;
+	export let height = 100;
 </script>
 
-<svg class="fill-token" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{width}px" height="{height}px"
-	 viewBox="0 0 1133.9 1133.9">
-<g fill-rule="evenodd">
-	<path d="M944.3,944.9h-127
+<svg
+	class="fill-token"
+	xmlns="http://www.w3.org/2000/svg"
+	xmlns:xlink="http://www.w3.org/1999/xlink"
+	width="{width}px"
+	height="{height}px"
+	viewBox="0 0 1133.9 1133.9"
+>
+	<g fill-rule="evenodd">
+		<path
+			d="M944.3,944.9h-127
 		V693.8h-125L565.7,567.3v-0.5h378.6V944.9z M567.1,944.4L567.1,944.4C358.6,944.4,189,774.8,189,566.3
 		c0-208.5,169.6-378.1,378.1-378.1c160.4,0,303.6,101.4,356.7,252.6H784.5c-0.4-0.7-0.8-1.4-1.1-2
 		C738.9,363.3,657,315.3,567.1,315.3C428.6,315.3,316,427.9,316,566.3c0,138.4,112.6,251,251.1,251l123.4,0.1l1.8,127.3
 		C643.4,944.7,695.3,944.4,567.1,944.4 M566.9,0C253.8,0,0,253.8,0,566.9c0,313.1,253.8,566.9,566.9,566.9h566.9V567v-0.1
-		C1133.9,253.8,880,0,566.9,0"/>
-</g>
+		C1133.9,253.8,880,0,566.9,0"
+		/>
+	</g>
 </svg>

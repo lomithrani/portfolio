@@ -8,7 +8,6 @@
 <AppShell>
 	<svelte:fragment slot="header"><Header /></svelte:fragment>
 	<svelte:fragment slot="sidebarLeft"><LeftBar /></svelte:fragment>
-	<svelte:fragment slot="pageHeader">Page Header</svelte:fragment>
 	<!-- Router Slot -->
 	<slot />
 	<!-- ---- / ---- -->
