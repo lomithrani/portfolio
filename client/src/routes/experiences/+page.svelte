@@ -55,11 +55,9 @@
 		{/if}
 		{#if experiences}
 			<Filters bind:filters {experiences} />
-			<div class="relative mt-10" use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}>
-				{#each experiences as experience}
-					<Experience {experience} />
-				{/each}
-			</div>
+			{#each experiences as experience}
+				<Experience {experience} />
+			{/each}
 		{/if}
 	</div>
 
