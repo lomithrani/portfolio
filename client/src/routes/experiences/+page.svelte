@@ -1,8 +1,12 @@
 <script lang="ts">
-	import Experience from '$components/Experience.svelte';
-	import type { PageData } from './$types';
-	import Filters from './Filters.svelte';
 	import type { Experience as ExperienceModel } from 'portfolio-api/models';
+	import type { PageData } from './$types';
+
+	import { TableOfContents, tocCrawler } from '@skeletonlabs/skeleton';
+
+	import Experience from '$components/Experience.svelte';
+	import Filters from './Filters.svelte';
+
 	export let data: PageData;
 
 	let filters: { softSkills: Set<string>; hardSkills: Set<string> } = {
@@ -15,7 +19,6 @@
 	$: if (filters) filterExperiences();
 
 	const filterExperiences = () => {
-		console.log('filter experiences');
 		if (filters.softSkills.size === 0 && filters.hardSkills.size === 0) {
 			return (experiences = data?.experiences);
 		}
@@ -39,14 +42,22 @@
 	<meta name="description" content="My experiences" />
 </svelte:head>
 
-<div class="text-column">
+<div class="box">
 	{#if !experiences}
 		Loading
 	{/if}
 	{#if experiences}
 		<Filters bind:filters {experiences} />
-		{#each experiences as experience}
-			<Experience {experience} />
-		{/each}
+		<div
+			class="layout-docs-content page-container-aside"
+			use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}
+		>
+			{#each experiences as experience, index}
+				<Experience {experience} {index} />
+			{/each}
+		</div>
 	{/if}
+	<TableOfContents
+		class="fixed right-0 top-1/2 transform -translate-y-1/2 bg-transparent m-2 p-2"
+	/>
 </div>
