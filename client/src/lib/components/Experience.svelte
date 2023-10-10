@@ -1,19 +1,19 @@
 <script lang="ts">
 	import type { Experience } from 'portfolio-api/models';
+
+	import Project from './Project.svelte';
+
 	export let experience: Experience;
-	export let index: Number;
 </script>
 
-<div class="block card card-hover p-2 m-1">
+<div class="block card card-hover variant-ghost-primary p-2 m-1">
 	<article>
 		<h2 id={`${experience._id}`}>{experience.title}</h2>
 		<p>{experience.summary}</p>
 
 		<ul>
 			{#each experience.projects as project}
-				<li>
-					{@html JSON.stringify(project, null, '\t')}
-				</li>
+				<Project {project} experienceId={`${experience._id}`} />
 			{/each}
 		</ul>
 	</article>

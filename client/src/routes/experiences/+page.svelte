@@ -38,26 +38,33 @@
 </script>
 
 <svelte:head>
-	<title>Experiences</title>
-	<meta name="description" content="My experiences" />
+	<title>Louis Gentil | Resume</title>
+	<meta
+		name="Louis Gentil Resume"
+		content="All of my professional experiences, as well as my personal and educational projects and courses."
+	/>
 </svelte:head>
 
-<div class="box">
-	{#if !experiences}
-		Loading
-	{/if}
-	{#if experiences}
-		<Filters bind:filters {experiences} />
-		<div
-			class="layout-docs-content page-container-aside"
-			use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}
-		>
-			{#each experiences as experience, index}
-				<Experience {experience} {index} />
-			{/each}
-		</div>
-	{/if}
-	<TableOfContents
-		class="fixed right-0 top-1/2 transform -translate-y-1/2 bg-transparent m-2 p-2"
-	/>
+<div class="layout-docs page-padding flex items-start gap-10">
+	<div
+		class="layout-docs-content page-container-aside mx-auto"
+		use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}
+	>
+		{#if !experiences}
+			Loading
+		{/if}
+		{#if experiences}
+			<Filters bind:filters {experiences} />
+			<div class="relative mt-10" use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}>
+				{#each experiences as experience}
+					<Experience {experience} />
+				{/each}
+			</div>
+		{/if}
+	</div>
+
+	<aside class="layout-cols-aside sticky top-0 hidden xl:block space-y-1 w-72">
+		<!-- Table of Contents -->
+		<TableOfContents>{' '}</TableOfContents>
+	</aside>
 </div>

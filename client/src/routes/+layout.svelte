@@ -5,9 +5,10 @@
 	import LeftBar from '$components/LeftBar.svelte';
 </script>
 
-<AppShell>
+<AppShell regionPage="scroll-smooth">
 	<svelte:fragment slot="header"><Header /></svelte:fragment>
 	<svelte:fragment slot="sidebarLeft"><LeftBar /></svelte:fragment>
+
 	<!-- Router Slot -->
 	<slot />
 	<!-- ---- / ---- -->
