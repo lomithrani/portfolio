@@ -45,9 +45,9 @@
 	/>
 </svelte:head>
 
-<div class="layout-docs page-padding flex items-start gap-10">
+<div class="layout-docs p-6 flex items-start gap-10">
 	<div
-		class="layout-docs-content page-container-aside mx-auto"
+		class="layout-docs-content page-container-aside mx-auto w-5/6"
 		use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}
 	>
 		{#if !experiences}
