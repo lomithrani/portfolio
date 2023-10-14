@@ -6,6 +6,5 @@ export const skillSchema = new Schema({
   level: Number
 });
 
-
 export type Skill = InferSchemaType<typeof skillSchema>;
 export const Skill = model('Skill', skillSchema);

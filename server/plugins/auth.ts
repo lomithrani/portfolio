@@ -1,23 +1,11 @@
 import { Elysia, t } from 'elysia'
 import { jwt } from '@elysiajs/jwt'
-import { Role } from '../models';
-import cors from '@elysiajs/cors';
-import { UserRole } from 'portfolio-common';
+import { User } from '../models/user';
+import { Domain } from '../models/domain';
+import { corsConf } from './corsConf';
 
 export const googleAuth = new Elysia()
-  .use(cors({
-    credentials: true,
-    methods: ['POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
-    origin: (request: Request): boolean => {
-      const origin = request.headers.get('origin');
-      if (!origin) {
-        return false;
-      }
-      const allowedOrigins = JSON.parse(Bun.env.ALLOWED_DOMAINS || '[]') as string[];
-      return allowedOrigins.includes(origin);
-    }
-  }))
+  .use(corsConf())
   .use(jwt({
     name: 'jwt',
     secret: Bun.env.JWT_SECRET!,
@@ -46,9 +34,11 @@ export const googleAuth = new Elysia()
 
       const email = googleData.email;
 
-      const roles = (await Role.findOne({ email }))?.roles ?? [UserRole.Recruiter];
+      const user = await User.findOneAndUpdate({ email }, { email }, { upsert: true });
 
-      const jwtToken = await jwt.sign({ "roles": `${JSON.stringify(roles)}` })
+      const jwtToken = await jwt.sign({ aud: user?.id });
+
+      const domain = await Domain.findOne({ admin: user?._id });
 
       auth.value = jwtToken;
       auth.secure = false;
@@ -61,7 +51,7 @@ export const googleAuth = new Elysia()
       auth.expires = date;
 
       set.headers['expires'] = date.toISOString();
-      return roles;
+      return domain;
     },
     {
       cookie: t.Cookie({
