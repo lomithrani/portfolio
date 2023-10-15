@@ -21,7 +21,7 @@ export const googleAuth = new Elysia()
 
       if (!googleResponse.ok) {
         set.status = 401;
-        return { error: "Invalid Google token" };
+        throw new Error(googleResponse.statusText)
       }
 
       const googleData = await googleResponse.json();
@@ -29,7 +29,7 @@ export const googleAuth = new Elysia()
       // Check if the email is verified
       if (!googleData.email_verified) {
         set.status = 401;
-        return { error: "Email not verified by Google" };
+        throw new Error(googleResponse.statusText)
       }
 
       const email = googleData.email;

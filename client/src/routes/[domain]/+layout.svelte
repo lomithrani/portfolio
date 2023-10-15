@@ -1,5 +1,5 @@
 <script lang="ts">
-	import '../app.postcss';
+	import '../../app.postcss';
 	import { AppShell } from '@skeletonlabs/skeleton';
 	import Header from '$components/Header.svelte';
 	import LeftBar from '$components/LeftBar.svelte';

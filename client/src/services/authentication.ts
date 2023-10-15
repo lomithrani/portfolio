@@ -1,20 +1,17 @@
-import { type Writable, derived } from "svelte/store";
-import type { UserRole } from "portfolio-common";
 import { localStorageStore } from "@skeletonlabs/skeleton";
-
+import type { Types } from 'mongoose'
+import type { Writable } from "svelte/store";
 
 type AuthTracker = {
   authenticated: boolean,
-  roles?: UserRole[],
+  userId?: Types.ObjectId,
   expires?: Date
 }
 
 let initialAuth: AuthTracker = {
   authenticated: false,
-  roles: [],
+  userId: undefined,
   expires: undefined
 }
 
-export const authTracker: Writable<AuthTracker> = localStorageStore('storeExample', initialAuth);
-
-export const hasOneOf = derived(authTracker, $authTracker => (roles: UserRole[]) => $authTracker.roles?.some(role => roles.includes(role)) || false);
+export const authTracker: Writable<AuthTracker> = localStorageStore('authTracker', initialAuth);
