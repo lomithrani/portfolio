@@ -20,7 +20,7 @@
 </script>
 
 <div class="w-full grid grid-cols-1 md:grid-cols-2 p-2">
-	<div class="card p-1 variant-ghost">
+	<div class="card m-1 p-1 variant-ghost">
 		{#each softSkills as softSkill, index}
 			{@const selected = filters.softSkills.has(softSkill.name)}
 			<span
@@ -29,7 +29,6 @@
 				tabindex={index}
 				class="chip {selected ? 'variant-ringed-primary' : 'variant-soft'}"
 				on:click={() => {
-					console.log('on click');
 					// we need to reassign filters to trigger svelte reactivity
 					if (!selected) {
 						filters = {
@@ -52,7 +51,7 @@
 			</span>
 		{/each}
 	</div>
-	<div class="card p-2 variant-ghost">
+	<div class="card m-1 p-1 variant-ghost">
 		{#each hardSkills as hardSkill, index}
 			{@const selected = filters.hardSkills.has(hardSkill.name)}
 			<span
