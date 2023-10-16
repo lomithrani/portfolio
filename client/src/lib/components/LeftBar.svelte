@@ -2,12 +2,11 @@
 	import { page } from '$app/stores';
 	import { AppRail, AppRailAnchor } from '@skeletonlabs/skeleton';
 	import { LightSwitch } from '@skeletonlabs/skeleton';
-	import type { Domain } from 'portfolio-api/models/domain';
+	import type { Domain, Experience } from 'portfolio-api/models';
 	import { AcademicCap, ComputerDesktop, WrenchScrewdriver } from 'svelte-heros-v2';
-	import { getContext } from 'svelte';
 	import { authTracker } from '$services/authentication';
 
-	const domain = getContext<Domain>('domain');
+	export let domain: Domain & { experiences: Experience[] };
 
 	const pathStartsWith = (path: string, pagePathName: string) => pagePathName.startsWith(path);
 
@@ -26,7 +25,7 @@
 		{
 			path: '/admin',
 			label: 'Admin',
-			display: $authTracker.userId === domain.admin,
+			display: () => $authTracker.user?._id === domain.admin,
 			selected: pathStartsWith,
 			icon: WrenchScrewdriver
 		}
@@ -44,7 +43,7 @@
 	{#each menuItems as { path, label, selected, display, icon }}
 		{#if !display || display()}
 			<AppRailAnchor
-				href={path}
+				href={`/${domain.name}${path}`}
 				bind:group={label}
 				name={label}
 				selected={(selected ?? pathAreEquals)(path, $page.url.pathname)}

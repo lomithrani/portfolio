@@ -1,16 +1,17 @@
 import { localStorageStore } from "@skeletonlabs/skeleton";
-import type { Types } from 'mongoose'
+import type { User } from "portfolio-api/models/user";
 import type { Writable } from "svelte/store";
+import type { Document } from 'mongoose'
 
 type AuthTracker = {
   authenticated: boolean,
-  userId?: Types.ObjectId,
+  user?: User & Document,
   expires?: Date
 }
 
 let initialAuth: AuthTracker = {
   authenticated: false,
-  userId: undefined,
+  user: undefined,
   expires: undefined
 }
 

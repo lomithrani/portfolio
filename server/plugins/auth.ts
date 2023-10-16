@@ -38,8 +38,6 @@ export const googleAuth = new Elysia()
 
       const jwtToken = await jwt.sign({ aud: user?.id });
 
-      const domain = await Domain.findOne({ admin: user?._id });
-
       auth.value = jwtToken;
       auth.secure = false;
       auth.httpOnly = true;
@@ -51,7 +49,7 @@ export const googleAuth = new Elysia()
       auth.expires = date;
 
       set.headers['expires'] = date.toISOString();
-      return domain;
+      return user;
     },
     {
       cookie: t.Cookie({
