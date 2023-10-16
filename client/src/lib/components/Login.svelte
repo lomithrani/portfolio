@@ -44,7 +44,7 @@
 
 				authTracker.set({
 					authenticated: true,
-					roles: loginResponse.data,
+					user: loginResponse.data,
 					expires: new Date(loginResponse.headers['expires'])
 				});
 			}

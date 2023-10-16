@@ -21,7 +21,7 @@ export const googleAuth = new Elysia()
 
       if (!googleResponse.ok) {
         set.status = 401;
-        return { error: "Invalid Google token" };
+        throw new Error(googleResponse.statusText)
       }
 
       const googleData = await googleResponse.json();
@@ -29,7 +29,7 @@ export const googleAuth = new Elysia()
       // Check if the email is verified
       if (!googleData.email_verified) {
         set.status = 401;
-        return { error: "Email not verified by Google" };
+        throw new Error(googleResponse.statusText)
       }
 
       const email = googleData.email;
@@ -37,8 +37,6 @@ export const googleAuth = new Elysia()
       const user = await User.findOneAndUpdate({ email }, { email }, { upsert: true });
 
       const jwtToken = await jwt.sign({ aud: user?.id });
-
-      const domain = await Domain.findOne({ admin: user?._id });
 
       auth.value = jwtToken;
       auth.secure = false;
@@ -51,7 +49,7 @@ export const googleAuth = new Elysia()
       auth.expires = date;
 
       set.headers['expires'] = date.toISOString();
-      return domain;
+      return user;
     },
     {
       cookie: t.Cookie({

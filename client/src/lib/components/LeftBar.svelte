@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { UserRole } from 'portfolio-common';
-	import { hasOneOf } from '$services/authentication';
-
 	import { AppRail, AppRailAnchor } from '@skeletonlabs/skeleton';
 	import { LightSwitch } from '@skeletonlabs/skeleton';
+	import type { Domain, Experience } from 'portfolio-api/models';
 	import { AcademicCap, ComputerDesktop, WrenchScrewdriver } from 'svelte-heros-v2';
+	import { authTracker } from '$services/authentication';
+
+	export let domain: Domain & { experiences: Experience[] };
 
 	const pathStartsWith = (path: string, pagePathName: string) => pagePathName.startsWith(path);
 
@@ -18,15 +19,13 @@
 		{
 			path: '/hire',
 			label: 'Hire',
-			restrictToRoles: [UserRole.Recruiter],
 			selected: pathStartsWith,
 			icon: AcademicCap
 		},
 		{
 			path: '/admin',
 			label: 'Admin',
-			restrictToRoles: [UserRole.Admin],
-			displayToRoles: [UserRole.Admin],
+			display: () => $authTracker.user?._id === domain.admin,
 			selected: pathStartsWith,
 			icon: WrenchScrewdriver
 		}
@@ -41,11 +40,10 @@
 		></svelte:fragment
 	>
 
-	{#each menuItems as { path, label, selected, restrictToRoles, displayToRoles, icon }}
-		{#if !displayToRoles || $hasOneOf(displayToRoles)}
+	{#each menuItems as { path, label, selected, display, icon }}
+		{#if !display || display()}
 			<AppRailAnchor
-				class={!restrictToRoles || $hasOneOf(restrictToRoles) || 'opacity-30 pointer-events-none'}
-				href={path}
+				href={`/${domain.name}${path}`}
 				bind:group={label}
 				name={label}
 				selected={(selected ?? pathAreEquals)(path, $page.url.pathname)}

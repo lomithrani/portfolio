@@ -5,6 +5,9 @@
     "server",
     "common"
   ],
+  "devDependencies": {
+    "elysia": "^0.7.16"
+  },
   "scripts": {
     "build:client": "cd client && bun run build",
     "start:server": "cd server && bun run start",

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { authTracker, hasOneOf } from '$services/authentication';
+	import { authTracker } from '$services/authentication';
 	import Login from '$components/Login.svelte';
 	import { AppBar } from '@skeletonlabs/skeleton';
 	import Logo from '$images/logo.svelte';

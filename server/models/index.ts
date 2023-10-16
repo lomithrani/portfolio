@@ -1,5 +1,5 @@
 export { Experience } from './experience'
-export { Role } from './roles'
 export { Company } from './company'
 export { Project } from './project'
 export { Skill } from './skill'
+export { Domain } from './domain'
