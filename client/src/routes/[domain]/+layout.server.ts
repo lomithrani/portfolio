@@ -1,4 +1,5 @@
 import { portfolioApi } from '$services/index';
+import { redirect } from '@sveltejs/kit';
 
 export async function load({ params }) {
   let { data, error } = await portfolioApi.domain[params.domain].get({
@@ -6,7 +7,7 @@ export async function load({ params }) {
   });
 
   if (error) {
-    throw error;
+    throw redirect(302, '/louis.gentil/experiences');
   }
 
   return {

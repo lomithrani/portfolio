@@ -13,17 +13,18 @@
 		softSkills: new Set(),
 		hardSkills: new Set()
 	};
-	let experiences: ExperienceModel[] | null = null;
+	let experiences: ExperienceModel[] | undefined = undefined;
 
+	$: if (data?.domain) filterExperiences();
 	$: if (filters) filterExperiences();
 
 	const filterExperiences = () => {
 		if (filters.softSkills.size === 0 && filters.hardSkills.size === 0) {
-			return (experiences = data.domain.experiences);
+			return (experiences = data?.domain?.experiences);
 		}
 
-		if (data.domain.experiences === null) {
-			return (experiences = null);
+		if (data?.domain?.experiences === undefined) {
+			return (experiences = undefined);
 		}
 
 		return (experiences = data.domain.experiences.filter((experience) =>
@@ -34,8 +35,6 @@
 			)
 		));
 	};
-
-	filterExperiences();
 </script>
 
 <svelte:head>
