@@ -1,7 +1,5 @@
 import Elysia from 'elysia';
-import { Domain } from '../models/database/domain';
-import type { Experience } from '../models/database';
-
+import { Domain, Experience } from 'models/database';
 
 export const domain = new Elysia()
   .get('/domain/:name', async ({ params: { name } }) => {
