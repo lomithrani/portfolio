@@ -8,11 +8,16 @@ export const userLogged = () => new Elysia()
     name: 'jwt',
     secret: Bun.env.JWT_SECRET!,
     exp: '7d'
-  }))
-  .onBeforeHandle(async ({ cookie: { auth }, jwt, set }) => {
+  })).derive(async ({ cookie: { auth }, jwt }) => {
     const user = await jwt.verify(auth.value);
-    if (!user) {
-      set.status = "Unauthorized"
-      return { error: "No User" };
+
+    return {
+      userId: user ? user.sub : undefined
     }
-  });
+  })
+  .onBeforeHandle(({ userId, set }) => {
+    if (userId === undefined) {
+      set.status = "Unauthorized";
+      return { error: "No User" }
+    }
+  })

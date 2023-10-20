@@ -23,6 +23,18 @@
     "paths": {
       "*": [
         "../node_modules/*"
+      ],
+      "models/*": [
+        "./models/*"
+      ],
+      "plugins": [
+        "./plugins"
+      ],
+      "services/*": [
+        "./services/*"
+      ],
+      "errors": [
+        "./errors"
       ]
     }
   }

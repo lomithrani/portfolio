@@ -1,7 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { jwt } from '@elysiajs/jwt'
-import { User } from '../models/user';
-import { Domain } from '../models/domain';
+import { User } from '../models/database/user';
 import { corsConf } from './corsConf';
 
 export const googleAuth = new Elysia()
@@ -36,7 +35,7 @@ export const googleAuth = new Elysia()
 
       const user = await User.findOneAndUpdate({ email }, { email }, { upsert: true });
 
-      const jwtToken = await jwt.sign({ aud: user?.id });
+      const jwtToken = await jwt.sign({ sub: user?.id });
 
       auth.value = jwtToken;
       auth.secure = false;

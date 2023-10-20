@@ -13,7 +13,7 @@ export const domainSchema = new Schema({
       message: (props: { value: string }) => `${props.value} is not a valid subdomain!`
     },
   },
-  admin: { type: Schema.Types.ObjectId, ref: 'User' },
+  admin: { type: Schema.Types.ObjectId, ref: 'User', index: true },
   experiences: [{ type: Schema.Types.ObjectId, ref: 'Experience' }],
   style: { type: String },
   defaultDarkMode: { type: Boolean }

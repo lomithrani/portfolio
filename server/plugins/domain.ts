@@ -1,6 +1,6 @@
 import Elysia from 'elysia';
-import { Domain } from '../models/domain';
-import type { Experience } from '../models';
+import { Domain } from '../models/database/domain';
+import type { Experience } from '../models/database';
 
 
 export const domain = new Elysia()
