@@ -3,7 +3,7 @@ import { experienceRequest } from 'models/elysia'
 import { Elysia } from 'elysia';
 import { corsConf } from './corsConf';
 import { userLogged } from './userLogged';
-import { DomainDoesNotExistError } from 'errors';
+import { CannotSaveExperienceError, DomainDoesNotExistError } from 'errors';
 
 export const experiences = new Elysia()
   .use(corsConf())
@@ -16,16 +16,23 @@ export const experiences = new Elysia()
 
       const domain = await Domain.findOne({ admin: userId });
 
-      if (!domain) {
-        throw new DomainDoesNotExistError(userId!)
-      }
+      if (!domain) throw new DomainDoesNotExistError(userId)
 
       let experience = new Experience()
       experience.title = body.title
       experience.summary = body.summary
       experience.type = body.type
 
-      return await experience.save();
+      const result = await experience.save();
+
+      if (!result) throw new CannotSaveExperienceError(userId)
+
+      domain.experiences.push(result.id)
+
+      await domain.save()
+
+      return result
+
     },
     {
       body: 'experienceRequest'
