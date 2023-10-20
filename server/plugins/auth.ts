@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { jwt } from '@elysiajs/jwt'
-import { User } from '../models/database/user';
+import { User } from 'models/database';
 import { corsConf } from './corsConf';
 
 export const googleAuth = new Elysia()

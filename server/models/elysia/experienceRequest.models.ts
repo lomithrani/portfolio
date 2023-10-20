@@ -7,5 +7,4 @@ export const experienceRequest = new Elysia()
       title: t.String(),
       summary: t.String(),
     })
-
   })

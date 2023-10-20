@@ -27,3 +27,11 @@ export class CannotSaveExperienceError extends Error {
     super(message)
   }
 }
+
+export const errors = {
+  DomainDoesNotExistError,
+  MissingAuthCookieError,
+  CouldntVerifyJwtError,
+  SubMissingError,
+  CannotSaveExperienceError
+}

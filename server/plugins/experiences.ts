@@ -35,6 +35,9 @@ export const experiences = new Elysia()
 
     },
     {
-      body: 'experienceRequest'
+      body: 'experienceRequest',
+      detail: {
+        summary: 'Add new experience'
+      }
     }
   )

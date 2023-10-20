@@ -21,9 +21,6 @@
       "bun-types" // add Bun global
     ],
     "paths": {
-      "*": [
-        "../node_modules/*"
-      ],
       "models/*": [
         "./models/*"
       ],
@@ -35,7 +32,10 @@
       ],
       "errors": [
         "./errors"
-      ]
+      ],
+      "*": [
+        "../node_modules/*"
+      ],
     }
   }
 }
