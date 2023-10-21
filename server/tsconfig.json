@@ -21,6 +21,18 @@
       "bun-types" // add Bun global
     ],
     "paths": {
+      "models/*": [
+        "./models/*"
+      ],
+      "services/*": [
+        "./services/*"
+      ],
+      "errors": [
+        "./errors"
+      ],
+      /*"plugins": [
+        "./plugins" TO DO , check why it breaks edenTreaty
+      ],*/
       "*": [
         "../node_modules/*"
       ]
