@@ -8,7 +8,7 @@ export const domainSchema = new Schema({
     unique: true,
     validate: {
       validator: function (value: string) {
-        return /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$/.test(value);
+        return /^(?!-)[A-Za-z0-9\-\.]{1,63}(?<!-)$/.test(value);
       },
       message: (props: { value: string }) => `${props.value} is not a valid subdomain!`
     },

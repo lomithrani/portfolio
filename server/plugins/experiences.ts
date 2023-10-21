@@ -25,6 +25,8 @@ export const experiences = new Elysia()
 
     domain.experiences.push(result.id)
 
+    console.log(domain)
+
     await domain.save();
 
     return result;
