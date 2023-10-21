@@ -1,6 +1,6 @@
 import { Domain, Experience } from 'models/database';
-import Elysia from 'elysia';
-import { experienceRequest } from 'models/elysia';
+import Elysia, { t } from 'elysia';
+import { ExperienceType } from 'portfolio-common'
 import { corsConf } from './corsConf';
 import { userLogged } from './userLogged';
 import { CannotSaveExperienceError, DomainDoesNotExistError } from 'errors';
@@ -30,7 +30,16 @@ export const experiences = new Elysia()
     return result;
   },
     {
-      body: experienceRequest,
+      body: t.Object({
+        type: t.Union([
+          t.Literal(ExperienceType.Educational),
+          t.Literal(ExperienceType.Professional),
+          t.Literal(ExperienceType.Leisure),
+          t.Literal(ExperienceType.Personal),
+        ]),
+        title: t.String(),
+        summary: t.String(),
+      }),
       detail: {
         summary: 'Add new experience'
       }
