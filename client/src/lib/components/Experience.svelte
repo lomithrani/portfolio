@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Experience } from 'portfolio-api/models';
+	import type { Experience } from 'portfolio-api/models/database';
 
 	import Project from './Project.svelte';
 

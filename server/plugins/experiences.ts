@@ -1,6 +1,6 @@
 import { Domain, Experience } from 'models/database';
 import { experienceRequest } from 'models/elysia'
-import { Elysia } from 'elysia';
+import Elysia from 'elysia';
 import { corsConf } from './corsConf';
 import { userLogged } from './userLogged';
 import { CannotSaveExperienceError, DomainDoesNotExistError } from 'errors';
