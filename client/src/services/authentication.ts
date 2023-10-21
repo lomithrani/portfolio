@@ -1,5 +1,5 @@
 import { localStorageStore } from "@skeletonlabs/skeleton";
-import type { User } from "portfolio-api/models/user";
+import type { User } from "portfolio-api/models/database";
 import type { Writable } from "svelte/store";
 import type { Document } from 'mongoose'
 

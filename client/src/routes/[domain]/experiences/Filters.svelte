@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Check } from 'svelte-heros-v2';
-	import type { Experience as ExperienceModel } from 'portfolio-api/models';
+	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	export let experiences: ExperienceModel[];
 
 	let softSkillsMap = experiences

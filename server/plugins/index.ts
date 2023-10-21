@@ -1,2 +1,5 @@
 export { googleAuth } from './auth'
 export { experiences } from './experiences'
+export { domain } from './domain'
+export { corsConf } from './corsConf'
+export { userLogged } from './userLogged'

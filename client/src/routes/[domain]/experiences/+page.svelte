@@ -1,13 +1,22 @@
 <script lang="ts">
-	import type { Experience as ExperienceModel } from 'portfolio-api/models';
+	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import type { PageData } from './$types';
 
-	import { TableOfContents, tocCrawler } from '@skeletonlabs/skeleton';
+	import {
+		TableOfContents,
+		tocCrawler,
+		type ModalComponent,
+		type ModalSettings,
+		getModalStore
+	} from '@skeletonlabs/skeleton';
 
 	import Experience from '$components/Experience.svelte';
 	import Filters from './Filters.svelte';
+	import CreateExperienceModal from '$components/modals/CreateExperienceModal.svelte';
 
 	export let data: PageData;
+
+	const modalStore = getModalStore();
 
 	let filters: { softSkills: Set<string>; hardSkills: Set<string> } = {
 		softSkills: new Set(),
@@ -17,6 +26,19 @@
 
 	$: if (data?.domain) filterExperiences();
 	$: if (filters) filterExperiences();
+
+	const showAddExperienceModal = () => {
+		const modalComponent: ModalComponent = { ref: CreateExperienceModal };
+		const modal: ModalSettings = {
+			type: 'component',
+			component: modalComponent,
+			title: 'Add Experience',
+			body: 'Give a general desciption of your experience',
+			response: (response) => console.log('response', response)
+		};
+
+		modalStore.trigger(modal);
+	};
 
 	const filterExperiences = () => {
 		if (filters.softSkills.size === 0 && filters.hardSkills.size === 0) {
@@ -35,6 +57,8 @@
 			)
 		));
 	};
+
+	showAddExperienceModal();
 </script>
 
 <svelte:head>
