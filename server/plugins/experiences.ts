@@ -4,19 +4,17 @@ import { ExperienceType } from 'portfolio-common'
 import { corsConf } from './corsConf';
 import { userLogged } from './userLogged';
 import { CannotSaveExperienceError, DomainDoesNotExistError } from '../errors';
+import { experienceRequest } from '../models/elysia';
 
 export const experiences = new Elysia()
   .use(corsConf())
   .use(userLogged)
-  .post('/experiences', async ({ body, userId }): Promise<Experience> => {
+  .post('/experiences', async ({ body, userId }) => {
     const domain = await Domain.findOne({ admin: userId });
 
     if (!domain) throw new DomainDoesNotExistError(userId)
 
-    let experience = new Experience()
-    experience.title = body.title
-    experience.summary = body.summary
-    experience.type = body.type
+    let experience = new Experience(body);
 
     const result = await experience.save();
 
@@ -29,16 +27,7 @@ export const experiences = new Elysia()
     return result;
   },
     {
-      body: t.Object({
-        type: t.Union([
-          t.Literal(ExperienceType.Educational),
-          t.Literal(ExperienceType.Professional),
-          t.Literal(ExperienceType.Leisure),
-          t.Literal(ExperienceType.Personal),
-        ]),
-        title: t.String(),
-        summary: t.String(),
-      }),
+      body: experienceRequest,
       detail: {
         summary: 'Add new experience'
       }

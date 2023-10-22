@@ -1,7 +1,9 @@
-import { Schema, Types, InferSchemaType, model } from 'mongoose';
+import { Schema, Types, InferSchemaType, model, Document } from 'mongoose';
 import { ExperienceType } from 'portfolio-common';
-import { projectSchema } from './project';
+import { Project, projectSchema } from './project';
 import { companySchema } from './company';
+import { experienceRequest } from '../elysia';
+import { Static } from 'elysia';
 
 
 const experienceSchema = new Schema({
@@ -12,5 +14,23 @@ const experienceSchema = new Schema({
   projects: [projectSchema]
 });
 
-export type Experience = InferSchemaType<typeof experienceSchema>;
+type ExperienceRequest = Static<typeof experienceRequest>;
+
+experienceSchema.statics.addItem = (request: ExperienceRequest) => {
+  const experience = new Experience();
+
+  experience.title = request.title;
+  experience.summary = request.summary;
+  experience.type = request.type;
+
+  for (const project of request.projects) {
+    experience.projects.push(Project.create({ ...project }));
+  }
+
+  return experience;
+}
+
+export type Experience = InferSchemaType<typeof experienceSchema> & {
+  _id: string;
+};
 export const Experience = model('Experience', experienceSchema);
