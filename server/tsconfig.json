@@ -5,7 +5,7 @@
     ],
     "module": "esnext",
     "target": "esnext",
-    "moduleResolution": "bundler",
+    "moduleResolution": "Node",
     "moduleDetection": "force",
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -21,18 +21,6 @@
       "bun-types" // add Bun global
     ],
     "paths": {
-      "models/*": [
-        "./models/*"
-      ],
-      "services/*": [
-        "./services/*"
-      ],
-      "errors": [
-        "./errors"
-      ],
-      /*"plugins": [
-        "./plugins" TO DO , check why it breaks edenTreaty
-      ],*/
       "*": [
         "../node_modules/*"
       ]

@@ -1,7 +1,7 @@
 import jwt from "@elysiajs/jwt";
 import Elysia from "elysia";
 import { corsConf } from "./corsConf";
-import { CouldntVerifyJwtError, MissingAuthCookieError, SubMissingError } from "errors";
+import { CouldntVerifyJwtError, MissingAuthCookieError, SubMissingError } from "../errors";
 
 export const userLogged = () => new Elysia()
   .use(corsConf())

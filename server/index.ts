@@ -3,7 +3,7 @@ import { Elysia } from 'elysia'
 import { experiences, googleAuth, domain } from './plugins';
 import { validateEnvironment } from './services/validation';
 import swagger from '@elysiajs/swagger';
-import { errors } from 'errors';
+import { errors } from './errors';
 
 validateEnvironment();
 
