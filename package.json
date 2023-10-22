@@ -6,6 +6,7 @@
     "common"
   ],
   "devDependencies": {
+    "@tailwindcss/forms": "^0.5.6",
     "elysia": "^0.7.16"
   },
   "scripts": {
