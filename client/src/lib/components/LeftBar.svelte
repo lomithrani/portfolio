@@ -2,7 +2,7 @@
 	import { page } from '$app/stores';
 	import { AppRail, AppRailAnchor } from '@skeletonlabs/skeleton';
 	import { LightSwitch } from '@skeletonlabs/skeleton';
-	import type { Domain, Experience } from 'portfolio-api/models';
+	import type { Domain, Experience } from 'portfolio-api/models/database';
 	import { AcademicCap, ComputerDesktop, WrenchScrewdriver } from 'svelte-heros-v2';
 	import { authTracker } from '$services/authentication';
 

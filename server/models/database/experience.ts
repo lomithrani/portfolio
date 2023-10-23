@@ -1,12 +1,19 @@
 import { Schema, Types, InferSchemaType, model, Document } from 'mongoose';
 import { ExperienceType } from 'portfolio-common';
 import { Project, projectSchema } from './project';
-import { companySchema } from './company';
+import { Company, companySchema } from './company';
 import { experienceRequest } from '../elysia';
 import { Static } from 'elysia';
 
+export interface Experience extends Document {
+  type: ExperienceType;
+  company: Types.ObjectId | Company;
+  summary: String;
+  title: String;
+  projects: Project[]
+}
 
-const experienceSchema = new Schema({
+const experienceSchema = new Schema<Experience>({
   type: { type: String, required: true, enum: ExperienceType },
   company: { type: Types.ObjectId, ref: 'Company' },
   summary: String,
@@ -16,7 +23,7 @@ const experienceSchema = new Schema({
 
 type ExperienceRequest = Static<typeof experienceRequest>;
 
-experienceSchema.statics.addItem = (request: ExperienceRequest) => {
+experienceSchema.statics.addItem = async (request: ExperienceRequest) => {
   const experience = new Experience();
 
   experience.title = request.title;
@@ -24,13 +31,10 @@ experienceSchema.statics.addItem = (request: ExperienceRequest) => {
   experience.type = request.type;
 
   for (const project of request.projects) {
-    experience.projects.push(Project.create({ ...project }));
+    experience.projects.push(await Project.create({ ...project }));
   }
 
   return experience;
 }
 
-export type Experience = InferSchemaType<typeof experienceSchema> & {
-  _id: string;
-};
-export const Experience = model('Experience', experienceSchema);
+export const Experience = model<Experience>('Experience', experienceSchema);
