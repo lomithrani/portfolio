@@ -66,12 +66,14 @@
 	/>
 </svelte:head>
 <div class="relative layout-docs page-padding flex items-start gap-10">
-	<button
-		class="absolute sticky top-0 left-0 m-2 px-4 py-2 bg-blue-500 text-white circle"
-		on:click={showAddExperienceModal}
-	>
-		<PlusCircle />
-	</button>
+	{#if !$modalStore[0]}
+		<button
+			class="absolute sticky top-0 left-0 m-2 px-4 py-2 bg-blue-500 text-white circle"
+			on:click={showAddExperienceModal}
+		>
+			<PlusCircle />
+		</button>
+	{/if}
 	<div
 		class="layout-docs-content page-container-aside mx-auto"
 		use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}

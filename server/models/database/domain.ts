@@ -1,6 +1,15 @@
-import { type InferSchemaType, Schema, model } from "mongoose";
+import { Schema, model, Types } from "mongoose";
+import { User, Experience } from ".";
 
-export const domainSchema = new Schema({
+export interface Domain extends Document {
+  name: string;
+  admin: Types.ObjectId | User;
+  experiences: (Types.ObjectId | Experience)[],
+  style?: string;
+  defaultDarkMode?: boolean;
+}
+
+export const domainSchema = new Schema<Domain>({
   name: {
     type: String,
     required: true,
@@ -13,11 +22,11 @@ export const domainSchema = new Schema({
       message: (props: { value: string }) => `${props.value} is not a valid subdomain!`
     },
   },
-  admin: { type: Schema.Types.ObjectId, ref: 'User', index: true },
-  experiences: [{ type: Schema.Types.ObjectId, ref: 'Experience' }],
+  admin: { type: Types.ObjectId, ref: 'User', index: true, required: true },
+  experiences: [{ type: Types.ObjectId, ref: 'Experience', required: true }],
   style: { type: String },
   defaultDarkMode: { type: Boolean }
 });
 
-export type Domain = InferSchemaType<typeof domainSchema>;
-export const Domain = model('Domain', domainSchema);
+
+export const Domain = model<Domain>('Domain', domainSchema);
