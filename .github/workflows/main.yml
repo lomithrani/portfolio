@@ -61,7 +61,6 @@ jobs:
         run: |
           cd server
           bun install
-          bun run build
           bun run start &
         env:
           PORT: 3000
