@@ -73,6 +73,10 @@ jobs:
           done
         timeout-minutes: 1
 
+      - name: Install Playright
+        run: |
+          bunx playwright install --with-deps
+
       - name: Playright Tests
         run: |
           cd client
