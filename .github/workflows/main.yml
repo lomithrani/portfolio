@@ -73,6 +73,11 @@ jobs:
           done
         timeout-minutes: 1
 
+      - name: Seed MongoDB
+        run: |
+          cd server
+          bun run tests/seedDb.ts
+
       - name: Install Playright
         run: |
           bunx playwright install --with-deps
