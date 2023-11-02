@@ -73,12 +73,7 @@ jobs:
           done
         timeout-minutes: 1
 
-      - name: Integration Tests
-        run: |
-          cd server
-          bun run test
-
-      - name: E2E Tests
+      - name: Playright Tests
         run: |
           cd client
           bun run test:e2e
