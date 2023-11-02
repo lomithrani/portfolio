@@ -13,7 +13,7 @@ const user = new User({
   surname: 'Gentil'
 });
 
-//await user.save();
+await user.save();
 
 const domain = new Domain({
   admin: user.id,
@@ -21,6 +21,7 @@ const domain = new Domain({
   name: 'louis.gentil'
 });
 
-//await domain.save();
+await domain.save();
 
 console.log('Seeded');
+process.exit(0);
