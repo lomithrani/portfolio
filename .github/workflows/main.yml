@@ -57,7 +57,7 @@ jobs:
         run: |
           cd server
           bun install
-          bun run start
+          bun run start &
         env:
           PORT: 3000
           MONGO_URL: "mongodb://localhost:${{ job.services.mongodb.ports[27017] }}/mytestdb"
