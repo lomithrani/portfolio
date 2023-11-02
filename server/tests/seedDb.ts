@@ -1,7 +1,11 @@
 import mongoose from "mongoose";
 import { Domain, User } from "../models/database";
 
+console.log(`Connecting to : ${Bun.env.MONGO_URL}`)
+
 await mongoose.connect(Bun.env.MONGO_URL ?? '');
+
+console.log(`Connected to : ${Bun.env.MONGO_URL}`)
 
 const user = new User({
   email: 'louisgentil89@gmail.com',
@@ -9,7 +13,7 @@ const user = new User({
   surname: 'Gentil'
 });
 
-await user.save();
+//await user.save();
 
 const domain = new Domain({
   admin: user.id,
@@ -17,6 +21,6 @@ const domain = new Domain({
   name: 'louis.gentil'
 });
 
-await domain.save();
+//await domain.save();
 
 console.log('Seeded');
