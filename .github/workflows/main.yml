@@ -13,7 +13,7 @@ on:
 jobs:
   unit-test:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
@@ -21,24 +21,22 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
-          bun-version: 'latest'
+          bun-version: "latest"
 
-      # Unit tests for Server
       - name: Unit Tests for Server
         run: |
           cd server
           bun install
           bun test
 
-      # Unit tests for Client
       - name: Unit Tests for Client
         run: |
           cd client
           bun install
           bun test
+
   integration-e2e-tests:
     runs-on: ubuntu-latest
-    
     services:
       mongodb:
         image: mongo:latest
@@ -49,7 +47,16 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      # Build and start the server for integration/E2E tests
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: "latest"
+
       - name: Build and Start Server
         run: |
           cd server
@@ -57,12 +64,11 @@ jobs:
           bun run build
           bun run start &
         env:
-          PORT: 3000 # Make sure this matches your server's port
+          PORT: 3000
           MONGO_URL: "mongodb://localhost:27017/mytestdb"
           JWT_SECRET: "JWT_SECRET"
-          ALLOWED_DOMAINS: ["http://localhost:3001"]
+          ALLOWED_DOMAINS: '["http://localhost:3001"]'
 
-      # Wait for the server to be ready
       - name: Wait for Server to be ready
         run: |
           echo "Waiting for server to start..."
@@ -71,17 +77,14 @@ jobs:
             sleep 5
           done
 
-      # Integration tests  TODO
       - name: Integration Tests
         run: |
           cd server
           bun run test
 
-      # E2E tests
       - name: E2E Tests
         run: |
           cd client
-          bun run test-e2e
+          bun run test
         env:
-          NODE_ENV: test
-          SERVER_URL: http://localhost:3000 # Replace with your server's URL and port
+          PUBLIC_PORTFOLIO_API_URL: http://localhost:3000
