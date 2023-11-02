@@ -77,8 +77,9 @@ jobs:
         run: |
           cd server
           bun run tests/seedDb.ts
+        timeout-minutes: 1
         env:
-          MONGO_URL: "mongodb://localhost:${{ job.services.mongodb.ports[27017] }}/mytestdb"
+          MONGO_URL: "mongodb://mongodb:27017/mytestdb"
 
       - name: Install Playright
         run: |
