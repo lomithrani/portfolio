@@ -1,0 +1,87 @@
+name: CI with Unit, Integration, and E2E Tests
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 'latest'
+
+      # Unit tests for Server
+      - name: Unit Tests for Server
+        run: |
+          cd server
+          bun install
+          bun test
+
+      # Unit tests for Client
+      - name: Unit Tests for Client
+        run: |
+          cd client
+          bun install
+          bun test
+  integration-e2e-tests:
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:latest
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongo --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Build and start the server for integration/E2E tests
+      - name: Build and Start Server
+        run: |
+          cd server
+          bun install
+          bun run build
+          bun run start &
+        env:
+          PORT: 3000 # Make sure this matches your server's port
+          MONGO_URL: "mongodb://localhost:27017/mytestdb"
+          JWT_SECRET: "JWT_SECRET"
+          ALLOWED_DOMAINS: ["http://localhost:3001"]
+
+      # Wait for the server to be ready
+      - name: Wait for Server to be ready
+        run: |
+          echo "Waiting for server to start..."
+          until curl --output /dev/null --silent --head --fail http://localhost:3000/health; do
+            printf '.'
+            sleep 5
+          done
+
+      # Integration tests  TODO
+      - name: Integration Tests
+        run: |
+          cd server
+          bun run test
+
+      # E2E tests
+      - name: E2E Tests
+        run: |
+          cd client
+          bun run test-e2e
+        env:
+          NODE_ENV: test
+          SERVER_URL: http://localhost:3000 # Replace with your server's URL and port
