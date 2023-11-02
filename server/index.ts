@@ -16,8 +16,9 @@ const app = new Elysia()
     console.error(error)
     return error.message;
   })
+  .get('/health', () => 'OK')
   .use(domain)
-  .use(googleAuth)
+  .use(googleAuth) //everything after this needs to be logged in
   .use(experiences)
   .listen({
     hostname: Bun.env.HOSTNAME || "::",

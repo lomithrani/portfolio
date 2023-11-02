@@ -8,5 +8,4 @@ test("edenTreaty should have correct methods", async () => {
   expect(api).toBeDefined()
   expect(api.login.post).toBeDefined()
   expect(api.domain[':name'].get).toBeDefined()
-  let { data, error } = await api.domain[''].get()
 })
