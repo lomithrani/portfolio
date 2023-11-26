@@ -11,7 +11,6 @@
 	} from '@skeletonlabs/skeleton';
 	import Experience from '$components/Experience.svelte';
 	import Filters from './Filters.svelte';
-	import CreateExperienceModal from '$components/modals/CreateExperienceModal.svelte';
 
 	export let data: PageData;
 	const modalStore = getModalStore();
@@ -25,14 +24,15 @@
 	$: if (filters) filterExperiences();
 
 	const showAddExperienceModal = () => {
-		const modalComponent: ModalComponent = { ref: CreateExperienceModal };
 		const modal: ModalSettings = {
 			type: 'component',
-			component: modalComponent,
+			component: 'createExperienceModal',
 			title: 'Add new Experience',
 			response: (response: ExperienceModel) => {
-				data.domain?.experiences.push(response);
-				data.domain = data.domain;
+				if (response !== undefined) {
+					data.domain?.experiences.push(response);
+					data.domain = data.domain;
+				}
 			}
 		};
 		modalStore.trigger(modal);

@@ -3,15 +3,20 @@
 	import { AppShell, Modal } from '@skeletonlabs/skeleton';
 	import Header from '$components/Header.svelte';
 	import LeftBar from '$components/LeftBar.svelte';
+	import CreateExperienceModal from '$components/modals/CreateExperienceModal.svelte';
 	import type { LayoutData } from './$types';
-	import { initializeStores } from '@skeletonlabs/skeleton';
+	import { initializeStores, type ModalComponent } from '@skeletonlabs/skeleton';
+
+	const modalRegistry: Record<string, ModalComponent> = {
+		createExperienceModal: { ref: CreateExperienceModal }
+	};
 
 	initializeStores();
 
 	export let data: LayoutData;
 </script>
 
-<Modal />
+<Modal components={modalRegistry} />
 <AppShell regionPage="scroll-smooth">
 	<svelte:fragment slot="header"><Header /></svelte:fragment>
 	<svelte:fragment slot="sidebarLeft"><LeftBar domain={data.domain} /></svelte:fragment>
