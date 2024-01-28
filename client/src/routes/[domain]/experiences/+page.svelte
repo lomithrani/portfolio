@@ -27,11 +27,14 @@
 		const modal: ModalSettings = {
 			type: 'component',
 			component: 'createExperienceModal',
-			title: 'Add new Experience',
+			title: 'Experience',
+			body: 'Add a new experience to your resume.',
 			response: (response: ExperienceModel) => {
 				if (response !== undefined) {
 					data.domain?.experiences.push(response);
 					data.domain = data.domain;
+				} else {
+					// Click on overlay
 				}
 			}
 		};

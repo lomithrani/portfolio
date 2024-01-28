@@ -12,7 +12,6 @@
 	};
 
 	initializeStores();
-
 	export let data: LayoutData;
 </script>
 

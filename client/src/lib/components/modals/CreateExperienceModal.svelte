@@ -1,23 +1,31 @@
 <script lang="ts">
 	import { portfolioApi } from '$services';
 	import { Plus } from 'svelte-heros-v2';
+	import type { SvelteComponent } from 'svelte';
 
 	// Props
 	/** Exposes parent props to this component. */
-	export let parent: any;
+	export let parent: SvelteComponent;
 	// Stores
 	import { RadioGroup, RadioItem, getModalStore } from '@skeletonlabs/skeleton';
 	import { ExperienceType } from 'portfolio-common';
+
+	import { newExperienceDataStore } from '$lib/stores/newExperienceStore';
+
 	const modalStore = getModalStore();
 
 	// Form Data
-	const formData: Parameters<typeof portfolioApi.experiences.post>[0] = {
-		title: '',
-		summary: '',
-		type: ExperienceType.Professional,
-		projects: [],
-		$fetch: { credentials: 'include' }
-	};
+	let formData: Parameters<typeof portfolioApi.experiences.post>[0];
+
+	newExperienceDataStore.subscribe((value) => {
+		formData = value;
+	});
+
+	// Update the store whenever formData changes
+	$: if (formData) {
+		newExperienceDataStore.set(formData);
+	}
+
 	// We've created a custom submit function to pass the response and close the modal.
 	const onFormSubmit = async () => {
 		if ($modalStore[0].response) {
@@ -53,8 +61,8 @@
 
 {#if $modalStore[0]}
 	<div class="modal-example-form {cBase}">
-		<header class={cHeader}>{$modalStore[0].title ?? '(title missing)'}</header>
-		<article>{$modalStore[0].body ?? '(body missing)'}</article>
+		<header class={cHeader}>{$modalStore[0].title}</header>
+		<article>{$modalStore[0].body}</article>
 		<!-- Enable for debugging: -->
 		<form class="modal-form {cForm}">
 			<input
@@ -109,7 +117,7 @@
 		</form>
 		<!-- prettier-ignore -->
 		<footer class="modal-footer {parent.regionFooter}">
-        <button class="btn {parent.buttonNeutral}" on:click={parent.onClose}>{parent.buttonTextCancel}</button>
+        <button class="btn {parent.buttonNeutral}" on:click={$modalStore.close()}>{parent.buttonTextCancel}</button>
         <button class="btn {parent.buttonPositive}" on:click={onFormSubmit}>Add Experience</button>
     </footer>
 	</div>
