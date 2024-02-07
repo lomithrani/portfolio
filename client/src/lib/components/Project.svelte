@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Project } from 'portfolio-api/models';
+	import type { Project } from 'portfolio-api/models/database';
 	import Skill from './Skill.svelte';
 	export let project: Project;
 	export let experienceId: String;

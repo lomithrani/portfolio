@@ -4,7 +4,7 @@
 	import { LightSwitch } from '@skeletonlabs/skeleton';
 	import type { Domain, Experience } from 'portfolio-api/models/database';
 	import { AcademicCap, ComputerDesktop, WrenchScrewdriver } from 'svelte-heros-v2';
-	import { authTracker } from '$services/authentication';
+	import { isDomainAdmin } from '$services/authentication';
 
 	export let domain: Domain & { experiences: Experience[] };
 
@@ -25,7 +25,7 @@
 		{
 			path: '/admin',
 			label: 'Admin',
-			display: () => $authTracker.user?._id === domain.admin,
+			display: () => isDomainAdmin(domain),
 			selected: pathStartsWith,
 			icon: WrenchScrewdriver
 		}

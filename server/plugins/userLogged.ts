@@ -1,7 +1,7 @@
 import jwt from "@elysiajs/jwt";
 import Elysia from "elysia";
 import { corsConf } from "./corsConf";
-import { CouldntVerifyJwtError, MissingAuthCookieError, SubMissingError } from "../errors";
+import { AuthExpiredError, CouldntVerifyJwtError, MissingAuthCookieError, SubMissingError } from "../errors";
 
 export const userLogged = () => new Elysia()
   .use(corsConf())
@@ -18,6 +18,8 @@ export const userLogged = () => new Elysia()
     if (!user) throw new CouldntVerifyJwtError("Unauthorized")
 
     if (!user.sub) throw new SubMissingError("Unauthorized")
+
+    if (!user.exp || user.exp < Date.now()) throw new AuthExpiredError("Unauthorized")
 
     return {
       userId: user.sub

@@ -28,10 +28,17 @@ export class CannotSaveExperienceError extends Error {
   }
 }
 
+export class AuthExpiredError extends Error {
+  constructor(public message: string) {
+    super(message)
+  }
+}
+
 export const errors = {
   DomainDoesNotExistError,
   MissingAuthCookieError,
   CouldntVerifyJwtError,
   SubMissingError,
-  CannotSaveExperienceError
+  CannotSaveExperienceError,
+  AuthExpiredError
 }

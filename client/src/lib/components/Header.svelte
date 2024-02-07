@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { authTracker } from '$services/authentication';
+	import { isLogged, logout } from '$services/authentication';
+	import { authenticationStore } from '$services/stores';
 	import Login from '$components/Login.svelte';
 	import { AppBar } from '@skeletonlabs/skeleton';
 	import Logo from '$images/logo.svelte';
@@ -28,8 +29,14 @@
 		>
 	</h1>
 	<svelte:fragment slot="trail">
-		{#if !$authTracker.authenticated}
-			<Login />
-		{/if}
+		{#await isLogged()}
+			...
+		{:then logged}
+			{#if $authenticationStore.expires ?? 0 > Date.now()}
+				<button type="button" on:click={logout} aria-label="Logout">Logout</button>
+			{:else}
+				<Login />
+			{/if}
+		{/await}
 	</svelte:fragment>
 </AppBar>
