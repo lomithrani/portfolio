@@ -1,18 +1,60 @@
-import { localStorageStore } from "@skeletonlabs/skeleton";
-import type { User } from "portfolio-api/models/user";
-import type { Writable } from "svelte/store";
-import type { Document } from 'mongoose'
+import { portfolioApi } from '$services';
+import type { Domain } from 'portfolio-api/models/database';
+import { authenticationStore } from './stores'
+import { get } from 'svelte/store';
 
-type AuthTracker = {
-  authenticated: boolean,
-  user?: User & Document,
-  expires?: Date
+
+const isLogged: () => Promise<boolean> = async () => {
+  const authentication = get(authenticationStore);
+
+  if (authentication.user && authentication.expires) {
+    return Date.now() < authentication.expires
+  }
+
+  const isLoggedResponse = await portfolioApi.isLogged.get({ $fetch: { credentials: 'include' } });
+
+  if (isLoggedResponse.data?.expires ?? 0 > Date.now()) {
+    console.log("already logged");
+    return true;
+  }
+
+  return false;
 }
 
-let initialAuth: AuthTracker = {
-  authenticated: false,
-  user: undefined,
-  expires: undefined
+const isDomainAdmin: (domain: Domain) => boolean = (domain) => {
+  const authentication = get(authenticationStore);
+  return authentication.user?._id == domain.admin;
 }
 
-export const authTracker: Writable<AuthTracker> = localStorageStore('authTracker', initialAuth);
+const logout: () => void = async () => {
+  await portfolioApi.logout.get({ $fetch: { credentials: 'include' } });
+  authenticationStore.set({ expires: undefined, user: undefined });
+}
+
+const login: (googleCredentials: string) => Promise<boolean> = async (googleCredentials) => {
+
+  const loginResponse = await portfolioApi.login.post({
+    token: googleCredentials,
+    $fetch: { credentials: 'include' }
+  });
+
+  if (loginResponse.data?.user) {
+
+    if ('error' in loginResponse.data) {
+      authenticationStore.set({ expires: undefined });
+      return false;
+    }
+
+    const isloggedResponse = await portfolioApi.isLogged.get({
+      $fetch: { credentials: 'include' }
+    }); // confirm that cookie was properly set
+
+    authenticationStore.set({
+      user: loginResponse.data.user,
+      expires: loginResponse.data.expires
+    });
+  }
+  return true;
+}
+
+export { isLogged, isDomainAdmin, login, logout }

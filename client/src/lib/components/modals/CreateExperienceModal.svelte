@@ -4,10 +4,9 @@
 	import type { SvelteComponent } from 'svelte';
 
 	// Props
-	/** Exposes parent props to this component. */
 	export let parent: SvelteComponent;
-	// Stores
-	import { RadioGroup, RadioItem, getModalStore } from '@skeletonlabs/skeleton';
+
+	import { InputChip, RadioGroup, RadioItem, getModalStore } from '@skeletonlabs/skeleton';
 	import { ExperienceType } from 'portfolio-common';
 
 	import { newExperienceDataStore } from '$lib/stores/newExperienceStore';
@@ -108,6 +107,16 @@
 					</label>
 					<input class="input" title="Start" type="date" bind:value={project.start} />
 					<input class="input" title="End" type="date" bind:value={project.end} />
+					<InputChip
+						name="Hard Skills"
+						bind:value={project.hardSkills}
+						placeholder="Enter hard skills..."
+					/>
+					<InputChip
+						name="Soft Skills"
+						bind:value={project.softSkills}
+						placeholder="Enter soft skills..."
+					/>
 				</form>
 			{/each}
 
@@ -117,7 +126,7 @@
 		</form>
 		<!-- prettier-ignore -->
 		<footer class="modal-footer {parent.regionFooter}">
-        <button class="btn {parent.buttonNeutral}" on:click={$modalStore.close()}>{parent.buttonTextCancel}</button>
+        <button class="btn {parent.buttonNeutral}" on:click={modalStore.close}>{parent.buttonTextCancel}</button>
         <button class="btn {parent.buttonPositive}" on:click={onFormSubmit}>Add Experience</button>
     </footer>
 	</div>

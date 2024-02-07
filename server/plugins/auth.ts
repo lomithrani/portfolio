@@ -35,20 +35,20 @@ export const googleAuth = new Elysia()
 
       const user = await User.findOneAndUpdate({ email }, { email }, { upsert: true });
 
-      const jwtToken = await jwt.sign({ sub: user?.id });
+      const date = new Date();
+      date.setDate(date.getDate() + 7);
+
+      const expires = date.getTime()
+      const jwtToken = await jwt.sign({ sub: user?.id, exp: expires });
 
       auth.value = jwtToken;
       auth.secure = false;
       auth.httpOnly = true;
       auth.priority = 'high';
       auth.sameSite = 'strict';
-      const date = new Date();
-      date.setDate(date.getDate() + 7);
-
       auth.expires = date;
 
-      set.headers['expires'] = date.toISOString();
-      return user;
+      return { user, expires };
     },
     {
       cookie: t.Cookie({
@@ -57,5 +57,39 @@ export const googleAuth = new Elysia()
       body: t.Object({
         token: t.String()
       })
-    });
+    })
+  .get("/isLogged",
+    async ({ cookie: { auth }, jwt }) => {
+
+      if (!auth.value) return { logged: false, reason: "No auth cookie" };
+
+      const token = await jwt.verify(auth.value);
+
+      if (!token) return { logged: false, reason: "Missing jwt" };
+
+      if (!token.sub) return { logged: false, reason: "Missing sub" };
+
+      const user = await User.findById(token.sub);
+
+      return {
+        logged: true,
+        user,
+        expires: token.exp
+      }
+    },
+    {
+      cookie: t.Cookie({
+        auth: t.String()
+      })
+    })
+  .get("/logout",
+    async ({ cookie: { auth }, jwt }) => {
+      auth.remove()
+    },
+    {
+      cookie: t.Cookie({
+        auth: t.String()
+      })
+    })
+
 

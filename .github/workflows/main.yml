@@ -67,7 +67,7 @@ jobs:
       - name: Wait for Server to be ready
         run: |
           echo "Waiting for server to start..."
-          until curl --output /dev/null --silent --head --fail http://localhost:3000/health; do
+          until curl --verbose -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3" -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" http://localhost:3000/health; do
             printf '.'
             sleep 5
           done
