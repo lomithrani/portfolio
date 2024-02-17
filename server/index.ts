@@ -9,7 +9,7 @@ validateEnvironment();
 
 await mongoose.connect(Bun.env.MONGO_URL ?? '');
 
-const app = new Elysia()
+export const app = new Elysia()
   .use(swagger())
   .error(errors)
   .onError(({ code, error }) => {
