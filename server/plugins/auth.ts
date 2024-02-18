@@ -33,12 +33,12 @@ export const googleAuth = new Elysia()
 
       const email = googleData.email;
 
-      const user = await User.findOneAndUpdate({ email }, { email }, { upsert: true });
+      const user = await User.findOneAndUpdate({ email }, { email }, { upsert: true, new: true });
 
       const date = new Date();
       date.setDate(date.getDate() + 7);
 
-      const expires = date.getTime()
+      const expires = Math.round(date.getTime() / 1000);
       const jwtToken = await jwt.sign({ sub: user?.id, exp: expires });
 
       auth.value = jwtToken;

@@ -8,12 +8,12 @@ const isLogged: () => Promise<boolean> = async () => {
   const authentication = get(authenticationStore);
 
   if (authentication.user && authentication.expires) {
-    return Date.now() < authentication.expires
+    return Date.now() < (authentication.expires * 1000);
   }
 
   const isLoggedResponse = await portfolioApi.isLogged.get({ $fetch: { credentials: 'include' } });
 
-  if (isLoggedResponse.data?.expires ?? 0 > Date.now()) {
+  if ((isLoggedResponse.data?.expires ?? 0) * 1000 > Date.now()) {
     console.log("already logged");
     return true;
   }
