@@ -7,7 +7,7 @@ export const googleAuth = new Elysia()
   .use(corsConf())
   .use(jwt({
     name: 'jwt',
-    secret: Bun.env.JWT_SECRET ?? 'secret',
+    secret: Bun.env.JWT_SECRET!,
     exp: '7d'
   }))
   .post("/login",

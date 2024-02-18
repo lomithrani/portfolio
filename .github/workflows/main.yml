@@ -28,6 +28,8 @@ jobs:
           cd server
           bun install
           bun test
+        env:
+          JWT_SECRET: "JWT_SECRET"
 
       - name: Unit Tests for Client
         run: |
