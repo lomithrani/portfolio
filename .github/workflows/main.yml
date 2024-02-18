@@ -38,6 +38,7 @@ jobs:
           PORT: 3000
           MONGO_URL: "mongodb://localhost:${{ job.services.mongodb.ports[27017] }}/mytestdb"
           JWT_SECRET: "JWT_SECRET"
+          ALLOWED_DOMAINS: '["http://localhost:4173"]'
 
       - name: Unit Tests for Client
         run: |
