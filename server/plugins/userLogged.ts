@@ -19,7 +19,7 @@ export const userLogged = () => new Elysia()
 
     if (!user.sub) throw new SubMissingError("Unauthorized")
 
-    if (!user.exp || user.exp < Date.now()) throw new AuthExpiredError(`Unauthorized expired since ${new Date(user?.exp ?? 0).toISOString()}`)
+    if (!user.exp || user.exp < (Date.now() / 1000)) throw new AuthExpiredError(`Unauthorized expired since ${new Date((user?.exp ?? 0) * 1000).toISOString()}`)
 
     return {
       userId: user.sub
