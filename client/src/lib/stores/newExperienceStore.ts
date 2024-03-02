@@ -19,6 +19,7 @@ type FormData = Omit<ApiData, 'projects'> & {
 const defaultExperience: FormData = {
   title: '',
   summary: '',
+  company: { name: '' },
   type: ExperienceType.Professional,
   projects: [],
   $fetch: { credentials: 'include' }

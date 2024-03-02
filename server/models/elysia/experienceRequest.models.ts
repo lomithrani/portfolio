@@ -3,7 +3,6 @@ import { ExperienceType } from "portfolio-common";
 import { DateTime } from "./dateTime";
 
 
-
 export const skillModel = t.Object({
   name: t.String(),
   svg: t.Optional(t.String()),
@@ -12,11 +11,17 @@ export const skillModel = t.Object({
 
 export const projectModel = t.Object({
   name: t.String(),
-  start: DateTime,
-  end: DateTime,
+  start: t.Optional(DateTime),
+  end: t.Optional(DateTime),
   summary: t.String(),
   hardSkills: t.Array(skillModel),
   softSkills: t.Array(skillModel)
+})
+
+export const companyModel = t.Object({
+  name: t.String(),
+  summary: t.Optional(t.String()),
+  svg: t.Optional(t.String()),
 })
 
 export const experienceRequest = t.Object({
@@ -27,6 +32,7 @@ export const experienceRequest = t.Object({
     t.Literal(ExperienceType.Personal),
   ]),
   title: t.String(),
+  company: t.Optional(companyModel),
   summary: t.String(),
-  projects: t.Array(projectModel)
+  projects: t.Array(projectModel),
 })

@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run --watch index.ts",
-    "start": "bun run index.ts"
+    "dev": "bun run --inspect --watch index.ts",
+    "start": "bun run index.ts",
+    "kill": "sudo lsof -t -i:3000 | xargs sudo kill -9"
   },
   "dependencies": {
     "@elysiajs/cors": "^0.7.0",

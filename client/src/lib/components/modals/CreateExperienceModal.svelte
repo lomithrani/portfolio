@@ -10,8 +10,30 @@
 	import { ExperienceType } from 'portfolio-common';
 
 	import { newExperienceDataStore, type FormData } from '$lib/stores/newExperienceStore';
+	import type { Company, Experience as ExperienceModel } from 'portfolio-api/models/database';
 
 	const modalStore = getModalStore();
+
+	if ($modalStore[0].meta?.experience) {
+		const experienceInput = $modalStore[0].meta.experience as ExperienceModel;
+
+		newExperienceDataStore.set({
+			title: experienceInput.title,
+			type: experienceInput.type,
+			summary: experienceInput.summary,
+			company: experienceInput.company as Company,
+			projects: experienceInput.projects.map((project) => {
+				return {
+					name: project.name,
+					start: (<string>(project.start as unknown)).split('T')[0],
+					end: (<string>(project.end as unknown)).split('T')[0],
+					summary: project.summary ?? '',
+					hardSkills: project.hardSkills.map((skill) => skill.name),
+					softSkills: project.softSkills.map((skill) => skill.name)
+				};
+			})
+		});
+	}
 
 	// Form Data
 	let formData: FormData;
