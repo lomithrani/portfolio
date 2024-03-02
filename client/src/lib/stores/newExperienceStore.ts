@@ -3,7 +3,20 @@ import { ExperienceType } from 'portfolio-common';
 import type { portfolioApi } from '$services';
 import { localStorageStore } from '@skeletonlabs/skeleton';
 
-const defaultExperience: Parameters<typeof portfolioApi.experiences.post>[0] = {
+type ApiData = Parameters<typeof portfolioApi.experiences.post>[0];
+
+type FormProject = Omit<ApiData['projects'][number], 'hardSkills' | 'softSkills'> & {
+  hardSkills: string[];
+  softSkills: string[];
+};
+
+// Form Data
+type FormData = Omit<ApiData, 'projects'> & {
+  projects: FormProject[];
+};
+
+
+const defaultExperience: FormData = {
   title: '',
   summary: '',
   type: ExperienceType.Professional,
@@ -11,4 +24,5 @@ const defaultExperience: Parameters<typeof portfolioApi.experiences.post>[0] = {
   $fetch: { credentials: 'include' }
 }
 
-export const newExperienceDataStore: Writable<Parameters<typeof portfolioApi.experiences.post>[0]> = localStorageStore<Parameters<typeof portfolioApi.experiences.post>[0]>('newExperience', defaultExperience);
+export type { FormData }
+export const newExperienceDataStore: Writable<FormData> = localStorageStore<FormData>('newExperience', defaultExperience)

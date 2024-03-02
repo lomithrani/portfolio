@@ -9,12 +9,12 @@
 	import { InputChip, RadioGroup, RadioItem, getModalStore } from '@skeletonlabs/skeleton';
 	import { ExperienceType } from 'portfolio-common';
 
-	import { newExperienceDataStore } from '$lib/stores/newExperienceStore';
+	import { newExperienceDataStore, type FormData } from '$lib/stores/newExperienceStore';
 
 	const modalStore = getModalStore();
 
 	// Form Data
-	let formData: Parameters<typeof portfolioApi.experiences.post>[0];
+	let formData: FormData;
 
 	newExperienceDataStore.subscribe((value) => {
 		formData = value;
@@ -28,7 +28,26 @@
 	// We've created a custom submit function to pass the response and close the modal.
 	const onFormSubmit = async () => {
 		if ($modalStore[0].response) {
-			const { data, error } = await portfolioApi.experiences.post(formData);
+			const apiData: Parameters<typeof portfolioApi.experiences.post>[0] = {
+				...formData,
+				projects: formData.projects.map((project) => {
+					return {
+						...project,
+						hardSkills: project.hardSkills.map((skillName) => ({
+							name: skillName,
+							level: -1, // Temporary , waiting from custom inputChip - TODO
+							svg: undefined // Temporary , waiting from custom inputChip - TODO
+						})),
+						softSkills: project.softSkills.map((skillName) => ({
+							name: skillName,
+							level: -1, // Temporary , waiting from custom inputChip - TODO
+							svg: undefined // Temporary , waiting from custom inputChip - TODO
+						}))
+					};
+				})
+			};
+
+			const { data, error } = await portfolioApi.experiences.post(apiData);
 			if (error) {
 			} else {
 				$modalStore[0].response(data);

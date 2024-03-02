@@ -1,7 +1,5 @@
 import { InferSchemaType, Schema, model } from "mongoose";
 import { skillSchema } from "./skill";
-import { Static } from "elysia";
-import { projectModel } from "../elysia/experienceRequest.models";
 
 export const projectSchema = new Schema({
   name: { type: String, required: true },
