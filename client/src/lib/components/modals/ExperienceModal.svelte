@@ -14,7 +14,10 @@
 
 	const modalStore = getModalStore();
 
+	let newExperience = true;
+
 	if ($modalStore[0].meta?.experience) {
+		newExperience = false;
 		const experienceInput = $modalStore[0].meta.experience as ExperienceModel;
 
 		newExperienceDataStore.set({
@@ -69,7 +72,10 @@
 				})
 			};
 
-			const { data, error } = await portfolioApi.experiences.post(apiData);
+			const { data, error } = await portfolioApi.experiences.post({
+				...apiData,
+				$fetch: { credentials: 'include' }
+			});
 			if (error) {
 			} else {
 				$modalStore[0].response(data);
@@ -126,6 +132,9 @@
 			/>
 
 			<span>Projects</span>
+			<button type="button" class="bg-blue-500 text-white p-1 rounded" on:click={addEmptyProject}>
+				<Plus />
+			</button>
 			{#each formData.projects as project}
 				<form class="modal-form {cForm}">
 					<label class="label">
@@ -160,15 +169,11 @@
 					/>
 				</form>
 			{/each}
-
-			<button type="button" class="btn-icon variant-filled" on:click={addEmptyProject}
-				><Plus /></button
-			>
 		</form>
 		<!-- prettier-ignore -->
 		<footer class="modal-footer {parent.regionFooter}">
         <button class="btn {parent.buttonNeutral}" on:click={modalStore.close}>{parent.buttonTextCancel}</button>
-        <button class="btn {parent.buttonPositive}" on:click={onFormSubmit}>Add Experience</button>
+        <button class="btn {parent.buttonPositive}" on:click={onFormSubmit}>{newExperience ? 'Add Experience':'Modify Experience'}</button>
     </footer>
 	</div>
 {/if}

@@ -11,7 +11,8 @@
     "lint": "prettier --plugin-search-dir . --check . && eslint .",
     "format": "prettier --plugin-search-dir . --write .",
     "test:e2e": "playwright test",
-    "test:unit": "vitest"
+    "test:unit": "vitest",
+    "kill": "sudo lsof -t -i:5173 | xargs sudo kill -9"
   },
   "devDependencies": {
     "@fontsource/fira-mono": "^4.5.10",

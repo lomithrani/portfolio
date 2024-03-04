@@ -13,7 +13,7 @@
 	const showEditExperienceModal = () => {
 		const modal: ModalSettings = {
 			type: 'component',
-			component: 'createExperienceModal',
+			component: 'experienceModal',
 			title: 'Experience',
 			body: 'Edit an experience from your resume.',
 			response: (response: ExperienceModel) => {
@@ -31,7 +31,7 @@
 	};
 </script>
 
-<div class="relative block card card-hover variant-ghost-primary p-2 m-1">
+<div class="relative block card card-hover text-left variant-ghost-primary p-2 m-1">
 	{#if canEdit}
 		<button
 			class="absolute top-2 right-2 bg-blue-500 text-white p-1 rounded"

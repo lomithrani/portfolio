@@ -3,12 +3,12 @@
 	import { AppShell, Modal } from '@skeletonlabs/skeleton';
 	import Header from '$components/Header.svelte';
 	import LeftBar from '$components/LeftBar.svelte';
-	import CreateExperienceModal from '$components/modals/CreateExperienceModal.svelte';
+	import ExperienceModal from '$components/modals/ExperienceModal.svelte';
 	import type { LayoutData } from './$types';
 	import { initializeStores, type ModalComponent } from '@skeletonlabs/skeleton';
 
 	const modalRegistry: Record<string, ModalComponent> = {
-		createExperienceModal: { ref: CreateExperienceModal }
+		experienceModal: { ref: ExperienceModal }
 	};
 
 	initializeStores();

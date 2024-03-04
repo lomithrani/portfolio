@@ -27,7 +27,7 @@
 	const showAddExperienceModal = () => {
 		const modal: ModalSettings = {
 			type: 'component',
-			component: 'createExperienceModal',
+			component: 'experienceModal',
 			title: 'Experience',
 			body: 'Add a new experience to your resume.',
 			response: (response: ExperienceModel) => {
@@ -71,7 +71,7 @@
 </svelte:head>
 <div class="relative layout-docs page-padding flex items-start gap-10">
 	<div
-		class="layout-docs-content page-container-aside mx-auto"
+		class="layout-docs-content page-container-aside mx-auto text-center"
 		use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}
 	>
 		{#if !experiences}
@@ -81,7 +81,7 @@
 			<Filters bind:filters {experiences} />
 
 			{#if !$modalStore[0] && isDomainAdmin(data?.domain)}
-				<button class="sticky m-2 px-4 py-2 text-white circle" on:click={showAddExperienceModal}>
+				<button class="sticky bg-blue-500 text-white p-1 rounded" on:click={showAddExperienceModal}>
 					<PlusCircle />
 				</button>
 			{/if}
