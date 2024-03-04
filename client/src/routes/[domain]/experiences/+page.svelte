@@ -11,6 +11,7 @@
 	} from '@skeletonlabs/skeleton';
 	import Experience from '$components/Experience.svelte';
 	import Filters from './Filters.svelte';
+	import { isDomainAdmin } from '$services/authentication';
 
 	export let data: PageData;
 	const modalStore = getModalStore();
@@ -26,7 +27,7 @@
 	const showAddExperienceModal = () => {
 		const modal: ModalSettings = {
 			type: 'component',
-			component: 'createExperienceModal',
+			component: 'experienceModal',
 			title: 'Experience',
 			body: 'Add a new experience to your resume.',
 			response: (response: ExperienceModel) => {
@@ -69,16 +70,8 @@
 	/>
 </svelte:head>
 <div class="relative layout-docs page-padding flex items-start gap-10">
-	{#if !$modalStore[0]}
-		<button
-			class="absolute sticky top-0 left-0 m-2 px-4 py-2 bg-blue-500 text-white circle"
-			on:click={showAddExperienceModal}
-		>
-			<PlusCircle />
-		</button>
-	{/if}
 	<div
-		class="layout-docs-content page-container-aside mx-auto"
+		class="layout-docs-content page-container-aside mx-auto text-center"
 		use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}
 	>
 		{#if !experiences}
@@ -86,8 +79,14 @@
 		{/if}
 		{#if experiences}
 			<Filters bind:filters {experiences} />
+
+			{#if !$modalStore[0] && isDomainAdmin(data?.domain)}
+				<button class="sticky bg-blue-500 text-white p-1 rounded" on:click={showAddExperienceModal}>
+					<PlusCircle />
+				</button>
+			{/if}
 			{#each experiences as experience}
-				<Experience {experience} />
+				<Experience {experience} canEdit={isDomainAdmin(data?.domain)} />
 			{/each}
 		{/if}
 	</div>

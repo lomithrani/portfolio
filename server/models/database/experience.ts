@@ -8,8 +8,8 @@ import { Static } from 'elysia';
 export interface Experience extends Document {
   type: ExperienceType;
   company: Types.ObjectId | Company;
-  summary: String;
-  title: String;
+  summary: string;
+  title: string;
   projects: Project[]
 }
 
