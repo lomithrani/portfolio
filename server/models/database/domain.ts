@@ -1,4 +1,5 @@
-import { Schema, model, Types, Document } from "mongoose";
+import { Schema, model, Types } from "mongoose";
+import type { Document } from "mongoose";
 import { User, Experience } from ".";
 
 export interface Domain extends Document {

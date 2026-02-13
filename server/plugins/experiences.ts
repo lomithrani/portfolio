@@ -19,7 +19,7 @@ export const experiences = new Elysia()
 
     if (!result) throw new CannotSaveExperienceError(userId)
 
-    domain.experiences.push(result.id)
+    domain.experiences.push(result._id)
 
     await domain.save();
 

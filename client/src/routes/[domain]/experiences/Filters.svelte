@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { Check } from 'svelte-heros-v2';
 	import type { Experience as ExperienceModel, Skill } from 'portfolio-api/models/database';
-	export let experiences: ExperienceModel[];
+
+	let { experiences, filters = $bindable({ softSkills: new Set<string>(), hardSkills: new Set<string>() }) }: {
+		experiences: ExperienceModel[];
+		filters?: { softSkills: Set<string>; hardSkills: Set<string> };
+	} = $props();
 
 	let softSkillsMap = experiences
 		.flatMap((e) => e.projects.flatMap((p) => p.softSkills))
@@ -12,11 +16,6 @@
 		.flatMap((e) => e.projects.flatMap((p) => p.hardSkills))
 		.reduce((map, skill) => map.set((skill.skill as Skill).displayName, skill.skill), new Map());
 	let hardSkills = Array.from(hardSkillsMap.values());
-
-	export let filters: { softSkills: Set<string>; hardSkills: Set<string> } = {
-		softSkills: new Set(),
-		hardSkills: new Set()
-	};
 </script>
 
 <div class="w-full grid grid-cols-1 md:grid-cols-2 p-2">
@@ -28,7 +27,7 @@
 				aria-checked={selected}
 				tabindex={index}
 				class="chip {selected ? 'variant-ringed-primary' : 'variant-soft'}"
-				on:click={() => {
+				onclick={() => {
 					// we need to reassign filters to trigger svelte reactivity
 					if (!selected) {
 						filters = {
@@ -46,7 +45,7 @@
 						};
 					}
 				}}
-				on:keypress
+	
 			>
 				{#if selected}<Check size="12px" />{/if}
 				<span class="capitalize">{softSkill.displayName}</span>
@@ -61,7 +60,7 @@
 				aria-checked={selected}
 				tabindex={index}
 				class="chip {selected ? 'variant-ringed-primary' : 'variant-soft'}"
-				on:click={() => {
+				onclick={() => {
 					// we need to reassign filters to trigger svelte reactivity
 					if (!selected) {
 						filters = {
@@ -79,7 +78,7 @@
 						};
 					}
 				}}
-				on:keypress
+	
 			>
 				{#if selected}<Check size="12px" />{/if}
 				<span class="capitalize">{hardSkill.displayName}</span>

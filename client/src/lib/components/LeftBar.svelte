@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { AppRail, AppRailAnchor } from '@skeletonlabs/skeleton';
-	import { LightSwitch } from '@skeletonlabs/skeleton';
+	import { Navigation, Switch } from '@skeletonlabs/skeleton-svelte';
 	import type { Domain, Experience } from 'portfolio-api/models/database';
 	import { AcademicCap, ComputerDesktop, WrenchScrewdriver } from 'svelte-heros-v2';
 	import { isDomainAdmin } from '$services/authentication';
+	import { browser } from '$app/environment';
 
-	export let domain: Domain & { experiences: Experience[] };
+	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } = $props();
 
 	const pathStartsWith = (path: string, pagePathName: string) => pagePathName.startsWith(path);
 
@@ -32,32 +32,35 @@
 	];
 
 	const pathAreEquals = (path: string, pagePathName: string) => pagePathName === path;
+
+	let darkMode = $state(browser ? document.documentElement.classList.contains('dark') : true);
+
+	function toggleDarkMode(details: { checked: boolean }) {
+		darkMode = details.checked;
+		document.documentElement.classList.toggle('dark', darkMode);
+	}
 </script>
 
-<AppRail background="bg-transparent" border="border-r border-surface-500/30">
-	<svelte:fragment slot="trail"
-		><AppRailAnchor><svelte:fragment slot="lead"><LightSwitch /></svelte:fragment></AppRailAnchor
-		></svelte:fragment
-	>
-
-	{#each menuItems as { path, label, selected, display, icon }}
-		{#if !display || display()}
-			<AppRailAnchor
-				href={`/${domain.name}${path}`}
-				bind:group={label}
-				name={label}
-				selected={(selected ?? pathAreEquals)(path, $page.url.pathname)}
-				aria-current={(selected ?? pathAreEquals)(path, $page.url.pathname) ? 'page' : undefined}
-			>
-				<svelte:fragment slot="lead">
-					{#if icon}
-						<svelte:component this={icon} />
+<Navigation layout="rail">
+	<Navigation.Content>
+		{#each menuItems as item}
+			{#if !item.display || item.display()}
+				{@const isActive = (item.selected ?? pathAreEquals)(item.path, $page.url.pathname)}
+				<Navigation.TriggerAnchor
+					href={`/${domain.name}${item.path}`}
+					aria-current={isActive ? 'page' : undefined}
+					data-active={isActive || undefined}
+				>
+					{#if item.icon}
+						{@const Icon = item.icon}
+						<Icon />
 					{/if}
-				</svelte:fragment>
-
-				<span>{label}</span>
-			</AppRailAnchor>
-			<hr class="opacity-30" />
-		{/if}
-	{/each}
-</AppRail>
+					<span>{item.label}</span>
+				</Navigation.TriggerAnchor>
+			{/if}
+		{/each}
+	</Navigation.Content>
+	<Navigation.Footer>
+		<Switch checked={darkMode} onCheckedChange={toggleDarkMode} />
+	</Navigation.Footer>
+</Navigation>

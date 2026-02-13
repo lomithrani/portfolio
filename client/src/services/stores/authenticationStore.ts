@@ -1,10 +1,9 @@
-import { localStorageStore } from "@skeletonlabs/skeleton";
+import { persisted } from "svelte-persisted-store";
 import type { User } from "portfolio-api/models/database/user";
 import type { Writable } from "svelte/store";
-import type { Document } from 'mongoose'
 
 type AuthenticationData = {
-  user?: User & Document,
+  user?: User & Record<string, unknown>,
   expires?: number
 }
 
@@ -13,4 +12,4 @@ let initialAuth: AuthenticationData = {
   expires: undefined
 }
 
-export const authenticationStore: Writable<AuthenticationData> = localStorageStore('authenticationStore', initialAuth);
+export const authenticationStore: Writable<AuthenticationData> = persisted('authenticationStore', initialAuth);

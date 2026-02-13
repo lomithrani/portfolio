@@ -2,8 +2,7 @@
 	import type { Project, Skill as SkillModel } from 'portfolio-api/models/database';
 	import Skill from './Skill.svelte';
 	import { marked } from 'marked';
-	export let project: Project;
-	export let experienceId: String;
+	let { project, experienceId }: { project: Project; experienceId: String } = $props();
 
 	const castSkill = (skill: unknown) => {
 		return skill as SkillModel;

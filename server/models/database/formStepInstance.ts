@@ -1,4 +1,5 @@
-import { Schema, Types, Document, model } from 'mongoose';
+import { Schema, Types, model } from 'mongoose';
+import type { Document } from 'mongoose';
 import { FormStep } from './formStep';
 
 export interface FormResponse {

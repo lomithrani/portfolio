@@ -5,44 +5,39 @@
 	} from 'portfolio-api/models/database';
 	import type { PageData } from './$types';
 	import { PlusCircle } from 'svelte-heros-v2';
-	import {
-		TableOfContents,
-		tocCrawler,
-		type ModalSettings,
-		getModalStore
-	} from '@skeletonlabs/skeleton';
+	import { Dialog } from '@skeletonlabs/skeleton-svelte';
 	import Experience from '$components/Experience.svelte';
+	import ExperienceModal from '$components/modals/ExperienceModal.svelte';
 	import Filters from './Filters.svelte';
 	import { isDomainAdmin } from '$services/authentication';
 
-	export let data: PageData;
-	const modalStore = getModalStore();
-	let filters: { softSkills: Set<string>; hardSkills: Set<string> } = {
+	let { data }: { data: PageData } = $props();
+	let showAddModal = $state(false);
+	let filters: { softSkills: Set<string>; hardSkills: Set<string> } = $state({
 		softSkills: new Set(),
 		hardSkills: new Set()
-	};
-	let experiences: ExperienceModel[] | undefined = undefined;
+	});
+	let experiences: ExperienceModel[] | undefined = $state(undefined);
 
-	$: if (data?.domain) filterExperiences();
-	$: if (filters) filterExperiences();
+	$effect(() => {
+		if (data?.domain) filterExperiences();
+	});
+	$effect(() => {
+		if (filters) filterExperiences();
+	});
 
 	const showAddExperienceModal = () => {
-		const modal: ModalSettings = {
-			type: 'component',
-			component: 'experienceModal',
-			title: 'Experience',
-			body: 'Add a new experience to your resume.',
-			response: (response: ExperienceModel) => {
-				if (response !== undefined) {
-					data.domain?.experiences.push(response);
-					data.domain = data.domain;
-				} else {
-					// Click on overlay
-				}
-			}
-		};
-		modalStore.trigger(modal);
+		showAddModal = true;
 	};
+
+	const onAddResponse = (response: ExperienceModel | undefined) => {
+		if (response !== undefined) {
+			data.domain?.experiences.push(response);
+			data.domain = data.domain;
+		}
+		showAddModal = false;
+	};
+
 	const filterExperiences = () => {
 		if (filters.softSkills.size === 0 && filters.hardSkills.size === 0) {
 			return (experiences = data?.domain?.experiences);
@@ -75,19 +70,16 @@
 		content="All of my professional experiences, as well as my personal and educational projects and courses."
 	/>
 </svelte:head>
-<div class="relative layout-docs page-padding flex items-start gap-10">
-	<div
-		class="layout-docs-content page-container-aside mx-auto text-center"
-		use:tocCrawler={{ mode: 'generate', scrollTarget: '#page' }}
-	>
+<div class="relative flex items-start gap-10 p-4">
+	<div class="mx-auto text-center flex-1">
 		{#if !experiences}
 			Loading
 		{/if}
 		{#if experiences}
 			<Filters bind:filters {experiences} />
 
-			{#if !$modalStore[0] && isDomainAdmin(data?.domain)}
-				<button class="sticky bg-blue-500 text-white p-1 rounded" on:click={showAddExperienceModal}>
+			{#if !showAddModal && isDomainAdmin(data?.domain)}
+				<button class="sticky bg-blue-500 text-white p-1 rounded" onclick={showAddExperienceModal}>
 					<PlusCircle />
 				</button>
 			{/if}
@@ -96,8 +88,20 @@
 			{/each}
 		{/if}
 	</div>
-	<aside class="layout-cols-aside sticky top-0 hidden lg:block space-y-1 w-72">
-		<!-- Table of Contents -->
-		<TableOfContents>{' '}</TableOfContents>
-	</aside>
 </div>
+
+<Dialog open={showAddModal} onOpenChange={(details) => showAddModal = details.open}>
+	<Dialog.Backdrop />
+	<Dialog.Positioner>
+		<Dialog.Content>
+			{#if showAddModal}
+				<ExperienceModal
+					title="Experience"
+					body="Add a new experience to your resume."
+					onResponse={onAddResponse}
+					onClose={() => showAddModal = false}
+				/>
+			{/if}
+		</Dialog.Content>
+	</Dialog.Positioner>
+</Dialog>

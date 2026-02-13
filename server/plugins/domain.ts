@@ -16,5 +16,7 @@ export const domain = new Elysia()
         ],
       },
     })
-    return populatedDomain.toObject()
+    return populatedDomain.toObject<Omit<Domain, "experiences"> & {
+      experiences: Experience[];
+    }>()
   })

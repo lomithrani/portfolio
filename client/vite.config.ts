@@ -1,13 +1,10 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig, type UserConfig } from 'vitest/config';
-import { nodeLoaderPlugin } from '@vavite/node-loader/plugin';
+import { defineConfig } from 'vitest/config';
+import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 
-export default defineConfig(({ mode }): UserConfig => {
-	let plugins: PluginOption[] = [sveltekit()];
-	if (mode === 'development') {
-		plugins = [nodeLoaderPlugin(), ...plugins]
-	}
+export default defineConfig(({ mode }) => {
+	let plugins: PluginOption[] = [tailwindcss(), sveltekit()];
 	return {
 		plugins: plugins,
 		test: {

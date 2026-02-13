@@ -1,9 +1,10 @@
-import { Schema, Types, model, Document, Model } from 'mongoose';
+import { Schema, Types, model } from 'mongoose';
+import type { Document, Model } from 'mongoose';
 import { ExperienceType } from 'portfolio-common';
 import { Project, projectSchema } from './project';
-import { Company } from './company';
+import type { Company } from './company';
 import { experienceRequest } from '../elysia';
-import { Static } from 'elysia';
+import type { Static } from 'elysia';
 import { Skill } from './skill';
 
 export interface Experience extends Document {

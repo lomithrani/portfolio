@@ -23,7 +23,7 @@ export const app = new Elysia()
   .onError(({ code, error }) => {
     console.error(error)
 
-    return error.message;
+    return 'message' in error ? error.message : String(error);
   })
   .get('/health', () => 'OK')
   .use(googleAuth)

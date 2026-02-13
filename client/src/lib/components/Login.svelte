@@ -54,4 +54,4 @@
 	};
 </script>
 
-<div id="googleButton" />
+<div id="googleButton"></div>

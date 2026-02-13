@@ -1,11 +1,11 @@
 import { test, expect, describe, beforeAll, afterAll } from 'bun:test'
-import { edenTreaty } from '@elysiajs/eden'
+import { treaty } from '@elysiajs/eden'
 import type { Portfolio } from '..'
 import { Subprocess, fetch } from 'bun';
 
 let appInstance: Subprocess<"ignore", "inherit", "inherit"> | undefined = undefined;
 
-const api = edenTreaty<Portfolio>("http://localhost:3000");
+const api = treaty<Portfolio>("http://localhost:3000");
 
 beforeAll(async () => {
   appInstance = Bun.spawn({
@@ -31,13 +31,13 @@ test("edenTreaty should have correct methods", async () => {
 })
 
 // Remove waiting for:  https://github.com/elysiajs/eden/issues/125
-/* test("edentTreaty should return correct responses", async () => {
+test("edentTreaty should return correct responses", async () => {
   const mySelfDomainResponse = await api.domain['louis.gentil'].get()
   expect(mySelfDomainResponse).toBeDefined()
   expect(mySelfDomainResponse.status).toBe(200)
   expect(mySelfDomainResponse.data).toBeDefined()
   expect(mySelfDomainResponse.data).toBeObject()
-}) */
+})
 
 async function waitForHealthCheck(url = "http://localhost:3000/health", maxAttempts = 10, interval = 1000) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {

@@ -1,4 +1,5 @@
-import { type InferSchemaType, Schema, model } from "mongoose";
+import { Schema, model } from "mongoose";
+import type { InferSchemaType } from "mongoose";
 
 export const userSchema = new Schema({
   name: { type: String },

@@ -13,7 +13,7 @@ export const userLogged = () => new Elysia({ name: 'userLogged' })
 
     if (!auth.value) throw new MissingAuthCookieError("Unauthorized")
 
-    const user = await jwt.verify(auth.value)
+    const user = await jwt.verify(auth.value as string)
 
     if (!user) throw new CouldntVerifyJwtError("Unauthorized")
 

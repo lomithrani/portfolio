@@ -4,51 +4,56 @@
 	import type { PageData, ActionData } from './$types';
 	import { reduced_motion } from './reduced-motion';
 
-	export let data: PageData;
-
-	export let form: ActionData;
+	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	/** Whether or not the user has won */
-	$: won = data.answers.at(-1) === 'xxxxx';
+	let won = $derived(data.answers.at(-1) === 'xxxxx');
 
 	/** The index of the current guess */
-	$: i = won ? -1 : data.answers.length;
+	let i = $derived(won ? -1 : data.answers.length);
 
 	/** Whether the current guess can be submitted */
-	$: submittable = data.guesses[i]?.length === 5;
+	let submittable = $derived(data.guesses[i]?.length === 5);
 
 	/**
 	 * A map of classnames for all letters that have been guessed,
 	 * used for styling the keyboard
 	 */
-	let classnames: Record<string, 'exact' | 'close' | 'missing'>;
+	let classnames: Record<string, 'exact' | 'close' | 'missing'> = $derived.by(() => {
+		const result: Record<string, 'exact' | 'close' | 'missing'> = {};
+		data.answers.forEach((answer, i) => {
+			const guess = data.guesses[i];
+			for (let i = 0; i < 5; i += 1) {
+				const letter = guess[i];
+				if (answer[i] === 'x') {
+					result[letter] = 'exact';
+				} else if (!result[letter]) {
+					result[letter] = answer[i] === 'c' ? 'close' : 'missing';
+				}
+			}
+		});
+		return result;
+	});
 
 	/**
 	 * A map of descriptions for all letters that have been guessed,
 	 * used for adding text for assistive technology (e.g. screen readers)
 	 */
-	let description: Record<string, string>;
-
-	$: {
-		classnames = {};
-		description = {};
-
+	let description: Record<string, string> = $derived.by(() => {
+		const result: Record<string, string> = {};
 		data.answers.forEach((answer, i) => {
 			const guess = data.guesses[i];
-
 			for (let i = 0; i < 5; i += 1) {
 				const letter = guess[i];
-
 				if (answer[i] === 'x') {
-					classnames[letter] = 'exact';
-					description[letter] = 'correct';
-				} else if (!classnames[letter]) {
-					classnames[letter] = answer[i] === 'c' ? 'close' : 'missing';
-					description[letter] = answer[i] === 'c' ? 'present' : 'absent';
+					result[letter] = 'correct';
+				} else if (!result[letter]) {
+					result[letter] = answer[i] === 'c' ? 'present' : 'absent';
 				}
 			}
 		});
-	}
+		return result;
+	});
 
 	/**
 	 * Modify the game state without making a trip to the server,
@@ -81,7 +86,7 @@
 	}
 </script>
 
-<svelte:window on:keydown={keydown} />
+<svelte:window onkeydown={keydown} />
 
 <svelte:head>
 	<title>Sverdle</title>
@@ -147,7 +152,7 @@
 				<button data-key="enter" class:selected={submittable} disabled={!submittable}>enter</button>
 
 				<button
-					on:click|preventDefault={update}
+					onclick={(e) => { e.preventDefault(); update(e); }}
 					data-key="backspace"
 					formaction="?/update"
 					name="key"
@@ -160,7 +165,7 @@
 					<div class="row">
 						{#each row as letter}
 							<button
-								on:click|preventDefault={update}
+								onclick={(e) => { e.preventDefault(); update(e); }}
 								data-key={letter}
 								class={classnames[letter]}
 								disabled={data.guesses[i].length === 5}
