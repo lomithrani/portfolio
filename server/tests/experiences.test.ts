@@ -1,5 +1,6 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
-import { Domain, Experience, User } from '../models/database';
+import { Domain, Experience, Skill, User } from '../models/database';
+import { Types } from 'mongoose';
 import { createApp } from '../app';
 import {
   testUser,
@@ -8,8 +9,10 @@ import {
   experienceRequestBody,
   postJson,
   postWithCookie,
+  putWithCookie,
   loginAndGetCookie,
   mockGoogleOAuthSuccess,
+  TEST_EXPERIENCE_ID,
 } from './helpers';
 
 let app: ReturnType<typeof createApp>;
@@ -79,6 +82,106 @@ describe('POST /experiences', () => {
     const cookie = await loginAndGetCookie(app);
 
     const result = await postWithCookie(app, '/experiences', { title: 'Missing fields' }, cookie);
+
+    expect(result.status).toBe(422);
+  });
+});
+
+describe('PUT /experiences/:id', () => {
+  it('should reject requests without auth', async () => {
+    const result = await putWithCookie(app, `/experiences/${TEST_EXPERIENCE_ID}`, experienceRequestBody, '');
+
+    expect(result.status).not.toBe(200);
+  });
+
+  it('should update an experience owned by the user', async () => {
+    const cookie = await loginAndGetCookie(app);
+
+    const skillId = new Types.ObjectId();
+    Skill.findOrCreate = mock(() => Promise.resolve(skillId)) as any;
+
+    const saveMock = mock(() => Promise.resolve(testExperience));
+    const setMock = mock(function (this: any, data: any) { Object.assign(this, data); });
+
+    Domain.findOne = mock(() =>
+      Promise.resolve({
+        ...testDomain,
+        experiences: [new Types.ObjectId(TEST_EXPERIENCE_ID)],
+        save: mock(() => Promise.resolve()),
+      })
+    ) as any;
+
+    Experience.findById = mock(() =>
+      Promise.resolve({
+        ...testExperience,
+        set: setMock,
+        save: saveMock,
+        toObject: () => testExperience,
+      })
+    ) as any;
+
+    const updatedBody = {
+      ...experienceRequestBody,
+      title: 'Updated Title',
+      summary: 'Updated summary',
+    };
+
+    const result = await putWithCookie(app, `/experiences/${TEST_EXPERIENCE_ID}`, updatedBody, cookie);
+
+    expect(result.status).toBe(200);
+    expect(Experience.findById).toHaveBeenCalledTimes(1);
+    expect(setMock).toHaveBeenCalledTimes(1);
+    expect(saveMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('should return error when user has no domain', async () => {
+    const cookie = await loginAndGetCookie(app);
+
+    Domain.findOne = mock(() => Promise.resolve(null)) as any;
+
+    const result = await putWithCookie(app, `/experiences/${TEST_EXPERIENCE_ID}`, experienceRequestBody, cookie);
+
+    expect(result.status).not.toBe(200);
+  });
+
+  it('should return error when experience is not in the domain', async () => {
+    const cookie = await loginAndGetCookie(app);
+
+    Domain.findOne = mock(() =>
+      Promise.resolve({
+        ...testDomain,
+        experiences: [new Types.ObjectId()], // Different ID
+        save: mock(() => Promise.resolve()),
+      })
+    ) as any;
+
+    const result = await putWithCookie(app, `/experiences/${TEST_EXPERIENCE_ID}`, experienceRequestBody, cookie);
+
+    expect(result.status).not.toBe(200);
+  });
+
+  it('should return error when experience is not found in DB', async () => {
+    const cookie = await loginAndGetCookie(app);
+
+    Domain.findOne = mock(() =>
+      Promise.resolve({
+        ...testDomain,
+        experiences: [new Types.ObjectId(TEST_EXPERIENCE_ID)],
+        save: mock(() => Promise.resolve()),
+      })
+    ) as any;
+
+    Experience.findById = mock(() => Promise.resolve(null)) as any;
+
+    const result = await putWithCookie(app, `/experiences/${TEST_EXPERIENCE_ID}`, experienceRequestBody, cookie);
+
+    expect(result.status).not.toBe(200);
+  });
+
+  it('should return 422 for invalid body', async () => {
+    const cookie = await loginAndGetCookie(app);
+
+    const result = await putWithCookie(app, `/experiences/${TEST_EXPERIENCE_ID}`, { title: 'Missing fields' }, cookie);
 
     expect(result.status).toBe(422);
   });

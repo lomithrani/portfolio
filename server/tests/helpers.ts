@@ -20,6 +20,7 @@ export const parseCookie = (str: string) =>
 export const TEST_USER_ID = new Types.ObjectId().toString();
 export const TEST_DOMAIN_NAME = 'test.domain';
 export const TEST_WORKFLOW_ID = new Types.ObjectId().toString();
+export const TEST_EXPERIENCE_ID = new Types.ObjectId().toString();
 
 // ── Fixtures ────────────────────────────────────────────────
 
@@ -43,11 +44,12 @@ export const testDomain = {
 };
 
 export const testExperience = {
-  _id: new Types.ObjectId().toString(),
+  _id: TEST_EXPERIENCE_ID,
   type: 'professional',
   title: 'Software Engineer',
   summary: 'Built stuff',
   projects: [],
+  set: mock(function (this: any, data: any) { Object.assign(this, data); }),
   save: mock(() => Promise.resolve(testExperience)),
   toObject: () => testExperience,
 };

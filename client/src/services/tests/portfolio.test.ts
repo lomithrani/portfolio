@@ -9,4 +9,5 @@ test("edenTreaty should have correct methods", async () => {
   expect(api.login.post).toBeDefined()
   expect((api.domain as any)[':name'].get).toBeDefined()
   expect(api.experiences.post).toBeDefined()
+  expect((api.experiences as any)[':id'].put).toBeDefined()
 })

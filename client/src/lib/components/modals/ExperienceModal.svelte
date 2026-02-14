@@ -35,7 +35,8 @@
 				summary: existingExperience.summary,
 				company: existingExperience.company as unknown as FormData['company'],
 				projects: existingExperience.projects.map((project) => {
-					const toDateStr = (v: unknown) => v instanceof Date ? v.toISOString().split('T')[0] : String(v).split('T')[0];
+					const toDateStr = (v: unknown) =>
+						v instanceof Date ? v.toISOString().split('T')[0] : String(v).split('T')[0];
 					return {
 						name: project.name,
 						start: toDateStr(project.start),
@@ -80,10 +81,17 @@
 			})
 		};
 
-		const { data, error } = await portfolioApi.experiences.post(
-			apiData as any,
-			{ fetch: { credentials: 'include' } }
-		);
+		const fetchOpts = { fetch: { credentials: 'include' } } as const;
+
+		let data, error;
+		if (existingExperience?._id) {
+			({ data, error } = await (portfolioApi.experiences as any)[
+				String(existingExperience._id)
+			].put(apiData as any, fetchOpts));
+		} else {
+			({ data, error } = await portfolioApi.experiences.post(apiData as any, fetchOpts));
+		}
+
 		if (!error && data) {
 			onResponse(data as unknown as ExperienceModel);
 		}
@@ -119,7 +127,7 @@
 
 		<SegmentedControl
 			value={formData.type}
-			onValueChange={(details) => formData.type = details.value as ExperienceType}
+			onValueChange={(details) => (formData.type = details.value as ExperienceType)}
 		>
 			{#each Object.values(ExperienceType) as type}
 				<SegmentedControl.Item value={type}>
@@ -160,11 +168,23 @@
 						placeholder="Enter details about the project, mission..."
 					></textarea>
 				</label>
-				<input class="w-full rounded border border-surface-300-700 bg-transparent p-2" title="Start" type="date" bind:value={project.start} />
-				<input class="w-full rounded border border-surface-300-700 bg-transparent p-2" title="End" type="date" bind:value={project.end} />
+				<input
+					class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+					title="Start"
+					type="date"
+					bind:value={project.start}
+				/>
+				<input
+					class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+					title="End"
+					type="date"
+					bind:value={project.end}
+				/>
 				<TagsInput
 					value={project.hardSkills}
-					onValueChange={(details) => { formData.projects[i].hardSkills = details.value; }}
+					onValueChange={(details) => {
+						formData.projects[i].hardSkills = details.value;
+					}}
 				>
 					<TagsInput.Control>
 						{#each project.hardSkills as tag, idx}
@@ -180,7 +200,9 @@
 				</TagsInput>
 				<TagsInput
 					value={project.softSkills}
-					onValueChange={(details) => { formData.projects[i].softSkills = details.value; }}
+					onValueChange={(details) => {
+						formData.projects[i].softSkills = details.value;
+					}}
 				>
 					<TagsInput.Control>
 						{#each project.softSkills as tag, idx}
@@ -199,6 +221,8 @@
 	</div>
 	<footer class="flex justify-end gap-2">
 		<button class="btn preset-tonal" onclick={onClose}>Cancel</button>
-		<button class="btn preset-filled" onclick={onFormSubmit}>{isNewExperience ? 'Add Experience' : 'Modify Experience'}</button>
+		<button class="btn preset-filled" onclick={onFormSubmit}
+			>{isNewExperience ? 'Add Experience' : 'Modify Experience'}</button
+		>
 	</footer>
 </div>
