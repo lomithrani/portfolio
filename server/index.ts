@@ -10,7 +10,7 @@ validateEnvironment();
 await mongoose.connect(Bun.env.MONGO_URL ?? '');
 
 app.listen({
-  hostname: Bun.env.HOSTNAME || "::",
+  hostname: "::",
   port: Bun.env.PORT || 3000,
   tls: Bun.env.TLS_PASSPHRASE ? {
     cert: Bun.file('./cert.pem'),
