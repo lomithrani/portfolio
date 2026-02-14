@@ -1,4 +1,5 @@
 import { Schema, Types, model } from "mongoose";
+import type { Document } from "mongoose";
 import { Skill } from "./skill";
 
 export interface Project extends Document {
@@ -21,6 +22,7 @@ export const projectSchema = new Schema({
   start: Date,
   end: Date,
   summary: String,
+  summaryType: String,
   hardSkills: [{
     skill: { type: Types.ObjectId, ref: 'Skill', required: true },
     level: Number

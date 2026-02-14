@@ -1,9 +1,8 @@
 <script lang="ts">
 	import type { Skill } from 'portfolio-api/models/database';
-	export let skill: Skill;
-	export let level: number;
+	let { skill, level }: { skill: Skill; level: number } = $props();
 </script>
 
-<span class="chip variant-filled-primary">
+<span class="chip preset-filled-primary-500">
 	{skill.displayName}
 </span>

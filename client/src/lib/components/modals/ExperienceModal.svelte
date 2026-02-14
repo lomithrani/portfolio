@@ -1,88 +1,99 @@
 <script lang="ts">
 	import { portfolioApi } from '$services';
 	import { Plus } from 'svelte-heros-v2';
-	import type { SvelteComponent } from 'svelte';
-
-	// Props
-	export let parent: SvelteComponent;
-
-	import { InputChip, RadioGroup, RadioItem, getModalStore } from '@skeletonlabs/skeleton';
+	import { TagsInput, SegmentedControl } from '@skeletonlabs/skeleton-svelte';
 	import { ExperienceType } from 'portfolio-common';
-
 	import { newExperienceDataStore, type FormData } from '$lib/stores/newExperienceStore';
 	import type {
 		Company,
 		Experience as ExperienceModel,
 		Skill
 	} from 'portfolio-api/models/database';
+	import { get } from 'svelte/store';
 
-	const modalStore = getModalStore();
+	let {
+		existingExperience,
+		title = 'Experience',
+		body = '',
+		onResponse,
+		onClose
+	}: {
+		existingExperience?: ExperienceModel;
+		title?: string;
+		body?: string;
+		onResponse: (response: ExperienceModel | undefined) => void;
+		onClose: () => void;
+	} = $props();
 
-	let newExperience = true;
+	let isNewExperience = $derived(!existingExperience);
 
-	if ($modalStore[0].meta?.experience) {
-		newExperience = false;
-		const experienceInput = $modalStore[0].meta.experience as ExperienceModel;
-
-		newExperienceDataStore.set({
-			title: experienceInput.title,
-			type: experienceInput.type,
-			summary: experienceInput.summary,
-			company: experienceInput.company as Company,
-			projects: experienceInput.projects.map((project) => {
-				return {
-					name: project.name,
-					start: (<string>(project.start as unknown)).split('T')[0],
-					end: (<string>(project.end as unknown)).split('T')[0],
-					summary: project.summary ?? '',
-					hardSkills: project.hardSkills.map((skill) => (skill.skill as Skill).displayName),
-					softSkills: project.softSkills.map((skill) => (skill.skill as Skill).displayName)
-				};
-			})
-		});
-	}
-
-	// Form Data
-	let formData: FormData;
-
-	newExperienceDataStore.subscribe((value) => {
-		formData = value;
-	});
-
-	// Update the store whenever formData changes
-	$: if (formData) {
-		newExperienceDataStore.set(formData);
-	}
-
-	// We've created a custom submit function to pass the response and close the modal.
-	const onFormSubmit = async () => {
-		if ($modalStore[0].response) {
-			const apiData: Parameters<typeof portfolioApi.experiences.post>[0] = {
-				...formData,
-				projects: formData.projects.map((project) => {
+	function getInitialFormData(): FormData {
+		if (existingExperience) {
+			const data: FormData = {
+				title: existingExperience.title,
+				type: existingExperience.type,
+				summary: existingExperience.summary,
+				company: existingExperience.company as unknown as FormData['company'],
+				projects: existingExperience.projects.map((project) => {
+					const toDateStr = (v: unknown) =>
+						v instanceof Date ? v.toISOString().split('T')[0] : String(v).split('T')[0];
 					return {
-						...project,
-						hardSkills: project.hardSkills.map((skillName) => ({
-							name: skillName,
-							level: -1 // Temporary , waiting from custom inputChip - TODO
-						})),
-						softSkills: project.softSkills.map((skillName) => ({
-							name: skillName,
-							level: -1 // Temporary , waiting from custom inputChip - TODO
-						}))
+						name: project.name,
+						start: toDateStr(project.start),
+						end: toDateStr(project.end),
+						summary: project.summary ?? '',
+						hardSkills: project.hardSkills.map((skill) => (skill.skill as Skill).displayName),
+						softSkills: project.softSkills.map((skill) => (skill.skill as Skill).displayName)
 					};
 				})
 			};
+			newExperienceDataStore.set(data);
+			return JSON.parse(JSON.stringify(data));
+		}
+		return JSON.parse(JSON.stringify(get(newExperienceDataStore)));
+	}
 
-			const { data, error } = await portfolioApi.experiences.post({
-				...apiData,
-				$fetch: { credentials: 'include' }
-			});
-			if (error) {
-			} else {
-				$modalStore[0].response(data);
-				modalStore.close();
-			}
+	let formData: FormData = $state(getInitialFormData());
+
+	$effect(() => {
+		if (formData) {
+			newExperienceDataStore.set(formData);
+		}
+	});
+
+	const onFormSubmit = async () => {
+		const apiData = {
+			...formData,
+			projects: formData.projects.map((project) => {
+				return {
+					...project,
+					start: project.start ? new Date(project.start) : undefined,
+					end: project.end ? new Date(project.end) : undefined,
+					hardSkills: project.hardSkills.map((skillName) => ({
+						name: skillName,
+						level: -1
+					})),
+					softSkills: project.softSkills.map((skillName) => ({
+						name: skillName,
+						level: -1
+					}))
+				};
+			})
+		};
+
+		const fetchOpts = { fetch: { credentials: 'include' } } as const;
+
+		let data, error;
+		if (existingExperience?._id) {
+			({ data, error } = await portfolioApi
+				.experiences({ id: String(existingExperience._id) })
+				.put(apiData, fetchOpts));
+		} else {
+			({ data, error } = await portfolioApi.experiences.post(apiData, fetchOpts));
+		}
+
+		if (!error && data) {
+			onResponse(data as unknown as ExperienceModel);
 		}
 	};
 
@@ -92,90 +103,127 @@
 			start: new Date().toISOString().split('T')[0],
 			end: new Date().toISOString().split('T')[0],
 			summary: '',
-			hardSkills: [],
-			softSkills: []
+			hardSkills: [] as string[],
+			softSkills: [] as string[]
 		};
 		formData.projects = [...formData.projects, newProject];
 	};
 
-	// Base Classes
-	const cBase = 'card p-4 w-modal shadow-xl space-y-4';
+	const cBase = 'bg-surface-100-900 p-4 max-w-lg w-full shadow-xl space-y-4 rounded-lg';
 	const cHeader = 'text-2xl font-bold';
-	const cForm =
-		'border border-surface-500 p-4 space-y-4 rounded-container-token place-content-center';
+	const cForm = 'border border-surface-300-700 p-4 space-y-4 rounded-lg';
 </script>
 
-<!-- @component This example creates a simple form modal. -->
+<div class={cBase}>
+	<header class={cHeader}>{title}</header>
+	<article>{body}</article>
+	<div class="space-y-4 {cForm}">
+		<input
+			class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+			type="text"
+			bind:value={formData.title}
+			placeholder="Enter title...  eg: Senior Software Engineer"
+		/>
 
-{#if $modalStore[0]}
-	<div class="modal-example-form {cBase}">
-		<header class={cHeader}>{$modalStore[0].title}</header>
-		<article>{$modalStore[0].body}</article>
-		<!-- Enable for debugging: -->
-		<form class="modal-form {cForm}">
-			<input
-				class="input"
-				type="text"
-				bind:value={formData.title}
-				placeholder="Enter title...  eg: Senior Software Engineer"
-			/>
-
-			<RadioGroup>
-				{#each Object.values(ExperienceType) as value}
-					<RadioItem bind:group={formData.type} name="justify" {value}>{value}</RadioItem>
-				{/each}
-			</RadioGroup>
-
-			<textarea
-				class="textarea"
-				rows="4"
-				bind:value={formData.summary}
-				placeholder="Enter a brief summary of the overall experience..."
-			/>
-
-			<span>Projects</span>
-			<button type="button" class="bg-blue-500 text-white p-1 rounded" on:click={addEmptyProject}>
-				<Plus />
-			</button>
-			{#each formData.projects as project}
-				<form class="modal-form {cForm}">
-					<label class="label">
-						<span>Title</span>
-						<input
-							class="input"
-							type="text"
-							bind:value={project.name}
-							placeholder="Enter title..."
-						/>
-					</label>
-					<label class="label">
-						<span>Summary</span>
-						<textarea
-							class="textarea"
-							rows="4"
-							bind:value={project.summary}
-							placeholder="Enter details about the project, mission..."
-						/>
-					</label>
-					<input class="input" title="Start" type="date" bind:value={project.start} />
-					<input class="input" title="End" type="date" bind:value={project.end} />
-					<InputChip
-						name="Hard Skills"
-						bind:value={project.hardSkills}
-						placeholder="Enter hard skills..."
-					/>
-					<InputChip
-						name="Soft Skills"
-						bind:value={project.softSkills}
-						placeholder="Enter soft skills..."
-					/>
-				</form>
+		<SegmentedControl
+			value={formData.type}
+			onValueChange={(details) => (formData.type = details.value as ExperienceType)}
+		>
+			{#each Object.values(ExperienceType) as type (type)}
+				<SegmentedControl.Item value={type}>
+					<SegmentedControl.ItemText>{type}</SegmentedControl.ItemText>
+					<SegmentedControl.ItemHiddenInput />
+				</SegmentedControl.Item>
 			{/each}
-		</form>
-		<!-- prettier-ignore -->
-		<footer class="modal-footer {parent.regionFooter}">
-        <button class="btn {parent.buttonNeutral}" on:click={modalStore.close}>{parent.buttonTextCancel}</button>
-        <button class="btn {parent.buttonPositive}" on:click={onFormSubmit}>{newExperience ? 'Add Experience':'Modify Experience'}</button>
-    </footer>
+			<SegmentedControl.Indicator />
+		</SegmentedControl>
+
+		<textarea
+			class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+			rows={4}
+			bind:value={formData.summary}
+			placeholder="Enter a brief summary of the overall experience... (supports markdown)"
+		></textarea>
+
+		<span>Projects</span>
+		<button type="button" class="bg-blue-500 text-white p-1 rounded" onclick={addEmptyProject}>
+			<Plus />
+		</button>
+		{#each formData.projects as project, i}
+			<div class="space-y-2 {cForm}">
+				<label class="block">
+					<span>Title</span>
+					<input
+						class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+						type="text"
+						bind:value={project.name}
+						placeholder="Enter title..."
+					/>
+				</label>
+				<label class="block">
+					<span>Summary</span>
+					<textarea
+						class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+						rows={4}
+						bind:value={project.summary}
+						placeholder="Enter details about the project, mission..."
+					></textarea>
+				</label>
+				<input
+					class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+					title="Start"
+					type="date"
+					bind:value={project.start}
+				/>
+				<input
+					class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+					title="End"
+					type="date"
+					bind:value={project.end}
+				/>
+				<TagsInput
+					value={project.hardSkills}
+					onValueChange={(details) => {
+						formData.projects[i].hardSkills = details.value;
+					}}
+				>
+					<TagsInput.Control>
+						{#each project.hardSkills as tag, idx}
+							<TagsInput.Item value={tag} index={idx}>
+								<TagsInput.ItemPreview>
+									<TagsInput.ItemText>{tag}</TagsInput.ItemText>
+									<TagsInput.ItemDeleteTrigger />
+								</TagsInput.ItemPreview>
+							</TagsInput.Item>
+						{/each}
+						<TagsInput.Input placeholder="Enter hard skills..." />
+					</TagsInput.Control>
+				</TagsInput>
+				<TagsInput
+					value={project.softSkills}
+					onValueChange={(details) => {
+						formData.projects[i].softSkills = details.value;
+					}}
+				>
+					<TagsInput.Control>
+						{#each project.softSkills as tag, idx}
+							<TagsInput.Item value={tag} index={idx}>
+								<TagsInput.ItemPreview>
+									<TagsInput.ItemText>{tag}</TagsInput.ItemText>
+									<TagsInput.ItemDeleteTrigger />
+								</TagsInput.ItemPreview>
+							</TagsInput.Item>
+						{/each}
+						<TagsInput.Input placeholder="Enter soft skills..." />
+					</TagsInput.Control>
+				</TagsInput>
+			</div>
+		{/each}
 	</div>
-{/if}
+	<footer class="flex justify-end gap-2">
+		<button class="btn preset-tonal" onclick={onClose}>Cancel</button>
+		<button class="btn preset-filled" onclick={onFormSubmit}
+			>{isNewExperience ? 'Add Experience' : 'Modify Experience'}</button
+		>
+	</footer>
+</div>

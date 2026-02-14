@@ -1,4 +1,5 @@
 import { Schema, model } from "mongoose";
+import type { Document } from "mongoose";
 
 export interface WorkflowStep extends Document {
   name: string;

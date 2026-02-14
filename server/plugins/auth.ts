@@ -33,7 +33,7 @@ export const googleAuth = new Elysia()
 
       const email = googleData.email;
 
-      const user = await User.findOneAndUpdate({ email }, { email }, { upsert: true, new: true });
+      const user = await User.findOneAndUpdate({ email }, { email }, { upsert: true, returnDocument: 'after' });
 
       const date = new Date();
       date.setDate(date.getDate() + 7);

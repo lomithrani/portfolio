@@ -1,4 +1,5 @@
 import { Schema, Types, model } from "mongoose";
+import type { Document } from "mongoose";
 import { WorkflowStep } from "./workflowStep";
 import { User } from "./user";
 
