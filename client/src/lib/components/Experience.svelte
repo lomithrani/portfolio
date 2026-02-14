@@ -3,7 +3,7 @@
 
 	import Project from './Project.svelte';
 	import ExperienceModal from './modals/ExperienceModal.svelte';
-	import { Dialog } from '@skeletonlabs/skeleton-svelte';
+	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { PencilSquare } from 'svelte-heros-v2';
 	import { marked } from 'marked';
 
@@ -42,24 +42,26 @@
 </div>
 
 <Dialog open={showEditModal} onOpenChange={(details) => showEditModal = details.open}>
-	<Dialog.Backdrop />
-	<Dialog.Positioner>
-		<Dialog.Content>
-			{#if showEditModal}
-				<ExperienceModal
-					existingExperience={experience}
-					title="Experience"
-					body="Edit an experience from your resume."
-					onResponse={onEditResponse}
-					onClose={() => showEditModal = false}
-				/>
-			{/if}
-		</Dialog.Content>
-	</Dialog.Positioner>
+	<Portal>
+		<Dialog.Backdrop class="fixed inset-0 z-50 bg-surface-50-950/50" />
+		<Dialog.Positioner class="fixed inset-0 z-50 flex justify-center items-center p-4">
+			<Dialog.Content class="card bg-surface-100-900 w-full max-w-xl shadow-xl">
+				{#if showEditModal}
+					<ExperienceModal
+						existingExperience={experience}
+						title="Experience"
+						body="Edit an experience from your resume."
+						onResponse={onEditResponse}
+						onClose={() => showEditModal = false}
+					/>
+				{/if}
+			</Dialog.Content>
+		</Dialog.Positioner>
+	</Portal>
 </Dialog>
 
 <style>
-	.summary ul {
+	.summary :global(ul) {
 		list-style: disc;
 		padding-left: 20px;
 	}

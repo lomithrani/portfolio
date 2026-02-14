@@ -3,10 +3,16 @@
 	import { Navigation, Switch } from '@skeletonlabs/skeleton-svelte';
 	import type { Domain, Experience } from 'portfolio-api/models/database';
 	import { AcademicCap, ComputerDesktop, WrenchScrewdriver } from 'svelte-heros-v2';
-	import { isDomainAdmin } from '$services/authentication';
+	import { authenticationStore } from '$services/stores';
 	import { browser } from '$app/environment';
 
 	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } = $props();
+
+	let isAdmin = $derived(
+		$authenticationStore.user?._id != null &&
+		domain?.admin != null &&
+		$authenticationStore.user._id == domain.admin
+	);
 
 	const pathStartsWith = (path: string, pagePathName: string) => pagePathName.startsWith(path);
 
@@ -25,7 +31,7 @@
 		{
 			path: '/admin',
 			label: 'Admin',
-			display: () => isDomainAdmin(domain),
+			display: () => isAdmin,
 			selected: pathStartsWith,
 			icon: WrenchScrewdriver
 		}

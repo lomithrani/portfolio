@@ -3,6 +3,6 @@
 	let { skill, level }: { skill: Skill; level: number } = $props();
 </script>
 
-<span class="chip variant-filled-primary">
+<span class="chip preset-filled-primary-500">
 	{skill.displayName}
 </span>

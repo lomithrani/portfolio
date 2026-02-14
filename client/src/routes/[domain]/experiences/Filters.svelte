@@ -7,28 +7,35 @@
 		filters?: { softSkills: Set<string>; hardSkills: Set<string> };
 	} = $props();
 
-	let softSkillsMap = experiences
-		.flatMap((e) => e.projects.flatMap((p) => p.softSkills))
-		.reduce((map, skill) => map.set((skill.skill as Skill).displayName, skill.skill), new Map());
-	let softSkills = Array.from(softSkillsMap.values());
+	let softSkills = $derived(
+		Array.from(
+			experiences
+				.flatMap((e) => e.projects.flatMap((p) => p.softSkills))
+				.reduce((map, skill) => map.set((skill.skill as Skill).displayName, skill.skill), new Map())
+				.values()
+		)
+	);
 
-	let hardSkillsMap = experiences
-		.flatMap((e) => e.projects.flatMap((p) => p.hardSkills))
-		.reduce((map, skill) => map.set((skill.skill as Skill).displayName, skill.skill), new Map());
-	let hardSkills = Array.from(hardSkillsMap.values());
+	let hardSkills = $derived(
+		Array.from(
+			experiences
+				.flatMap((e) => e.projects.flatMap((p) => p.hardSkills))
+				.reduce((map, skill) => map.set((skill.skill as Skill).displayName, skill.skill), new Map())
+				.values()
+		)
+	);
 </script>
 
 <div class="w-full grid grid-cols-1 md:grid-cols-2 p-2">
-	<div class="card m-1 p-1 variant-ghost">
+	<div class="card m-1 p-1 preset-tonal-surface">
 		{#each softSkills as softSkill, index}
 			{@const selected = filters.softSkills.has(softSkill.displayName)}
-			<span
+			<button
+				type="button"
 				role="checkbox"
 				aria-checked={selected}
-				tabindex={index}
-				class="chip {selected ? 'variant-ringed-primary' : 'variant-soft'}"
+				class="chip {selected ? 'preset-outlined-primary-500' : 'preset-tonal-surface'}"
 				onclick={() => {
-					// we need to reassign filters to trigger svelte reactivity
 					if (!selected) {
 						filters = {
 							...filters,
@@ -45,23 +52,21 @@
 						};
 					}
 				}}
-	
 			>
 				{#if selected}<Check size="12px" />{/if}
 				<span class="capitalize">{softSkill.displayName}</span>
-			</span>
+			</button>
 		{/each}
 	</div>
-	<div class="card m-1 p-1 variant-ghost">
+	<div class="card m-1 p-1 preset-tonal-surface">
 		{#each hardSkills as hardSkill, index}
 			{@const selected = filters.hardSkills.has(hardSkill.displayName)}
-			<span
+			<button
+				type="button"
 				role="checkbox"
 				aria-checked={selected}
-				tabindex={index}
-				class="chip {selected ? 'variant-ringed-primary' : 'variant-soft'}"
+				class="chip {selected ? 'preset-outlined-primary-500' : 'preset-tonal-surface'}"
 				onclick={() => {
-					// we need to reassign filters to trigger svelte reactivity
 					if (!selected) {
 						filters = {
 							...filters,
@@ -78,11 +83,10 @@
 						};
 					}
 				}}
-	
 			>
 				{#if selected}<Check size="12px" />{/if}
 				<span class="capitalize">{hardSkill.displayName}</span>
-			</span>
+			</button>
 		{/each}
 	</div>
 </div>

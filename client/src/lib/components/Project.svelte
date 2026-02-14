@@ -9,7 +9,7 @@
 	};
 </script>
 
-<div class="block card card-hover variant-secondary p-2 m-1">
+<div class="block card preset-tonal-secondary p-2 m-1 hover:brightness-110 transition-all">
 	<article>
 		<h3 id={`${project.name}_${experienceId}`}>{project.name}</h3>
 		<h4 data-toc-ignore>{project.start} - {project.end}</h4>

@@ -15,6 +15,12 @@ const isLogged: () => Promise<boolean> = async () => {
 
   if ((isLoggedResponse.data?.expires ?? 0) * 1000 > Date.now()) {
     console.log("already logged");
+    if (isLoggedResponse.data?.user) {
+      authenticationStore.set({
+        user: isLoggedResponse.data.user as any,
+        expires: isLoggedResponse.data.expires
+      });
+    }
     return true;
   }
 
@@ -23,7 +29,7 @@ const isLogged: () => Promise<boolean> = async () => {
 
 const isDomainAdmin: (domain: Domain) => boolean = (domain) => {
   const authentication = get(authenticationStore);
-  return authentication.user?._id == domain.admin;
+  return authentication.user?._id == domain?.admin;
 }
 
 const logout: () => void = async () => {

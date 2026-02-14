@@ -4,10 +4,18 @@
 	import Login from '$components/Login.svelte';
 	import { AppBar } from '@skeletonlabs/skeleton-svelte';
 	import Logo from '$images/logo.svelte';
+	import { onMount } from 'svelte';
+
+	let ready = $state(false);
+
+	onMount(async () => {
+		await isLogged();
+		ready = true;
+	});
 </script>
 
 <AppBar>
-	<AppBar.Toolbar>
+	<AppBar.Toolbar class="grid-cols-[auto_1fr_auto]">
 		<AppBar.Lead><Logo height="50" width="50" /></AppBar.Lead>
 		<AppBar.Headline>
 			<h1 class="text-3xl font-bold">
@@ -28,15 +36,13 @@
 			</h1>
 		</AppBar.Headline>
 		<AppBar.Trail>
-			{#await isLogged()}
+			{#if !ready}
 				...
-			{:then logged}
-				{#if $authenticationStore.expires ?? 0 > Date.now()}
-					<button type="button" onclick={logout} aria-label="Logout">Logout</button>
-				{:else}
-					<Login />
-				{/if}
-			{/await}
+			{:else if ($authenticationStore.expires ?? 0) * 1000 > Date.now()}
+				<button type="button" onclick={logout} aria-label="Logout">Logout</button>
+			{:else}
+				<Login />
+			{/if}
 		</AppBar.Trail>
 	</AppBar.Toolbar>
 </AppBar>

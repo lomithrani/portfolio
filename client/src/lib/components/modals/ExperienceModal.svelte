@@ -25,28 +25,34 @@
 		onClose: () => void;
 	} = $props();
 
-	let isNewExperience = $state(!existingExperience);
+	let isNewExperience = $derived(!existingExperience);
 
-	if (existingExperience) {
-		newExperienceDataStore.set({
-			title: existingExperience.title,
-			type: existingExperience.type,
-			summary: existingExperience.summary,
-			company: existingExperience.company as unknown as FormData['company'],
-			projects: existingExperience.projects.map((project) => {
-				return {
-					name: project.name,
-					start: (<string>(project.start as unknown)).split('T')[0],
-					end: (<string>(project.end as unknown)).split('T')[0],
-					summary: project.summary ?? '',
-					hardSkills: project.hardSkills.map((skill) => (skill.skill as Skill).displayName),
-					softSkills: project.softSkills.map((skill) => (skill.skill as Skill).displayName)
-				};
-			})
-		});
+	function getInitialFormData(): FormData {
+		if (existingExperience) {
+			const data: FormData = {
+				title: existingExperience.title,
+				type: existingExperience.type,
+				summary: existingExperience.summary,
+				company: existingExperience.company as unknown as FormData['company'],
+				projects: existingExperience.projects.map((project) => {
+					const toDateStr = (v: unknown) => v instanceof Date ? v.toISOString().split('T')[0] : String(v).split('T')[0];
+					return {
+						name: project.name,
+						start: toDateStr(project.start),
+						end: toDateStr(project.end),
+						summary: project.summary ?? '',
+						hardSkills: project.hardSkills.map((skill) => (skill.skill as Skill).displayName),
+						softSkills: project.softSkills.map((skill) => (skill.skill as Skill).displayName)
+					};
+				})
+			};
+			newExperienceDataStore.set(data);
+			return JSON.parse(JSON.stringify(data));
+		}
+		return JSON.parse(JSON.stringify(get(newExperienceDataStore)));
 	}
 
-	let formData: FormData = $state(structuredClone(get(newExperienceDataStore)));
+	let formData: FormData = $state(getInitialFormData());
 
 	$effect(() => {
 		if (formData) {
