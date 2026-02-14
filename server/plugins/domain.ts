@@ -1,6 +1,6 @@
 import Elysia, { t } from 'elysia';
 import { Experience, Domain } from '../models/database';
-import { DomainDoesNotExistError } from '../errors';
+import { DomainDoesNotExistError, UserAlreadyOwnsDomainError } from '../errors';
 import { corsConf } from './corsConf';
 import { userLogged } from './userLogged';
 
@@ -51,6 +51,25 @@ const domainAdmin = new Elysia()
     })
   })
 
+const domainClaim = new Elysia()
+  .use(corsConf())
+  .use(userLogged)
+  .post('/domain/claim', async ({ body: { name }, userId }) => {
+    const existing = await Domain.findOne({ name });
+    if (existing) throw new DomainDoesNotExistError('Domain already exists');
+
+    const ownedDomain = await Domain.findOne({ admin: userId });
+    if (ownedDomain) throw new UserAlreadyOwnsDomainError('You already own a domain');
+
+    const domain = await Domain.create({ name, admin: userId, experiences: [] });
+    return domain.toObject();
+  }, {
+    body: t.Object({
+      name: t.String()
+    })
+  })
+
 export const domain = new Elysia()
   .use(domainPublic)
   .use(domainAdmin)
+  .use(domainClaim)

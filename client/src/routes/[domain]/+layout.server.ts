@@ -1,5 +1,4 @@
 import { portfolioApi } from '$services/index';
-import { redirect } from '@sveltejs/kit';
 import type { Domain, Experience } from 'portfolio-api/models/database';
 
 export async function load({ params }) {
@@ -8,12 +7,16 @@ export async function load({ params }) {
   });
 
   if (error || !data) {
-    throw redirect(302, '/louis.gentil/experiences');
+    return {
+      domain: null,
+      domainName: params.domain
+    };
   }
 
   return {
     domain: data as Omit<Domain, "experiences"> & {
       experiences: Experience[];
-    }
+    },
+    domainName: params.domain
   };
 }

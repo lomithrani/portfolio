@@ -34,11 +34,18 @@ export class AuthExpiredError extends Error {
   }
 }
 
+export class UserAlreadyOwnsDomainError extends Error {
+  constructor(public message: string) {
+    super(message)
+  }
+}
+
 export const errors = {
   DomainDoesNotExistError,
   MissingAuthCookieError,
   CouldntVerifyJwtError,
   SubMissingError,
   CannotSaveExperienceError,
-  AuthExpiredError
+  AuthExpiredError,
+  UserAlreadyOwnsDomainError
 }
