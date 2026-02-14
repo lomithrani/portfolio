@@ -43,11 +43,27 @@
 
 	const pathAreEquals = (path: string, pagePathName: string) => pagePathName === path;
 
-	let darkMode = $state(browser ? document.documentElement.classList.contains('dark') : true);
+	const DARK_MODE_KEY = 'portfolio-dark-mode';
+
+	function getInitialDarkMode(): boolean {
+		if (!browser) return true;
+		const stored = localStorage.getItem(DARK_MODE_KEY);
+		if (stored !== null) return stored === 'true';
+		if (domain?.defaultDarkMode !== undefined && domain.defaultDarkMode !== null) return domain.defaultDarkMode;
+		return window.matchMedia('(prefers-color-scheme: dark)').matches;
+	}
+
+	let darkMode = $state(getInitialDarkMode());
+
+	$effect(() => {
+		if (!browser) return;
+		document.documentElement.classList.toggle('dark', darkMode);
+		document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
+		localStorage.setItem(DARK_MODE_KEY, String(darkMode));
+	});
 
 	function toggleDarkMode(details: { checked: boolean }) {
 		darkMode = details.checked;
-		document.documentElement.classList.toggle('dark', darkMode);
 	}
 </script>
 
@@ -70,7 +86,12 @@
 			{/if}
 		{/each}
 	</Navigation.Content>
-	<Navigation.Footer>
-		<Switch checked={darkMode} onCheckedChange={toggleDarkMode} />
+	<Navigation.Footer class="mt-auto">
+		<Switch checked={darkMode} onCheckedChange={toggleDarkMode}>
+			<Switch.Control>
+				<Switch.Thumb />
+			</Switch.Control>
+			<Switch.HiddenInput />
+		</Switch>
 	</Navigation.Footer>
 </Navigation>

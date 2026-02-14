@@ -129,9 +129,10 @@
 			value={formData.type}
 			onValueChange={(details) => (formData.type = details.value as ExperienceType)}
 		>
-			{#each Object.values(ExperienceType) as type}
+			{#each Object.values(ExperienceType) as type (type)}
 				<SegmentedControl.Item value={type}>
 					<SegmentedControl.ItemText>{type}</SegmentedControl.ItemText>
+					<SegmentedControl.ItemHiddenInput />
 				</SegmentedControl.Item>
 			{/each}
 			<SegmentedControl.Indicator />
