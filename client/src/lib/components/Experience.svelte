@@ -45,7 +45,7 @@
 	<Portal>
 		<Dialog.Backdrop class="fixed inset-0 z-50 bg-surface-50-950/50" />
 		<Dialog.Positioner class="fixed inset-0 z-50 flex justify-center items-center p-4">
-			<Dialog.Content class="card bg-surface-100-900 w-full max-w-xl shadow-xl">
+			<Dialog.Content class="card bg-surface-100-900 w-full max-w-xl shadow-xl max-h-[calc(100vh-2rem)] overflow-y-auto">
 				{#if showEditModal}
 					<ExperienceModal
 						existingExperience={experience}

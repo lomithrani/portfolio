@@ -8,7 +8,11 @@
 
 	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } = $props();
 
+	let mounted = $state(false);
+	$effect(() => { mounted = true; });
+
 	let isAdmin = $derived(
+		mounted && browser &&
 		$authenticationStore.user?._id != null &&
 		domain?.admin != null &&
 		$authenticationStore.user._id == domain.admin

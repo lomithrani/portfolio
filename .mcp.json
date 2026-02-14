@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "railway": {
+      "command": "bunx",
+      "args": ["-y", "@railway/mcp-server"]
+    },
+    "github": {
+      "command": "bunx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "context7": {
+      "command": "bunx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    },
+    "svelte": {
+      "command": "bunx",
+      "args": ["-y", "@sveltejs/mcp"]
+    },
+    "chrome-devtools": {
+      "command": "bunx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
+    }
+  }
+}

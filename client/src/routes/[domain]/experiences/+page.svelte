@@ -1,8 +1,5 @@
 <script lang="ts">
-	import type {
-		Experience as ExperienceModel,
-		Skill as SkillModel
-	} from 'portfolio-api/models/database';
+	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import type { PageData } from './$types';
 	import { PlusCircle } from 'svelte-heros-v2';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
@@ -10,10 +7,16 @@
 	import ExperienceModal from '$components/modals/ExperienceModal.svelte';
 	import Filters from './Filters.svelte';
 	import { authenticationStore } from '$services/stores';
+	import { browser } from '$app/environment';
+	import { filterExperiences } from '$services/filters';
 
 	let { data }: { data: PageData } = $props();
 
+	let mounted = $state(false);
+	$effect(() => { mounted = true; });
+
 	let isAdmin = $derived(
+		mounted && browser &&
 		$authenticationStore.user?._id != null &&
 		data?.domain?.admin != null &&
 		$authenticationStore.user._id == data.domain.admin
@@ -26,20 +29,7 @@
 
 	let experiences: ExperienceModel[] | undefined = $derived.by(() => {
 		if (!data?.domain?.experiences) return undefined;
-		if (filters.softSkills.size === 0 && filters.hardSkills.size === 0) {
-			return data.domain.experiences;
-		}
-		return data.domain.experiences.filter((experience) =>
-			experience.projects.some(
-				(project) =>
-					project.softSkills.some((softSkill) =>
-						filters.softSkills.has((softSkill.skill as SkillModel).displayName)
-					) ||
-					project.hardSkills.some((hardSkill) =>
-						filters.hardSkills.has((hardSkill.skill as SkillModel).displayName)
-					)
-			)
-		);
+		return filterExperiences(data.domain.experiences, filters);
 	});
 
 	const onAddResponse = (response: ExperienceModel | undefined) => {
@@ -88,7 +78,7 @@
 	<Portal>
 		<Dialog.Backdrop class="fixed inset-0 z-50 bg-surface-50-950/50" />
 		<Dialog.Positioner class="fixed inset-0 z-50 flex justify-center items-center p-4">
-			<Dialog.Content class="card bg-surface-100-900 w-full max-w-xl shadow-xl">
+			<Dialog.Content class="card bg-surface-100-900 w-full max-w-xl shadow-xl max-h-[calc(100vh-2rem)] overflow-y-auto">
 				{#if showAddModal}
 					<ExperienceModal
 						title="Experience"

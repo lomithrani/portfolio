@@ -1,4 +1,4 @@
-import { test, expect } from 'bun:test'
+import { test, expect } from 'vitest'
 import { treaty } from '@elysiajs/eden'
 import type { Portfolio } from 'portfolio-api'
 
