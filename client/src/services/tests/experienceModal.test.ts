@@ -1,27 +1,28 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { ExperienceType } from 'portfolio-common';
 
 // vi.mock factories are hoisted — use vi.fn() inline, no outer refs
 vi.mock('$services', () => {
   const mockPost = vi.fn();
   const mockPut = vi.fn();
+  // Eden treaty exposes parameterized routes as functions:
+  //   portfolioApi.experiences({ id: '...' }).put(body, opts)
+  //   portfolioApi.experiences.post(body, opts)
+  const experiencesFn = Object.assign(
+    (_params: { id: string }) => ({ put: mockPut }),
+    { post: mockPost }
+  );
   return {
-    portfolioApi: {
-      experiences: new Proxy({} as any, {
-        get(_target: any, prop: string) {
-          if (prop === 'post') return mockPost;
-          // Any other property (an experience ID) returns { put: mockPut }
-          return { put: mockPut };
-        },
-      }),
-    },
+    portfolioApi: { experiences: experiencesFn },
   };
 });
 
 import { portfolioApi } from '$services';
 
-// Extract the mock functions from the proxy for assertions
-const mockPost = (portfolioApi.experiences as any).post;
-const mockPut = (portfolioApi.experiences as any)['any-id'].put;
+// Extract mock references — the real types don't expose Mock methods,
+// so we cast to Mock at the boundary between real types and vi.mock.
+const mockPost = portfolioApi.experiences.post as unknown as Mock;
+const mockPut = portfolioApi.experiences({ id: 'any' }).put as unknown as Mock;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,7 +31,7 @@ beforeEach(() => {
 describe('Experience submit logic', () => {
   const formData = {
     title: 'Software Engineer',
-    type: 'professional',
+    type: ExperienceType.Professional,
     summary: 'Built things',
     projects: [
       {
@@ -57,19 +58,18 @@ describe('Experience submit logic', () => {
     };
   }
 
-  const fetchOpts = { fetch: { credentials: 'include' } };
+  const fetchOpts = { fetch: { credentials: 'include' } } as const;
 
-  it('should call POST when creating a new experience (no existingExperience)', async () => {
+  it('should call POST when creating a new experience', async () => {
     mockPost.mockResolvedValue({ data: { _id: 'new-id', ...formData }, error: null });
 
     const apiData = buildApiData(formData);
-
-    // Simulate: no existingExperience → call post
     const existingExperience = undefined;
+
     if (existingExperience) {
-      await (portfolioApi.experiences as any)[existingExperience].put(apiData, fetchOpts);
+      await portfolioApi.experiences({ id: String(existingExperience) }).put(apiData, fetchOpts);
     } else {
-      await (portfolioApi.experiences as any).post(apiData, fetchOpts);
+      await portfolioApi.experiences.post(apiData, fetchOpts);
     }
 
     expect(mockPost).toHaveBeenCalledTimes(1);
@@ -77,18 +77,17 @@ describe('Experience submit logic', () => {
     expect(mockPut).not.toHaveBeenCalled();
   });
 
-  it('should call PUT with experience ID when editing (existingExperience provided)', async () => {
+  it('should call PUT with experience ID when editing', async () => {
     const existingId = 'existing-exp-123';
     mockPut.mockResolvedValue({ data: { _id: existingId, ...formData }, error: null });
 
     const apiData = buildApiData(formData);
-
-    // Simulate: existingExperience has _id → call put
     const existingExperience = { _id: existingId };
+
     if (existingExperience?._id) {
-      await (portfolioApi.experiences as any)[existingExperience._id].put(apiData, fetchOpts);
+      await portfolioApi.experiences({ id: String(existingExperience._id) }).put(apiData, fetchOpts);
     } else {
-      await (portfolioApi.experiences as any).post(apiData, fetchOpts);
+      await portfolioApi.experiences.post(apiData, fetchOpts);
     }
 
     expect(mockPut).toHaveBeenCalledTimes(1);
@@ -96,12 +95,12 @@ describe('Experience submit logic', () => {
     expect(mockPost).not.toHaveBeenCalled();
   });
 
-  it('should transform form data correctly before sending to API', async () => {
+  it('should transform form data correctly before sending', async () => {
     const existingId = 'existing-exp-456';
     mockPut.mockResolvedValue({ data: { _id: existingId }, error: null });
 
     const apiData = buildApiData(formData);
-    await (portfolioApi.experiences as any)[existingId].put(apiData, fetchOpts);
+    await portfolioApi.experiences({ id: existingId }).put(apiData, fetchOpts);
 
     const calledWith = mockPut.mock.calls[0][0];
     expect(calledWith.title).toBe('Software Engineer');
@@ -117,7 +116,7 @@ describe('Experience submit logic', () => {
     mockPost.mockResolvedValue({ data: {}, error: null });
 
     const apiData = buildApiData(formData);
-    await (portfolioApi.experiences as any).post(apiData, fetchOpts);
+    await portfolioApi.experiences.post(apiData, fetchOpts);
 
     expect(mockPost.mock.calls[0][1]).toEqual({ fetch: { credentials: 'include' } });
   });

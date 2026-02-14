@@ -85,11 +85,11 @@
 
 		let data, error;
 		if (existingExperience?._id) {
-			({ data, error } = await (portfolioApi.experiences as any)[
-				String(existingExperience._id)
-			].put(apiData as any, fetchOpts));
+			({ data, error } = await portfolioApi
+				.experiences({ id: String(existingExperience._id) })
+				.put(apiData, fetchOpts));
 		} else {
-			({ data, error } = await portfolioApi.experiences.post(apiData as any, fetchOpts));
+			({ data, error } = await portfolioApi.experiences.post(apiData, fetchOpts));
 		}
 
 		if (!error && data) {

@@ -7,7 +7,7 @@ const api = treaty<Portfolio>("");
 test("edenTreaty should have correct methods", async () => {
   expect(api).toBeDefined()
   expect(api.login.post).toBeDefined()
-  expect((api.domain as any)[':name'].get).toBeDefined()
+  expect(api.domain({ name: 'test' }).get).toBeDefined()
   expect(api.experiences.post).toBeDefined()
-  expect((api.experiences as any)[':id'].put).toBeDefined()
+  expect(api.experiences({ id: 'test' }).put).toBeDefined()
 })
