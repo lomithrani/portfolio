@@ -1,4 +1,5 @@
-import { Schema, model, Types, Document } from "mongoose";
+import { Schema, model, Types } from "mongoose";
+import type { Document } from "mongoose";
 import { User, Experience } from ".";
 
 export interface Domain extends Document {
@@ -7,6 +8,9 @@ export interface Domain extends Document {
   experiences: (Types.ObjectId | Experience)[],
   style?: string;
   defaultDarkMode?: boolean;
+  theme?: string;
+  headerTitle?: string;
+  headerSubtitle?: string;
 }
 
 export const domainSchema = new Schema<Domain>({
@@ -25,7 +29,10 @@ export const domainSchema = new Schema<Domain>({
   admin: { type: Types.ObjectId, ref: 'User', index: true, required: true },
   experiences: [{ type: Types.ObjectId, ref: 'Experience', required: true }],
   style: { type: String },
-  defaultDarkMode: { type: Boolean }
+  defaultDarkMode: { type: Boolean },
+  theme: { type: String },
+  headerTitle: { type: String },
+  headerSubtitle: { type: String }
 });
 
 

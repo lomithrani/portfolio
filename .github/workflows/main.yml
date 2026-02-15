@@ -29,10 +29,21 @@ jobs:
         with:
           bun-version: "latest"
 
-      - name: Unit Tests for Server
+      - name: Install Server Dependencies
         run: |
           cd server
           bun install
+
+      - name: Seed MongoDB
+        run: |
+          cd server
+          bun run tests/seedDb.ts
+        env:
+          MONGO_URL: "mongodb://localhost:${{ job.services.mongodb.ports[27017] }}/mytestdb"
+
+      - name: Unit Tests for Server
+        run: |
+          cd server
           bun test
         env:
           PORT: 3000
@@ -44,7 +55,7 @@ jobs:
         run: |
           cd client
           bun install
-          bun test
+          bun run test:unit
 
   integration-e2e-tests:
     runs-on: ubuntu-latest

@@ -1,9 +1,10 @@
-import { Schema, Types, model, Document, Model } from 'mongoose';
+import { Schema, Types, model } from 'mongoose';
+import type { Document, Model } from 'mongoose';
 import { ExperienceType } from 'portfolio-common';
 import { Project, projectSchema } from './project';
-import { Company } from './company';
+import type { Company } from './company';
 import { experienceRequest } from '../elysia';
-import { Static } from 'elysia';
+import type { Static } from 'elysia';
 import { Skill } from './skill';
 
 export interface Experience extends Document {
@@ -12,6 +13,7 @@ export interface Experience extends Document {
   summary: string;
   summaryType: string;
   title: string;
+  icon?: string;
   projects: Project[]
 }
 
@@ -24,6 +26,7 @@ const experienceSchema = new Schema<Experience>({
   company: { type: Types.ObjectId, ref: 'Company' },
   summary: String,
   title: { type: String, required: true },
+  icon: String,
   projects: [projectSchema]
 });
 
@@ -35,6 +38,7 @@ experienceSchema.statics.fromRequest = async function (request: ExperienceReques
     summary: request.summary,
     type: request.type,
     company: request.company,
+    icon: request.icon,
   });
 
   for (const project of request.projects) {

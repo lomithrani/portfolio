@@ -11,10 +11,16 @@ const isLogged: () => Promise<boolean> = async () => {
     return Date.now() < (authentication.expires * 1000);
   }
 
-  const isLoggedResponse = await portfolioApi.isLogged.get({ $fetch: { credentials: 'include' } });
+  const isLoggedResponse = await portfolioApi.isLogged.get({ fetch: { credentials: 'include' } });
 
   if ((isLoggedResponse.data?.expires ?? 0) * 1000 > Date.now()) {
     console.log("already logged");
+    if (isLoggedResponse.data?.user) {
+      authenticationStore.set({
+        user: isLoggedResponse.data.user as any,
+        expires: isLoggedResponse.data.expires
+      });
+    }
     return true;
   }
 
@@ -23,20 +29,19 @@ const isLogged: () => Promise<boolean> = async () => {
 
 const isDomainAdmin: (domain: Domain) => boolean = (domain) => {
   const authentication = get(authenticationStore);
-  return authentication.user?._id == domain.admin;
+  return authentication.user?._id == domain?.admin;
 }
 
 const logout: () => void = async () => {
-  await portfolioApi.logout.get({ $fetch: { credentials: 'include' } });
+  await portfolioApi.logout.get({ fetch: { credentials: 'include' } });
   authenticationStore.set({ expires: undefined, user: undefined });
 }
 
 const login: (googleCredentials: string) => Promise<boolean> = async (googleCredentials) => {
 
   const loginResponse = await portfolioApi.login.post({
-    token: googleCredentials,
-    $fetch: { credentials: 'include' }
-  });
+    token: googleCredentials
+  }, { fetch: { credentials: 'include' } });
 
   if (loginResponse.data?.user) {
 
@@ -46,11 +51,11 @@ const login: (googleCredentials: string) => Promise<boolean> = async (googleCred
     }
 
     const isloggedResponse = await portfolioApi.isLogged.get({
-      $fetch: { credentials: 'include' }
+      fetch: { credentials: 'include' }
     }); // confirm that cookie was properly set
 
     authenticationStore.set({
-      user: loginResponse.data.user,
+      user: loginResponse.data.user as any,
       expires: loginResponse.data.expires
     });
   }

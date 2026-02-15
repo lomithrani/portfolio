@@ -1,26 +1,34 @@
 <script lang="ts">
-	import '../../app.postcss';
-	import { AppShell, Modal } from '@skeletonlabs/skeleton';
+	import '../../app.css';
 	import Header from '$components/Header.svelte';
 	import LeftBar from '$components/LeftBar.svelte';
-	import ExperienceModal from '$components/modals/ExperienceModal.svelte';
+	import ClaimDomain from '$components/ClaimDomain.svelte';
 	import type { LayoutData } from './$types';
-	import { initializeStores, type ModalComponent } from '@skeletonlabs/skeleton';
+	import type { Snippet } from 'svelte';
+	import { browser } from '$app/environment';
 
-	const modalRegistry: Record<string, ModalComponent> = {
-		experienceModal: { ref: ExperienceModal }
-	};
+	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-	initializeStores();
-	export let data: LayoutData;
+	$effect(() => {
+		if (!browser || !data.domain) return;
+		document.documentElement.dataset.theme = data.domain.theme ?? 'wintry';
+	});
 </script>
 
-<Modal components={modalRegistry} />
-<AppShell regionPage="scroll-smooth">
-	<svelte:fragment slot="header"><Header /></svelte:fragment>
-	<svelte:fragment slot="sidebarLeft"><LeftBar domain={data.domain} /></svelte:fragment>
-
-	<!-- Router Slot -->
-	<slot />
-	<!-- ---- / ---- -->
-</AppShell>
+{#if data.domain}
+	<div class="h-full flex flex-col">
+		<header>
+			<Header headerTitle={data.domain.headerTitle} headerSubtitle={data.domain.headerSubtitle} />
+		</header>
+		<div class="relative flex-1 overflow-hidden">
+			<aside>
+				<LeftBar domain={data.domain} />
+			</aside>
+			<main class="h-full overflow-auto scroll-smooth" id="page">
+				{@render children()}
+			</main>
+		</div>
+	</div>
+{:else}
+	<ClaimDomain domainName={data.domainName} />
+{/if}

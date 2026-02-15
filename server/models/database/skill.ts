@@ -1,4 +1,5 @@
-import { InferSchemaType, Schema, model, Model, ObjectId } from "mongoose";
+import { Schema, model } from "mongoose";
+import type { InferSchemaType, Model, ObjectId } from "mongoose";
 
 export const skillSchema = new Schema({
   displayName: { type: String, required: true, unique: true, index: true },

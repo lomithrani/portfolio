@@ -1,4 +1,5 @@
-import { InferSchemaType, Schema, Types, model } from "mongoose";
+import { Schema, Types, model } from "mongoose";
+import type { InferSchemaType } from "mongoose";
 
 export const companySchema = new Schema({
   _id: Types.ObjectId,

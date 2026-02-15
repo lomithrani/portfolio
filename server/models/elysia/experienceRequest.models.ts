@@ -32,5 +32,6 @@ export const experienceRequest = t.Object({
   title: t.String(),
   company: t.Optional(companyModel),
   summary: t.String(),
+  icon: t.Optional(t.String()),
   projects: t.Array(projectModel),
 })

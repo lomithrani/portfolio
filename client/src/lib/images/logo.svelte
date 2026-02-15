@@ -1,6 +1,5 @@
 <script>
-	export let width = '100';
-	export let height = '100';
+	let { width = '100', height = '100' } = $props();
 </script>
 
 <svg

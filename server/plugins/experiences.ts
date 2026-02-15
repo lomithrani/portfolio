@@ -1,4 +1,5 @@
-import { Domain, Experience } from '../models/database';
+import { Domain, Experience, Skill } from '../models/database';
+import { Project } from '../models/database/project';
 import Elysia, { t } from 'elysia';
 import { corsConf } from './corsConf';
 import { userLogged } from './userLogged';
@@ -19,7 +20,7 @@ export const experiences = new Elysia()
 
     if (!result) throw new CannotSaveExperienceError(userId)
 
-    domain.experiences.push(result.id)
+    domain.experiences.push(result._id)
 
     await domain.save();
 
@@ -29,6 +30,57 @@ export const experiences = new Elysia()
       body: experienceRequest,
       detail: {
         summary: 'Add new experience'
+      }
+    })
+  .put('/experiences/:id', async ({ body, userId, params: { id } }) => {
+    const domain = await Domain.findOne({ admin: userId });
+
+    if (!domain) throw new DomainDoesNotExistError(userId)
+
+    if (!domain.experiences.some((expId) => expId.toString() === id)) {
+      throw new Error('Experience not found in your domain')
+    }
+
+    const experience = await Experience.findById(id);
+
+    if (!experience) throw new Error('Experience not found')
+
+    const projects = [];
+    for (const project of body.projects) {
+      const hardSkills = await Promise.all(
+        project.hardSkills.map(async (hs) => ({
+          skill: await Skill.findOrCreate(hs.name),
+          level: hs.level,
+        }))
+      );
+      const softSkills = await Promise.all(
+        project.softSkills.map(async (ss) => ({
+          skill: await Skill.findOrCreate(ss.name),
+          level: ss.level,
+        }))
+      );
+      projects.push(new Project({ ...project, hardSkills, softSkills }));
+    }
+
+    experience.set({
+      title: body.title,
+      summary: body.summary,
+      type: body.type,
+      company: body.company,
+      icon: body.icon,
+      projects,
+    });
+
+    const result = await experience.save();
+
+    if (!result) throw new CannotSaveExperienceError(userId)
+
+    return result.toObject();
+  },
+    {
+      body: experienceRequest,
+      detail: {
+        summary: 'Edit experience'
       }
     })
 

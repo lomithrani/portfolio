@@ -30,7 +30,7 @@ export const workflows = new Elysia()
 
     if (!workflow) throw new Error('Workflow not found')
 
-    if (workflow.user !== new Types.ObjectId(userId)) {
+    if (workflow.user.toString() !== userId) {
       throw new Error('Unauthorized')
     }
 

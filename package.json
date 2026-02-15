@@ -6,14 +6,37 @@
     "common"
   ],
   "devDependencies": {
-    "@tailwindcss/forms": "^0.5.7",
-    "@vavite/node-loader": "^4.1.2",
-    "elysia": "^1.1.7",
-    "jwt-decode": "^4.0.0"
+    "@fontsource/fira-mono": "^5.2.7",
+    "@playwright/test": "^1.58.2",
+    "@skeletonlabs/skeleton": "^4.12.0",
+    "@skeletonlabs/skeleton-svelte": "^4.12.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/cookie": "^1.0.0",
+    "@types/google.accounts": "^0.0.18",
+    "@typescript-eslint/eslint-plugin": "^8.55.0",
+    "@typescript-eslint/parser": "^8.55.0",
+    "elysia": "^1.4.25",
+    "eslint": "^10.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.15.0",
+    "jwt-decode": "^4.0.0",
+    "prettier": "^3.8.1",
+    "prettier-plugin-svelte": "^3.4.1",
+    "tailwindcss": "^4.1.18",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   },
   "scripts": {
     "build:client": "cd client && bun run build",
     "start:server": "cd server && bun run start",
     "start:client": "cd client && PORT=${PORT:-4000} bun --bun build/index.js"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48",
+    "highlight.js": "^11.11.1",
+    "marked": "^17.0.2",
+    "svelte-persisted-store": "^0.12.0"
   }
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { login } from '$services/authentication';
+	import { browser } from '$app/environment';
 
 	let googleReady = false;
 	let mounted = false;
@@ -23,10 +24,13 @@
 		}
 	};
 
+	const isDark = () => {
+		if (!browser) return true;
+		return document.documentElement.classList.contains('dark');
+	};
+
 	const displaySignInButton = () => {
-		if (!googleReady) {
-			return;
-		}
+		if (!googleReady) return;
 
 		const signIn = async (credentialResponse: google.accounts.id.CredentialResponse) => {
 			return login(credentialResponse.credential);
@@ -43,15 +47,23 @@
 		google.accounts.id.renderButton(
 			document.getElementById('googleButton')!,
 			{
-				theme: 'filled_black',
+				theme: isDark() ? 'filled_black' : 'outline',
 				size: 'medium',
 				type: 'icon',
-				text: 'continue_with',
-				shape: 'pill'
-			} // customization attributes
+				shape: 'circle'
+			}
 		);
-		google.accounts.id.prompt(); // also display the One Tap dialog
+		google.accounts.id.prompt();
 	};
 </script>
 
-<div id="googleButton" />
+<div id="googleButton" class="google-btn"></div>
+
+<style>
+	.google-btn :global(div),
+	.google-btn :global(iframe) {
+		background: transparent !important;
+		border-radius: 50%;
+		color-scheme: auto;
+	}
+</style>
