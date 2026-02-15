@@ -1,8 +1,12 @@
 <script lang="ts">
 	import type { Project, Skill as SkillModel } from 'portfolio-api/models/database';
 	import Skill from './Skill.svelte';
-	import { marked } from 'marked';
-	let { project, experienceId, activeFilters = { softSkills: new Set<string>(), hardSkills: new Set<string>() } }: {
+	import Markdown from './Markdown.svelte';
+	let {
+		project,
+		experienceId,
+		activeFilters = { softSkills: new Set<string>(), hardSkills: new Set<string>() }
+	}: {
 		project: Project;
 		experienceId: String;
 		activeFilters?: { softSkills: Set<string>; hardSkills: Set<string> };
@@ -23,29 +27,28 @@
 	<article>
 		<h3 class="font-semibold" id={`${project.name}_${experienceId}`}>{project.name}</h3>
 		<p class="text-xs opacity-70">{formatDate(project.start)} — {formatDate(project.end)}</p>
-		<div class="summary text-sm mt-1">
-			{@html marked(project.summary ?? '')}
+		<div class="text-sm mt-1">
+			<Markdown content={project.summary ?? ''} />
 		</div>
 
 		{#if project.hardSkills.length > 0 || project.softSkills.length > 0}
 			<div class="flex flex-wrap gap-1 pt-2">
 				{#each project.hardSkills as hardSkill}
-					<Skill skill={castSkill(hardSkill.skill)} level={hardSkill.level || -1} highlighted={activeFilters.hardSkills.has(castSkill(hardSkill.skill).displayName)} />
+					<Skill
+						skill={castSkill(hardSkill.skill)}
+						level={hardSkill.level || -1}
+						highlighted={activeFilters.hardSkills.has(castSkill(hardSkill.skill).displayName)}
+					/>
 				{/each}
 				{#each project.softSkills as softSkill}
-					<Skill skill={castSkill(softSkill.skill)} level={softSkill.level || -1} highlighted={activeFilters.softSkills.has(castSkill(softSkill.skill).displayName)} />
+					<Skill
+						skill={castSkill(softSkill.skill)}
+						level={softSkill.level || -1}
+						highlighted={activeFilters.softSkills.has(castSkill(softSkill.skill).displayName)}
+					/>
 				{/each}
 			</div>
 		{/if}
 	</article>
 </div>
 
-<style>
-	.summary :global(ul) {
-		list-style: disc;
-		padding-left: 1.25rem;
-	}
-	.summary :global(p) {
-		margin-bottom: 0.25rem;
-	}
-</style>

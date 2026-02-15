@@ -6,7 +6,7 @@
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { PencilSquare, Briefcase, User, AcademicCap, Heart } from 'svelte-heros-v2';
 	import { ExperienceType } from 'portfolio-common';
-	import { marked } from 'marked';
+	import Markdown from './Markdown.svelte';
 
 	const typeIcons: Record<ExperienceType, typeof Briefcase> = {
 		[ExperienceType.Professional]: Briefcase,
@@ -15,7 +15,11 @@
 		[ExperienceType.Leisure]: Heart
 	};
 
-	let { experience, canEdit = false, activeFilters = { softSkills: new Set<string>(), hardSkills: new Set<string>() } }: {
+	let {
+		experience,
+		canEdit = false,
+		activeFilters = { softSkills: new Set<string>(), hardSkills: new Set<string>() }
+	}: {
 		experience: ExperienceModel;
 		canEdit?: boolean;
 		activeFilters?: { softSkills: Set<string>; hardSkills: Set<string> };
@@ -36,7 +40,7 @@
 	{#if canEdit}
 		<button
 			class="btn-icon btn-icon-sm preset-tonal-primary absolute top-3 right-3"
-			onclick={() => showEditModal = true}
+			onclick={() => (showEditModal = true)}
 		>
 			<PencilSquare size="16" />
 			<span class="sr-only">Edit</span>
@@ -51,8 +55,8 @@
 			{/if}
 			<h2 class="text-xl font-bold">{experience.title}</h2>
 		</div>
-		<div class="summary text-sm opacity-90">
-			{@html marked(experience.summary)}
+		<div class="text-sm opacity-90">
+			<Markdown content={experience.summary} />
 		</div>
 		{#if experience.projects.length > 0}
 			<div class="space-y-3 pt-2">
@@ -64,18 +68,20 @@
 	</article>
 </div>
 
-<Dialog open={showEditModal} onOpenChange={(details) => showEditModal = details.open}>
+<Dialog open={showEditModal} onOpenChange={(details) => (showEditModal = details.open)}>
 	<Portal>
 		<Dialog.Backdrop class="fixed inset-0 z-50 bg-surface-50-950/50" />
 		<Dialog.Positioner class="fixed inset-0 z-50 flex justify-center items-center p-4">
-			<Dialog.Content class="card bg-surface-100-900 w-full max-w-xl shadow-xl max-h-[calc(100vh-2rem)] overflow-y-auto">
+			<Dialog.Content
+				class="card bg-surface-100-900 w-full max-w-xl shadow-xl max-h-[calc(100vh-2rem)] overflow-y-auto"
+			>
 				{#if showEditModal}
 					<ExperienceModal
 						existingExperience={experience}
 						title="Experience"
 						body="Edit an experience from your resume."
 						onResponse={onEditResponse}
-						onClose={() => showEditModal = false}
+						onClose={() => (showEditModal = false)}
 					/>
 				{/if}
 			</Dialog.Content>
@@ -83,12 +89,3 @@
 	</Portal>
 </Dialog>
 
-<style>
-	.summary :global(ul) {
-		list-style: disc;
-		padding-left: 1.25rem;
-	}
-	.summary :global(p) {
-		margin-bottom: 0.25rem;
-	}
-</style>
