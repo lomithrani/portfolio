@@ -20,11 +20,11 @@
 		<header>
 			<Header headerTitle={data.domain.headerTitle} headerSubtitle={data.domain.headerSubtitle} />
 		</header>
-		<div class="flex flex-1 overflow-hidden">
-			<aside class="w-auto h-full">
+		<div class="relative flex-1 overflow-hidden">
+			<aside>
 				<LeftBar domain={data.domain} />
 			</aside>
-			<main class="flex-1 overflow-auto scroll-smooth" id="page">
+			<main class="h-full overflow-auto scroll-smooth" id="page">
 				{@render children()}
 			</main>
 		</div>
