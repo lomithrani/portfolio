@@ -6,7 +6,7 @@
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { PencilSquare, Briefcase, User, AcademicCap, Heart } from 'svelte-heros-v2';
 	import { ExperienceType } from 'portfolio-common';
-	import { marked } from 'marked';
+	import Markdown from './Markdown.svelte';
 
 	const typeIcons: Record<ExperienceType, typeof Briefcase> = {
 		[ExperienceType.Professional]: Briefcase,
@@ -55,8 +55,8 @@
 			{/if}
 			<h2 class="text-xl font-bold">{experience.title}</h2>
 		</div>
-		<div class="summary text-sm opacity-90">
-			{@html marked(experience.summary)}
+		<div class="text-sm opacity-90">
+			<Markdown content={experience.summary} />
 		</div>
 		{#if experience.projects.length > 0}
 			<div class="space-y-3 pt-2">
@@ -89,12 +89,3 @@
 	</Portal>
 </Dialog>
 
-<style>
-	.summary :global(ul) {
-		list-style: disc;
-		padding-left: 1.25rem;
-	}
-	.summary :global(p) {
-		margin-bottom: 0.25rem;
-	}
-</style>

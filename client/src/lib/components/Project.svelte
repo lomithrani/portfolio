@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Project, Skill as SkillModel } from 'portfolio-api/models/database';
 	import Skill from './Skill.svelte';
-	import { marked } from 'marked';
+	import Markdown from './Markdown.svelte';
 	let {
 		project,
 		experienceId,
@@ -27,8 +27,8 @@
 	<article>
 		<h3 class="font-semibold" id={`${project.name}_${experienceId}`}>{project.name}</h3>
 		<p class="text-xs opacity-70">{formatDate(project.start)} — {formatDate(project.end)}</p>
-		<div class="summary text-sm mt-1">
-			{@html marked(project.summary ?? '')}
+		<div class="text-sm mt-1">
+			<Markdown content={project.summary ?? ''} />
 		</div>
 
 		{#if project.hardSkills.length > 0 || project.softSkills.length > 0}
@@ -52,12 +52,3 @@
 	</article>
 </div>
 
-<style>
-	.summary :global(ul) {
-		list-style: disc;
-		padding-left: 1.25rem;
-	}
-	.summary :global(p) {
-		margin-bottom: 0.25rem;
-	}
-</style>
