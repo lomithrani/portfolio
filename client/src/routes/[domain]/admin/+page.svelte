@@ -84,7 +84,7 @@
 			{#each SKELETON_THEMES as t (t)}
 				<button
 					type="button"
-					class="btn {theme === t ? 'preset-filled-primary-500' : 'preset-outlined'} text-xs"
+					class="btn {theme === t ? 'preset-filled-primary-700-300' : 'preset-outlined'} text-xs"
 					onclick={() => previewTheme(t)}
 				>
 					{t}
@@ -133,7 +133,7 @@
 	</section>
 
 	<div class="flex items-center gap-4">
-		<button type="button" class="btn preset-filled-primary-500" disabled={saving} onclick={save}>
+		<button type="button" class="btn preset-filled-primary-700-300" disabled={saving} onclick={save}>
 			{saving ? 'Saving...' : 'Save Settings'}
 		</button>
 		{#if message}
