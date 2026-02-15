@@ -67,6 +67,7 @@ export const experiences = new Elysia()
       summary: body.summary,
       type: body.type,
       company: body.company,
+      icon: body.icon,
       projects,
     });
 

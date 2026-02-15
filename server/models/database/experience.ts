@@ -13,6 +13,7 @@ export interface Experience extends Document {
   summary: string;
   summaryType: string;
   title: string;
+  icon?: string;
   projects: Project[]
 }
 
@@ -25,6 +26,7 @@ const experienceSchema = new Schema<Experience>({
   company: { type: Types.ObjectId, ref: 'Company' },
   summary: String,
   title: { type: String, required: true },
+  icon: String,
   projects: [projectSchema]
 });
 
@@ -36,6 +38,7 @@ experienceSchema.statics.fromRequest = async function (request: ExperienceReques
     summary: request.summary,
     type: request.type,
     company: request.company,
+    icon: request.icon,
   });
 
   for (const project of request.projects) {

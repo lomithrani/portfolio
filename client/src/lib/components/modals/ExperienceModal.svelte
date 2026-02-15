@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { portfolioApi } from '$services';
-	import { Plus } from 'svelte-heros-v2';
+	import { Plus, XMark } from 'svelte-heros-v2';
 	import { TagsInput, SegmentedControl } from '@skeletonlabs/skeleton-svelte';
 	import { ExperienceType } from 'portfolio-common';
 	import { newExperienceDataStore, type FormData } from '$lib/stores/newExperienceStore';
@@ -27,12 +27,38 @@
 
 	let isNewExperience = $derived(!existingExperience);
 
+	let iconError = $state('');
+
+	const handleIconUpload = (event: Event) => {
+		const input = event.target as HTMLInputElement;
+		const file = input.files?.[0];
+		iconError = '';
+		if (!file) return;
+
+		if (file.size > 16 * 1024) {
+			iconError = 'Icon must be 16KB or smaller';
+			input.value = '';
+			return;
+		}
+
+		const reader = new FileReader();
+		reader.onload = () => {
+			formData.icon = reader.result as string;
+		};
+		reader.readAsDataURL(file);
+	};
+
+	const removeIcon = () => {
+		formData.icon = undefined;
+	};
+
 	function getInitialFormData(): FormData {
 		if (existingExperience) {
 			const data: FormData = {
 				title: existingExperience.title,
 				type: existingExperience.type,
 				summary: existingExperience.summary,
+				icon: existingExperience.icon,
 				company: existingExperience.company as unknown as FormData['company'],
 				projects: existingExperience.projects.map((project) => {
 					const toDateStr = (v: unknown) =>
@@ -137,6 +163,29 @@
 			{/each}
 			<SegmentedControl.Indicator />
 		</SegmentedControl>
+
+		<label class="block">
+			<span>Icon</span>
+			<div class="flex items-center gap-3">
+				{#if formData.icon}
+					<img src={formData.icon} alt="Icon preview" class="size-8" />
+					<button type="button" class="btn btn-sm preset-tonal" onclick={removeIcon}>
+						<XMark size="16" />
+						<span>Remove</span>
+					</button>
+				{:else}
+					<input
+						type="file"
+						accept=".ico,image/x-icon"
+						class="text-sm"
+						onchange={handleIconUpload}
+					/>
+				{/if}
+			</div>
+			{#if iconError}
+				<span class="text-xs text-error-500">{iconError}</span>
+			{/if}
+		</label>
 
 		<textarea
 			class="w-full rounded border border-surface-300-700 bg-transparent p-2"

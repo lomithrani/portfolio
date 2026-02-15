@@ -4,11 +4,24 @@
 	import Project from './Project.svelte';
 	import ExperienceModal from './modals/ExperienceModal.svelte';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
-	import { PencilSquare } from 'svelte-heros-v2';
+	import { PencilSquare, Briefcase, User, AcademicCap, Heart } from 'svelte-heros-v2';
+	import { ExperienceType } from 'portfolio-common';
 	import { marked } from 'marked';
 
-	let { experience, canEdit = false }: { experience: ExperienceModel; canEdit?: boolean } = $props();
+	const typeIcons: Record<ExperienceType, typeof Briefcase> = {
+		[ExperienceType.Professional]: Briefcase,
+		[ExperienceType.Personal]: User,
+		[ExperienceType.Educational]: AcademicCap,
+		[ExperienceType.Leisure]: Heart
+	};
 
+	let { experience, canEdit = false, activeFilters = { softSkills: new Set<string>(), hardSkills: new Set<string>() } }: {
+		experience: ExperienceModel;
+		canEdit?: boolean;
+		activeFilters?: { softSkills: Set<string>; hardSkills: Set<string> };
+	} = $props();
+
+	let DefaultIcon = $derived(typeIcons[experience.type]);
 	let showEditModal = $state(false);
 
 	const onEditResponse = (response: ExperienceModel | undefined) => {
@@ -19,25 +32,35 @@
 	};
 </script>
 
-<div class="preset-outlined-surface-200-800 relative block rounded-lg p-2 m-1 text-left hover:brightness-110 transition-all">
+<div class="card preset-outlined-surface-200-800 relative rounded-lg p-4 text-left shadow-md">
 	{#if canEdit}
 		<button
-			class="absolute top-2 right-2 bg-blue-500 text-white p-1 rounded"
+			class="btn-icon btn-icon-sm preset-tonal-primary absolute top-3 right-3"
 			onclick={() => showEditModal = true}
 		>
-			<PencilSquare />
+			<PencilSquare size="16" />
+			<span class="sr-only">Edit</span>
 		</button>
 	{/if}
-	<article>
-		<h2 id={`${experience._id}`}>{experience.title}</h2>
-		<div class="summary">
+	<article class="space-y-3">
+		<div class="flex items-center gap-2">
+			{#if experience.icon}
+				<img src={experience.icon} alt={experience.type} class="size-6" />
+			{:else}
+				<DefaultIcon size="24" />
+			{/if}
+			<h2 class="text-xl font-bold">{experience.title}</h2>
+		</div>
+		<div class="summary text-sm opacity-90">
 			{@html marked(experience.summary)}
 		</div>
-		<ul>
-			{#each experience.projects as project}
-				<Project {project} experienceId={`${experience._id}`} />
-			{/each}
-		</ul>
+		{#if experience.projects.length > 0}
+			<div class="space-y-3 pt-2">
+				{#each experience.projects as project}
+					<Project {project} experienceId={`${experience._id}`} {activeFilters} />
+				{/each}
+			</div>
+		{/if}
 	</article>
 </div>
 
@@ -63,6 +86,9 @@
 <style>
 	.summary :global(ul) {
 		list-style: disc;
-		padding-left: 20px;
+		padding-left: 1.25rem;
+	}
+	.summary :global(p) {
+		margin-bottom: 0.25rem;
 	}
 </style>

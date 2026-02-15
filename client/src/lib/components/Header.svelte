@@ -20,7 +20,7 @@
 <AppBar>
 	<AppBar.Toolbar class="grid-cols-[auto_1fr_auto]">
 		<AppBar.Lead><Logo height="50" width="50" /></AppBar.Lead>
-		<AppBar.Headline>
+		<AppBar.Headline class="text-center">
 			{#if headerTitle}
 				<h1 class="text-3xl font-bold">
 					<span
@@ -54,7 +54,7 @@
 			{#if !ready}
 				...
 			{:else if ($authenticationStore.expires ?? 0) * 1000 > Date.now()}
-				<button type="button" onclick={logout} aria-label="Logout">Logout</button>
+				<button type="button" class="btn btn-sm preset-tonal" onclick={logout} aria-label="Logout">Logout</button>
 			{:else}
 				<Login />
 			{/if}

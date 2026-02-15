@@ -23,6 +23,7 @@ const defaultExperience: FormData = {
   summary: '',
   company: { name: '' },
   type: ExperienceType.Professional,
+  icon: undefined,
   projects: [],
 }
 
