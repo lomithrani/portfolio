@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { validateEnvironment } from './services/validation';
 import { app } from './app';
+import { logger } from './services/logger';
 
 export { app };
 export type { Portfolio } from './app';
@@ -19,4 +20,6 @@ app.listen({
   } : undefined
 })
 
-console.log(`Running at http://${app.server!.hostname}:${app.server!.port} CORS allowed: ${JSON.stringify(Bun.env.ALLOWED_DOMAINS)}`)
+logger.info(`Running at http://${app.server!.hostname}:${app.server!.port}`, {
+  allowedDomains: Bun.env.ALLOWED_DOMAINS ?? ''
+})

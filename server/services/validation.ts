@@ -6,4 +6,8 @@ export const validateEnvironment = () => {
       throw `${requiredEnvironmentVariable} not present`;
     }
   });
+
+  if (!Bun.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    console.warn('[WARN] OTEL_EXPORTER_OTLP_ENDPOINT not set — OpenTelemetry disabled');
+  }
 }
