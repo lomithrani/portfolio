@@ -2,9 +2,21 @@ import { Elysia } from 'elysia'
 import { experiences, googleAuth, domain, workflows } from './plugins';
 import { errors } from './errors';
 import { swagger } from '@elysiajs/swagger';
+import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation';
+import { logger } from './services/logger';
 
 export const createApp = () =>
   new Elysia()
+    .use(instrumentation)
+    .derive(() => ({ requestStart: performance.now() }))
+    .onAfterResponse(({ request, requestStart }) => {
+      const method = request.method
+      const route = new URL(request.url).pathname
+      const duration = performance.now() - requestStart
+      const attrs = { method, route }
+      httpRequestCounter.add(1, attrs)
+      httpRequestDuration.record(duration, attrs)
+    })
     .use(swagger({
       path: '/swagger',
       documentation: {
@@ -16,7 +28,7 @@ export const createApp = () =>
     }))
     .error(errors)
     .onError(({ code, error }) => {
-      console.error(error)
+      logger.error('message' in error ? error.message : String(error), { code })
 
       return 'message' in error ? error.message : String(error);
     })

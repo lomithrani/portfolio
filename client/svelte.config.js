@@ -19,6 +19,10 @@ const config = {
 			$components: path.resolve('./src/lib/components'),
 			$services: path.resolve('./src/services'),
 			$images: path.resolve('./src/lib/images'),
+		},
+		experimental: {
+			tracing: { server: true },
+			instrumentation: { server: true }
 		}
 	}
 };
