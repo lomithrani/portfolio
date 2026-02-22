@@ -30,6 +30,10 @@ if (isEnabled) {
 		processors: [new BatchLogRecordProcessor(new OTLPLogExporter())]
 	})
 	logs.setGlobalLoggerProvider(loggerProvider)
+
+	const shutdownLogs = () => loggerProvider.shutdown()
+	process.on('SIGTERM', shutdownLogs)
+	process.on('SIGINT', shutdownLogs)
 }
 
 // Elysia plugin — no-ops internally when no exporters are configured

@@ -7,7 +7,8 @@ import { env } from '$env/dynamic/public'
 // Wrap fetch to propagate W3C Trace Context (traceparent header) to the API.
 // This links SvelteKit SSR spans with Elysia server spans in the same trace.
 const tracedFetch = (input: RequestInfo | URL, init?: RequestInit) => {
-	const headers = new Headers(init?.headers)
+	const baseHeaders = input instanceof Request ? input.headers : undefined
+	const headers = new Headers(baseHeaders ?? init?.headers)
 	propagation.inject(context.active(), headers, {
 		set: (carrier, key, value) => carrier.set(key, value)
 	})

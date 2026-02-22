@@ -1,21 +1,10 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import dotenv from 'dotenv'
 
 // Vite dev server's SSR sandbox doesn't populate process.env from .env files.
 // The OTLP exporters read from process.env internally, so we must load them manually.
-try {
-	const envPath = resolve(process.cwd(), '.env')
-	const envFile = readFileSync(envPath, 'utf-8')
-	for (const line of envFile.split('\n')) {
-		const trimmed = line.trim()
-		if (!trimmed || trimmed.startsWith('#')) continue
-		const match = trimmed.match(/^([^=]+?)=["']?(.+?)["']?$/)
-		if (match && !process.env[match[1]]) {
-			process.env[match[1]] = match[2]
-		}
-	}
-} catch {
-	// .env file may not exist (e.g. in production where real env vars are set)
+// Only in dev — production sets real env vars on the process.
+if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+	dotenv.config()
 }
 
 import { NodeSDK } from '@opentelemetry/sdk-node'

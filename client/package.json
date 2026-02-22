@@ -59,6 +59,7 @@
     "@opentelemetry/sdk-node": "^0.212.0",
     "@opentelemetry/sdk-trace-node": "^2.5.1",
     "@opentelemetry/semantic-conventions": "^1.39.0",
+    "dotenv": "^17.3.1",
     "highlight.js": "^11.11.1",
     "isomorphic-dompurify": "^3.0.0-rc.2",
     "marked": "^17.0.2",
