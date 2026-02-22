@@ -4,7 +4,13 @@ import type { InferSchemaType } from "mongoose";
 export const userSchema = new Schema({
   name: { type: String },
   surname: { type: String },
-  email: { type: String, required: true, index: true, unique: true }
+  email: { type: String, required: true, index: true, unique: true },
+  googleCalendar: {
+    refreshToken: { type: String },
+    accessToken: { type: String },
+    tokenExpiry: { type: Date },
+    connectedAt: { type: Date }
+  }
 });
 
 export type User = InferSchemaType<typeof userSchema>;

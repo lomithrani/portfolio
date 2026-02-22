@@ -40,6 +40,24 @@ export class UserAlreadyOwnsDomainError extends Error {
   }
 }
 
+export class GoogleCalendarNotConnectedError extends Error {
+  constructor(public message: string) {
+    super(message)
+  }
+}
+
+export class AppointmentScheduleNotFoundError extends Error {
+  constructor(public message: string) {
+    super(message)
+  }
+}
+
+export class SlotUnavailableError extends Error {
+  constructor(public message: string) {
+    super(message)
+  }
+}
+
 export const errors = {
   DomainDoesNotExistError,
   MissingAuthCookieError,
@@ -47,5 +65,8 @@ export const errors = {
   SubMissingError,
   CannotSaveExperienceError,
   AuthExpiredError,
-  UserAlreadyOwnsDomainError
+  UserAlreadyOwnsDomainError,
+  GoogleCalendarNotConnectedError,
+  AppointmentScheduleNotFoundError,
+  SlotUnavailableError
 }
