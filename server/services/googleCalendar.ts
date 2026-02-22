@@ -4,11 +4,16 @@ import { User } from '../models/database'
 import { GoogleCalendarNotConnectedError } from '../errors'
 
 export function createOAuth2Client() {
-  return new google.auth.OAuth2(
-    Bun.env.GOOGLE_CLIENT_ID,
-    Bun.env.GOOGLE_CLIENT_SECRET,
-    'postmessage'
-  )
+  const clientId = Bun.env.GOOGLE_CLIENT_ID
+  const clientSecret = Bun.env.GOOGLE_CLIENT_SECRET
+
+  if (!clientId || !clientSecret) {
+    throw new GoogleCalendarNotConnectedError(
+      'Google Calendar is not configured (missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET)'
+    )
+  }
+
+  return new google.auth.OAuth2(clientId, clientSecret, 'postmessage')
 }
 
 export async function exchangeCodeForTokens(code: string) {

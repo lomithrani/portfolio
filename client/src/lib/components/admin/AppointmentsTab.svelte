@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { env } from '$env/dynamic/public';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { api } from '$services/portfolio';
 
-	const CLIENT_ID = '1075297079847-nkpqjg6shjj9lbcdofs6tlf21rprqr7q.apps.googleusercontent.com';
+	const CLIENT_ID = env.PUBLIC_GOOGLE_CLIENT_ID ?? '';
 	const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 
 	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

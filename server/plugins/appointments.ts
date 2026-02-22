@@ -13,7 +13,7 @@ import {
   deleteEvent,
   getFreeBusy
 } from '../services/googleCalendar'
-import { computeAvailableSlots } from '../services/slotComputation'
+import { computeAvailableSlots, wallClockToUTC } from '../services/slotComputation'
 
 const appointmentsAdmin = new Elysia()
   .use(corsConf())
@@ -29,14 +29,16 @@ const appointmentsAdmin = new Elysia()
   .post('/appointments/connect', async ({ body: { code }, userId }) => {
     const tokens = await exchangeCodeForTokens(code)
 
-    await User.findByIdAndUpdate(userId, {
-      $set: {
-        'googleCalendar.refreshToken': tokens.refresh_token,
-        'googleCalendar.accessToken': tokens.access_token,
-        'googleCalendar.tokenExpiry': tokens.expiry_date ? new Date(tokens.expiry_date) : null,
-        'googleCalendar.connectedAt': new Date()
-      }
-    })
+    const update: Record<string, unknown> = {
+      'googleCalendar.accessToken': tokens.access_token,
+      'googleCalendar.tokenExpiry': tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+      'googleCalendar.connectedAt': new Date()
+    }
+    if (tokens.refresh_token) {
+      update['googleCalendar.refreshToken'] = tokens.refresh_token
+    }
+
+    await User.findByIdAndUpdate(userId, { $set: update })
 
     return { connected: true }
   }, {
@@ -92,7 +94,9 @@ const appointmentsAdmin = new Elysia()
       summary: e.summary,
       start: e.start?.dateTime ?? e.start?.date,
       end: e.end?.dateTime ?? e.end?.date,
-      attendees: e.attendees?.map((a: calendar_v3.Schema$EventAttendee) => a.email) ?? [],
+      attendees: (e.attendees ?? [])
+        .map((a: calendar_v3.Schema$EventAttendee) => a.email)
+        .filter((email): email is string => Boolean(email)),
       meetLink: e.hangoutLink ?? null,
       htmlLink: e.htmlLink ?? null,
       calendarId: e.organizer?.email ?? null
@@ -143,9 +147,10 @@ const appointmentsPublic = new Elysia()
 
     const calendarId = schedule.calendarId ?? 'primary'
     const calendar = await getCalendarClient(schedule.user.toString())
-    const dayStart = `${date}T00:00:00`
-    const dayEnd = `${date}T23:59:59`
-    const busyBlocks = await getFreeBusy(calendar, calendarId, dayStart, dayEnd, schedule.timezone)
+    const tz = schedule.timezone
+    const dayStart = wallClockToUTC(date, '00:00', tz).toISOString()
+    const dayEnd = wallClockToUTC(date, '23:59', tz).toISOString()
+    const busyBlocks = await getFreeBusy(calendar, calendarId, dayStart, dayEnd, tz)
 
     const busy = busyBlocks.map((b) => ({
       start: b.start ?? '',

@@ -15,6 +15,37 @@ interface TimeWindow {
   endTime: string
 }
 
+/**
+ * Convert a wall-clock date + time in a given IANA timezone to a UTC Date.
+ * Uses Intl to derive the UTC offset without locale-dependent parsing.
+ */
+export function wallClockToUTC(dateStr: string, time: string, timezone: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+
+  // Build an approximate UTC date, then use Intl to find the real offset
+  const approxUtc = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0))
+
+  // Get the wall-clock parts as they'd appear in the target timezone
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  }).formatToParts(approxUtc)
+
+  const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? '0', 10)
+  const wallH = get('hour') === 24 ? 0 : get('hour')
+  const wallM = get('minute')
+
+  // Offset = (what the clock shows at approxUtc) - (what we want the clock to show)
+  const shownMinutes = wallH * 60 + wallM
+  const wantedMinutes = hour * 60 + minute
+  const offsetMinutes = shownMinutes - wantedMinutes
+
+  return new Date(approxUtc.getTime() - offsetMinutes * 60_000)
+}
+
 export function computeAvailableSlots(
   schedule: AppointmentSchedule,
   date: string,
@@ -31,8 +62,8 @@ export function computeAvailableSlots(
   const slots: Slot[] = []
 
   for (const window of windows) {
-    const windowStart = parseTimeToDate(date, window.startTime, schedule.timezone)
-    const windowEnd = parseTimeToDate(date, window.endTime, schedule.timezone)
+    const windowStart = wallClockToUTC(date, window.startTime, schedule.timezone)
+    const windowEnd = wallClockToUTC(date, window.endTime, schedule.timezone)
 
     let cursor = windowStart.getTime()
 
@@ -60,7 +91,7 @@ export function computeAvailableSlots(
 }
 
 function getDayOfWeek(dateStr: string, timezone: string): number {
-  const date = new Date(dateStr + 'T12:00:00')
+  const date = new Date(dateStr + 'T12:00:00Z')
   const formatted = date.toLocaleDateString('en-US', { weekday: 'long', timeZone: timezone })
   const dayMap: Record<string, number> = {
     Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
@@ -85,17 +116,6 @@ function getWindowsForDate(
   return (schedule.availability ?? [])
     .filter((a) => a.dayOfWeek === dayOfWeek)
     .map((a) => ({ startTime: a.startTime, endTime: a.endTime }))
-}
-
-function parseTimeToDate(dateStr: string, time: string, timezone: string): Date {
-  const dtString = `${dateStr}T${time}:00`
-  const localDate = new Date(dtString)
-
-  const utcFormatted = localDate.toLocaleString('en-US', { timeZone: timezone })
-  const utcDate = new Date(utcFormatted)
-  const offset = utcDate.getTime() - localDate.getTime()
-
-  return new Date(localDate.getTime() - offset)
 }
 
 function overlapsWithBusy(start: string, end: string, busyBlocks: BusyBlock[]): boolean {
