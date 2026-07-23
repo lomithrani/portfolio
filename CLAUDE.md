@@ -78,3 +78,18 @@ Defined in `svelte.config.js`: `$components` → `src/lib/components`, `$service
 ## Deployment
 
 Railway.app with nixpacks. CI runs on push/PR to `develop` and `main` branches. The `develop` branch is the main development branch.
+
+## Claude Code Setup (new device)
+
+Everything portable is committed to the repo:
+- **CLAUDE.md** (this file) — project instructions
+- **.mcp.json** — project MCP servers (railway, github, context7, svelte, chrome-devtools), auto-enabled via `.claude/settings.json`
+- **.claude/settings.json** — shared permissions allowlist; local overrides go in `.claude/settings.local.json` (gitignored)
+- **.claude/launch.json** — dev server configs for the browser preview (client:5173, server:3000)
+- **server/.env.example**, **client/.env.example** — templates for required env vars
+
+Manual steps on a new device:
+1. Install Bun and run `bun install` at the repo root.
+2. Copy the `.env.example` files to `.env` and fill in real values (never commit them).
+3. Export `GITHUB_PERSONAL_ACCESS_TOKEN` in your shell profile — the github MCP server in `.mcp.json` expands it from the environment.
+4. claude.ai connectors (Gmail, Calendar, Railway, etc.) are tied to the Anthropic account, not the repo — re-authorize them in claude.ai connector settings or via `/mcp` in an interactive session if needed.
