@@ -93,3 +93,20 @@ Manual steps on a new device:
 2. Copy the `.env.example` files to `.env` and fill in real values (never commit them).
 3. Export `GITHUB_PERSONAL_ACCESS_TOKEN` in your shell profile — the github MCP server in `.mcp.json` expands it from the environment.
 4. claude.ai connectors (Gmail, Calendar, Railway, etc.) are tied to the Anthropic account, not the repo — re-authorize them in claude.ai connector settings or via `/mcp` in an interactive session if needed.
+5. Install Graphify (see below) — the skill files in `.claude/skills/graphify/` are committed, but the CLI must be installed per device.
+
+## Graphify (knowledge graph)
+
+[Graphify](https://github.com/Graphify-Labs/graphify) builds a queryable knowledge graph of the repo (code via local tree-sitter AST parsing, docs via a semantic pass) exposed as a `/graphify` skill in Claude Code.
+
+**Install on a new device** (the CLI is machine-level, the skill is committed):
+
+```bash
+winget install astral-sh.uv        # Windows; Mac: brew install uv
+uv tool install graphifyy          # NOTE: package is 'graphifyy' (double y) — other graphify* packages on PyPI are typosquats
+graphify install --project         # registers the skill into .claude/skills/graphify/ (committed to this repo)
+```
+
+**Usage:** type `/graphify .` in Claude Code to (re)build the graph, then prefer `graphify query "<question>"`, `graphify path A B` and `graphify explain "<concept>"` over grepping when exploring the codebase.
+
+**Outputs** land in `graphify-out/` (graph.html, graph.json, GRAPH_REPORT.md) — gitignored, regenerate locally with `/graphify .`.

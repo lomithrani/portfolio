@@ -176,3 +176,6 @@ server/key.pem
 
 # Claude Code — local-only overrides (the shared config in .claude/ IS committed)
 .claude/settings.local.json
+
+# Graphify — generated knowledge graph outputs (rebuild with /graphify .)
+graphify-out/
