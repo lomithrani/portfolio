@@ -9,11 +9,13 @@ export const createApp = () =>
   new Elysia()
     .use(instrumentation)
     .derive(() => ({ requestStart: performance.now() }))
-    .onAfterResponse(({ request, requestStart }) => {
+    .onAfterResponse(({ request, requestStart, route }) => {
       const method = request.method
-      const route = new URL(request.url).pathname
       const duration = performance.now() - requestStart
-      const attrs = { method, route }
+      // Matched route pattern only (e.g. /experiences/:id) — raw pathnames are
+      // unbounded (scanner bots) and each unique value is a metric series kept
+      // in memory forever
+      const attrs = { method, route: route || 'unmatched' }
       httpRequestCounter.add(1, attrs)
       httpRequestDuration.record(duration, attrs)
     })
