@@ -4,7 +4,7 @@ import Elysia from "elysia";
 export const corsConf = () => new Elysia()
   .use(cors({
     credentials: true,
-    methods: ['POST', 'GET', 'PUT', 'OPTIONS'],
+    methods: ['POST', 'GET', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
     origin: (request: Request): boolean => {
       const origin = request.headers.get('origin');

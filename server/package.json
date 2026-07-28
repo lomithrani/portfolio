@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test tests/",
-    "dev": "bun run --inspect --watch index.ts",
+    "dev": "bun run --watch index.ts",
     "start": "bun run index.ts",
     "kill": "sudo lsof -t -i:3000 | xargs sudo kill -9"
   },
@@ -25,6 +25,7 @@
     "@opentelemetry/sdk-node": "^0.212.0",
     "@opentelemetry/sdk-trace-node": "^2.5.1",
     "@opentelemetry/semantic-conventions": "^1.39.0",
+    "googleapis": "^171.4.0",
     "mongoose": "^9.2.1",
     "portfolio-common": "workspace:common"
   },

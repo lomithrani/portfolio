@@ -1,5 +1,5 @@
 import { Elysia } from 'elysia'
-import { experiences, googleAuth, domain, workflows } from './plugins';
+import { experiences, googleAuth, domain, workflows, appointments } from './plugins';
 import { errors } from './errors';
 import { swagger } from '@elysiajs/swagger';
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation';
@@ -39,6 +39,7 @@ export const createApp = () =>
     .use(domain)
     .use(experiences)
     .use(workflows)
+    .use(appointments)
 
 export type Portfolio = typeof app;
 
