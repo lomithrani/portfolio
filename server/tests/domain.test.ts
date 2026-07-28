@@ -76,12 +76,12 @@ describe('GET /domain/:name', () => {
     expect(response.experiences[0].projects[0].hardSkills[0].skill.displayName).toBe('TypeScript');
   });
 
-  it('should return error for non-existent domain', async () => {
+  it('should return 404 for non-existent domain', async () => {
     Domain.findOne = mock(() => Promise.resolve(null)) as any;
 
     const result = await makeRequest(app, '/domain/nonexistent');
 
-    expect(result.status).not.toBe(200);
+    expect(result.status).toBe(404);
   });
 
   it('should return domain with empty experiences', async () => {
@@ -103,6 +103,14 @@ describe('GET /domain/:name', () => {
   });
 });
 
+describe('unmatched routes', () => {
+  it('should return 404 for routes that do not exist', async () => {
+    const result = await makeRequest(app, '/wp-admin/setup.php');
+
+    expect(result.status).toBe(404);
+  });
+});
+
 describe('PUT /domain/:name', () => {
   beforeEach(() => {
     User.findOneAndUpdate = mock(() => Promise.resolve(testUser)) as any;
@@ -112,7 +120,7 @@ describe('PUT /domain/:name', () => {
   it('should reject requests without auth', async () => {
     const result = await putJson(app, `/domain/${TEST_DOMAIN_NAME}`, { theme: 'crimson' });
 
-    expect(result.status).not.toBe(200);
+    expect(result.status).toBe(401);
   });
 
   it('should update domain settings when user is admin', async () => {
@@ -186,7 +194,7 @@ describe('PUT /domain/:name', () => {
     expect(result.status).not.toBe(200);
   });
 
-  it('should return error for non-existent domain', async () => {
+  it('should return 404 for non-existent domain', async () => {
     const cookie = await loginAndGetCookie(app);
 
     Domain.findOne = mock(() => Promise.resolve(null)) as any;
@@ -198,7 +206,7 @@ describe('PUT /domain/:name', () => {
       cookie
     );
 
-    expect(result.status).not.toBe(200);
+    expect(result.status).toBe(404);
   });
 
   it('should allow partial updates', async () => {
