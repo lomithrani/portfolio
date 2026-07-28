@@ -78,3 +78,45 @@ Defined in `svelte.config.js`: `$components` → `src/lib/components`, `$service
 ## Deployment
 
 Railway.app with nixpacks. CI runs on push/PR to `develop` and `main` branches. The `develop` branch is the main development branch.
+
+## Claude Code Setup (new device)
+
+Everything portable is committed to the repo:
+- **CLAUDE.md** (this file) — project instructions
+- **.mcp.json** — project MCP servers (railway, github, context7, svelte, chrome-devtools), auto-enabled via `.claude/settings.json`
+- **.claude/settings.json** — shared permissions allowlist; local overrides go in `.claude/settings.local.json` (gitignored)
+- **.claude/launch.json** — dev server configs for the browser preview (client:5173, server:3000)
+- **server/.env.example**, **client/.env.example** — templates for required env vars
+
+Manual steps on a new device:
+1. Install Bun and run `bun install` at the repo root.
+2. Copy the `.env.example` files to `.env` and fill in real values (never commit them).
+3. Export `GITHUB_PERSONAL_ACCESS_TOKEN` in your shell profile — the github MCP server in `.mcp.json` expands it from the environment.
+4. claude.ai connectors (Gmail, Calendar, Railway, etc.) are tied to the Anthropic account, not the repo — re-authorize them in claude.ai connector settings or via `/mcp` in an interactive session if needed.
+5. Install Graphify (see below) — the skill files in `.claude/skills/graphify/` are committed, but the CLI must be installed per device.
+
+## Graphify (knowledge graph)
+
+[Graphify](https://github.com/Graphify-Labs/graphify) builds a queryable knowledge graph of the repo (code via local tree-sitter AST parsing, docs via a semantic pass) exposed as a `/graphify` skill in Claude Code.
+
+**Install on a new device** (the CLI is machine-level, the skill is committed):
+
+```bash
+winget install astral-sh.uv        # Windows; Mac: brew install uv
+uv tool install graphifyy          # NOTE: package is 'graphifyy' (double y) — other graphify* packages on PyPI are typosquats
+graphify install --project         # registers the skill into .claude/skills/graphify/ (committed to this repo)
+```
+
+**Usage:** type `/graphify .` in Claude Code to (re)build the graph, then prefer `graphify query "<question>"`, `graphify path A B` and `graphify explain "<concept>"` over grepping when exploring the codebase.
+
+**Outputs** land in `graphify-out/` (graph.html, graph.json, GRAPH_REPORT.md) — gitignored, regenerate locally with `/graphify .`.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
