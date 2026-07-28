@@ -1,28 +1,50 @@
 {
-	"enableAllProjectMcpServers": true,
-	"permissions": {
-		"allow": [
-			"Bash(bun install:*)",
-			"Bash(bun run:*)",
-			"Bash(bun test:*)",
-			"Bash(bun add:*)",
-			"Bash(bunx:*)",
-			"Bash(git status:*)",
-			"Bash(git diff:*)",
-			"Bash(git log:*)",
-			"Bash(git add:*)",
-			"Bash(git commit:*)",
-			"Bash(git checkout:*)",
-			"Bash(git branch:*)",
-			"Bash(git push:*)",
-			"Bash(gh pr:*)",
-			"Bash(gh issue:*)",
-			"Bash(gh run:*)"
-		],
-		"deny": [
-			"Read(./server/.env)",
-			"Read(./client/.env)",
-			"Read(./.env)"
-		]
-	}
+  "enableAllProjectMcpServers": true,
+  "permissions": {
+    "allow": [
+      "Bash(bun install:*)",
+      "Bash(bun run:*)",
+      "Bash(bun test:*)",
+      "Bash(bun add:*)",
+      "Bash(bunx:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh run:*)"
+    ],
+    "deny": [
+      "Read(./server/.env)",
+      "Read(./client/.env)",
+      "Read(./.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "graphify hook-guard search"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "graphify hook-guard read"
+          }
+        ]
+      }
+    ]
+  }
 }
