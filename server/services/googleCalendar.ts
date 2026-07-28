@@ -108,12 +108,14 @@ export async function createEvent(
     start: { dateTime: params.startTime, timeZone: params.timezone },
     end: { dateTime: params.endTime, timeZone: params.timezone },
     attendees: params.attendeeEmail ? [{ email: params.attendeeEmail }] : undefined,
-    conferenceData: params.addGoogleMeet ? {
-      createRequest: {
-        requestId: crypto.randomUUID(),
-        conferenceSolutionKey: { type: 'hangoutsMeet' }
-      }
-    } : undefined,
+    conferenceData: params.addGoogleMeet
+      ? {
+          createRequest: {
+            requestId: crypto.randomUUID(),
+            conferenceSolutionKey: { type: 'hangoutsMeet' }
+          }
+        }
+      : undefined,
     extendedProperties: {
       private: { portfolio_appointment: 'true' }
     }
@@ -129,7 +131,11 @@ export async function createEvent(
   return res.data
 }
 
-export async function listUpcomingEvents(calendar: calendar_v3.Calendar, calendarId: string, maxResults = 20) {
+export async function listUpcomingEvents(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  maxResults = 20
+) {
   const res = await calendar.events.list({
     calendarId,
     timeMin: new Date().toISOString(),
@@ -142,7 +148,24 @@ export async function listUpcomingEvents(calendar: calendar_v3.Calendar, calenda
   return res.data.items ?? []
 }
 
-export async function deleteEvent(calendar: calendar_v3.Calendar, calendarId: string, eventId: string) {
+export async function getEvent(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  eventId: string
+) {
+  try {
+    const res = await calendar.events.get({ calendarId, eventId })
+    return res.data
+  } catch {
+    return null
+  }
+}
+
+export async function deleteEvent(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  eventId: string
+) {
   await calendar.events.delete({
     calendarId,
     eventId,

@@ -29,21 +29,37 @@ export function wallClockToUTC(dateStr: string, time: string, timezone: string):
   // Get the wall-clock parts as they'd appear in the target timezone
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
   }).formatToParts(approxUtc)
 
   const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? '0', 10)
   const wallH = get('hour') === 24 ? 0 : get('hour')
   const wallM = get('minute')
 
-  // Offset = (what the clock shows at approxUtc) - (what we want the clock to show)
-  const shownMinutes = wallH * 60 + wallM
-  const wantedMinutes = hour * 60 + minute
-  const offsetMinutes = shownMinutes - wantedMinutes
+  // Offset = (what the clock shows at approxUtc) - (what we want the clock to show),
+  // compared as full timestamps so a shown time that crosses midnight (e.g. 23:59
+  // Paris -> 01:59 next day) yields the true UTC offset instead of ~-22h
+  const shownUtc = Date.UTC(get('year'), get('month') - 1, get('day'), wallH, wallM)
+  const wantedUtc = Date.UTC(year, month - 1, day, hour, minute)
+  const offsetMs = shownUtc - wantedUtc
 
-  return new Date(approxUtc.getTime() - offsetMinutes * 60_000)
+  return new Date(approxUtc.getTime() - offsetMs)
+}
+
+/** The YYYY-MM-DD wall-clock date of an instant in a given IANA timezone. */
+export function wallDateInTimezone(instant: Date, timezone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(instant)
 }
 
 export function computeAvailableSlots(
@@ -92,10 +108,18 @@ export function computeAvailableSlots(
 
 function getDayOfWeek(dateStr: string, timezone: string): number {
   const date = new Date(dateStr + 'T12:00:00Z')
-  const formatted = date.toLocaleDateString('en-US', { weekday: 'long', timeZone: timezone })
+  const formatted = date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    timeZone: timezone
+  })
   const dayMap: Record<string, number> = {
-    Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
-    Thursday: 4, Friday: 5, Saturday: 6
+    Sunday: 0,
+    Monday: 1,
+    Tuesday: 2,
+    Wednesday: 3,
+    Thursday: 4,
+    Friday: 5,
+    Saturday: 6
   }
   return dayMap[formatted] ?? 0
 }

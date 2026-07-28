@@ -56,18 +56,28 @@ export class UserAlreadyOwnsDomainError extends Error {
 }
 
 export class GoogleCalendarNotConnectedError extends Error {
+  status = 409
   constructor(public message: string) {
     super(message)
   }
 }
 
 export class AppointmentScheduleNotFoundError extends Error {
+  status = 404
   constructor(public message: string) {
     super(message)
   }
 }
 
 export class SlotUnavailableError extends Error {
+  status = 409
+  constructor(public message: string) {
+    super(message)
+  }
+}
+
+export class AppointmentEventNotFoundError extends Error {
+  status = 404
   constructor(public message: string) {
     super(message)
   }
@@ -84,5 +94,6 @@ export const errors = {
   UserAlreadyOwnsDomainError,
   GoogleCalendarNotConnectedError,
   AppointmentScheduleNotFoundError,
-  SlotUnavailableError
+  SlotUnavailableError,
+  AppointmentEventNotFoundError
 }
