@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
-	import { portfolioApi } from '$services';
-	import { errorStatus } from '$services/apiErrors';
-	import { clearAuthentication } from '$services/authentication';
-	import { requestGoogleAuthorizationCode } from '$services/googleIdentity';
+	import { portfolioApi } from '#services';
+	import { errorStatus } from '#services/apiErrors.ts';
+	import { clearAuthentication } from '#services/authentication.ts';
+	import { requestGoogleAuthorizationCode } from '#services/googleIdentity.ts';
 
 	const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
