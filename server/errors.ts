@@ -1,67 +1,84 @@
-// `status` is picked up by Elysia to set the HTTP status of the error response
-export class DomainDoesNotExistError extends Error {
-  status = 404
-  constructor(public message: string) {
-    super(message)
-  }
-}
-
-export class DomainAlreadyExistsError extends Error {
-  status = 409
-  constructor(public message: string) {
-    super(message)
-  }
-}
-
-export class MissingAuthCookieError extends Error {
-  status = 401
-  constructor(public message: string) {
-    super(message)
-  }
-}
-
-export class CouldntVerifyJwtError extends Error {
-  status = 401
-  constructor(public message: string) {
-    super(message)
-  }
-}
-
-export class SubMissingError extends Error {
-  status = 401
-  constructor(public message: string) {
-    super(message)
-  }
-}
-
-export class CannotSaveExperienceError extends Error {
+// Errors that map to an HTTP status. `status` is picked up by Elysia and by the
+// app's onError handler (services/errorHandler.ts); for 4xx statuses the
+// message is sent to the client as a plain-text body, so keep it free of
+// internal details. Anything that is not an HttpError becomes a generic 500.
+export class HttpError extends Error {
   status = 500
   constructor(public message: string) {
     super(message)
+    this.name = new.target.name
   }
 }
 
-export class AuthExpiredError extends Error {
+export class BadRequestError extends HttpError {
+  status = 400
+}
+
+export class InvalidDomainNameError extends HttpError {
+  status = 400
+}
+
+export class InvalidGoogleTokenError extends HttpError {
   status = 401
-  constructor(public message: string) {
-    super(message)
-  }
 }
 
-export class UserAlreadyOwnsDomainError extends Error {
+export class MissingAuthCookieError extends HttpError {
+  status = 401
+}
+
+export class CouldntVerifyJwtError extends HttpError {
+  status = 401
+}
+
+export class SubMissingError extends HttpError {
+  status = 401
+}
+
+export class AuthExpiredError extends HttpError {
+  status = 401
+}
+
+export class ForbiddenError extends HttpError {
+  status = 403
+}
+
+export class ResourceNotFoundError extends HttpError {
+  status = 404
+}
+
+export class DomainDoesNotExistError extends HttpError {
+  status = 404
+}
+
+export class ConflictError extends HttpError {
   status = 409
-  constructor(public message: string) {
-    super(message)
-  }
+}
+
+export class DomainAlreadyExistsError extends HttpError {
+  status = 409
+}
+
+export class UserAlreadyOwnsDomainError extends HttpError {
+  status = 409
+}
+
+export class CannotSaveExperienceError extends HttpError {
+  status = 500
 }
 
 export const errors = {
-  DomainDoesNotExistError,
-  DomainAlreadyExistsError,
+  BadRequestError,
+  InvalidDomainNameError,
+  InvalidGoogleTokenError,
   MissingAuthCookieError,
   CouldntVerifyJwtError,
   SubMissingError,
-  CannotSaveExperienceError,
   AuthExpiredError,
-  UserAlreadyOwnsDomainError
+  ForbiddenError,
+  ResourceNotFoundError,
+  DomainDoesNotExistError,
+  ConflictError,
+  DomainAlreadyExistsError,
+  UserAlreadyOwnsDomainError,
+  CannotSaveExperienceError
 }
