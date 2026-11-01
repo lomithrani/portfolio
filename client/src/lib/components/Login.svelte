@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { login } from '$services/authentication';
-	import { setupGoogleIdentity } from '$services/googleIdentity';
+	import { login } from '#services/authentication.ts';
+	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 
 	let buttonContainer: HTMLDivElement | undefined = $state();
 	let errorMessage = $state('');

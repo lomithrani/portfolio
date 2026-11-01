@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { beforeNavigate } from '$app/navigation';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
-	import ClaimDomainModal from '$components/modals/ClaimDomainModal.svelte';
+	import ClaimDomainModal from '#components/modals/ClaimDomainModal.svelte';
 
 	let { domainName }: { domainName: string } = $props();
 

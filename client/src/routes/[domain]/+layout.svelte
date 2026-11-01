@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../../app.css';
-	import Header from '$components/Header.svelte';
-	import LeftBar from '$components/LeftBar.svelte';
+	import Header from '#components/Header.svelte';
+	import LeftBar from '#components/LeftBar.svelte';
 	import type { LayoutData } from './$types';
 	import type { Snippet } from 'svelte';
 	import { browser } from '$app/env';

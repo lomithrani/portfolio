@@ -43,6 +43,13 @@
 		"vitest": "^5.0.5"
 	},
 	"type": "module",
+	"imports": {
+		"#lib/*": "./src/lib/*",
+		"#components/*": "./src/lib/components/*",
+		"#images/*": "./src/lib/images/*",
+		"#services": "./src/services/index.ts",
+		"#services/*": "./src/services/*"
+	},
 	"dependencies": {
 		"@elysiajs/eden": "^1.4.9",
 		"@opentelemetry/api": "~1.9.1",

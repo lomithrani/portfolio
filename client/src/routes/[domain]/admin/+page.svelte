@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { Tabs } from '@skeletonlabs/skeleton-svelte';
-	import CosmeticSettings from '$components/admin/CosmeticSettings.svelte';
-	import WorkflowsTab from '$components/admin/WorkflowsTab.svelte';
-	import AppointmentsTab from '$components/admin/AppointmentsTab.svelte';
-	import { authenticationStore, sessionCheckedStore } from '$services/stores';
-	import { isDomainAdmin } from '$services/authentication';
+	import CosmeticSettings from '#components/admin/CosmeticSettings.svelte';
+	import WorkflowsTab from '#components/admin/WorkflowsTab.svelte';
+	import AppointmentsTab from '#components/admin/AppointmentsTab.svelte';
+	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
+	import { isDomainAdmin } from '#services/authentication.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

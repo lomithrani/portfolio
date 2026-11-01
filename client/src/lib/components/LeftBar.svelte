@@ -10,8 +10,8 @@
 		Sun,
 		Moon
 	} from 'svelte-heros-v2';
-	import { authenticationStore, sessionCheckedStore } from '$services/stores';
-	import { isDomainAdmin } from '$services/authentication';
+	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
+	import { isDomainAdmin } from '#services/authentication.ts';
 	import { browser } from '$app/env';
 
 	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } =

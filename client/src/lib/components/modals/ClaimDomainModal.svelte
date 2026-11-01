@@ -2,10 +2,10 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { login } from '$services/authentication';
-	import { portfolioApi } from '$services';
-	import { setupGoogleIdentity } from '$services/googleIdentity';
-	import { errorStatus } from '$services/apiErrors';
+	import { login } from '#services/authentication.ts';
+	import { portfolioApi } from '#services';
+	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
+	import { errorStatus } from '#services/apiErrors.ts';
 
 	let { domainName, onClose }: { domainName: string; onClose: () => void } = $props();
 

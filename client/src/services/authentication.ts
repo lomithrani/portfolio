@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { portfolioApi } from '$services';
+import { portfolioApi } from '#services';
 import {
 	authenticationStore,
 	sessionCheckedStore,
