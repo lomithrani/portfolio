@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, errors as joseErrors, jwtVerify } from 'jose';
+import { createRemoteJWKSet, decodeProtectedHeader, errors as joseErrors, jwtVerify } from 'jose';
 import type { JWTVerifyGetKey } from 'jose';
 import { env } from '../env';
 import { InvalidGoogleTokenError } from '../errors';
@@ -32,6 +32,7 @@ const INVALID_TOKEN_ERRORS = [
   joseErrors.JWTExpired,
   joseErrors.JWSSignatureVerificationFailed,
   joseErrors.JWKSNoMatchingKey,
+  joseErrors.JWKSMultipleMatchingKeys,
   joseErrors.JOSEAlgNotAllowed,
   joseErrors.JOSENotSupported
 ];
@@ -39,10 +40,25 @@ const INVALID_TOKEN_ERRORS = [
 const isInvalidTokenError = (error: unknown) =>
   INVALID_TOKEN_ERRORS.some((ErrorClass) => error instanceof ErrorClass);
 
+/** True when the token names its signing key, as Google's always do */
+const hasKeyId = (idToken: string) => {
+  try {
+    const { kid } = decodeProtectedHeader(idToken);
+    return typeof kid === 'string' && kid.length > 0;
+  } catch {
+    // Not a JWS at all
+    return false;
+  }
+};
+
 export const createGoogleIdTokenVerifier = ({ audience, keySet }: GoogleIdTokenVerifierOptions) => {
   let keys = keySet;
 
   return async (idToken: string): Promise<GoogleIdentity> => {
+    // Without a kid, jose cannot choose between Google's keys while it
+    // publishes two (key rotation) and throws JWKSMultipleMatchingKeys
+    if (!hasKeyId(idToken)) throw new InvalidGoogleTokenError('Invalid Google token');
+
     keys ??= createRemoteJWKSet(GOOGLE_JWKS_URL);
 
     let payload;

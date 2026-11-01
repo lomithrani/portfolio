@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
-import { decodeJwt, errors as joseErrors, generateKeyPair } from 'jose';
+import { createLocalJWKSet, decodeJwt, errors as joseErrors, exportJWK, generateKeyPair } from 'jose';
 import { User } from '../models/database';
 import {
   parseCookie,
@@ -79,6 +79,24 @@ describe('Google ID token verification', () => {
       keySet: () => Promise.reject(new joseErrors.JWKSNoMatchingKey())
     });
     await expect(verifier(await signGoogleIdToken())).rejects.toBeInstanceOf(InvalidGoogleTokenError);
+  });
+
+  it('rejects a token that several published keys match', async () => {
+    const verifier = createGoogleIdTokenVerifier({
+      audience: env.GOOGLE_CLIENT_ID,
+      keySet: () => Promise.reject(new joseErrors.JWKSMultipleMatchingKeys())
+    });
+    await expect(verifier(await signGoogleIdToken())).rejects.toBeInstanceOf(InvalidGoogleTokenError);
+  });
+
+  it('rejects a token without a key id before looking up Google\'s keys', async () => {
+    const keySet = mock(() => Promise.reject(new Error('must not be called')));
+    const verifier = createGoogleIdTokenVerifier({ audience: env.GOOGLE_CLIENT_ID, keySet });
+
+    await expect(verifier(await signGoogleIdToken({ kid: null }))).rejects.toBeInstanceOf(
+      InvalidGoogleTokenError
+    );
+    expect(keySet).not.toHaveBeenCalled();
   });
 
   // What jose's remote key set throws when Google's certs endpoint fails
@@ -180,6 +198,26 @@ describe('POST /login', () => {
 
   it('returns 401 for a malformed token', async () => {
     await expectRejectedLogin(await postJson(app, '/login', { token: 'invalid-token' }));
+  });
+
+  it('returns 401, not 500, for a token without a key id while Google publishes two keys', async () => {
+    // Shaped like Google's JWKS during key rotation: two RS256 signing keys
+    const keys = await Promise.all(
+      ['rotation-old', 'rotation-new'].map(async (kid) => {
+        const { publicKey } = await generateKeyPair('RS256');
+        return { ...(await exportJWK(publicKey)), kid, alg: 'RS256', use: 'sig' };
+      })
+    );
+    spyOn(google, 'verifyIdToken').mockImplementation(
+      createGoogleIdTokenVerifier({ audience: env.GOOGLE_CLIENT_ID, keySet: createLocalJWKSet({ keys }) })
+    );
+    const { privateKey } = await generateKeyPair('RS256');
+
+    const result = await postJson(app, '/login', {
+      token: await signGoogleIdToken({ kid: null, privateKey })
+    });
+
+    await expectRejectedLogin(result);
   });
 
   it('returns 422 when token is missing from body', async () => {

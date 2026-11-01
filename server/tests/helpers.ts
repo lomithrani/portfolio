@@ -114,6 +114,8 @@ export interface GoogleTokenOptions {
   issuer?: string;
   expiresIn?: string | number;
   privateKey?: CryptoKey;
+  /** Key id in the protected header; null leaves it out */
+  kid?: string | null;
 }
 
 /** Signs an ID token shaped like Google's (claims can be overridden) */
@@ -122,7 +124,8 @@ export const signGoogleIdToken = async ({
   audience = env.GOOGLE_CLIENT_ID,
   issuer = 'https://accounts.google.com',
   expiresIn = '1h',
-  privateKey = googleKeys.privateKey
+  privateKey = googleKeys.privateKey,
+  kid = 'test-key'
 }: GoogleTokenOptions = {}) =>
   new SignJWT({
     email: 'test@gmail.com',
@@ -131,7 +134,7 @@ export const signGoogleIdToken = async ({
     azp: audience,
     ...claims
   } as JWTPayload)
-    .setProtectedHeader({ alg: 'RS256', kid: 'test-key', typ: 'JWT' })
+    .setProtectedHeader({ alg: 'RS256', ...(kid !== null && { kid }), typ: 'JWT' })
     .setSubject((claims.sub as string | undefined) ?? TEST_GOOGLE_SUB)
     .setIssuer(issuer)
     .setAudience(audience)
