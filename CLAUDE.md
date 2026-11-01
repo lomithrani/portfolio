@@ -22,7 +22,7 @@ All from the repo root (`bun run --cwd <workspace> <script>` runs a workspace sc
 ### Development
 ```bash
 bun install                       # Install all workspaces (CI and Railway use --frozen-lockfile)
-bun run db:up                     # Local MongoDB 8 via Docker (compose.yaml), waits until healthy
+bun run db:up                     # Local MongoDB 9 via Docker (compose.yaml), waits until healthy
 bun run db:seed                   # Seed owner user + 'louis.gentil' domain (idempotent)
 bun run dev                       # API (port 3000, watch) + SvelteKit dev server (port 5173) in parallel
 bun run dev:server                # API only
@@ -101,7 +101,7 @@ Railway deploys the `develop` branch as two services from the repo root, both bu
 
 The Railway layout is **not verified yet**: the runbook assumes project `personal-api`, environment `production` hosts both services, but the web service may still be in an older project. Confirm with `railway list` / `railway status` / `railway environment config` before relying on these names. Before merging to `develop`, check both services use the Railpack builder with an empty Railway Config File (this branch deletes `nixpacks.toml`); see "Before merging to `develop`" in the runbook.
 
-CI (`.github/workflows/main.yml`) runs on push/PR to `develop` and `main`: quality (lint, svelte-check, server tsc, client build), tests (server + client unit, MongoDB 8 service) and Playwright e2e. The `develop` branch is the main development branch.
+CI (`.github/workflows/main.yml`) runs on push/PR to `develop` and `main`: quality (lint, svelte-check, server tsc, client build), tests (server + client unit, MongoDB 9 service) and Playwright e2e. The `develop` branch is the main development branch.
 
 ## Claude Code Setup (new device)
 

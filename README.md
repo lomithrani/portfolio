@@ -51,7 +51,7 @@ Use Bun for everything (`bun`, `bunx`), not npm or npx.
 bun install
 cp server/.env.example server/.env
 cp client/.env.example client/.env
-bun run db:up      # MongoDB 8 in Docker on 127.0.0.1:27017, waits until healthy
+bun run db:up      # MongoDB 9 in Docker on 127.0.0.1:27017, waits until healthy
 bun run db:seed    # owner user + the 'louis.gentil' domain (safe to re-run)
 bun run dev        # API on http://localhost:3000 and web app on http://localhost:5173
 ```
@@ -113,7 +113,7 @@ bun run --cwd client test:e2e
 ```
 
 CI (`.github/workflows/main.yml`) runs on pushes and pull requests to `develop` and `main`, in
-three jobs: lint, type-check and build; API and web unit tests against MongoDB 8; Playwright end
+three jobs: lint, type-check and build; API and web unit tests against MongoDB 9; Playwright end
 to end.
 
 ## Deployment

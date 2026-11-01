@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: 15
     services:
       mongodb:
-        image: mongo:8
+        image: mongo:9
         ports:
           - 27017:27017
         options: >-
@@ -79,7 +79,7 @@ jobs:
     timeout-minutes: 20
     services:
       mongodb:
-        image: mongo:8
+        image: mongo:9
         ports:
           - 27017:27017
         options: >-

@@ -238,8 +238,10 @@ the deploy.
 
 - The server uses Mongoose 9.11 with the MongoDB Node.js driver 7.7, which supports MongoDB
   server **4.4 to 9.0**.
-- Local development (`compose.yaml`) and CI use the `mongo:8` image. Check the production version
-  and keep those on the same major:
+- Local development (`compose.yaml`) and CI use the `mongo:9` image. Not `mongo:8`: that tag is
+  MongoDB 8.3, which refuses to start on Linux kernel 6.19+ (SERVER-121912) — the kernel of
+  GitHub's `ubuntu-latest` (Ubuntu 26.04) runners and of current desktop distributions. Check the
+  production version and keep those on the same major when possible:
 
   ```bash
   mongosh "<production MONGO_URL>" --quiet --eval 'db.version()'

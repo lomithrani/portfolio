@@ -8,11 +8,12 @@
 # MONGO_PORT changes the host port (default 27017), e.g. `MONGO_PORT=27018 bun run db:up`;
 # then use mongodb://127.0.0.1:27018/portfolio as MONGO_URL.
 # Keep the image's major version in sync with production MongoDB and with CI (.github/workflows).
+# mongo:8 resolves to MongoDB 8.3, which cannot start on Linux kernel 6.19+ (SERVER-121912).
 name: portfolio
 
 services:
   mongo:
-    image: mongo:8
+    image: mongo:9
     restart: unless-stopped
     ports:
       # Loopback only: this instance has no authentication
