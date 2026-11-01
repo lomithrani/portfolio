@@ -12,6 +12,21 @@ import { resolveError } from './services/errorHandler'
 // payload is an experience with a ~22KB data-URL icon and markdown text.
 const MAX_REQUEST_BODY_SIZE = 1024 * 1024
 
+// Bodies of requests that change data must be JSON (the only type the client
+// sends). An HTML form on another site can only send urlencoded, multipart or
+// text/plain bodies, which need no CORS preflight; refusing them before the
+// body is parsed means a cross-site form never reaches a handler, whatever
+// the cookie's SameSite (AUTH_COOKIE_SAMESITE=none sends it cross-site).
+const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+const hasNonJsonBody = (request: Request) => {
+  if (!STATE_CHANGING_METHODS.has(request.method)) return false;
+  const contentType = request.headers.get('content-type');
+  // A body-less request (e.g. a DELETE) has no Content-Type
+  if (contentType === null) return false;
+  return contentType.split(';')[0].trim().toLowerCase() !== 'application/json';
+};
+
 // Request start times, keyed by request. Filled in onRequest, which (unlike
 // derive) also runs for unmatched routes, so 404s get a real duration too.
 const requestStarts = new WeakMap<Request, number>()
@@ -46,6 +61,13 @@ export const createApp = () =>
       if (start !== undefined) httpRequestDuration.record(performance.now() - start, attrs)
     })
     .use(corsConf())
+    // After CORS, so the 415 still carries the CORS headers
+    .onRequest(({ request, set }) => {
+      if (hasNonJsonBody(request)) {
+        set.status = 415;
+        return 'Unsupported Media Type';
+      }
+    })
     .use(apiDocs())
     .error(errors)
     .onError(({ code, error, set, request, route, path }) => {

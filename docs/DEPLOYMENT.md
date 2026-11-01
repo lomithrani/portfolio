@@ -222,6 +222,14 @@ shows; the domain does not verify without the `TXT` record). Then set `ALLOWED_D
 sites, but it then becomes a third-party cookie, which Safari blocks and other browsers restrict
 or partition. Treat it as a stopgap, not a fix.
 
+`none` also removes the cookie's protection against cross-site request forgery (CSRF): the browser
+then sends the session with requests that **any** website makes to the API, such as a hidden HTML
+form. What still stops those is the API itself: it answers `415` to every `POST`, `PUT`, `PATCH`
+or `DELETE` whose body is not JSON (a form cannot send JSON, and another site's script cannot
+without a CORS preflight, which only the `ALLOWED_DOMAINS` origins pass). So with `none`, keep
+`ALLOWED_DOMAINS` to your own web origins. `strict` (the default) and `lax` do not have this
+exposure.
+
 ## Deploy branch and Wait for CI
 
 ### Branch

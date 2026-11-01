@@ -23,10 +23,11 @@ import { assertDisposableDatabase } from './testDatabase';
 
 const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const id = (name: string) => `it-${name}-${suffix}`;
-const emails = ['owner', 'legacy', 'other', 'intruder'].map((name) => `${id(name)}@example.com`);
-const [OWNER_EMAIL, LEGACY_EMAIL, OTHER_EMAIL, INTRUDER_EMAIL] = emails;
+const emails = ['owner', 'legacy', 'other', 'intruder', 'form'].map((name) => `${id(name)}@example.com`);
+const [OWNER_EMAIL, LEGACY_EMAIL, OTHER_EMAIL, INTRUDER_EMAIL, FORM_EMAIL] = emails;
 const DOMAIN_NAME = id('domain');
 const OTHER_DOMAIN_NAME = id('domain-other');
+const FORM_DOMAIN_NAME = id('domain-form');
 // As stored before names were lowercased
 const LEGACY_DOMAIN_NAME = id('Legacy-Domain');
 const COMPANY_NAME = `IT Company ${suffix}`;
@@ -233,6 +234,52 @@ describe('domains and experiences (real collections)', () => {
     const result = await putWithCookie(app, `/domain/${DOMAIN_NAME}`, { theme: 'crimson' }, other.cookie);
 
     expect(result.status).toBe(403);
+  });
+});
+
+describe('cross-site form bodies (real collections)', () => {
+  const formRequest = (path: string, body: FormData | URLSearchParams, cookie: string) =>
+    makeRequest(app, path, { method: 'POST', headers: { Cookie: cookie }, body });
+
+  const multipart = (fields: Record<string, string>) => {
+    const form = new FormData();
+    for (const [name, value] of Object.entries(fields)) form.set(name, value);
+    return form;
+  };
+
+  it('answers 415 to multipart and urlencoded bodies and writes nothing', async () => {
+    const owner = await login(id('sub-owner'), OWNER_EMAIL);
+    const experienceCount = (await Domain.findOne({ name: DOMAIN_NAME }))!.experiences.length;
+    const planted = {
+      type: 'professional',
+      title: id('form-experience'),
+      summary: 'Planted by a cross-site form',
+      projects: '[]'
+    };
+
+    for (const body of [multipart(planted), new URLSearchParams(planted)]) {
+      expect((await formRequest('/experiences', body, owner.cookie)).status).toBe(415);
+    }
+    expect(await Experience.countDocuments({ title: planted.title })).toBe(0);
+    expect((await Domain.findOne({ name: DOMAIN_NAME }))!.experiences).toHaveLength(experienceCount);
+
+    // A user without a domain cannot be given one either
+    const user = await login(id('sub-form'), FORM_EMAIL);
+    for (const body of [new URLSearchParams({ name: FORM_DOMAIN_NAME }), multipart({ name: FORM_DOMAIN_NAME })]) {
+      expect((await formRequest('/domain/claim', body, user.cookie)).status).toBe(415);
+    }
+    expect(await Domain.exists({ name: FORM_DOMAIN_NAME })).toBeNull();
+
+    // The same requests as JSON (what the client sends) go through
+    const claim = await postWithCookie(app, '/domain/claim', { name: FORM_DOMAIN_NAME }, user.cookie);
+    expect(claim.status).toBe(200);
+    const posted = await postWithCookie(
+      app,
+      '/experiences',
+      { ...experienceRequestBody, title: planted.title },
+      user.cookie
+    );
+    expect(posted.status).toBe(200);
   });
 });
 

@@ -42,6 +42,9 @@ with a message listing every problem.
   `RAILWAY_DEPLOYMENT_DRAINING_SECONDS`).
 - Login verifies Google ID tokens locally (signature, issuer, audience,
   expiry, `email_verified`) and keys users by their Google account ID.
+- `POST`/`PUT`/`PATCH`/`DELETE` bodies must be JSON: any other
+  `Content-Type` gets `415` before the body is parsed, so a cross-site HTML
+  form never reaches a handler, whatever `AUTH_COOKIE_SAMESITE` is.
 - The session cookie only reaches the API when the web app and the API are
   on the same site (e.g. `example.com` and `api.example.com`); two
   `*.up.railway.app` hosts are different sites.

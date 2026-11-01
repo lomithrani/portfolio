@@ -5,7 +5,8 @@ import { logs } from '@opentelemetry/api-logs';
 import { createApp } from '../app';
 import { env } from '../env';
 import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
-import { makeRequest, readJson } from './helpers';
+import { google } from '../services/google';
+import { authCookie, makeRequest, readJson, useTestGoogleKeys } from './helpers';
 
 // Overrides mongoose.connection.readyState (a prototype getter) for one test
 const setReadyState = (state: number) =>
@@ -60,6 +61,46 @@ describe('CORS', () => {
     const result = await preflight('https://evil.example.com');
 
     expect(result.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+describe('request bodies', () => {
+  afterEach(() => {
+    mock.restore();
+  });
+
+  // What an HTML form on another site can send without a CORS preflight
+  it.each([
+    ['POST', '/experiences', 'multipart/form-data; boundary=x'],
+    ['POST', '/domain/claim', 'application/x-www-form-urlencoded'],
+    ['PUT', '/domain/jane.doe', 'text/plain;charset=UTF-8'],
+    ['POST', '/login', 'text/plain']
+  ])('answers 415 to %s %s with %s, before any handler', async (method, path, contentType) => {
+    const verifyIdToken = spyOn(google, 'verifyIdToken');
+
+    const result = await makeRequest(createApp(), path, {
+      method,
+      headers: { 'Content-Type': contentType, Cookie: await authCookie() },
+      body: 'name=x'
+    });
+
+    expect(result.status).toBe(415);
+    expect(verifyIdToken).not.toHaveBeenCalled();
+  });
+
+  it('lets JSON (with parameters) and body-less requests through', async () => {
+    useTestGoogleKeys();
+
+    const json = await makeRequest(createApp(), '/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ token: 'not-a-jwt' })
+    });
+    expect(json.status).toBe(401);
+
+    // No Content-Type: reaches the route, which then wants a session
+    const bodyless = await makeRequest(createApp(), '/experiences', { method: 'POST' });
+    expect(bodyless.status).toBe(401);
   });
 });
 
