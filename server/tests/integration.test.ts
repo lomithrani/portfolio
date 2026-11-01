@@ -46,6 +46,22 @@ const removeTestData = async (suffix: string) => {
 
 let app: ReturnType<typeof createApp>;
 let t: ReturnType<typeof testNames>;
+// Set once beforeAll has connected. Teardown then always runs: after a dropped
+// connection Mongoose waits for it to come back, or the hook fails (never skipped)
+let connected = false;
+
+/** experienceRequestBody with skills named for this test, so its cleanup removes them */
+const experienceBody = (fields: Record<string, unknown> = {}) => ({
+  ...experienceRequestBody,
+  projects: [
+    {
+      ...experienceRequestBody.projects[0],
+      hardSkills: [{ name: t.id('skill-hard'), level: -1 }],
+      softSkills: [{ name: t.id('skill-soft'), level: -1 }]
+    }
+  ],
+  ...fields
+});
 
 /**
  * Logs in with Google as this test's user `name` (sub and email derived from
@@ -71,12 +87,13 @@ const loginWithDomain = async (name: string, domainName: string) => {
 beforeAll(async () => {
   assertDisposableDatabase(env.MONGO_URL);
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
+  connected = true;
   // Unique indexes must exist for the race and conflict tests
   await Promise.all([User.init(), Domain.init(), Skill.init()]);
 });
 
 afterAll(async () => {
-  if (mongoose.connection.readyState === 1) await mongoose.disconnect();
+  if (connected) await mongoose.disconnect();
 });
 
 beforeEach(() => {
@@ -87,7 +104,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   mock.restore();
-  if (mongoose.connection.readyState === 1) await removeTestData(t.suffix);
+  if (connected) await removeTestData(t.suffix);
 });
 
 describe('login with Google (real users collection)', () => {
@@ -213,7 +230,7 @@ describe('domains and experiences (real collections)', () => {
     const ownerPosted = await postWithCookie(
       app,
       '/experiences',
-      { ...experienceRequestBody, company: { name: companyName, summary: 'Owner summary' } },
+      experienceBody({ company: { name: companyName, summary: 'Owner summary' } }),
       owner.cookie
     );
     expect(ownerPosted.status).toBe(200);
@@ -225,11 +242,10 @@ describe('domains and experiences (real collections)', () => {
     const posted = await postWithCookie(
       app,
       '/experiences',
-      {
-        ...experienceRequestBody,
+      experienceBody({
         title: 'Other tenant',
         company: { name: companyName, summary: 'Other summary', svg: '<svg onload="x()"/>' }
-      },
+      }),
       other.cookie
     );
     expect(posted.status).toBe(200);
@@ -295,7 +311,7 @@ describe('cross-site form bodies (real collections)', () => {
     const posted = await postWithCookie(
       app,
       '/experiences',
-      { ...experienceRequestBody, title: planted.title },
+      experienceBody({ title: planted.title }),
       user.cookie
     );
     expect(posted.status).toBe(200);

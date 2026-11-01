@@ -83,6 +83,10 @@ const stopServer = async (server: Server | undefined) => {
   await server.process.exited
 }
 
+// Set once beforeAll has connected. afterAll then always cleans up: after a
+// dropped connection Mongoose waits for it to come back, or the hook fails
+let connected = false
+
 const removeSeed = async () => {
   const admin = await User.findOne({ email: ADMIN_EMAIL })
   await Domain.deleteMany({ $or: [{ name: DOMAIN_NAME }, ...(admin ? [{ admin: admin._id }] : [])] })
@@ -93,12 +97,13 @@ beforeAll(async () => {
   assertDisposableDatabase()
   // The suite's own domain, which the server then reads from the same database
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 })
+  connected = true
   const admin = await User.create({ email: ADMIN_EMAIL, name: 'Eden', surname: 'Suite' })
   await Domain.create({ name: DOMAIN_NAME, admin: admin._id, experiences: [] })
 })
 
 afterAll(async () => {
-  if (mongoose.connection.readyState !== 1) return
+  if (!connected) return
   await removeSeed()
   await mongoose.disconnect()
 })
