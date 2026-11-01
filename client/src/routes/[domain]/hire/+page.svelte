@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
-	import { api } from '$services/portfolio';
+	import { portfolioApi } from '$services';
+	import { errorStatus } from '$services/apiErrors';
+	import type { PageData } from './$types';
+
+	let { data }: { data: PageData } = $props();
+
+	let ownerName = $derived(data.domain.headerTitle || data.domainName);
 
 	interface AvailabilityWindow {
 		dayOfWeek: number;
@@ -12,12 +17,12 @@
 	interface PublicSchedule {
 		id: string;
 		title: string;
-		description?: string;
+		description: string | null;
 		durationMinutes: number;
 		minNoticeHours: number;
 		timezone: string;
 		locationType: string;
-		locationDetails?: string;
+		locationDetails: string | null;
 		availability: AvailabilityWindow[];
 		maxAdvanceDays: number;
 	}
@@ -78,21 +83,16 @@
 
 	let maxDate = $derived.by(() => {
 		if (!selectedSchedule) return '';
-		const d = new Date();
-		d.setDate(d.getDate() + selectedSchedule.maxAdvanceDays);
-		return toDateInputValue(d);
+		return toDateInputValue(new Date(Date.now() + selectedSchedule.maxAdvanceDays * 86_400_000));
 	});
 
 	async function loadSchedules() {
 		schedulesLoading = true;
-		const domainName = $page.params.domain;
-		if (!domainName) {
-			schedulesLoading = false;
-			return;
-		}
-		const { data, error } = await api.appointments.domains({ domainName }).schedules.get();
-		if (!error && data) {
-			schedules = data as unknown as PublicSchedule[];
+		const { data: found, error } = await portfolioApi.appointments
+			.domains({ domainName: encodeURIComponent(data.domainName) })
+			.schedules.get();
+		if (!error && found) {
+			schedules = found;
 			if (schedules.length === 1) {
 				selectSchedule(schedules[0]);
 			}
@@ -114,10 +114,10 @@
 		if (!selectedSchedule || !selectedDate) return;
 		slotsLoading = true;
 		selectedSlot = null;
-		const { data, error } = await api.appointments['available-slots'].get({
+		const { data: available, error } = await portfolioApi.appointments['available-slots'].get({
 			query: { scheduleId: selectedSchedule.id, date: selectedDate }
 		});
-		slots = !error && data ? (data as unknown as Slot[]) : [];
+		slots = !error && available ? available : [];
 		slotsLoading = false;
 		slotsLoaded = true;
 	}
@@ -127,7 +127,7 @@
 		booking = true;
 		bookingError = '';
 
-		const { data, error } = await api.appointments.book.post({
+		const { data: booked, error } = await portfolioApi.appointments.book.post({
 			scheduleId: selectedSchedule.id,
 			startTime: selectedSlot.start,
 			name,
@@ -136,17 +136,16 @@
 		});
 
 		booking = false;
-		if (error || !data) {
-			const status = (error as unknown as { status?: number } | null)?.status;
+		if (error || !booked) {
 			bookingError =
-				status === 409
+				errorStatus(error) === 409
 					? 'This slot was just taken. Please pick another one.'
 					: 'Booking failed. Please try again.';
 			await loadSlots();
 			return;
 		}
 
-		confirmation = { ...(data as unknown as Omit<Confirmation, 'email'>), email };
+		confirmation = { ...booked, email };
 	}
 
 	function formatTime(iso: string): string {
@@ -167,13 +166,13 @@
 </script>
 
 <svelte:head>
-	<title>Book a meeting</title>
-	<meta name="description" content="Book a meeting slot" />
+	<title>Hire {ownerName}</title>
+	<meta name="description" content={`Book a meeting with ${ownerName}.`} />
 </svelte:head>
 
 <div class="max-w-3xl mx-auto p-6 space-y-8">
 	<section class="space-y-2">
-		<h1 class="h2">Book a meeting</h1>
+		<h1 class="h2">Book a meeting with {ownerName}</h1>
 		<p class="opacity-75">
 			Pick a time slot that suits you — you'll receive a calendar invitation by email.
 		</p>
@@ -190,6 +189,7 @@
 				A calendar invitation has been sent to <strong>{confirmation.email}</strong>.
 			</p>
 			{#if confirmation.meetLink}
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- external Google Meet URL -->
 				<a
 					class="btn preset-filled-primary-500"
 					href={confirmation.meetLink}
@@ -198,6 +198,7 @@
 				>
 					Google Meet link
 				</a>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{/if}
 			<button
 				class="btn preset-tonal"
@@ -328,8 +329,7 @@
 								class="textarea"
 								rows="3"
 								bind:value={notes}
-								placeholder="What would you like to talk about?"
-							></textarea>
+								placeholder="What would you like to talk about?"></textarea>
 						</label>
 						{#if bookingError}
 							<p class="text-sm text-error-500">{bookingError}</p>

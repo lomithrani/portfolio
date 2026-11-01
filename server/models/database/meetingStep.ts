@@ -20,7 +20,14 @@ const meetingStepSchema = new Schema<MeetingStep>({
       end: { type: Date, required: true },
     },
   ],
-  type: { type: Number, required: true, enum: Object.values(MeetingType), default: MeetingType.Visio },
+  meetingLength: { type: Number, required: true },
+  // Numeric enum: Object.values() would also list the reverse-mapped names
+  type: {
+    type: Number,
+    required: true,
+    enum: [MeetingType.Visio, MeetingType.Vocal, MeetingType.InPerson],
+    default: MeetingType.Visio
+  },
 });
 
 export const MeetingStep = WorkflowStep.discriminator<MeetingStep>('MeetingStep', meetingStepSchema);

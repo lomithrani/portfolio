@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { browser } from '$app/environment';
-	import { env } from '$env/dynamic/public';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
-	import { api } from '$services/portfolio';
+	import { portfolioApi } from '$services';
+	import { errorStatus } from '$services/apiErrors';
+	import { clearAuthentication } from '$services/authentication';
+	import { requestGoogleAuthorizationCode } from '$services/googleIdentity';
 
-	const CLIENT_ID = env.PUBLIC_GOOGLE_CLIENT_ID ?? '';
 	const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
+	const withCredentials = { fetch: { credentials: 'include' } } as const;
 
 	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 	const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120];
@@ -17,30 +18,7 @@
 		{ value: 'custom', label: 'Custom' }
 	] as const;
 
-	// --- GSI state ---
-	let gsiReady = $state(false);
-
-	// --- Connection state ---
-	let connected = $state(false);
-	let connectedAt = $state<string | null>(null);
-	let connectionLoading = $state(true);
-	let connecting = $state(false);
-
-	// --- Calendars state ---
-	let calendars = $state<GoogleCalendar[]>([]);
-	let calendarsLoading = $state(false);
-
-	// --- Schedule state ---
-	let schedules = $state<Schedule[]>([]);
-	let schedulesLoading = $state(false);
-	let editingSchedule = $state<EditableSchedule | null>(null);
-	let savingSchedule = $state(false);
-	let scheduleMessage = $state('');
-
-	// --- Booked appointments state ---
-	let bookings = $state<CalendarEvent[]>([]);
-	let bookingsLoading = $state(false);
-	let cancellingEvent = $state<string | null>(null);
+	type LocationType = (typeof LOCATION_TYPES)[number]['value'];
 
 	interface GoogleCalendar {
 		id: string;
@@ -64,36 +42,64 @@
 		maxAdvanceDays: number;
 		timezone: string;
 		calendarId: string;
-		locationType: string;
+		locationType: LocationType;
 		locationDetails?: string;
 		availability: AvailabilityWindow[];
 		enabled: boolean;
 	}
 
-	interface EditableSchedule {
+	type EditableSchedule = Omit<Schedule, '_id' | 'description' | 'locationDetails'> & {
 		_id?: string;
-		title: string;
 		description: string;
-		durationMinutes: number;
-		bufferMinutes: number;
-		minNoticeHours: number;
-		maxAdvanceDays: number;
-		timezone: string;
-		calendarId: string;
-		locationType: string;
 		locationDetails: string;
-		availability: AvailabilityWindow[];
-		enabled: boolean;
-	}
+	};
 
 	interface CalendarEvent {
 		id: string;
-		summary: string;
-		start: string;
-		end: string;
+		summary: string | null;
+		start: string | null;
+		end: string | null;
 		attendees: string[];
 		meetLink: string | null;
-		htmlLink: string | null;
+		calendarId: string;
+	}
+
+	// --- Connection state ---
+	let configured = $state(true);
+	let connected = $state(false);
+	let connectedAt = $state<string | null>(null);
+	let connectionLoading = $state(true);
+	let connecting = $state(false);
+	let connectionMessage = $state('');
+
+	// --- Calendars state ---
+	let calendars = $state<GoogleCalendar[]>([]);
+	let calendarsLoading = $state(false);
+
+	// --- Schedule state ---
+	let schedules = $state<Schedule[]>([]);
+	let schedulesLoading = $state(false);
+	let editingSchedule = $state<EditableSchedule | null>(null);
+	let savingSchedule = $state(false);
+	let scheduleMessage = $state('');
+
+	// --- Booked appointments state ---
+	let bookings = $state<CalendarEvent[]>([]);
+	let bookingsLoading = $state(false);
+	let cancellingEvent = $state<string | null>(null);
+
+	/** Message for a failed call; a 401 also signs the admin out locally */
+	function failureMessage(error: { status: unknown; value?: unknown }, fallback: string): string {
+		const status = errorStatus(error);
+		if (status === 401) {
+			clearAuthentication();
+			return 'Your session has expired. Please log in again.';
+		}
+		// The API's 4xx bodies are short, user-facing messages
+		if (status !== undefined && status >= 400 && status < 500 && typeof error.value === 'string') {
+			return error.value;
+		}
+		return fallback;
 	}
 
 	function newSchedule(): EditableSchedule {
@@ -114,77 +120,82 @@
 		};
 	}
 
-	// --- API calls ---
-	async function loadCalendars() {
-		calendarsLoading = true;
-		const { data, error } = await api.appointments.calendars.get({
-			fetch: { credentials: 'include' }
-		});
-		if (!error && data) {
-			calendars = data as unknown as GoogleCalendar[];
-		}
-		calendarsLoading = false;
+	function editSchedule(schedule: Schedule) {
+		editingSchedule = {
+			...schedule,
+			description: schedule.description ?? '',
+			locationDetails: schedule.locationDetails ?? '',
+			availability: schedule.availability.map((w) => ({ ...w }))
+		};
+		scheduleMessage = '';
 	}
 
+	// --- API calls ---
 	async function checkConnectionStatus() {
 		connectionLoading = true;
-		const { data, error } = await api.appointments['calendar-status'].get({
-			fetch: { credentials: 'include' }
-		});
-		if (!error && data) {
+		const { data, error } = await portfolioApi.appointments['calendar-status'].get(withCredentials);
+		if (error) {
+			connectionMessage = failureMessage(error, 'Could not check the Google Calendar connection.');
+		} else if (data) {
+			configured = data.configured;
 			connected = data.connected;
-			connectedAt = data.connectedAt as string | null;
+			connectedAt = data.connectedAt ? String(data.connectedAt) : null;
 		}
 		connectionLoading = false;
 	}
 
-	async function connectCalendar() {
-		if (!browser) return;
-		connecting = true;
+	async function loadCalendars() {
+		calendarsLoading = true;
+		const { data, error } = await portfolioApi.appointments.calendars.get(withCredentials);
+		if (!error && data) calendars = data;
+		calendarsLoading = false;
+	}
 
-		const client = google.accounts.oauth2.initCodeClient({
-			client_id: CLIENT_ID,
-			scope: CALENDAR_SCOPE,
-			ux_mode: 'popup',
-			callback: async (response) => {
-				if (response.error) {
-					connecting = false;
-					return;
-				}
-				const { error } = await api.appointments.connect.post(
-					{ code: response.code },
-					{ fetch: { credentials: 'include' } }
-				);
-				connecting = false;
-				if (!error) {
-					await checkConnectionStatus();
-					await Promise.all([loadCalendars(), loadSchedules(), loadBookings()]);
-				}
-			}
-		});
-		client.requestCode();
+	async function loadAll() {
+		await Promise.all([loadCalendars(), loadSchedules(), loadBookings()]);
+	}
+
+	async function connectCalendar() {
+		connecting = true;
+		connectionMessage = '';
+
+		let code: string;
+		try {
+			code = await requestGoogleAuthorizationCode(CALENDAR_SCOPE);
+		} catch {
+			connecting = false;
+			connectionMessage = 'Google authorization was cancelled or could not open.';
+			return;
+		}
+
+		const { error } = await portfolioApi.appointments.connect.post({ code }, withCredentials);
+		connecting = false;
+		if (error) {
+			connectionMessage = failureMessage(error, 'Failed to connect Google Calendar.');
+			return;
+		}
+		await checkConnectionStatus();
+		await loadAll();
 	}
 
 	async function disconnectCalendar() {
-		const { error } = await api.appointments.disconnect.post(
-			{},
-			{ fetch: { credentials: 'include' } }
-		);
-		if (!error) {
-			connected = false;
-			connectedAt = null;
-			schedules = [];
+		const { error } = await portfolioApi.appointments.disconnect.post({}, withCredentials);
+		if (error) {
+			connectionMessage = failureMessage(error, 'Failed to disconnect Google Calendar.');
+			return;
 		}
+		connected = false;
+		connectedAt = null;
+		calendars = [];
+		schedules = [];
+		bookings = [];
+		editingSchedule = null;
 	}
 
 	async function loadSchedules() {
 		schedulesLoading = true;
-		const { data, error } = await api.appointments.schedules.get({
-			fetch: { credentials: 'include' }
-		});
-		if (!error && data) {
-			schedules = data as unknown as Schedule[];
-		}
+		const { data, error } = await portfolioApi.appointments.schedules.get(withCredentials);
+		if (!error && data) schedules = data as unknown as Schedule[];
 		schedulesLoading = false;
 	}
 
@@ -202,30 +213,21 @@
 			maxAdvanceDays: editingSchedule.maxAdvanceDays,
 			timezone: editingSchedule.timezone,
 			calendarId: editingSchedule.calendarId,
-			locationType: editingSchedule.locationType as
-				| 'google_meet'
-				| 'phone'
-				| 'in_person'
-				| 'custom',
+			locationType: editingSchedule.locationType,
 			locationDetails: editingSchedule.locationDetails || undefined,
 			availability: editingSchedule.availability,
 			enabled: editingSchedule.enabled
 		};
 
-		let error;
-		if (editingSchedule._id) {
-			({ error } = await api.appointments.schedules({ id: editingSchedule._id }).put(body, {
-				fetch: { credentials: 'include' }
-			}));
-		} else {
-			({ error } = await api.appointments.schedules.post(body, {
-				fetch: { credentials: 'include' }
-			}));
-		}
+		const { error } = editingSchedule._id
+			? await portfolioApi.appointments
+					.schedules({ id: editingSchedule._id })
+					.put(body, withCredentials)
+			: await portfolioApi.appointments.schedules.post(body, withCredentials);
 
 		savingSchedule = false;
 		if (error) {
-			scheduleMessage = 'Failed to save schedule.';
+			scheduleMessage = failureMessage(error, 'Failed to save schedule.');
 		} else {
 			scheduleMessage = 'Schedule saved!';
 			editingSchedule = null;
@@ -234,37 +236,34 @@
 	}
 
 	async function deleteSchedule(id: string) {
-		const { error } = await api.appointments.schedules({ id }).delete({
-			fetch: { credentials: 'include' }
-		});
-		if (!error) {
-			schedules = schedules.filter((s) => s._id !== id);
+		const { error } = await portfolioApi.appointments
+			.schedules({ id })
+			.delete(undefined, withCredentials);
+		if (error) {
+			scheduleMessage = failureMessage(error, 'Failed to delete schedule.');
+			return;
 		}
+		schedules = schedules.filter((s) => s._id !== id);
 	}
 
 	async function loadBookings() {
 		bookingsLoading = true;
-		const { data, error } = await api.appointments.upcoming.get({
-			fetch: { credentials: 'include' }
-		});
-		if (!error && data) {
-			bookings = data as unknown as CalendarEvent[];
-		}
+		const { data, error } = await portfolioApi.appointments.upcoming.get(withCredentials);
+		if (!error && data) bookings = data;
 		bookingsLoading = false;
 	}
 
-	async function cancelEvent(eventId: string) {
-		cancellingEvent = eventId;
-		const { error } = await api.appointments.events({ eventId }).delete({
-			fetch: { credentials: 'include' }
-		});
+	async function cancelEvent(event: CalendarEvent) {
+		cancellingEvent = event.id;
+		const { error } = await portfolioApi.appointments
+			.events({ eventId: event.id })
+			.delete(undefined, { ...withCredentials, query: { calendarId: event.calendarId } });
 		cancellingEvent = null;
-		if (!error) {
-			bookings = bookings.filter((e) => e.id !== eventId);
-		}
+		if (!error) bookings = bookings.filter((e) => e.id !== event.id);
 	}
 
-	function formatDateTime(iso: string): string {
+	function formatDateTime(iso: string | null): string {
+		if (!iso) return '';
 		return new Date(iso).toLocaleString(undefined, {
 			weekday: 'short',
 			month: 'short',
@@ -283,36 +282,14 @@
 		];
 	}
 
-	function removeWindow(dayOfWeek: number, index: number) {
+	function removeWindow(target: AvailabilityWindow) {
 		if (!editingSchedule) return;
-		const windows = editingSchedule.availability.filter((w) => w.dayOfWeek === dayOfWeek);
-		const target = windows[index];
 		editingSchedule.availability = editingSchedule.availability.filter((w) => w !== target);
 	}
 
-	function loadGsi(): Promise<void> {
-		return new Promise((resolve) => {
-			if (typeof google !== 'undefined' && google.accounts?.oauth2) {
-				gsiReady = true;
-				resolve();
-				return;
-			}
-			const script = document.createElement('script');
-			script.src = 'https://accounts.google.com/gsi/client';
-			script.async = true;
-			script.onload = () => {
-				gsiReady = true;
-				resolve();
-			};
-			document.body.appendChild(script);
-		});
-	}
-
 	onMount(async () => {
-		await Promise.all([checkConnectionStatus(), loadGsi()]);
-		if (connected) {
-			await Promise.all([loadCalendars(), loadSchedules(), loadBookings()]);
-		}
+		await checkConnectionStatus();
+		if (connected) await loadAll();
 	});
 </script>
 
@@ -321,12 +298,17 @@
 	<section class="card p-6 space-y-4">
 		<h2 class="h3">Google Calendar</h2>
 		<p class="opacity-75">
-			Connect your Google Calendar so visitors can book meetings on your available time slots.
-			The app will check your calendar for conflicts and create events automatically.
+			Connect your Google Calendar so visitors can book meetings on your available time slots. The
+			app will check your calendar for conflicts and create events automatically.
 		</p>
 
 		{#if connectionLoading}
 			<p class="text-sm opacity-50">Checking connection...</p>
+		{:else if !configured}
+			<p class="text-sm opacity-75">
+				Google Calendar is not configured on the server: set its <code>GOOGLE_CLIENT_SECRET</code>
+				to enable appointments.
+			</p>
 		{:else if connected}
 			<div class="flex items-center gap-3">
 				<span class="badge preset-filled-success-500 text-sm px-3 py-1">Connected</span>
@@ -337,7 +319,8 @@
 				{/if}
 			</div>
 			<p class="text-sm opacity-50">
-				Your calendar permissions are active. Visitors can book available slots and events will be added to your Google Calendar.
+				Your calendar permissions are active. Visitors can book available slots and events will be
+				added to your Google Calendar.
 			</p>
 			<button
 				type="button"
@@ -350,11 +333,14 @@
 			<button
 				type="button"
 				class="btn preset-filled-primary-700-300"
-				disabled={connecting || !gsiReady}
+				disabled={connecting}
 				onclick={connectCalendar}
 			>
 				{connecting ? 'Connecting...' : 'Connect Google Calendar'}
 			</button>
+		{/if}
+		{#if connectionMessage}
+			<p class="text-sm text-error-500">{connectionMessage}</p>
 		{/if}
 	</section>
 
@@ -365,14 +351,18 @@
 				<div>
 					<h2 class="h3">Appointment Schedules</h2>
 					<p class="text-sm opacity-50 mt-1">
-						Define when visitors can book time with you. Each schedule sets the duration, availability windows, and booking rules.
+						Define when visitors can book time with you. Each schedule sets the duration,
+						availability windows, and booking rules.
 					</p>
 				</div>
 				{#if !editingSchedule}
 					<button
 						type="button"
 						class="btn preset-filled-primary-700-300 text-sm"
-						onclick={() => (editingSchedule = newSchedule())}
+						onclick={() => {
+							editingSchedule = newSchedule();
+							scheduleMessage = '';
+						}}
 					>
 						New Schedule
 					</button>
@@ -386,19 +376,30 @@
 
 					<label class="label">
 						<span>Title</span>
-						<input class="input" type="text" placeholder="e.g. 30-min consultation" bind:value={editingSchedule.title} />
+						<input
+							class="input"
+							type="text"
+							maxlength="200"
+							placeholder="e.g. 30-min consultation"
+							bind:value={editingSchedule.title}
+						/>
 					</label>
 
 					<label class="label">
 						<span>Description (optional)</span>
-						<textarea class="textarea" rows="2" placeholder="Shown to visitors when booking" bind:value={editingSchedule.description}></textarea>
+						<textarea
+							class="textarea"
+							rows="2"
+							maxlength="2000"
+							placeholder="Shown to visitors when booking"
+							bind:value={editingSchedule.description}></textarea>
 					</label>
 
 					<div class="grid grid-cols-2 gap-4">
 						<label class="label">
 							<span>Duration</span>
 							<select class="select" bind:value={editingSchedule.durationMinutes}>
-								{#each DURATION_OPTIONS as d}
+								{#each DURATION_OPTIONS as d (d)}
 									<option value={d}>{d} min</option>
 								{/each}
 							</select>
@@ -406,17 +407,34 @@
 
 						<label class="label">
 							<span>Buffer between meetings (min)</span>
-							<input class="input" type="number" min="0" bind:value={editingSchedule.bufferMinutes} />
+							<input
+								class="input"
+								type="number"
+								min="0"
+								max="480"
+								bind:value={editingSchedule.bufferMinutes}
+							/>
 						</label>
 
 						<label class="label">
 							<span>Min notice before booking (hours)</span>
-							<input class="input" type="number" min="0" bind:value={editingSchedule.minNoticeHours} />
+							<input
+								class="input"
+								type="number"
+								min="0"
+								bind:value={editingSchedule.minNoticeHours}
+							/>
 						</label>
 
 						<label class="label">
 							<span>Max days in advance</span>
-							<input class="input" type="number" min="1" bind:value={editingSchedule.maxAdvanceDays} />
+							<input
+								class="input"
+								type="number"
+								min="1"
+								max="365"
+								bind:value={editingSchedule.maxAdvanceDays}
+							/>
 						</label>
 					</div>
 
@@ -426,7 +444,7 @@
 							<p class="text-sm opacity-50">Loading calendars...</p>
 						{:else}
 							<select class="select" bind:value={editingSchedule.calendarId}>
-								{#each calendars as cal}
+								{#each calendars as cal (cal.id)}
 									<option value={cal.id}>
 										{cal.summary}{cal.primary ? ' (primary)' : ''}
 									</option>
@@ -444,17 +462,23 @@
 						<label class="label">
 							<span>Meeting location</span>
 							<select class="select" bind:value={editingSchedule.locationType}>
-								{#each LOCATION_TYPES as lt}
+								{#each LOCATION_TYPES as lt (lt.value)}
 									<option value={lt.value}>{lt.label}</option>
 								{/each}
 							</select>
 						</label>
 					</div>
 
-					{#if editingSchedule.locationType === 'custom' || editingSchedule.locationType === 'phone' || editingSchedule.locationType === 'in_person'}
+					{#if editingSchedule.locationType !== 'google_meet'}
 						<label class="label">
 							<span>Location details</span>
-							<input class="input" type="text" placeholder="e.g. 123 Main St or +33 6 12 34 56 78" bind:value={editingSchedule.locationDetails} />
+							<input
+								class="input"
+								type="text"
+								maxlength="500"
+								placeholder="e.g. 123 Main St or +33 6 12 34 56 78"
+								bind:value={editingSchedule.locationDetails}
+							/>
 						</label>
 					{/if}
 
@@ -470,15 +494,22 @@
 							</Switch.Control>
 							<Switch.HiddenInput />
 						</Switch>
-						<span class="text-sm">{editingSchedule.enabled ? 'Accepting bookings' : 'Paused'}</span>
+						<span class="text-sm">
+							{editingSchedule.enabled ? 'Accepting bookings' : 'Paused'}
+						</span>
 					</div>
 
 					<!-- Weekly Availability Grid -->
 					<div class="space-y-3">
 						<h4 class="font-semibold">Weekly Availability</h4>
-						<p class="text-xs opacity-50">Set the time windows when visitors can book. Your actual Google Calendar events are checked at booking time to avoid conflicts.</p>
-						{#each DAY_NAMES as dayName, dayIndex}
-							{@const dayWindows = editingSchedule.availability.filter((w) => w.dayOfWeek === dayIndex)}
+						<p class="text-xs opacity-50">
+							Set the time windows when visitors can book. Your actual Google Calendar events are
+							checked at booking time to avoid conflicts.
+						</p>
+						{#each DAY_NAMES as dayName, dayIndex (dayName)}
+							{@const dayWindows = editingSchedule.availability.filter(
+								(w) => w.dayOfWeek === dayIndex
+							)}
 							<div class="border border-surface-300-700 rounded p-3">
 								<div class="flex items-center justify-between mb-2">
 									<span class="font-medium text-sm">{dayName}</span>
@@ -493,23 +524,25 @@
 								{#if dayWindows.length === 0}
 									<p class="text-xs opacity-50">Unavailable</p>
 								{:else}
-									{#each dayWindows as window, windowIndex}
+									{#each dayWindows as window (window)}
 										<div class="flex items-center gap-2 mb-1">
 											<input
 												class="input text-sm"
 												type="time"
+												aria-label="{dayName} start"
 												bind:value={window.startTime}
 											/>
 											<span class="text-sm">to</span>
 											<input
 												class="input text-sm"
 												type="time"
+												aria-label="{dayName} end"
 												bind:value={window.endTime}
 											/>
 											<button
 												type="button"
 												class="btn btn-sm preset-outlined-error-500 text-xs"
-												onclick={() => removeWindow(dayIndex, windowIndex)}
+												onclick={() => removeWindow(window)}
 											>
 												Remove
 											</button>
@@ -532,7 +565,10 @@
 						<button
 							type="button"
 							class="btn preset-outlined"
-							onclick={() => { editingSchedule = null; scheduleMessage = ''; }}
+							onclick={() => {
+								editingSchedule = null;
+								scheduleMessage = '';
+							}}
 						>
 							Cancel
 						</button>
@@ -544,15 +580,25 @@
 			{:else if schedulesLoading}
 				<p class="text-sm opacity-50">Loading schedules...</p>
 			{:else if schedules.length === 0}
-				<p class="text-sm opacity-50">No schedules yet. Create one to define your available time slots.</p>
+				<p class="text-sm opacity-50">
+					No schedules yet. Create one to define your available time slots.
+				</p>
 			{:else}
+				{#if scheduleMessage}
+					<p class="text-sm">{scheduleMessage}</p>
+				{/if}
 				<div class="space-y-3">
 					{#each schedules as schedule (schedule._id)}
-						<div class="flex items-center justify-between border border-surface-300-700 rounded p-3">
+						<div
+							class="flex items-center justify-between border border-surface-300-700 rounded p-3"
+						>
 							<div>
 								<span class="font-medium">{schedule.title}</span>
 								<span class="text-sm opacity-50 ml-2">{schedule.durationMinutes} min</span>
-								<span class="text-sm opacity-50 ml-1">· {calendars.find((c) => c.id === schedule.calendarId)?.summary ?? schedule.calendarId}</span>
+								<span class="text-sm opacity-50 ml-1">
+									· {calendars.find((c) => c.id === schedule.calendarId)?.summary ??
+										schedule.calendarId}
+								</span>
 								{#if !schedule.enabled}
 									<span class="badge preset-outlined-warning-500 text-xs ml-2">Paused</span>
 								{/if}
@@ -561,23 +607,7 @@
 								<button
 									type="button"
 									class="btn btn-sm preset-outlined text-xs"
-									onclick={() => {
-										editingSchedule = {
-											_id: schedule._id,
-											title: schedule.title,
-											description: schedule.description ?? '',
-											durationMinutes: schedule.durationMinutes,
-											bufferMinutes: schedule.bufferMinutes,
-											minNoticeHours: schedule.minNoticeHours,
-											maxAdvanceDays: schedule.maxAdvanceDays,
-											timezone: schedule.timezone,
-											calendarId: schedule.calendarId,
-											locationType: schedule.locationType,
-											locationDetails: schedule.locationDetails ?? '',
-											availability: [...schedule.availability],
-											enabled: schedule.enabled
-										};
-									}}
+									onclick={() => editSchedule(schedule)}
 								>
 									Edit
 								</button>
@@ -626,7 +656,7 @@
 									type="button"
 									class="btn btn-sm preset-outlined-error-500 text-xs"
 									disabled={cancellingEvent === event.id}
-									onclick={() => cancelEvent(event.id)}
+									onclick={() => cancelEvent(event)}
 								>
 									{cancellingEvent === event.id ? 'Cancelling...' : 'Cancel'}
 								</button>
@@ -640,9 +670,16 @@
 								</p>
 							{/if}
 							{#if event.meetLink}
-								<a href={event.meetLink} target="_blank" rel="noopener" class="text-sm anchor">
+								<!-- eslint-disable svelte/no-navigation-without-resolve -- external Google Meet URL -->
+								<a
+									href={event.meetLink}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="text-sm anchor"
+								>
 									Join Google Meet
 								</a>
+								<!-- eslint-enable svelte/no-navigation-without-resolve -->
 							{/if}
 						</div>
 					{/each}

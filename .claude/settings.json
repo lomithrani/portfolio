@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "graphify hook-guard search"
+            "command": "command -v graphify >/dev/null 2>&1 || exit 0; graphify hook-guard search"
           }
         ]
       },
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "graphify hook-guard read"
+            "command": "command -v graphify >/dev/null 2>&1 || exit 0; graphify hook-guard read"
           }
         ]
       }

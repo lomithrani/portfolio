@@ -52,6 +52,16 @@ export function wallClockToUTC(dateStr: string, time: string, timezone: string):
   return new Date(approxUtc.getTime() - offsetMs)
 }
 
+/** Whether Intl knows this IANA time zone (e.g. 'Europe/Paris') */
+export function isValidTimeZone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone })
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** The YYYY-MM-DD wall-clock date of an instant in a given IANA timezone. */
 export function wallDateInTimezone(instant: Date, timezone: string): string {
   return new Intl.DateTimeFormat('en-CA', {

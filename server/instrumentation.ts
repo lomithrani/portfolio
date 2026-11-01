@@ -1,54 +1,82 @@
+import { Elysia } from 'elysia'
 import { opentelemetry } from '@elysiajs/opentelemetry'
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node'
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace'
+import type { SpanExporter } from '@opentelemetry/sdk-trace'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
-import {
-	LoggerProvider,
-	BatchLogRecordProcessor
-} from '@opentelemetry/sdk-logs'
+import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
 import { resourceFromAttributes } from '@opentelemetry/resources'
-import {
-	ATTR_SERVICE_NAME,
-	SEMRESATTRS_DEPLOYMENT_ENVIRONMENT
-} from '@opentelemetry/semantic-conventions'
-import { logs } from '@opentelemetry/api-logs'
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
 import { metrics } from '@opentelemetry/api'
+import { env } from './env'
 
-const isEnabled = !!process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+// Span attributes the Elysia plugin fills with credentials or personal data:
+// every request header (the session cookie is a 7-day JWT), the parsed
+// cookies, and request/response bodies (the Google ID token posted to /login,
+// user emails). They must never reach the trace backend.
+export const SENSITIVE_SPAN_ATTRIBUTES = [
+	'http.request.header.cookie',
+	'http.request.header.authorization',
+	'http.request.cookie',
+	'http.request.body',
+	'http.response.body',
+	'http.response.header.set-cookie'
+]
 
-const resource = resourceFromAttributes({
-	[ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? 'portfolio-server',
-	[SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV ?? 'development'
+/** Wraps a span exporter so the sensitive attributes are dropped before export */
+export const redactingSpanExporter = (exporter: SpanExporter): SpanExporter => ({
+	export(spans, resultCallback) {
+		for (const span of spans) {
+			// Ended spans are not frozen: this deletes from what the exporter reads
+			for (const key of SENSITIVE_SPAN_ATTRIBUTES) delete span.attributes[key]
+		}
+		exporter.export(spans, resultCallback)
+	},
+	shutdown: () => exporter.shutdown(),
+	forceFlush: () => exporter.forceFlush?.() ?? Promise.resolve()
 })
 
-// Set up LoggerProvider (the Elysia plugin doesn't handle logs)
-if (isEnabled) {
-	const loggerProvider = new LoggerProvider({
-		resource,
-		processors: [new BatchLogRecordProcessor(new OTLPLogExporter())]
-	})
-	logs.setGlobalLoggerProvider(loggerProvider)
+// Telemetry is fully off unless OTEL_EXPORTER_OTLP_ENDPOINT is set: no SDK,
+// no exporters, and the OpenTelemetry API stays on its no-op providers.
+// (Calling the Elysia plugin without an SDK would start its own NodeSDK
+// with default OTLP exporters pointed at http://localhost:4318.)
+let sdk: NodeSDK | undefined
 
-	const shutdownLogs = () => loggerProvider.shutdown()
-	process.on('SIGTERM', shutdownLogs)
-	process.on('SIGINT', shutdownLogs)
+if (env.otelEnabled) {
+	// One SDK owns traces, metrics and logs. Exporters read the endpoint and
+	// headers from OTEL_EXPORTER_OTLP_* themselves.
+	sdk = new NodeSDK({
+		resource: resourceFromAttributes({
+			[ATTR_SERVICE_NAME]: env.OTEL_SERVICE_NAME,
+			'deployment.environment.name': env.NODE_ENV
+		}),
+		spanProcessors: [new BatchSpanProcessor({
+			exporter: redactingSpanExporter(new OTLPTraceExporter())
+		})],
+		metricReaders: [new PeriodicExportingMetricReader({
+			exporter: new OTLPMetricExporter(),
+			exportIntervalMillis: 60_000
+		})],
+		logRecordProcessors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter() })],
+		instrumentations: []
+	})
+	// Must run before the plugin (which then reuses this SDK instead of
+	// starting another) and before metrics.getMeter() below
+	sdk.start()
 }
 
-// Elysia plugin — no-ops internally when no exporters are configured
-export const instrumentation = isEnabled
-	? opentelemetry({
-			serviceName: process.env.OTEL_SERVICE_NAME ?? 'portfolio-server',
-			resource,
-			spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
-			metricReader: new PeriodicExportingMetricReader({
-				exporter: new OTLPMetricExporter(),
-				exportIntervalMillis: 60_000
-			}),
-			instrumentations: []
-		})
-	: opentelemetry({ instrumentations: [] })
+// Elysia request tracing; a plain no-op plugin when telemetry is off
+export const instrumentation = env.otelEnabled
+	? opentelemetry({ serviceName: env.OTEL_SERVICE_NAME })
+	: new Elysia({ name: 'otel-disabled' })
+
+/** Flushes and stops exporters (no-op when telemetry is off) */
+export const shutdownTelemetry = async () => {
+	await sdk?.shutdown()
+}
 
 // HTTP server metrics (the Elysia plugin only does tracing, not metrics)
 const meter = metrics.getMeter('portfolio-server')

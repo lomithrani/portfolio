@@ -1,17 +1,14 @@
 import cors from "@elysiajs/cors";
-import Elysia from "elysia";
+import { env } from "../env";
 
-export const corsConf = () => new Elysia()
-  .use(cors({
-    credentials: true,
-    methods: ['POST', 'GET', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
-    origin: (request: Request): boolean => {
-      const origin = request.headers.get('origin');
-      if (!origin) {
-        return false;
-      }
-      const allowedOrigins = JSON.parse(Bun.env.ALLOWED_DOMAINS || '[]') as string[];
-      return allowedOrigins.includes(origin);
-    }
-  }))
+// Applied once in createApp. ALLOWED_DOMAINS is parsed and validated at
+// startup (env.ts); requests from any other origin get no CORS headers.
+export const corsConf = () => cors({
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  // traceparent/tracestate: W3C trace context propagated by the client
+  allowedHeaders: ['Content-Type', 'traceparent', 'tracestate'],
+  // Let browsers cache preflight results for 10 minutes (default is 5 s)
+  maxAge: 600,
+  origin: env.ALLOWED_DOMAINS
+})

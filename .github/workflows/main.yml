@@ -1,115 +1,138 @@
-name: CI with Unit, Integration, and E2E Tests
+name: CI
 
 on:
   push:
-    branches:
-      - develop
-      - main
+    branches: [develop, main]
   pull_request:
-    branches:
-      - develop
-      - main
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+# Pull requests share one group per PR, so a new push cancels the superseded run. Each push run
+# gets a group of its own (its run ID): sharing a group would queue develop/main pushes behind
+# each other, and GitHub cancels a still-pending run when a newer one joins its group, even with
+# cancel-in-progress off. With Railway's "Wait for CI", a commit whose only run was cancelled is
+# not deployed, so every push to develop must run to completion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  unit-test:
+  quality:
+    name: Lint, type-check, build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Lint client
+        run: bun run --cwd client lint
+      - name: Type-check client (svelte-check)
+        run: bun run --cwd client check
+      - name: Type-check server
+        run: bun run --cwd server typecheck
+      - name: Build client (adapter-bun)
+        run: bun run build:client
 
+  test:
+    name: Server and client unit tests (MongoDB ${{ matrix.mongodb }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 7: production (Railway's MongoDB service runs mongo:7) and local compose; 9: next major.
+        # Not 8: mongo:8 is MongoDB 8.3, which cannot start on kernel 6.19+ (SERVER-121912).
+        mongodb: ['7', '9']
     services:
       mongodb:
-        image: mongo:latest
+        image: mongo:${{ matrix.mongodb }}
         ports:
-          - 27017/tcp
-
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+    env:
+      PORT: 3000
+      MONGO_URL: mongodb://127.0.0.1:27017/portfolio-test
+      JWT_SECRET: ci-jwt-secret
+      ALLOWED_DOMAINS: '["http://localhost:4173"]'
     steps:
-      - name: Check out repository code
-        uses: actions/checkout@v3
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+      - uses: actions/checkout@v7
         with:
-          bun-version: "latest"
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Server tests
+        run: bun run --cwd server test
+      - name: Client unit tests
+        run: bun run --cwd client test:unit
 
-      - name: Install Server Dependencies
-        run: |
-          cd server
-          bun install
-
-      - name: Seed MongoDB
-        run: |
-          cd server
-          bun run tests/seedDb.ts
-        env:
-          MONGO_URL: "mongodb://localhost:${{ job.services.mongodb.ports[27017] }}/mytestdb"
-
-      - name: Unit Tests for Server
-        run: |
-          cd server
-          bun test
-        env:
-          PORT: 3000
-          MONGO_URL: "mongodb://localhost:${{ job.services.mongodb.ports[27017] }}/mytestdb"
-          JWT_SECRET: "JWT_SECRET"
-          ALLOWED_DOMAINS: '["http://localhost:4173"]'
-
-      - name: Unit Tests for Client
-        run: |
-          cd client
-          bun install
-          bun run test:unit
-
-  integration-e2e-tests:
+  e2e:
+    name: Playwright end-to-end tests
     runs-on: ubuntu-latest
-
+    timeout-minutes: 20
     services:
       mongodb:
-        image: mongo:latest
+        image: mongo:7
         ports:
-          - 27017/tcp
-
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+    env:
+      MONGO_URL: mongodb://127.0.0.1:27017/portfolio-e2e
     steps:
-      - name: Check out repository code
-        uses: actions/checkout@v3
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+      - uses: actions/checkout@v7
         with:
-          bun-version: "latest"
-
-      - name: Start Server
-        run: |
-          cd server
-          bun install
-          bun run start &
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Start the API in the background
+        run: nohup bun run start:server > api.log 2>&1 &
         env:
           PORT: 3000
-          MONGO_URL: "mongodb://localhost:${{ job.services.mongodb.ports[27017] }}/mytestdb"
-          JWT_SECRET: "JWT_SECRET"
+          JWT_SECRET: ci-jwt-secret
+          # Playwright serves the production build on :4173 (client/playwright.config.ts)
           ALLOWED_DOMAINS: '["http://localhost:4173"]'
-
-      - name: Wait for Server to be ready
-        run: |
-          echo "Waiting for server to start..."
-          until curl --verbose -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3" -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" http://localhost:3000/health; do
-            printf '.'
-            sleep 5
-          done
-        timeout-minutes: 1
-
+      - name: Wait for the API health check
+        run: >-
+          curl --fail --silent --show-error --max-time 5
+          --retry 30 --retry-delay 2 --retry-all-errors
+          http://localhost:3000/health
+          || { cat api.log; exit 1; }
       - name: Seed MongoDB
-        run: |
-          cd server
-          bun run tests/seedDb.ts
-        timeout-minutes: 1
-        env:
-          MONGO_URL: "mongodb://localhost:${{ job.services.mongodb.ports[27017] }}/mytestdb"
-
-      - name: Install Playright
-        run: |
-          bunx playwright install --with-deps
-
-      - name: Playright Tests
-        run: |
-          cd client
-          bun run test:e2e
+        run: bun run --cwd server seed
+      - name: Install Playwright browser (chromium)
+        run: cd client && bunx playwright install --with-deps chromium
+      - name: Playwright tests
+        run: bun run --cwd client test:e2e --reporter=list,html --trace=retain-on-failure
         env:
           PUBLIC_PORTFOLIO_API_URL: http://localhost:3000
+      - name: Upload Playwright report and API log
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            client/playwright-report/
+            client/test-results/
+            api.log
+          if-no-files-found: ignore
+          retention-days: 7

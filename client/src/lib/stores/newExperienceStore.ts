@@ -1,31 +1,13 @@
 import type { Writable } from 'svelte/store';
-import { ExperienceType } from 'portfolio-common';
-import type { portfolioApi } from '$services';
 import { persisted } from 'svelte-persisted-store';
+import { emptyExperienceForm, type FormData } from '$services/experienceForm';
 
-type ApiData = Parameters<typeof portfolioApi.experiences.post>[0];
+export type { FormData };
 
-type FormProject = Omit<ApiData['projects'][number], 'hardSkills' | 'softSkills' | 'start' | 'end'> & {
-  hardSkills: string[];
-  softSkills: string[];
-  start: string;
-  end: string;
-};
+// Draft of the experience being *added* (never of one being edited), kept across reloads
+export const newExperienceDataStore: Writable<FormData> = persisted<FormData>(
+	'newExperience',
+	emptyExperienceForm()
+);
 
-// Form Data
-type FormData = Omit<ApiData, 'projects' | '$fetch'> & {
-  projects: FormProject[];
-};
-
-
-const defaultExperience: FormData = {
-  title: '',
-  summary: '',
-  company: { name: '' },
-  type: ExperienceType.Professional,
-  icon: undefined,
-  projects: [],
-}
-
-export type { FormData }
-export const newExperienceDataStore: Writable<FormData> = persisted<FormData>('newExperience', defaultExperience)
+export const resetNewExperienceDraft = () => newExperienceDataStore.set(emptyExperienceForm());

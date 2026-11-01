@@ -1,3 +1,4 @@
 export { experienceRequest } from "./experienceRequest.models";
 export { workflowRequest } from "./workflowRequest.models";
-export { appointmentScheduleRequest, bookAppointmentRequest } from "./appointmentRequest.models";
+export { objectIdParams } from "./params.models";
+export { appointmentScheduleRequest, availableSlotsQuery, bookAppointmentRequest } from "./appointmentRequest.models";

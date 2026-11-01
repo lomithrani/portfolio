@@ -1,8 +1,12 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { onDestroy } from 'svelte';
+	import { page } from '$app/state';
+	import { invalidateAll } from '$app/navigation';
 	import { portfolioApi } from '$services';
+	import { clearAuthentication } from '$services/authentication';
+	import { errorStatus } from '$services/apiErrors';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 
 	const SKELETON_THEMES = [
 		'catppuccin',
@@ -29,12 +33,12 @@
 		'wintry'
 	];
 
-	let domain = $derived($page.data.domain);
+	let domain = $derived(page.data.domain);
 
-	let theme = $state($page.data.domain?.theme ?? 'wintry');
-	let headerTitle = $state($page.data.domain?.headerTitle ?? '');
-	let headerSubtitle = $state($page.data.domain?.headerSubtitle ?? '');
-	let defaultDarkMode = $state($page.data.domain?.defaultDarkMode ?? false);
+	let theme = $state(page.data.domain?.theme ?? 'wintry');
+	let headerTitle = $state(page.data.domain?.headerTitle ?? '');
+	let headerSubtitle = $state(page.data.domain?.headerSubtitle ?? '');
+	let defaultDarkMode = $state(page.data.domain?.defaultDarkMode ?? false);
 	let saving = $state(false);
 	let message = $state('');
 
@@ -44,6 +48,13 @@
 			document.documentElement.dataset.theme = newTheme;
 		}
 	}
+
+	// Leaving the page without saving must not keep the previewed theme applied site-wide
+	onDestroy(() => {
+		if (browser) {
+			document.documentElement.dataset.theme = page.data.domain?.theme ?? 'wintry';
+		}
+	});
 
 	async function save() {
 		saving = true;
@@ -62,9 +73,15 @@
 		saving = false;
 
 		if (error) {
-			message = 'Failed to save settings.';
+			const expired = errorStatus(error) === 401;
+			if (expired) clearAuthentication();
+			message = expired
+				? 'Your session has expired. Please log in again.'
+				: 'Failed to save settings.';
 		} else {
 			message = 'Settings saved!';
+			// Refresh the layout data (header title/subtitle, theme, default dark mode)
+			await invalidateAll();
 		}
 	}
 </script>
@@ -90,12 +107,7 @@
 		<h2 class="h3">Header</h2>
 		<label class="label">
 			<span>Title</span>
-			<input
-				class="input"
-				type="text"
-				placeholder="e.g. John Doe"
-				bind:value={headerTitle}
-			/>
+			<input class="input" type="text" placeholder="e.g. John Doe" bind:value={headerTitle} />
 		</label>
 		<label class="label">
 			<span>Subtitle</span>
@@ -126,7 +138,12 @@
 	</section>
 
 	<div class="flex items-center gap-4">
-		<button type="button" class="btn preset-filled-primary-700-300" disabled={saving} onclick={save}>
+		<button
+			type="button"
+			class="btn preset-filled-primary-700-300"
+			disabled={saving}
+			onclick={save}
+		>
 			{saving ? 'Saving...' : 'Save Settings'}
 		</button>
 		{#if message}

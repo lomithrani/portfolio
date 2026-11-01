@@ -9,37 +9,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 A portfolio web application with a Bun workspace monorepo structure:
-- **client/** — SvelteKit 2 frontend (Svelte 5 with runes, Skeleton UI v4, Tailwind CSS 4)
+- **client/** — SvelteKit 3 frontend (Svelte 5 with runes, Skeleton 5, Tailwind CSS 4, `@sveltejs/adapter-bun`)
 - **server/** — Elysia backend API (Bun runtime, MongoDB via Mongoose)
-- **common/** — Shared types (e.g. `ExperienceType` enum) used by both client and server
+- **common/** — Shared code used by both client and server (`ExperienceType`, domain-name validation, `DEFAULT_GOOGLE_CLIENT_ID`)
+
+Bun 1.4.4 is pinned in the root `package.json` (`packageManager`); the text lockfile `bun.lock` uses the isolated linker (each workspace has its own `node_modules`).
 
 ## Common Commands
 
+All from the repo root (`bun run --cwd <workspace> <script>` runs a workspace script from there).
+
 ### Development
 ```bash
-cd client && bun run dev          # Start SvelteKit dev server (port 5173)
-cd server && bun run dev          # Start Elysia server with watch mode (port 3000)
+bun install                       # Install all workspaces (CI and Railway use --frozen-lockfile)
+bun run db:up                     # Local MongoDB 7 (as in production) via Docker (compose.yaml), waits until healthy
+bun run db:seed                   # Seed owner user + 'louis.gentil' domain (idempotent)
+bun run dev                       # API (port 3000, watch) + SvelteKit dev server (port 5173) in parallel
+bun run dev:server                # API only
+bun run dev:client                # Web only
+bun run db:down                   # Stop MongoDB (data kept in a Docker volume)
 ```
 
 ### Build & Run
 ```bash
-bun run build:client              # Build SvelteKit for production
-bun run start:server              # Start server in production mode
+bun run build:client              # Build SvelteKit for production (client/build)
+bun run start:server              # Start the API without watch mode (production behaviour needs NODE_ENV=production)
 bun run start:client              # Start built client (port 4000)
 ```
+`build:client`, `start:server` and `start:client` are the Railway build/start commands: do not rename them, and do not add a root `build`/`start` script. `start:server` sets no `NODE_ENV`: production behaviour (Secure cookie, no `/swagger`) needs `NODE_ENV=production`, which Railpack sets on Railway. Do not add it to the script (the local e2e flow and CI run it over plain http).
 
 ### Testing
 ```bash
-cd client && bun run test:unit    # Vitest unit tests
-cd client && bun run test:e2e     # Playwright E2E tests (needs server + seeded DB)
-cd server && bun test             # Server unit tests (needs MongoDB)
+TEST_MONGO_URL=mongodb://127.0.0.1:27017/portfolio-test bun run test   # Server tests (need MongoDB) + client unit tests
+TEST_MONGO_URL=mongodb://127.0.0.1:27017/portfolio-test bun run --cwd server test   # Server tests only (bun test tests/)
+bun run --cwd client test:unit    # Vitest unit tests (single run)
+bun run --cwd client test:e2e     # Playwright E2E tests (needs the API running + seeded DB)
 ```
+Server tests load `server/.env`; without `TEST_MONGO_URL` they write to its `MONGO_URL` (the dev database). The Eden suite starts the API on `PORT` (default 3000): stop `bun run dev` first or set another `PORT`.
 
 ### Linting & Type-checking
 ```bash
-cd client && bun run check        # svelte-check (type checking)
-cd client && bun run lint         # Prettier + ESLint
-cd client && bun run format       # Auto-format with Prettier
+bun run typecheck                 # tsc on the server + svelte-check on the client
+bun run lint                      # Prettier check + ESLint (client)
+bun run --cwd client format       # Auto-format the client with Prettier
 ```
 
 ## Architecture
@@ -54,30 +66,42 @@ SvelteKit dynamic routes under `[domain]/` — the root (`/`) redirects to `/lou
 Google OAuth 2.0 → server verifies token → upserts user in MongoDB → issues JWT (7-day, httpOnly cookie). Client tracks auth state via `svelte-persisted-store`. Protected server routes use the `userLogged` Elysia plugin middleware.
 
 ### Server Plugin Structure
-Elysia routes are organized as plugins in `server/plugins/` — `auth.ts`, `domain.ts`, `experiences.ts`, `workflows.ts`. Custom error classes live in `server/errors.ts`.
+Elysia routes are organized as plugins in `server/plugins/` — `auth.ts`, `domain.ts`, `experiences.ts`, `workflows.ts`, `appointments.ts` (Google Calendar: admin schedules + public booking; Google calls live in `server/services/googleCalendar.ts`, slots in `server/services/slotComputation.ts`). Custom error classes live in `server/errors.ts`.
 
 ### Database Models
-Mongoose schemas in `server/models/database/`. Key entities: Domain, User, Experience, Company, Project, Skill, Workflow (with steps/instances). Elysia request validation schemas use TypeBox in `server/models/elysia/`.
+Mongoose schemas in `server/models/database/`. Key entities: Domain, User, Experience, Company, Project, Skill, Workflow (with steps/instances), AppointmentSchedule. The User's Google Calendar OAuth tokens (`googleCalendar.refreshToken` / `accessToken`) are `select: false`: only `services/googleCalendar.ts` loads them (`.select('+googleCalendar.refreshToken')`), and `tests/appointments.test.ts` fails if any API response contains one. Elysia request validation schemas use TypeBox in `server/models/elysia/`.
 
 ### Client Path Aliases
-Defined in `svelte.config.js`: `$components` → `src/lib/components`, `$services` → `src/services`, `$images` → `src/lib/images`.
+Defined in `client/vite.config.ts` (SvelteKit 3 config lives there): `$components` → `src/lib/components`, `$services` → `src/services`, `$images` → `src/lib/images`.
 
 ## Code Style
 
-- **Tabs** for indentation, **single quotes**, **no trailing commas**, 100 char print width
+- **Tabs** for indentation, **single quotes**, **no trailing commas**, 100 char print width (client, enforced by Prettier); server files use 2-space indentation — keep each file's existing style
 - Svelte files use `prettier-plugin-svelte`
 - Svelte 5 runes syntax (`$state`, `$derived`, `$effect`, etc.)
-- Skeleton UI v4 components via `@skeletonlabs/skeleton-svelte`
+- Skeleton 5 components via `@skeletonlabs/skeleton-svelte`
 
 ## Environment Variables
 
-**Client:** `PUBLIC_PORTFOLIO_API_URL` (API base URL, default `http://localhost:3000`)
+Templates with every variable: `server/.env.example`, `client/.env.example` (copy to `.env`; Bun and Vite load them).
 
-**Server (all required):** `MONGO_URL`, `ALLOWED_DOMAINS` (JSON array of allowed CORS origins), `JWT_SECRET`
+**Server** (validated once at startup by `server/env.ts`):
+- Required: `MONGO_URL`, `JWT_SECRET`, `ALLOWED_DOMAINS` (JSON array of allowed CORS origins)
+- Optional: `PORT` (3000), `HOST` (`::`, falls back to `0.0.0.0` without IPv6), `GOOGLE_CLIENT_ID` (default `DEFAULT_GOOGLE_CLIENT_ID` from portfolio-common), `GOOGLE_CLIENT_SECRET` (secret of that OAuth client; Google Calendar appointments are off without it), `AUTH_COOKIE_SAMESITE` (`strict`|`lax`|`none`, default `strict`), `API_DOCS` (`true` exposes OpenAPI docs in production), `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_SERVICE_NAME` (telemetry off without the endpoint), `TLS_PASSPHRASE`, `NODE_ENV`
+
+**Client** (declared in `client/src/env.ts`, read at server start, not at build time):
+- `PUBLIC_PORTFOLIO_API_URL` (default `http://localhost:3000`), `PUBLIC_GOOGLE_CLIENT_ID` (default `DEFAULT_GOOGLE_CLIENT_ID`; must match the server's `GOOGLE_CLIENT_ID`)
+- adapter-bun runtime: `PORT`, `HOST`; optional `OTEL_*` like the server
+
+Health checks: API `GET /health` (200 when MongoDB is connected, 503 otherwise), web `GET /healthz` (200 without calling the API).
 
 ## Deployment
 
-Railway.app with nixpacks. CI runs on push/PR to `develop` and `main` branches. The `develop` branch is the main development branch.
+Railway deploys the `develop` branch as two services from the repo root, both built with **Railpack** (it reads Bun 1.4.4 from `packageManager` and runs `bun install --frozen-lockfile`): API (start `bun run start:server`, healthcheck `/health`) and web (build `bun run build:client`, start `bun run start:client`, healthcheck `/healthz`). Settings live in the Railway dashboard; there is intentionally no `railway.json` (Config as Code is deprecated and stops being read on 2026-12-01) and no `nixpacks.toml`. Full runbook: `docs/DEPLOYMENT.md`.
+
+Live layout (verified 2026-11-01): Railway project `personal-api`, environment `production`: web service `portfolio` (`develop.portfolio.gentil.tech`), API service `portfolio api develop` (`develop.api.portfolio.gentil.tech`), `MongoDB` (`mongo:7` with a volume), plus a legacy never-deployed `portfolio api` service on `main`. Both app services use the Railpack builder and Root Directory `/` (see the runbook for the full settings).
+
+CI (`.github/workflows/main.yml`) runs on push/PR to `develop` and `main`: quality (lint, svelte-check, server tsc, client build), tests (server + client unit against MongoDB 7, like production, and 9) and Playwright e2e. The `develop` branch is the main development branch.
 
 ## Claude Code Setup (new device)
 
@@ -86,14 +110,17 @@ Everything portable is committed to the repo:
 - **.mcp.json** — project MCP servers (railway, github, context7, svelte, chrome-devtools), auto-enabled via `.claude/settings.json`
 - **.claude/settings.json** — shared permissions allowlist; local overrides go in `.claude/settings.local.json` (gitignored)
 - **.claude/launch.json** — dev server configs for the browser preview (client:5173, server:3000)
-- **server/.env.example**, **client/.env.example** — templates for required env vars
+- **server/.env.example**, **client/.env.example** — templates for every env var (required ones preset for local dev)
+- **compose.yaml** — local MongoDB (`bun run db:up`)
 
 Manual steps on a new device:
-1. Install Bun and run `bun install` at the repo root.
-2. Copy the `.env.example` files to `.env` and fill in real values (never commit them).
-3. Export `GITHUB_PERSONAL_ACCESS_TOKEN` in your shell profile — the github MCP server in `.mcp.json` expands it from the environment.
-4. claude.ai connectors (Gmail, Calendar, Railway, etc.) are tied to the Anthropic account, not the repo — re-authorize them in claude.ai connector settings or via `/mcp` in an interactive session if needed.
-5. Install Graphify (see below) — the skill files in `.claude/skills/graphify/` are committed, but the CLI must be installed per device.
+1. Install Bun **1.4.4** (the `packageManager` version, see README) and Docker, then run `bun install` at the repo root.
+2. Copy the `.env.example` files to `.env` (the defaults work locally; never commit `.env`), then `bun run db:up` and `bun run db:seed`.
+3. Export `GITHUB_PERSONAL_ACCESS_TOKEN` in your shell profile — the github MCP server in `.mcp.json` (GitHub's hosted server at `api.githubcopilot.com/mcp/`) sends it as a Bearer token.
+4. Install the Railway CLI (`bun add -g --trust @railway/cli`, or `scoop install railway` on Windows, `brew install railway` on macOS) and run `railway login` — the railway MCP server in `.mcp.json` is `railway mcp`, which proxies to Railway's hosted MCP with the CLI's credentials.
+5. The other MCP servers (context7, svelte, chrome-devtools) run through `bunx` with pinned major versions; nothing to install.
+6. claude.ai connectors (Gmail, Calendar, Railway, etc.) are tied to the Anthropic account, not the repo — re-authorize them in claude.ai connector settings or via `/mcp` in an interactive session if needed.
+7. Install Graphify (see below) — the skill files in `.claude/skills/graphify/` are committed, but the CLI must be installed per device.
 
 ## Graphify (knowledge graph)
 

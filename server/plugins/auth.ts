@@ -1,61 +1,56 @@
 import { Elysia, t } from 'elysia'
 import { jwt } from '@elysiajs/jwt'
 import { User } from '../models/database';
-import { corsConf } from './corsConf';
+import { env } from '../env';
+import { google } from '../services/google';
+import { findOrCreateGoogleUser, toUserDto } from '../services/users';
+
+const SESSION_DAYS = 7;
+
+// Same attributes when setting and clearing, or browsers keep the old cookie
+const authCookieAttributes = () => ({
+  httpOnly: true,
+  secure: env.authCookieSecure,
+  sameSite: env.AUTH_COOKIE_SAMESITE,
+  path: '/',
+  priority: 'high' as const
+});
 
 export const googleAuth = new Elysia()
-  .use(corsConf())
   .use(jwt({
     name: 'jwt',
-    secret: Bun.env.JWT_SECRET!,
-    exp: '7d'
+    secret: env.JWT_SECRET,
+    exp: `${SESSION_DAYS}d`
   }))
   .post("/login",
-    async ({ body: { token }, jwt, cookie: { auth }, set }) => {
+    async ({ body: { token }, jwt, cookie: { auth } }) => {
+      // Throws InvalidGoogleTokenError (401) unless the ID token is signed by
+      // Google, issued for our client ID, unexpired and has a verified email
+      const identity = await google.verifyIdToken(token);
 
-      const googleToken = token;
-
-      // Verify the token with Google's API
-      const googleResponse = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${googleToken}`);
-
-      if (!googleResponse.ok) {
-        set.status = 401;
-        throw new Error(googleResponse.statusText)
-      }
-
-      const googleData = await googleResponse.json();
-
-      // Check if the email is verified
-      if (!googleData.email_verified) {
-        set.status = 401;
-        throw new Error(googleResponse.statusText)
-      }
-
-      const email = googleData.email;
-
-      const user = await User.findOneAndUpdate({ email }, { email }, { upsert: true, returnDocument: 'after' });
+      const user = await findOrCreateGoogleUser(identity);
 
       const date = new Date();
-      date.setDate(date.getDate() + 7);
+      date.setDate(date.getDate() + SESSION_DAYS);
 
       const expires = Math.round(date.getTime() / 1000);
-      const jwtToken = await jwt.sign({ sub: user?.id, exp: expires });
+      const jwtToken = await jwt.sign({ sub: user.id, exp: expires });
 
-      auth.value = jwtToken;
-      auth.secure = false;
-      auth.httpOnly = true;
-      auth.priority = 'high';
-      auth.sameSite = 'strict';
-      auth.expires = date;
+      auth.set({
+        value: jwtToken,
+        ...authCookieAttributes(),
+        expires: date
+      });
 
-      return { user, expires };
+      return { user: toUserDto(user), expires };
     },
     {
       cookie: t.Cookie({
         auth: t.Optional(t.String())
       }),
       body: t.Object({
-        token: t.String()
+        // Google ID tokens are ~1-2 KB JWTs
+        token: t.String({ minLength: 1, maxLength: 8192 })
       })
     })
   .get("/isLogged",
@@ -71,9 +66,11 @@ export const googleAuth = new Elysia()
 
       const user = await User.findById(token.sub);
 
+      if (!user) return { logged: false, reason: "Unknown user" };
+
       return {
         logged: true,
-        user,
+        user: toUserDto(user),
         expires: token.exp
       }
     },
@@ -83,13 +80,16 @@ export const googleAuth = new Elysia()
       })
     })
   .get("/logout",
-    async ({ cookie: { auth }, jwt }) => {
-      auth.remove()
+    async ({ cookie: { auth } }) => {
+      auth.set({
+        value: '',
+        ...authCookieAttributes(),
+        expires: new Date(0),
+        maxAge: 0
+      });
     },
     {
       cookie: t.Cookie({
         auth: t.Optional(t.String())
       })
     })
-
-

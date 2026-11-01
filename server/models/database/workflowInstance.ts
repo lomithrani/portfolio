@@ -15,7 +15,7 @@ export interface WorkflowInstance extends Document {
 export const workflowInstanceSchema = new Schema<WorkflowInstance>({
   workflow: { type: Types.ObjectId, ref: 'Workflow', required: true },
   user: { type: Types.ObjectId, ref: 'User', required: true },
-  steps: [{ type: Types.ObjectId, ref: 'WorkflowStepAttempt' }],
+  steps: [{ type: Types.ObjectId, ref: 'WorkflowStepInstance' }],
   status: { type: String, enum: ['ongoing', 'completed', 'failed'], default: 'ongoing' },
   startedAt: { type: Date, default: Date.now },
   completedAt: Date,
