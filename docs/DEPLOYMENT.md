@@ -1,8 +1,15 @@
 # Deploying to Railway
 
 The portfolio runs on [Railway](https://railway.com) as **two services built from this one
-repository**: the Elysia API (`server/`) and the SvelteKit web app (`client/`). Railway project
-`personal-api`, environment `production`, deploys every push to the **`develop`** branch.
+repository**: the Elysia API (`server/`) and the SvelteKit web app (`client/`). Both deploy every
+push to the **`develop`** branch.
+
+> **To verify against the live project.** This runbook assumes both services are in Railway
+> project `personal-api`, environment `production`. That has not been confirmed: the web service
+> may still be in an older project (named `production`, with a web service called `portfolio`).
+> After `railway login`, `railway list` shows the projects; `railway link` each candidate, then
+> run `railway status` and `railway environment config` to see its services and their settings,
+> and correct the names in this runbook.
 
 This runbook lists every setting the two services need. They live in the Railway dashboard (or in
 the optional Infrastructure as Code file described at the end), not in the repository: Railway's
@@ -11,6 +18,23 @@ intentionally has none (see [Why there is no railway.json](#why-there-is-no-rail
 
 Sources: the [Railway docs](https://github.com/railwayapp/docs) and the
 [Railpack docs](https://github.com/railwayapp/railpack) as of 2026-11-01.
+
+## Before merging to `develop`
+
+`develop` deploys on every push, and this change deletes `nixpacks.toml`, which a service still on
+the legacy Nixpacks builder needs to install Bun. Before merging, check on **both** services:
+
+1. The builder is **Railpack** (see
+   [Switching a service from legacy Nixpacks to Railpack](#switching-a-service-from-legacy-nixpacks-to-railpack)).
+2. **Railway Config File** is empty and **Root Directory** is `/`.
+3. The Build and Start Commands match [the table below](#the-two-services-at-a-glance).
+4. The service variables pass the API's startup validation (see
+   [Environment variables](#environment-variables) and _Before deploying this version_ in
+   [server/readme.md](../server/readme.md)), and the web service has `PUBLIC_PORTFOLIO_API_URL`.
+
+Set the web healthcheck path to `/healthz` together with the merge (the code before this change
+has no `/healthz`; the API's `/health` already exists), then run [Verify a deploy](#verify-a-deploy)
+on the first deployment.
 
 ## The two services at a glance
 
@@ -68,8 +92,9 @@ What Railpack does with this repository:
 
 ### Switching a service from legacy Nixpacks to Railpack
 
-Check the builder of both services **before this change reaches `develop`**, because a service
-still on Nixpacks loses the `nixpacks.toml` that installed Bun.
+Check the builder of both services **before this change reaches `develop`** (see
+[Before merging to `develop`](#before-merging-to-develop)), because a service still on Nixpacks
+loses the `nixpacks.toml` that installed Bun.
 
 1. Look at the service's latest build logs: a Railpack build starts with its build plan, whose
    **Packages** table names each tool with its version and source (after this change:
@@ -137,8 +162,11 @@ local development.
 Railway provides `PORT`; Railpack sets `NODE_ENV=production` (the auth cookie is then `Secure`
 and the API docs are off). Leave `HOST` unset: the default `::` listens on IPv6 and IPv4, which
 Railway's private network needs in environments that resolve internal names to IPv6 only.
-`ALLOWED_DOMAINS` is validated at startup: a malformed value stops the deployment with a message
-listing the problem instead of failing requests later.
+`ALLOWED_DOMAINS` is validated at startup. Invalid JSON, or anything but an array of strings,
+stops the deployment with a message listing the problem. Entries that are not origins (no scheme
+as in `example.com`, a path, `*`) are only ignored, with an `[WARN] ALLOWED_DOMAINS: ignoring ...`
+line in the deploy logs: the deployment still goes live and passes its healthcheck, but the
+browser's calls from that origin fail CORS. Check the deploy logs after changing the variable.
 
 ### Web service
 
@@ -199,9 +227,12 @@ one fails. The CI workflow (`.github/workflows/main.yml`) qualifies: it runs on 
 `develop`.
 
 Enable it on both services **once CI is green on `develop`**: while any job fails, every deploy
-would be skipped. CI only cancels superseded runs of pull requests, never pushes to `develop`, so
-a deployed commit always has a completed run (a cancelled run would block its deployment unless
-another workflow on the commit succeeded). Runs not finished after two hours skip the deploy.
+would be skipped. A cancelled run also blocks the deployment of its commit, unless another
+workflow on the same commit succeeded. CI therefore only cancels superseded runs of pull
+requests: each push run has a concurrency group of its own, so pushes to `develop` neither wait
+for each other nor get cancelled while pending (GitHub cancels a pending run when a newer one
+joins its group, even with `cancel-in-progress: false`). Runs not finished after two hours skip
+the deploy.
 
 ## MongoDB
 
@@ -254,8 +285,11 @@ Config as Code (`railway.json` / `railway.toml`) is deprecated: new services can
 and existing files **stop being read on 2026-12-01**. Adding one now would create a configuration
 that silently stops applying in a month. The settings therefore live in the dashboard (this
 runbook), optionally managed with Infrastructure as Code below. If a service has a custom
-**Railway Config File** path set, clear it (`railway config migrate --apply` converts such files
-to `.railway/railway.ts` and clears the setting).
+**Railway Config File** path set, clear that field in the service **Settings**, or run
+`railway config migrate --apply` followed by `railway config migrate cutover` (reversible with
+`railway config migrate undo`; `railway config migrate status` lists the services that still read
+Config as Code). `--apply` alone only writes `.railway/railway.ts`: the services keep reading
+their config file until the cutover.
 
 ## Optional: Infrastructure as Code (`.railway/railway.ts`)
 
@@ -274,23 +308,24 @@ service) is planned as a **deletion**.
    ```bash
    bun add -g --trust @railway/cli   # or: brew install railway / scoop install railway
    railway login
-   railway link                      # project personal-api, environment production
+   railway link                      # the project that hosts both services (see the top)
    ```
 
-2. Import the live configuration **first**. This writes `.railway/railway.ts` with the real
-   service names and every resource, and keeps existing variable values on Railway as
-   `preserve()`:
+2. Add the SDK that `.railway/railway.ts` imports (`railway/iac`), at the repository root.
+   `railway config plan` and `apply` evaluate the file, so the package must be installed first.
+   This changes `package.json` and `bun.lock`; commit both:
+
+   ```bash
+   bun add -d railway
+   ```
+
+3. Import the live configuration **before** editing anything. This writes `.railway/railway.ts`
+   with the real service names and every resource, and keeps existing variable values on Railway
+   as `preserve()`:
 
    ```bash
    railway config pull
    railway config plan               # a clean import shows no changes
-   ```
-
-3. Add the SDK the file imports, at the repository root (this changes `package.json` and
-   `bun.lock`; commit both):
-
-   ```bash
-   bun add -d railway
    ```
 
 4. Edit the pulled file so each service matches [the table above](#the-two-services-at-a-glance).
@@ -337,7 +372,7 @@ service) is planned as a **deletion**.
 
    	// List EVERY resource the pulled file declares (e.g. the MongoDB service): in a
    	// single-repo file, a resource left out is planned as a deletion.
-   	return project('personal-api', { resources: [api, web] });
+   	return project('<project name>', { resources: [api, web] });
    });
    ```
 

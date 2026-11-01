@@ -77,7 +77,7 @@ Run from the repository root.
 | `bun run db:seed`      | Seed the database at `MONGO_URL` with the owner user and the `louis.gentil` domain           |
 | `bun run typecheck`    | `tsc` on the API and `svelte-check` on the web app                                           |
 | `bun run lint`         | Prettier check and ESLint on the web app                                                     |
-| `bun run test`         | API tests (need MongoDB) and web unit tests                                                  |
+| `bun run test`         | API tests (need MongoDB; set `TEST_MONGO_URL`, see [Testing](#testing)) and web unit tests   |
 | `bun run build:client` | Production build of the web app (`client/build`)                                             |
 | `bun run start:server` | Start the API in production mode                                                             |
 | `bun run start:client` | Start the built web app (port 4000 unless `PORT` is set)                                     |
@@ -89,10 +89,17 @@ Each workspace has more scripts (`format`, `check:watch`, `preview`, ...): see
 ## Testing
 
 ```bash
-bun run test                        # API tests (MongoDB at MONGO_URL) + web unit tests
-bun run --cwd server test           # API tests only
+TEST_MONGO_URL=mongodb://127.0.0.1:27017/portfolio-test bun run test   # API + web unit tests
+TEST_MONGO_URL=mongodb://127.0.0.1:27017/portfolio-test bun run --cwd server test   # API only
 bun run --cwd client test:unit      # web unit tests only (Vitest, single run)
 ```
+
+The API tests read `server/.env`, so without `TEST_MONGO_URL` they use its `MONGO_URL`, the
+development database: the integration and Eden suites seed it and create, then delete, their own
+documents there. `TEST_MONGO_URL` points them at a separate database instead (set it in the
+shell as above, or uncomment it in `server/.env`). The Eden suite also starts the API on `PORT`
+(3000 by default), so stop `bun run dev` first, or run the tests on another port
+(`PORT=3100 TEST_MONGO_URL=... bun run test`).
 
 End-to-end tests build the web app, serve it on port 4173 with adapter-bun and drive it with
 Playwright. They need the API running against a seeded database, with `http://localhost:4173` in
