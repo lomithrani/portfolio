@@ -4,6 +4,11 @@
 	import { page } from '$app/state';
 </script>
 
+<svelte:head>
+	<title>{page.status === 404 ? 'Not found' : 'Error'}</title>
+</svelte:head>
+
+<!-- domainName is only set for an unknown but claimable name (see [domain]/+layout.server.ts) -->
 {#if page.status === 404 && page.error?.domainName}
 	<ClaimDomain domainName={page.error.domainName} />
 {:else}
