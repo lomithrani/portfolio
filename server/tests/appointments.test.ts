@@ -2,6 +2,9 @@
 // be local or come from TEST_MONGO_URL). Google is faked at the fetch layer:
 // the real @googleapis/calendar and google-auth-library clients build every
 // request, so tokens really go from the database to Google, and nowhere else.
+// Each test logs in its own users, claims its own domain and gets a fresh fake
+// Google, named with a suffix unique to that test, and its data is removed
+// after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose from 'mongoose';
 import { env } from '../env';
@@ -18,16 +21,15 @@ import {
 } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
-const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-const id = (name: string) => `ap-${name}-${suffix}`;
-const emails = ['owner', 'other', 'sweep'].map((name) => `${id(name)}@example.com`);
-const [OWNER_EMAIL, OTHER_EMAIL, SWEEP_EMAIL] = emails;
-const OWNER_DOMAIN = id('domain');
-const SWEEP_DOMAIN = id('domain-sweep');
-const SKILL_NAMES = [id('skill-hard'), id('skill-soft')];
+/** Names unique to one test: everything it creates carries its suffix */
+const testNames = () => {
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const id = (name: string) => `ap-${name}-${suffix}`;
+  return { suffix, id, email: (name: string) => `${id(name)}@example.com` };
+};
 
 const TEST_CLIENT_SECRET = 'GOCSPX-test-client-secret';
-const PRIMARY_CALENDAR = `${id('calendar')}@example.com`;
+const PRIMARY_CALENDAR = `ap-calendar-${testNames().suffix}@example.com`;
 const TIMEZONE = 'Europe/Paris';
 
 // ── Fake Google (OAuth token endpoint + Calendar v3) ────────
@@ -56,7 +58,10 @@ interface GoogleRequest {
 const googleError = (status: number, message: string) =>
   Response.json({ error: { code: status, message } }, { status });
 
-const createFakeGoogle = () => {
+/** Every token any test's fake Google issued: none may ever appear in an API response */
+const allIssuedTokens = new Set<string>();
+
+const createFakeGoogle = (suffix: string) => {
   let counter = 0;
   const state = {
     /** Every token Google issued: none may ever appear in an API response */
@@ -71,6 +76,7 @@ const createFakeGoogle = () => {
   const issue = (kind: 'access' | 'refresh') => {
     const token = `${kind}-token-${suffix}-${++counter}`;
     state.issuedTokens.add(token);
+    allIssuedTokens.add(token);
     (kind === 'access' ? state.accessTokens : state.refreshTokens).add(token);
     return token;
   };
@@ -185,7 +191,8 @@ const createFakeGoogle = () => {
   return { state, install };
 };
 
-const google = createFakeGoogle();
+// A fresh fake per test (beforeEach): no events, busy times or tokens carry over
+let google: ReturnType<typeof createFakeGoogle>;
 
 // ── API calls, all recorded ─────────────────────────────────
 
@@ -230,9 +237,10 @@ const call = async (
   };
 };
 
-const login = async (sub: string, email: string) => {
+/** Logs in with Google as this test's user `name` (sub and email derived from it) */
+const login = async (name: string) => {
   const result = await call('POST', '/login', {
-    body: { token: await signGoogleIdToken({ claims: { sub, email } }) }
+    body: { token: await signGoogleIdToken({ claims: { sub: t.id(`sub-${name}`), email: t.email(name) } }) }
   });
   expect(result.status).toBe(200);
   const cookie = `auth=${parseCookie(result.headers.get('Set-Cookie') ?? '')['auth']}`;
@@ -262,49 +270,77 @@ const at = (time: string, date = BOOKING_DATE) => wallClockToUTC(date, time, TIM
 const storedTokens = (userId: string) =>
   User.findById(userId).select('+googleCalendar.refreshToken +googleCalendar.accessToken');
 
+/** Connects the owner's Google Calendar (calendar scope and a refresh token) */
+const connectOwner = async () => {
+  const connected = await call('POST', '/appointments/connect', { body: { code: 'code-1' }, cookie: owner.cookie });
+  expect(connected.status).toBe(200);
+};
+
+/** API responses (bodies and headers) that contain a token Google issued */
+const tokenLeaks = (recorded: RecordedResponse[]) =>
+  recorded.flatMap((response) =>
+    [...allIssuedTokens]
+      .filter((token) => response.text.includes(token))
+      .map((token) => `${response.method} ${response.path} -> ${token}`)
+  );
+
+/** Removes what a test created: everything named with its suffix, and what those users own */
+const removeTestData = async (suffix: string) => {
+  const named = new RegExp(`-${suffix}(@|$)`);
+  const userIds = (await User.find({ email: named }, '_id')).map((user) => user._id);
+  const domains = await Domain.find({ $or: [{ admin: { $in: userIds } }, { name: named }] });
+  await Experience.deleteMany({ _id: { $in: domains.flatMap((domain) => domain.experiences.map(String)) } });
+  await Domain.deleteMany({ _id: { $in: domains.map((domain) => domain._id) } });
+  await AppointmentSchedule.deleteMany({ user: { $in: userIds } });
+  await Workflow.deleteMany({ user: { $in: userIds } });
+  await Skill.deleteMany({ displayName: named });
+  await User.deleteMany({ _id: { $in: userIds } });
+};
+
+let t: ReturnType<typeof testNames>;
+/** Index in `responses` of this test's first response */
+let testResponses = 0;
 let owner: { cookie: string; userId: string };
 let other: { cookie: string; userId: string };
 const savedSecret = env.GOOGLE_CLIENT_SECRET;
+// Set once beforeAll has connected. Teardown then always runs: after a dropped
+// connection Mongoose waits for it to come back, or the hook fails (never skipped)
+let connected = false;
 
 beforeAll(async () => {
   assertDisposableDatabase(env.MONGO_URL);
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
+  connected = true;
   await Promise.all([User.init(), Domain.init()]);
   env.GOOGLE_CLIENT_SECRET = TEST_CLIENT_SECRET;
   env.googleCalendarEnabled = true;
-
-  app = createApp();
-  useTestGoogleKeys();
-  owner = await login(id('sub-owner'), OWNER_EMAIL);
-  other = await login(id('sub-other'), OTHER_EMAIL);
-  expect((await call('POST', '/domain/claim', { body: { name: OWNER_DOMAIN }, cookie: owner.cookie })).status).toBe(200);
-  mock.restore();
 });
 
 afterAll(async () => {
   env.GOOGLE_CLIENT_SECRET = savedSecret;
   env.googleCalendarEnabled = savedSecret !== undefined;
-  if (mongoose.connection.readyState !== 1) return;
-  const users = await User.find({ email: { $in: emails } });
-  const userIds = users.map((user) => user._id);
-  const domains = await Domain.find({ admin: { $in: userIds } });
-  await Experience.deleteMany({ _id: { $in: domains.flatMap((domain) => domain.experiences.map(String)) } });
-  await Domain.deleteMany({ _id: { $in: domains.map((domain) => domain._id) } });
-  await AppointmentSchedule.deleteMany({ user: { $in: userIds } });
-  await Workflow.deleteMany({ user: { $in: userIds } });
-  await Skill.deleteMany({ displayName: { $in: SKILL_NAMES } });
-  await User.deleteMany({ _id: { $in: userIds } });
-  await mongoose.disconnect();
+  if (connected) await mongoose.disconnect();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  t = testNames();
+  testResponses = responses.length;
   app = createApp();
   useTestGoogleKeys();
+  google = createFakeGoogle(t.suffix);
   google.install();
+  // Every test starts with an owner (calendar not connected) who has a domain, and another user
+  owner = await login('owner');
+  other = await login('other');
+  expect((await call('POST', '/domain/claim', { body: { name: t.id('domain') }, cookie: owner.cookie })).status).toBe(200);
 });
 
-afterEach(() => {
+afterEach(async () => {
   mock.restore();
+  // No Google token in any body or header this test received, whichever order the tests run in
+  const leaks = tokenLeaks(responses.slice(testResponses));
+  if (connected) await removeTestData(t.suffix);
+  expect(leaks).toEqual([]);
 });
 
 describe('Google Calendar connection', () => {
@@ -383,7 +419,7 @@ describe('Google Calendar connection', () => {
     // select: false: documents and lean objects loaded the usual ways have no tokens
     const loaded = [
       await User.findById(owner.userId),
-      await User.findOne({ email: OWNER_EMAIL }),
+      await User.findOne({ email: t.email('owner') }),
       (await User.find({ _id: owner.userId }))[0],
       await User.findById(owner.userId).lean()
     ];
@@ -397,6 +433,7 @@ describe('Google Calendar connection', () => {
   });
 
   it('keeps the stored refresh token when Google sends none on reconnect', async () => {
+    await connectOwner();
     const before = await storedTokens(owner.userId);
     const reconnect = await call('POST', '/appointments/connect', {
       body: { code: 'code-without-refresh' },
@@ -410,6 +447,7 @@ describe('Google Calendar connection', () => {
   });
 
   it('lists the writable calendars with the stored access token', async () => {
+    await connectOwner();
     const calendars = await call('GET', '/appointments/calendars', { cookie: owner.cookie });
     expect(calendars.status).toBe(200);
     expect(calendars.json()).toEqual([
@@ -424,6 +462,7 @@ describe('Google Calendar connection', () => {
   });
 
   it('stores the access token Google refreshes', async () => {
+    await connectOwner();
     await User.updateOne({ _id: owner.userId }, { $set: { 'googleCalendar.tokenExpiry': new Date(Date.now() - 60_000) } });
 
     expect((await call('GET', '/appointments/calendars', { cookie: owner.cookie })).status).toBe(200);
@@ -492,13 +531,15 @@ describe('public booking', () => {
   let scheduleId: string;
   let pausedId: string;
 
-  beforeAll(async () => {
+  // After the top-level beforeEach: the owner connects, with one enabled and one paused schedule
+  beforeEach(async () => {
+    await connectOwner();
     scheduleId = (await AppointmentSchedule.create({ ...scheduleBody(), user: owner.userId }))._id.toString();
     pausedId = (await AppointmentSchedule.create({ ...scheduleBody({ title: 'Paused', enabled: false }), user: owner.userId }))._id.toString();
   });
 
   it('lists the enabled schedules of a domain without private fields', async () => {
-    const listed = await call('GET', `/appointments/domains/${OWNER_DOMAIN.toUpperCase()}/schedules`);
+    const listed = await call('GET', `/appointments/domains/${t.id('domain').toUpperCase()}/schedules`);
     expect(listed.status).toBe(200);
     const schedules = listed.json<Record<string, unknown>[]>();
     expect(schedules.map((schedule) => schedule.id)).toEqual([scheduleId]);
@@ -518,7 +559,7 @@ describe('public booking', () => {
     const single = await call('GET', `/appointments/schedules/${scheduleId}/public`);
     expect(single.json()).toEqual(schedules[0]);
     expect((await call('GET', `/appointments/schedules/${pausedId}/public`)).status).toBe(404);
-    expect((await call('GET', `/appointments/domains/${id('nope')}/schedules`)).status).toBe(404);
+    expect((await call('GET', `/appointments/domains/${t.id('nope')}/schedules`)).status).toBe(404);
   });
 
   it('offers the free slots of a day', async () => {
@@ -580,6 +621,12 @@ describe('public booking', () => {
   });
 
   it('lists upcoming bookings and cancels only events the app created', async () => {
+    // A visitor's booking, made through the public route
+    const booked = await call('POST', '/appointments/book', {
+      body: { scheduleId, startTime: at('09:00'), name: 'Jane Recruiter', email: 'jane@example.com', notes: 'Hello' }
+    });
+    expect(booked.status).toBe(200);
+
     const upcoming = await call('GET', '/appointments/upcoming', { cookie: owner.cookie });
     expect(upcoming.status).toBe(200);
     const [booking] = upcoming.json<{ id: string; calendarId: string; attendees: string[] }[]>();
@@ -603,7 +650,7 @@ describe('public booking', () => {
     // The whole subdocument is gone from MongoDB
     expect((await storedTokens(owner.userId).lean())?.googleCalendar).toBeUndefined();
 
-    expect((await call('GET', `/appointments/domains/${OWNER_DOMAIN}/schedules`)).json()).toEqual([]);
+    expect((await call('GET', `/appointments/domains/${t.id('domain')}/schedules`)).json()).toEqual([]);
     expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(409);
   });
 });
@@ -611,7 +658,8 @@ describe('public booking', () => {
 describe('no Google token in any API response', () => {
   it('calls every route with valid input and finds the tokens in none of the responses', async () => {
     const first = responses.length;
-    const sweep = await login(id('sub-sweep'), SWEEP_EMAIL);
+    const sweepDomain = t.id('domain-sweep');
+    const sweep = await login('sweep');
     const auth = { cookie: sweep.cookie };
 
     // Connected first, so every route below answers while tokens are stored
@@ -620,19 +668,19 @@ describe('no Google token in any API response', () => {
     const stored = await storedTokens(sweep.userId);
     expect(google.state.refreshTokens.has(stored?.googleCalendar?.refreshToken ?? '')).toBe(true);
 
-    await login(id('sub-sweep'), SWEEP_EMAIL);
+    await login('sweep');
     expect((await call('GET', '/isLogged', auth)).status).toBe(200);
     expect((await call('GET', '/health')).status).toBe(200);
-    expect((await call('POST', '/domain/claim', { ...auth, body: { name: SWEEP_DOMAIN } })).status).toBe(200);
+    expect((await call('POST', '/domain/claim', { ...auth, body: { name: sweepDomain } })).status).toBe(200);
     expect((await call('GET', '/appointments/calendar-status', auth)).status).toBe(200);
 
-    expect((await call('GET', `/domain/${SWEEP_DOMAIN}`)).status).toBe(200);
-    expect((await call('PUT', `/domain/${SWEEP_DOMAIN}`, { ...auth, body: { headerTitle: 'Sweep' } })).status).toBe(200);
+    expect((await call('GET', `/domain/${sweepDomain}`)).status).toBe(200);
+    expect((await call('PUT', `/domain/${sweepDomain}`, { ...auth, body: { headerTitle: 'Sweep' } })).status).toBe(200);
 
     const project = {
       ...experienceRequestBody.projects[0],
-      hardSkills: [{ name: SKILL_NAMES[0], level: -1 }],
-      softSkills: [{ name: SKILL_NAMES[1], level: -1 }]
+      hardSkills: [{ name: t.id('skill-hard'), level: -1 }],
+      softSkills: [{ name: t.id('skill-soft'), level: -1 }]
     };
     const experience = await call('POST', '/experiences', { ...auth, body: { ...experienceRequestBody, projects: [project] } });
     expect(experience.status).toBe(200);
@@ -656,7 +704,7 @@ describe('no Google token in any API response', () => {
     expect((await call('GET', '/appointments/schedules', auth)).status).toBe(200);
 
     google.state.busy = [];
-    expect((await call('GET', `/appointments/domains/${SWEEP_DOMAIN}/schedules`)).status).toBe(200);
+    expect((await call('GET', `/appointments/domains/${sweepDomain}/schedules`)).status).toBe(200);
     expect((await call('GET', `/appointments/schedules/${scheduleId}/public`)).status).toBe(200);
     expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(200);
     const booked = await call('POST', '/appointments/book', {
@@ -700,14 +748,10 @@ describe('no Google token in any API response', () => {
       .map((route) => route.name);
     expect(uncovered).toEqual([]);
 
-    // Neither token, in any body or header of this suite
+    // Neither token, in any body or header of this suite so far (afterEach
+    // also checks each test's own responses, whatever the order)
     expect(google.state.refreshTokens.size).toBeGreaterThan(0);
     expect(google.state.accessTokens.size).toBeGreaterThan(0);
-    const leaks = responses.flatMap((response) =>
-      [...google.state.issuedTokens]
-        .filter((token) => response.text.includes(token))
-        .map((token) => `${response.method} ${response.path} -> ${token}`)
-    );
-    expect(leaks).toEqual([]);
+    expect(tokenLeaks(responses)).toEqual([]);
   });
 });
