@@ -11,6 +11,15 @@
     "common"
   ],
   "scripts": {
+    "dev": "bun run --parallel dev:server dev:client",
+    "dev:server": "bun run --cwd server dev",
+    "dev:client": "bun run --cwd client dev",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:seed": "bun run --cwd server seed",
+    "typecheck": "bun run --cwd server typecheck && bun run --cwd client check",
+    "lint": "bun run --cwd client lint",
+    "test": "bun run --cwd server test && bun run --cwd client test:unit",
     "build:client": "cd client && bun run build",
     "start:server": "cd server && bun run start",
     "start:client": "cd client && PORT=${PORT:-4000} bun --bun build/index.js"
