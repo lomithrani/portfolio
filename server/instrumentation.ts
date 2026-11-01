@@ -19,44 +19,44 @@ import { env } from './env'
 let sdk: NodeSDK | undefined
 
 if (env.otelEnabled) {
-  // One SDK owns traces, metrics and logs. Exporters read the endpoint and
-  // headers from OTEL_EXPORTER_OTLP_* themselves.
-  sdk = new NodeSDK({
-    resource: resourceFromAttributes({
-      [ATTR_SERVICE_NAME]: env.OTEL_SERVICE_NAME,
-      'deployment.environment.name': env.NODE_ENV
-    }),
-    spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })],
-    metricReaders: [new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter(),
-      exportIntervalMillis: 60_000
-    })],
-    logRecordProcessors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter() })],
-    instrumentations: []
-  })
-  // Must run before the plugin (which then reuses this SDK instead of
-  // starting another) and before metrics.getMeter() below
-  sdk.start()
+	// One SDK owns traces, metrics and logs. Exporters read the endpoint and
+	// headers from OTEL_EXPORTER_OTLP_* themselves.
+	sdk = new NodeSDK({
+		resource: resourceFromAttributes({
+			[ATTR_SERVICE_NAME]: env.OTEL_SERVICE_NAME,
+			'deployment.environment.name': env.NODE_ENV
+		}),
+		spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })],
+		metricReaders: [new PeriodicExportingMetricReader({
+			exporter: new OTLPMetricExporter(),
+			exportIntervalMillis: 60_000
+		})],
+		logRecordProcessors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter() })],
+		instrumentations: []
+	})
+	// Must run before the plugin (which then reuses this SDK instead of
+	// starting another) and before metrics.getMeter() below
+	sdk.start()
 }
 
 // Elysia request tracing; a plain no-op plugin when telemetry is off
 export const instrumentation = env.otelEnabled
-  ? opentelemetry({ serviceName: env.OTEL_SERVICE_NAME })
-  : new Elysia({ name: 'otel-disabled' })
+	? opentelemetry({ serviceName: env.OTEL_SERVICE_NAME })
+	: new Elysia({ name: 'otel-disabled' })
 
 /** Flushes and stops exporters (no-op when telemetry is off) */
 export const shutdownTelemetry = async () => {
-  await sdk?.shutdown()
+	await sdk?.shutdown()
 }
 
 // HTTP server metrics (the Elysia plugin only does tracing, not metrics)
 const meter = metrics.getMeter('portfolio-server')
 
 export const httpRequestCounter = meter.createCounter('http.server.requests', {
-  description: 'Total number of HTTP requests'
+	description: 'Total number of HTTP requests'
 })
 
 export const httpRequestDuration = meter.createHistogram('http.server.request.duration', {
-  description: 'HTTP request duration in milliseconds',
-  unit: 'ms'
+	description: 'HTTP request duration in milliseconds',
+	unit: 'ms'
 })
