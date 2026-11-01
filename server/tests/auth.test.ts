@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
-import { decodeJwt, generateKeyPair } from 'jose';
+import { decodeJwt, errors as joseErrors, generateKeyPair } from 'jose';
 import { User } from '../models/database';
 import {
   parseCookie,
@@ -17,6 +17,8 @@ import {
 } from './helpers';
 import { createApp } from '../app';
 import { InvalidGoogleTokenError } from '../errors';
+import { createGoogleIdTokenVerifier, google } from '../services/google';
+import { env } from '../env';
 
 const sevenDaysMinusOneSecond = 1000 * 60 * 60 * 24 * 7 - 1000;
 let app: ReturnType<typeof createApp>;
@@ -69,6 +71,43 @@ describe('Google ID token verification', () => {
 
   it('rejects garbage', async () => {
     await expect(testGoogleVerifier('abc&access_token=zzz')).rejects.toBeInstanceOf(InvalidGoogleTokenError);
+  });
+
+  it('rejects a token whose key id Google does not publish', async () => {
+    const verifier = createGoogleIdTokenVerifier({
+      audience: env.GOOGLE_CLIENT_ID,
+      keySet: () => Promise.reject(new joseErrors.JWKSNoMatchingKey())
+    });
+    await expect(verifier(await signGoogleIdToken())).rejects.toBeInstanceOf(InvalidGoogleTokenError);
+  });
+
+  // What jose's remote key set throws when Google's certs endpoint fails
+  it.each([
+    ['answers non-200 or invalid JSON', new joseErrors.JOSEError('Expected 200 OK from the JSON Web Key Set HTTP response')],
+    ['times out', new joseErrors.JWKSTimeout()],
+    ['serves an invalid key set', new joseErrors.JWKSInvalid()],
+    ['cannot be reached', new TypeError('fetch failed')],
+  ])('does not blame the token when Google\'s key endpoint %s', async (_label, keyError) => {
+    const verifier = createGoogleIdTokenVerifier({
+      audience: env.GOOGLE_CLIENT_ID,
+      keySet: () => Promise.reject(keyError)
+    });
+    const rejection = verifier(await signGoogleIdToken());
+    await expect(rejection).rejects.toBe(keyError);
+  });
+
+  it('answers 500, not 401, when Google\'s key endpoint fails', async () => {
+    spyOn(google, 'verifyIdToken').mockImplementation(
+      createGoogleIdTokenVerifier({
+        audience: env.GOOGLE_CLIENT_ID,
+        keySet: () => Promise.reject(new joseErrors.JOSEError('Expected 200 OK from the JSON Web Key Set HTTP response'))
+      })
+    );
+
+    const result = await postJson(app, '/login', { token: await signGoogleIdToken() });
+
+    expect(result.status).toBe(500);
+    expect(await result.text()).toBe('Internal Server Error');
   });
 });
 

@@ -23,6 +23,22 @@ export interface GoogleIdTokenVerifierOptions {
   keySet?: JWTVerifyGetKey;
 }
 
+// Errors that mean the token itself is bad (401). JWTExpired and
+// JWTClaimValidationFailed cover exp, iss and aud.
+const INVALID_TOKEN_ERRORS = [
+  joseErrors.JWSInvalid,
+  joseErrors.JWTInvalid,
+  joseErrors.JWTClaimValidationFailed,
+  joseErrors.JWTExpired,
+  joseErrors.JWSSignatureVerificationFailed,
+  joseErrors.JWKSNoMatchingKey,
+  joseErrors.JOSEAlgNotAllowed,
+  joseErrors.JOSENotSupported
+];
+
+const isInvalidTokenError = (error: unknown) =>
+  INVALID_TOKEN_ERRORS.some((ErrorClass) => error instanceof ErrorClass);
+
 export const createGoogleIdTokenVerifier = ({ audience, keySet }: GoogleIdTokenVerifierOptions) => {
   let keys = keySet;
 
@@ -38,12 +54,9 @@ export const createGoogleIdTokenVerifier = ({ audience, keySet }: GoogleIdTokenV
         clockTolerance: 30
       }));
     } catch (error) {
-      // Failing to reach Google's key endpoint is not the caller's fault
-      const keyFetchFailed =
-        error instanceof joseErrors.JWKSTimeout || error instanceof joseErrors.JWKSInvalid;
-      if (error instanceof joseErrors.JOSEError && !keyFetchFailed) {
-        throw new InvalidGoogleTokenError('Invalid Google token');
-      }
+      if (isInvalidTokenError(error)) throw new InvalidGoogleTokenError('Invalid Google token');
+      // Anything else, e.g. Google's key endpoint timing out, answering
+      // non-200 or invalid JSON (a plain JOSEError), is not the caller's fault
       throw error;
     }
 
