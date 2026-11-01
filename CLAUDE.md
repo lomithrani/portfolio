@@ -22,7 +22,7 @@ All from the repo root (`bun run --cwd <workspace> <script>` runs a workspace sc
 ### Development
 ```bash
 bun install                       # Install all workspaces (CI and Railway use --frozen-lockfile)
-bun run db:up                     # Local MongoDB 9 via Docker (compose.yaml), waits until healthy
+bun run db:up                     # Local MongoDB 7 (as in production) via Docker (compose.yaml), waits until healthy
 bun run db:seed                   # Seed owner user + 'louis.gentil' domain (idempotent)
 bun run dev                       # API (port 3000, watch) + SvelteKit dev server (port 5173) in parallel
 bun run dev:server                # API only
@@ -99,9 +99,9 @@ Health checks: API `GET /health` (200 when MongoDB is connected, 503 otherwise),
 
 Railway deploys the `develop` branch as two services from the repo root, both built with **Railpack** (it reads Bun 1.4.4 from `packageManager` and runs `bun install --frozen-lockfile`): API (start `bun run start:server`, healthcheck `/health`) and web (build `bun run build:client`, start `bun run start:client`, healthcheck `/healthz`). Settings live in the Railway dashboard; there is intentionally no `railway.json` (Config as Code is deprecated and stops being read on 2026-12-01) and no `nixpacks.toml`. Full runbook: `docs/DEPLOYMENT.md`.
 
-The Railway layout is **not verified yet**: the runbook assumes project `personal-api`, environment `production` hosts both services, but the web service may still be in an older project. Confirm with `railway list` / `railway status` / `railway environment config` before relying on these names. Before merging to `develop`, check both services use the Railpack builder with an empty Railway Config File (this branch deletes `nixpacks.toml`); see "Before merging to `develop`" in the runbook.
+Live layout (verified 2026-11-01): Railway project `personal-api`, environment `production`: web service `portfolio` (`develop.portfolio.gentil.tech`), API service `portfolio api develop` (`develop.api.portfolio.gentil.tech`), `MongoDB` (`mongo:7` with a volume), plus a legacy never-deployed `portfolio api` service on `main`. Both app services use the Railpack builder and Root Directory `/` (see the runbook for the full settings).
 
-CI (`.github/workflows/main.yml`) runs on push/PR to `develop` and `main`: quality (lint, svelte-check, server tsc, client build), tests (server + client unit, MongoDB 9 service) and Playwright e2e. The `develop` branch is the main development branch.
+CI (`.github/workflows/main.yml`) runs on push/PR to `develop` and `main`: quality (lint, svelte-check, server tsc, client build), tests (server + client unit against MongoDB 7, like production, and 9) and Playwright e2e. The `develop` branch is the main development branch.
 
 ## Claude Code Setup (new device)
 

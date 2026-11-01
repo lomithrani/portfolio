@@ -47,7 +47,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 7: production (Railway's MongoDB service runs mongo:7); 9: local compose.
+        # 7: production (Railway's MongoDB service runs mongo:7) and local compose; 9: next major.
         # Not 8: mongo:8 is MongoDB 8.3, which cannot start on kernel 6.19+ (SERVER-121912).
         mongodb: ['7', '9']
     services:
@@ -85,7 +85,7 @@ jobs:
     timeout-minutes: 20
     services:
       mongodb:
-        image: mongo:9
+        image: mongo:7
         ports:
           - 27017:27017
         options: >-

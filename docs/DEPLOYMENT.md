@@ -4,12 +4,22 @@ The portfolio runs on [Railway](https://railway.com) as **two services built fro
 repository**: the Elysia API (`server/`) and the SvelteKit web app (`client/`). Both deploy every
 push to the **`develop`** branch.
 
-> **To verify against the live project.** This runbook assumes both services are in Railway
-> project `personal-api`, environment `production`. That has not been confirmed: the web service
-> may still be in an older project (named `production`, with a web service called `portfolio`).
-> After `railway login`, `railway list` shows the projects; `railway link` each candidate, then
-> run `railway status` and `railway environment config` to see its services and their settings,
-> and correct the names in this runbook.
+### Live layout (verified 2026-11-01 with the Railway connector)
+
+Project **`personal-api`**, environment **`production`** (region `us-west2`):
+
+| Railway service          | Role                         | Branch    | Domains                                                                   |
+| ------------------------ | ---------------------------- | --------- | ------------------------------------------------------------------------- |
+| `portfolio`              | Web (SvelteKit)              | `develop` | `develop.portfolio.gentil.tech`, `portfolio-production-7dbf.up.railway.app` |
+| `portfolio api develop`  | API (Elysia)                 | `develop` | `develop.api.portfolio.gentil.tech`, `portfolio-develop-production.up.railway.app` |
+| `MongoDB`                | Database (`mongo:7`, volume `mongo data`) | — | private network only                                                  |
+| `portfolio api`          | Legacy API, never deployed in this environment | `main` | `api.portfolio.gentil.tech`                                    |
+
+Both app services use Root Directory `/`. Until this change they built with the legacy
+**Nixpacks** builder and had no healthcheck. The web and API custom domains share the registrable
+domain `gentil.tech`, so the `SameSite=Strict` auth cookie works (see
+[Custom domains are required for login](#custom-domains-are-required-for-login)). Production
+MongoDB is **7.0**, which CI also tests against.
 
 This runbook lists every setting the two services need. They live in the Railway dashboard (or in
 the optional Infrastructure as Code file described at the end), not in the repository: Railway's
@@ -238,10 +248,11 @@ the deploy.
 
 - The server uses Mongoose 9.11 with the MongoDB Node.js driver 7.7, which supports MongoDB
   server **4.4 to 9.0**.
-- Local development (`compose.yaml`) and CI use the `mongo:9` image. Not `mongo:8`: that tag is
-  MongoDB 8.3, which refuses to start on Linux kernel 6.19+ (SERVER-121912) — the kernel of
-  GitHub's `ubuntu-latest` (Ubuntu 26.04) runners and of current desktop distributions. Check the
-  production version and keep those on the same major when possible:
+- Production runs **MongoDB 7** (Railway service `MongoDB`, image `mongo:7`). Local development
+  (`compose.yaml`) and CI use `mongo:7` too; CI additionally runs the test job against `mongo:9`
+  to catch upgrade problems early. Avoid `mongo:8`: that tag is MongoDB 8.3, which refuses to start
+  on Linux kernel 6.19+ (SERVER-121912) — the kernel of GitHub's `ubuntu-latest` runners and of
+  current desktop distributions. Check the production version with:
 
   ```bash
   mongosh "<production MONGO_URL>" --quiet --eval 'db.version()'

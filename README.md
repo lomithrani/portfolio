@@ -18,7 +18,7 @@ docs/     Deployment runbook
 | Web app          | [SvelteKit](https://svelte.dev/docs/kit) 3.1 with `@sveltejs/adapter-bun`, Svelte 5.57 (runes), Vite 8, Skeleton 5, Tailwind CSS 4.3 |
 | API              | [Elysia](https://elysiajs.com) 1.4 (CORS, JWT, OpenAPI, OpenTelemetry plugins), Mongoose 9.11, `jose` for Google ID tokens           |
 | Type-safe calls  | [Eden Treaty](https://elysiajs.com/eden/overview): the web app imports the API's `Portfolio` type, so API changes break the build    |
-| Database         | [MongoDB](https://www.mongodb.com) 8 (the driver supports MongoDB 4.4 to 9.0)                                                        |
+| Database         | [MongoDB](https://www.mongodb.com) 7 (the driver supports MongoDB 4.4 to 9.0)                                                        |
 | Auth             | Google Sign-In; the API verifies the ID token and sets a 7-day JWT in an `httpOnly` cookie                                           |
 | Observability    | OpenTelemetry (traces, metrics, logs) over OTLP, off unless an endpoint is configured                                                |
 | Tests            | `bun test` (API), Vitest 5 (web unit), Playwright 1.64 (end to end)                                                                  |
@@ -51,7 +51,7 @@ Use Bun for everything (`bun`, `bunx`), not npm or npx.
 bun install
 cp server/.env.example server/.env
 cp client/.env.example client/.env
-bun run db:up      # MongoDB 9 in Docker on 127.0.0.1:27017, waits until healthy
+bun run db:up      # MongoDB 7 (as in production) in Docker on 127.0.0.1:27017, waits until healthy
 bun run db:seed    # owner user + the 'louis.gentil' domain (safe to re-run)
 bun run dev        # API on http://localhost:3000 and web app on http://localhost:5173
 ```
@@ -113,7 +113,7 @@ bun run --cwd client test:e2e
 ```
 
 CI (`.github/workflows/main.yml`) runs on pushes and pull requests to `develop` and `main`, in
-three jobs: lint, type-check and build; API and web unit tests against MongoDB 9; Playwright end
+three jobs: lint, type-check and build; API and web unit tests against MongoDB 7 (production) and 9; Playwright end
 to end.
 
 ## Deployment
