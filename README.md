@@ -100,9 +100,10 @@ bun run --cwd client test:unit      # web unit tests only (Vitest, single run)
 ```
 
 The API tests read `server/.env`, so without `TEST_MONGO_URL` they use its `MONGO_URL`, the
-development database: the integration and Eden suites seed it and create, then delete, their own
-documents there. `TEST_MONGO_URL` points them at a separate database instead (set it in the
-shell as above, or uncomment it in `server/.env`). The Eden suite also starts the API on `PORT`
+development database: the integration and Eden suites create, then delete, their own documents
+there (each test its own, so they pass in any order with `bun test --randomize`).
+`TEST_MONGO_URL` points them at a separate database instead (set it in the shell as above, or
+uncomment it in `server/.env`). The Eden suite also starts the API on `PORT`
 (3000 by default), so stop `bun run dev` first, or run the tests on another port
 (`PORT=3100 TEST_MONGO_URL=... bun run test`).
 

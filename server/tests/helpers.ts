@@ -169,6 +169,15 @@ export function makeRequest(app: FetchApp, path: string, options: RequestInit = 
   return app.fetch(new Request(`${baseUrl}${path}`, options));
 }
 
+/**
+ * Resolves once the onAfterResponse hooks (HTTP metrics) of the requests
+ * already answered have run: Elysia queues them with setImmediate while it
+ * handles a request, so they fire after app.fetch() resolves, possibly in the
+ * next test. Await it before spying on the metrics, so an earlier test's late
+ * calls stay out of the spy, and after a request, so its own calls are in.
+ */
+export const afterResponseHooks = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 /** Parsed JSON body (typed loosely: tests assert on its shape) */
 export const readJson = <T = any>(response: Response): Promise<T> => response.json() as Promise<T>;
 

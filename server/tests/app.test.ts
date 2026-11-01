@@ -7,7 +7,7 @@ import { env } from '../env';
 import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
 import { google } from '../services/google';
 import { logger } from '../services/logger';
-import { authCookie, makeRequest, readJson, useTestGoogleKeys } from './helpers';
+import { afterResponseHooks, authCookie, makeRequest, readJson, useTestGoogleKeys } from './helpers';
 
 // Overrides mongoose.connection.readyState (a prototype getter) for one test
 const setReadyState = (state: number) =>
@@ -91,14 +91,17 @@ describe('request bodies', () => {
   });
 
   it('logs and counts rejected non-JSON requests like any other 4xx', async () => {
+    const cookie = await authCookie();
+    await afterResponseHooks();
     const warn = spyOn(logger, 'warn');
     const add = spyOn(httpRequestCounter, 'add');
 
     const result = await makeRequest(createApp(), '/experiences', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: await authCookie() },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
       body: 'title=x'
     });
+    await afterResponseHooks();
 
     expect(result.status).toBe(415);
     expect(warn).toHaveBeenCalledWith('Unsupported Media Type', expect.objectContaining({ status: 415, method: 'POST' }));
