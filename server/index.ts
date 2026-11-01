@@ -3,9 +3,11 @@
 import { env } from './env';
 import mongoose from 'mongoose';
 import { app } from './app';
-import { shutdownTelemetry } from './instrumentation';
+import { describeTelemetry, shutdownTelemetry } from './instrumentation';
 import { logger } from './services/logger';
 import { formatListenUrl, listenWithFallback } from './services/listen';
+import { startMemoryDiagnostics } from './services/memoryDiagnostics';
+import { createShutdown } from './services/shutdown';
 
 export { app };
 export type { Portfolio } from './app';
@@ -40,44 +42,22 @@ const host = listenWithFallback(app, {
 });
 
 logger.info(`Running at ${formatListenUrl(host, app.server!.port ?? env.PORT, !!env.TLS_PASSPHRASE)}`, {
-  allowedDomains: env.ALLOWED_DOMAINS.join(', ')
+  allowedDomains: env.ALLOWED_DOMAINS.join(', '),
+  telemetry: describeTelemetry(env)
 });
 
-// Graceful shutdown (Railway sends SIGTERM on redeploy, Ctrl+C sends SIGINT):
-// stop accepting requests, let in-flight ones finish, close MongoDB, flush
-// telemetry, then exit. A second signal of the same kind exits immediately.
-const SHUTDOWN_TIMEOUT_MS = 10_000;
-let shuttingDown = false;
+// 'memory' log line at startup, then every MEMORY_LOG_INTERVAL_MS
+const stopMemoryDiagnostics = startMemoryDiagnostics(env.MEMORY_LOG_INTERVAL_MS);
 
-const shutdown = async (signal: NodeJS.Signals) => {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  logger.info(`${signal} received, shutting down`);
-
-  const forceExit = setTimeout(() => {
-    logger.error('Graceful shutdown timed out, exiting');
-    process.exit(1);
-  }, SHUTDOWN_TIMEOUT_MS);
-  forceExit.unref();
-
-  let exitCode = 0;
-  const step = async (name: string, action: () => Promise<unknown>) => {
-    try {
-      await action();
-    } catch (error) {
-      exitCode = 1;
-      logger.error(`Shutdown: ${name} failed`, {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  };
-
-  await step('HTTP server', () => app.stop());
-  await step('MongoDB', () => mongoose.disconnect());
-  await step('telemetry', shutdownTelemetry);
-
-  process.exit(exitCode);
-};
+// See services/shutdown.ts. A second signal of the same kind exits immediately.
+const shutdown = createShutdown({
+  steps: [
+    { name: 'memory diagnostics', run: stopMemoryDiagnostics },
+    { name: 'HTTP server', run: () => app.stop() },
+    { name: 'MongoDB', run: () => mongoose.disconnect() },
+    { name: 'telemetry', run: shutdownTelemetry }
+  ]
+});
 
 process.once('SIGTERM', () => void shutdown('SIGTERM'));
 process.once('SIGINT', () => void shutdown('SIGINT'));

@@ -42,7 +42,12 @@ beforeAll(async () => {
   const seed = Bun.spawnSync({ cmd: ['bun', 'run', 'tests/seedDb.ts'], cwd: serverDir, env: process.env })
   if (seed.exitCode !== 0) throw new Error(`seeding failed:\n${seed.stderr.toString()}`)
 
-  const env: Record<string, string | undefined> = { ...process.env, PORT: String(port) }
+  // The memory line is logged at startup whatever the interval (unless 0)
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    PORT: String(port),
+    MEMORY_LOG_INTERVAL_MS: '600000'
+  }
   delete env.HOST
   server = Bun.spawn({
     cmd: ['bun', 'index.ts'],
@@ -110,6 +115,22 @@ describe('typed Eden client against the running server', () => {
     const { error } = await api.login.post({ token: 'not-a-google-token' })
     expect(error?.status as number).toBe(401)
   })
+})
+
+test('logs the telemetry state and a one-line memory record at startup', () => {
+  expect(output).toMatch(/^\[INFO\] Running at .+"telemetry":"(off \(.+\)|traces=\w+ metrics=\w+ logs=\w+)"\}$/m)
+  const memoryLine = output.match(/^\[INFO\] memory (\{.*\})$/m)
+  expect(memoryLine).not.toBeNull()
+  const fields = JSON.parse(memoryLine![1])
+  expect(Object.keys(fields)).toEqual([
+    'rss', 'heapUsed', 'heapTotal', 'external', 'arrayBuffers',
+    'objectCount', 'protectedObjectCount', 'topObjectTypes'
+  ])
+  for (const name of ['rss', 'heapUsed', 'heapTotal', 'external', 'arrayBuffers']) {
+    expect(Math.round(fields[name] * 10) / 10).toBe(fields[name])
+  }
+  expect(fields.objectCount).toBeInteger()
+  expect(fields.topObjectTypes).toMatch(/^(\S+=\d+ ){7}\S+=\d+$/)
 })
 
 test('shuts down gracefully on SIGTERM', async () => {
