@@ -23,10 +23,12 @@ import { assertDisposableDatabase } from './testDatabase';
 
 const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const id = (name: string) => `it-${name}-${suffix}`;
-const emails = ['owner', 'legacy', 'other'].map((name) => `${id(name)}@example.com`);
-const [OWNER_EMAIL, LEGACY_EMAIL, OTHER_EMAIL] = emails;
+const emails = ['owner', 'legacy', 'other', 'intruder'].map((name) => `${id(name)}@example.com`);
+const [OWNER_EMAIL, LEGACY_EMAIL, OTHER_EMAIL, INTRUDER_EMAIL] = emails;
 const DOMAIN_NAME = id('domain');
 const OTHER_DOMAIN_NAME = id('domain-other');
+// As stored before names were lowercased
+const LEGACY_DOMAIN_NAME = id('Legacy-Domain');
 const COMPANY_NAME = `IT Company ${suffix}`;
 const SKILL_NAMES = [id('skill-a'), id('skill-b'), id('race')];
 
@@ -202,6 +204,27 @@ describe('domains and experiences (real collections)', () => {
       summary: 'Other summary',
       svg: '<svg onload="x()"/>'
     });
+  });
+
+  it('keeps a domain stored with uppercase letters reachable and unclaimable', async () => {
+    const legacyUser = await User.findOne({ email: LEGACY_EMAIL });
+    // Raw insert: the schema would lowercase the name
+    await Domain.collection.insertOne({ name: LEGACY_DOMAIN_NAME, admin: legacyUser!._id, experiences: [] });
+
+    for (const name of [LEGACY_DOMAIN_NAME, LEGACY_DOMAIN_NAME.toLowerCase()]) {
+      const result = await makeRequest(app, `/domain/${name}`);
+      expect(result.status).toBe(200);
+      expect((await readJson(result)).name).toBe(LEGACY_DOMAIN_NAME);
+    }
+
+    const intruder = await login(id('sub-intruder-2'), INTRUDER_EMAIL);
+    const claim = await postWithCookie(
+      app,
+      '/domain/claim',
+      { name: LEGACY_DOMAIN_NAME.toLowerCase() },
+      intruder.cookie
+    );
+    expect(claim.status).toBe(409);
   });
 
   it('returns 403 when another user edits the domain', async () => {

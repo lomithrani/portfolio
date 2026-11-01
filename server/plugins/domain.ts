@@ -11,10 +11,22 @@ import {
 import { userLogged } from './userLogged';
 import { isDuplicateKeyError } from '../services/mongoErrors';
 
+// Names are stored lowercase, but domains claimed before that may have
+// uppercase letters: a case-insensitive match keeps them reachable.
+const CASE_INSENSITIVE = { collation: { locale: 'en', strength: 2 } };
+
+/** Finds a domain by name, ignoring case (exact lowercase match first) */
+const findDomainByName = async (name: string) => {
+  const normalized = normalizeDomainName(name);
+  return (
+    (await Domain.findOne({ name: normalized })) ??
+    (await Domain.findOne({ name: normalized }, null, CASE_INSENSITIVE))
+  );
+};
+
 const domainPublic = new Elysia()
   .get('/domain/:name', async ({ params: { name } }) => {
-    // Names are stored lowercase
-    const domain = await Domain.findOne({ name: normalizeDomainName(name) });
+    const domain = await findDomainByName(name);
     if (!domain) throw new DomainDoesNotExistError('Domain not found');
     const populatedDomain = await domain.populate<{ experiences: Experience[] }>({
       path: 'experiences',
@@ -28,7 +40,7 @@ const domainPublic = new Elysia()
 const domainAdmin = new Elysia()
   .use(userLogged)
   .put('/domain/:name', async ({ params: { name }, body, userId }) => {
-    const domain = await Domain.findOne({ name: normalizeDomainName(name) });
+    const domain = await findDomainByName(name);
     if (!domain) throw new DomainDoesNotExistError('Domain not found');
 
     if (domain.admin.toString() !== userId) {
@@ -59,7 +71,8 @@ const domainClaim = new Elysia()
     // Same rules as the client: no reserved route names, no file-like names
     if (!isValidDomainName(name)) throw new InvalidDomainNameError('Invalid domain name');
 
-    const existing = await Domain.findOne({ name });
+    // Case-insensitive, so 'jane.doe' cannot shadow a legacy 'Jane.Doe'
+    const existing = await Domain.findOne({ name }, null, CASE_INSENSITIVE);
     if (existing) throw new DomainAlreadyExistsError('Domain already exists');
 
     const ownedDomain = await Domain.findOne({ admin: userId });
