@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
+	import { invalidateAll } from '$app/navigation';
 
 	import Project from './Project.svelte';
 	import ExperienceModal from './modals/ExperienceModal.svelte';
@@ -28,11 +29,10 @@
 	let DefaultIcon = $derived(typeIcons[experience.type]);
 	let showEditModal = $state(false);
 
-	const onEditResponse = (response: ExperienceModel | undefined) => {
-		if (response !== undefined) {
-			experience = response;
-		}
+	const onEditResponse = async (response: ExperienceModel | undefined) => {
 		showEditModal = false;
+		// The PUT response is not populated (skills are ids): reload the domain instead
+		if (response !== undefined) await invalidateAll();
 	};
 </script>
 
@@ -60,8 +60,8 @@
 		</div>
 		{#if experience.projects.length > 0}
 			<div class="space-y-3 pt-2">
-				{#each experience.projects as project}
-					<Project {project} experienceId={`${experience._id}`} {activeFilters} />
+				{#each experience.projects as project, index (String(project._id ?? index))}
+					<Project {project} experienceId={String(experience._id)} {activeFilters} />
 				{/each}
 			</div>
 		{/if}

@@ -8,7 +8,7 @@
 		activeFilters = { softSkills: new Set<string>(), hardSkills: new Set<string>() }
 	}: {
 		project: Project;
-		experienceId: String;
+		experienceId: string;
 		activeFilters?: { softSkills: Set<string>; hardSkills: Set<string> };
 	} = $props();
 
@@ -25,7 +25,9 @@
 
 <div class="card preset-tonal-surface p-3 space-y-2 shadow-sm">
 	<article>
-		<h3 class="font-semibold" id={`${project.name}_${experienceId}`}>{project.name}</h3>
+		<h3 class="font-semibold" id={`project-${experienceId}-${String(project._id ?? '')}`}>
+			{project.name}
+		</h3>
 		<p class="text-xs opacity-70">{formatDate(project.start)} — {formatDate(project.end)}</p>
 		<div class="text-sm mt-1">
 			<Markdown content={project.summary ?? ''} />
@@ -33,17 +35,15 @@
 
 		{#if project.hardSkills.length > 0 || project.softSkills.length > 0}
 			<div class="flex flex-wrap gap-1 pt-2">
-				{#each project.hardSkills as hardSkill}
+				{#each project.hardSkills as hardSkill, index (index)}
 					<Skill
 						skill={castSkill(hardSkill.skill)}
-						level={hardSkill.level || -1}
 						highlighted={activeFilters.hardSkills.has(castSkill(hardSkill.skill).displayName)}
 					/>
 				{/each}
-				{#each project.softSkills as softSkill}
+				{#each project.softSkills as softSkill, index (index)}
 					<Skill
 						skill={castSkill(softSkill.skill)}
-						level={softSkill.level || -1}
 						highlighted={activeFilters.softSkills.has(castSkill(softSkill.skill).displayName)}
 					/>
 				{/each}
