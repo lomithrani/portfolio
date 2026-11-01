@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
-import { Company, Domain, Experience, Skill } from '../models/database';
+import { Domain, Experience, Skill } from '../models/database';
 import { Types } from 'mongoose';
 import { createApp } from '../app';
 import {
@@ -20,7 +20,7 @@ const skillIds = new Map<string, Types.ObjectId>();
 beforeEach(() => {
   app = createApp();
   skillIds.clear();
-  // Skills and companies are shared documents found or created by name
+  // Skills are shared documents found or created by name
   spyOn(Skill, 'findOrCreate').mockImplementation(async (name: string) => {
     if (!skillIds.has(name)) skillIds.set(name, new Types.ObjectId());
     return skillIds.get(name)!;
@@ -54,33 +54,29 @@ const stubPersistence = (domain = makeDomain()) => {
 
 describe('Experience.fromRequest', () => {
   it('builds a valid document from the admin form defaults (company { name: "" })', async () => {
-    spyOn(Company, 'findOrCreate').mockResolvedValue(undefined);
-
     const experience = await Experience.fromRequest(experienceRequestBody as never);
 
-    // The company field is an ObjectId ref: assigning the request object to it failed
+    // A blank company name means "no company"
     await expect(experience.validate()).resolves.toBeUndefined();
     expect(experience.company).toBeUndefined();
     expect(experience.projects[0].hardSkills[0].skill).toEqual(skillIds.get('TypeScript')!);
   });
 
-  it('stores the id of the found or created company', async () => {
-    const companyId = new Types.ObjectId();
-    const findOrCreate = spyOn(Company, 'findOrCreate').mockResolvedValue(companyId);
-
+  it('embeds the company given in the request', async () => {
     const experience = await Experience.fromRequest({
       ...experienceRequestBody,
-      company: { name: 'Acme' }
+      company: { name: ' Acme ', summary: 'Makes things', svg: '<svg/>' }
     } as never);
 
-    expect(findOrCreate).toHaveBeenCalledWith({ name: 'Acme' });
     await expect(experience.validate()).resolves.toBeUndefined();
-    expect(experience.company).toEqual(companyId);
+    expect(experience.toObject().company).toEqual({
+      name: 'Acme',
+      summary: 'Makes things',
+      svg: '<svg/>'
+    });
   });
 
   it('looks each distinct skill name up once', async () => {
-    spyOn(Company, 'findOrCreate').mockResolvedValue(undefined);
-
     await Experience.fromRequest({
       ...experienceRequestBody,
       projects: [{
@@ -102,7 +98,6 @@ describe('POST /experiences', () => {
   });
 
   it('creates an experience from the admin form body', async () => {
-    spyOn(Company, 'findOrCreate').mockResolvedValue(undefined);
     const { domain, domainSave, experienceSave, saved } = stubPersistence();
 
     const result = await postWithCookie(app, '/experiences', experienceRequestBody, await authCookie());
@@ -116,20 +111,19 @@ describe('POST /experiences', () => {
     expect(response.company).toBeUndefined();
   });
 
-  it('links the experience to a company found or created by name', async () => {
-    const companyId = new Types.ObjectId();
-    spyOn(Company, 'findOrCreate').mockResolvedValue(companyId);
+  it('stores the company in the experience itself', async () => {
     const { saved } = stubPersistence();
 
     const result = await postWithCookie(
       app,
       '/experiences',
-      { ...experienceRequestBody, company: { name: 'Acme' } },
+      { ...experienceRequestBody, company: { name: 'Acme', summary: 'Makes things' } },
       await authCookie()
     );
 
     expect(result.status).toBe(200);
-    expect(saved[0].company).toEqual(companyId);
+    expect(saved[0].toObject().company).toEqual({ name: 'Acme', summary: 'Makes things' });
+    expect((await readJson(result)).company).toEqual({ name: 'Acme', summary: 'Makes things' });
   });
 
   it('returns 404 when the user has no domain', async () => {
@@ -153,7 +147,6 @@ describe('POST /experiences', () => {
   });
 
   it('returns 422 when the schema rejects the document (empty title)', async () => {
-    spyOn(Company, 'findOrCreate').mockResolvedValue(undefined);
     stubPersistence();
 
     const result = await postWithCookie(
@@ -186,24 +179,22 @@ describe('PUT /experiences/:id', () => {
   });
 
   it('should update an experience owned by the user', async () => {
-    const companyId = new Types.ObjectId();
-    spyOn(Company, 'findOrCreate').mockResolvedValue(companyId);
     stubPersistence(makeDomain({ experiences: [new Types.ObjectId(TEST_EXPERIENCE_ID)] }));
-    const experience = makeExperience();
+    const experience = makeExperience({ company: { name: 'Acme', summary: 'Old summary' } });
     spyOn(Experience, 'findById').mockResolvedValue(experience as never);
 
-    // The edit modal sends back the populated company it received
+    // The edit modal sends back the company it received, edited
     const updatedBody = {
       ...experienceRequestBody,
       title: 'Updated Title',
-      company: { _id: companyId.toString(), name: 'Acme', __v: 0 },
+      company: { name: 'Acme', summary: 'New summary', _id: 'ignored', __v: 0 },
     };
 
     const result = await putWithCookie(app, `/experiences/${TEST_EXPERIENCE_ID}`, updatedBody, await authCookie());
 
     expect(result.status).toBe(200);
     expect(experience.title).toBe('Updated Title');
-    expect(experience.company).toEqual(companyId);
+    expect(experience.toObject().company).toEqual({ name: 'Acme', summary: 'New summary' });
     expect(experience.projects[0].hardSkills[0].skill).toEqual(skillIds.get('TypeScript')!);
   });
 

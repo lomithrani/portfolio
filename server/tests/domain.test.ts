@@ -51,14 +51,13 @@ describe('GET /domain/:name', () => {
     const result = await makeRequest(app, `/domain/${TEST_DOMAIN_NAME}`);
 
     expect(result.status).toBe(200);
-    // Company and skills of every experience are populated
+    // Skills of every experience are populated (companies are embedded)
     const populateOptions = populate.mock.calls[0][0] as unknown as {
       path: string;
       populate: { path: string }[];
     };
     expect(populateOptions.path).toBe('experiences');
     expect(populateOptions.populate.map((p) => p.path)).toEqual([
-      'company',
       'projects.hardSkills.skill',
       'projects.softSkills.skill'
     ]);

@@ -1,5 +1,5 @@
 export { Experience, EXPERIENCE_POPULATE } from './experience'
-export { Company } from './company'
+export type { Company } from './company'
 export { Project } from './project'
 export { Skill } from './skill'
 export { Domain } from './domain'

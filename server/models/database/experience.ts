@@ -1,15 +1,16 @@
-import { Schema, Types, model } from 'mongoose';
+import { Schema, model } from 'mongoose';
 import type { Document, Model, PopulateOptions } from 'mongoose';
 import { ExperienceType } from 'portfolio-common';
 import { Project, projectSchema } from './project';
-import { Company } from './company';
+import { companyFromRequest, companySchema } from './company';
+import type { Company } from './company';
 import { experienceRequest } from '../elysia';
 import type { Static } from 'elysia';
 import { Skill } from './skill';
 
 export interface Experience extends Document {
   type: ExperienceType;
-  company?: Types.ObjectId | Company;
+  company?: Company;
   summary: string;
   summaryType: string;
   title: string;
@@ -26,8 +27,8 @@ interface ExperienceModel extends Model<Experience> {
 
 const experienceSchema = new Schema<Experience>({
   type: { type: String, required: true, enum: ExperienceType },
-  // Shared Company document, found or created by name (Company.findOrCreate)
-  company: { type: Types.ObjectId, ref: 'Company' },
+  // Embedded, owned by this experience (see companyFromRequest)
+  company: companySchema,
   summary: String,
   title: { type: String, required: true },
   icon: String,
@@ -35,11 +36,10 @@ const experienceSchema = new Schema<Experience>({
 });
 
 /**
- * What the API returns for an experience: company and skills populated, the
- * shape the client renders (GET /domain/:name, POST/PUT /experiences).
+ * What the API returns for an experience: skills populated, the shape the
+ * client renders (GET /domain/:name, POST/PUT /experiences).
  */
 export const EXPERIENCE_POPULATE: PopulateOptions[] = [
-  { path: 'company' },
   { path: 'projects.hardSkills.skill' },
   { path: 'projects.softSkills.skill' }
 ];
@@ -71,7 +71,7 @@ experienceSchema.statics.fromRequest = async function (request: ExperienceReques
     title: request.title,
     summary: request.summary,
     type: request.type,
-    company: await Company.findOrCreate(request.company),
+    company: companyFromRequest(request.company),
     icon: request.icon,
   });
 

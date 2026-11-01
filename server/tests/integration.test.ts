@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock 
 import mongoose from 'mongoose';
 import { env } from '../env';
 import { createApp } from '../app';
-import { Company, Domain, Experience, Skill, User, Workflow } from '../models/database';
+import { Domain, Experience, Skill, User, Workflow } from '../models/database';
 import {
   experienceRequestBody,
   getWithCookie,
@@ -24,6 +24,7 @@ const id = (name: string) => `it-${name}-${suffix}`;
 const emails = ['owner', 'legacy', 'other'].map((name) => `${id(name)}@example.com`);
 const [OWNER_EMAIL, LEGACY_EMAIL, OTHER_EMAIL] = emails;
 const DOMAIN_NAME = id('domain');
+const OTHER_DOMAIN_NAME = id('domain-other');
 const COMPANY_NAME = `IT Company ${suffix}`;
 const SKILL_NAMES = [id('skill-a'), id('skill-b'), id('race')];
 
@@ -40,7 +41,7 @@ const login = async (sub: string, email: string) => {
 beforeAll(async () => {
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
   // Unique indexes must exist for the race and conflict tests
-  await Promise.all([User.init(), Domain.init(), Skill.init(), Company.init()]);
+  await Promise.all([User.init(), Domain.init(), Skill.init()]);
 });
 
 afterAll(async () => {
@@ -51,7 +52,6 @@ afterAll(async () => {
   await Domain.deleteMany({ _id: { $in: domains.map((domain) => domain._id) } });
   await Workflow.deleteMany({ user: { $in: userIds } });
   await User.deleteMany({ _id: { $in: userIds } });
-  await Company.deleteMany({ name: COMPANY_NAME });
   await Skill.deleteMany({ displayName: { $in: SKILL_NAMES } });
   await mongoose.disconnect();
 });
@@ -135,12 +135,17 @@ describe('domains and experiences (real collections)', () => {
     const withCompany = await postWithCookie(
       app,
       '/experiences',
-      { ...experienceRequestBody, title: 'Second', company: { name: COMPANY_NAME }, projects: [project] },
+      {
+        ...experienceRequestBody,
+        title: 'Second',
+        company: { name: COMPANY_NAME, summary: 'Owner summary' },
+        projects: [project]
+      },
       owner.cookie
     );
     expect(withCompany.status).toBe(200);
     const second = await readJson(withCompany);
-    expect(second.company.name).toBe(COMPANY_NAME);
+    expect(second.company).toEqual({ name: COMPANY_NAME, summary: 'Owner summary' });
 
     const domain = await readJson(await makeRequest(app, `/domain/${DOMAIN_NAME}`));
     expect(domain.admin).toBe(owner.body.user._id);
@@ -149,14 +154,14 @@ describe('domains and experiences (real collections)', () => {
     expect(domain.experiences[1].projects[0].hardSkills[0].skill.displayName).toBe(SKILL_NAMES[0]);
     expect(domain.experiences[1].projects[0].softSkills[0].skill.displayName).toBe(SKILL_NAMES[1]);
 
-    // Editing sends back the populated company it received
+    // Editing sends back the company it received, here with a new summary
     const edited = await putWithCookie(
       app,
       `/experiences/${second._id}`,
       {
         ...experienceRequestBody,
         title: 'Second (edited)',
-        company: domain.experiences[1].company,
+        company: { ...domain.experiences[1].company, summary: 'Edited summary' },
         projects: [project]
       },
       owner.cookie
@@ -164,9 +169,35 @@ describe('domains and experiences (real collections)', () => {
     expect(edited.status).toBe(200);
     const editedBody = await readJson(edited);
     expect(editedBody.title).toBe('Second (edited)');
-    expect(editedBody.company._id).toBe(second.company._id);
-    expect(await Company.countDocuments({ name: COMPANY_NAME })).toBe(1);
+    expect(editedBody.company).toEqual({ name: COMPANY_NAME, summary: 'Edited summary' });
     expect(await Skill.countDocuments({ displayName: SKILL_NAMES[0] })).toBe(1);
+  });
+
+  it('keeps company details per experience when two tenants use the same name', async () => {
+    const other = await login(id('sub-other'), OTHER_EMAIL);
+    const claim = await postWithCookie(app, '/domain/claim', { name: OTHER_DOMAIN_NAME }, other.cookie);
+    expect(claim.status).toBe(200);
+
+    const posted = await postWithCookie(
+      app,
+      '/experiences',
+      {
+        ...experienceRequestBody,
+        title: 'Other tenant',
+        company: { name: COMPANY_NAME, summary: 'Other summary', svg: '<svg onload="x()"/>' }
+      },
+      other.cookie
+    );
+    expect(posted.status).toBe(200);
+
+    const ownerDomain = await readJson(await makeRequest(app, `/domain/${DOMAIN_NAME}`));
+    expect(ownerDomain.experiences[1].company).toEqual({ name: COMPANY_NAME, summary: 'Edited summary' });
+    const otherDomain = await readJson(await makeRequest(app, `/domain/${OTHER_DOMAIN_NAME}`));
+    expect(otherDomain.experiences[0].company).toEqual({
+      name: COMPANY_NAME,
+      summary: 'Other summary',
+      svg: '<svg onload="x()"/>'
+    });
   });
 
   it('returns 403 when another user edits the domain', async () => {
@@ -195,21 +226,11 @@ describe('workflows (real collection)', () => {
   });
 });
 
-describe('findOrCreate under concurrency', () => {
+describe('Skill.findOrCreate under concurrency', () => {
   it('creates one skill when the same new name is looked up concurrently', async () => {
     const ids = await Promise.all(Array.from({ length: 5 }, () => Skill.findOrCreate(SKILL_NAMES[2])));
 
     expect(new Set(ids.map(String)).size).toBe(1);
     expect(await Skill.countDocuments({ displayName: SKILL_NAMES[2] })).toBe(1);
-  });
-
-  it('creates one company when the same new name is looked up concurrently', async () => {
-    const ids = await Promise.all(
-      Array.from({ length: 5 }, () => Company.findOrCreate({ name: ` ${COMPANY_NAME} ` }))
-    );
-
-    expect(new Set(ids.map(String)).size).toBe(1);
-    expect(await Company.countDocuments({ name: COMPANY_NAME })).toBe(1);
-    expect(await Company.findOrCreate({ name: '  ' })).toBeUndefined();
   });
 });

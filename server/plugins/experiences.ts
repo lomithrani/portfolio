@@ -1,4 +1,5 @@
-import { Company, Domain, Experience, EXPERIENCE_POPULATE } from '../models/database';
+import { Domain, Experience, EXPERIENCE_POPULATE } from '../models/database';
+import { companyFromRequest } from '../models/database/company';
 import { projectsFromRequest } from '../models/database/experience';
 import Elysia, { t } from 'elysia';
 import { userLogged } from './userLogged';
@@ -47,7 +48,7 @@ export const experiences = new Elysia()
       title: body.title,
       summary: body.summary,
       type: body.type,
-      company: await Company.findOrCreate(body.company),
+      company: companyFromRequest(body.company),
       icon: body.icon,
       projects: await projectsFromRequest(body.projects),
     });
