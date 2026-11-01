@@ -356,7 +356,8 @@ step 3 on, OpenTelemetry logs are off.
 [INFO] memory {"rss":105.1,"heapUsed":32.2,"heapTotal":12.9,"external":21.4,"arrayBuffers":17.4,"objectCount":137142,"protectedObjectCount":1281,"topObjectTypes":"string=17592 Structure=16552 Function=14286 Array=12694 UnlinkedFunctionExecutable=12527 FunctionExecutable=10106 Object=6020 SymbolTable=5053"}
 ```
 
-- `rss`, `heapUsed`, `heapTotal`, `external`, `arrayBuffers` are `process.memoryUsage()` in MB;
+- `rss`, `heapUsed`, `heapTotal`, `external`, `arrayBuffers` are `process.memoryUsage()` in MB
+  (on Bun, `heapUsed` is often larger than `heapTotal`: that is how Bun reports them, not an error);
   `objectCount`, `protectedObjectCount` and `topObjectTypes` (the 8 most numerous object types)
   come from the JavaScript heap (`bun:jsc` `heapStats()`).
 - `rss` climbs **with** `heapUsed` and `objectCount`: JavaScript objects are being kept alive. The
@@ -378,7 +379,7 @@ the ones from the previous steps. Stop at the first step whose memory stays flat
 | Step | Add                          | What it switches off                                                                                   |
 | ---- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
 | 1    | nothing (deploy this version) | Baseline: watch the `memory` lines with telemetry fully on                                            |
-| 2    | `OTEL_METRICS_EXPORTER=none` | The metric reader and OTLP metric exporter: the export to Grafana every 60 s, the only OTLP traffic while idle. The HTTP request counter and duration histogram become no-ops |
+| 2    | `OTEL_METRICS_EXPORTER=none` | The metric reader and OTLP metric exporter: the export to Grafana every 60 s (while idle, the only other OTLP traffic is the `memory` log record every 10 min, until step 3). The HTTP request counter and duration histogram become no-ops |
 | 3    | `OTEL_LOGS_EXPORTER=none`    | The log record processor and OTLP log exporter. Logs still reach Railway's deploy logs                 |
 | 4    | `OTEL_TRACES_EXPORTER=none`  | The Elysia tracing plugin (no spans at all), the span processor and the OTLP trace exporter            |
 | 5    | `OTEL_SDK_DISABLED=true`     | The OpenTelemetry SDK itself (context manager, propagator, the empty logger provider): same as no endpoint |

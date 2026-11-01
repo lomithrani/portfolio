@@ -163,6 +163,31 @@ describe('graceful shutdown', () => {
     expect(console.error).toHaveBeenCalledWith('[ERROR]', 'Shutdown: MongoDB failed', '{"error":"socket closed"}');
   });
 
+  it('gives up on a step after its own timeout and still runs the next steps', async () => {
+    quietLogs();
+    const exit = mock((_code: number) => {});
+    const mongo = mock(async () => {});
+    const shutdown = createShutdown({
+      steps: [
+        // e.g. a telemetry flush to an OTLP endpoint that never answers
+        { name: 'telemetry', run: () => new Promise(() => {}), timeoutMs: 20 },
+        { name: 'MongoDB', run: mongo }
+      ],
+      timeoutMs: 1_000,
+      exit
+    });
+
+    await shutdown('SIGTERM');
+    expect(mongo).toHaveBeenCalledTimes(1);
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(console.error).toHaveBeenCalledWith(
+      '[ERROR]',
+      'Shutdown: telemetry failed',
+      '{"error":"telemetry did not finish within 20 ms"}'
+    );
+    expect(console.error).not.toHaveBeenCalledWith('[ERROR]', 'Graceful shutdown timed out, exiting');
+  });
+
   it('exits 1 when a step hangs past the timeout', async () => {
     quietLogs();
     const exit = mock((_code: number) => {});

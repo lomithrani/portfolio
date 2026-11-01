@@ -10,7 +10,18 @@ export const SHUTDOWN_TIMEOUT_MS = 10_000;
 export interface ShutdownStep {
   name: string;
   run: () => unknown;
+  /** Gives up on this step after this long, so the steps after it still run */
+  timeoutMs?: number;
 }
+
+const withTimeout = (work: unknown, timeoutMs: number | undefined, name: string) => {
+  if (timeoutMs === undefined) return work;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${name} did not finish within ${timeoutMs} ms`)), timeoutMs);
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+};
 
 export interface ShutdownOptions {
   steps: ShutdownStep[];
@@ -38,9 +49,9 @@ export const createShutdown = ({
     forceExit.unref();
 
     let exitCode = 0;
-    for (const { name, run } of steps) {
+    for (const { name, run, timeoutMs: stepTimeoutMs } of steps) {
       try {
-        await run();
+        await withTimeout(run(), stepTimeoutMs, name);
       } catch (error) {
         exitCode = 1;
         logger.error(`Shutdown: ${name} failed`, {

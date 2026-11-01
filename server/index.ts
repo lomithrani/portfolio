@@ -55,7 +55,8 @@ const shutdown = createShutdown({
     { name: 'memory diagnostics', run: stopMemoryDiagnostics },
     { name: 'HTTP server', run: () => app.stop() },
     { name: 'MongoDB', run: () => mongoose.disconnect() },
-    { name: 'telemetry', run: shutdownTelemetry }
+    // A hung OTLP endpoint must not eat the whole shutdown window
+    { name: 'telemetry', run: shutdownTelemetry, timeoutMs: 3_000 }
   ]
 });
 
