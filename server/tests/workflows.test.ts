@@ -1,86 +1,75 @@
-import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
-import { User, Workflow } from '../models/database';
+import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
+import { Workflow } from '../models/database';
 import { Types } from 'mongoose';
 import { createApp } from '../app';
 import {
-  testUser,
-  testWorkflow,
+  makeWorkflow,
   workflowRequestBody,
   postJson,
   postWithCookie,
   putWithCookie,
-  loginAndGetCookie,
+  authCookie,
   TEST_WORKFLOW_ID,
   TEST_USER_ID,
+  readJson
 } from './helpers';
 
 let app: ReturnType<typeof createApp>;
-let originalFetch: typeof global.fetch;
 
 beforeEach(() => {
-  originalFetch = global.fetch;
   app = createApp();
-
-  // Default mocks for auth flow
-  User.findOneAndUpdate = mock(() => Promise.resolve(testUser)) as any;
-  User.findById = mock(() => Promise.resolve(testUser)) as any;
 });
 
 afterEach(() => {
-  global.fetch = originalFetch;
+  mock.restore();
 });
 
 describe('POST /workflows', () => {
   it('should reject requests without auth', async () => {
     const result = await postJson(app, '/workflows', workflowRequestBody);
 
-    expect(result.status).not.toBe(200);
+    expect(result.status).toBe(401);
   });
 
-  it('should create a workflow with valid auth and body', async () => {
-    const cookie = await loginAndGetCookie(app);
+  it('persists the workflow before answering', async () => {
+    // Stub the driver write; the real model (defaults, validation, save) runs
+    const insertOne = spyOn(Workflow.collection, 'insertOne').mockResolvedValue({
+      acknowledged: true,
+      insertedId: new Types.ObjectId()
+    } as never);
 
-    // Mock the Workflow constructor and save
-    const saveMock = mock(() => Promise.resolve());
-    const mockWorkflowInstance = {
-      ...workflowRequestBody,
-      _id: TEST_WORKFLOW_ID,
-      user: null as any,
-      steps: [],
-      save: saveMock,
-      toObject: () => ({
-        _id: TEST_WORKFLOW_ID,
-        name: workflowRequestBody.name,
-        enabled: workflowRequestBody.enabled,
-        description: workflowRequestBody.description,
-      }),
-    };
-
-    // We need to mock the Workflow constructor — intercept via prototype
-    const originalWorkflow = Workflow;
-    // Since Workflow is a Mongoose model (constructor), we mock at the prototype level
-    // The plugin does `new Workflow({...body})`, so we mock the model's constructor behavior
-    // through Mongoose's internal create pattern
-    Workflow.prototype.save = saveMock;
-    Workflow.prototype.toObject = () => ({
-      _id: TEST_WORKFLOW_ID,
-      name: workflowRequestBody.name,
-      enabled: workflowRequestBody.enabled,
-      description: workflowRequestBody.description,
-    });
-
-    const result = await postWithCookie(app, '/workflows', workflowRequestBody, cookie);
+    const result = await postWithCookie(app, '/workflows', workflowRequestBody, await authCookie());
 
     expect(result.status).toBe(200);
-    const response = await result.json();
+    expect(insertOne).toHaveBeenCalledTimes(1);
+    const inserted = insertOne.mock.calls[0][0] as unknown as Record<string, unknown>;
+    expect(String(inserted.user)).toBe(TEST_USER_ID);
+    const response = await readJson(result);
     expect(response.name).toBe(workflowRequestBody.name);
     expect(response.enabled).toBe(workflowRequestBody.enabled);
+    expect(response.user).toBe(TEST_USER_ID);
+  });
+
+  it('returns 500 (not 200) when the save fails', async () => {
+    spyOn(Workflow.collection, 'insertOne').mockRejectedValue(new Error('not primary'));
+
+    const result = await postWithCookie(app, '/workflows', workflowRequestBody, await authCookie());
+
+    expect(result.status).toBe(500);
+    expect(await result.text()).toBe('Internal Server Error');
+  });
+
+  it('returns 422 for an empty name (nothing is saved)', async () => {
+    const insertOne = spyOn(Workflow.collection, 'insertOne');
+
+    const result = await postWithCookie(app, '/workflows', { name: '', enabled: true }, await authCookie());
+
+    expect(result.status).toBe(422);
+    expect(insertOne).not.toHaveBeenCalled();
   });
 
   it('should return 422 for invalid body', async () => {
-    const cookie = await loginAndGetCookie(app);
-
-    const result = await postWithCookie(app, '/workflows', { name: 'Missing enabled' }, cookie);
+    const result = await postWithCookie(app, '/workflows', { name: 'Missing enabled' }, await authCookie());
 
     expect(result.status).toBe(422);
   });
@@ -90,75 +79,59 @@ describe('PUT /workflows/:id', () => {
   it('should reject requests without auth', async () => {
     const result = await putWithCookie(app, `/workflows/${TEST_WORKFLOW_ID}`, workflowRequestBody, '');
 
-    expect(result.status).not.toBe(200);
+    expect(result.status).toBe(401);
   });
 
   it('should update a workflow owned by the user', async () => {
-    const cookie = await loginAndGetCookie(app);
-
-    const saveMock = mock(() => Promise.resolve());
-    const setMock = mock(function (this: any, data: any) { Object.assign(this, data); });
-
-    Workflow.findById = mock(() =>
-      Promise.resolve({
-        _id: TEST_WORKFLOW_ID,
-        user: new Types.ObjectId(TEST_USER_ID),
-        name: 'Old Name',
-        enabled: false,
-        set: setMock,
-        save: saveMock,
-        toObject: () => ({
-          _id: TEST_WORKFLOW_ID,
-          ...workflowRequestBody,
-        }),
-      })
-    ) as any;
+    const workflow = makeWorkflow({ name: 'Old Name', enabled: false });
+    const save = spyOn(workflow, 'save').mockResolvedValue(workflow as never);
+    spyOn(Workflow, 'findById').mockResolvedValue(workflow as never);
 
     const result = await putWithCookie(
       app,
       `/workflows/${TEST_WORKFLOW_ID}`,
       workflowRequestBody,
-      cookie
+      await authCookie()
     );
 
     expect(result.status).toBe(200);
-    const response = await result.json();
+    expect(save).toHaveBeenCalledTimes(1);
+    const response = await readJson(result);
     expect(response.name).toBe(workflowRequestBody.name);
+    expect(response.enabled).toBe(true);
   });
 
-  it('should return error for non-existent workflow', async () => {
-    const cookie = await loginAndGetCookie(app);
-
-    Workflow.findById = mock(() => Promise.resolve(null)) as any;
+  it('returns 404 for a non-existent workflow', async () => {
+    spyOn(Workflow, 'findById').mockResolvedValue(null as never);
 
     const fakeId = new Types.ObjectId().toString();
-    const result = await putWithCookie(app, `/workflows/${fakeId}`, workflowRequestBody, cookie);
+    const result = await putWithCookie(app, `/workflows/${fakeId}`, workflowRequestBody, await authCookie());
 
-    expect(result.status).not.toBe(200);
+    expect(result.status).toBe(404);
   });
 
-  it('should return error when user is not the owner', async () => {
-    const cookie = await loginAndGetCookie(app);
-
-    const differentUserId = new Types.ObjectId();
-    Workflow.findById = mock(() =>
-      Promise.resolve({
-        _id: TEST_WORKFLOW_ID,
-        user: differentUserId,
-        name: 'Someone Elses Workflow',
-        set: mock(() => {}),
-        save: mock(() => Promise.resolve()),
-        toObject: () => ({}),
-      })
-    ) as any;
+  it('returns 403 when the user is not the owner', async () => {
+    const workflow = makeWorkflow({ user: new Types.ObjectId() });
+    const save = spyOn(workflow, 'save').mockResolvedValue(workflow as never);
+    spyOn(Workflow, 'findById').mockResolvedValue(workflow as never);
 
     const result = await putWithCookie(
       app,
       `/workflows/${TEST_WORKFLOW_ID}`,
       workflowRequestBody,
-      cookie
+      await authCookie()
     );
 
-    expect(result.status).not.toBe(200);
+    expect(result.status).toBe(403);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 for an id that is not an ObjectId', async () => {
+    const findById = spyOn(Workflow, 'findById');
+
+    const result = await putWithCookie(app, '/workflows/not-an-id', workflowRequestBody, await authCookie());
+
+    expect(result.status).toBe(422);
+    expect(findById).not.toHaveBeenCalled();
   });
 });
