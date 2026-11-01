@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ExperienceType } from 'portfolio-common';
 import type { Experience } from 'portfolio-api/models/database';
 import {
+	draftToForm,
 	emptyExperienceForm,
 	experienceToForm,
 	formToExperienceRequest,
@@ -45,6 +46,19 @@ describe('formToExperienceRequest', () => {
 
 		expect(request.projects[0].start).toBeUndefined();
 		expect(request.projects[0].end).toBeUndefined();
+	});
+
+	it('leaves unparseable project dates undefined instead of sending an Invalid Date', () => {
+		// Older clients stored the literal 'undefined' in the draft for a project without dates
+		const request = formToExperienceRequest({
+			...form,
+			projects: [{ ...form.projects[0], start: 'undefined', end: 'not a date' }]
+		});
+
+		expect(request.projects[0].start).toBeUndefined();
+		expect(request.projects[0].end).toBeUndefined();
+		// An Invalid Date would serialize as null, which the API rejects with a 422
+		expect(JSON.parse(JSON.stringify(request)).projects[0]).not.toHaveProperty('start');
 	});
 
 	it('never sends a company without a name (old drafts stored { name: "" })', () => {
@@ -161,6 +175,28 @@ describe('experienceToForm', () => {
 			{ name: 'constructor', level: -1 },
 			{ name: '__proto__', level: -1 }
 		]);
+	});
+});
+
+describe('draftToForm', () => {
+	it("normalizes the 'undefined' dates older clients left in the draft", () => {
+		const draft: FormData = {
+			...form,
+			projects: [
+				form.projects[0],
+				{ ...form.projects[0], name: 'No dates', start: 'undefined', end: 'undefined' }
+			]
+		};
+
+		expect(draftToForm(draft)).toEqual({
+			...form,
+			projects: [form.projects[0], { ...form.projects[0], name: 'No dates', start: '', end: '' }]
+		});
+	});
+
+	it('keeps a valid draft as it is', () => {
+		expect(draftToForm(form)).toEqual(form);
+		expect(draftToForm(emptyExperienceForm())).toEqual(emptyExperienceForm());
 	});
 });
 

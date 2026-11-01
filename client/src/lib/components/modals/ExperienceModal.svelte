@@ -8,7 +8,7 @@
 		resetNewExperienceDraft,
 		type FormData
 	} from '$lib/stores/newExperienceStore';
-	import { experienceToForm, formToExperienceRequest } from '$services/experienceForm';
+	import { draftToForm, experienceToForm, formToExperienceRequest } from '$services/experienceForm';
 	import { clearAuthentication } from '$services/authentication';
 	import { errorStatus } from '$services/apiErrors';
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
@@ -61,7 +61,7 @@
 	// The draft is only ever written by the "add" flow, so editing cannot clobber it.
 	function getInitialFormData(): FormData {
 		if (existingExperience) return experienceToForm(existingExperience);
-		return structuredClone(get(newExperienceDataStore));
+		return draftToForm(structuredClone(get(newExperienceDataStore)));
 	}
 
 	let formData: FormData = $state(getInitialFormData());

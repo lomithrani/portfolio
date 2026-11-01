@@ -41,6 +41,27 @@ const toDateInput = (value: unknown): string => {
 	return Number.isNaN(date.getTime()) ? '' : date.toISOString().split('T')[0];
 };
 
+// An empty or unparseable form date is left out: `new Date('undefined')` would be sent as null
+const toRequestDate = (value: string): Date | undefined => {
+	if (!value) return undefined;
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+/**
+ * Form state for resuming the persisted "add" draft. Older clients wrote unparseable project
+ * dates into it (the literal 'undefined' for a project without dates), which a date input shows
+ * as empty: they are normalized like the dates of an edited experience.
+ */
+export const draftToForm = (draft: FormData): FormData => ({
+	...draft,
+	projects: draft.projects.map((project) => ({
+		...project,
+		start: toDateInput(project.start),
+		end: toDateInput(project.end)
+	}))
+});
+
 const knownSkills = (skills: Experience['projects'][number]['hardSkills']): SkillRequest[] =>
 	skills.flatMap((entry) => {
 		const name = (entry.skill as Skill | undefined)?.displayName;
@@ -109,8 +130,8 @@ export const formToExperienceRequest = (form: FormData): ExperienceRequest => {
 		...(company && companyName ? { company: { ...company, name: companyName } } : {}),
 		projects: form.projects.map(({ knownHardSkills, knownSoftSkills, ...project }) => ({
 			...project,
-			start: project.start ? new Date(project.start) : undefined,
-			end: project.end ? new Date(project.end) : undefined,
+			start: toRequestDate(project.start),
+			end: toRequestDate(project.end),
 			hardSkills: toSkillRequests(project.hardSkills, knownHardSkills),
 			softSkills: toSkillRequests(project.softSkills, knownSoftSkills)
 		}))
