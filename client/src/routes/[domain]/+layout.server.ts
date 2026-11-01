@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { isValidDomainName, normalizeDomainName } from 'portfolio-common';
 import { portfolioApi } from '$services/index';
-import { errorStatus } from '$services/apiErrors';
+import { isDomainNotFound } from '$services/apiErrors';
 import type { Domain, Experience } from 'portfolio-api/models/database';
 import type { LayoutServerLoad } from './$types';
 
@@ -16,7 +16,7 @@ export const load: LayoutServerLoad = async ({ params }) => {
 		.domain({ name: encodeURIComponent(params.domain) })
 		.get();
 
-	if (errorStatus(apiError) === 404) {
+	if (isDomainNotFound(apiError)) {
 		// Only names that could actually be claimed get the claim flow; anything else
 		// (scanner probes such as /wp-login.php, reserved words) is a plain 404
 		if (isValidDomainName(params.domain)) {
@@ -26,7 +26,8 @@ export const load: LayoutServerLoad = async ({ params }) => {
 	}
 
 	if (apiError || !data) {
-		// API down, 5xx, network or configuration error: never offer to claim the domain
+		// API down, 5xx, network or configuration error (including a 404 that is not the API's
+		// "Domain not found", e.g. a wrong PUBLIC_PORTFOLIO_API_URL): never offer to claim
 		error(503, 'The portfolio service is temporarily unavailable. Please retry shortly.');
 	}
 

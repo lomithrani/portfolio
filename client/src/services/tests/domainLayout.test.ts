@@ -69,6 +69,18 @@ describe('[domain] layout load', () => {
 		}
 	});
 
+	it('renders 503 for a 404 that is not the API saying the domain does not exist', async () => {
+		// Route miss on the API ('NOT_FOUND' / 'Not Found'), or a wrong PUBLIC_PORTFOLIO_API_URL
+		// answered by a proxy or the hosting edge
+		for (const value of ['NOT_FOUND', 'Not Found', '<html>404</html>', undefined, null]) {
+			mockGet.mockResolvedValue({ data: null, error: { status: 404, value } });
+
+			const error = await loadError('louis.gentil');
+			expect(error.status, String(value)).toBe(503);
+			expect(error.body.domainName).toBeUndefined();
+		}
+	});
+
 	it('URL-encodes the domain before building the API path', async () => {
 		mockGet.mockResolvedValue({ data: null, error: { status: 404, value: 'Domain not found' } });
 
