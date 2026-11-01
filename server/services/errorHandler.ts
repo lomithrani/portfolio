@@ -8,8 +8,11 @@ export type ErrorBody = string | { type: 'validation'; on: string; property: str
 export interface ResolvedError {
   status: number;
   body: ErrorBody;
-  /** 'error' for server faults, 'warn' for client errors, 'debug' for route misses */
-  level: 'error' | 'warn' | 'debug';
+  /**
+   * 'error' for server faults, 'warn' for client errors, 'silent' for route
+   * misses (scanner noise; the http.server.requests metric still counts them)
+   */
+  level: 'error' | 'warn' | 'silent';
 }
 
 const INTERNAL_SERVER_ERROR: ResolvedError = {
@@ -35,7 +38,7 @@ const validationBody = (error: ValidationError): ErrorBody => {
  * is safe to send to clients. Never yields a 2xx status.
  */
 export const resolveError = (code: string | number, error: unknown): ResolvedError => {
-  if (code === 'NOT_FOUND') return { status: 404, body: 'Not Found', level: 'debug' };
+  if (code === 'NOT_FOUND') return { status: 404, body: 'Not Found', level: 'silent' };
 
   if (error instanceof ValidationError || code === 'VALIDATION') {
     // A response that fails its own schema is a server bug, not bad input

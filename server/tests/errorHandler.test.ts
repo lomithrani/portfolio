@@ -29,8 +29,12 @@ describe('resolveError', () => {
     expect(resolved.body).toBe(error.message);
   });
 
-  it('maps unmatched routes to 404', () => {
-    expect(resolveError('NOT_FOUND', new Error('NOT_FOUND')).status).toBe(404);
+  it('maps unmatched routes to 404 without logging them', () => {
+    expect(resolveError('NOT_FOUND', new Error('NOT_FOUND'))).toEqual({
+      status: 404,
+      body: 'Not Found',
+      level: 'silent'
+    });
   });
 
   it('maps body parse errors to 400', () => {

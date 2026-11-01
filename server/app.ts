@@ -64,9 +64,9 @@ export const createApp = () =>
           errorName: error instanceof Error ? error.name : typeof error,
           stack: error instanceof Error ? error.stack : undefined
         })
-      } else {
+      } else if (level === 'warn') {
         const message = typeof body === 'string' ? body : 'Request validation failed'
-        logger[level](message, attributes)
+        logger.warn(message, attributes)
       }
 
       set.status = status

@@ -2,6 +2,7 @@ import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:te
 import { Domain } from '../models/database';
 import { Types } from 'mongoose';
 import { createApp } from '../app';
+import { logger } from '../services/logger';
 import {
   makeRequest,
   makeDomain,
@@ -104,10 +105,14 @@ describe('GET /domain/:name', () => {
 });
 
 describe('unmatched routes', () => {
-  it('should return 404 for routes that do not exist', async () => {
+  it('should return 404 for routes that do not exist, without logging them', async () => {
+    const logged = (['debug', 'info', 'warn', 'error'] as const).map((level) => spyOn(logger, level));
+
     const result = await makeRequest(app, '/wp-admin/setup.php');
 
     expect(result.status).toBe(404);
+    // Scanner traffic would otherwise flood the logs
+    for (const spy of logged) expect(spy).not.toHaveBeenCalled();
   });
 });
 
