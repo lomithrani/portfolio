@@ -9,9 +9,7 @@ import {
   UserAlreadyOwnsDomainError
 } from '../errors';
 import { userLogged } from './userLogged';
-
-const isDuplicateKeyError = (error: unknown) =>
-  typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
+import { isDuplicateKeyError } from '../services/mongoErrors';
 
 const domainPublic = new Elysia()
   .get('/domain/:name', async ({ params: { name } }) => {

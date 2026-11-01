@@ -2,9 +2,7 @@ import type { Types } from 'mongoose';
 import { User } from '../models/database';
 import { ConflictError } from '../errors';
 import type { GoogleIdentity } from './google';
-
-const isDuplicateKeyError = (error: unknown) =>
-  typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
+import { isDuplicateKeyError } from './mongoErrors';
 
 /** Public view of a user, as returned by /login and /isLogged */
 export interface UserDto {

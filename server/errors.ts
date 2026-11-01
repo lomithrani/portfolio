@@ -62,10 +62,6 @@ export class UserAlreadyOwnsDomainError extends HttpError {
   status = 409
 }
 
-export class CannotSaveExperienceError extends HttpError {
-  status = 500
-}
-
 export const errors = {
   BadRequestError,
   InvalidDomainNameError,
@@ -79,6 +75,5 @@ export const errors = {
   DomainDoesNotExistError,
   ConflictError,
   DomainAlreadyExistsError,
-  UserAlreadyOwnsDomainError,
-  CannotSaveExperienceError
+  UserAlreadyOwnsDomainError
 }

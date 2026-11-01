@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import { resolveError } from '../services/errorHandler';
 import {
   BadRequestError,
-  CannotSaveExperienceError,
+  HttpError,
   ConflictError,
   DomainDoesNotExistError,
   ForbiddenError,
@@ -60,7 +60,7 @@ describe('resolveError', () => {
 
   it.each([
     ['a plain Error', new Error('Unauthorized: internal detail')],
-    ['a 5xx HttpError', new CannotSaveExperienceError('user 65ab...')],
+    ['a 5xx HttpError', new HttpError('user 65ab... could not be saved')],
     ['a thrown string', 'boom'],
     ['undefined', undefined],
   ])('maps %s to a generic 500', (_label, error) => {

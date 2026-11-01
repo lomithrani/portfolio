@@ -1,6 +1,7 @@
 import { ValidationError } from 'elysia';
 import mongoose from 'mongoose';
 import { HttpError } from '../errors';
+import { isDuplicateKeyError } from './mongoErrors';
 
 export type ErrorBody = string | { type: 'validation'; on: string; property: string; message: string };
 
@@ -16,9 +17,6 @@ const INTERNAL_SERVER_ERROR: ResolvedError = {
   body: 'Internal Server Error',
   level: 'error'
 };
-
-const isDuplicateKeyError = (error: unknown) =>
-  typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
 
 // Body of a request validation error, without the submitted value
 // (`found`) or a sample of the schema (`expected`) that Elysia includes

@@ -1,5 +1,6 @@
 import { Schema, model } from "mongoose";
 import type { InferSchemaType, Model, Types } from "mongoose";
+import { isDuplicateKeyError } from "../../services/mongoErrors";
 
 export const skillSchema = new Schema({
   displayName: { type: String, required: true, unique: true, index: true },
@@ -12,9 +13,6 @@ export type Skill = InferSchemaType<typeof skillSchema>;
 interface SkillModel extends Model<Skill> {
   findOrCreate(name: string): Promise<Types.ObjectId>;
 }
-
-const isDuplicateKeyError = (error: unknown) =>
-  typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
 
 skillSchema.statics.findOrCreate = async function (name: string) {
   // Atomic upsert: matches an alias or the display name (the unique key) and
