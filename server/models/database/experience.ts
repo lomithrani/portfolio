@@ -35,6 +35,16 @@ const experienceSchema = new Schema<Experience>({
   projects: [projectSchema]
 });
 
+// Safety net for documents written before companies were embedded (they held
+// an ObjectId ref; see services/migrations.ts, which rewrites them at startup).
+// Without it an unmigrated ref is cast into a bogus subdocument.
+experienceSchema.pre('init', function (raw: Record<string, unknown>) {
+  const company = raw.company as { _bsontype?: string } | undefined;
+  if (company && typeof company === 'object' && company._bsontype === 'ObjectId') {
+    delete raw.company;
+  }
+});
+
 /**
  * What the API returns for an experience: skills populated, the shape the
  * client renders (GET /domain/:name, POST/PUT /experiences).
