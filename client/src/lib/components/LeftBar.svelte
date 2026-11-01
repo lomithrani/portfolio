@@ -3,12 +3,20 @@
 	import { page } from '$app/state';
 	import { Navigation } from '@skeletonlabs/skeleton-svelte';
 	import type { Domain, Experience } from 'portfolio-api/models/database';
-	import { AcademicCap, ComputerDesktop, WrenchScrewdriver, ChevronRight, Sun, Moon } from 'svelte-heros-v2';
+	import {
+		AcademicCap,
+		ComputerDesktop,
+		WrenchScrewdriver,
+		ChevronRight,
+		Sun,
+		Moon
+	} from 'svelte-heros-v2';
 	import { authenticationStore } from '$services/stores';
 	import { isDomainAdmin } from '$services/authentication';
 	import { browser } from '$app/env';
 
-	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } = $props();
+	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } =
+		$props();
 
 	// Admin-only entries appear after hydration, so the server and client markup match
 	let mounted = $state(false);
@@ -190,7 +198,8 @@
 	/* Restore the Skeleton 4 rail look after the Skeleton 5 / Tailwind 4.3 upgrade: .btn now
 	   sizes direct svg children to --btn-size (1rem) and sets a 1rem line-height, and the
 	   rail's `gap: 0.5` (previously dropped as invalid) now compiles to 0.5px. */
-	.drawer-content :global([data-scope='navigation'][data-part='trigger-anchor'][data-layout='rail']) {
+	.drawer-content
+		:global([data-scope='navigation'][data-part='trigger-anchor'][data-layout='rail']) {
 		line-height: var(--text-base--line-height);
 		gap: calc(var(--spacing) * 2);
 	}
@@ -255,7 +264,7 @@
 		width: 48px;
 		height: 26px;
 		border-radius: 13px;
-		background: linear-gradient(135deg, #89CFF0, #FFD700);
+		background: linear-gradient(135deg, #89cff0, #ffd700);
 		display: flex;
 		align-items: center;
 		justify-content: space-between;

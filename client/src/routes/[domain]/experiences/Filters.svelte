@@ -2,7 +2,10 @@
 	import { Check } from 'svelte-heros-v2';
 	import type { Experience as ExperienceModel, Skill } from 'portfolio-api/models/database';
 
-	let { allExperiences, filters = $bindable({ softSkills: new Set<string>(), hardSkills: new Set<string>() }) }: {
+	let {
+		allExperiences,
+		filters = $bindable({ softSkills: new Set<string>(), hardSkills: new Set<string>() })
+	}: {
 		allExperiences: ExperienceModel[];
 		filters?: { softSkills: Set<string>; hardSkills: Set<string> };
 	} = $props();
@@ -53,7 +56,9 @@
 					}
 				}}
 			>
-				<span class="inline-block w-3">{#if selected}<Check size="12px" />{/if}</span>
+				<span class="inline-block w-3"
+					>{#if selected}<Check size="12px" />{/if}</span
+				>
 				<span class="capitalize">{softSkill.displayName}</span>
 			</button>
 		{/each}
@@ -84,7 +89,9 @@
 					}
 				}}
 			>
-				<span class="inline-block w-3">{#if selected}<Check size="12px" />{/if}</span>
+				<span class="inline-block w-3"
+					>{#if selected}<Check size="12px" />{/if}</span
+				>
 				<span class="capitalize">{hardSkill.displayName}</span>
 			</button>
 		{/each}

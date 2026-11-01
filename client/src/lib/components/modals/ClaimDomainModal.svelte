@@ -96,7 +96,8 @@
 <div class={cBase}>
 	<header class={cHeader}>Claim {domainName}</header>
 	<p>
-		By signing in with your Google account, you will become the owner of <strong>{domainName}</strong
+		By signing in with your Google account, you will become the owner of <strong
+			>{domainName}</strong
 		>.
 	</p>
 	<p class="text-sm text-surface-600-400">Each Google account can only own one domain.</p>

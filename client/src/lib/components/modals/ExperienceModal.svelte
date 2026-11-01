@@ -202,8 +202,7 @@
 						class={cInput}
 						rows={4}
 						bind:value={project.summary}
-						placeholder="Enter details about the project, mission..."
-					></textarea>
+						placeholder="Enter details about the project, mission..."></textarea>
 				</label>
 				<label class="block">
 					<span>Start</span>

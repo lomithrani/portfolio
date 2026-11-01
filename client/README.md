@@ -12,12 +12,12 @@ root with `bun install`.
 Environment variables are declared in `src/env.ts` and read when the server starts (no rebuild
 needed to change them). Copy `.env.example` to `.env` for local development.
 
-| Variable                      | Default                                | Purpose                                                    |
-| ----------------------------- | -------------------------------------- | ---------------------------------------------------------- |
-| `PUBLIC_PORTFOLIO_API_URL`    | `http://localhost:3000`                | Base URL of the API, used by SSR and by the browser        |
-| `PUBLIC_GOOGLE_CLIENT_ID`     | `DEFAULT_GOOGLE_CLIENT_ID` (common)    | Google Sign-In client ID (must match the API audience)     |
-| `PORT` / `HOST` / `ORIGIN`    | `3000` / `0.0.0.0` / request origin    | adapter-bun runtime options                                |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (telemetry off)                  | Enables OpenTelemetry export (`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME` optional) |
+| Variable                      | Default                             | Purpose                                                                                   |
+| ----------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `PUBLIC_PORTFOLIO_API_URL`    | `http://localhost:3000`             | Base URL of the API, used by SSR and by the browser                                       |
+| `PUBLIC_GOOGLE_CLIENT_ID`     | `DEFAULT_GOOGLE_CLIENT_ID` (common) | Google Sign-In client ID (must match the API audience)                                    |
+| `PORT` / `HOST` / `ORIGIN`    | `3000` / `0.0.0.0` / request origin | adapter-bun runtime options                                                               |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (telemetry off)               | Enables OpenTelemetry export (`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME` optional) |
 
 ## Commands
 

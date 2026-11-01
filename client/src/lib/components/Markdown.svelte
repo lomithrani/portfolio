@@ -187,8 +187,8 @@
 		font-size: 85%;
 		background: var(--color-surface-200);
 		border-radius: 6px;
-		font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
-			monospace;
+		font-family:
+			ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 	}
 
 	/* Code blocks */

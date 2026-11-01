@@ -6,8 +6,7 @@
 	import Logo from '$images/logo.svelte';
 	import { onMount } from 'svelte';
 
-	let { headerTitle, headerSubtitle }: { headerTitle?: string; headerSubtitle?: string } =
-		$props();
+	let { headerTitle, headerSubtitle }: { headerTitle?: string; headerSubtitle?: string } = $props();
 
 	let ready = $state(false);
 

@@ -54,7 +54,10 @@
 		<p class="text-lg text-surface-600-400">
 			Only the admin of this domain can change its settings. Please log in.
 		</p>
-		<a class="btn preset-tonal" href={resolve('/[domain]/experiences', { domain: data.domainName })}>
+		<a
+			class="btn preset-tonal"
+			href={resolve('/[domain]/experiences', { domain: data.domainName })}
+		>
 			Back to experiences
 		</a>
 	</div>
