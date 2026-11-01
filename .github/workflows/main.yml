@@ -12,7 +12,7 @@ on:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     services:
       mongodb:
@@ -58,7 +58,7 @@ jobs:
           bun run test:unit
 
   integration-e2e-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     services:
       mongodb:
