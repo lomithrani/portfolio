@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { Navigation } from '@skeletonlabs/skeleton-svelte';
 	import type { Domain, Experience } from 'portfolio-api/models/database';
 	import { AcademicCap, ComputerDesktop, WrenchScrewdriver, ChevronRight, Sun, Moon } from 'svelte-heros-v2';
 	import { authenticationStore } from '$services/stores';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 
 	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } = $props();
 
@@ -119,7 +119,7 @@
 			<Navigation.Content>
 				{#each menuItems as item}
 					{#if !item.display || item.display()}
-						{@const isActive = (item.selected ?? pathAreEquals)(item.path, $page.url.pathname)}
+						{@const isActive = (item.selected ?? pathAreEquals)(item.path, page.url.pathname)}
 						<Navigation.TriggerAnchor
 							href={`/${domain.name}${item.path}`}
 							aria-current={isActive ? 'page' : undefined}

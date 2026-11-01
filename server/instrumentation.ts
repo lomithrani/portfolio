@@ -1,5 +1,5 @@
 import { opentelemetry } from '@elysiajs/opentelemetry'
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node'
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import {
 	LoggerProvider,
@@ -27,7 +27,7 @@ const resource = resourceFromAttributes({
 if (isEnabled) {
 	const loggerProvider = new LoggerProvider({
 		resource,
-		processors: [new BatchLogRecordProcessor(new OTLPLogExporter())]
+		processors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter() })]
 	})
 	logs.setGlobalLoggerProvider(loggerProvider)
 
@@ -41,11 +41,11 @@ export const instrumentation = isEnabled
 	? opentelemetry({
 			serviceName: process.env.OTEL_SERVICE_NAME ?? 'portfolio-server',
 			resource,
-			spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
-			metricReader: new PeriodicExportingMetricReader({
+			spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })],
+			metricReaders: [new PeriodicExportingMetricReader({
 				exporter: new OTLPMetricExporter(),
 				exportIntervalMillis: 60_000
-			}),
+			})],
 			instrumentations: []
 		})
 	: opentelemetry({ instrumentations: [] })

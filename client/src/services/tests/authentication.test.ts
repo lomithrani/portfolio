@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 // vi.mock factories are hoisted — cannot reference outer variables
 vi.mock('$services', () => ({
@@ -32,8 +33,8 @@ import { portfolioApi } from '$services';
 
 // Cast to access internal methods
 const store = authenticationStore as any;
-const mockLoginPost = portfolioApi.login.post as ReturnType<typeof vi.fn>;
-const mockIsLoggedGet = portfolioApi.isLogged.get as ReturnType<typeof vi.fn>;
+const mockLoginPost = portfolioApi.login.post as unknown as Mock;
+const mockIsLoggedGet = portfolioApi.isLogged.get as unknown as Mock;
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -8,7 +8,7 @@ if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
 }
 
 import { NodeSDK } from '@opentelemetry/sdk-node'
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node'
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import {
 	LoggerProvider,
@@ -35,17 +35,17 @@ if (isEnabled) {
 	// LoggerProvider (separate from NodeSDK)
 	const loggerProvider = new LoggerProvider({
 		resource,
-		processors: [new BatchLogRecordProcessor(new OTLPLogExporter())]
+		processors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter() })]
 	})
 	logs.setGlobalLoggerProvider(loggerProvider)
 
 	const sdk = new NodeSDK({
 		resource,
-		spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
-		metricReader: new PeriodicExportingMetricReader({
+		spanProcessors: [new BatchSpanProcessor({ exporter: new OTLPTraceExporter() })],
+		metricReaders: [new PeriodicExportingMetricReader({
 			exporter: new OTLPMetricExporter(),
 			exportIntervalMillis: 60_000
-		}),
+		})],
 		instrumentations: []
 	})
 

@@ -7,7 +7,7 @@
 	import ExperienceModal from '$components/modals/ExperienceModal.svelte';
 	import Filters from './Filters.svelte';
 	import { authenticationStore } from '$services/stores';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { filterExperiences } from '$services/filters';
 
 	let { data }: { data: PageData } = $props();

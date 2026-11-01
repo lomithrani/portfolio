@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { login } from '$services/authentication';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 
 	let googleReady = false;
 	let mounted = false;

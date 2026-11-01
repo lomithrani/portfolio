@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { portfolioApi } from '$services';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 
 	const SKELETON_THEMES = [
 		'catppuccin',
@@ -29,12 +29,12 @@
 		'wintry'
 	];
 
-	let domain = $derived($page.data.domain);
+	let domain = $derived(page.data.domain);
 
-	let theme = $state($page.data.domain?.theme ?? 'wintry');
-	let headerTitle = $state($page.data.domain?.headerTitle ?? '');
-	let headerSubtitle = $state($page.data.domain?.headerSubtitle ?? '');
-	let defaultDarkMode = $state($page.data.domain?.defaultDarkMode ?? false);
+	let theme = $state(page.data.domain?.theme ?? 'wintry');
+	let headerTitle = $state(page.data.domain?.headerTitle ?? '');
+	let headerSubtitle = $state(page.data.domain?.headerSubtitle ?? '');
+	let defaultDarkMode = $state(page.data.domain?.defaultDarkMode ?? false);
 	let saving = $state(false);
 	let message = $state('');
 
