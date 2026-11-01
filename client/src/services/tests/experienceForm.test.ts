@@ -70,6 +70,7 @@ describe('experienceToForm', () => {
 		type: ExperienceType.Personal,
 		summary: 'Summary',
 		icon: 'data:image/x-icon;base64,AAAA',
+		// Unpopulated reference, as returned by an API that does not populate companies
 		company: '65f000000000000000000001',
 		projects: [
 			{
@@ -77,11 +78,14 @@ describe('experienceToForm', () => {
 				start: '2023-02-01T00:00:00.000Z',
 				end: undefined,
 				summary: 'Project summary',
-				hardSkills: [{ skill: { displayName: 'Svelte', names: ['Svelte'] }, level: -1 }],
+				hardSkills: [{ skill: { displayName: 'Svelte', names: ['Svelte'] }, level: 4 }],
 				softSkills: [{ skill: { displayName: 'Teamwork', names: ['Teamwork'] }, level: -1 }]
 			}
 		]
 	} as unknown as Experience;
+
+	// As returned by GET /domain/:name when the API populates the company
+	const withCompany = (company: unknown) => ({ ...experience, company }) as unknown as Experience;
 
 	it('maps a populated experience to form state', () => {
 		expect(experienceToForm(experience)).toEqual({
@@ -96,15 +100,67 @@ describe('experienceToForm', () => {
 					end: '',
 					summary: 'Project summary',
 					hardSkills: ['Svelte'],
-					softSkills: ['Teamwork']
+					softSkills: ['Teamwork'],
+					knownHardSkills: [{ name: 'Svelte', level: 4 }],
+					knownSoftSkills: [{ name: 'Teamwork', level: -1 }]
 				}
 			]
 		});
 	});
 
-	it('does not carry the unpopulated company id into the request', () => {
+	it('does not carry an unpopulated company id into the request', () => {
 		const request = formToExperienceRequest(experienceToForm(experience));
 		expect(request).not.toHaveProperty('company');
+	});
+
+	it('sends a populated company back on edit, so PUT does not drop it', () => {
+		const company = {
+			_id: '65f000000000000000000001',
+			name: 'Acme',
+			summary: 'Rockets',
+			svg: '<svg/>',
+			__v: 0
+		};
+
+		const form = experienceToForm(withCompany(company));
+		expect(form.company).toEqual({ name: 'Acme', summary: 'Rockets', svg: '<svg/>' });
+
+		const request = formToExperienceRequest(form);
+		expect(request.company).toEqual({ name: 'Acme', summary: 'Rockets', svg: '<svg/>' });
+	});
+
+	it('only keeps the company fields the request schema accepts', () => {
+		expect(experienceToForm(withCompany({ _id: 'c1', name: 'Acme', __v: 0 })).company).toEqual({
+			name: 'Acme'
+		});
+		expect(experienceToForm(withCompany({ _id: 'c1', name: '' }))).not.toHaveProperty('company');
+		expect(experienceToForm(withCompany(null))).not.toHaveProperty('company');
+	});
+
+	it('keeps the levels of existing skills and gives new skills level -1', () => {
+		const form = experienceToForm(experience);
+		form.projects[0].hardSkills = ['Svelte', 'TypeScript'];
+		form.projects[0].softSkills = [];
+
+		const request = formToExperienceRequest(form);
+		expect(request.projects[0].hardSkills).toEqual([
+			{ name: 'Svelte', level: 4 },
+			{ name: 'TypeScript', level: -1 }
+		]);
+		expect(request.projects[0].softSkills).toEqual([]);
+		// Form-only bookkeeping never reaches the API
+		expect(request.projects[0]).not.toHaveProperty('knownHardSkills');
+		expect(request.projects[0]).not.toHaveProperty('knownSoftSkills');
+	});
+
+	it('does not resolve skill levels through the object prototype', () => {
+		const form = experienceToForm(experience);
+		form.projects[0].hardSkills = ['constructor', '__proto__'];
+
+		expect(formToExperienceRequest(form).projects[0].hardSkills).toEqual([
+			{ name: 'constructor', level: -1 },
+			{ name: '__proto__', level: -1 }
+		]);
 	});
 });
 
