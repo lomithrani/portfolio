@@ -33,10 +33,10 @@ bun run db:down                   # Stop MongoDB (data kept in a Docker volume)
 ### Build & Run
 ```bash
 bun run build:client              # Build SvelteKit for production (client/build)
-bun run start:server              # Start server in production mode
+bun run start:server              # Start the API without watch mode (production behaviour needs NODE_ENV=production)
 bun run start:client              # Start built client (port 4000)
 ```
-`build:client`, `start:server` and `start:client` are the Railway build/start commands: do not rename them, and do not add a root `build`/`start` script.
+`build:client`, `start:server` and `start:client` are the Railway build/start commands: do not rename them, and do not add a root `build`/`start` script. `start:server` sets no `NODE_ENV`: production behaviour (Secure cookie, no `/swagger`) needs `NODE_ENV=production`, which Railpack sets on Railway. Do not add it to the script (the local e2e flow and CI run it over plain http).
 
 ### Testing
 ```bash

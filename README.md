@@ -79,8 +79,13 @@ Run from the repository root.
 | `bun run lint`         | Prettier check and ESLint on the web app                                                     |
 | `bun run test`         | API tests (need MongoDB; set `TEST_MONGO_URL`, see [Testing](#testing)) and web unit tests   |
 | `bun run build:client` | Production build of the web app (`client/build`)                                             |
-| `bun run start:server` | Start the API in production mode                                                             |
+| `bun run start:server` | Start the API without watch mode; production behaviour needs `NODE_ENV=production`           |
 | `bun run start:client` | Start the built web app (port 4000 unless `PORT` is set)                                     |
+
+`start:server` runs `bun run index.ts` in `server/` and sets no `NODE_ENV`, so locally the API
+stays in development mode (auth cookie not `Secure`, OpenAPI docs at `/swagger`). Production
+behaviour (`Secure` cookie, no `/swagger`) needs `NODE_ENV=production`, which Railpack sets on
+Railway.
 
 Each workspace has more scripts (`format`, `check:watch`, `preview`, ...): see
 `client/package.json`, `server/package.json`, [client/README.md](client/README.md) and
