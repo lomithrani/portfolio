@@ -11,7 +11,7 @@
     "lint": "prettier --check . && eslint .",
     "format": "prettier --write .",
     "test:e2e": "playwright test",
-    "test:unit": "vitest",
+    "test:unit": "vitest run",
     "kill": "sudo lsof -t -i:5173 | xargs sudo kill -9"
   },
   "devDependencies": {

@@ -17,5 +17,12 @@ export default ts.config(
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: { parserOptions: { parser: ts.parser, extraFileExtensions: ['.svelte'] } }
 	},
-	{ ignores: ['build/', '.svelte-kit/', 'node_modules/'] }
+	{
+		// TypeScript (svelte-check / tsc) already reports undefined identifiers, and it knows the
+		// ambient declarations (e.g. the `google` namespace from @types/google.accounts) that
+		// ESLint's scope analysis cannot see. See https://typescript-eslint.io/troubleshooting/faqs/eslint
+		files: ['**/*.ts', '**/*.svelte'],
+		rules: { 'no-undef': 'off' }
+	},
+	{ ignores: ['build/', '.svelte-kit/', 'node_modules/', 'test-results/', 'playwright-report/'] }
 );
