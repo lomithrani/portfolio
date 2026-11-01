@@ -32,15 +32,36 @@ with a message listing every problem.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | | Enables OpenTelemetry (traces, metrics, logs); fully off when unset |
 | `OTEL_EXPORTER_OTLP_HEADERS` | no | | e.g. the Grafana Cloud authorization header |
 | `OTEL_SERVICE_NAME` | no | `portfolio-server` | |
+| `OTEL_SDK_DISABLED` | no | `false` | `true` turns telemetry fully off, as if the endpoint were unset |
+| `OTEL_TRACES_EXPORTER` | no | `otlp` | `none`: no span processor or exporter, and no Elysia tracing plugin |
+| `OTEL_METRICS_EXPORTER` | no | `otlp` | `none`: no metric reader or exporter (the HTTP metrics become no-ops) |
+| `OTEL_LOGS_EXPORTER` | no | `otlp` | `none`: no log record processor or exporter; logs still go to the console |
+| `MEMORY_LOG_INTERVAL_MS` | no | `600000` | Period of the `memory` log line (see [Operations](#operations)); `0` turns it off, otherwise at least `1000` |
 | `TLS_PASSPHRASE` | no | | Serve HTTPS with `cert.pem` / `key.pem` |
 | `NODE_ENV` | no | `development` | `production` hides docs and makes the cookie `Secure` |
 
 ## Operations
 
 - `GET /health` answers `200 OK` when MongoDB is connected, `503` otherwise.
-- `SIGTERM`/`SIGINT` stop the HTTP server, close MongoDB and flush telemetry
-  before exiting (give the process a few seconds, e.g. Railway's
-  `RAILWAY_DEPLOYMENT_DRAINING_SECONDS`).
+- `SIGTERM`/`SIGINT` stop the memory log timer and the HTTP server, close
+  MongoDB and flush telemetry before exiting (give the process a few seconds,
+  e.g. Railway's `RAILWAY_DEPLOYMENT_DRAINING_SECONDS`).
+- Every log record is also printed as one console line,
+  `[LEVEL] message {"attribute":...}` (Railway shows each output line as a
+  separate entry).
+- The startup line `Running at ...` says what telemetry exports, e.g.
+  `"telemetry":"traces=otlp metrics=none logs=otlp"` or
+  `"telemetry":"off (OTEL_SDK_DISABLED=true)"`. The OTel switches are
+  validated at startup: a value other than `otlp`/`none` (or `true`/`false`)
+  stops the server.
+- A `memory` line is logged at startup, then every `MEMORY_LOG_INTERVAL_MS`:
+  `rss`, `heapUsed`, `heapTotal`, `external` and `arrayBuffers` in MB
+  (`process.memoryUsage()`), `objectCount` and `protectedObjectCount` of the
+  JavaScript heap, and `topObjectTypes`, the 8 most numerous object types
+  (`bun:jsc` `heapStats()`). No garbage collection is forced, so samples
+  include garbage not yet collected: compare trends over hours. The timer
+  never keeps the process alive. See "Diagnosing memory growth" in
+  `docs/DEPLOYMENT.md`.
 - Login verifies Google ID tokens locally (signature, issuer, audience,
   expiry, `email_verified`) and keys users by their Google account ID.
 - `POST`/`PUT`/`PATCH`/`DELETE` bodies must be JSON: any other
