@@ -41,12 +41,18 @@ jobs:
         run: bun run build:client
 
   test:
-    name: Server and client unit tests
+    name: Server and client unit tests (MongoDB ${{ matrix.mongodb }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 7: production (Railway's MongoDB service runs mongo:7); 9: local compose.
+        # Not 8: mongo:8 is MongoDB 8.3, which cannot start on kernel 6.19+ (SERVER-121912).
+        mongodb: ['7', '9']
     services:
       mongodb:
-        image: mongo:9
+        image: mongo:${{ matrix.mongodb }}
         ports:
           - 27017:27017
         options: >-
