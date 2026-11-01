@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { isValidDomainName, normalizeDomainName } from 'portfolio-common';
-import { portfolioApi } from '$services/index';
-import { isDomainNotFound } from '$services/apiErrors';
+import { portfolioApi } from '#services';
+import { isDomainNotFound } from '#services/apiErrors.ts';
 import type { Domain, Experience } from 'portfolio-api/models/database';
 import type { LayoutServerLoad } from './$types';
 

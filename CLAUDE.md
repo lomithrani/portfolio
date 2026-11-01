@@ -72,7 +72,7 @@ Elysia routes are organized as plugins in `server/plugins/` — `auth.ts`, `doma
 Mongoose schemas in `server/models/database/`. Key entities: Domain, User, Experience, Company, Project, Skill, Workflow (with steps/instances). Elysia request validation schemas use TypeBox in `server/models/elysia/`.
 
 ### Client Path Aliases
-Defined in `client/vite.config.ts` (SvelteKit 3 config lives there): `$components` → `src/lib/components`, `$services` → `src/services`, `$images` → `src/lib/images`.
+Node [subpath imports](https://svelte.dev/docs/kit/$lib) in the `imports` field of `client/package.json`, resolved natively by Vite, Vitest and TypeScript: `#lib/*` → `src/lib/*`, `#components/*` → `src/lib/components/*`, `#images/*` → `src/lib/images/*`, `#services` → `src/services/index.ts`, `#services/*` → `src/services/*`. Subpath imports do no extension or `index` lookup, so write the full file name: `#components/Header.svelte`, `#services/authentication.ts`, `#services/stores/index.ts` (`.ts` works because SvelteKit's generated tsconfig sets `allowImportingTsExtensions`). Do not reintroduce the SvelteKit `alias` option or the removed `$lib`: `alias` is deprecated in SvelteKit 3.
 
 ## Code Style
 

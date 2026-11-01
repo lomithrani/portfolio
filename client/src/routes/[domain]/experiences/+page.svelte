@@ -4,12 +4,12 @@
 	import { beforeNavigate, invalidateAll } from '$app/navigation';
 	import { Plus } from 'svelte-heros-v2';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
-	import Experience from '$components/Experience.svelte';
-	import ExperienceModal from '$components/modals/ExperienceModal.svelte';
+	import Experience from '#components/Experience.svelte';
+	import ExperienceModal from '#components/modals/ExperienceModal.svelte';
 	import Filters from './Filters.svelte';
-	import { authenticationStore, sessionCheckedStore } from '$services/stores';
-	import { isDomainAdmin } from '$services/authentication';
-	import { activeSkillFilters, filterExperiences, type SkillFilters } from '$services/filters';
+	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
+	import { isDomainAdmin } from '#services/authentication.ts';
+	import { activeSkillFilters, filterExperiences, type SkillFilters } from '#services/filters.ts';
 
 	let { data }: { data: PageData } = $props();
 

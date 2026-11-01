@@ -1,6 +1,6 @@
 import type { Writable } from 'svelte/store';
 import { persisted } from 'svelte-persisted-store';
-import { emptyExperienceForm, type FormData } from '$services/experienceForm';
+import { emptyExperienceForm, type FormData } from '#services/experienceForm.ts';
 
 export type { FormData };
 
