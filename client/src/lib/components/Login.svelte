@@ -1,63 +1,56 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { login } from '$services/authentication';
-	import { browser } from '$app/environment';
+	import { setupGoogleIdentity } from '$services/googleIdentity';
 
-	let googleReady = false;
-	let mounted = false;
+	let buttonContainer: HTMLDivElement | undefined = $state();
+	let errorMessage = $state('');
+
+	const isDark = () => document.documentElement.classList.contains('dark');
 
 	onMount(() => {
-		const script = document.createElement('script');
-		script.src = 'https://accounts.google.com/gsi/client';
-		script.async = true;
-		script.onload = googleLoaded;
-		document.body.appendChild(script);
+		let release: (() => void) | undefined;
+		let destroyed = false;
 
-		mounted = true;
-		displaySignInButton();
-	});
-
-	const googleLoaded = () => {
-		googleReady = true;
-		if (mounted) {
-			displaySignInButton();
-		}
-	};
-
-	const isDark = () => {
-		if (!browser) return true;
-		return document.documentElement.classList.contains('dark');
-	};
-
-	const displaySignInButton = () => {
-		if (!googleReady) return;
-
-		const signIn = async (credentialResponse: google.accounts.id.CredentialResponse) => {
-			return login(credentialResponse.credential);
-		};
-
-		google.accounts.id.initialize({
-			client_id: '1075297079847-nkpqjg6shjj9lbcdofs6tlf21rprqr7q.apps.googleusercontent.com',
-			context: 'signin',
-			ux_mode: 'popup',
-			auto_select: true,
-			itp_support: true,
-			callback: signIn
-		});
-		google.accounts.id.renderButton(
-			document.getElementById('googleButton')!,
-			{
-				theme: isDark() ? 'filled_black' : 'outline',
-				size: 'medium',
-				type: 'icon',
-				shape: 'circle'
+		setupGoogleIdentity(async ({ credential }) => {
+			errorMessage = '';
+			if (!(await login(credential))) {
+				errorMessage = 'Login failed';
 			}
-		);
-		google.accounts.id.prompt();
-	};
+		})
+			.then((gsi) => {
+				if (destroyed) {
+					gsi.release();
+					return;
+				}
+				release = gsi.release;
+				if (buttonContainer) {
+					gsi.id.renderButton(buttonContainer, {
+						theme: isDark() ? 'filled_black' : 'outline',
+						size: 'medium',
+						type: 'icon',
+						shape: 'circle'
+					});
+				}
+				gsi.id.prompt();
+			})
+			.catch(() => {
+				// Google Sign-In blocked or offline: the page stays usable without the button
+			});
+
+		return () => {
+			destroyed = true;
+			release?.();
+		};
+	});
 </script>
 
-<div id="googleButton" class="google-btn"></div>
+<div class="flex items-center gap-2">
+	{#if errorMessage}
+		<span class="text-xs text-error-500" role="alert">{errorMessage}</span>
+	{/if}
+	<div bind:this={buttonContainer} class="google-btn"></div>
+</div>
 
 <style>
 	.google-btn :global(div),

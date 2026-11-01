@@ -1,14 +1,19 @@
 <script lang="ts">
 	import '../app.css';
 	import ClaimDomain from '$components/ClaimDomain.svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 </script>
 
-{#if $page.status === 404 && $page.error?.domainName}
-	<ClaimDomain domainName={$page.error.domainName} />
+<svelte:head>
+	<title>{page.status === 404 ? 'Not found' : 'Error'}</title>
+</svelte:head>
+
+<!-- domainName is only set for an unknown but claimable name (see [domain]/+layout.server.ts) -->
+{#if page.status === 404 && page.error?.domainName}
+	<ClaimDomain domainName={page.error.domainName} />
 {:else}
 	<div class="h-full flex flex-col items-center justify-center gap-4 p-8">
-		<h1 class="text-4xl font-bold">{$page.status}</h1>
-		<p class="text-lg text-surface-600-400">{$page.error?.message ?? 'Something went wrong'}</p>
+		<h1 class="text-4xl font-bold">{page.status}</h1>
+		<p class="text-lg text-surface-600-400">{page.error?.message ?? 'Something went wrong'}</p>
 	</div>
 {/if}

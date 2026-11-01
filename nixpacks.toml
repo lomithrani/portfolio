@@ -1,7 +1,0 @@
-providers = ["node"]
-
-[phases.setup]
-nixPkgs = ["bun"]
-
-[phases.install]
-cmds = ["bun i --no-save"]

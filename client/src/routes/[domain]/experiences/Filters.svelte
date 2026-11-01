@@ -2,7 +2,10 @@
 	import { Check } from 'svelte-heros-v2';
 	import type { Experience as ExperienceModel, Skill } from 'portfolio-api/models/database';
 
-	let { allExperiences, filters = $bindable({ softSkills: new Set<string>(), hardSkills: new Set<string>() }) }: {
+	let {
+		allExperiences,
+		filters = $bindable({ softSkills: new Set<string>(), hardSkills: new Set<string>() })
+	}: {
 		allExperiences: ExperienceModel[];
 		filters?: { softSkills: Set<string>; hardSkills: Set<string> };
 	} = $props();
@@ -28,7 +31,7 @@
 
 <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-3">
 	<div class="card p-3 preset-tonal-surface flex flex-wrap gap-1 shadow-sm">
-		{#each softSkills as softSkill, index}
+		{#each softSkills as softSkill (softSkill.displayName)}
 			{@const selected = filters.softSkills.has(softSkill.displayName)}
 			<button
 				type="button"
@@ -53,13 +56,15 @@
 					}
 				}}
 			>
-				<span class="inline-block w-3">{#if selected}<Check size="12px" />{/if}</span>
+				<span class="inline-block w-3"
+					>{#if selected}<Check size="12px" />{/if}</span
+				>
 				<span class="capitalize">{softSkill.displayName}</span>
 			</button>
 		{/each}
 	</div>
 	<div class="card p-3 preset-tonal-surface flex flex-wrap gap-1 shadow-sm">
-		{#each hardSkills as hardSkill, index}
+		{#each hardSkills as hardSkill (hardSkill.displayName)}
 			{@const selected = filters.hardSkills.has(hardSkill.displayName)}
 			<button
 				type="button"
@@ -84,7 +89,9 @@
 					}
 				}}
 			>
-				<span class="inline-block w-3">{#if selected}<Check size="12px" />{/if}</span>
+				<span class="inline-block w-3"
+					>{#if selected}<Check size="12px" />{/if}</span
+				>
 				<span class="capitalize">{hardSkill.displayName}</span>
 			</button>
 		{/each}

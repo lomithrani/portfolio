@@ -1,5 +1,13 @@
-import { mock } from 'bun:test';
+import { spyOn } from 'bun:test';
 import { Types } from 'mongoose';
+import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from 'jose';
+import type { JWTPayload } from 'jose';
+import { env } from '../env';
+import { Domain, Experience, User, Workflow } from '../models/database';
+import { createGoogleIdTokenVerifier, google } from '../services/google';
+
+// Tests replace model methods with spyOn(...) and every test file restores
+// them with `afterEach(() => mock.restore())`, so nothing leaks between files.
 
 // ── Cookie parsing ──────────────────────────────────────────
 
@@ -18,65 +26,65 @@ export const parseCookie = (str: string) =>
 // ── Test IDs ────────────────────────────────────────────────
 
 export const TEST_USER_ID = new Types.ObjectId().toString();
+export const TEST_GOOGLE_SUB = '109876543210987654321';
 export const TEST_DOMAIN_NAME = 'test.domain';
 export const TEST_WORKFLOW_ID = new Types.ObjectId().toString();
 export const TEST_EXPERIENCE_ID = new Types.ObjectId().toString();
 
-// ── Fixtures ────────────────────────────────────────────────
+// ── Fixtures: real (unsaved) Mongoose documents ─────────────
 
-export const testUser = {
-  _id: TEST_USER_ID,
-  id: TEST_USER_ID,
-  email: 'test@gmail.com',
-  name: 'Test',
-  surname: 'User',
-  toObject: () => testUser,
-};
+export const makeUser = (overrides: Record<string, unknown> = {}) =>
+  new User({
+    _id: TEST_USER_ID,
+    email: 'test@gmail.com',
+    name: 'Test',
+    surname: 'User',
+    googleId: TEST_GOOGLE_SUB,
+    ...overrides
+  });
 
-export const testDomain = {
-  _id: new Types.ObjectId().toString(),
-  name: TEST_DOMAIN_NAME,
-  admin: TEST_USER_ID,
-  experiences: [],
-  save: mock(() => Promise.resolve(testDomain)),
-  populate: mock(function (this: any) { return Promise.resolve(this); }),
-  toObject: () => ({ ...testDomain, experiences: [] }),
-};
+export const makeDomain = (overrides: Record<string, unknown> = {}) =>
+  new Domain({
+    name: TEST_DOMAIN_NAME,
+    admin: new Types.ObjectId(TEST_USER_ID),
+    experiences: [],
+    ...overrides
+  });
 
-export const testExperience = {
-  _id: TEST_EXPERIENCE_ID,
-  type: 'professional',
-  title: 'Software Engineer',
-  summary: 'Built stuff',
-  projects: [],
-  set: mock(function (this: any, data: any) { Object.assign(this, data); }),
-  save: mock(() => Promise.resolve(testExperience)),
-  toObject: () => testExperience,
-};
+export const makeExperience = (overrides: Record<string, unknown> = {}) =>
+  new Experience({
+    _id: TEST_EXPERIENCE_ID,
+    type: 'professional',
+    title: 'Software Engineer',
+    summary: 'Built stuff',
+    projects: [],
+    ...overrides
+  });
 
-export const testWorkflow = {
-  _id: TEST_WORKFLOW_ID,
-  id: TEST_WORKFLOW_ID,
-  user: new Types.ObjectId(TEST_USER_ID),
-  name: 'Test Workflow',
-  enabled: true,
-  description: 'A test workflow',
-  steps: [],
-  set: mock(function (this: any, data: any) { Object.assign(this, data); }),
-  save: mock(() => Promise.resolve(testWorkflow)),
-  toObject: () => ({ ...testWorkflow }),
-};
+export const makeWorkflow = (overrides: Record<string, unknown> = {}) =>
+  new Workflow({
+    _id: TEST_WORKFLOW_ID,
+    user: new Types.ObjectId(TEST_USER_ID),
+    name: 'Test Workflow',
+    enabled: true,
+    description: 'A test workflow',
+    steps: [],
+    ...overrides
+  });
 
+// What the admin modal sends when creating an experience (newExperienceStore
+// defaults: company { name: '' })
 export const experienceRequestBody = {
   type: 'professional',
   title: 'Software Engineer',
   summary: 'Built cool stuff',
+  company: { name: '' },
   projects: [
     {
       name: 'Portfolio',
       summary: 'A portfolio website',
-      hardSkills: [{ name: 'TypeScript', level: 5 }],
-      softSkills: [{ name: 'Communication', level: 4 }],
+      hardSkills: [{ name: 'TypeScript', level: -1 }],
+      softSkills: [{ name: 'Communication', level: -1 }],
     },
   ],
 };
@@ -87,37 +95,84 @@ export const workflowRequestBody = {
   description: 'A hiring workflow',
 };
 
-// ── Google OAuth mocking ────────────────────────────────────
+// ── Google ID tokens ────────────────────────────────────────
+// A local RSA key pair stands in for Google's signing keys, so tokens go
+// through the real verifier (signature, iss, aud, exp, email_verified).
 
-export function mockGoogleOAuthSuccess(email = 'test@gmail.com') {
-  const response = new Response(
-    JSON.stringify({ email_verified: true, email }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } }
-  );
-  global.fetch = mock(() => Promise.resolve(response));
+const googleKeys = await generateKeyPair('RS256');
+const googlePublicJwk = { ...(await exportJWK(googleKeys.publicKey)), kid: 'test-key', alg: 'RS256' };
+export const testGoogleKeySet = createLocalJWKSet({ keys: [googlePublicJwk] });
+
+export const testGoogleVerifier = createGoogleIdTokenVerifier({
+  audience: env.GOOGLE_CLIENT_ID,
+  keySet: testGoogleKeySet
+});
+
+export interface GoogleTokenOptions {
+  claims?: Record<string, unknown>;
+  audience?: string;
+  issuer?: string;
+  expiresIn?: string | number;
+  privateKey?: CryptoKey;
+  /** Key id in the protected header; null leaves it out */
+  kid?: string | null;
 }
 
-export function mockGoogleOAuthFailure() {
-  const response = new Response('Unauthorized', { status: 401, statusText: 'Unauthorized' });
-  global.fetch = mock(() => Promise.resolve(response));
-}
+/** Signs an ID token shaped like Google's (claims can be overridden) */
+export const signGoogleIdToken = async ({
+  claims = {},
+  audience = env.GOOGLE_CLIENT_ID,
+  issuer = 'https://accounts.google.com',
+  expiresIn = '1h',
+  privateKey = googleKeys.privateKey,
+  kid = 'test-key'
+}: GoogleTokenOptions = {}) =>
+  new SignJWT({
+    email: 'test@gmail.com',
+    email_verified: true,
+    name: 'Test User',
+    azp: audience,
+    ...claims
+  } as JWTPayload)
+    .setProtectedHeader({ alg: 'RS256', ...(kid !== null && { kid }), typ: 'JWT' })
+    .setSubject((claims.sub as string | undefined) ?? TEST_GOOGLE_SUB)
+    .setIssuer(issuer)
+    .setAudience(audience)
+    .setIssuedAt()
+    .setExpirationTime(expiresIn)
+    .sign(privateKey);
 
-export function mockGoogleOAuthUnverified(email = 'test@gmail.com') {
-  const response = new Response(
-    JSON.stringify({ email_verified: false, email }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } }
-  );
-  global.fetch = mock(() => Promise.resolve(response));
-}
+/** Routes /login's Google verification through the local test keys */
+export const useTestGoogleKeys = () =>
+  spyOn(google, 'verifyIdToken').mockImplementation(testGoogleVerifier);
+
+// ── Auth cookie ─────────────────────────────────────────────
+
+/** A session cookie as /login issues it (HS256 JWT signed with JWT_SECRET) */
+export const authCookie = async (userId = TEST_USER_ID, expiresIn: string | number = '7d') => {
+  const token = await new SignJWT({})
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(userId)
+    .setExpirationTime(expiresIn)
+    .sign(new TextEncoder().encode(env.JWT_SECRET));
+  return `auth=${token}`;
+};
 
 // ── Request helpers ─────────────────────────────────────────
 
-export function makeRequest(app: any, path: string, options: RequestInit = {}) {
+export interface FetchApp {
+  fetch(request: Request): Response | Promise<Response>;
+}
+
+export function makeRequest(app: FetchApp, path: string, options: RequestInit = {}) {
   const baseUrl = `http://localhost`;
   return app.fetch(new Request(`${baseUrl}${path}`, options));
 }
 
-export function postJson(app: any, path: string, body: unknown, headers: Record<string, string> = {}) {
+/** Parsed JSON body (typed loosely: tests assert on its shape) */
+export const readJson = <T = any>(response: Response): Promise<T> => response.json() as Promise<T>;
+
+export function postJson(app: FetchApp, path: string, body: unknown, headers: Record<string, string> = {}) {
   return makeRequest(app, path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
@@ -125,7 +180,7 @@ export function postJson(app: any, path: string, body: unknown, headers: Record<
   });
 }
 
-export function putJson(app: any, path: string, body: unknown, headers: Record<string, string> = {}) {
+export function putJson(app: FetchApp, path: string, body: unknown, headers: Record<string, string> = {}) {
   return makeRequest(app, path, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...headers },
@@ -133,35 +188,17 @@ export function putJson(app: any, path: string, body: unknown, headers: Record<s
   });
 }
 
-export function getWithCookie(app: any, path: string, cookie: string) {
+export function getWithCookie(app: FetchApp, path: string, cookie: string) {
   return makeRequest(app, path, {
     method: 'GET',
     headers: { Cookie: cookie },
   });
 }
 
-export function postWithCookie(app: any, path: string, body: unknown, cookie: string) {
-  return makeRequest(app, path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: cookie },
-    body: JSON.stringify(body),
-  });
+export function postWithCookie(app: FetchApp, path: string, body: unknown, cookie: string) {
+  return postJson(app, path, body, { Cookie: cookie });
 }
 
-export function putWithCookie(app: any, path: string, body: unknown, cookie: string) {
-  return makeRequest(app, path, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Cookie: cookie },
-    body: JSON.stringify(body),
-  });
-}
-
-// ── Auth helper: login and get cookie ───────────────────────
-
-export async function loginAndGetCookie(app: any) {
-  mockGoogleOAuthSuccess(testUser.email);
-  const loginRes = await postJson(app, '/login', { token: 'test-google-token' });
-  const setCookie = loginRes.headers.get('Set-Cookie') ?? '';
-  const authToken = parseCookie(setCookie)['auth'];
-  return `auth=${authToken}`;
+export function putWithCookie(app: FetchApp, path: string, body: unknown, cookie: string) {
+  return putJson(app, path, body, { Cookie: cookie });
 }

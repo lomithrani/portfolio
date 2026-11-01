@@ -1,22 +1,26 @@
 import Elysia, { t } from 'elysia';
-import { Experience, Domain } from '../models/database';
-import { DomainDoesNotExistError, DomainAlreadyExistsError, UserAlreadyOwnsDomainError } from '../errors';
-import { corsConf } from './corsConf';
+import { isValidDomainName, normalizeDomainName } from 'portfolio-common';
+import { Experience, Domain, EXPERIENCE_POPULATE } from '../models/database';
+import {
+  DomainDoesNotExistError,
+  DomainAlreadyExistsError,
+  ForbiddenError,
+  InvalidDomainNameError,
+  UserAlreadyOwnsDomainError
+} from '../errors';
 import { userLogged } from './userLogged';
+import { isDuplicateKeyError } from '../services/mongoErrors';
+
+/** Finds a domain by name, ignoring case: names are stored lowercase */
+const findDomainByName = (name: string) => Domain.findOne({ name: normalizeDomainName(name) });
 
 const domainPublic = new Elysia()
   .get('/domain/:name', async ({ params: { name } }) => {
-    const domain = await Domain.findOne({ name: name });
+    const domain = await findDomainByName(name);
     if (!domain) throw new DomainDoesNotExistError('Domain not found');
     const populatedDomain = await domain.populate<{ experiences: Experience[] }>({
       path: 'experiences',
-      populate: {
-        path: 'projects',
-        populate: [
-          { path: 'hardSkills.skill' },
-          { path: 'softSkills.skill' }
-        ],
-      },
+      populate: EXPERIENCE_POPULATE
     })
     return populatedDomain.toObject<Omit<Domain, "experiences"> & {
       experiences: Experience[];
@@ -24,14 +28,13 @@ const domainPublic = new Elysia()
   })
 
 const domainAdmin = new Elysia()
-  .use(corsConf())
   .use(userLogged)
   .put('/domain/:name', async ({ params: { name }, body, userId }) => {
-    const domain = await Domain.findOne({ name });
+    const domain = await findDomainByName(name);
     if (!domain) throw new DomainDoesNotExistError('Domain not found');
 
     if (domain.admin.toString() !== userId) {
-      throw new Error('Unauthorized: not the domain admin');
+      throw new ForbiddenError('Forbidden: not the domain admin');
     }
 
     if (body.theme !== undefined) domain.theme = body.theme;
@@ -44,28 +47,37 @@ const domainAdmin = new Elysia()
     return domain.toObject();
   }, {
     body: t.Object({
-      theme: t.Optional(t.String()),
-      headerTitle: t.Optional(t.String()),
-      headerSubtitle: t.Optional(t.String()),
+      theme: t.Optional(t.String({ maxLength: 64 })),
+      headerTitle: t.Optional(t.String({ maxLength: 200 })),
+      headerSubtitle: t.Optional(t.String({ maxLength: 1000 })),
       defaultDarkMode: t.Optional(t.Boolean())
     })
   })
 
 const domainClaim = new Elysia()
-  .use(corsConf())
   .use(userLogged)
-  .post('/domain/claim', async ({ body: { name }, userId }) => {
+  .post('/domain/claim', async ({ body, userId }) => {
+    const name = normalizeDomainName(body.name);
+    // Same rules as the client: no reserved route names, no file-like names
+    if (!isValidDomainName(name)) throw new InvalidDomainNameError('Invalid domain name');
+
     const existing = await Domain.findOne({ name });
     if (existing) throw new DomainAlreadyExistsError('Domain already exists');
 
     const ownedDomain = await Domain.findOne({ admin: userId });
     if (ownedDomain) throw new UserAlreadyOwnsDomainError('You already own a domain');
 
-    const domain = await Domain.create({ name, admin: userId, experiences: [] });
-    return domain.toObject();
+    try {
+      const domain = await Domain.create({ name, admin: userId, experiences: [] });
+      return domain.toObject();
+    } catch (error) {
+      // Lost a race against another claim of the same name
+      if (isDuplicateKeyError(error)) throw new DomainAlreadyExistsError('Domain already exists');
+      throw error;
+    }
   }, {
     body: t.Object({
-      name: t.String()
+      name: t.String({ maxLength: 255 })
     })
   })
 

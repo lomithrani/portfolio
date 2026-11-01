@@ -19,6 +19,9 @@ export const domainSchema = new Schema<Domain>({
     required: true,
     index: true,
     unique: true,
+    // Lookups normalize with normalizeDomainName (portfolio-common)
+    lowercase: true,
+    trim: true,
     validate: {
       validator: function (value: string) {
         return /^(?!-)[A-Za-z0-9\-\.]{1,63}(?<!-)$/.test(value);

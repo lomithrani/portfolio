@@ -5,13 +5,11 @@
     ],
     "module": "esnext",
     "target": "esnext",
-    "moduleResolution": "Node",
+    "moduleResolution": "bundler",
     "moduleDetection": "force",
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "composite": true,
     "strict": true,
-    "downlevelIteration": true,
     "skipLibCheck": true,
     "jsx": "preserve",
     "allowSyntheticDefaultImports": true,
@@ -19,11 +17,6 @@
     "allowJs": true,
     "types": [
       "bun-types" // add Bun global
-    ],
-    "paths": {
-      "*": [
-        "../node_modules/*"
-      ]
-    }
+    ]
   }
 }

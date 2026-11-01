@@ -1,82 +1,89 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import type { PageData } from './$types';
+	import { beforeNavigate, invalidateAll } from '$app/navigation';
 	import { Plus } from 'svelte-heros-v2';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import Experience from '$components/Experience.svelte';
 	import ExperienceModal from '$components/modals/ExperienceModal.svelte';
 	import Filters from './Filters.svelte';
-	import { authenticationStore } from '$services/stores';
-	import { browser } from '$app/environment';
-	import { filterExperiences } from '$services/filters';
+	import { authenticationStore, sessionCheckedStore } from '$services/stores';
+	import { isDomainAdmin } from '$services/authentication';
+	import { activeSkillFilters, filterExperiences, type SkillFilters } from '$services/filters';
 
 	let { data }: { data: PageData } = $props();
 
-	let mounted = $state(false);
-	$effect(() => {
-		mounted = true;
-	});
-
-	let isAdmin = $derived(
-		mounted &&
-			browser &&
-			$authenticationStore.user?._id != null &&
-			data?.domain?.admin != null &&
-			$authenticationStore.user._id == data.domain.admin
-	);
+	// Admin-only UI appears once the session has been checked with the API (in the browser,
+	// after hydration): never for a stale local session, and the SSR markup stays the same
+	let isAdmin = $derived($sessionCheckedStore && isDomainAdmin($authenticationStore, data.domain));
 	let showAddModal = $state(false);
-	let filters: { softSkills: Set<string>; hardSkills: Set<string> } = $state({
+	let filters: SkillFilters = $state({
 		softSkills: new Set(),
 		hardSkills: new Set()
 	});
 
-	let experiences: ExperienceModel[] | undefined = $derived.by(() => {
-		if (!data?.domain?.experiences) return undefined;
-		return filterExperiences(data.domain.experiences, filters);
+	// `data` is replaced (not mutated) by invalidateAll(), which keeps these derivations fresh
+	let allExperiences: ExperienceModel[] = $derived(data.domain.experiences ?? []);
+	// A selected skill that an edit removed has no chip left to unselect it: only the selected
+	// skills still in the data filter the list (and highlight the cards)
+	let activeFilters: SkillFilters = $derived(activeSkillFilters(allExperiences, filters));
+	let experiences: ExperienceModel[] = $derived(filterExperiences(allExperiences, activeFilters));
+
+	let ownerName = $derived(
+		data.domain.headerTitle ||
+			data.domainName
+				.split(/[.\-_]+/)
+				.filter(Boolean)
+				.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+				.join(' ')
+	);
+
+	// Close the dialog before the page unmounts: an open Dialog's focus trap would otherwise read
+	// state of the destroyed page (Svelte's derived_inert warning)
+	beforeNavigate(() => {
+		showAddModal = false;
 	});
 
-	const onAddResponse = (response: ExperienceModel | undefined) => {
-		if (response !== undefined) {
-			data.domain?.experiences.push(response);
-			data.domain = data.domain;
-		}
+	const onAddResponse = async (response: ExperienceModel | undefined) => {
 		showAddModal = false;
+		// The POST response is not populated (skills are ids): reload the domain instead
+		if (response !== undefined) await invalidateAll();
 	};
 
+	// Invite the domain admin (and only them) to add a first experience
 	$effect(() => {
-		if (data.domain?.experiences.length === 0) {
+		if (isAdmin && allExperiences.length === 0) {
 			showAddModal = true;
 		}
 	});
 </script>
 
 <svelte:head>
-	<title>Louis Gentil | Resume</title>
+	<title>{ownerName} | Resume</title>
 	<meta
-		name="Louis Gentil Resume"
-		content="All of my professional experiences, as well as my personal and educational projects and courses."
+		name="description"
+		content={`${ownerName}: professional experiences, personal and educational projects and courses.`}
 	/>
 </svelte:head>
 <div class="relative flex items-start p-4 md:p-6">
 	<div class="mx-auto w-full max-w-4xl space-y-4">
-		{#if !experiences}
-			<p class="text-center text-surface-600-400">Loading...</p>
-		{/if}
-		{#if experiences}
-			<Filters bind:filters allExperiences={data.domain!.experiences} />
-
-			{#if !showAddModal && isAdmin}
-				<button
-					class="btn-icon btn-icon-sm preset-filled-primary-700-300 fixed bottom-2 right-6 z-10 shadow-lg"
-					onclick={() => (showAddModal = true)}
-				>
-					<Plus size="18" class="stroke-[3]" />
-					<span class="sr-only">Add Experience</span>
-				</button>
-			{/if}
-			{#each experiences as experience}
-				<Experience {experience} canEdit={isAdmin} activeFilters={filters} />
+		{#if allExperiences.length === 0}
+			<p class="text-center text-surface-600-400">No experiences have been published yet.</p>
+		{:else}
+			<Filters bind:filters {allExperiences} />
+			{#each experiences as experience (String(experience._id))}
+				<Experience {experience} canEdit={isAdmin} {activeFilters} />
 			{/each}
+		{/if}
+
+		{#if !showAddModal && isAdmin}
+			<button
+				class="btn-icon btn-icon-sm preset-filled-primary-700-300 fixed bottom-2 right-6 z-10 shadow-lg"
+				onclick={() => (showAddModal = true)}
+			>
+				<Plus size="18" class="stroke-[3]" />
+				<span class="sr-only">Add Experience</span>
+			</button>
 		{/if}
 	</div>
 </div>
