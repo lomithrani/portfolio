@@ -46,6 +46,25 @@ export const loadGoogleIdentity = (): Promise<GoogleId> => {
 };
 
 /**
+ * Initializes the shared GSI instance once, before any other GSI call: GSI warns that
+ * "initialize() is called multiple times" when its first initialize() follows another call, such
+ * as disableAutoSelect() on sign-out. The callback reads `currentHandler`, so initializing before
+ * a handler is registered is safe.
+ */
+const ensureInitialized = (id: GoogleId) => {
+	if (initialized) return;
+	id.initialize({
+		client_id: PUBLIC_GOOGLE_CLIENT_ID,
+		context: 'signin',
+		ux_mode: 'popup',
+		auto_select: true,
+		itp_support: true,
+		callback: (response) => currentHandler?.(response)
+	});
+	initialized = true;
+};
+
+/**
  * Loads GSI, initializes it on first use and routes the credential callback to `onCredential`
  * (the most recent caller wins). Call the returned `release` when the caller unmounts.
  */
@@ -54,18 +73,7 @@ export const setupGoogleIdentity = async (
 ): Promise<{ id: GoogleId; release: () => void }> => {
 	const id = await loadGoogleIdentity();
 	currentHandler = onCredential;
-
-	if (!initialized) {
-		id.initialize({
-			client_id: PUBLIC_GOOGLE_CLIENT_ID,
-			context: 'signin',
-			ux_mode: 'popup',
-			auto_select: true,
-			itp_support: true,
-			callback: (response) => currentHandler?.(response)
-		});
-		initialized = true;
-	}
+	ensureInitialized(id);
 
 	return {
 		id,
@@ -82,7 +90,9 @@ export const setupGoogleIdentity = async (
  */
 export const disableGoogleAutoSelect = async (): Promise<void> => {
 	try {
-		(await loadGoogleIdentity()).disableAutoSelect();
+		const id = await loadGoogleIdentity();
+		ensureInitialized(id);
+		id.disableAutoSelect();
 	} catch {
 		// GSI unavailable (blocked, offline, server side): there is no One Tap to disable either
 	}
