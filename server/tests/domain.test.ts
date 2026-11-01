@@ -83,23 +83,6 @@ describe('GET /domain/:name', () => {
     expect(findOne).toHaveBeenCalledWith({ name: 'test.domain' });
   });
 
-  it('falls back to a case-insensitive match for names stored before lowercasing', async () => {
-    const domain = makeDomain();
-    spyOn(domain, 'populate').mockResolvedValue(domain as never);
-    const findOne = spyOn(Domain, 'findOne')
-      .mockResolvedValueOnce(null as never)
-      .mockResolvedValueOnce(domain as never);
-
-    const result = await makeRequest(app, '/domain/test.domain');
-
-    expect(result.status).toBe(200);
-    expect(findOne.mock.calls[1]).toEqual([
-      { name: 'test.domain' },
-      null,
-      { collation: { locale: 'en', strength: 2 } }
-    ] as never);
-  });
-
   it('should return 404 for non-existent domain', async () => {
     spyOn(Domain, 'findOne').mockResolvedValue(null as never);
 

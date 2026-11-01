@@ -6,7 +6,6 @@ import { app } from './app';
 import { shutdownTelemetry } from './instrumentation';
 import { logger } from './services/logger';
 import { formatListenUrl, listenWithFallback } from './services/listen';
-import { runMigrations } from './services/migrations';
 
 export { app };
 export type { Portfolio } from './app';
@@ -27,7 +26,6 @@ mongoose.connection.on('error', (error: Error) =>
 );
 
 await mongoose.connect(env.MONGO_URL);
-await runMigrations();
 
 const host = listenWithFallback(app, {
   host: env.HOST,

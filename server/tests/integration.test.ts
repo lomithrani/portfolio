@@ -28,8 +28,6 @@ const [OWNER_EMAIL, LEGACY_EMAIL, OTHER_EMAIL, INTRUDER_EMAIL, FORM_EMAIL] = ema
 const DOMAIN_NAME = id('domain');
 const OTHER_DOMAIN_NAME = id('domain-other');
 const FORM_DOMAIN_NAME = id('domain-form');
-// As stored before names were lowercased
-const LEGACY_DOMAIN_NAME = id('Legacy-Domain');
 const COMPANY_NAME = `IT Company ${suffix}`;
 const SKILL_NAMES = [id('skill-a'), id('skill-b'), id('race')];
 
@@ -207,27 +205,6 @@ describe('domains and experiences (real collections)', () => {
     });
   });
 
-  it('keeps a domain stored with uppercase letters reachable and unclaimable', async () => {
-    const legacyUser = await User.findOne({ email: LEGACY_EMAIL });
-    // Raw insert: the schema would lowercase the name
-    await Domain.collection.insertOne({ name: LEGACY_DOMAIN_NAME, admin: legacyUser!._id, experiences: [] });
-
-    for (const name of [LEGACY_DOMAIN_NAME, LEGACY_DOMAIN_NAME.toLowerCase()]) {
-      const result = await makeRequest(app, `/domain/${name}`);
-      expect(result.status).toBe(200);
-      expect((await readJson(result)).name).toBe(LEGACY_DOMAIN_NAME);
-    }
-
-    const intruder = await login(id('sub-intruder-2'), INTRUDER_EMAIL);
-    const claim = await postWithCookie(
-      app,
-      '/domain/claim',
-      { name: LEGACY_DOMAIN_NAME.toLowerCase() },
-      intruder.cookie
-    );
-    expect(claim.status).toBe(409);
-  });
-
   it('returns 403 when another user edits the domain', async () => {
     const other = await login(id('sub-other'), OTHER_EMAIL);
 
@@ -306,75 +283,5 @@ describe('Skill.findOrCreate under concurrency', () => {
 
     expect(new Set(ids.map(String)).size).toBe(1);
     expect(await Skill.countDocuments({ displayName: SKILL_NAMES[2] })).toBe(1);
-  });
-});
-
-describe('legacy experiences that referenced a shared company', () => {
-  const legacyExperienceIds: mongoose.Types.ObjectId[] = [];
-  const legacyCompanyIds: mongoose.Types.ObjectId[] = [];
-
-  const insertLegacy = async (fields: Record<string, unknown>) => {
-    const { insertedId } = await Experience.collection.insertOne({
-      type: 'professional',
-      title: id('legacy-experience'),
-      summary: 'stored before companies were embedded',
-      projects: [],
-      ...fields
-    });
-    legacyExperienceIds.push(insertedId);
-    return insertedId;
-  };
-
-  const insertCompany = async (fields: Record<string, unknown>) => {
-    const { insertedId } = await mongoose.connection.db!.collection('companies').insertOne(fields);
-    legacyCompanyIds.push(insertedId);
-    return insertedId;
-  };
-
-  afterAll(async () => {
-    if (mongoose.connection.readyState !== 1) return;
-    await Experience.collection.deleteMany({ _id: { $in: legacyExperienceIds } });
-    await mongoose.connection.db!.collection('companies').deleteMany({ _id: { $in: legacyCompanyIds } });
-  });
-
-  it('never hydrates an unmigrated ObjectId ref into a bogus company', async () => {
-    const experienceId = await insertLegacy({ company: new mongoose.Types.ObjectId() });
-
-    const experience = await Experience.findById(experienceId);
-    expect(experience).not.toBeNull();
-    expect(experience!.company).toBeUndefined();
-    expect(JSON.stringify(experience!.toObject())).not.toContain('"i0"');
-  });
-
-  it('embeds referenced companies, drops dangling refs and is idempotent', async () => {
-    const companyId = await insertCompany({ name: `  ${COMPANY_NAME}  `, summary: 'Legacy summary', svg: '<svg/>' });
-    const namelessCompanyId = await insertCompany({ summary: 'no name' });
-    const referencing = await insertLegacy({ company: companyId });
-    const sharing = await insertLegacy({ company: companyId });
-    const dangling = await insertLegacy({ company: new mongoose.Types.ObjectId() });
-    const nameless = await insertLegacy({ company: namelessCompanyId });
-    const alreadyEmbedded = await insertLegacy({ company: { name: 'Already embedded' } });
-    const withoutCompany = await insertLegacy({});
-
-    const { embedLegacyCompanies } = await import('../services/migrations');
-    const first = await embedLegacyCompanies();
-    // Other legacy docs from the previous test may be counted too
-    expect(first.embedded).toBeGreaterThanOrEqual(2);
-    expect(first.removed).toBeGreaterThanOrEqual(2);
-
-    const raw = async (_id: mongoose.Types.ObjectId) => Experience.collection.findOne({ _id });
-    const expected = { name: COMPANY_NAME, summary: 'Legacy summary', svg: '<svg/>' };
-    expect((await raw(referencing))?.company).toEqual(expected);
-    expect((await raw(sharing))?.company).toEqual(expected);
-    expect(await raw(dangling)).not.toHaveProperty('company');
-    expect(await raw(nameless)).not.toHaveProperty('company');
-    expect((await raw(alreadyEmbedded))?.company).toEqual({ name: 'Already embedded' });
-    expect(await raw(withoutCompany)).not.toHaveProperty('company');
-
-    // Hydrated through the schema, the embedded copy is what the API returns
-    expect((await Experience.findById(referencing))?.toObject().company).toEqual(expected);
-
-    expect(await Experience.collection.countDocuments({ _id: { $in: legacyExperienceIds }, company: { $type: 'objectId' } })).toBe(0);
-    expect(await embedLegacyCompanies()).toEqual({ embedded: 0, removed: 0 });
   });
 });

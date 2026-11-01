@@ -70,11 +70,6 @@ TEST_MONGO_URL=mongodb://127.0.0.1:27017/portfolio-test bun run test
 - `ALLOWED_DOMAINS` must be a JSON array of strings and `MONGO_URL` must start
   with `mongodb://` or `mongodb+srv://`, or the server exits at startup with
   the list of problems. Check the Railway service variables first.
-- Domain names are now stored lowercase. Older domains with uppercase letters
-  stay reachable (lookups fall back to a case-insensitive match). List them
-  with `db.domains.find({ name: /[A-Z]/ })`; before lowercasing one, check
-  that no other domain already has the lowercased name.
-- An experience's company is embedded (`{ name, summary, svg }`). Earlier
-  code could not save a company at all, so no stored data should need
-  migrating; `db.experiences.countDocuments({ company: { $type: 'objectId' } })`
-  must return 0.
+- No data migration: the app was never in production, so start from a fresh
+  database (drop the old data, then run `bun run seed` against the production
+  `MONGO_URL`) rather than carrying documents written by older versions.
