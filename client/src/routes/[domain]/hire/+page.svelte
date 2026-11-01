@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { portfolioApi } from '$services';
-	import { errorStatus } from '$services/apiErrors';
+	import { portfolioApi } from '#services';
+	import { errorStatus } from '#services/apiErrors.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
