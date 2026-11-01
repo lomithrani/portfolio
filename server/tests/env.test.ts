@@ -97,6 +97,26 @@ describe('parseEnv', () => {
       .toBe('mine.apps.googleusercontent.com');
   });
 
+  it('enables Google Calendar only with GOOGLE_CLIENT_SECRET', () => {
+    expect(parseEnv(base)).toMatchObject({ GOOGLE_CLIENT_SECRET: undefined, googleCalendarEnabled: false });
+    expect(parseEnv({ ...base, GOOGLE_CLIENT_SECRET: '  ' }).googleCalendarEnabled).toBe(false);
+    expect(parseEnv({ ...base, GOOGLE_CLIENT_SECRET: ' GOCSPX-abc_123 ' })).toMatchObject({
+      GOOGLE_CLIENT_SECRET: 'GOCSPX-abc_123',
+      googleCalendarEnabled: true
+    });
+  });
+
+  it.each([
+    ['quoted', '"GOCSPX-abc"'],
+    ['with a space inside', 'GOCSPX abc'],
+  ])('rejects a GOOGLE_CLIENT_SECRET %s', (_label, value) => {
+    const problems = problemsOf({ ...base, GOOGLE_CLIENT_SECRET: value });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('GOOGLE_CLIENT_SECRET');
+    // The secret itself is never echoed into logs
+    expect(problems[0]).not.toContain('abc');
+  });
+
   it('warns about a short JWT_SECRET in production', () => {
     expect(parseEnv({ ...base, NODE_ENV: 'production' }).warnings[0]).toContain('JWT_SECRET');
     expect(parseEnv({ ...base, NODE_ENV: 'production', JWT_SECRET: 'x'.repeat(32) }).warnings).toEqual([]);

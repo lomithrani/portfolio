@@ -2,7 +2,7 @@ import { Elysia } from 'elysia'
 import mongoose from 'mongoose'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
-import { experiences, googleAuth, domain, workflows, corsConf } from './plugins'
+import { experiences, googleAuth, domain, workflows, appointments, corsConf } from './plugins'
 import { errors, UnsupportedMediaTypeError } from './errors'
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
 import { logger } from './services/logger'
@@ -102,6 +102,7 @@ export const createApp = () =>
     .use(domain)
     .use(experiences)
     .use(workflows)
+    .use(appointments)
 
 // App instance used by index.ts and tests importing from root
 export const app = createApp()

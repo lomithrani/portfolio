@@ -77,4 +77,62 @@ describe('googleIdentity', () => {
 		gsi.signIn('another-token');
 		expect(onCredential).toHaveBeenCalledTimes(1);
 	});
+
+	describe('requestGoogleAuthorizationCode', () => {
+		type CodeClientConfig = google.accounts.oauth2.CodeClientConfig;
+
+		/** GSI with an oauth2 code client whose popup outcome each test decides */
+		const stubCodeClient = (outcome: (config: CodeClientConfig) => void) => {
+			const requestCode = vi.fn();
+			const initCodeClient = vi.fn((config: CodeClientConfig) => ({
+				requestCode: () => {
+					requestCode();
+					outcome(config);
+				}
+			}));
+			vi.stubGlobal('window', { google: { accounts: { id: {}, oauth2: { initCodeClient } } } });
+			return { initCodeClient, requestCode };
+		};
+
+		it('opens the consent popup for the scope and resolves with the code', async () => {
+			const gsi = stubCodeClient((config) =>
+				config.callback?.({ code: 'auth-code' } as google.accounts.oauth2.CodeResponse)
+			);
+			const { requestGoogleAuthorizationCode } = await loadGoogleIdentityModule();
+
+			await expect(requestGoogleAuthorizationCode('calendar-scope')).resolves.toBe('auth-code');
+			expect(gsi.initCodeClient).toHaveBeenCalledWith(
+				expect.objectContaining({
+					client_id: 'test-client-id',
+					scope: 'calendar-scope',
+					ux_mode: 'popup'
+				})
+			);
+			expect(gsi.requestCode).toHaveBeenCalledTimes(1);
+		});
+
+		it('rejects when access is denied', async () => {
+			stubCodeClient((config) =>
+				config.callback?.({
+					error: 'access_denied'
+				} as unknown as google.accounts.oauth2.CodeResponse)
+			);
+			const { requestGoogleAuthorizationCode } = await loadGoogleIdentityModule();
+
+			await expect(requestGoogleAuthorizationCode('calendar-scope')).rejects.toThrow(
+				'access_denied'
+			);
+		});
+
+		it('rejects when the popup is closed', async () => {
+			stubCodeClient((config) =>
+				config.error_callback?.({ name: 'Error', message: '', type: 'popup_closed' })
+			);
+			const { requestGoogleAuthorizationCode } = await loadGoogleIdentityModule();
+
+			await expect(requestGoogleAuthorizationCode('calendar-scope')).rejects.toThrow(
+				'popup_closed'
+			);
+		});
+	});
 });
