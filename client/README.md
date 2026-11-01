@@ -16,8 +16,13 @@ needed to change them). Copy `.env.example` to `.env` for local development.
 | ----------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
 | `PUBLIC_PORTFOLIO_API_URL`    | `http://localhost:3000`             | Base URL of the API, used by SSR and by the browser                                       |
 | `PUBLIC_GOOGLE_CLIENT_ID`     | `DEFAULT_GOOGLE_CLIENT_ID` (common) | Google Sign-In client ID (must match the API audience)                                    |
-| `PORT` / `HOST` / `ORIGIN`    | `3000` / `0.0.0.0` / request origin | adapter-bun runtime options                                                               |
+| `PORT` / `HOST`               | `3000` / `0.0.0.0`                  | adapter-bun runtime options (`start:client` uses 4000 unless `PORT` is set)               |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset (telemetry off)               | Enables OpenTelemetry export (`OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME` optional) |
+
+adapter-bun does not read `ORIGIN` (unlike adapter-node): the public origin is
+`https://<Host header>`, which is right behind Railway's TLS proxy. Behind a proxy that rewrites
+them, name the forwarded headers instead with `PROTOCOL_HEADER` / `HOST_HEADER` (e.g.
+`PROTOCOL_HEADER=x-forwarded-proto`, `HOST_HEADER=x-forwarded-host`), as in `.env.example`.
 
 ## Commands
 
