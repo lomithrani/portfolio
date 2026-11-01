@@ -1,1 +1,2 @@
-export { authenticationStore } from "./authenticationStore"
+export { authenticationStore } from './authenticationStore';
+export type { AuthenticationData, AuthUser } from './authenticationStore';
