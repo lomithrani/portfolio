@@ -1,5 +1,5 @@
 import { Schema, model } from "mongoose";
-import type { InferSchemaType, Model, ObjectId } from "mongoose";
+import type { InferSchemaType, Model, Types } from "mongoose";
 
 export const skillSchema = new Schema({
   displayName: { type: String, required: true, unique: true, index: true },
@@ -10,20 +10,31 @@ export const skillSchema = new Schema({
 export type Skill = InferSchemaType<typeof skillSchema>;
 
 interface SkillModel extends Model<Skill> {
-  findOrCreate(name: string): Promise<ObjectId>;
+  findOrCreate(name: string): Promise<Types.ObjectId>;
 }
+
+const isDuplicateKeyError = (error: unknown) =>
+  typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
 
 skillSchema.statics.findOrCreate = async function (name: string) {
-  let skill = await this.findOne({ names: name });
+  // Atomic upsert: matches an alias or the display name (the unique key) and
+  // records the alias. Concurrent inserts of a new name make one fail with a
+  // duplicate key error; the retry then matches the winner's document.
+  const upsert = () =>
+    this.findOneAndUpdate(
+      { $or: [{ names: name }, { displayName: name }] },
+      { $setOnInsert: { displayName: name }, $addToSet: { names: name } },
+      { upsert: true, returnDocument: 'after' }
+    );
 
-  if (!skill) {
-    skill = new this({ names: [name], displayName: name });
-    await skill.save();
+  let skill;
+  try {
+    skill = await upsert();
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) throw error;
+    skill = await upsert();
   }
-
   return skill._id;
 }
-
-
 
 export const Skill = model<Skill, SkillModel>('Skill', skillSchema);

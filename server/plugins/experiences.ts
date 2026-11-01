@@ -1,29 +1,27 @@
-import { Domain, Experience, Skill } from '../models/database';
-import { Project } from '../models/database/project';
+import { Company, Domain, Experience, EXPERIENCE_POPULATE } from '../models/database';
+import { projectsFromRequest } from '../models/database/experience';
 import Elysia, { t } from 'elysia';
-import { corsConf } from './corsConf';
 import { userLogged } from './userLogged';
-import { CannotSaveExperienceError, DomainDoesNotExistError } from '../errors';
-import { experienceRequest } from '../models/elysia';
+import { DomainDoesNotExistError, ResourceNotFoundError } from '../errors';
+import { experienceRequest, objectIdParams } from '../models/elysia';
 
 export const experiences = new Elysia()
-  .use(corsConf())
   .use(userLogged)
   .post('/experiences', async ({ body, userId }) => {
     const domain = await Domain.findOne({ admin: userId });
 
-    if (!domain) throw new DomainDoesNotExistError(userId)
+    if (!domain) throw new DomainDoesNotExistError('You do not own a domain');
 
     const experience = await Experience.fromRequest(body);
 
     const result = await experience.save();
 
-    if (!result) throw new CannotSaveExperienceError(userId)
-
     domain.experiences.push(result._id)
 
     await domain.save();
 
+    // Same shape as GET /domain/:name so the client can render it directly
+    await result.populate(EXPERIENCE_POPULATE);
     return result.toObject();
   },
     {
@@ -35,52 +33,34 @@ export const experiences = new Elysia()
   .put('/experiences/:id', async ({ body, userId, params: { id } }) => {
     const domain = await Domain.findOne({ admin: userId });
 
-    if (!domain) throw new DomainDoesNotExistError(userId)
+    if (!domain) throw new DomainDoesNotExistError('You do not own a domain');
 
     if (!domain.experiences.some((expId) => expId.toString() === id)) {
-      throw new Error('Experience not found in your domain')
+      throw new ResourceNotFoundError('Experience not found in your domain')
     }
 
     const experience = await Experience.findById(id);
 
-    if (!experience) throw new Error('Experience not found')
-
-    const projects = [];
-    for (const project of body.projects) {
-      const hardSkills = await Promise.all(
-        project.hardSkills.map(async (hs) => ({
-          skill: await Skill.findOrCreate(hs.name),
-          level: hs.level,
-        }))
-      );
-      const softSkills = await Promise.all(
-        project.softSkills.map(async (ss) => ({
-          skill: await Skill.findOrCreate(ss.name),
-          level: ss.level,
-        }))
-      );
-      projects.push(new Project({ ...project, hardSkills, softSkills }));
-    }
+    if (!experience) throw new ResourceNotFoundError('Experience not found')
 
     experience.set({
       title: body.title,
       summary: body.summary,
       type: body.type,
-      company: body.company,
+      company: await Company.findOrCreate(body.company),
       icon: body.icon,
-      projects,
+      projects: await projectsFromRequest(body.projects),
     });
 
     const result = await experience.save();
 
-    if (!result) throw new CannotSaveExperienceError(userId)
-
+    await result.populate(EXPERIENCE_POPULATE);
     return result.toObject();
   },
     {
+      params: objectIdParams,
       body: experienceRequest,
       detail: {
         summary: 'Edit experience'
       }
     })
-

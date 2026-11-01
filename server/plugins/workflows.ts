@@ -1,19 +1,15 @@
-import Elysia, { t } from 'elysia';
-import { corsConf } from './corsConf';
+import Elysia from 'elysia';
 import { userLogged } from './userLogged';
 import { Workflow } from '../models/database';
-import { workflowRequest } from '../models/elysia';
+import { objectIdParams, workflowRequest } from '../models/elysia';
 import { Types } from 'mongoose';
+import { ForbiddenError, ResourceNotFoundError } from '../errors';
 
 export const workflows = new Elysia()
-  .use(corsConf())
   .use(userLogged)
   .post('/workflows', async ({ body, userId }) => {
-
-    const user = new Types.ObjectId(userId);
-    const workflow = new Workflow({ ...body })
-    workflow.user = user;
-    workflow.save();
+    // Awaited: a failed save must surface as an error response, not a 200
+    const workflow = await Workflow.create({ ...body, user: new Types.ObjectId(userId) });
 
     return workflow.toObject();
   },
@@ -24,14 +20,12 @@ export const workflows = new Elysia()
       }
     })
   .put('/workflows/:id', async ({ body, userId, params: { id } }) => {
-    if (!id) throw new Error('Id is required')
-
     const workflow = await Workflow.findById(id);
 
-    if (!workflow) throw new Error('Workflow not found')
+    if (!workflow) throw new ResourceNotFoundError('Workflow not found')
 
     if (workflow.user.toString() !== userId) {
-      throw new Error('Unauthorized')
+      throw new ForbiddenError('Forbidden: not the workflow owner')
     }
 
     workflow.set({ ...body })
@@ -41,6 +35,7 @@ export const workflows = new Elysia()
     return workflow.toObject()
   },
     {
+      params: objectIdParams,
       body: workflowRequest,
       detail: {
         summary: 'Edit workflow'
