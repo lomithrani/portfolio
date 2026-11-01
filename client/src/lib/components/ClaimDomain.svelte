@@ -1,10 +1,17 @@
 <script lang="ts">
+	import { beforeNavigate } from '$app/navigation';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import ClaimDomainModal from '$components/modals/ClaimDomainModal.svelte';
 
 	let { domainName }: { domainName: string } = $props();
 
 	let showModal = $state(false);
+
+	// Close the dialog before the page unmounts (going back, or the redirect after a claim): an
+	// open Dialog's focus trap would otherwise read state of the destroyed page (derived_inert)
+	beforeNavigate(() => {
+		showModal = false;
+	});
 </script>
 
 <div class="h-full flex flex-col items-center justify-center gap-6 p-8">

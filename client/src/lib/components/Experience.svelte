@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
-	import { invalidateAll } from '$app/navigation';
+	import { beforeNavigate, invalidateAll } from '$app/navigation';
 
 	import Project from './Project.svelte';
 	import ExperienceModal from './modals/ExperienceModal.svelte';
@@ -28,6 +28,12 @@
 
 	let DefaultIcon = $derived(typeIcons[experience.type]);
 	let showEditModal = $state(false);
+
+	// Close the dialog before the page unmounts: an open Dialog's focus trap would otherwise read
+	// state of the destroyed page (Svelte's derived_inert warning)
+	beforeNavigate(() => {
+		showEditModal = false;
+	});
 
 	const onEditResponse = async (response: ExperienceModel | undefined) => {
 		showEditModal = false;

@@ -88,6 +88,44 @@ test.describe('unknown paths', () => {
 		await expect(page.getByRole('button', { name: 'Claim this domain' })).toBeVisible();
 	});
 
+	test('going back with the claim dialog open closes it without a Svelte warning', async ({
+		page
+	}) => {
+		// Opening the dialog loads Google Sign-In: stub it so the test does not depend on Google
+		await page.route('https://accounts.google.com/**', (route) =>
+			route.fulfill({
+				contentType: 'application/javascript',
+				body: 'window.google = { accounts: { id: { initialize() {}, renderButton() {}, prompt() {}, cancel() {}, disableAutoSelect() {} } } };'
+			})
+		);
+		const warnings: string[] = [];
+		page.on('console', (message) => {
+			if (message.type() === 'warning' || message.type() === 'error') warnings.push(message.text());
+		});
+
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		// Client-side navigation, so that going back unmounts the error page with the dialog open
+		await page.evaluate(() => {
+			(window as Window & { e2eSameDocument?: boolean }).e2eSameDocument = true;
+			const link = document.createElement('a');
+			link.href = '/e2e-unclaimed-domain';
+			link.textContent = 'Unclaimed domain';
+			document.body.append(link);
+		});
+		await page.getByRole('link', { name: 'Unclaimed domain' }).click();
+		await page.getByRole('button', { name: 'Claim this domain' }).click();
+		await expect(page.getByRole('dialog')).toBeVisible();
+
+		await page.goBack();
+		await expect(page.getByText('No experiences have been published yet.')).toBeVisible();
+		await expect(page.getByRole('dialog')).toHaveCount(0);
+		// Still the same document: the dialog was torn down by Svelte, not by a page load
+		expect(
+			await page.evaluate(() => (window as Window & { e2eSameDocument?: boolean }).e2eSameDocument)
+		).toBe(true);
+		expect(warnings.filter((text) => text.includes('derived_inert'))).toEqual([]);
+	});
+
 	test('scanner-like paths return a plain 404 without the claim flow', async ({ page }) => {
 		for (const path of ['/wp-login.php', '/.env', '/admin']) {
 			const response = await page.goto(path);

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import type { PageData } from './$types';
-	import { invalidateAll } from '$app/navigation';
+	import { beforeNavigate, invalidateAll } from '$app/navigation';
 	import { Plus } from 'svelte-heros-v2';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import Experience from '$components/Experience.svelte';
@@ -37,6 +37,12 @@
 				.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 				.join(' ')
 	);
+
+	// Close the dialog before the page unmounts: an open Dialog's focus trap would otherwise read
+	// state of the destroyed page (Svelte's derived_inert warning)
+	beforeNavigate(() => {
+		showAddModal = false;
+	});
 
 	const onAddResponse = async (response: ExperienceModel | undefined) => {
 		showAddModal = false;
