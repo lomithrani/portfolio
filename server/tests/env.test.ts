@@ -21,6 +21,7 @@ const problemsOf = (source: Record<string, string | undefined>) => {
 describe('parseEnv', () => {
   it('applies the documented defaults', () => {
     const env = parseEnv(base);
+    expect(env.warnings).toEqual([]);
     expect(env).toMatchObject({
       NODE_ENV: 'development',
       ALLOWED_DOMAINS: ['http://localhost:5173'],
@@ -48,13 +49,28 @@ describe('parseEnv', () => {
     ['not JSON', 'http://localhost:5173'],
     ['not an array', '"http://localhost:5173"'],
     ['not strings', '[5173]'],
-    ['a wildcard', '["*"]'],
-    ['not an origin', '["localhost:5173"]'],
-    ['a URL with a path', '["https://example.com/app"]'],
   ])('rejects ALLOWED_DOMAINS that is %s', (_label, value) => {
     const problems = problemsOf({ ...base, ALLOWED_DOMAINS: value });
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('ALLOWED_DOMAINS');
+  });
+
+  // These never matched an Origin header, so they cannot take a deploy down
+  it.each([
+    ['a wildcard', '*'],
+    ['not an origin', 'localhost:5173'],
+    ['a URL with a path', 'https://example.com/app'],
+  ])('ignores an ALLOWED_DOMAINS entry that is %s, with a warning', (_label, value) => {
+    const env = parseEnv({ ...base, ALLOWED_DOMAINS: JSON.stringify([value, 'https://example.com']) });
+    expect(env.ALLOWED_DOMAINS).toEqual(['https://example.com']);
+    expect(env.warnings).toHaveLength(1);
+    expect(env.warnings[0]).toContain(JSON.stringify(value));
+  });
+
+  it('warns when ALLOWED_DOMAINS lists no valid origin', () => {
+    const env = parseEnv({ ...base, ALLOWED_DOMAINS: '["*"]' });
+    expect(env.ALLOWED_DOMAINS).toEqual([]);
+    expect(env.warnings.at(-1)).toContain('no valid origin');
   });
 
   it('normalizes origins (trailing slash)', () => {
@@ -79,6 +95,11 @@ describe('parseEnv', () => {
   it('uses GOOGLE_CLIENT_ID when set', () => {
     expect(parseEnv({ ...base, GOOGLE_CLIENT_ID: 'mine.apps.googleusercontent.com' }).GOOGLE_CLIENT_ID)
       .toBe('mine.apps.googleusercontent.com');
+  });
+
+  it('warns about a short JWT_SECRET in production', () => {
+    expect(parseEnv({ ...base, NODE_ENV: 'production' }).warnings[0]).toContain('JWT_SECRET');
+    expect(parseEnv({ ...base, NODE_ENV: 'production', JWT_SECRET: 'x'.repeat(32) }).warnings).toEqual([]);
   });
 
   it('makes the cookie Secure in production and with SameSite=None', () => {

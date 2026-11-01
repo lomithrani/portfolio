@@ -30,6 +30,8 @@ export interface ServerEnv {
   /** Telemetry is fully off unless an OTLP endpoint is configured */
   otelEnabled: boolean;
   TLS_PASSPHRASE?: string;
+  /** Non-fatal problems, printed at startup */
+  warnings: string[];
 }
 
 export class EnvironmentError extends Error {
@@ -42,7 +44,11 @@ export class EnvironmentError extends Error {
 const SAME_SITE_VALUES: readonly CookieSameSite[] = ['strict', 'lax', 'none'];
 const MIN_PRODUCTION_SECRET_LENGTH = 32;
 
-const parseAllowedDomains = (raw: string, problems: string[]): string[] => {
+// A value that is not a JSON array of strings is fatal. Entries that are not
+// origins are dropped with a warning instead: they never matched a browser's
+// Origin header (the check was always an exact comparison), so failing on them
+// would only take down a deploy that works.
+const parseAllowedDomains = (raw: string, problems: string[], warnings: string[]): string[] => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -61,19 +67,19 @@ const parseAllowedDomains = (raw: string, problems: string[]): string[] => {
   const origins: string[] = [];
   for (const value of parsed as string[]) {
     if (value === '*') {
-      problems.push(
-        "ALLOWED_DOMAINS must list explicit origins; '*' is not allowed with credentialed requests"
+      warnings.push(
+        'ALLOWED_DOMAINS: ignoring "*"; list explicit origins (a wildcard cannot be used with credentialed requests)'
       );
       continue;
     }
-    let url: URL;
+    let url: URL | undefined;
     try {
       url = new URL(value);
     } catch {
-      problems.push(`ALLOWED_DOMAINS entry ${JSON.stringify(value)} is not a valid origin`);
-      continue;
+      // handled below
     }
     if (
+      !url ||
       (url.protocol !== 'http:' && url.protocol !== 'https:') ||
       url.pathname !== '/' ||
       url.search ||
@@ -81,13 +87,17 @@ const parseAllowedDomains = (raw: string, problems: string[]): string[] => {
       url.username ||
       url.password
     ) {
-      problems.push(
-        `ALLOWED_DOMAINS entry ${JSON.stringify(value)} must be an origin like https://example.com (scheme, host and optional port only)`
+      warnings.push(
+        `ALLOWED_DOMAINS: ignoring ${JSON.stringify(value)}; entries must be origins like https://example.com (scheme, host and optional port only)`
       );
       continue;
     }
     // Browsers send the Origin header without a trailing slash
     origins.push(url.origin);
+  }
+
+  if (origins.length === 0) {
+    warnings.push('ALLOWED_DOMAINS lists no valid origin: browsers cannot call the API');
   }
   return origins;
 };
@@ -109,6 +119,7 @@ const optional = (value: string | undefined) => {
 
 export const parseEnv = (source: Record<string, string | undefined>): ServerEnv => {
   const problems: string[] = [];
+  const warnings: string[] = [];
 
   const required = (name: string, { trim = true } = {}) => {
     const value = source[name];
@@ -131,7 +142,9 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
   const JWT_SECRET = required('JWT_SECRET', { trim: false });
 
   const rawAllowedDomains = required('ALLOWED_DOMAINS');
-  const ALLOWED_DOMAINS = rawAllowedDomains ? parseAllowedDomains(rawAllowedDomains, problems) : [];
+  const ALLOWED_DOMAINS = rawAllowedDomains
+    ? parseAllowedDomains(rawAllowedDomains, problems, warnings)
+    : [];
 
   const rawSameSite = optional(source.AUTH_COOKIE_SAMESITE)?.toLowerCase() ?? 'strict';
   let AUTH_COOKIE_SAMESITE: CookieSameSite = 'strict';
@@ -148,8 +161,8 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
 
   if (isProduction && JWT_SECRET.length < MIN_PRODUCTION_SECRET_LENGTH) {
     // Not fatal: refusing to boot would take an existing deploy down
-    console.warn(
-      `[WARN] JWT_SECRET is shorter than ${MIN_PRODUCTION_SECRET_LENGTH} characters; use a long random value in production`
+    warnings.push(
+      `JWT_SECRET is shorter than ${MIN_PRODUCTION_SECRET_LENGTH} characters; use a long random value in production`
     );
   }
 
@@ -171,8 +184,10 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',
     otelEnabled: OTEL_EXPORTER_OTLP_ENDPOINT !== undefined,
-    TLS_PASSPHRASE: optional(source.TLS_PASSPHRASE)
+    TLS_PASSPHRASE: optional(source.TLS_PASSPHRASE),
+    warnings
   };
 };
 
 export const env: ServerEnv = parseEnv(Bun.env);
+for (const warning of env.warnings) console.warn(`[WARN] ${warning}`);
