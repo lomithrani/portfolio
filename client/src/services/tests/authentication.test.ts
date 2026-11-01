@@ -3,7 +3,7 @@ import type { Mock } from 'vitest';
 import { get } from 'svelte/store';
 
 // vi.mock factories are hoisted — they cannot reference outer variables
-vi.mock('$services', () => ({
+vi.mock('#services', () => ({
 	portfolioApi: {
 		login: { post: vi.fn() },
 		isLogged: { get: vi.fn() },
@@ -33,7 +33,7 @@ import {
 } from '../authentication';
 import { authenticationStore, sessionCheckedStore } from '../stores';
 import { disableGoogleAutoSelect } from '../googleIdentity';
-import { portfolioApi } from '$services';
+import { portfolioApi } from '#services';
 
 const mockLoginPost = portfolioApi.login.post as unknown as Mock;
 const mockIsLoggedGet = portfolioApi.isLogged.get as unknown as Mock;

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import ClaimDomain from '$components/ClaimDomain.svelte';
+	import ClaimDomain from '#components/ClaimDomain.svelte';
 	import { page } from '$app/state';
 </script>
 

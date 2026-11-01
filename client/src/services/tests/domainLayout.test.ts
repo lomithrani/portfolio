@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { isHttpError } from '@sveltejs/kit';
 
-vi.mock('$services/index', () => {
+vi.mock('#services', () => {
 	const get = vi.fn();
 	return { portfolioApi: { domain: vi.fn(() => ({ get })) } };
 });
 
-import { portfolioApi } from '$services/index';
+import { portfolioApi } from '#services';
 import { load } from '../../routes/[domain]/+layout.server';
 
 const mockDomain = portfolioApi.domain as unknown as Mock;

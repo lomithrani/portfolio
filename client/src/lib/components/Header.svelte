@@ -1,9 +1,14 @@
 <script lang="ts">
-	import { isLogged, isSessionValid, logout, watchSessionExpiry } from '$services/authentication';
-	import { authenticationStore, sessionCheckedStore } from '$services/stores';
-	import Login from '$components/Login.svelte';
+	import {
+		isLogged,
+		isSessionValid,
+		logout,
+		watchSessionExpiry
+	} from '#services/authentication.ts';
+	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
+	import Login from '#components/Login.svelte';
 	import { AppBar } from '@skeletonlabs/skeleton-svelte';
-	import Logo from '$images/logo.svelte';
+	import Logo from '#images/logo.svelte';
 	import { onMount } from 'svelte';
 
 	let { headerTitle, headerSubtitle }: { headerTitle?: string; headerSubtitle?: string } = $props();

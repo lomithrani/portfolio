@@ -137,12 +137,21 @@ test.describe('unknown paths', () => {
 	});
 });
 
-test('the hire page renders inside the hydrated portfolio layout', async ({ page }) => {
+test('the hire page renders the booking view inside the hydrated portfolio layout', async ({
+	page
+}) => {
+	// The page lists the owner's bookable schedules once mounted
+	const schedules = page.waitForResponse((response) =>
+		response.url().endsWith(`/appointments/domains/${DOMAIN}/schedules`)
+	);
 	// gotoHydrated only resolves if the layout's JavaScript ran (csr is enabled)
 	const response = await gotoHydrated(page, `/${DOMAIN}/hire`);
 
 	expect(response?.status()).toBe(200);
-	await expect(page.getByRole('heading', { name: 'Job description' })).toBeVisible();
+	expect((await schedules).status()).toBe(200);
+	await expect(page.getByRole('heading', { name: /^Book a meeting with / })).toBeVisible();
+	// The CI API has no Google Calendar (GOOGLE_CLIENT_SECRET unset): nothing is bookable
+	await expect(page.getByText('Online booking is not available right now.')).toBeVisible();
 });
 
 test('/healthz answers 200 ok', async ({ request }) => {

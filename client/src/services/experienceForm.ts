@@ -1,6 +1,6 @@
 import { ExperienceType } from 'portfolio-common';
 import type { Experience, Skill } from 'portfolio-api/models/database';
-import type { portfolioApi } from '$services';
+import type { portfolioApi } from '#services';
 
 // Body of POST /experiences and PUT /experiences/:id
 export type ExperienceRequest = Parameters<typeof portfolioApi.experiences.post>[0];

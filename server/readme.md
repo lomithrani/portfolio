@@ -23,7 +23,8 @@ with a message listing every problem.
 | `MONGO_URL` | yes | | `mongodb://` or `mongodb+srv://` connection string |
 | `JWT_SECRET` | yes | | Signs session cookies; use a long random value |
 | `ALLOWED_DOMAINS` | yes | | JSON array of allowed CORS origins, e.g. `["https://example.com"]`; entries that are not origins (`*`, no scheme, a path) are ignored with a startup warning |
-| `GOOGLE_CLIENT_ID` | no | `DEFAULT_GOOGLE_CLIENT_ID` (portfolio-common) | Expected audience of Google ID tokens |
+| `GOOGLE_CLIENT_ID` | no | `DEFAULT_GOOGLE_CLIENT_ID` (portfolio-common) | Expected audience of Google ID tokens, and the OAuth client of Google Calendar |
+| `GOOGLE_CLIENT_SECRET` | no | | Client secret of that OAuth client; enables Google Calendar appointments (off while unset). Quotes or spaces stop the server |
 | `HOST` | no | `::` (dual-stack) | Falls back to `0.0.0.0` when IPv6 is unavailable, unless set explicitly |
 | `PORT` | no | `3000` | |
 | `AUTH_COOKIE_SAMESITE` | no | `strict` | `strict`, `lax` or `none`; the cookie is `Secure` in production or with `none` |

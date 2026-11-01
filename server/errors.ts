@@ -66,6 +66,30 @@ export class UnsupportedMediaTypeError extends HttpError {
   status = 415
 }
 
+// Appointments (Google Calendar)
+
+/** The owner has not connected Google Calendar, or the API has no OAuth client secret */
+export class GoogleCalendarNotConnectedError extends HttpError {
+  status = 409
+}
+
+export class AppointmentScheduleNotFoundError extends HttpError {
+  status = 404
+}
+
+export class AppointmentEventNotFoundError extends HttpError {
+  status = 404
+}
+
+export class SlotUnavailableError extends HttpError {
+  status = 409
+}
+
+/** Google rejected the authorization code sent to /appointments/connect */
+export class GoogleCalendarAuthorizationError extends HttpError {
+  status = 400
+}
+
 export const errors = {
   BadRequestError,
   InvalidDomainNameError,
@@ -80,5 +104,10 @@ export const errors = {
   ConflictError,
   DomainAlreadyExistsError,
   UserAlreadyOwnsDomainError,
-  UnsupportedMediaTypeError
+  UnsupportedMediaTypeError,
+  GoogleCalendarNotConnectedError,
+  AppointmentScheduleNotFoundError,
+  AppointmentEventNotFoundError,
+  SlotUnavailableError,
+  GoogleCalendarAuthorizationError
 }

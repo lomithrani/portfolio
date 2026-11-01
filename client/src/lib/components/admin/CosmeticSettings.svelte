@@ -2,9 +2,9 @@
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { invalidateAll } from '$app/navigation';
-	import { portfolioApi } from '$services';
-	import { clearAuthentication } from '$services/authentication';
-	import { errorStatus } from '$services/apiErrors';
+	import { portfolioApi } from '#services';
+	import { clearAuthentication } from '#services/authentication.ts';
+	import { errorStatus } from '#services/apiErrors.ts';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { browser } from '$app/env';
 

@@ -13,8 +13,12 @@ export interface ServerEnv {
   JWT_SECRET: string;
   /** Allowed CORS origins, parsed from the ALLOWED_DOMAINS JSON array */
   ALLOWED_DOMAINS: string[];
-  /** Expected audience of Google ID tokens */
+  /** Expected audience of Google ID tokens, and the OAuth client of Google Calendar */
   GOOGLE_CLIENT_ID: string;
+  /** OAuth client secret of GOOGLE_CLIENT_ID, used to exchange Google Calendar authorization codes */
+  GOOGLE_CLIENT_SECRET?: string;
+  /** Google Calendar appointments are off unless GOOGLE_CLIENT_SECRET is set */
+  googleCalendarEnabled: boolean;
   /** Interface to bind; defaults to '::' (dual-stack) */
   HOST: string;
   /** True when HOST was set explicitly (disables the IPv4 fallback) */
@@ -157,6 +161,15 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
   const host = optional(source.HOST);
   const PORT = parsePort(source.PORT, problems);
 
+  // Copied from the Google Cloud console; a pasted value with quotes or
+  // spaces would only fail later, at the first Google Calendar connection
+  const GOOGLE_CLIENT_SECRET = optional(source.GOOGLE_CLIENT_SECRET);
+  if (GOOGLE_CLIENT_SECRET && /[\s"']/.test(GOOGLE_CLIENT_SECRET)) {
+    problems.push(
+      'GOOGLE_CLIENT_SECRET must be the bare client secret from the Google Cloud console (no quotes or spaces)'
+    );
+  }
+
   if (problems.length > 0) throw new EnvironmentError(problems);
 
   if (isProduction && JWT_SECRET.length < MIN_PRODUCTION_SECRET_LENGTH) {
@@ -175,6 +188,8 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     JWT_SECRET,
     ALLOWED_DOMAINS,
     GOOGLE_CLIENT_ID: optional(source.GOOGLE_CLIENT_ID) ?? DEFAULT_GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    googleCalendarEnabled: GOOGLE_CLIENT_SECRET !== undefined,
     HOST: host ?? '::',
     hostExplicit: host !== undefined,
     PORT,

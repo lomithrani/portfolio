@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { portfolioApi } from '$services';
+	import { portfolioApi } from '#services';
 	import { Plus, XMark } from 'svelte-heros-v2';
 	import { TagsInput, SegmentedControl } from '@skeletonlabs/skeleton-svelte';
 	import { ExperienceType } from 'portfolio-common';
@@ -7,10 +7,14 @@
 		newExperienceDataStore,
 		resetNewExperienceDraft,
 		type FormData
-	} from '$lib/stores/newExperienceStore';
-	import { draftToForm, experienceToForm, formToExperienceRequest } from '$services/experienceForm';
-	import { clearAuthentication } from '$services/authentication';
-	import { errorStatus } from '$services/apiErrors';
+	} from '#lib/stores/newExperienceStore.ts';
+	import {
+		draftToForm,
+		experienceToForm,
+		formToExperienceRequest
+	} from '#services/experienceForm.ts';
+	import { clearAuthentication } from '#services/authentication.ts';
+	import { errorStatus } from '#services/apiErrors.ts';
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import { get } from 'svelte/store';
 

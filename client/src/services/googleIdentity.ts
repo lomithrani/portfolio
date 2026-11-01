@@ -13,10 +13,12 @@ let loading: Promise<GoogleId> | undefined;
 let initialized = false;
 let currentHandler: CredentialHandler | undefined;
 
-const loadedGoogleId = (): GoogleId | undefined =>
+const loadedGoogle = (): typeof google | undefined =>
 	typeof window === 'undefined'
 		? undefined
-		: (window as Window & { google?: typeof google }).google?.accounts?.id;
+		: (window as Window & { google?: typeof google }).google;
+
+const loadedGoogleId = (): GoogleId | undefined => loadedGoogle()?.accounts?.id;
 
 export const loadGoogleIdentity = (): Promise<GoogleId> => {
 	const loaded = loadedGoogleId();
@@ -96,4 +98,33 @@ export const disableGoogleAutoSelect = async (): Promise<void> => {
 	} catch {
 		// GSI unavailable (blocked, offline, server side): there is no One Tap to disable either
 	}
+};
+
+/**
+ * Asks the signed-in admin, in a Google popup, to grant `scope` to this app (GSI code model) and
+ * resolves with the authorization code, which the API exchanges for tokens. Rejects when the
+ * popup cannot open, is closed or access is denied.
+ */
+export const requestGoogleAuthorizationCode = async (scope: string): Promise<string> => {
+	await loadGoogleIdentity();
+	const oauth2 = loadedGoogle()?.accounts?.oauth2;
+	if (!oauth2) throw new Error('Google Identity Services loaded without google.accounts.oauth2');
+
+	return new Promise<string>((resolve, reject) => {
+		oauth2
+			.initCodeClient({
+				client_id: PUBLIC_GOOGLE_CLIENT_ID,
+				scope,
+				ux_mode: 'popup',
+				callback: (response) => {
+					if (response.error || !response.code) {
+						reject(new Error(response.error_description || response.error || 'No code returned'));
+					} else {
+						resolve(response.code);
+					}
+				},
+				error_callback: (error) => reject(new Error(error.message || error.type))
+			})
+			.requestCode();
+	});
 };

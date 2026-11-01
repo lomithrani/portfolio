@@ -67,13 +67,13 @@ SvelteKit dynamic routes under `[domain]/` — the root (`/`) redirects to `/lou
 Google OAuth 2.0 → server verifies token → upserts user in MongoDB → issues JWT (7-day, httpOnly cookie). Client tracks auth state via `svelte-persisted-store`. Protected server routes use the `userLogged` Elysia plugin middleware.
 
 ### Server Plugin Structure
-Elysia routes are organized as plugins in `server/plugins/` — `auth.ts`, `domain.ts`, `experiences.ts`, `workflows.ts`. Custom error classes live in `server/errors.ts`.
+Elysia routes are organized as plugins in `server/plugins/` — `auth.ts`, `domain.ts`, `experiences.ts`, `workflows.ts`, `appointments.ts` (Google Calendar: admin schedules + public booking; Google calls live in `server/services/googleCalendar.ts`, slots in `server/services/slotComputation.ts`). Custom error classes live in `server/errors.ts`.
 
 ### Database Models
-Mongoose schemas in `server/models/database/`. Key entities: Domain, User, Experience, Company, Project, Skill, Workflow (with steps/instances). Elysia request validation schemas use TypeBox in `server/models/elysia/`.
+Mongoose schemas in `server/models/database/`. Key entities: Domain, User, Experience, Company, Project, Skill, Workflow (with steps/instances), AppointmentSchedule. The User's Google Calendar OAuth tokens (`googleCalendar.refreshToken` / `accessToken`) are `select: false`: only `services/googleCalendar.ts` loads them (`.select('+googleCalendar.refreshToken')`), and `tests/appointments.test.ts` fails if any API response contains one. Elysia request validation schemas use TypeBox in `server/models/elysia/`.
 
 ### Client Path Aliases
-Defined in `client/vite.config.ts` (SvelteKit 3 config lives there): `$components` → `src/lib/components`, `$services` → `src/services`, `$images` → `src/lib/images`.
+Node [subpath imports](https://svelte.dev/docs/kit/$lib) in the `imports` field of `client/package.json`, resolved natively by Vite, Vitest and TypeScript: `#lib/*` → `src/lib/*`, `#components/*` → `src/lib/components/*`, `#images/*` → `src/lib/images/*`, `#services` → `src/services/index.ts`, `#services/*` → `src/services/*`. Subpath imports do no extension or `index` lookup, so write the full file name: `#components/Header.svelte`, `#services/authentication.ts`, `#services/stores/index.ts` (`.ts` works because SvelteKit's generated tsconfig sets `allowImportingTsExtensions`). Do not reintroduce the SvelteKit `alias` option or the removed `$lib`: `alias` is deprecated in SvelteKit 3.
 
 ## Code Style
 
@@ -88,7 +88,7 @@ Templates with every variable: `server/.env.example`, `client/.env.example` (cop
 
 **Server** (validated once at startup by `server/env.ts`):
 - Required: `MONGO_URL`, `JWT_SECRET`, `ALLOWED_DOMAINS` (JSON array of allowed CORS origins)
-- Optional: `PORT` (3000), `HOST` (`::`, falls back to `0.0.0.0` without IPv6), `GOOGLE_CLIENT_ID` (default `DEFAULT_GOOGLE_CLIENT_ID` from portfolio-common), `AUTH_COOKIE_SAMESITE` (`strict`|`lax`|`none`, default `strict`), `API_DOCS` (`true` exposes OpenAPI docs in production), `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_SERVICE_NAME` (telemetry off without the endpoint), `TLS_PASSPHRASE`, `NODE_ENV`
+- Optional: `PORT` (3000), `HOST` (`::`, falls back to `0.0.0.0` without IPv6), `GOOGLE_CLIENT_ID` (default `DEFAULT_GOOGLE_CLIENT_ID` from portfolio-common), `GOOGLE_CLIENT_SECRET` (secret of that OAuth client; Google Calendar appointments are off without it), `AUTH_COOKIE_SAMESITE` (`strict`|`lax`|`none`, default `strict`), `API_DOCS` (`true` exposes OpenAPI docs in production), `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_SERVICE_NAME` (telemetry off without the endpoint), `TLS_PASSPHRASE`, `NODE_ENV`
 
 **Client** (declared in `client/src/env.ts`, read at server start, not at build time):
 - `PUBLIC_PORTFOLIO_API_URL` (default `http://localhost:3000`), `PUBLIC_GOOGLE_CLIENT_ID` (default `DEFAULT_GOOGLE_CLIENT_ID`; must match the server's `GOOGLE_CLIENT_ID`)

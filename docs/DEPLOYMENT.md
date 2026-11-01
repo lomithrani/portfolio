@@ -163,6 +163,7 @@ local development.
 | `ALLOWED_DOMAINS`              | yes      | JSON array of the web origins, exactly as the browser sends them: `["https://example.com"]`         |
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | recommended | `30` (see [Graceful shutdown](#graceful-shutdown))                                         |
 | `GOOGLE_CLIENT_ID`             | no       | Only if you use your own OAuth client; must equal the web's `PUBLIC_GOOGLE_CLIENT_ID`              |
+| `GOOGLE_CLIENT_SECRET`         | for appointments | Client secret of that same OAuth client; sealed. Enables Google Calendar appointments (see [Google Calendar appointments](#google-calendar-appointments)) |
 | `AUTH_COOKIE_SAMESITE`         | no       | Leave unset (`strict`); see [Custom domains](#custom-domains-are-required-for-login)               |
 | `API_DOCS`                     | no       | `true` to serve the OpenAPI docs (`/swagger`) in production; off by default there                  |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | no       | OTLP endpoint (e.g. Grafana Cloud); telemetry is fully off while it is unset                       |
@@ -201,6 +202,39 @@ assumes `https`, which matches Railway's TLS-terminating proxy.
 Google Sign-In: add the web origin (e.g. `https://example.com`) to the **Authorized JavaScript
 origins** of the OAuth client in the Google Cloud console, or the sign-in button fails on the
 deployed site.
+
+## Google Calendar appointments
+
+The admin panel's **Appointments** tab connects the owner's Google Calendar (OAuth code flow in a
+Google popup); visitors then book free slots on the `/hire` page, and the API creates the events
+(with a Google Meet link and an invitation to the visitor). The API exchanges the authorization
+code with the OAuth client's secret, so the feature is **off until `GOOGLE_CLIENT_SECRET` is set**:
+the API boots without it, the tab says Google Calendar is not configured, and `/hire` offers no
+slots.
+
+To enable it on Railway (service `portfolio api develop`, and any other API service):
+
+1. In the Google Cloud console, project of the sign-in OAuth client (the `GOOGLE_CLIENT_ID` /
+   `PUBLIC_GOOGLE_CLIENT_ID` client, `DEFAULT_GOOGLE_CLIENT_ID` from `common/` unless overridden):
+   - **APIs & Services, Library**: enable the **Google Calendar API**.
+   - **Google Auth Platform, Data access**: add the scope `https://www.googleapis.com/auth/calendar`.
+   - **Audience**: set the publishing status to **In production**. While an external app is in
+     _Testing_, Google expires its refresh tokens after 7 days and appointments stop working until
+     the owner reconnects. An unverified app still works for the owner, behind a warning screen.
+   - **Clients**, the web client: copy its **client secret**. No redirect URI is needed (the popup
+     flow uses `postmessage`); the web origin must already be an **Authorized JavaScript origin**
+     for sign-in.
+2. On the API service, add `GOOGLE_CLIENT_SECRET` (sealed) and deploy. A value with quotes or
+   spaces stops the deployment with `GOOGLE_CLIENT_SECRET must be the bare client secret ...`.
+3. Sign in as the domain admin, open **Admin, Appointments, Connect Google Calendar**, accept the
+   calendar permission, then create a schedule.
+
+The OAuth tokens are stored on the owner's user document in MongoDB (`googleCalendar`), excluded
+from every query unless the calendar service asks for them, and never returned by the API.
+**Disconnect** deletes them. If Google answers that it "did not grant offline access" (no refresh
+token because the app was authorized before), remove the app under
+[Google account, Third-party connections](https://myaccount.google.com/connections) and connect
+again.
 
 ## Custom domains are required for login
 
@@ -297,7 +331,8 @@ the deploy.
    ```
 
 4. **In the browser**: open the site, sign in with Google, reload the page and check you are still
-   signed in (the `auth` cookie is stored for the API domain).
+   signed in (the `auth` cookie is stored for the API domain). With `GOOGLE_CLIENT_SECRET` set,
+   **Admin, Appointments** shows the calendar as connected (or offers to connect it).
 5. **Rollback** if needed: the previous deployment's menu has **Rollback**.
 
 ## Why there is no railway.json
