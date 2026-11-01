@@ -1,13 +1,14 @@
 import jwt from "@elysiajs/jwt";
 import Elysia from "elysia";
-import { corsConf } from "./corsConf";
+import { env } from "../env";
 import { AuthExpiredError, CouldntVerifyJwtError, MissingAuthCookieError, SubMissingError } from "../errors";
 
+// Returns a new instance on purpose: `.use(userLogged)` continues the caller's
+// chain on this instance, so its derive guards every route declared after it
 export const userLogged = () => new Elysia({ name: 'userLogged' })
-  .use(corsConf())
   .use(jwt({
     name: 'jwt',
-    secret: Bun.env.JWT_SECRET!,
+    secret: env.JWT_SECRET,
     exp: '7d'
   })).derive(async ({ cookie: { auth }, jwt }) => {
 
@@ -19,7 +20,7 @@ export const userLogged = () => new Elysia({ name: 'userLogged' })
 
     if (!user.sub) throw new SubMissingError("Unauthorized")
 
-    if (!user.exp || user.exp < (Date.now() / 1000)) throw new AuthExpiredError(`Unauthorized expired since ${new Date((user?.exp ?? 0) * 1000).toISOString()}`)
+    if (!user.exp || user.exp < (Date.now() / 1000)) throw new AuthExpiredError("Unauthorized: session expired")
 
     return {
       userId: user.sub

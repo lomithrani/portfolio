@@ -4,7 +4,10 @@ import type { InferSchemaType } from "mongoose";
 export const userSchema = new Schema({
   name: { type: String },
   surname: { type: String },
-  email: { type: String, required: true, index: true, unique: true }
+  email: { type: String, required: true, index: true, unique: true },
+  // Google account ID (`sub` claim), the stable identity used to log in.
+  // Sparse: users created before it existed get it on their next login.
+  googleId: { type: String, unique: true, sparse: true }
 });
 
 export type User = InferSchemaType<typeof userSchema>;
