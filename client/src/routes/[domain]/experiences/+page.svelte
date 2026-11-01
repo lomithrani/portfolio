@@ -9,7 +9,7 @@
 	import Filters from './Filters.svelte';
 	import { authenticationStore, sessionCheckedStore } from '$services/stores';
 	import { isDomainAdmin } from '$services/authentication';
-	import { filterExperiences, type SkillFilters } from '$services/filters';
+	import { activeSkillFilters, filterExperiences, type SkillFilters } from '$services/filters';
 
 	let { data }: { data: PageData } = $props();
 
@@ -24,7 +24,10 @@
 
 	// `data` is replaced (not mutated) by invalidateAll(), which keeps these derivations fresh
 	let allExperiences: ExperienceModel[] = $derived(data.domain.experiences ?? []);
-	let experiences: ExperienceModel[] = $derived(filterExperiences(allExperiences, filters));
+	// A selected skill that an edit removed has no chip left to unselect it: only the selected
+	// skills still in the data filter the list (and highlight the cards)
+	let activeFilters: SkillFilters = $derived(activeSkillFilters(allExperiences, filters));
+	let experiences: ExperienceModel[] = $derived(filterExperiences(allExperiences, activeFilters));
 
 	let ownerName = $derived(
 		data.domain.headerTitle ||
@@ -63,7 +66,7 @@
 		{:else}
 			<Filters bind:filters {allExperiences} />
 			{#each experiences as experience (String(experience._id))}
-				<Experience {experience} canEdit={isAdmin} activeFilters={filters} />
+				<Experience {experience} canEdit={isAdmin} {activeFilters} />
 			{/each}
 		{/if}
 
