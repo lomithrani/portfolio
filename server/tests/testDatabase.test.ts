@@ -15,7 +15,7 @@ describe('test database guard', () => {
     'mongodb://localhost/mytestdb',
     'mongodb://[::1]:27017/portfolio'
   ])('lets the suites write to a local database (%s)', (url) => {
-    expect(isDisposableDatabase(url, undefined)).toBe(true);
+    expect(isDisposableDatabase(url, '')).toBe(true);
   });
 
   it.each([
@@ -23,7 +23,7 @@ describe('test database guard', () => {
     'mongodb://localhost:27017,db.example.com:27017/portfolio',
     ''
   ])('refuses any other database (%s)', (url) => {
-    expect(isDisposableDatabase(url, undefined)).toBe(false);
+    expect(isDisposableDatabase(url, '')).toBe(false);
   });
 
   it('trusts an explicit TEST_MONGO_URL', () => {

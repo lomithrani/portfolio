@@ -3,7 +3,7 @@ import mongoose from 'mongoose'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
 import { experiences, googleAuth, domain, workflows, corsConf } from './plugins'
-import { errors } from './errors'
+import { errors, UnsupportedMediaTypeError } from './errors'
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
 import { logger } from './services/logger'
 import { resolveError } from './services/errorHandler'
@@ -17,15 +17,15 @@ const MAX_REQUEST_BODY_SIZE = 1024 * 1024
 // text/plain bodies, which need no CORS preflight; refusing them before the
 // body is parsed means a cross-site form never reaches a handler, whatever
 // the cookie's SameSite (AUTH_COOKIE_SAMESITE=none sends it cross-site).
-const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 const hasNonJsonBody = (request: Request) => {
-  if (!STATE_CHANGING_METHODS.has(request.method)) return false;
-  const contentType = request.headers.get('content-type');
+  if (!STATE_CHANGING_METHODS.has(request.method)) return false
+  const contentType = request.headers.get('content-type')
   // A body-less request (e.g. a DELETE) has no Content-Type
-  if (contentType === null) return false;
-  return contentType.split(';')[0].trim().toLowerCase() !== 'application/json';
-};
+  if (contentType === null) return false
+  return contentType.split(';')[0].trim().toLowerCase() !== 'application/json'
+}
 
 // Request start times, keyed by request. Filled in onRequest, which (unlike
 // derive) also runs for unmatched routes, so 404s get a real duration too.
@@ -61,12 +61,10 @@ export const createApp = () =>
       if (start !== undefined) httpRequestDuration.record(performance.now() - start, attrs)
     })
     .use(corsConf())
-    // After CORS, so the 415 still carries the CORS headers
-    .onRequest(({ request, set }) => {
-      if (hasNonJsonBody(request)) {
-        set.status = 415;
-        return 'Unsupported Media Type';
-      }
+    // After CORS, so the 415 still carries the CORS headers. Thrown (not
+    // returned) so it goes through onError: logged and counted like any 4xx
+    .onRequest(({ request }) => {
+      if (hasNonJsonBody(request)) throw new UnsupportedMediaTypeError('Unsupported Media Type')
     })
     .use(apiDocs())
     .error(errors)

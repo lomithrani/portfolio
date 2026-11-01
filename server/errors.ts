@@ -62,6 +62,10 @@ export class UserAlreadyOwnsDomainError extends HttpError {
   status = 409
 }
 
+export class UnsupportedMediaTypeError extends HttpError {
+  status = 415
+}
+
 export const errors = {
   BadRequestError,
   InvalidDomainNameError,
@@ -75,5 +79,6 @@ export const errors = {
   DomainDoesNotExistError,
   ConflictError,
   DomainAlreadyExistsError,
-  UserAlreadyOwnsDomainError
+  UserAlreadyOwnsDomainError,
+  UnsupportedMediaTypeError
 }
