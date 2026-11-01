@@ -1,19 +1,19 @@
 <script lang="ts">
-	import { isLogged, logout } from '$services/authentication';
-	import { authenticationStore } from '$services/stores';
+	import { isLogged, isSessionValid, logout, watchSessionExpiry } from '$services/authentication';
+	import { authenticationStore, sessionCheckedStore } from '$services/stores';
 	import Login from '$components/Login.svelte';
 	import { AppBar } from '@skeletonlabs/skeleton-svelte';
 	import Logo from '$images/logo.svelte';
 	import { onMount } from 'svelte';
 
-	let { headerTitle, headerSubtitle }: { headerTitle?: string; headerSubtitle?: string } =
-		$props();
+	let { headerTitle, headerSubtitle }: { headerTitle?: string; headerSubtitle?: string } = $props();
 
-	let ready = $state(false);
-
-	onMount(async () => {
-		await isLogged();
-		ready = true;
+	onMount(() => {
+		const stopWatchingExpiry = watchSessionExpiry();
+		// Reconcile the persisted session with the API before offering Login/Logout (and before
+		// any admin-only UI appears: see sessionCheckedStore)
+		void isLogged();
+		return stopWatchingExpiry;
 	});
 </script>
 
@@ -51,10 +51,12 @@
 			{/if}
 		</AppBar.Headline>
 		<AppBar.Trail>
-			{#if !ready}
+			{#if !$sessionCheckedStore}
 				...
-			{:else if ($authenticationStore.expires ?? 0) * 1000 > Date.now()}
-				<button type="button" class="btn btn-sm preset-tonal" onclick={logout} aria-label="Logout">Logout</button>
+			{:else if isSessionValid($authenticationStore)}
+				<button type="button" class="btn btn-sm preset-tonal" onclick={() => logout()}>
+					Logout
+				</button>
 			{:else}
 				<Login />
 			{/if}

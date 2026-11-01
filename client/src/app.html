@@ -1,18 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" class="dark" style="color-scheme: dark" data-theme="wintry">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="%sveltekit.assets%/logo.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<script>
+			// Saved light/dark choice (key owned by LeftBar.svelte), applied before first paint
+			try {
+				var dark = localStorage.getItem('portfolio-dark-mode');
+				if (dark === 'true' || dark === 'false') {
+					document.documentElement.classList.toggle('dark', dark === 'true');
+					document.documentElement.style.colorScheme = dark === 'true' ? 'dark' : 'light';
+				}
+			} catch (e) {}
+		</script>
+		%sveltekit.head%
+	</head>
 
-<head>
-	<meta charset="utf-8" />
-
-	<!-- NOTE: SEO handled in root layout: /src/+layout.svelte -->
-
-	<link rel="icon" href="%sveltekit.assets%/logo.svg" />
-	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	%sveltekit.head%
-</head>
-
-<body data-sveltekit-preload-data="hover">
-	<div class="h-full overflow-hidden contents">%sveltekit.body%</div>
-</body>
-
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
 </html>

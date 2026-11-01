@@ -3,12 +3,15 @@
 	import { Plus, XMark } from 'svelte-heros-v2';
 	import { TagsInput, SegmentedControl } from '@skeletonlabs/skeleton-svelte';
 	import { ExperienceType } from 'portfolio-common';
-	import { newExperienceDataStore, type FormData } from '$lib/stores/newExperienceStore';
-	import type {
-		Company,
-		Experience as ExperienceModel,
-		Skill
-	} from 'portfolio-api/models/database';
+	import {
+		newExperienceDataStore,
+		resetNewExperienceDraft,
+		type FormData
+	} from '$lib/stores/newExperienceStore';
+	import { experienceToForm, formToExperienceRequest } from '$services/experienceForm';
+	import { clearAuthentication } from '$services/authentication';
+	import { errorStatus } from '$services/apiErrors';
+	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import { get } from 'svelte/store';
 
 	let {
@@ -28,6 +31,8 @@
 	let isNewExperience = $derived(!existingExperience);
 
 	let iconError = $state('');
+	let submitError = $state('');
+	let submitting = $state(false);
 
 	const handleIconUpload = (event: Event) => {
 		const input = event.target as HTMLInputElement;
@@ -52,92 +57,70 @@
 		formData.icon = undefined;
 	};
 
+	// Editing starts from the experience itself; adding resumes the persisted draft.
+	// The draft is only ever written by the "add" flow, so editing cannot clobber it.
 	function getInitialFormData(): FormData {
-		if (existingExperience) {
-			const data: FormData = {
-				title: existingExperience.title,
-				type: existingExperience.type,
-				summary: existingExperience.summary,
-				icon: existingExperience.icon,
-				company: existingExperience.company as unknown as FormData['company'],
-				projects: existingExperience.projects.map((project) => {
-					const toDateStr = (v: unknown) =>
-						v instanceof Date ? v.toISOString().split('T')[0] : String(v).split('T')[0];
-					return {
-						name: project.name,
-						start: toDateStr(project.start),
-						end: toDateStr(project.end),
-						summary: project.summary ?? '',
-						hardSkills: project.hardSkills.map((skill) => (skill.skill as Skill).displayName),
-						softSkills: project.softSkills.map((skill) => (skill.skill as Skill).displayName)
-					};
-				})
-			};
-			newExperienceDataStore.set(data);
-			return JSON.parse(JSON.stringify(data));
-		}
-		return JSON.parse(JSON.stringify(get(newExperienceDataStore)));
+		if (existingExperience) return experienceToForm(existingExperience);
+		return structuredClone(get(newExperienceDataStore));
 	}
 
 	let formData: FormData = $state(getInitialFormData());
 
 	$effect(() => {
-		if (formData) {
-			newExperienceDataStore.set(formData);
+		if (isNewExperience) {
+			newExperienceDataStore.set($state.snapshot(formData));
 		}
 	});
 
+	const describeError = (status: number | undefined): string => {
+		if (status === 401) return 'Your session has expired. Please log in again.';
+		if (status === 403) return 'Only the domain admin can edit this portfolio.';
+		if (status === 400 || status === 422) return 'Some fields are invalid. Please check the form.';
+		return 'Failed to save the experience. Please try again.';
+	};
+
 	const onFormSubmit = async () => {
-		const apiData = {
-			...formData,
-			projects: formData.projects.map((project) => {
-				return {
-					...project,
-					start: project.start ? new Date(project.start) : undefined,
-					end: project.end ? new Date(project.end) : undefined,
-					hardSkills: project.hardSkills.map((skillName) => ({
-						name: skillName,
-						level: -1
-					})),
-					softSkills: project.softSkills.map((skillName) => ({
-						name: skillName,
-						level: -1
-					}))
-				};
-			})
-		};
+		submitting = true;
+		submitError = '';
 
-		const fetchOpts = { fetch: { credentials: 'include' } } as const;
+		try {
+			const request = formToExperienceRequest($state.snapshot(formData));
+			const fetchOpts = { fetch: { credentials: 'include' } } as const;
 
-		let data, error;
-		if (existingExperience?._id) {
-			({ data, error } = await portfolioApi
-				.experiences({ id: String(existingExperience._id) })
-				.put(apiData, fetchOpts));
-		} else {
-			({ data, error } = await portfolioApi.experiences.post(apiData, fetchOpts));
-		}
+			const { data, error } = existingExperience?._id
+				? await portfolioApi
+						.experiences({ id: String(existingExperience._id) })
+						.put(request, fetchOpts)
+				: await portfolioApi.experiences.post(request, fetchOpts);
 
-		if (!error && data) {
+			if (error || !data) {
+				const status = errorStatus(error);
+				if (status === 401) clearAuthentication();
+				submitError = describeError(status);
+				return;
+			}
+
+			if (isNewExperience) resetNewExperienceDraft();
 			onResponse(data as unknown as ExperienceModel);
+		} catch {
+			submitError = describeError(undefined);
+		} finally {
+			submitting = false;
 		}
 	};
 
 	const addEmptyProject = () => {
-		const newProject = {
-			name: '',
-			start: new Date().toISOString().split('T')[0],
-			end: new Date().toISOString().split('T')[0],
-			summary: '',
-			hardSkills: [] as string[],
-			softSkills: [] as string[]
-		};
-		formData.projects = [...formData.projects, newProject];
+		const today = new Date().toISOString().split('T')[0];
+		formData.projects = [
+			...formData.projects,
+			{ name: '', start: today, end: today, summary: '', hardSkills: [], softSkills: [] }
+		];
 	};
 
 	const cBase = 'bg-surface-100-900 p-4 max-w-lg w-full shadow-xl space-y-4 rounded-lg';
 	const cHeader = 'text-2xl font-bold';
 	const cForm = 'border border-surface-300-700 p-4 space-y-4 rounded-lg';
+	const cInput = 'w-full rounded border border-surface-300-700 bg-transparent p-2';
 </script>
 
 <div class={cBase}>
@@ -145,9 +128,10 @@
 	<article>{body}</article>
 	<div class="space-y-4 {cForm}">
 		<input
-			class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+			class={cInput}
 			type="text"
 			bind:value={formData.title}
+			aria-label="Title"
 			placeholder="Enter title...  eg: Senior Software Engineer"
 		/>
 
@@ -164,8 +148,8 @@
 			<SegmentedControl.Indicator />
 		</SegmentedControl>
 
-		<label class="block">
-			<span>Icon</span>
+		<fieldset class="block">
+			<legend>Icon</legend>
 			<div class="flex items-center gap-3">
 				{#if formData.icon}
 					<img src={formData.icon} alt="Icon preview" class="size-8" />
@@ -178,32 +162,35 @@
 						type="file"
 						accept=".ico,image/x-icon"
 						class="text-sm"
+						aria-label="Upload icon"
 						onchange={handleIconUpload}
 					/>
 				{/if}
 			</div>
 			{#if iconError}
-				<span class="text-xs text-error-500">{iconError}</span>
+				<span class="text-xs text-error-500" role="alert">{iconError}</span>
 			{/if}
-		</label>
+		</fieldset>
 
 		<textarea
-			class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+			class={cInput}
 			rows={4}
 			bind:value={formData.summary}
+			aria-label="Summary"
 			placeholder="Enter a brief summary of the overall experience... (supports markdown)"
 		></textarea>
 
 		<span>Projects</span>
 		<button type="button" class="bg-blue-500 text-white p-1 rounded" onclick={addEmptyProject}>
 			<Plus />
+			<span class="sr-only">Add project</span>
 		</button>
-		{#each formData.projects as project, i}
+		{#each formData.projects as project, i (i)}
 			<div class="space-y-2 {cForm}">
 				<label class="block">
 					<span>Title</span>
 					<input
-						class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+						class={cInput}
 						type="text"
 						bind:value={project.name}
 						placeholder="Enter title..."
@@ -212,24 +199,19 @@
 				<label class="block">
 					<span>Summary</span>
 					<textarea
-						class="w-full rounded border border-surface-300-700 bg-transparent p-2"
+						class={cInput}
 						rows={4}
 						bind:value={project.summary}
-						placeholder="Enter details about the project, mission..."
-					></textarea>
+						placeholder="Enter details about the project, mission..."></textarea>
 				</label>
-				<input
-					class="w-full rounded border border-surface-300-700 bg-transparent p-2"
-					title="Start"
-					type="date"
-					bind:value={project.start}
-				/>
-				<input
-					class="w-full rounded border border-surface-300-700 bg-transparent p-2"
-					title="End"
-					type="date"
-					bind:value={project.end}
-				/>
+				<label class="block">
+					<span>Start</span>
+					<input class={cInput} type="date" bind:value={project.start} />
+				</label>
+				<label class="block">
+					<span>End</span>
+					<input class={cInput} type="date" bind:value={project.end} />
+				</label>
 				<TagsInput
 					value={project.hardSkills}
 					onValueChange={(details) => {
@@ -237,7 +219,7 @@
 					}}
 				>
 					<TagsInput.Control>
-						{#each project.hardSkills as tag, idx}
+						{#each project.hardSkills as tag, idx (idx)}
 							<TagsInput.Item value={tag} index={idx}>
 								<TagsInput.ItemPreview>
 									<TagsInput.ItemText>{tag}</TagsInput.ItemText>
@@ -245,7 +227,7 @@
 								</TagsInput.ItemPreview>
 							</TagsInput.Item>
 						{/each}
-						<TagsInput.Input placeholder="Enter hard skills..." />
+						<TagsInput.Input placeholder="Enter hard skills..." aria-label="Hard skills" />
 					</TagsInput.Control>
 				</TagsInput>
 				<TagsInput
@@ -255,7 +237,7 @@
 					}}
 				>
 					<TagsInput.Control>
-						{#each project.softSkills as tag, idx}
+						{#each project.softSkills as tag, idx (idx)}
 							<TagsInput.Item value={tag} index={idx}>
 								<TagsInput.ItemPreview>
 									<TagsInput.ItemText>{tag}</TagsInput.ItemText>
@@ -263,15 +245,18 @@
 								</TagsInput.ItemPreview>
 							</TagsInput.Item>
 						{/each}
-						<TagsInput.Input placeholder="Enter soft skills..." />
+						<TagsInput.Input placeholder="Enter soft skills..." aria-label="Soft skills" />
 					</TagsInput.Control>
 				</TagsInput>
 			</div>
 		{/each}
 	</div>
+	{#if submitError}
+		<div class="p-3 rounded bg-error-500/10 text-error-500" role="alert">{submitError}</div>
+	{/if}
 	<footer class="flex justify-end gap-2">
 		<button class="btn preset-tonal" onclick={onClose}>Cancel</button>
-		<button class="btn preset-filled" onclick={onFormSubmit}
+		<button class="btn preset-filled" onclick={onFormSubmit} disabled={submitting}
 			>{isNewExperience ? 'Add Experience' : 'Modify Experience'}</button
 		>
 	</footer>

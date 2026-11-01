@@ -1,12 +1,61 @@
-<script lang="ts">
+<script lang="ts" module>
 	import { Marked } from 'marked';
 	import { markedHighlight } from 'marked-highlight';
-	import hljs from 'highlight.js';
+	// The core build plus a curated set of languages: the full bundle (~190 languages) made
+	// the experiences page, where every visitor lands, ship over 1 MB of JavaScript.
+	import hljs from 'highlight.js/lib/core';
+	import bash from 'highlight.js/lib/languages/bash';
+	import csharp from 'highlight.js/lib/languages/csharp';
+	import css from 'highlight.js/lib/languages/css';
+	import diff from 'highlight.js/lib/languages/diff';
+	import dockerfile from 'highlight.js/lib/languages/dockerfile';
+	import go from 'highlight.js/lib/languages/go';
+	import java from 'highlight.js/lib/languages/java';
+	import javascript from 'highlight.js/lib/languages/javascript';
+	import json from 'highlight.js/lib/languages/json';
+	import kotlin from 'highlight.js/lib/languages/kotlin';
+	import markdown from 'highlight.js/lib/languages/markdown';
+	import php from 'highlight.js/lib/languages/php';
+	import plaintext from 'highlight.js/lib/languages/plaintext';
+	import python from 'highlight.js/lib/languages/python';
+	import rust from 'highlight.js/lib/languages/rust';
+	import scss from 'highlight.js/lib/languages/scss';
+	import shell from 'highlight.js/lib/languages/shell';
+	import sql from 'highlight.js/lib/languages/sql';
+	import typescript from 'highlight.js/lib/languages/typescript';
+	import xml from 'highlight.js/lib/languages/xml';
+	import yaml from 'highlight.js/lib/languages/yaml';
 	import DOMPurify from 'isomorphic-dompurify';
 	import 'highlight.js/styles/github.css';
 
-	let { content = '' }: { content: string } = $props();
+	const languages = {
+		bash,
+		csharp,
+		css,
+		diff,
+		dockerfile,
+		go,
+		java,
+		javascript,
+		json,
+		kotlin,
+		markdown,
+		php,
+		plaintext,
+		python,
+		rust,
+		scss,
+		shell,
+		sql,
+		typescript,
+		xml,
+		yaml
+	};
+	for (const [name, language] of Object.entries(languages)) {
+		hljs.registerLanguage(name, language);
+	}
 
+	// One shared parser for every Markdown instance (one per experience and per project)
 	const marked = new Marked(
 		markedHighlight({
 			langPrefix: 'hljs language-',
@@ -16,18 +65,19 @@
 				}
 				return hljs.highlightAuto(code).value;
 			}
-		})
+		}),
+		{ gfm: true, breaks: true }
 	);
+</script>
 
-	marked.setOptions({
-		gfm: true,
-		breaks: true
-	});
+<script lang="ts">
+	let { content = '' }: { content: string } = $props();
 
 	let html = $derived(DOMPurify.sanitize(marked.parse(content) as string));
 </script>
 
 <div class="markdown">
+	<!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized with DOMPurify above -->
 	{@html html}
 </div>
 
@@ -137,8 +187,8 @@
 		font-size: 85%;
 		background: var(--color-surface-200);
 		border-radius: 6px;
-		font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
-			monospace;
+		font-family:
+			ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 	}
 
 	/* Code blocks */
