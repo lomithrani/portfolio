@@ -1,25 +1,22 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { Navigation } from '@skeletonlabs/skeleton-svelte';
 	import type { Domain, Experience } from 'portfolio-api/models/database';
 	import { AcademicCap, ComputerDesktop, WrenchScrewdriver, ChevronRight, Sun, Moon } from 'svelte-heros-v2';
 	import { authenticationStore } from '$services/stores';
+	import { isDomainAdmin } from '$services/authentication';
 	import { browser } from '$app/env';
 
 	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } = $props();
 
+	// Admin-only entries appear after hydration, so the server and client markup match
 	let mounted = $state(false);
-	$effect(() => {
+	onMount(() => {
 		mounted = true;
 	});
 
-	let isAdmin = $derived(
-		mounted &&
-			browser &&
-			$authenticationStore.user?._id != null &&
-			domain?.admin != null &&
-			$authenticationStore.user._id == domain.admin
-	);
+	let isAdmin = $derived(mounted && isDomainAdmin($authenticationStore, domain));
 
 	const pathStartsWith = (path: string, pagePathName: string) => pagePathName.startsWith(path);
 
@@ -114,10 +111,11 @@
 	onmouseenter={onMouseEnter}
 	onmouseleave={onMouseLeave}
 >
-	<div class="drawer-content">
+	<!-- inert while collapsed: the off-screen links must not stay in the tab order -->
+	<div class="drawer-content" inert={!isOpen}>
 		<Navigation layout="rail">
 			<Navigation.Content>
-				{#each menuItems as item}
+				{#each menuItems as item (item.path)}
 					{#if !item.display || item.display()}
 						{@const isActive = (item.selected ?? pathAreEquals)(item.path, page.url.pathname)}
 						<Navigation.TriggerAnchor
@@ -187,6 +185,20 @@
 	.drawer-content {
 		height: 100%;
 		flex-shrink: 0;
+	}
+
+	/* Restore the Skeleton 4 rail look after the Skeleton 5 / Tailwind 4.3 upgrade: .btn now
+	   sizes direct svg children to --btn-size (1rem) and sets a 1rem line-height, and the
+	   rail's `gap: 0.5` (previously dropped as invalid) now compiles to 0.5px. */
+	.drawer-content :global([data-scope='navigation'][data-part='trigger-anchor'][data-layout='rail']) {
+		line-height: var(--text-base--line-height);
+		gap: calc(var(--spacing) * 2);
+	}
+
+	.drawer-content
+		:global([data-scope='navigation'][data-part='trigger-anchor'][data-layout='rail'] > svg) {
+		width: 1.5rem;
+		height: 1.5rem;
 	}
 
 	.drawer-handle {
