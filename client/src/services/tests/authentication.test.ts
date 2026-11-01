@@ -13,7 +13,10 @@ vi.mock('$services', () => ({
 
 vi.mock('../stores', async () => {
 	const { writable } = await import('svelte/store');
-	return { authenticationStore: writable({ user: undefined, expires: undefined }) };
+	return {
+		authenticationStore: writable({ user: undefined, expires: undefined }),
+		sessionCheckedStore: writable(false)
+	};
 });
 
 vi.mock('../googleIdentity', () => ({
@@ -28,7 +31,7 @@ import {
 	logout,
 	watchSessionExpiry
 } from '../authentication';
-import { authenticationStore } from '../stores';
+import { authenticationStore, sessionCheckedStore } from '../stores';
 import { disableGoogleAutoSelect } from '../googleIdentity';
 import { portfolioApi } from '$services';
 
@@ -47,6 +50,7 @@ const apiError = (status: number) => ({ data: null, error: { status, value: 'err
 beforeEach(() => {
 	vi.clearAllMocks();
 	authenticationStore.set({ ...loggedOut });
+	sessionCheckedStore.set(false);
 	mockLogoutGet.mockResolvedValue({ data: null, error: null });
 });
 
@@ -148,6 +152,30 @@ describe('isLogged', () => {
 
 		await expect(isLogged()).resolves.toBe(false);
 		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('marks the session as checked only once a stale session has been cleared', async () => {
+		// Admin-only UI waits for sessionCheckedStore: it must never see the stale session
+		authenticationStore.set(validSession());
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: false, reason: 'No auth cookie' } });
+		const seenWhenChecked: unknown[] = [];
+		const unsubscribe = sessionCheckedStore.subscribe((checked) => {
+			if (checked) seenWhenChecked.push(get(authenticationStore));
+		});
+
+		const pending = isLogged();
+		expect(get(sessionCheckedStore)).toBe(false);
+		await pending;
+		unsubscribe();
+
+		expect(seenWhenChecked).toEqual([loggedOut]);
+	});
+
+	it('marks the session as checked even when the API cannot be reached', async () => {
+		mockIsLoggedGet.mockRejectedValue(new TypeError('Failed to fetch'));
+
+		await isLogged();
+		expect(get(sessionCheckedStore)).toBe(true);
 	});
 });
 

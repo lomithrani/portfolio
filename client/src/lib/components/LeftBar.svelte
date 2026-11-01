@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { Navigation } from '@skeletonlabs/skeleton-svelte';
 	import type { Domain, Experience } from 'portfolio-api/models/database';
@@ -11,20 +10,16 @@
 		Sun,
 		Moon
 	} from 'svelte-heros-v2';
-	import { authenticationStore } from '$services/stores';
+	import { authenticationStore, sessionCheckedStore } from '$services/stores';
 	import { isDomainAdmin } from '$services/authentication';
 	import { browser } from '$app/env';
 
 	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } =
 		$props();
 
-	// Admin-only entries appear after hydration, so the server and client markup match
-	let mounted = $state(false);
-	onMount(() => {
-		mounted = true;
-	});
-
-	let isAdmin = $derived(mounted && isDomainAdmin($authenticationStore, domain));
+	// Admin-only entries appear once the session has been checked with the API (in the browser,
+	// after hydration), so the server and client markup match
+	let isAdmin = $derived($sessionCheckedStore && isDomainAdmin($authenticationStore, domain));
 
 	const pathStartsWith = (path: string, pagePathName: string) => pagePathName.startsWith(path);
 

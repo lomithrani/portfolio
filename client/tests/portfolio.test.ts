@@ -4,6 +4,8 @@ import { expect, test, type Page } from '@playwright/test';
 // no experiences, and the visitor is anonymous.
 
 const DOMAIN = 'louis.gentil';
+// Same API as the web server under test (see playwright.config.ts)
+const API_URL = process.env.PUBLIC_PORTFOLIO_API_URL ?? 'http://localhost:3000';
 
 /**
  * Navigates and waits until the page has hydrated: the header asks the API whether the
@@ -43,6 +45,32 @@ test.describe('experiences page', () => {
 	test('does not open the "Add Experience" dialog for anonymous visitors', async ({ page }) => {
 		await gotoHydrated(page, `/${DOMAIN}/experiences`);
 
+		await expect(page.getByRole('dialog')).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Add Experience' })).toHaveCount(0);
+		await expect(page.locator(`a[href="/${DOMAIN}/admin"]`)).toHaveCount(0);
+	});
+
+	test('a stale local admin session (no auth cookie) never shows admin UI', async ({
+		page,
+		request
+	}) => {
+		// The persisted session claims to be the domain admin, but the browser has no auth cookie
+		// (blocked, cleared, or the API secret rotated): the API must be asked before admin UI
+		const domain = await (await request.get(`${API_URL}/domain/${DOMAIN}`)).json();
+		const staleSession = {
+			user: { _id: String(domain.admin) },
+			expires: Math.floor(Date.now() / 1000) + 3600
+		};
+		await page.addInitScript((value) => {
+			localStorage.setItem('authenticationStore', value);
+		}, JSON.stringify(staleSession));
+
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+
+		await expect
+			.poll(() => page.evaluate(() => localStorage.getItem('authenticationStore')))
+			.toBe('{}');
+		await expect(page.getByRole('button', { name: 'Logout' })).toHaveCount(0);
 		await expect(page.getByRole('dialog')).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'Add Experience' })).toHaveCount(0);
 		await expect(page.locator(`a[href="/${DOMAIN}/admin"]`)).toHaveCount(0);

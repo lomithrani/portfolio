@@ -1,6 +1,11 @@
 import { get } from 'svelte/store';
 import { portfolioApi } from '$services';
-import { authenticationStore, type AuthenticationData, type AuthUser } from './stores';
+import {
+	authenticationStore,
+	sessionCheckedStore,
+	type AuthenticationData,
+	type AuthUser
+} from './stores';
 import { disableGoogleAutoSelect } from './googleIdentity';
 import { errorStatus } from './apiErrors';
 
@@ -41,12 +46,7 @@ const readExpires = (data: unknown): number | undefined => {
 const isLoggedIn = (data: unknown): boolean =>
 	!!data && typeof data === 'object' && 'logged' in data && data.logged === true;
 
-/**
- * Reconciles the persisted (localStorage) session with the API's view of the auth cookie.
- * Expired entries are dropped immediately; a 401 or `logged: false` clears the store. When the
- * API cannot be reached the unexpired local session is kept, since nothing proves it wrong.
- */
-const isLogged = async (): Promise<boolean> => {
+const reconcileSession = async (): Promise<boolean> => {
 	if (!isSessionValid(get(authenticationStore))) clearAuthentication();
 
 	try {
@@ -74,6 +74,20 @@ const isLogged = async (): Promise<boolean> => {
 
 	clearAuthentication();
 	return false;
+};
+
+/**
+ * Reconciles the persisted (localStorage) session with the API's view of the auth cookie.
+ * Expired entries are dropped immediately; a 401 or `logged: false` clears the store. When the
+ * API cannot be reached the unexpired local session is kept, since nothing proves it wrong.
+ * Either way `sessionCheckedStore` is set once it settles.
+ */
+const isLogged = async (): Promise<boolean> => {
+	try {
+		return await reconcileSession();
+	} finally {
+		sessionCheckedStore.set(true);
+	}
 };
 
 /**

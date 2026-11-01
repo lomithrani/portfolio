@@ -1,23 +1,18 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { Tabs } from '@skeletonlabs/skeleton-svelte';
 	import CosmeticSettings from '$components/admin/CosmeticSettings.svelte';
 	import WorkflowsTab from '$components/admin/WorkflowsTab.svelte';
 	import AppointmentsTab from '$components/admin/AppointmentsTab.svelte';
-	import { authenticationStore } from '$services/stores';
+	import { authenticationStore, sessionCheckedStore } from '$services/stores';
 	import { isDomainAdmin } from '$services/authentication';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	// The API enforces authorization; this only avoids showing forms that cannot be saved
-	let mounted = $state(false);
-	onMount(() => {
-		mounted = true;
-	});
-
-	let isAdmin = $derived(mounted && isDomainAdmin($authenticationStore, data.domain));
+	// The API enforces authorization; this only avoids showing forms that cannot be saved.
+	// Nothing is shown until the session has been checked with the API (in the browser).
+	let isAdmin = $derived($sessionCheckedStore && isDomainAdmin($authenticationStore, data.domain));
 </script>
 
 <svelte:head>
@@ -49,7 +44,7 @@
 			</div>
 		</Tabs>
 	</div>
-{:else if mounted}
+{:else if $sessionCheckedStore}
 	<div class="flex flex-col items-center justify-center gap-4 p-8">
 		<p class="text-lg text-surface-600-400">
 			Only the admin of this domain can change its settings. Please log in.

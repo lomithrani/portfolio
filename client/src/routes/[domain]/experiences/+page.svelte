@@ -1,26 +1,21 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import type { PageData } from './$types';
-	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Plus } from 'svelte-heros-v2';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import Experience from '$components/Experience.svelte';
 	import ExperienceModal from '$components/modals/ExperienceModal.svelte';
 	import Filters from './Filters.svelte';
-	import { authenticationStore } from '$services/stores';
+	import { authenticationStore, sessionCheckedStore } from '$services/stores';
 	import { isDomainAdmin } from '$services/authentication';
 	import { filterExperiences, type SkillFilters } from '$services/filters';
 
 	let { data }: { data: PageData } = $props();
 
-	// Admin-only UI appears after hydration, so the server and client markup match
-	let mounted = $state(false);
-	onMount(() => {
-		mounted = true;
-	});
-
-	let isAdmin = $derived(mounted && isDomainAdmin($authenticationStore, data.domain));
+	// Admin-only UI appears once the session has been checked with the API (in the browser,
+	// after hydration): never for a stale local session, and the SSR markup stays the same
+	let isAdmin = $derived($sessionCheckedStore && isDomainAdmin($authenticationStore, data.domain));
 	let showAddModal = $state(false);
 	let filters: SkillFilters = $state({
 		softSkills: new Set(),
