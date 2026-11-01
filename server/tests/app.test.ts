@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { metrics, trace, ProxyTracerProvider } from '@opentelemetry/api';
 import { logs } from '@opentelemetry/api-logs';
 import { createApp } from '../app';
+import { env } from '../env';
 import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
 import { makeRequest, readJson } from './helpers';
 
@@ -45,9 +46,10 @@ describe('CORS', () => {
     });
 
   it('allows the configured origins with credentials', async () => {
-    const result = await preflight('http://localhost:4173');
+    const origin = env.ALLOWED_DOMAINS[0];
+    const result = await preflight(origin);
 
-    expect(result.headers.get('access-control-allow-origin')).toBe('http://localhost:4173');
+    expect(result.headers.get('access-control-allow-origin')).toBe(origin);
     expect(result.headers.get('access-control-allow-credentials')).toBe('true');
     expect(result.headers.get('access-control-allow-methods')).toContain('DELETE');
     expect(result.headers.get('access-control-allow-headers')).toContain('traceparent');
@@ -96,6 +98,7 @@ describe('HTTP metrics', () => {
 
 describe('telemetry without OTEL_EXPORTER_OTLP_ENDPOINT', () => {
   it('registers no SDK, so nothing is exported (e.g. to localhost:4318)', async () => {
+    // tests/setup.ts clears OTEL_* (even when server/.env sets them)
     expect(process.env.OTEL_EXPORTER_OTLP_ENDPOINT).toBeUndefined();
     // Serve a request so every lazy code path has run
     await makeRequest(createApp(), '/health');

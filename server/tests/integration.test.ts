@@ -1,5 +1,6 @@
-// End-to-end tests against a real MongoDB (MONGO_URL), going through the API
-// with real models. Every document uses a unique suffix and is removed after.
+// End-to-end tests against a real MongoDB (MONGO_URL, which must be local or
+// come from TEST_MONGO_URL), going through the API with real models. Every
+// document uses a unique suffix and is removed after.
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock } from 'bun:test';
 import mongoose from 'mongoose';
 import { env } from '../env';
@@ -18,6 +19,7 @@ import {
   workflowRequestBody,
   readJson
 } from './helpers';
+import { assertDisposableDatabase } from './testDatabase';
 
 const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const id = (name: string) => `it-${name}-${suffix}`;
@@ -39,12 +41,14 @@ const login = async (sub: string, email: string) => {
 };
 
 beforeAll(async () => {
+  assertDisposableDatabase(env.MONGO_URL);
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
   // Unique indexes must exist for the race and conflict tests
   await Promise.all([User.init(), Domain.init(), Skill.init()]);
 });
 
 afterAll(async () => {
+  if (mongoose.connection.readyState !== 1) return;
   const users = await User.find({ email: { $in: emails } });
   const userIds = users.map((user) => user._id);
   const domains = await Domain.find({ admin: { $in: userIds } });

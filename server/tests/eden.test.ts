@@ -1,10 +1,12 @@
-// Starts the real server (bun index.ts) against MONGO_URL on PORT and talks to
-// it with the same typed Eden client the web app uses. HOST is left unset, so
+// Starts the real server (bun index.ts) against MONGO_URL (local, or from
+// TEST_MONGO_URL: it gets seeded) on PORT and talks to it with the same typed
+// Eden client the web app uses. HOST is left unset, so
 // this also covers the '::' default and its IPv4 fallback on IPv6-less hosts.
 import { test, expect, describe, beforeAll, afterAll } from 'bun:test'
 import { treaty } from '@elysiajs/eden'
 import type { Subprocess } from 'bun'
 import type { Portfolio } from '..'
+import { assertDisposableDatabase } from './testDatabase'
 
 const serverDir = `${import.meta.dir}/..`
 const port = Number(Bun.env.PORT ?? 3000)
@@ -35,6 +37,7 @@ const waitForHealthy = async (timeoutMs = 15_000) => {
 }
 
 beforeAll(async () => {
+  assertDisposableDatabase()
   // Idempotent: makes sure the 'louis.gentil' domain exists
   const seed = Bun.spawnSync({ cmd: ['bun', 'run', 'tests/seedDb.ts'], cwd: serverDir, env: process.env })
   if (seed.exitCode !== 0) throw new Error(`seeding failed:\n${seed.stderr.toString()}`)
