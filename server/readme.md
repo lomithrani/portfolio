@@ -9,7 +9,7 @@ Elysia API (Bun runtime, MongoDB via Mongoose). The web client imports its
 | --- | --- |
 | `bun run start` | Start the API (`bun run index.ts`) |
 | `bun run dev` | Start with watch mode and the inspector |
-| `bun run test` | Run the tests (`bun test tests/`, needs MongoDB at `MONGO_URL`) |
+| `bun run test` | Run the tests (`bun test tests/`, see [Tests](#tests)) |
 | `bun run typecheck` | `tsc --noEmit -p .` |
 | `bun run seed` | Create the owner's user and the `louis.gentil` domain (idempotent) |
 
@@ -22,7 +22,7 @@ with a message listing every problem.
 | --- | --- | --- | --- |
 | `MONGO_URL` | yes | | `mongodb://` or `mongodb+srv://` connection string |
 | `JWT_SECRET` | yes | | Signs session cookies; use a long random value |
-| `ALLOWED_DOMAINS` | yes | | JSON array of allowed CORS origins, e.g. `["https://example.com"]` |
+| `ALLOWED_DOMAINS` | yes | | JSON array of allowed CORS origins, e.g. `["https://example.com"]`; entries that are not origins (`*`, no scheme, a path) are ignored with a startup warning |
 | `GOOGLE_CLIENT_ID` | no | `DEFAULT_GOOGLE_CLIENT_ID` (portfolio-common) | Expected audience of Google ID tokens |
 | `HOST` | no | `::` (dual-stack) | Falls back to `0.0.0.0` when IPv6 is unavailable, unless set explicitly |
 | `PORT` | no | `3000` | |
@@ -45,3 +45,33 @@ with a message listing every problem.
 - The session cookie only reaches the API when the web app and the API are
   on the same site (e.g. `example.com` and `api.example.com`); two
   `*.up.railway.app` hosts are different sites.
+
+## Tests
+
+`bun test` loads `server/.env`, then `tests/setup.ts` (preloaded by
+`bunfig.toml`) clears every `OTEL_*` variable, so tests never export
+telemetry, and replaces `MONGO_URL` with `TEST_MONGO_URL` when that is set.
+
+The integration and Eden suites write to MongoDB (they seed the
+`louis.gentil` domain and create then delete their own documents). They
+refuse to run unless `MONGO_URL` points at `localhost`/`127.0.0.1`/`::1`, or
+`TEST_MONGO_URL` names a disposable database, so a `.env` pointing at a
+shared or production cluster is never written to.
+
+```bash
+TEST_MONGO_URL=mongodb://127.0.0.1:27017/portfolio-test bun run test
+```
+
+## Before deploying this version
+
+- `ALLOWED_DOMAINS` must be a JSON array of strings and `MONGO_URL` must start
+  with `mongodb://` or `mongodb+srv://`, or the server exits at startup with
+  the list of problems. Check the Railway service variables first.
+- Domain names are now stored lowercase. Older domains with uppercase letters
+  stay reachable (lookups fall back to a case-insensitive match). List them
+  with `db.domains.find({ name: /[A-Z]/ })`; before lowercasing one, check
+  that no other domain already has the lowercased name.
+- An experience's company is embedded (`{ name, summary, svg }`). Earlier
+  code could not save a company at all, so no stored data should need
+  migrating; `db.experiences.countDocuments({ company: { $type: 'objectId' } })`
+  must return 0.
