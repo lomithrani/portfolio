@@ -3,7 +3,11 @@ import type { calendar_v3 } from '@googleapis/calendar'
 import type { Types } from 'mongoose'
 import { env } from '../env'
 import { User } from '../models/database'
-import { GoogleCalendarAuthorizationError, GoogleCalendarNotConnectedError } from '../errors'
+import {
+  GoogleCalendarAuthorizationError,
+  GoogleCalendarNotConnectedError,
+  GoogleCalendarReconnectRequiredError
+} from '../errors'
 import { logger } from './logger'
 
 // The Google OAuth tokens are `select: false` on the User schema: this module
@@ -25,6 +29,9 @@ const EVENT_GET_TIMEOUT_MS = 10_000
 
 type UserId = string | Types.ObjectId
 
+export const RECONNECT_REQUIRED_MESSAGE =
+  'Google Calendar access was revoked or has expired. Reconnect Google Calendar'
+
 export function createOAuth2Client() {
   if (!env.GOOGLE_CLIENT_SECRET) {
     throw new GoogleCalendarNotConnectedError('Google Calendar is not configured on this server')
@@ -45,8 +52,33 @@ const httpStatusOf = (error: unknown): number | undefined => {
  * with the requested id exists.
  */
 export const isRejectedInsert = (error: unknown) => {
+  // Refused credentials: Google created nothing
+  if (error instanceof GoogleCalendarReconnectRequiredError) return true
   const status = httpStatusOf(error)
   return status !== undefined && status >= 400 && status < 500 && status !== 409
+}
+
+/** Token endpoint errors (RFC 6749, section 5.2) that make the stored grant unusable */
+const REFUSED_GRANT_ERRORS = new Set(['invalid_grant', 'unauthorized_client'])
+
+/**
+ * Why Google refused the stored grant, or null for any other failure (network,
+ * 5xx, 403 quota or calendar permission...). The token endpoint answers
+ * invalid_grant when the refresh token was revoked, has expired or was issued
+ * to another OAuth client, and unauthorized_client (401) when this client may
+ * not use it. The Calendar API answers 401 to an access token revoked with its
+ * grant: google-auth-library only sends tokens it believes valid for 5 more
+ * minutes, and refreshes the others first. Not invalid_client: a wrong
+ * GOOGLE_CLIENT_SECRET is a server fault, which reconnecting would not fix.
+ */
+export function refusedGrantReason(error: unknown): string | null {
+  const response = (error as { response?: { status?: unknown; data?: unknown } } | null)?.response
+  if (!response) return null
+  const apiError = (response.data as { error?: unknown } | null | undefined)?.error
+  // OAuth token endpoint: { error: 'invalid_grant', error_description }
+  if (typeof apiError === 'string') return REFUSED_GRANT_ERRORS.has(apiError) ? apiError : null
+  // Calendar API: { error: { code: 401, status: 'UNAUTHENTICATED', message } }
+  return response.status === 401 ? 'unauthenticated' : null
 }
 
 async function exchangeCode(code: string) {
@@ -82,17 +114,18 @@ export async function connectGoogleCalendar(userId: UserId, code: string) {
   }
   if (tokens.access_token) update['googleCalendar.accessToken'] = tokens.access_token
   if (tokens.expiry_date) update['googleCalendar.tokenExpiry'] = new Date(tokens.expiry_date)
+  const clearRevoked = { 'googleCalendar.revokedAt': 1 }
 
   if (tokens.refresh_token) {
     update['googleCalendar.refreshToken'] = tokens.refresh_token
-    await User.updateOne({ _id: userId }, { $set: update })
+    await User.updateOne({ _id: userId }, { $set: update, $unset: clearRevoked })
     return
   }
 
   // No refresh token: only usable if one is already stored
   const result = await User.updateOne(
     { _id: userId, 'googleCalendar.refreshToken': { $exists: true } },
-    { $set: update }
+    { $set: update, $unset: clearRevoked }
   )
   if (result.matchedCount === 0) {
     throw new GoogleCalendarAuthorizationError(
@@ -105,17 +138,72 @@ export async function disconnectGoogleCalendar(userId: UserId) {
   await User.updateOne({ _id: userId }, { $unset: { googleCalendar: 1 } })
 }
 
-/** Connection status, without loading the tokens */
+/**
+ * Connection status, without loading the tokens. `revokedAt`: when Google
+ * refused the stored grant, if the owner has not connected since
+ */
 export async function getCalendarConnection(userId: UserId) {
-  // Projects connectedAt only: projecting the parent path (googleCalendar)
+  // Projects the dates only: projecting the parent path (googleCalendar)
   // would return its select: false children too
-  const user = await User.findOne(
-    { _id: userId, 'googleCalendar.refreshToken': { $exists: true } },
-    { 'googleCalendar.connectedAt': 1 }
-  ).lean<{ googleCalendar?: { connectedAt?: Date } }>()
+  const [connected, user] = await Promise.all([
+    User.exists({ _id: userId, 'googleCalendar.refreshToken': { $exists: true } }),
+    User.findById(userId, {
+      'googleCalendar.connectedAt': 1,
+      'googleCalendar.revokedAt': 1
+    }).lean<{ googleCalendar?: { connectedAt?: Date; revokedAt?: Date } }>()
+  ])
   return {
-    connected: user !== null,
-    connectedAt: user?.googleCalendar?.connectedAt ?? null
+    connected: connected !== null,
+    connectedAt: (connected && user?.googleCalendar?.connectedAt) || null,
+    revokedAt: (!connected && user?.googleCalendar?.revokedAt) || null
+  }
+}
+
+/** The stored grant each client of getCalendarClient uses */
+interface CalendarGrant {
+  userId: UserId
+  refreshToken: string
+}
+const grants = new WeakMap<calendar_v3.Calendar, CalendarGrant>()
+
+/**
+ * Clears a grant Google refused, keeping when it happened: the admin panel
+ * then asks to reconnect, and visitors are offered nothing. A grant connected
+ * since (another refresh token) is kept.
+ */
+async function clearRefusedGrant({ userId, refreshToken }: CalendarGrant, reason: string) {
+  const result = await User.updateOne(
+    { _id: userId, 'googleCalendar.refreshToken': refreshToken },
+    {
+      $unset: {
+        'googleCalendar.refreshToken': 1,
+        'googleCalendar.accessToken': 1,
+        'googleCalendar.tokenExpiry': 1,
+        'googleCalendar.connectedAt': 1
+      },
+      $set: { 'googleCalendar.revokedAt': new Date() }
+    }
+  )
+  // Once, whatever the number of requests that ran into it
+  if (result.modifiedCount > 0) {
+    logger.warn('Google refused the stored Google Calendar grant: connection cleared', { reason })
+  }
+}
+
+/**
+ * Runs a Calendar API call. When Google refuses the stored grant, it is
+ * cleared and GoogleCalendarReconnectRequiredError (409) thrown: an expected
+ * state, logged at warn by the error handler, not a server fault.
+ */
+async function callGoogle<T>(calendar: calendar_v3.Calendar, request: () => Promise<T>): Promise<T> {
+  try {
+    return await request()
+  } catch (error) {
+    const reason = refusedGrantReason(error)
+    const grant = grants.get(calendar)
+    if (reason === null || !grant) throw error
+    await clearRefusedGrant(grant, reason)
+    throw new GoogleCalendarReconnectRequiredError(RECONNECT_REQUIRED_MESSAGE)
   }
 }
 
@@ -134,26 +222,35 @@ export async function getCalendarClient(userId: UserId): Promise<calendar_v3.Cal
     expiry_date: tokens.tokenExpiry?.getTime()
   })
 
-  // Persist access tokens refreshed by the client
+  // Persist access tokens refreshed by the client, unless the grant changed
+  // since it was loaded (disconnected, cleared, or connected again)
+  const grant: CalendarGrant = { userId, refreshToken: tokens.refreshToken }
   client.on('tokens', (refreshed) => {
     const update: Record<string, unknown> = {}
     if (refreshed.access_token) update['googleCalendar.accessToken'] = refreshed.access_token
     if (refreshed.expiry_date) update['googleCalendar.tokenExpiry'] = new Date(refreshed.expiry_date)
     if (Object.keys(update).length === 0) return
-    User.updateOne({ _id: userId }, { $set: update }).catch((error: unknown) => {
+    User.updateOne(
+      { _id: userId, 'googleCalendar.refreshToken': grant.refreshToken },
+      { $set: update }
+    ).catch((error: unknown) => {
       logger.error('Could not store the refreshed Google access token', {
         errorName: error instanceof Error ? error.name : typeof error
       })
     })
   })
 
-  return calendarApi({ version: 'v3', auth: client })
+  const calendar = calendarApi({ version: 'v3', auth: client })
+  grants.set(calendar, grant)
+  return calendar
 }
 
 export async function listCalendars(calendar: calendar_v3.Calendar) {
-  const res = await calendar.calendarList.list({
-    minAccessRole: 'writer'
-  })
+  const res = await callGoogle(calendar, () =>
+    calendar.calendarList.list({
+      minAccessRole: 'writer'
+    })
+  )
 
   return (res.data.items ?? [])
     .filter((c): c is calendar_v3.Schema$CalendarListEntry & { id: string } => !!c.id)
@@ -171,14 +268,16 @@ export async function getFreeBusy(
   timeMax: string,
   timezone: string
 ) {
-  const res = await calendar.freebusy.query({
-    requestBody: {
-      timeMin,
-      timeMax,
-      timeZone: timezone,
-      items: [{ id: calendarId }]
-    }
-  })
+  const res = await callGoogle(calendar, () =>
+    calendar.freebusy.query({
+      requestBody: {
+        timeMin,
+        timeMax,
+        timeZone: timezone,
+        items: [{ id: calendarId }]
+      }
+    })
+  )
 
   const result = res.data.calendars?.[calendarId]
   // Google reports per-calendar problems (notFound, no access) here instead
@@ -225,14 +324,16 @@ export async function createEvent(
     }
   }
 
-  const res = await calendar.events.insert(
-    {
-      calendarId,
-      requestBody: event,
-      conferenceDataVersion: params.addGoogleMeet ? 1 : 0,
-      sendUpdates: 'all'
-    },
-    { timeout: EVENT_INSERT_TIMEOUT_MS }
+  const res = await callGoogle(calendar, () =>
+    calendar.events.insert(
+      {
+        calendarId,
+        requestBody: event,
+        conferenceDataVersion: params.addGoogleMeet ? 1 : 0,
+        sendUpdates: 'all'
+      },
+      { timeout: EVENT_INSERT_TIMEOUT_MS }
+    )
   )
 
   return res.data
@@ -243,14 +344,16 @@ export async function listUpcomingEvents(
   calendarId: string,
   maxResults = 20
 ) {
-  const res = await calendar.events.list({
-    calendarId,
-    timeMin: new Date().toISOString(),
-    maxResults,
-    singleEvents: true,
-    orderBy: 'startTime',
-    privateExtendedProperty: [`${APPOINTMENT_TAG}=true`]
-  })
+  const res = await callGoogle(calendar, () =>
+    calendar.events.list({
+      calendarId,
+      timeMin: new Date().toISOString(),
+      maxResults,
+      singleEvents: true,
+      orderBy: 'startTime',
+      privateExtendedProperty: [`${APPOINTMENT_TAG}=true`]
+    })
+  )
 
   return res.data.items ?? []
 }
@@ -262,7 +365,9 @@ export async function getEvent(
   eventId: string
 ) {
   try {
-    const res = await calendar.events.get({ calendarId, eventId }, { timeout: EVENT_GET_TIMEOUT_MS })
+    const res = await callGoogle(calendar, () =>
+      calendar.events.get({ calendarId, eventId }, { timeout: EVENT_GET_TIMEOUT_MS })
+    )
     return res.data
   } catch (error) {
     const status = httpStatusOf(error)
@@ -279,9 +384,11 @@ export async function deleteEvent(
   calendarId: string,
   eventId: string
 ) {
-  await calendar.events.delete({
-    calendarId,
-    eventId,
-    sendUpdates: 'all'
-  })
+  await callGoogle(calendar, () =>
+    calendar.events.delete({
+      calendarId,
+      eventId,
+      sendUpdates: 'all'
+    })
+  )
 }

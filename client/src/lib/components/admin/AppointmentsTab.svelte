@@ -68,6 +68,8 @@
 	let configured = $state(true);
 	let connected = $state(false);
 	let connectedAt = $state<string | null>(null);
+	/** When Google refused the stored access (revoked or expired): the admin must reconnect */
+	let revokedAt = $state<string | null>(null);
 	let connectionLoading = $state(true);
 	let connecting = $state(false);
 	let connectionMessage = $state('');
@@ -86,6 +88,7 @@
 	// --- Booked appointments state ---
 	let bookings = $state<CalendarEvent[]>([]);
 	let bookingsLoading = $state(false);
+	let bookingsMessage = $state('');
 	let cancellingEvent = $state<string | null>(null);
 
 	/** Message for a failed call; a 401 also signs the admin out locally */
@@ -100,6 +103,33 @@
 			return error.value;
 		}
 		return fallback;
+	}
+
+	/**
+	 * Message for a failed call that uses the Google Calendar connection. A 409 means the API has
+	 * no usable connection any more: Google refused it (revoked or expired, and the API cleared it),
+	 * or it was disconnected elsewhere. The status is reloaded, so the tab asks to reconnect instead
+	 * of showing an error.
+	 */
+	async function calendarFailureMessage(
+		error: { status: unknown; value?: unknown },
+		fallback: string
+	): Promise<string> {
+		if (errorStatus(error) === 409) {
+			await checkConnectionStatus();
+			if (!connected) {
+				clearCalendarData();
+				return '';
+			}
+		}
+		return failureMessage(error, fallback);
+	}
+
+	function clearCalendarData() {
+		calendars = [];
+		schedules = [];
+		bookings = [];
+		editingSchedule = null;
 	}
 
 	function newSchedule(): EditableSchedule {
@@ -140,6 +170,7 @@
 			configured = data.configured;
 			connected = data.connected;
 			connectedAt = data.connectedAt ? String(data.connectedAt) : null;
+			revokedAt = data.revokedAt ? String(data.revokedAt) : null;
 		}
 		connectionLoading = false;
 	}
@@ -147,7 +178,11 @@
 	async function loadCalendars() {
 		calendarsLoading = true;
 		const { data, error } = await portfolioApi.appointments.calendars.get(withCredentials);
-		if (!error && data) calendars = data;
+		if (error) {
+			connectionMessage = await calendarFailureMessage(error, 'Could not load your calendars.');
+		} else if (data) {
+			calendars = data;
+		}
 		calendarsLoading = false;
 	}
 
@@ -186,10 +221,8 @@
 		}
 		connected = false;
 		connectedAt = null;
-		calendars = [];
-		schedules = [];
-		bookings = [];
-		editingSchedule = null;
+		revokedAt = null;
+		clearCalendarData();
 	}
 
 	async function loadSchedules() {
@@ -248,8 +281,13 @@
 
 	async function loadBookings() {
 		bookingsLoading = true;
+		bookingsMessage = '';
 		const { data, error } = await portfolioApi.appointments.upcoming.get(withCredentials);
-		if (!error && data) bookings = data;
+		if (error) {
+			bookingsMessage = await calendarFailureMessage(error, 'Could not load your bookings.');
+		} else if (data) {
+			bookings = data;
+		}
 		bookingsLoading = false;
 	}
 
@@ -259,7 +297,11 @@
 			.events({ eventId: event.id })
 			.delete(undefined, { ...withCredentials, query: { calendarId: event.calendarId } });
 		cancellingEvent = null;
-		if (!error) bookings = bookings.filter((e) => e.id !== event.id);
+		if (error) {
+			bookingsMessage = await calendarFailureMessage(error, 'Failed to cancel the appointment.');
+			return;
+		}
+		bookings = bookings.filter((e) => e.id !== event.id);
 	}
 
 	function formatDateTime(iso: string | null): string {
@@ -330,13 +372,29 @@
 				Disconnect
 			</button>
 		{:else}
+			{#if revokedAt}
+				<div class="flex items-center gap-3">
+					<span class="badge preset-filled-warning-500 text-sm px-3 py-1">Disconnected</span>
+					<span class="text-sm opacity-50">
+						since {new Date(revokedAt).toLocaleDateString()}
+					</span>
+				</div>
+				<p class="text-sm opacity-75" role="alert">
+					Google no longer accepts this app's access to your calendar: it was revoked or has
+					expired. Visitors cannot book meetings until you reconnect.
+				</p>
+			{/if}
 			<button
 				type="button"
 				class="btn preset-filled-primary-700-300"
 				disabled={connecting}
 				onclick={connectCalendar}
 			>
-				{connecting ? 'Connecting...' : 'Connect Google Calendar'}
+				{connecting
+					? 'Connecting...'
+					: revokedAt
+						? 'Reconnect Google Calendar'
+						: 'Connect Google Calendar'}
 			</button>
 		{/if}
 		{#if connectionMessage}
@@ -642,6 +700,9 @@
 				</button>
 			</div>
 
+			{#if bookingsMessage}
+				<p class="text-sm text-error-500">{bookingsMessage}</p>
+			{/if}
 			{#if bookingsLoading}
 				<p class="text-sm opacity-50">Loading bookings...</p>
 			{:else if bookings.length === 0}

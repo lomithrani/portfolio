@@ -26,7 +26,8 @@ import {
   normalizeEmail
 } from '../services/appointmentBookings';
 import { rateLimitAddress } from '../services/clientAddress';
-import { CALENDAR_SCOPE } from '../services/googleCalendar';
+import { CALENDAR_SCOPE, RECONNECT_REQUIRED_MESSAGE } from '../services/googleCalendar';
+import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
 import { wallClockToUTC } from '../services/slotComputation';
 import {
@@ -88,10 +89,21 @@ const createFakeGoogle = (suffix: string) => {
     busy: [] as { start: string; end: string }[],
     events: new Map<string, FakeEvent>(),
     requests: [] as GoogleRequest[],
-    /** Outcome of the next event insert: refused (403), or created with its response lost */
-    nextInsert: 'ok' as 'ok' | 'rejected' | 'response-lost',
+    /** Outcome of the next event insert: refused (403), credentials refused (401), or created with its response lost */
+    nextInsert: 'ok' as 'ok' | 'rejected' | 'unauthenticated' | 'response-lost',
     /** One-shot: the next lookup of an event id waits for its promise */
-    gates: new Map<string, Promise<void>>()
+    gates: new Map<string, Promise<void>>(),
+    /** One-shot: the next refresh token grant waits for this promise */
+    refreshGate: null as Promise<void> | null
+  };
+
+  /**
+   * The owner removed the app from their Google account (or the refresh token
+   * expired): every token issued so far is refused from now on
+   */
+  const revokeGrant = () => {
+    state.refreshTokens.clear();
+    state.accessTokens.clear();
   };
 
   const issue = (kind: 'access' | 'refresh') => {
@@ -102,7 +114,7 @@ const createFakeGoogle = (suffix: string) => {
     return token;
   };
 
-  const tokenEndpoint = (body: string) => {
+  const tokenEndpoint = async (body: string) => {
     const params = new URLSearchParams(body);
     if (params.get('client_secret') !== TEST_CLIENT_SECRET || params.get('client_id') !== env.GOOGLE_CLIENT_ID) {
       return Response.json({ error: 'invalid_client' }, { status: 401 });
@@ -120,8 +132,14 @@ const createFakeGoogle = (suffix: string) => {
       });
     }
     if (params.get('grant_type') === 'refresh_token') {
+      const gate = state.refreshGate;
+      if (gate) {
+        state.refreshGate = null;
+        await gate;
+      }
       if (!state.refreshTokens.has(params.get('refresh_token') ?? '')) {
-        return Response.json({ error: 'invalid_grant' }, { status: 400 });
+        // Google's answer for a revoked, expired or foreign refresh token
+        return Response.json({ error: 'invalid_grant', error_description: 'Token has been expired or revoked.' }, { status: 400 });
       }
       return Response.json({ access_token: issue('access'), expires_in: 3599, scope: CALENDAR_SCOPE, token_type: 'Bearer' });
     }
@@ -158,6 +176,7 @@ const createFakeGoogle = (suffix: string) => {
       const outcome = state.nextInsert;
       state.nextInsert = 'ok';
       if (outcome === 'rejected') return googleError(403, 'Forbidden');
+      if (outcome === 'unauthenticated') return googleError(401, 'Invalid Credentials');
 
       const requested = JSON.parse(body) as Omit<FakeEvent, 'id' | 'calendarId' | 'status'> & { id?: string };
       // Client-chosen ids: base32hex, 5 to 1024 characters, unique per calendar
@@ -220,7 +239,7 @@ const createFakeGoogle = (suffix: string) => {
     }) as typeof fetch);
   };
 
-  return { state, install };
+  return { state, install, revokeGrant };
 };
 
 // A fresh fake per test (beforeEach): no events, busy times or tokens carry over
@@ -411,7 +430,7 @@ describe('Google Calendar connection', () => {
     env.googleCalendarEnabled = false;
     try {
       const status = await call('GET', '/appointments/calendar-status', { cookie: owner.cookie });
-      expect(status.json()).toEqual({ configured: false, connected: false, connectedAt: null });
+      expect(status.json()).toEqual({ configured: false, connected: false, connectedAt: null, revokedAt: null });
 
       const connect = await call('POST', '/appointments/connect', { body: { code: 'code-1' }, cookie: owner.cookie });
       expect(connect.status).toBe(409);
@@ -900,6 +919,155 @@ describe('public booking', () => {
 
     expect((await call('GET', `/appointments/domains/${t.id('domain')}/schedules`)).json()).toEqual([]);
     expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(409);
+  });
+});
+
+// Production, 2026-11-01: Google answered invalid_grant to the stored refresh
+// token, and every Calendar call failed with a 500 and a gaxios stack trace.
+// The fake Google answers like the real one, so the error each test runs into
+// is the GaxiosError google-auth-library really throws.
+describe('a grant Google refuses', () => {
+  let scheduleId: string;
+
+  // After the top-level beforeEach: the owner connects, with an enabled schedule
+  beforeEach(async () => {
+    await connectOwner();
+    scheduleId = (await AppointmentSchedule.create({ ...scheduleBody(), user: owner.userId }))._id.toString();
+  });
+
+  /** The stored access token has expired: the next Calendar call refreshes it first */
+  const expireAccessToken = () =>
+    User.updateOne({ _id: owner.userId }, { $set: { 'googleCalendar.tokenExpiry': new Date(Date.now() - 60_000) } });
+
+  const refreshRequests = () =>
+    google.state.requests.filter((request) => new URLSearchParams(request.body).get('grant_type') === 'refresh_token');
+
+  /** Warn and error logs from here on (calls go through) */
+  const spyLogs = () => ({ warn: spyOn(logger, 'warn'), error: spyOn(logger, 'error') });
+
+  const expectWarnOnly = (logs: ReturnType<typeof spyLogs>, reason: string, route: string) => {
+    expect(logs.error).not.toHaveBeenCalled();
+    expect(logs.warn).toHaveBeenCalledWith('Google refused the stored Google Calendar grant: connection cleared', { reason });
+    expect(logs.warn).toHaveBeenCalledWith(RECONNECT_REQUIRED_MESSAGE, expect.objectContaining({ status: 409, route }));
+    for (const [, attributes] of logs.warn.mock.calls) expect(attributes).not.toHaveProperty('stack');
+  };
+
+  /** Tokens gone, the date Google refused them kept, and the admin panel told so */
+  const expectReconnectRequired = async () => {
+    expect((await storedTokens(owner.userId).lean())?.googleCalendar).toEqual({ revokedAt: expect.any(Date) });
+    const status = await call('GET', '/appointments/calendar-status', { cookie: owner.cookie });
+    expect(status.json()).toEqual({ configured: true, connected: false, connectedAt: null, revokedAt: expect.any(String) });
+  };
+
+  it('clears the connection on invalid_grant and answers 409 Reconnect, logged at warn without a stack', async () => {
+    await expireAccessToken();
+    google.revokeGrant();
+    const logs = spyLogs();
+
+    const calendars = await call('GET', '/appointments/calendars', { cookie: owner.cookie });
+    expect(calendars.status).toBe(409);
+    expect(calendars.text).toBe(RECONNECT_REQUIRED_MESSAGE);
+    // Refused at the refresh: the Calendar API was never called
+    expect(refreshRequests()).toHaveLength(1);
+    expect(google.state.requests.some((request) => request.url.pathname.startsWith('/calendar/'))).toBe(false);
+
+    expectWarnOnly(logs, 'invalid_grant', '/appointments/calendars');
+    await expectReconnectRequired();
+
+    // From now on: not connected, without asking Google again
+    const asked = google.state.requests.length;
+    const again = await call('GET', '/appointments/calendars', { cookie: owner.cookie });
+    expect(again.status).toBe(409);
+    expect(again.text).toBe('Google Calendar not connected');
+    // Visitors are offered nothing
+    expect((await call('GET', `/appointments/domains/${t.id('domain')}/schedules`)).json()).toEqual([]);
+    expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(409);
+    expect(google.state.requests).toHaveLength(asked);
+    expect(logs.error).not.toHaveBeenCalled();
+  });
+
+  it('connects again after a refused grant', async () => {
+    await expireAccessToken();
+    google.revokeGrant();
+    expect((await call('GET', '/appointments/upcoming', { cookie: owner.cookie })).status).toBe(409);
+
+    const reconnect = await call('POST', '/appointments/connect', { body: { code: 'code-2' }, cookie: owner.cookie });
+    expect(reconnect.status).toBe(200);
+    const status = await call('GET', '/appointments/calendar-status', { cookie: owner.cookie });
+    expect(status.json()).toMatchObject({ configured: true, connected: true, revokedAt: null });
+    expect((await storedTokens(owner.userId).lean())?.googleCalendar?.revokedAt).toBeUndefined();
+    expect((await call('GET', '/appointments/calendars', { cookie: owner.cookie })).status).toBe(200);
+  });
+
+  it('treats a 401 from the Calendar API (access token revoked with its grant) the same way', async () => {
+    // The stored access token has not expired: it is sent as is, and refused
+    google.revokeGrant();
+    const logs = spyLogs();
+
+    const upcoming = await call('GET', '/appointments/upcoming', { cookie: owner.cookie });
+    expect(upcoming.status).toBe(409);
+    expect(upcoming.text).toBe(RECONNECT_REQUIRED_MESSAGE);
+    expect(refreshRequests()).toHaveLength(0);
+
+    expectWarnOnly(logs, 'unauthenticated', '/appointments/upcoming');
+    await expectReconnectRequired();
+  });
+
+  it('releases the booking when Google refuses the grant at the event insert', async () => {
+    const slot = at('09:00');
+    google.state.nextInsert = 'unauthenticated';
+    const logs = spyLogs();
+
+    const booked = await call('POST', '/appointments/book', {
+      body: { scheduleId, startTime: slot, name: 'Visitor', email: t.email('visitor') }
+    });
+    expect(booked.status).toBe(409);
+    // Google created nothing: the slot is not held
+    expect(await AppointmentBooking.find({ user: owner.userId, start: new Date(slot) }).lean()).toEqual([]);
+    expect(google.state.events.size).toBe(0);
+
+    expectWarnOnly(logs, 'unauthenticated', '/appointments/book');
+    await expectReconnectRequired();
+  });
+
+  it('keeps a grant the owner connected while a request was refused with the previous one', async () => {
+    await expireAccessToken();
+    let release = () => {};
+    google.state.refreshGate = new Promise<void>((resolve) => (release = resolve));
+    const pending = call('GET', '/appointments/calendars', { cookie: owner.cookie });
+    for (let i = 0; i < 200 && google.state.refreshGate; i++) await Bun.sleep(5);
+    expect(google.state.refreshGate).toBeNull();
+
+    // Meanwhile the old grant dies and the owner connects again
+    google.revokeGrant();
+    expect((await call('POST', '/appointments/connect', { body: { code: 'code-2' }, cookie: owner.cookie })).status).toBe(200);
+    const reconnected = (await storedTokens(owner.userId))?.googleCalendar?.refreshToken;
+
+    release();
+    expect((await pending).status).toBe(409);
+    // The new grant stays
+    expect((await storedTokens(owner.userId))?.googleCalendar?.refreshToken).toBe(reconnected ?? 'missing');
+    const status = await call('GET', '/appointments/calendar-status', { cookie: owner.cookie });
+    expect(status.json()).toMatchObject({ connected: true, revokedAt: null });
+    expect((await call('GET', '/appointments/calendars', { cookie: owner.cookie })).status).toBe(200);
+  });
+
+  it('does not take a wrong client secret (invalid_client) for a refused grant', async () => {
+    await expireAccessToken();
+    const before = (await storedTokens(owner.userId))?.googleCalendar?.refreshToken;
+    // A server fault: reconnecting would not fix it, so it stays a logged 500
+    env.GOOGLE_CLIENT_SECRET = 'GOCSPX-wrong-secret';
+    try {
+      const logs = spyLogs();
+      const calendars = await call('GET', '/appointments/calendars', { cookie: owner.cookie });
+      expect(calendars.status).toBe(500);
+      expect(logs.error).toHaveBeenCalled();
+    } finally {
+      env.GOOGLE_CLIENT_SECRET = TEST_CLIENT_SECRET;
+    }
+    expect((await storedTokens(owner.userId))?.googleCalendar?.refreshToken).toBe(before ?? 'missing');
+    const status = await call('GET', '/appointments/calendar-status', { cookie: owner.cookie });
+    expect(status.json()).toMatchObject({ connected: true, revokedAt: null });
   });
 });
 

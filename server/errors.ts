@@ -101,6 +101,15 @@ export class GoogleCalendarAuthorizationError extends HttpError {
   status = 400
 }
 
+/**
+ * Google refused the stored grant (refresh token revoked, expired or issued to
+ * another OAuth client): the connection was cleared and the owner must
+ * connect again. 409, not 401: the admin's own session is fine
+ */
+export class GoogleCalendarReconnectRequiredError extends HttpError {
+  status = 409
+}
+
 export const errors = {
   BadRequestError,
   InvalidDomainNameError,
@@ -121,5 +130,6 @@ export const errors = {
   AppointmentScheduleNotFoundError,
   AppointmentEventNotFoundError,
   SlotUnavailableError,
-  GoogleCalendarAuthorizationError
+  GoogleCalendarAuthorizationError,
+  GoogleCalendarReconnectRequiredError
 }

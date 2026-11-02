@@ -8,6 +8,7 @@ import {
   ConflictError,
   DomainDoesNotExistError,
   ForbiddenError,
+  GoogleCalendarReconnectRequiredError,
   InvalidGoogleTokenError,
   MissingAuthCookieError,
   ResourceNotFoundError,
@@ -24,10 +25,19 @@ describe('resolveError', () => {
     [new ResourceNotFoundError('Workflow not found'), 404],
     [new DomainDoesNotExistError('Domain not found'), 404],
     [new ConflictError('Conflict'), 409],
+    [new GoogleCalendarReconnectRequiredError('Reconnect Google Calendar'), 409],
   ])('keeps the status of %p', (error, status) => {
     const resolved = resolveError('UNKNOWN', error);
     expect(resolved.status).toBe(status);
     expect(resolved.body).toBe(error.message);
+  });
+
+  it('logs a grant Google refused at warn: an expected state, not a server fault', () => {
+    expect(resolveError('UNKNOWN', new GoogleCalendarReconnectRequiredError('Reconnect Google Calendar'))).toEqual({
+      status: 409,
+      body: 'Reconnect Google Calendar',
+      level: 'warn'
+    });
   });
 
   it('maps a 429 to a Retry-After header in whole seconds', () => {
