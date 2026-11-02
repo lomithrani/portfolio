@@ -243,13 +243,14 @@ again.
 When Google refuses the stored grant, the API clears it: `invalid_grant` from the token endpoint
 (the owner removed the app, the refresh token expired, or it was issued to another OAuth client,
 e.g. after changing `GOOGLE_CLIENT_ID`), `unauthorized_client`, or a 401 from the Calendar API. The
-tokens are deleted, `googleCalendar.revokedAt` records when, and the request gets a 409 `Google
-Calendar access was revoked or has expired. Reconnect Google Calendar`, logged at `warn` without a
-stack, next to one `Google refused the stored Google Calendar grant: connection cleared` line with
-the reason. The Appointments tab then shows **Disconnected** and **Reconnect Google Calendar**, and
-`/hire` offers no slots until the owner reconnects. A wrong `GOOGLE_CLIENT_SECRET`
-(`invalid_client`) is not taken for a refused grant: reconnecting would not fix it, so it stays a
-500 logged at `error`, and the tokens are kept.
+tokens are deleted and revoked at Google (Google only sends a refresh token with the first consent
+of a grant, so reconnecting needs the old grant gone), `googleCalendar.revokedAt` records when, and
+the request gets a 409 `Google Calendar access was revoked or has expired. Reconnect Google
+Calendar`, logged at `warn` without a stack, next to one `Google refused the stored Google Calendar
+grant: connection cleared` line with the reason. The Appointments tab then shows **Disconnected**
+and **Reconnect Google Calendar**, and `/hire` says online booking is not available until the owner
+reconnects. A wrong `GOOGLE_CLIENT_SECRET` (`invalid_client`) is not taken for a refused grant:
+reconnecting would not fix it, so it stays a 500 logged at `error`, and the tokens are kept.
 
 ### Booking protection
 

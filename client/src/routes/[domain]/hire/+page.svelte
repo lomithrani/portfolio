@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { portfolioApi } from '#services';
-	import { errorStatus } from '#services/apiErrors.ts';
+	import { errorStatus, isSlotUnavailable } from '#services/apiErrors.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -138,8 +138,14 @@
 		booking = false;
 		if (error || !booked) {
 			const status = errorStatus(error);
-			if (status === 409) {
+			if (isSlotUnavailable(error)) {
 				bookingError = 'This slot was just taken. Please pick another one.';
+			} else if (status === 409) {
+				// The owner's calendar cannot take bookings now (not connected, or its Google access
+				// was revoked): reloading the schedules shows that online booking is unavailable
+				await loadSchedules();
+				bookingError = 'Online booking is not available right now. Please reach out directly.';
+				return;
 			} else if (status === 429 && typeof error?.value === 'string') {
 				// Rate limit or booking cap: the API's message says what to do, or how long to wait
 				bookingError = error.value;

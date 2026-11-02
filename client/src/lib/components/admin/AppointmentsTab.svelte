@@ -81,6 +81,7 @@
 	// --- Schedule state ---
 	let schedules = $state<Schedule[]>([]);
 	let schedulesLoading = $state(false);
+	let schedulesMessage = $state('');
 	let editingSchedule = $state<EditableSchedule | null>(null);
 	let savingSchedule = $state(false);
 	let scheduleMessage = $state('');
@@ -227,8 +228,13 @@
 
 	async function loadSchedules() {
 		schedulesLoading = true;
+		schedulesMessage = '';
 		const { data, error } = await portfolioApi.appointments.schedules.get(withCredentials);
-		if (!error && data) schedules = data as unknown as Schedule[];
+		if (error) {
+			schedulesMessage = failureMessage(error, 'Could not load your schedules.');
+		} else if (data) {
+			schedules = data as unknown as Schedule[];
+		}
 		schedulesLoading = false;
 	}
 
@@ -427,6 +433,9 @@
 				{/if}
 			</div>
 
+			{#if schedulesMessage}
+				<p class="text-sm text-error-500">{schedulesMessage}</p>
+			{/if}
 			{#if editingSchedule}
 				<!-- Schedule Form -->
 				<div class="space-y-4 border border-surface-300-700 rounded-lg p-4">

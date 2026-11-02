@@ -94,7 +94,9 @@ const createFakeGoogle = (suffix: string) => {
     /** One-shot: the next lookup of an event id waits for its promise */
     gates: new Map<string, Promise<void>>(),
     /** One-shot: the next refresh token grant waits for this promise */
-    refreshGate: null as Promise<void> | null
+    refreshGate: null as Promise<void> | null,
+    /** Every token the API asked Google to revoke */
+    revokeRequests: [] as string[]
   };
 
   /**
@@ -144,6 +146,17 @@ const createFakeGoogle = (suffix: string) => {
       return Response.json({ access_token: issue('access'), expires_in: 3599, scope: CALENDAR_SCOPE, token_type: 'Bearer' });
     }
     return Response.json({ error: 'unsupported_grant_type' }, { status: 400 });
+  };
+
+  // Revoking a token revokes its whole grant
+  const revokeEndpoint = (url: URL) => {
+    const token = url.searchParams.get('token') ?? '';
+    state.revokeRequests.push(token);
+    if (!state.refreshTokens.has(token) && !state.accessTokens.has(token)) {
+      return Response.json({ error: 'invalid_token', error_description: 'Token expired or revoked' }, { status: 400 });
+    }
+    revokeGrant();
+    return Response.json({});
   };
 
   const calendarApi = async (request: GoogleRequest) => {
@@ -231,6 +244,9 @@ const createFakeGoogle = (suffix: string) => {
       state.requests.push(recorded);
       if (recorded.url.origin === 'https://oauth2.googleapis.com' && recorded.url.pathname === '/token') {
         return tokenEndpoint(recorded.body);
+      }
+      if (recorded.url.origin === 'https://oauth2.googleapis.com' && recorded.url.pathname === '/revoke') {
+        return revokeEndpoint(recorded.url);
       }
       if (recorded.url.origin === 'https://www.googleapis.com' && recorded.url.pathname.startsWith('/calendar/v3/')) {
         return calendarApi(recorded);
@@ -961,6 +977,7 @@ describe('a grant Google refuses', () => {
 
   it('clears the connection on invalid_grant and answers 409 Reconnect, logged at warn without a stack', async () => {
     await expireAccessToken();
+    const refused = (await storedTokens(owner.userId))?.googleCalendar?.refreshToken;
     google.revokeGrant();
     const logs = spyLogs();
 
@@ -970,6 +987,8 @@ describe('a grant Google refuses', () => {
     // Refused at the refresh: the Calendar API was never called
     expect(refreshRequests()).toHaveLength(1);
     expect(google.state.requests.some((request) => request.url.pathname.startsWith('/calendar/'))).toBe(false);
+    // Revoked at Google as well (already gone there: its 400 is ignored)
+    expect(google.state.revokeRequests).toEqual([refused ?? 'missing']);
 
     expectWarnOnly(logs, 'invalid_grant', '/appointments/calendars');
     await expectReconnectRequired();
@@ -997,6 +1016,17 @@ describe('a grant Google refuses', () => {
     expect(status.json()).toMatchObject({ configured: true, connected: true, revokedAt: null });
     expect((await storedTokens(owner.userId).lean())?.googleCalendar?.revokedAt).toBeUndefined();
     expect((await call('GET', '/appointments/calendars', { cookie: owner.cookie })).status).toBe(200);
+  });
+
+  it('revokes a cleared grant Google still holds, so the next consent issues a refresh token', async () => {
+    // Only the access token is refused: the grant is still alive at Google
+    const stored = (await storedTokens(owner.userId))?.googleCalendar?.refreshToken ?? 'missing';
+    google.state.accessTokens.clear();
+
+    expect((await call('GET', '/appointments/calendars', { cookie: owner.cookie })).status).toBe(409);
+    expect(google.state.revokeRequests).toEqual([stored]);
+    expect(google.state.refreshTokens.has(stored)).toBe(false);
+    await expectReconnectRequired();
   });
 
   it('treats a 401 from the Calendar API (access token revoked with its grant) the same way', async () => {
@@ -1030,7 +1060,11 @@ describe('a grant Google refuses', () => {
     await expectReconnectRequired();
   });
 
-  it('keeps a grant the owner connected while a request was refused with the previous one', async () => {
+  it.each([
+    ['with a new refresh token', 'code-2'],
+    // Google sends no refresh token on a repeated consent: the stored one is kept
+    ['keeping the stored refresh token', 'code-without-refresh']
+  ])('keeps a grant the owner connected (%s) while a request was refused with the previous one', async (_, code) => {
     await expireAccessToken();
     let release = () => {};
     google.state.refreshGate = new Promise<void>((resolve) => (release = resolve));
@@ -1040,13 +1074,14 @@ describe('a grant Google refuses', () => {
 
     // Meanwhile the old grant dies and the owner connects again
     google.revokeGrant();
-    expect((await call('POST', '/appointments/connect', { body: { code: 'code-2' }, cookie: owner.cookie })).status).toBe(200);
+    expect((await call('POST', '/appointments/connect', { body: { code }, cookie: owner.cookie })).status).toBe(200);
     const reconnected = (await storedTokens(owner.userId))?.googleCalendar?.refreshToken;
 
     release();
     expect((await pending).status).toBe(409);
-    // The new grant stays
+    // The new grant stays, and is not revoked
     expect((await storedTokens(owner.userId))?.googleCalendar?.refreshToken).toBe(reconnected ?? 'missing');
+    expect(google.state.revokeRequests).toEqual([]);
     const status = await call('GET', '/appointments/calendar-status', { cookie: owner.cookie });
     expect(status.json()).toMatchObject({ connected: true, revokedAt: null });
     expect((await call('GET', '/appointments/calendars', { cookie: owner.cookie })).status).toBe(200);

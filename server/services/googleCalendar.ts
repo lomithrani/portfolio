@@ -139,41 +139,53 @@ export async function disconnectGoogleCalendar(userId: UserId) {
 }
 
 /**
- * Connection status, without loading the tokens. `revokedAt`: when Google
+ * Connection status, whose tokens are never returned. `revokedAt`: when Google
  * refused the stored grant, if the owner has not connected since
  */
 export async function getCalendarConnection(userId: UserId) {
-  // Projects the dates only: projecting the parent path (googleCalendar)
-  // would return its select: false children too
-  const [connected, user] = await Promise.all([
-    User.exists({ _id: userId, 'googleCalendar.refreshToken': { $exists: true } }),
-    User.findById(userId, {
-      'googleCalendar.connectedAt': 1,
-      'googleCalendar.revokedAt': 1
-    }).lean<{ googleCalendar?: { connectedAt?: Date; revokedAt?: Date } }>()
-  ])
+  // One read, so the status and its dates come from the same state. The
+  // refresh token only tells whether one is stored. Projects the fields only:
+  // projecting the parent path (googleCalendar) would load the access token too
+  const user = await User.findById(userId)
+    .select('googleCalendar.connectedAt googleCalendar.revokedAt +googleCalendar.refreshToken')
+    .lean<{ googleCalendar?: { refreshToken?: string; connectedAt?: Date; revokedAt?: Date } }>()
+  const stored = user?.googleCalendar
+  const connected = Boolean(stored?.refreshToken)
   return {
-    connected: connected !== null,
-    connectedAt: (connected && user?.googleCalendar?.connectedAt) || null,
-    revokedAt: (!connected && user?.googleCalendar?.revokedAt) || null
+    connected,
+    connectedAt: (connected && stored?.connectedAt) || null,
+    revokedAt: (!connected && stored?.revokedAt) || null
   }
 }
 
-/** The stored grant each client of getCalendarClient uses */
+/**
+ * The stored grant each client of getCalendarClient uses: its refresh token,
+ * and when it was connected. A reconnect sets a new connectedAt, even when
+ * Google keeps the refresh token (it sends none on a repeated consent)
+ */
 interface CalendarGrant {
   userId: UserId
   refreshToken: string
+  connectedAt: Date | null
 }
 const grants = new WeakMap<calendar_v3.Calendar, CalendarGrant>()
+
+/** Matches the user while it still stores this grant */
+const storedGrant = ({ userId, refreshToken, connectedAt }: CalendarGrant) => ({
+  _id: userId,
+  'googleCalendar.refreshToken': refreshToken,
+  // null also matches a missing connectedAt
+  'googleCalendar.connectedAt': connectedAt
+})
 
 /**
  * Clears a grant Google refused, keeping when it happened: the admin panel
  * then asks to reconnect, and visitors are offered nothing. A grant connected
- * since (another refresh token) is kept.
+ * since is kept.
  */
-async function clearRefusedGrant({ userId, refreshToken }: CalendarGrant, reason: string) {
+async function clearRefusedGrant(grant: CalendarGrant, reason: string) {
   const result = await User.updateOne(
-    { _id: userId, 'googleCalendar.refreshToken': refreshToken },
+    storedGrant(grant),
     {
       $unset: {
         'googleCalendar.refreshToken': 1,
@@ -185,8 +197,17 @@ async function clearRefusedGrant({ userId, refreshToken }: CalendarGrant, reason
     }
   )
   // Once, whatever the number of requests that ran into it
-  if (result.modifiedCount > 0) {
-    logger.warn('Google refused the stored Google Calendar grant: connection cleared', { reason })
+  if (result.modifiedCount === 0) return
+  logger.warn('Google refused the stored Google Calendar grant: connection cleared', { reason })
+
+  // Revoked at Google too: Google only sends a refresh token with the first
+  // consent of a grant, and the consent popup cannot ask for another one. A
+  // grant still alive at Google (a Calendar 401 for another reason) would
+  // otherwise make reconnecting fail. Usually already gone: best effort
+  try {
+    await createOAuth2Client().revokeToken(grant.refreshToken)
+  } catch {
+    // Revoked or expired already (400 invalid_token), or Google unreachable
   }
 }
 
@@ -224,16 +245,17 @@ export async function getCalendarClient(userId: UserId): Promise<calendar_v3.Cal
 
   // Persist access tokens refreshed by the client, unless the grant changed
   // since it was loaded (disconnected, cleared, or connected again)
-  const grant: CalendarGrant = { userId, refreshToken: tokens.refreshToken }
+  const grant: CalendarGrant = {
+    userId,
+    refreshToken: tokens.refreshToken,
+    connectedAt: tokens.connectedAt ?? null
+  }
   client.on('tokens', (refreshed) => {
     const update: Record<string, unknown> = {}
     if (refreshed.access_token) update['googleCalendar.accessToken'] = refreshed.access_token
     if (refreshed.expiry_date) update['googleCalendar.tokenExpiry'] = new Date(refreshed.expiry_date)
     if (Object.keys(update).length === 0) return
-    User.updateOne(
-      { _id: userId, 'googleCalendar.refreshToken': grant.refreshToken },
-      { $set: update }
-    ).catch((error: unknown) => {
+    User.updateOne(storedGrant(grant), { $set: update }).catch((error: unknown) => {
       logger.error('Could not store the refreshed Google access token', {
         errorName: error instanceof Error ? error.name : typeof error
       })
