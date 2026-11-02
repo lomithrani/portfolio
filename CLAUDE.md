@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A portfolio web application with a Bun workspace monorepo structure:
 - **client/** — SvelteKit 3 frontend (Svelte 5 with runes, Skeleton 5, Tailwind CSS 4, `@sveltejs/adapter-bun`)
 - **server/** — Elysia backend API (Bun runtime, MongoDB via Mongoose)
-- **common/** — Shared code used by both client and server (`ExperienceType`, domain-name validation, `DEFAULT_GOOGLE_CLIENT_ID`)
+- **common/** — Shared code used by both client and server (`ExperienceType`, domain-name validation, `DEFAULT_GOOGLE_CLIENT_ID`, booking calendar dates: `bookingHorizon`, `splitDateRange`)
 
 Bun 1.4.4 is pinned in the root `package.json` (`packageManager`); the text lockfile `bun.lock` uses the isolated linker (each workspace has its own `node_modules`).
 

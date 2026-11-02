@@ -1,11 +1,12 @@
+import { addDays } from 'portfolio-common'
 import type { AppointmentSchedule } from '../models/database/appointmentSchedule'
 
-interface BusyBlock {
+export interface BusyBlock {
   start: string
   end: string
 }
 
-interface Slot {
+export interface Slot {
   start: string
   end: string
 }
@@ -62,29 +63,25 @@ export function isValidTimeZone(timezone: string): boolean {
   }
 }
 
-/** The YYYY-MM-DD wall-clock date of an instant in a given IANA timezone. */
-export function wallDateInTimezone(instant: Date, timezone: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(instant)
-}
-
+/**
+ * The free slots of a date (YYYY-MM-DD in the schedule's time zone): its
+ * availability windows (a date override, else the weekly windows of its day),
+ * cut into slots, without those starting within the minimum notice of `now`
+ * or overlapping a busy block
+ */
 export function computeAvailableSlots(
   schedule: AppointmentSchedule,
   date: string,
-  busyBlocks: BusyBlock[]
+  busyBlocks: BusyBlock[],
+  now: number = Date.now()
 ): Slot[] {
-  const dayOfWeek = getDayOfWeek(date, schedule.timezone)
+  const dayOfWeek = getDayOfWeek(date)
   const windows = getWindowsForDate(schedule, date, dayOfWeek)
 
   if (windows.length === 0) return []
 
   const slotDuration = (schedule.durationMinutes ?? 30) + (schedule.bufferMinutes ?? 0)
   const minNoticeMs = (schedule.minNoticeHours ?? 24) * 60 * 60 * 1000
-  const now = Date.now()
   const slots: Slot[] = []
 
   for (const window of windows) {
@@ -116,22 +113,44 @@ export function computeAvailableSlots(
   return slots
 }
 
-function getDayOfWeek(dateStr: string, timezone: string): number {
-  const date = new Date(dateStr + 'T12:00:00Z')
-  const formatted = date.toLocaleDateString('en-US', {
-    weekday: 'long',
-    timeZone: timezone
-  })
-  const dayMap: Record<string, number> = {
-    Sunday: 0,
-    Monday: 1,
-    Tuesday: 2,
-    Wednesday: 3,
-    Thursday: 4,
-    Friday: 5,
-    Saturday: 6
+/**
+ * computeAvailableSlots for every date from `from` to `to` (YYYY-MM-DD in the
+ * schedule's time zone), against the busy blocks of the whole range. Each date
+ * only gets the blocks that overlap it: its slots cannot overlap the others
+ */
+export function computeAvailableSlotsByDate(
+  schedule: AppointmentSchedule,
+  from: string,
+  to: string,
+  busyBlocks: BusyBlock[],
+  now: number = Date.now()
+): Map<string, Slot[]> {
+  const blocks = busyBlocks.map((block) => ({
+    block,
+    start: new Date(block.start).getTime(),
+    end: new Date(block.end).getTime()
+  }))
+  const slotsByDate = new Map<string, Slot[]>()
+
+  let dayStart = wallClockToUTC(from, '00:00', schedule.timezone).getTime()
+  for (let date = from; date <= to; date = addDays(date, 1)) {
+    const dayEnd = wallClockToUTC(addDays(date, 1), '00:00', schedule.timezone).getTime()
+    const busy = blocks
+      .filter(({ start, end }) => start < dayEnd && end > dayStart)
+      .map(({ block }) => block)
+    slotsByDate.set(date, computeAvailableSlots(schedule, date, busy, now))
+    dayStart = dayEnd
   }
-  return dayMap[formatted] ?? 0
+  return slotsByDate
+}
+
+/**
+ * Day of the week of a calendar date (0 = Sunday). The date is already the
+ * one of the schedule's time zone: its weekday is the same everywhere. (Read
+ * from 12:00 UTC in that zone, it was the next day from UTC+12 on: Auckland)
+ */
+function getDayOfWeek(dateStr: string): number {
+  return new Date(`${dateStr}T00:00:00Z`).getUTCDay()
 }
 
 function getWindowsForDate(

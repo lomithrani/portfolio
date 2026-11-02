@@ -44,9 +44,17 @@ export const appointmentScheduleRequest = t.Object({
   enabled: t.Optional(t.Boolean())
 })
 
+// Dates in the schedule's time zone; real calendar dates, checked by the route
 export const availableSlotsQuery = t.Object({
   scheduleId: objectId,
   date: isoDate
+})
+
+// At most MAX_AVAILABLE_DATES_RANGE dates, from <= to: checked by the route
+export const availableDatesQuery = t.Object({
+  scheduleId: objectId,
+  from: isoDate,
+  to: isoDate
 })
 
 export const bookAppointmentRequest = t.Object({

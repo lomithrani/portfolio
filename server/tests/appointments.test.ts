@@ -7,6 +7,7 @@
 // after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose from 'mongoose';
+import { MAX_AVAILABLE_DATES_RANGE, addDays, bookingHorizon } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import {
@@ -938,6 +939,231 @@ describe('public booking', () => {
   });
 });
 
+// The booking page greys out every date this route leaves out: it must list
+// exactly the dates available-slots has slots for
+describe('bookable dates', () => {
+  let scheduleId: string;
+  /** A Monday off, a Wednesday with hours of its own, a Sunday busy all day: all past the minimum notice */
+  let offMonday: string;
+  let extraWednesday: string;
+  let busySunday: string;
+
+  /** The test schedule's booking horizon (maxAdvanceDays 30), as the API computes it now */
+  const horizon = () => bookingHorizon({ timezone: TIMEZONE, maxAdvanceDays: 30 });
+  /** Day of the week of a YYYY-MM-DD date (0 = Sunday) */
+  const weekday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay();
+  /** The first date on or after `from` that falls on `day` */
+  const nextWeekday = (day: number, from: string) => addDays(from, (day - weekday(from) + 7) % 7);
+  /** Midnight in Paris at the start of a date */
+  const midnight = (date: string) => wallClockToUTC(date, '00:00', TIMEZONE).toISOString();
+
+  const availableDates = (from: string, to: string, id = scheduleId, headers?: Record<string, string>) =>
+    call('GET', `/appointments/available-dates?scheduleId=${id}&from=${from}&to=${to}`, { headers });
+  const availableSlots = (date: string, id = scheduleId, headers?: Record<string, string>) =>
+    call('GET', `/appointments/available-slots?scheduleId=${id}&date=${date}`, { headers });
+  const freeBusyRequests = () => google.state.requests.filter((request) => request.url.pathname.endsWith('/freeBusy'));
+
+  // After the top-level beforeEach: the owner connects, with a Monday and Sunday schedule
+  beforeEach(async () => {
+    await connectOwner();
+    // Past the 24 hours of minimum notice, wherever today falls in the week
+    const start = addDays(horizon().first, 3);
+    offMonday = nextWeekday(1, start);
+    extraWednesday = nextWeekday(3, start);
+    busySunday = nextWeekday(0, addDays(start, 7));
+    const schedule = await AppointmentSchedule.create({
+      ...scheduleBody({
+        availability: [1, 0].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '12:00' })),
+        dateOverrides: [
+          { date: offMonday, available: false },
+          { date: extraWednesday, available: true, windows: [{ startTime: '14:00', endTime: '16:00' }] }
+        ]
+      }),
+      user: owner.userId
+    });
+    scheduleId = schedule._id.toString();
+  });
+
+  it('lists exactly the dates available-slots has slots for, with one FreeBusy call', async () => {
+    const { first, last } = horizon();
+    const mondays = Array.from({ length: 5 }, (_, i) => nextWeekday(1, addDays(busySunday, 1 + 7 * i)));
+    google.state.busy = [
+      // All of a Sunday in Paris
+      { start: midnight(busySunday), end: midnight(addDays(busySunday, 1)) },
+      // Part of the next Monday
+      { start: at('09:00', mondays[0]), end: at('11:00', mondays[0]) },
+      // From a Sunday morning to the Monday morning after it
+      { start: at('10:00', addDays(mondays[1], -1)), end: at('10:00', mondays[1]) },
+      // All the slots of a Monday, in pieces
+      { start: at('08:00', mondays[2]), end: at('10:00', mondays[2]) },
+      { start: at('10:00', mondays[2]), end: at('12:30', mondays[2]) }
+    ];
+
+    const before = freeBusyRequests().length;
+    const listed = await availableDates(first, last);
+    expect(listed.status).toBe(200);
+    const dates = listed.json<string[]>();
+    expect(freeBusyRequests()).toHaveLength(before + 1);
+    expect(JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}')).toMatchObject({
+      timeMin: midnight(first),
+      timeMax: midnight(addDays(last, 1)),
+      items: [{ id: PRIMARY_CALENDAR }]
+    });
+
+    expect(dates).toEqual([...dates].sort());
+    expect(dates).toContain(extraWednesday);
+    expect(dates).not.toContain(offMonday);
+    expect(dates).not.toContain(busySunday);
+    expect(dates).toContain(mondays[0]);
+    expect(dates).toContain(mondays[1]);
+    expect(dates).not.toContain(mondays[2]);
+    // Past the minimum notice, every Monday and Sunday but those
+    const expected: string[] = [];
+    for (let date = addDays(first, 2); date <= last; date = addDays(date, 1)) {
+      if ((weekday(date) <= 1 && ![offMonday, busySunday, mondays[2]].includes(date)) || date === extraWednesday) {
+        expected.push(date);
+      }
+    }
+    expect(dates.filter((date) => date >= addDays(first, 2))).toEqual(expected);
+
+    // Every date of the horizon, either way
+    for (let date = first; date <= last; date = addDays(date, 1)) {
+      const slots = await availableSlots(date);
+      expect(slots.status).toBe(200);
+      expect({ date, bookable: slots.json<unknown[]>().length > 0 }).toEqual({ date, bookable: dates.includes(date) });
+    }
+  });
+
+  it('clamps the range to the booking horizon, without asking Google outside it', async () => {
+    const { first, last } = horizon();
+
+    const fromThePast = await availableDates(addDays(first, -10), addDays(first, 20));
+    expect(fromThePast.status).toBe(200);
+    expect(fromThePast.json<string[]>().every((date) => date >= first)).toBe(true);
+    expect(JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}').timeMin).toBe(midnight(first));
+
+    // Six days hold a Monday or a Sunday
+    const pastTheEnd = await availableDates(addDays(last, -5), addDays(last, 20));
+    expect(pastTheEnd.json<string[]>().length).toBeGreaterThan(0);
+    expect(pastTheEnd.json<string[]>().every((date) => date <= last)).toBe(true);
+    expect(JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}').timeMax).toBe(midnight(addDays(last, 1)));
+
+    const before = freeBusyRequests().length;
+    for (const [from, to] of [
+      [addDays(first, -40), addDays(first, -1)],
+      [addDays(last, 1), addDays(last, 30)]
+    ]) {
+      const outside = await availableDates(from, to);
+      expect(outside.status).toBe(200);
+      expect(outside.json()).toEqual([]);
+    }
+    expect(freeBusyRequests()).toHaveLength(before);
+  });
+
+  it('validates the range, and refuses impossible dates on available-slots too', async () => {
+    const { first } = horizon();
+    const before = google.state.requests.length;
+
+    expect((await availableDates('tomorrow', first)).status).toBe(422);
+    expect((await availableDates(first, first, 'not-an-id')).status).toBe(422);
+    expect((await call('GET', `/appointments/available-dates?scheduleId=${scheduleId}&from=${first}`)).status).toBe(422);
+
+    for (const [from, to, message] of [
+      ['2027-02-30', '2027-03-02', 'Invalid date'],
+      [first, '2027-13-01', 'Invalid date'],
+      [addDays(first, 1), first, 'The range must not end before it starts'],
+      [first, addDays(first, MAX_AVAILABLE_DATES_RANGE), `At most ${MAX_AVAILABLE_DATES_RANGE} dates per request`]
+    ]) {
+      const refused = await availableDates(from, to);
+      expect({ from, to, status: refused.status, text: refused.text }).toEqual({ from, to, status: 400, text: message });
+    }
+    // It used to answer with the slots of 2 March
+    const impossible = await availableSlots('2027-02-30');
+    expect([impossible.status, impossible.text]).toEqual([400, 'Invalid date']);
+    expect(google.state.requests).toHaveLength(before);
+
+    expect((await availableDates(first, addDays(first, MAX_AVAILABLE_DATES_RANGE - 1))).status).toBe(200);
+  });
+
+  it('answers like available-slots for a paused or unknown schedule and a disconnected calendar', async () => {
+    const { first, last } = horizon();
+    const paused = await AppointmentSchedule.create({ ...scheduleBody({ enabled: false }), user: owner.userId });
+    const answers = async (id: string) => {
+      const [dates, slots] = await Promise.all([availableDates(first, last, id), availableSlots(first, id)]);
+      return [`${dates.status} ${dates.text}`, `${slots.status} ${slots.text}`];
+    };
+
+    expect(await answers(paused.id)).toEqual(['404 Schedule not found', '404 Schedule not found']);
+    expect(await answers(new mongoose.Types.ObjectId().toString())).toEqual([
+      '404 Schedule not found',
+      '404 Schedule not found'
+    ]);
+
+    expect((await call('POST', '/appointments/disconnect', { body: {}, cookie: owner.cookie })).status).toBe(200);
+    expect(await answers(scheduleId)).toEqual(['409 Google Calendar not connected', '409 Google Calendar not connected']);
+  });
+
+  it('counts a booking whose event is being created as busy, and no other', async () => {
+    const monday = nextWeekday(1, addDays(offMonday, 1));
+    const { first, last } = horizon();
+    const isListed = async () => (await availableDates(first, last)).json<string[]>().includes(monday);
+    const slotsOfMonday = async () => (await availableSlots(monday)).json<unknown[]>().length;
+    expect(await isListed()).toBe(true);
+
+    // Another schedule of the owner holds the whole morning: its request is creating the event
+    const booking = await AppointmentBooking.create({
+      schedule: new mongoose.Types.ObjectId(),
+      user: owner.userId,
+      calendarId: 'work@example.com',
+      start: new Date(at('09:00', monday)),
+      end: new Date(at('12:00', monday)),
+      emailHash: 'hash'
+    });
+    expect(await isListed()).toBe(false);
+    expect(await slotsOfMonday()).toBe(0);
+
+    // Held long ago: its request stopped, and Google has no event for it
+    await AppointmentBooking.updateOne({ _id: booking._id }, { $set: { heldAt: new Date(Date.now() - 60 * 60_000) } });
+    expect(await isListed()).toBe(true);
+    expect(await slotsOfMonday()).toBe(3);
+
+    // Confirmed: FreeBusy reports its event while it exists (here, the owner deleted it)
+    await AppointmentBooking.updateOne({ _id: booking._id }, { $set: { eventId: 'deleted', heldAt: new Date() } });
+    expect(await isListed()).toBe(true);
+  });
+
+  it('does not count availability lookups against the booking rate limit', async () => {
+    const savedHeader = env.CLIENT_IP_HEADER;
+    env.CLIENT_IP_HEADER = 'x-real-ip';
+    try {
+      const group = () => Math.floor(Math.random() * 0x10000).toString(16);
+      const headers = { 'X-Real-IP': `2001:db8:${group()}:${group()}::1` };
+      const { first, last } = horizon();
+
+      let dates: string[] = [];
+      for (let i = 0; i <= BOOKING_REQUESTS_PER_IP.limit; i++) {
+        const listed = await availableDates(first, last, scheduleId, headers);
+        expect(listed.status).toBe(200);
+        dates = listed.json<string[]>();
+        expect((await availableSlots(dates[0], scheduleId, headers)).status).toBe(200);
+      }
+
+      const [slot] = (await availableSlots(dates[0], scheduleId, headers)).json<{ start: string }[]>();
+      const booked = await call('POST', '/appointments/book', {
+        body: { scheduleId, startTime: slot.start, name: 'Visitor', email: t.email('browser') },
+        headers
+      });
+      expect(booked.status).toBe(200);
+      const counter = await RateLimitCounter.findOne({
+        _id: { $regex: `^${rateLimitKey('book:ip', rateLimitAddress(headers['X-Real-IP']))}:` }
+      }).lean();
+      expect(counter?.count).toBe(1);
+    } finally {
+      env.CLIENT_IP_HEADER = savedHeader;
+    }
+  });
+});
+
 // Production, 2026-11-01: Google answered invalid_grant to the stored refresh
 // token, and every Calendar call failed with a 500 and a gaxios stack trace.
 // The fake Google answers like the real one, so the error each test runs into
@@ -1158,6 +1384,9 @@ describe('no Google token in any API response', () => {
     expect((await call('GET', `/appointments/domains/${sweepDomain}/schedules`)).status).toBe(200);
     expect((await call('GET', `/appointments/schedules/${scheduleId}/public`)).status).toBe(200);
     expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(200);
+    expect(
+      (await call('GET', `/appointments/available-dates?scheduleId=${scheduleId}&from=${BOOKING_DATE}&to=${dateIn(14)}`)).status
+    ).toBe(200);
     const booked = await call('POST', '/appointments/book', {
       body: { scheduleId, startTime: at('11:00'), name: 'Sweep', email: t.email('sweep-visitor') }
     });

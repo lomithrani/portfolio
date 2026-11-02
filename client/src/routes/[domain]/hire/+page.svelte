@@ -1,7 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { DatePicker, parseDate } from '@skeletonlabs/skeleton-svelte';
+	import type { DateValue } from '@skeletonlabs/skeleton-svelte';
+	import type { BookingHorizon } from 'portfolio-common';
 	import { portfolioApi } from '#services';
 	import { errorStatus, isSlotUnavailable } from '#services/apiErrors.ts';
+	import {
+		bookableDatesFailure,
+		firstShownDate,
+		isUnbookable,
+		loadBookableDates,
+		toIsoDate
+	} from '#services/bookingDates.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -40,6 +50,12 @@
 		email: string;
 	}
 
+	/** The dates of the selected schedule that can be picked; every other one is greyed out */
+	type BookableDatesState =
+		| { status: 'loading' }
+		| { status: 'ready'; horizon: BookingHorizon; dates: string[] }
+		| { status: 'error'; message: string; retry: boolean };
+
 	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 	const LOCATION_LABELS: Record<string, string> = {
 		google_meet: 'Google Meet',
@@ -49,15 +65,22 @@
 	};
 
 	const visitorTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+	// Month and weekday names, and the first day of the week, as the visitor reads them
+	const visitorLocale = Intl.DateTimeFormat().resolvedOptions().locale;
 
 	let schedules = $state<PublicSchedule[]>([]);
 	let schedulesLoading = $state(true);
 	let selectedSchedule = $state<PublicSchedule | null>(null);
 
+	let bookableDates = $state<BookableDatesState>({ status: 'loading' });
+	// Answers to an earlier request (another schedule picked meanwhile) are dropped
+	let datesRequest = 0;
+
 	let selectedDate = $state('');
 	let slots = $state<Slot[]>([]);
 	let slotsLoading = $state(false);
 	let slotsLoaded = $state(false);
+	let slotsRequest = 0;
 	let selectedSlot = $state<Slot | null>(null);
 
 	let name = $state('');
@@ -71,30 +94,34 @@
 		selectedSchedule ? [...new Set(selectedSchedule.availability.map((w) => w.dayOfWeek))] : []
 	);
 
-	function toDateInputValue(date: Date): string {
-		return date.toISOString().slice(0, 10);
-	}
+	// Date picker inputs, rebuilt only when the bookable dates change
+	let isDateUnavailable = $derived(
+		isUnbookable(new Set(bookableDates.status === 'ready' ? bookableDates.dates : []))
+	);
+	let calendarBounds = $derived(
+		bookableDates.status === 'ready'
+			? {
+					min: parseDate(bookableDates.horizon.first),
+					max: parseDate(bookableDates.horizon.last),
+					opensOn: parseDate(firstShownDate(bookableDates.dates, bookableDates.horizon))
+				}
+			: null
+	);
+	let pickedDates = $derived(selectedDate ? [parseDate(selectedDate)] : []);
 
-	let minDate = $derived.by(() => {
-		if (!selectedSchedule) return toDateInputValue(new Date());
-		const d = new Date(Date.now() + selectedSchedule.minNoticeHours * 3600_000);
-		return toDateInputValue(d);
-	});
-
-	let maxDate = $derived.by(() => {
-		if (!selectedSchedule) return '';
-		return toDateInputValue(new Date(Date.now() + selectedSchedule.maxAdvanceDays * 86_400_000));
-	});
-
-	async function loadSchedules() {
+	/** `autoSelect`: on arrival, a single schedule is selected right away */
+	async function loadSchedules({ autoSelect = false } = {}) {
 		schedulesLoading = true;
 		const { data: found, error } = await portfolioApi.appointments
 			.domains({ domainName: encodeURIComponent(data.domainName) })
 			.schedules.get();
 		if (!error && found) {
 			schedules = found;
-			if (schedules.length === 1) {
+			if (autoSelect && schedules.length === 1) {
 				selectSchedule(schedules[0]);
+			} else if (selectedSchedule && !schedules.some((s) => s.id === selectedSchedule?.id)) {
+				// Paused or deleted meanwhile
+				selectedSchedule = null;
 			}
 		}
 		schedulesLoading = false;
@@ -104,22 +131,72 @@
 		selectedSchedule = schedule;
 		selectedDate = '';
 		slots = [];
+		// Slots still on their way are for the previous schedule
+		slotsRequest++;
+		slotsLoading = false;
 		slotsLoaded = false;
 		selectedSlot = null;
 		confirmation = null;
 		bookingError = '';
+		loadDates();
+	}
+
+	/**
+	 * Asks the API which dates of the booking horizon have a free slot. `refresh` keeps the
+	 * calendar on screen while asking again (after a booking), instead of showing it loading.
+	 */
+	async function loadDates({ refresh = false } = {}) {
+		const schedule = selectedSchedule;
+		if (!schedule) return;
+		const request = ++datesRequest;
+		if (!refresh || bookableDates.status !== 'ready') bookableDates = { status: 'loading' };
+
+		const loaded = await loadBookableDates(schedule, (range) =>
+			portfolioApi.appointments['available-dates'].get({
+				query: { scheduleId: schedule.id, ...range }
+			})
+		);
+		if (request !== datesRequest) return;
+
+		if (loaded.ok) {
+			bookableDates = { status: 'ready', horizon: loaded.horizon, dates: loaded.dates };
+			return;
+		}
+		// A refreshed calendar stays as it was: the slots of a date are checked when it is picked
+		if (refresh && bookableDates.status === 'ready') return;
+		const failure = bookableDatesFailure(loaded.error);
+		bookableDates = { status: 'error', message: failure.message, retry: !failure.reloadSchedules };
+		if (failure.reloadSchedules) await loadSchedules();
+	}
+
+	/** A date the API listed turned out to have no free slot left: grey it out too */
+	function markDateFull(date: string) {
+		if (bookableDates.status !== 'ready' || !bookableDates.dates.includes(date)) return;
+		bookableDates = { ...bookableDates, dates: bookableDates.dates.filter((d) => d !== date) };
+	}
+
+	function pickDate(value: DateValue | undefined) {
+		// Picking the selected date again unselects it: keep it
+		if (!value) return;
+		selectedDate = toIsoDate(value);
+		loadSlots();
 	}
 
 	async function loadSlots() {
 		if (!selectedSchedule || !selectedDate) return;
+		const date = selectedDate;
+		const request = ++slotsRequest;
 		slotsLoading = true;
 		selectedSlot = null;
 		const { data: available, error } = await portfolioApi.appointments['available-slots'].get({
-			query: { scheduleId: selectedSchedule.id, date: selectedDate }
+			query: { scheduleId: selectedSchedule.id, date }
 		});
+		// Another date was picked meanwhile
+		if (request !== slotsRequest) return;
 		slots = !error && available ? available : [];
 		slotsLoading = false;
 		slotsLoaded = true;
+		if (!error && slots.length === 0) markDateFull(date);
 	}
 
 	async function book() {
@@ -157,6 +234,8 @@
 		}
 
 		confirmation = { ...booked, email };
+		// The booked slot may have been the last of its date
+		loadDates({ refresh: true });
 	}
 
 	function formatTime(iso: string): string {
@@ -173,7 +252,7 @@
 		});
 	}
 
-	onMount(loadSchedules);
+	onMount(() => loadSchedules({ autoSelect: true }));
 </script>
 
 <svelte:head>
@@ -257,7 +336,7 @@
 		{/if}
 
 		{#if selectedSchedule}
-			<section class="card p-6 space-y-4">
+			<section class="card p-4 sm:p-6 space-y-4">
 				<div class="space-y-1">
 					<h2 class="h4">{selectedSchedule.title}</h2>
 					<p class="text-sm opacity-75">
@@ -275,22 +354,93 @@
 					{/if}
 				</div>
 
-				<label class="label max-w-xs">
-					<span class="label-text">Date</span>
-					<input
-						class="input"
-						type="date"
-						min={minDate}
-						max={maxDate}
-						bind:value={selectedDate}
-						onchange={loadSlots}
-					/>
-				</label>
+				{#if bookableDates.status === 'loading'}
+					<p class="text-sm opacity-50" role="status">Loading available dates...</p>
+				{:else if bookableDates.status === 'error'}
+					<div class="space-y-2" role="alert">
+						<p class="text-sm text-error-500">{bookableDates.message}</p>
+						{#if bookableDates.retry}
+							<button class="btn btn-sm preset-tonal" onclick={() => loadDates()}>Try again</button>
+						{/if}
+					</div>
+				{:else if bookableDates.dates.length === 0}
+					<p class="text-sm opacity-75" role="status">
+						No date is open for booking in the next {selectedSchedule.maxAdvanceDays} days. Please check
+						back later, or reach out directly.
+					</p>
+				{:else if calendarBounds}
+					<div class="space-y-2">
+						<p class="label-text" id="booking-date-label">Pick a date</p>
+						<!-- Mounted once the dates of the schedule are known: it opens on the month of the
+						first bookable one. Unbookable dates are greyed out, and neither a click nor the
+						keyboard (Enter) can pick them -->
+						<DatePicker
+							inline
+							locale={visitorLocale}
+							timeZone={selectedSchedule.timezone}
+							min={calendarBounds.min}
+							max={calendarBounds.max}
+							defaultFocusedValue={calendarBounds.opensOn}
+							value={pickedDates}
+							onValueChange={(details) => pickDate(details.value[0])}
+							{isDateUnavailable}
+							maxView="day"
+							class="w-fit"
+						>
+							<DatePicker.Content aria-labelledby="booking-date-label">
+								<DatePicker.View view="day">
+									<DatePicker.Context>
+										{#snippet children(datePicker)}
+											<DatePicker.ViewControl>
+												<DatePicker.PrevTrigger />
+												<DatePicker.RangeText class="self-center font-semibold capitalize" />
+												<DatePicker.NextTrigger />
+											</DatePicker.ViewControl>
+											<DatePicker.Table class="border-spacing-1">
+												<DatePicker.TableHead>
+													<DatePicker.TableRow>
+														{#each datePicker().weekDays as weekDay (weekDay.long)}
+															<DatePicker.TableHeader class="opacity-60">
+																{weekDay.short}
+															</DatePicker.TableHeader>
+														{/each}
+													</DatePicker.TableRow>
+												</DatePicker.TableHead>
+												<DatePicker.TableBody>
+													{#each datePicker().weeks as week (week[0].toString())}
+														<DatePicker.TableRow>
+															{#each week as day (day.toString())}
+																<DatePicker.TableCell value={day} class="size-9 sm:size-10">
+																	<DatePicker.TableCellTrigger
+																		class="focus-visible:outline-2 focus-visible:outline-primary-500 data-[unavailable]:line-through data-[unavailable]:opacity-40 data-[outside-range]:invisible [&[data-selectable]:not([data-selected])]:preset-tonal-primary [&[data-selectable]:not([data-selected])]:hover:preset-filled-primary-200-800 data-[selectable]:cursor-pointer data-[selectable]:font-semibold data-[selected]:preset-filled-primary-500"
+																	>
+																		{day.day}
+																	</DatePicker.TableCellTrigger>
+																</DatePicker.TableCell>
+															{/each}
+														</DatePicker.TableRow>
+													{/each}
+												</DatePicker.TableBody>
+											</DatePicker.Table>
+										{/snippet}
+									</DatePicker.Context>
+								</DatePicker.View>
+							</DatePicker.Content>
+						</DatePicker>
+						<p class="text-xs opacity-60">
+							Greyed-out dates have no free slot.
+							{#if selectedSchedule.timezone !== visitorTimezone}
+								Dates follow {ownerName}'s time zone ({selectedSchedule.timezone}); times are shown
+								in yours.
+							{/if}
+						</p>
+					</div>
+				{/if}
 
 				{#if slotsLoading}
 					<p class="text-sm opacity-50">Checking availability...</p>
 				{:else if slotsLoaded && slots.length === 0}
-					<p class="text-sm opacity-75">No slots available on this date — try another one.</p>
+					<p class="text-sm opacity-75">No slots left on this date — please pick another one.</p>
 				{:else if slots.length > 0}
 					<div class="space-y-2">
 						<p class="text-sm opacity-50">Times shown in your timezone ({visitorTimezone})</p>

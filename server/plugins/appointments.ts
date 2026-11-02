@@ -1,7 +1,15 @@
 import Elysia, { t } from 'elysia'
 import type { calendar_v3 } from '@googleapis/calendar'
 import type { Types } from 'mongoose'
-import { normalizeDomainName } from 'portfolio-common'
+import {
+  MAX_AVAILABLE_DATES_RANGE,
+  addDays,
+  bookingHorizon,
+  daysBetween,
+  isCalendarDate,
+  normalizeDomainName,
+  wallDateInTimezone
+} from 'portfolio-common'
 import { env } from '../env'
 import { userLogged } from './userLogged'
 import { AppointmentSchedule, Domain } from '../models/database'
@@ -14,6 +22,7 @@ import {
 } from '../errors'
 import {
   appointmentScheduleRequest,
+  availableDatesQuery,
   availableSlotsQuery,
   bookAppointmentRequest,
   objectIdParams
@@ -35,6 +44,7 @@ import {
 import {
   bookingEventId,
   confirmBooking,
+  heldBookingBlocks,
   limitBookingRequestsForEmail,
   limitBookingRequestsFromIp,
   releaseBooking,
@@ -43,11 +53,11 @@ import {
 } from '../services/appointmentBookings'
 import { clientAddress } from '../services/clientAddress'
 import {
-  computeAvailableSlots,
+  computeAvailableSlotsByDate,
   isValidTimeZone,
-  wallClockToUTC,
-  wallDateInTimezone
+  wallClockToUTC
 } from '../services/slotComputation'
+import type { Slot } from '../services/slotComputation'
 
 type ScheduleRequest = typeof appointmentScheduleRequest.static
 type ScheduleDocument = AppointmentSchedule & { _id: Types.ObjectId }
@@ -199,12 +209,6 @@ const publicScheduleFields = (schedule: ScheduleDocument) => ({
   }))
 })
 
-const isWithinBookingHorizon = (schedule: ScheduleDocument, date: string) => {
-  const horizon = new Date()
-  horizon.setDate(horizon.getDate() + (schedule.maxAdvanceDays ?? 30))
-  return date <= horizon.toISOString().slice(0, 10)
-}
-
 const findEnabledSchedule = async (id: string) => {
   const schedule = await AppointmentSchedule.findById(id)
   if (!schedule || !schedule.enabled) {
@@ -213,26 +217,47 @@ const findEnabledSchedule = async (id: string) => {
   return schedule
 }
 
+// The YYYY-MM-DD pattern lets 2026-02-30 through
+const assertCalendarDates = (...dates: string[]) => {
+  if (!dates.every(isCalendarDate)) throw new BadRequestError('Invalid date')
+}
+
+/**
+ * The free slots of each date from `from` to `to` (YYYY-MM-DD in the
+ * schedule's time zone) inside the booking horizon; the dates outside it are
+ * left out, without asking Google. One FreeBusy call and one bookings query
+ * for the whole range: every public answer about availability (available-slots,
+ * available-dates, and the re-check of /book) comes from here.
+ */
+const getAvailableSlotsByDate = async (
+  calendar: calendar_v3.Calendar,
+  schedule: ScheduleDocument,
+  from: string,
+  to: string
+): Promise<Map<string, Slot[]>> => {
+  const horizon = bookingHorizon(schedule)
+  const first = from > horizon.first ? from : horizon.first
+  const last = to < horizon.last ? to : horizon.last
+  if (first > last) return new Map()
+
+  const tz = schedule.timezone
+  const calendarId = schedule.calendarId ?? 'primary'
+  const rangeStart = wallClockToUTC(first, '00:00', tz)
+  const rangeEnd = wallClockToUTC(addDays(last, 1), '00:00', tz)
+  const [freeBusy, held] = await Promise.all([
+    getFreeBusy(calendar, calendarId, rangeStart.toISOString(), rangeEnd.toISOString(), tz),
+    heldBookingBlocks(schedule.user, rangeStart, rangeEnd)
+  ])
+  const busy = [...freeBusy.map((b) => ({ start: b.start ?? '', end: b.end ?? '' })), ...held]
+
+  return computeAvailableSlotsByDate(schedule, first, last, busy)
+}
+
 const getAvailableSlotsForDate = async (
   calendar: calendar_v3.Calendar,
   schedule: ScheduleDocument,
   date: string
-) => {
-  if (!isWithinBookingHorizon(schedule, date)) return []
-
-  const calendarId = schedule.calendarId ?? 'primary'
-  const tz = schedule.timezone
-  const dayStart = wallClockToUTC(date, '00:00', tz).toISOString()
-  const dayEnd = wallClockToUTC(date, '23:59', tz).toISOString()
-  const busyBlocks = await getFreeBusy(calendar, calendarId, dayStart, dayEnd, tz)
-
-  const busy = busyBlocks.map((b) => ({
-    start: b.start ?? '',
-    end: b.end ?? ''
-  }))
-
-  return computeAvailableSlots(schedule, date, busy)
-}
+) => (await getAvailableSlotsByDate(calendar, schedule, date, date)).get(date) ?? []
 
 const appointmentsPublic = new Elysia()
   .get('/appointments/domains/:domainName/schedules', async ({ params: { domainName } }) => {
@@ -258,6 +283,7 @@ const appointmentsPublic = new Elysia()
   .get(
     '/appointments/available-slots',
     async ({ query: { scheduleId, date } }) => {
+      assertCalendarDates(date)
       const schedule = await findEnabledSchedule(scheduleId)
       // Throws GoogleCalendarNotConnectedError (409) when the owner disconnected
       const calendar = await getCalendarClient(schedule.user)
@@ -265,6 +291,28 @@ const appointmentsPublic = new Elysia()
     },
     {
       query: availableSlotsQuery
+    }
+  )
+  // The dates of [from, to] that /appointments/available-slots has slots for,
+  // so the booking page only offers those
+  .get(
+    '/appointments/available-dates',
+    async ({ query: { scheduleId, from, to } }) => {
+      assertCalendarDates(from, to)
+      const dates = daysBetween(from, to) + 1
+      if (dates < 1) throw new BadRequestError('The range must not end before it starts')
+      if (dates > MAX_AVAILABLE_DATES_RANGE) {
+        throw new BadRequestError(`At most ${MAX_AVAILABLE_DATES_RANGE} dates per request`)
+      }
+
+      const schedule = await findEnabledSchedule(scheduleId)
+      // Throws GoogleCalendarNotConnectedError (409) when the owner disconnected
+      const calendar = await getCalendarClient(schedule.user)
+      const slotsByDate = await getAvailableSlotsByDate(calendar, schedule, from, to)
+      return [...slotsByDate].filter(([, slots]) => slots.length > 0).map(([date]) => date)
+    },
+    {
+      query: availableDatesQuery
     }
   )
   .post(

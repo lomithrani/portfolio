@@ -32,6 +32,9 @@ export const MAX_UPCOMING_BOOKINGS_PER_EMAIL = 2
  */
 const PENDING_BOOKING_TIMEOUT_MS = 4 * EVENT_INSERT_TIMEOUT_MS
 
+/** Pending bookings held since this instant hold their slot without asking Google */
+const liveHoldsSince = () => new Date(Date.now() - PENDING_BOOKING_TIMEOUT_MS)
+
 const SLOT_TAKEN = 'This slot is no longer available'
 
 /**
@@ -98,7 +101,7 @@ type Booking = AppointmentBooking & { _id: Types.ObjectId }
  * Calendar directly, or when an abandoned booking's event was never created.
  */
 async function holdsSlot(calendar: calendar_v3.Calendar, booking: Booking) {
-  if (!booking.eventId && booking.heldAt.getTime() > Date.now() - PENDING_BOOKING_TIMEOUT_MS) return true
+  if (!booking.eventId && booking.heldAt > liveHoldsSince()) return true
 
   const eventId = booking.eventId ?? bookingEventId(booking._id)
   const event = await getEvent(calendar, booking.calendarId, eventId)
@@ -111,6 +114,28 @@ async function holdsSlot(calendar: calendar_v3.Calendar, booking: Booking) {
     await AppointmentBooking.updateOne({ _id: booking._id, eventId: null }, { $set: { eventId } })
   }
   return holds
+}
+
+/**
+ * Busy blocks of the owner's bookings between two instants that hold their
+ * slot whatever Google says: pending ones whose request may be creating the
+ * event right now (FreeBusy does not show it yet). Not confirmed bookings:
+ * their event is on the calendar, where FreeBusy sees it, and one the owner
+ * deleted in Google Calendar must free its slot (reserveSlot then takes the
+ * booking over)
+ */
+export async function heldBookingBlocks(userId: Types.ObjectId, from: Date, to: Date) {
+  const held = await AppointmentBooking.find(
+    {
+      user: userId,
+      eventId: null,
+      heldAt: { $gt: liveHoldsSince() },
+      start: { $lt: to },
+      end: { $gt: from }
+    },
+    { start: 1, end: 1 }
+  ).lean<Pick<Booking, 'start' | 'end'>[]>()
+  return held.map(({ start, end }) => ({ start: start.toISOString(), end: end.toISOString() }))
 }
 
 /** Deletes a booking that no longer holds its slot; false when it still does */
