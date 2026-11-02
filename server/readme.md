@@ -77,8 +77,10 @@ with a message listing every problem.
 `bunfig.toml`) clears every `OTEL_*` variable, so tests never export
 telemetry, and replaces `MONGO_URL` with `TEST_MONGO_URL` when that is set.
 
-The integration and Eden suites write to MongoDB (they seed the
-`louis.gentil` domain and create then delete their own documents). They
+The integration, appointments and Eden suites write to MongoDB: each test
+(the Eden suite, for its server) creates the documents it needs, named with a unique
+suffix, then deletes them, so the tests pass in any order
+(`bun test --randomize tests/`). They
 refuse to run unless `MONGO_URL` points at `localhost`/`127.0.0.1`/`::1`, or
 `TEST_MONGO_URL` names a disposable database, so a `.env` pointing at a
 shared or production cluster is never written to.
