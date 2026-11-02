@@ -47,7 +47,12 @@ const waitForHealthy = async (server: Server, timeoutMs = 15_000) => {
 
 /** Spawns the API on PORT and waits until /health answers 200 */
 const startServer = async (): Promise<Server> => {
-  const childEnv: Record<string, string | undefined> = { ...process.env, PORT: String(port) }
+  // The memory line is logged at startup whatever the interval (unless 0)
+  const childEnv: Record<string, string | undefined> = {
+    ...process.env,
+    PORT: String(port),
+    MEMORY_LOG_INTERVAL_MS: '600000'
+  }
   delete childEnv.HOST
   const child = Bun.spawn({
     cmd: ['bun', 'index.ts'],
@@ -74,6 +79,13 @@ const startServer = async (): Promise<Server> => {
     throw new Error(`server did not become healthy on ${baseUrl}:\n${output}`)
   }
   return server
+}
+
+/** The server's output once a line matches `pattern` (or after `timeoutMs`, for the caller's assertions to fail) */
+const waitForOutput = async (server: Server, pattern: RegExp, timeoutMs = 5_000) => {
+  const deadline = Date.now() + timeoutMs
+  while (!pattern.test(server.output()) && Date.now() < deadline) await Bun.sleep(20)
+  return server.output()
 }
 
 /** Kills the server if it still runs, and waits until it has exited (PORT is free again) */
@@ -159,6 +171,25 @@ describe('typed Eden client against the running server', () => {
   test('POST /login rejects an invalid Google token with 401', async () => {
     const { error } = await api.login.post({ token: 'not-a-google-token' })
     expect(error?.status as number).toBe(401)
+  })
+
+  test('logs the telemetry state and a one-line memory record at startup', async () => {
+    // Logged right after listening, before /health answers, but stdout is read
+    // asynchronously: wait for the memory line (the later of the two)
+    const output = await waitForOutput(server!, /^\[INFO\] memory \{.*\}$/m)
+    expect(output).toMatch(/^\[INFO\] Running at .+"telemetry":"(off \(.+\)|traces=\w+ metrics=\w+ logs=\w+)"\}$/m)
+    const memoryLine = output.match(/^\[INFO\] memory (\{.*\})$/m)
+    expect(memoryLine).not.toBeNull()
+    const fields = JSON.parse(memoryLine![1])
+    expect(Object.keys(fields)).toEqual([
+      'rss', 'heapUsed', 'heapTotal', 'external', 'arrayBuffers',
+      'objectCount', 'protectedObjectCount', 'topObjectTypes'
+    ])
+    for (const name of ['rss', 'heapUsed', 'heapTotal', 'external', 'arrayBuffers']) {
+      expect(Math.round(fields[name] * 10) / 10).toBe(fields[name])
+    }
+    expect(fields.objectCount).toBeInteger()
+    expect(fields.topObjectTypes).toMatch(/^(\S+=\d+ ){7}\S+=\d+$/)
   })
 })
 

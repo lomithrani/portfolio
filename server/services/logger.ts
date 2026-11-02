@@ -26,7 +26,8 @@ const emit = (
 		}
 	})
 
-	// Also output to console for local dev visibility
+	// Also output to the console (local dev, Railway's deploy logs), one line
+	// per record: Railway shows every output line as a separate log entry
 	const consoleFn =
 		severityNumber >= SeverityNumber.ERROR
 			? console.error
@@ -36,7 +37,7 @@ const emit = (
 
 	const prefix = `[${severityText}]`
 	if (attributes && Object.keys(attributes).length > 0) {
-		consoleFn(prefix, message, attributes)
+		consoleFn(prefix, message, JSON.stringify(attributes))
 	} else {
 		consoleFn(prefix, message)
 	}
