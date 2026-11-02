@@ -6,6 +6,15 @@ import { DEFAULT_GOOGLE_CLIENT_ID } from 'portfolio-common';
 
 export type CookieSameSite = 'strict' | 'lax' | 'none';
 
+/** Value of OTEL_TRACES_EXPORTER / OTEL_METRICS_EXPORTER / OTEL_LOGS_EXPORTER */
+export type OtelExporterChoice = 'otlp' | 'none';
+
+export interface OtelSignals {
+  traces: boolean;
+  metrics: boolean;
+  logs: boolean;
+}
+
 export interface ServerEnv {
   NODE_ENV: string;
   isProduction: boolean;
@@ -31,8 +40,21 @@ export interface ServerEnv {
   apiDocsEnabled: boolean;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
   OTEL_SERVICE_NAME: string;
-  /** Telemetry is fully off unless an OTLP endpoint is configured */
+  /** OTEL_SDK_DISABLED=true: telemetry fully off, as without an endpoint */
+  OTEL_SDK_DISABLED: boolean;
+  /** 'none' drops that signal's processor (or reader) and exporter */
+  OTEL_TRACES_EXPORTER: OtelExporterChoice;
+  OTEL_METRICS_EXPORTER: OtelExporterChoice;
+  OTEL_LOGS_EXPORTER: OtelExporterChoice;
+  /**
+   * The OpenTelemetry SDK starts: an OTLP endpoint is configured and
+   * OTEL_SDK_DISABLED is not true
+   */
   otelEnabled: boolean;
+  /** Signals exported over OTLP (all false while otelEnabled is false) */
+  otelSignals: OtelSignals;
+  /** Period of the 'memory' log line in milliseconds; 0 turns it off */
+  MEMORY_LOG_INTERVAL_MS: number;
   TLS_PASSPHRASE?: string;
   /** Non-fatal problems, printed at startup */
   warnings: string[];
@@ -121,6 +143,49 @@ const optional = (value: string | undefined) => {
   return trimmed ? trimmed : undefined;
 };
 
+// OpenTelemetry's own switches, read with the specification's rules (values
+// are case-insensitive). A value the SDK would ignore with a warning is fatal
+// here instead: a mistyped switch must not leave telemetry silently on.
+const parseOtelBoolean = (name: string, raw: string | undefined, problems: string[]): boolean => {
+  const value = optional(raw)?.toLowerCase();
+  if (value === undefined || value === 'false') return false;
+  if (value === 'true') return true;
+  problems.push(`${name} must be true or false (got ${JSON.stringify(raw)})`);
+  return false;
+};
+
+const parseOtelExporter = (
+  name: string,
+  raw: string | undefined,
+  problems: string[]
+): OtelExporterChoice => {
+  const value = optional(raw)?.toLowerCase() ?? 'otlp';
+  if (value === 'otlp' || value === 'none') return value;
+  problems.push(`${name} must be otlp (the default) or none (got ${JSON.stringify(raw)})`);
+  return 'otlp';
+};
+
+const DEFAULT_MEMORY_LOG_INTERVAL_MS = 600_000;
+const MIN_MEMORY_LOG_INTERVAL_MS = 1_000;
+// Longest delay setInterval accepts; above it, the timer fires every 1 ms
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+const parseMemoryLogInterval = (raw: string | undefined, problems: string[]): number => {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_MEMORY_LOG_INTERVAL_MS;
+  // Digits only: Number() would also accept '1e3' or '0x3e8'
+  const ms = /^\s*\d+\s*$/.test(raw) ? Number(raw) : Number.NaN;
+  if (
+    !Number.isInteger(ms) ||
+    (ms !== 0 && (ms < MIN_MEMORY_LOG_INTERVAL_MS || ms > MAX_TIMER_DELAY_MS))
+  ) {
+    problems.push(
+      `MEMORY_LOG_INTERVAL_MS must be 0 (off) or a whole number of milliseconds from ${MIN_MEMORY_LOG_INTERVAL_MS} to ${MAX_TIMER_DELAY_MS} (got ${JSON.stringify(raw)})`
+    );
+    return DEFAULT_MEMORY_LOG_INTERVAL_MS;
+  }
+  return ms;
+};
+
 export const parseEnv = (source: Record<string, string | undefined>): ServerEnv => {
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -170,6 +235,12 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     );
   }
 
+  const OTEL_SDK_DISABLED = parseOtelBoolean('OTEL_SDK_DISABLED', source.OTEL_SDK_DISABLED, problems);
+  const OTEL_TRACES_EXPORTER = parseOtelExporter('OTEL_TRACES_EXPORTER', source.OTEL_TRACES_EXPORTER, problems);
+  const OTEL_METRICS_EXPORTER = parseOtelExporter('OTEL_METRICS_EXPORTER', source.OTEL_METRICS_EXPORTER, problems);
+  const OTEL_LOGS_EXPORTER = parseOtelExporter('OTEL_LOGS_EXPORTER', source.OTEL_LOGS_EXPORTER, problems);
+  const MEMORY_LOG_INTERVAL_MS = parseMemoryLogInterval(source.MEMORY_LOG_INTERVAL_MS, problems);
+
   if (problems.length > 0) throw new EnvironmentError(problems);
 
   if (isProduction && JWT_SECRET.length < MIN_PRODUCTION_SECRET_LENGTH) {
@@ -180,6 +251,7 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
   }
 
   const OTEL_EXPORTER_OTLP_ENDPOINT = optional(source.OTEL_EXPORTER_OTLP_ENDPOINT);
+  const otelEnabled = OTEL_EXPORTER_OTLP_ENDPOINT !== undefined && !OTEL_SDK_DISABLED;
 
   return {
     NODE_ENV,
@@ -198,7 +270,17 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',
-    otelEnabled: OTEL_EXPORTER_OTLP_ENDPOINT !== undefined,
+    OTEL_SDK_DISABLED,
+    OTEL_TRACES_EXPORTER,
+    OTEL_METRICS_EXPORTER,
+    OTEL_LOGS_EXPORTER,
+    otelEnabled,
+    otelSignals: {
+      traces: otelEnabled && OTEL_TRACES_EXPORTER === 'otlp',
+      metrics: otelEnabled && OTEL_METRICS_EXPORTER === 'otlp',
+      logs: otelEnabled && OTEL_LOGS_EXPORTER === 'otlp'
+    },
+    MEMORY_LOG_INTERVAL_MS,
     TLS_PASSPHRASE: optional(source.TLS_PASSPHRASE),
     warnings
   };

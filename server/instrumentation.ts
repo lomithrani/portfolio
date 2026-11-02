@@ -4,7 +4,9 @@ import { NodeSDK } from '@opentelemetry/sdk-node'
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace'
 import type { SpanExporter } from '@opentelemetry/sdk-trace'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
+import type { PushMetricExporter } from '@opentelemetry/sdk-metrics'
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs'
+import type { LogRecordExporter } from '@opentelemetry/sdk-logs'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto'
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-proto'
@@ -12,6 +14,7 @@ import { resourceFromAttributes } from '@opentelemetry/resources'
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
 import { metrics } from '@opentelemetry/api'
 import { env } from './env'
+import type { ServerEnv } from './env'
 
 // Span attributes the Elysia plugin fills with credentials or personal data:
 // every request header (the session cookie is a 7-day JWT), the parsed
@@ -39,39 +42,94 @@ export const redactingSpanExporter = (exporter: SpanExporter): SpanExporter => (
 	forceFlush: () => exporter.forceFlush?.() ?? Promise.resolve()
 })
 
-// Telemetry is fully off unless OTEL_EXPORTER_OTLP_ENDPOINT is set: no SDK,
-// no exporters, and the OpenTelemetry API stays on its no-op providers.
-// (Calling the Elysia plugin without an SDK would start its own NodeSDK
-// with default OTLP exporters pointed at http://localhost:4318.)
-let sdk: NodeSDK | undefined
+export type TelemetrySettings = Pick<
+	ServerEnv,
+	| 'NODE_ENV'
+	| 'OTEL_SERVICE_NAME'
+	| 'OTEL_EXPORTER_OTLP_ENDPOINT'
+	| 'OTEL_SDK_DISABLED'
+	| 'otelEnabled'
+	| 'otelSignals'
+>
 
-if (env.otelEnabled) {
-	// One SDK owns traces, metrics and logs. Exporters read the endpoint and
-	// headers from OTEL_EXPORTER_OTLP_* themselves.
-	sdk = new NodeSDK({
-		resource: resourceFromAttributes({
-			[ATTR_SERVICE_NAME]: env.OTEL_SERVICE_NAME,
-			'deployment.environment.name': env.NODE_ENV
-		}),
-		spanProcessors: [new BatchSpanProcessor({
-			exporter: redactingSpanExporter(new OTLPTraceExporter())
-		})],
-		metricReaders: [new PeriodicExportingMetricReader({
-			exporter: new OTLPMetricExporter(),
-			exportIntervalMillis: 60_000
-		})],
-		logRecordProcessors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter() })],
-		instrumentations: []
-	})
-	// Must run before the plugin (which then reuses this SDK instead of
-	// starting another) and before metrics.getMeter() below
-	sdk.start()
+/** Builds each signal's exporter; tests swap in in-memory ones */
+export interface TelemetryExporters {
+	traces: () => SpanExporter
+	metrics: () => PushMetricExporter
+	logs: () => LogRecordExporter
 }
 
-// Elysia request tracing; a plain no-op plugin when telemetry is off
-export const instrumentation = env.otelEnabled
-	? opentelemetry({ serviceName: env.OTEL_SERVICE_NAME })
-	: new Elysia({ name: 'otel-disabled' })
+// Read the endpoint and headers from OTEL_EXPORTER_OTLP_* themselves
+const otlpExporters: TelemetryExporters = {
+	traces: () => new OTLPTraceExporter(),
+	metrics: () => new OTLPMetricExporter(),
+	logs: () => new OTLPLogExporter()
+}
+
+const METRIC_EXPORT_INTERVAL_MS = 60_000
+
+/**
+ * The SDK (not started yet) for the signals the environment exports, or
+ * undefined when telemetry is off (no endpoint, or OTEL_SDK_DISABLED=true).
+ * A switched-off signal gets an empty list, never undefined: for a missing
+ * list NodeSDK builds exporters of its own from OTEL_*_EXPORTER and
+ * OTEL_EXPORTER_OTLP_PROTOCOL. So OTEL_TRACES_EXPORTER=none leaves no tracer
+ * provider, OTEL_METRICS_EXPORTER=none no meter provider (the instruments
+ * below are then no-ops), and OTEL_LOGS_EXPORTER=none a logger provider
+ * without processors (logger.ts still prints to the console).
+ */
+export const createTelemetrySdk = (
+	settings: TelemetrySettings,
+	exporters: TelemetryExporters = otlpExporters
+): NodeSDK | undefined => {
+	if (!settings.otelEnabled) return undefined
+	const signals = settings.otelSignals
+	return new NodeSDK({
+		resource: resourceFromAttributes({
+			[ATTR_SERVICE_NAME]: settings.OTEL_SERVICE_NAME,
+			'deployment.environment.name': settings.NODE_ENV
+		}),
+		spanProcessors: signals.traces
+			? [new BatchSpanProcessor({ exporter: redactingSpanExporter(exporters.traces()) })]
+			: [],
+		metricReaders: signals.metrics
+			? [new PeriodicExportingMetricReader({
+				exporter: exporters.metrics(),
+				exportIntervalMillis: METRIC_EXPORT_INTERVAL_MS
+			})]
+			: [],
+		logRecordProcessors: signals.logs
+			? [new BatchLogRecordProcessor({ exporter: exporters.logs() })]
+			: [],
+		instrumentations: []
+	})
+}
+
+/**
+ * Elysia request tracing; a plain no-op plugin unless traces are exported.
+ * Create it after the SDK started: without a registered tracer provider the
+ * OpenTelemetry plugin starts a NodeSDK of its own, with default exporters.
+ */
+export const createTracingPlugin = (settings: TelemetrySettings) =>
+	settings.otelSignals.traces
+		? opentelemetry({ serviceName: settings.OTEL_SERVICE_NAME })
+		: new Elysia({ name: 'otel-disabled' })
+
+/** One-line summary of what is exported, for the startup log */
+export const describeTelemetry = (settings: TelemetrySettings): string => {
+	if (settings.OTEL_EXPORTER_OTLP_ENDPOINT === undefined) return 'off (no OTEL_EXPORTER_OTLP_ENDPOINT)'
+	if (settings.OTEL_SDK_DISABLED) return 'off (OTEL_SDK_DISABLED=true)'
+	const signals = settings.otelSignals
+	const state = (exported: boolean) => (exported ? 'otlp' : 'none')
+	return `traces=${state(signals.traces)} metrics=${state(signals.metrics)} logs=${state(signals.logs)}`
+}
+
+const sdk = createTelemetrySdk(env)
+// Must run before the plugin (which then reuses this SDK instead of starting
+// another) and before metrics.getMeter() below
+sdk?.start()
+
+export const instrumentation = createTracingPlugin(env)
 
 /** Flushes and stops exporters (no-op when telemetry is off) */
 export const shutdownTelemetry = async () => {
