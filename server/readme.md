@@ -69,11 +69,14 @@ with a message listing every problem.
   `Content-Type` gets `415` before the body is parsed, so a cross-site HTML
   form never reaches a handler, whatever `AUTH_COOKIE_SAMESITE` is.
 - `POST /appointments/book` (public) is limited per IP address (IPv6: per
-  /64) and per visitor email, and an email can hold a few upcoming bookings
-  per schedule (`429`, with `Retry-After` for the rate limits; values in
-  `services/appointmentBookings.ts`). Each booking is reserved in MongoDB
-  (`appointmentbookings`, unique on schedule and start) before the Google
-  event is created, so two concurrent requests cannot book one slot.
+  /64) and, once the slot is known to be free, per visitor email; an email
+  can hold a few upcoming bookings per schedule (`429`, with `Retry-After`
+  for the rate limits; values in `services/appointmentBookings.ts`). Each
+  booking is reserved in MongoDB (`appointmentbookings`, unique on schedule
+  and start) before the Google event is created, under an id derived from
+  the reservation's, so two concurrent requests cannot book one slot and an
+  event Google created without answering is still found. Emails and IPs are
+  stored as HMACs keyed from `JWT_SECRET`.
 - The session cookie only reaches the API when the web app and the API are
   on the same site (e.g. `example.com` and `api.example.com`); two
   `*.up.railway.app` hosts are different sites.

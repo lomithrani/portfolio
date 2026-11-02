@@ -58,6 +58,12 @@ describe('CORS', () => {
     expect(Number(result.headers.get('access-control-max-age'))).toBeGreaterThanOrEqual(600);
   });
 
+  it('lets the browser read Retry-After (429s of the booking rate limits)', async () => {
+    const result = await makeRequest(createApp(), '/health', { headers: { Origin: env.ALLOWED_DOMAINS[0] } });
+
+    expect(result.headers.get('access-control-expose-headers')).toBe('Retry-After');
+  });
+
   it('does not allow other origins', async () => {
     const result = await preflight('https://evil.example.com');
 

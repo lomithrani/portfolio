@@ -1,4 +1,5 @@
-import { createHash } from 'node:crypto'
+import { createHmac } from 'node:crypto'
+import { env } from '../env'
 import { RateLimitCounter } from '../models/database'
 
 export interface RateLimit {
@@ -7,8 +8,16 @@ export interface RateLimit {
   windowMs: number
 }
 
-/** SHA-256 (hex) of a value, to key data by an IP address or an email without storing it */
-export const hashValue = (value: string) => createHash('sha256').update(value).digest('hex')
+// Derived from JWT_SECRET, so the hashes need no setting of their own; a new
+// JWT_SECRET resets the rate limit counters and the per-email booking caps
+const HASH_KEY = createHmac('sha256', env.JWT_SECRET).update('portfolio:hashValue').digest()
+
+/**
+ * HMAC-SHA256 (hex) of a value, to key data by an IP address or an email
+ * without storing it. Keyed: a database dump alone cannot be matched against
+ * a list of candidate addresses
+ */
+export const hashValue = (value: string) => createHmac('sha256', HASH_KEY).update(value).digest('hex')
 
 /** Counter key of a value (an IP address, an email) */
 export const rateLimitKey = (scope: string, value: string) => `${scope}:${hashValue(value)}`

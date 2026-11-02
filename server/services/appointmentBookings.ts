@@ -16,19 +16,30 @@ import type { RateLimit } from './rateLimit'
 
 /** Booking requests per IP address (IPv6: per /64), whatever their outcome */
 export const BOOKING_REQUESTS_PER_IP: RateLimit = { limit: 10, windowMs: 60 * 60_000 }
-/** Booking requests per visitor email address, whatever their outcome */
+/**
+ * Booking requests per visitor email address that reach a free slot, whatever
+ * their outcome. Invalid requests do not count: they would let anyone use up
+ * someone else's quota for free
+ */
 export const BOOKING_REQUESTS_PER_EMAIL: RateLimit = { limit: 5, windowMs: 24 * 60 * 60_000 }
 /** Upcoming bookings one email address may hold on one schedule */
 export const MAX_UPCOMING_BOOKINGS_PER_EMAIL = 2
 
 /**
- * A booking still without event id after this long was abandoned (the API
- * stopped between the reservation and Google's answer). Well above
- * EVENT_INSERT_TIMEOUT_MS, so a booking in progress is never taken for one.
+ * A pending booking (no event id recorded) whose hold is older than this was
+ * abandoned, unless Google has its event. The hold is renewed just before the
+ * event insert, which times out well within this
  */
 const PENDING_BOOKING_TIMEOUT_MS = 4 * EVENT_INSERT_TIMEOUT_MS
 
 const SLOT_TAKEN = 'This slot is no longer available'
+
+/**
+ * Id of the Google event of a booking: the booking's id, in Google's base32hex
+ * alphabet (hex digits are a subset). Google can then be asked whether a
+ * booking's event exists even when the API never got its response
+ */
+export const bookingEventId = (id: Types.ObjectId) => id.toHexString()
 
 /**
  * One key per mailbox: case, a `+tag` suffix and, for Gmail, dots do not
@@ -50,20 +61,24 @@ const waitText = (seconds: number) => {
   return `${Math.round(minutes / 60)} hours`
 }
 
-/** Counts a booking request; throws TooManyRequestsError (429) over a limit */
-export async function limitBookingRequests(ip: string | null, email: string) {
-  // Unknown without a server or proxy header (tests): the email limit still applies
-  if (ip) {
-    const key = rateLimitKey('book:ip', rateLimitAddress(ip))
-    const retryAfter = await consumeRateLimit(key, BOOKING_REQUESTS_PER_IP)
-    if (retryAfter !== null) {
-      throw new TooManyRequestsError(
-        `Too many booking requests from your network. Try again in ${waitText(retryAfter)}`,
-        retryAfter
-      )
-    }
+/** Counts a booking request from an IP; throws TooManyRequestsError (429) over the limit */
+export async function limitBookingRequestsFromIp(ip: string | null) {
+  // Unknown without a server or proxy header (tests)
+  if (!ip) return
+  const retryAfter = await consumeRateLimit(rateLimitKey('book:ip', rateLimitAddress(ip)), BOOKING_REQUESTS_PER_IP)
+  if (retryAfter !== null) {
+    throw new TooManyRequestsError(
+      `Too many booking requests from your network. Try again in ${waitText(retryAfter)}`,
+      retryAfter
+    )
   }
+}
 
+/**
+ * Counts a booking request for an email, once its slot is known to be free;
+ * throws TooManyRequestsError (429) over the limit
+ */
+export async function limitBookingRequestsForEmail(email: string) {
   const key = rateLimitKey('book:email', normalizeEmail(email))
   const retryAfter = await consumeRateLimit(key, BOOKING_REQUESTS_PER_EMAIL)
   if (retryAfter !== null) {
@@ -77,24 +92,37 @@ export async function limitBookingRequests(ip: string | null, email: string) {
 type Booking = AppointmentBooking & { _id: Types.ObjectId }
 
 /**
- * Whether a booking no longer holds its slot: abandoned while pending, or its
- * event was cancelled, deleted or moved in Google Calendar directly
+ * Whether a booking still holds its slot: pending and recently held (its
+ * request may be creating the event), or its event exists in Google at the
+ * booked time. False once the event was cancelled, deleted or moved in Google
+ * Calendar directly, or when an abandoned booking's event was never created.
  */
-async function isStale(calendar: calendar_v3.Calendar, booking: Booking) {
-  if (!booking.eventId) return booking.createdAt.getTime() < Date.now() - PENDING_BOOKING_TIMEOUT_MS
-  const event = await getEvent(calendar, booking.calendarId, booking.eventId)
-  if (!isAppointmentEvent(event)) return true
-  return (
-    Date.parse(event?.start?.dateTime ?? '') !== booking.start.getTime() ||
-    Date.parse(event?.end?.dateTime ?? '') !== booking.end.getTime()
-  )
+async function holdsSlot(calendar: calendar_v3.Calendar, booking: Booking) {
+  if (!booking.eventId && booking.heldAt.getTime() > Date.now() - PENDING_BOOKING_TIMEOUT_MS) return true
+
+  const eventId = booking.eventId ?? bookingEventId(booking._id)
+  const event = await getEvent(calendar, booking.calendarId, eventId)
+  const holds =
+    isAppointmentEvent(event) &&
+    Date.parse(event?.start?.dateTime ?? '') === booking.start.getTime() &&
+    Date.parse(event?.end?.dateTime ?? '') === booking.end.getTime()
+  // Created, but the API stopped before recording it: record it now
+  if (holds && !booking.eventId) {
+    await AppointmentBooking.updateOne({ _id: booking._id, eventId: null }, { $set: { eventId } })
+  }
+  return holds
 }
 
-/** Deletes a stale booking; throws SlotUnavailableError (409) while it holds its slot */
-async function removeIfStale(calendar: calendar_v3.Calendar, booking: Booking) {
-  if (!(await isStale(calendar, booking))) throw new SlotUnavailableError(SLOT_TAKEN)
-  // Unless it changed meanwhile (confirmed since it was read)
-  await AppointmentBooking.deleteOne({ _id: booking._id, eventId: booking.eventId ?? null })
+/** Deletes a booking that no longer holds its slot; false when it still does */
+async function dropIfStale(calendar: calendar_v3.Calendar, booking: Booking) {
+  if (await holdsSlot(calendar, booking)) return false
+  // Unless it changed since it was read: confirmed, or its request renewed the hold
+  await AppointmentBooking.deleteOne({
+    _id: booking._id,
+    eventId: booking.eventId ?? null,
+    heldAt: booking.heldAt
+  })
+  return true
 }
 
 type BookingFields = Pick<Booking, 'schedule' | 'user' | 'calendarId' | 'start' | 'end' | 'emailHash'>
@@ -110,7 +138,7 @@ async function insertBooking(calendar: calendar_v3.Calendar, fields: BookingFiel
     const holder = await AppointmentBooking.findOne({ schedule: fields.schedule, start: fields.start })
       .lean<Booking>()
     // None: released since the insert failed
-    if (holder) await removeIfStale(calendar, holder)
+    if (holder && !(await dropIfStale(calendar, holder))) throw new SlotUnavailableError(SLOT_TAKEN)
   }
   throw new SlotUnavailableError(SLOT_TAKEN)
 }
@@ -119,10 +147,10 @@ async function insertBooking(calendar: calendar_v3.Calendar, fields: BookingFiel
  * Reserves a slot for a visitor before its Google event is created, so two
  * requests that both found the slot free in Google FreeBusy cannot both book
  * it. Throws SlotUnavailableError (409) when a booking holds the slot or
- * overlaps it on the same calendar, TooManyRequestsError (429) when the email
- * already holds MAX_UPCOMING_BOOKINGS_PER_EMAIL upcoming bookings of the
- * schedule. Returns the booking's id: confirm it with the event id, or
- * release it if the event could not be created.
+ * overlaps it (any of the owner's calendars), TooManyRequestsError (429) when
+ * the email already holds MAX_UPCOMING_BOOKINGS_PER_EMAIL upcoming bookings of
+ * the schedule. Returns the booking's id: create the event with
+ * bookingEventId(id) right away, then confirm or release the booking.
  */
 export async function reserveSlot({
   calendar,
@@ -150,30 +178,47 @@ export async function reserveSlot({
   // Checked after the insert: of two concurrent requests, the one that looks
   // last sees the other's booking, so they cannot both pass
   try {
-    const upcoming = await AppointmentBooking.countDocuments({
+    const others = await AppointmentBooking.find({
+      _id: { $ne: id },
       schedule: fields.schedule,
       emailHash: fields.emailHash,
       end: { $gt: new Date() }
-    })
-    if (upcoming > MAX_UPCOMING_BOOKINGS_PER_EMAIL) {
+    }).lean<Booking[]>()
+    let held = others.length
+    // At the cap: only bookings that still hold their slot count
+    if (held >= MAX_UPCOMING_BOOKINGS_PER_EMAIL) {
+      held = 0
+      for (const booking of others) if (!(await dropIfStale(calendar, booking))) held++
+    }
+    if (held >= MAX_UPCOMING_BOOKINGS_PER_EMAIL) {
       throw new TooManyRequestsError(
         'This email address already has the maximum number of upcoming bookings for this meeting'
       )
     }
 
-    // Another schedule on the same calendar, or a slot grid shifted by a schedule edit
+    // Another schedule (whatever its calendar, or the alias it names it by:
+    // the owner is one person), or a slot grid shifted by a schedule edit
     const overlapping = await AppointmentBooking.find({
       _id: { $ne: id },
       user: fields.user,
-      calendarId: fields.calendarId,
       start: { $lt: end },
       end: { $gt: start }
     }).lean<Booking[]>()
-    for (const booking of overlapping) await removeIfStale(calendar, booking)
+    for (const booking of overlapping) {
+      if (!(await dropIfStale(calendar, booking))) throw new SlotUnavailableError(SLOT_TAKEN)
+    }
   } catch (error) {
     await releaseBooking(id)
     throw error
   }
+
+  // The checks above may have waited on Google: renew the hold for the event
+  // insert. Fails when another request took this booking for abandoned meanwhile
+  const renewed = await AppointmentBooking.updateOne(
+    { _id: id, eventId: null },
+    { $set: { heldAt: new Date() } }
+  )
+  if (renewed.matchedCount === 0) throw new SlotUnavailableError(SLOT_TAKEN)
   return id
 }
 
@@ -183,14 +228,14 @@ export async function confirmBooking(id: Types.ObjectId, eventId: string | null 
   try {
     await AppointmentBooking.updateOne({ _id: id }, { $set: { eventId } })
   } catch (error) {
-    // The event exists and Google FreeBusy reports it: only the cleanup on cancellation is lost
+    // Still pending: the next booking of the slot finds the event by its id and records it
     logger.error('Could not record the event of a booking', {
       errorName: error instanceof Error ? error.name : typeof error
     })
   }
 }
 
-/** Frees a reserved slot whose event could not be created */
+/** Frees a reserved slot whose event Google refused */
 export async function releaseBooking(id: Types.ObjectId) {
   try {
     await AppointmentBooking.deleteOne({ _id: id })

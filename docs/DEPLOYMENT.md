@@ -247,17 +247,25 @@ to the address the visitor typed. `POST /appointments/book` therefore:
 
 - **Reserves the slot in MongoDB** (collection `appointmentbookings`, unique index on schedule and
   start) after re-checking Google FreeBusy and before creating the event, so two concurrent
-  requests for one slot cannot both book it (the second gets `409`), nor can overlapping slots of
-  two schedules on the same calendar. Cancelling from **Admin, Appointments** frees the slot at
-  once. An event deleted or moved in Google Calendar directly frees it too: the next booking of
-  the slot asks Google and drops the stale reservation. Reservations hold a hash of the visitor's
-  email, not the address, and MongoDB deletes them when the slot is over.
-- **Rate limits requests** per visitor IP address (10 per hour; IPv6 per /64) and per email
-  address (5 per 24 hours; case, `+tag` and Gmail dots ignored), and caps an email at 2 upcoming
-  bookings per schedule. Over a limit the API answers `429` (with `Retry-After` for the rate
-  limits) and `/hire` shows its message. Counters live in MongoDB (`ratelimitcounters`, hashed
-  keys, deleted when their window ends), so they hold across restarts and deploys. Change the
-  values in `server/services/appointmentBookings.ts`.
+  requests for one slot cannot both book it (the second gets `409`), nor can two overlapping
+  bookings of the owner, whatever calendar their schedules use. The event gets the reservation's
+  id, so Google can always be asked whether it exists: when Google refuses the event the slot is
+  freed, but after a timeout or a network error the reservation stays until Google confirms there
+  is no event. Cancelling from **Admin, Appointments** frees the slot at once. An event deleted or
+  moved in Google Calendar directly frees it too: the next booking of the slot asks Google and
+  drops the stale reservation. Reservations hold a keyed hash of the visitor's email, not the
+  address, and MongoDB deletes them when the slot is over.
+- **Rate limits requests** per visitor IP address (10 per hour, counting every request; IPv6 per
+  /64) and per email address (5 per 24 hours, counting only requests for a free slot, so nobody
+  can use up someone else's quota with invalid requests; case, `+tag` and Gmail dots ignored),
+  and caps an email at 2 upcoming bookings per schedule (bookings whose event was deleted in
+  Google Calendar no longer count). Over a limit the API answers `429` (with `Retry-After`, which
+  CORS lets the browser read, for the rate limits) and `/hire` shows its message. Counters live
+  in MongoDB (`ratelimitcounters`, deleted when their window ends), so they hold across restarts
+  and deploys. Change the values in `server/services/appointmentBookings.ts`.
+- **Hashes** emails and IP addresses with an HMAC keyed from `JWT_SECRET`, so a database dump
+  alone cannot be matched against a list of addresses. Changing `JWT_SECRET` (which also signs
+  everyone out) resets the rate limit counters and the per-email caps.
 
 The per-IP limit needs the visitor's address. Behind Railway's edge proxy the TCP peer is the
 proxy, so the API reads the `X-Real-IP` header Railway sets instead: that is the default of

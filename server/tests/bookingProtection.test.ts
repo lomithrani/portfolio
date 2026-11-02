@@ -1,9 +1,11 @@
 // Pure helpers of the POST /appointments/book protection. The rate limits and
 // reservations themselves run against MongoDB in appointments.test.ts.
 import { describe, it, expect, afterEach } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { env } from '../env';
 import { clientAddress, rateLimitAddress } from '../services/clientAddress';
 import { normalizeEmail } from '../services/appointmentBookings';
+import { hashValue } from '../services/rateLimit';
 
 describe('clientAddress', () => {
   const savedHeader = env.CLIENT_IP_HEADER;
@@ -63,5 +65,14 @@ describe('normalizeEmail', () => {
     ['jane.doe@gmail.com', 'janedoe@gmail.com']
   ])('keys %s as %s', (email, expected) => {
     expect(normalizeEmail(email)).toBe(expected);
+  });
+});
+
+describe('hashValue', () => {
+  it('is keyed with the server secret: a plain SHA-256 of a candidate address does not match it', () => {
+    const address = 'jane@example.com';
+    expect(hashValue(address)).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashValue(address)).toBe(hashValue(address));
+    expect(hashValue(address)).not.toBe(createHash('sha256').update(address).digest('hex'));
   });
 });
