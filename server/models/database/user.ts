@@ -15,7 +15,10 @@ export const userSchema = new Schema({
     refreshToken: { type: String, select: false },
     accessToken: { type: String, select: false },
     tokenExpiry: { type: Date },
-    connectedAt: { type: Date }
+    connectedAt: { type: Date },
+    // Set, with the tokens removed, when Google refused the stored grant
+    // (revoked, expired, other OAuth client): the admin is asked to reconnect
+    revokedAt: { type: Date }
   }
 });
 

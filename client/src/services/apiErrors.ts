@@ -18,3 +18,16 @@ export const isDomainNotFound = (
 	errorStatus(error) === 404 &&
 	typeof error?.value === 'string' &&
 	error.value.trim() === DOMAIN_NOT_FOUND;
+
+// Body of the API's 409 when a booked slot is no longer free or bookable (SlotUnavailableError).
+// Any other 409 on a booking means the owner's calendar cannot take bookings right now: not
+// connected, or Google refused its access and the owner has to reconnect.
+const SLOT_UNAVAILABLE = 'This slot is no longer available';
+
+/** Whether the API answered that the requested slot was taken meanwhile. */
+export const isSlotUnavailable = (
+	error: { status: unknown; value?: unknown } | null | undefined
+): boolean =>
+	errorStatus(error) === 409 &&
+	typeof error?.value === 'string' &&
+	error.value.trim() === SLOT_UNAVAILABLE;
