@@ -165,6 +165,7 @@ local development.
 | `GOOGLE_CLIENT_ID`             | no       | Only if you use your own OAuth client; must equal the web's `PUBLIC_GOOGLE_CLIENT_ID`              |
 | `GOOGLE_CLIENT_SECRET`         | for appointments | Client secret of that same OAuth client; sealed. Enables Google Calendar appointments (see [Google Calendar appointments](#google-calendar-appointments)) |
 | `AUTH_COOKIE_SAMESITE`         | no       | Leave unset (`strict`); see [Custom domains](#custom-domains-are-required-for-login)               |
+| `CLIENT_IP_HEADER`             | no       | Leave unset: on Railway it defaults to `X-Real-IP`. Set it only behind another proxy (see [Booking protection](#booking-protection)) |
 | `API_DOCS`                     | no       | `true` to serve the OpenAPI docs (`/swagger`) in production; off by default there                  |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | no       | OTLP endpoint (e.g. Grafana Cloud); telemetry is fully off while it is unset                       |
 | `OTEL_EXPORTER_OTLP_HEADERS`   | no       | e.g. `Authorization=Basic <base64 of instanceId:token>`; sealed                                    |
@@ -235,6 +236,35 @@ from every query unless the calendar service asks for them, and never returned b
 token because the app was authorized before), remove the app under
 [Google account, Third-party connections](https://myaccount.google.com/connections) and connect
 again.
+
+### Booking protection
+
+Booking is public, and every booking makes Google email an invitation from the owner's calendar
+to the address the visitor typed. `POST /appointments/book` therefore:
+
+- **Reserves the slot in MongoDB** (collection `appointmentbookings`, unique index on schedule and
+  start) after re-checking Google FreeBusy and before creating the event, so two concurrent
+  requests for one slot cannot both book it (the second gets `409`), nor can overlapping slots of
+  two schedules on the same calendar. Cancelling from **Admin, Appointments** frees the slot at
+  once. An event deleted or moved in Google Calendar directly frees it too: the next booking of
+  the slot asks Google and drops the stale reservation. Reservations hold a hash of the visitor's
+  email, not the address, and MongoDB deletes them when the slot is over.
+- **Rate limits requests** per visitor IP address (10 per hour; IPv6 per /64) and per email
+  address (5 per 24 hours; case, `+tag` and Gmail dots ignored), and caps an email at 2 upcoming
+  bookings per schedule. Over a limit the API answers `429` (with `Retry-After` for the rate
+  limits) and `/hire` shows its message. Counters live in MongoDB (`ratelimitcounters`, hashed
+  keys, deleted when their window ends), so they hold across restarts and deploys. Change the
+  values in `server/services/appointmentBookings.ts`.
+
+The per-IP limit needs the visitor's address. Behind Railway's edge proxy the TCP peer is the
+proxy, so the API reads the `X-Real-IP` header Railway sets instead: that is the default of
+`CLIENT_IP_HEADER` whenever Railway's `RAILWAY_PROJECT_ID` variable is present, so nothing needs
+setting on Railway. Put another proxy in front of Railway (e.g. Cloudflare's orange cloud on the
+custom domain) and `X-Real-IP` becomes that proxy's address: set `CLIENT_IP_HEADER` to the header
+holding the visitor's address there (`CF-Connecting-IP` for Cloudflare). For a list header such as
+`X-Forwarded-For`, the API takes the last entry, the one the closest proxy appended. Only name a
+header that proxy overwrites: anything else, a client can set to any value. An invalid header
+name stops the deployment with `CLIENT_IP_HEADER must be an HTTP header name`.
 
 ## Custom domains are required for login
 

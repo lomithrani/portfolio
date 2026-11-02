@@ -32,6 +32,14 @@ import {
   listUpcomingEvents
 } from '../services/googleCalendar'
 import {
+  confirmBooking,
+  limitBookingRequests,
+  releaseBooking,
+  releaseEventBooking,
+  reserveSlot
+} from '../services/appointmentBookings'
+import { clientAddress } from '../services/clientAddress'
+import {
   computeAvailableSlots,
   isValidTimeZone,
   wallClockToUTC,
@@ -158,6 +166,8 @@ const appointmentsAdmin = new Elysia()
         throw new AppointmentEventNotFoundError('Appointment not found')
       }
       await deleteEvent(calendar, calendarId, eventId)
+      // The slot is bookable again
+      await releaseEventBooking(userId, eventId)
       return { deleted: true }
     },
     {
@@ -256,8 +266,11 @@ const appointmentsPublic = new Elysia()
   )
   .post(
     '/appointments/book',
-    async ({ body }) => {
+    async ({ body, request, server }) => {
       const { scheduleId, startTime, name, email, notes } = body
+
+      // Before anything else: every request counts, whatever its outcome
+      await limitBookingRequests(clientAddress(request, server), email)
 
       const schedule = await findEnabledSchedule(scheduleId)
 
@@ -276,19 +289,35 @@ const appointmentsPublic = new Elysia()
         throw new SlotUnavailableError('This slot is no longer available')
       }
 
+      // Held from here: a concurrent request for the same slot gets a 409
+      const bookingId = await reserveSlot({
+        calendar,
+        schedule,
+        start: new Date(slot.start),
+        end: new Date(slot.end),
+        email
+      })
+
       const description = [
         `Booked via portfolio by ${name} (${email})`,
         notes ? `\nNotes:\n${notes}` : ''
       ].join('')
-      const event = await createEvent(calendar, schedule.calendarId ?? 'primary', {
-        summary: `${schedule.title} — ${name}`,
-        description,
-        startTime: slot.start,
-        endTime: slot.end,
-        timezone: schedule.timezone,
-        attendeeEmail: email,
-        addGoogleMeet: schedule.locationType === 'google_meet'
-      })
+      let event: calendar_v3.Schema$Event
+      try {
+        event = await createEvent(calendar, schedule.calendarId ?? 'primary', {
+          summary: `${schedule.title} — ${name}`,
+          description,
+          startTime: slot.start,
+          endTime: slot.end,
+          timezone: schedule.timezone,
+          attendeeEmail: email,
+          addGoogleMeet: schedule.locationType === 'google_meet'
+        })
+      } catch (error) {
+        await releaseBooking(bookingId)
+        throw error
+      }
+      await confirmBooking(bookingId, event.id)
 
       return {
         booked: true,

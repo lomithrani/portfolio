@@ -137,10 +137,15 @@
 
 		booking = false;
 		if (error || !booked) {
-			bookingError =
-				errorStatus(error) === 409
-					? 'This slot was just taken. Please pick another one.'
-					: 'Booking failed. Please try again.';
+			const status = errorStatus(error);
+			if (status === 409) {
+				bookingError = 'This slot was just taken. Please pick another one.';
+			} else if (status === 429 && typeof error?.value === 'string') {
+				// Rate limit or booking cap: the API's message says what to do, or how long to wait
+				bookingError = error.value;
+			} else {
+				bookingError = 'Booking failed. Please try again.';
+			}
 			await loadSlots();
 			return;
 		}

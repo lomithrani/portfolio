@@ -27,6 +27,12 @@ export interface ServerEnv {
   AUTH_COOKIE_SAMESITE: CookieSameSite;
   /** Secure flag of the auth cookie: production or SameSite=None */
   authCookieSecure: boolean;
+  /**
+   * Lower-case name of the request header holding the visitor's IP address, set by the
+   * reverse proxy (Railway: x-real-ip, the default when RAILWAY_PROJECT_ID is set). Undefined:
+   * the socket's peer address. Only used to rate limit public routes
+   */
+  CLIENT_IP_HEADER?: string;
   /** Serve OpenAPI docs (always outside production, opt-in with API_DOCS=true) */
   apiDocsEnabled: boolean;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
@@ -46,6 +52,8 @@ export class EnvironmentError extends Error {
 }
 
 const SAME_SITE_VALUES: readonly CookieSameSite[] = ['strict', 'lax', 'none'];
+// RFC 9110 token
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 const MIN_PRODUCTION_SECRET_LENGTH = 32;
 
 // A value that is not a JSON array of strings is fatal. Entries that are not
@@ -170,6 +178,19 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     );
   }
 
+  // Behind Railway's edge proxy the socket's peer is the proxy: every visitor would share one
+  // address. Railway sets X-Real-IP to the visitor's address (and RAILWAY_PROJECT_ID on every
+  // deployment), so that is the default there
+  const rawClientIpHeader = optional(source.CLIENT_IP_HEADER);
+  if (rawClientIpHeader && !HEADER_NAME.test(rawClientIpHeader)) {
+    problems.push(
+      `CLIENT_IP_HEADER must be an HTTP header name, e.g. X-Real-IP (got ${JSON.stringify(rawClientIpHeader)})`
+    );
+  }
+  const CLIENT_IP_HEADER =
+    rawClientIpHeader?.toLowerCase() ??
+    (optional(source.RAILWAY_PROJECT_ID) !== undefined ? 'x-real-ip' : undefined);
+
   if (problems.length > 0) throw new EnvironmentError(problems);
 
   if (isProduction && JWT_SECRET.length < MIN_PRODUCTION_SECRET_LENGTH) {
@@ -195,6 +216,7 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     PORT,
     AUTH_COOKIE_SAMESITE,
     authCookieSecure: isProduction || AUTH_COOKIE_SAMESITE === 'none',
+    CLIENT_IP_HEADER,
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',

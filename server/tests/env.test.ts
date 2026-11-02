@@ -137,6 +137,15 @@ describe('parseEnv', () => {
     expect(parseEnv({ ...base, NODE_ENV: 'production', API_DOCS: 'true' }).apiDocsEnabled).toBe(true);
   });
 
+  it('reads the client IP from the socket, X-Real-IP on Railway, or CLIENT_IP_HEADER', () => {
+    expect(parseEnv(base).CLIENT_IP_HEADER).toBeUndefined();
+    // Railway sets RAILWAY_PROJECT_ID on every deployment, and X-Real-IP at its edge
+    expect(parseEnv({ ...base, RAILWAY_PROJECT_ID: 'b2c4' }).CLIENT_IP_HEADER).toBe('x-real-ip');
+    expect(parseEnv({ ...base, RAILWAY_PROJECT_ID: 'b2c4', CLIENT_IP_HEADER: 'CF-Connecting-IP' }).CLIENT_IP_HEADER)
+      .toBe('cf-connecting-ip');
+    expect(problemsOf({ ...base, CLIENT_IP_HEADER: 'X Real IP' })[0]).toContain('CLIENT_IP_HEADER');
+  });
+
   it('enables telemetry only with an OTLP endpoint', () => {
     expect(parseEnv({ ...base, OTEL_EXPORTER_OTLP_ENDPOINT: '' }).otelEnabled).toBe(false);
     expect(parseEnv({ ...base, OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otlp.example.com' }).otelEnabled)

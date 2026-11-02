@@ -1,6 +1,6 @@
 import { ValidationError } from 'elysia';
 import mongoose from 'mongoose';
-import { HttpError } from '../errors';
+import { HttpError, TooManyRequestsError } from '../errors';
 import { isDuplicateKeyError } from './mongoErrors';
 
 export type ErrorBody = string | { type: 'validation'; on: string; property: string; message: string };
@@ -13,6 +13,8 @@ export interface ResolvedError {
    * misses (scanner noise; the http.server.requests metric still counts them)
    */
   level: 'error' | 'warn' | 'silent';
+  /** Extra response headers, e.g. Retry-After on a 429 */
+  headers?: Record<string, string>;
 }
 
 const INTERNAL_SERVER_ERROR: ResolvedError = {
@@ -56,6 +58,15 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
   if (code === 'PARSE') return { status: 400, body: 'Bad Request', level: 'warn' };
   if (code === 'INVALID_COOKIE_SIGNATURE') return { status: 400, body: 'Bad Request', level: 'warn' };
   if (code === 'INVALID_FILE_TYPE') return { status: 422, body: 'Invalid file type', level: 'warn' };
+
+  if (error instanceof TooManyRequestsError && error.retryAfterSeconds !== undefined) {
+    return {
+      status: error.status,
+      body: error.message,
+      level: 'warn',
+      headers: { 'retry-after': String(Math.max(1, Math.ceil(error.retryAfterSeconds))) }
+    };
+  }
 
   if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
     return { status: error.status, body: error.message, level: 'warn' };

@@ -15,6 +15,12 @@ export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar'
 /** Tags the events created by the app, so only bookings are listed or deleted */
 export const APPOINTMENT_TAG = 'portfolio_appointment'
 
+/**
+ * Client timeout of an event insert. A booking waiting for Google longer than
+ * a few times this is taken for abandoned (services/appointmentBookings.ts)
+ */
+export const EVENT_INSERT_TIMEOUT_MS = 30_000
+
 type UserId = string | Types.ObjectId
 
 export function createOAuth2Client() {
@@ -204,12 +210,15 @@ export async function createEvent(
     }
   }
 
-  const res = await calendar.events.insert({
-    calendarId,
-    requestBody: event,
-    conferenceDataVersion: params.addGoogleMeet ? 1 : 0,
-    sendUpdates: 'all'
-  })
+  const res = await calendar.events.insert(
+    {
+      calendarId,
+      requestBody: event,
+      conferenceDataVersion: params.addGoogleMeet ? 1 : 0,
+      sendUpdates: 'all'
+    },
+    { timeout: EVENT_INSERT_TIMEOUT_MS }
+  )
 
   return res.data
 }

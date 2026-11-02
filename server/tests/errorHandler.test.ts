@@ -10,7 +10,8 @@ import {
   ForbiddenError,
   InvalidGoogleTokenError,
   MissingAuthCookieError,
-  ResourceNotFoundError
+  ResourceNotFoundError,
+  TooManyRequestsError
 } from '../errors';
 import { Domain } from '../models/database';
 
@@ -27,6 +28,21 @@ describe('resolveError', () => {
     const resolved = resolveError('UNKNOWN', error);
     expect(resolved.status).toBe(status);
     expect(resolved.body).toBe(error.message);
+  });
+
+  it('maps a 429 to a Retry-After header in whole seconds', () => {
+    expect(resolveError('UNKNOWN', new TooManyRequestsError('Slow down', 59.2))).toEqual({
+      status: 429,
+      body: 'Slow down',
+      level: 'warn',
+      headers: { 'retry-after': '60' }
+    });
+    // A quota without a known end
+    expect(resolveError('UNKNOWN', new TooManyRequestsError('Quota reached'))).toEqual({
+      status: 429,
+      body: 'Quota reached',
+      level: 'warn'
+    });
   });
 
   it('maps unmatched routes to 404 without logging them', () => {

@@ -69,7 +69,7 @@ export const createApp = () =>
     .use(apiDocs())
     .error(errors)
     .onError(({ code, error, set, request, route, path }) => {
-      const { status, body, level } = resolveError(code, error)
+      const { status, body, level, headers } = resolveError(code, error)
       const attributes = {
         code: String(code),
         status,
@@ -90,6 +90,7 @@ export const createApp = () =>
       }
 
       set.status = status
+      if (headers) Object.assign(set.headers, headers)
       return body
     })
     .get('/health', ({ set }) => {
