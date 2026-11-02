@@ -2,6 +2,9 @@
 // be local or come from TEST_MONGO_URL). Google is faked at the fetch layer:
 // the real @googleapis/calendar and google-auth-library clients build every
 // request, so tokens really go from the database to Google, and nowhere else.
+// Each test logs in its own users, claims its own domain and gets a fresh fake
+// Google, named with a suffix unique to that test, and its data is removed
+// after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose from 'mongoose';
 import { env } from '../env';
@@ -35,19 +38,15 @@ import {
 } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
-const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-const id = (name: string) => `ap-${name}-${suffix}`;
-const emails = ['owner', 'other', 'sweep'].map((name) => `${id(name)}@example.com`);
-const [OWNER_EMAIL, OTHER_EMAIL, SWEEP_EMAIL] = emails;
-const OWNER_DOMAIN = id('domain');
-const SWEEP_DOMAIN = id('domain-sweep');
-const SKILL_NAMES = [id('skill-hard'), id('skill-soft')];
-/** Visitor emails: unique per run, as the per-email rate limit outlives the suite */
-const visitor = (name: string) => `${id(name)}@example.com`;
-const JANE_EMAIL = visitor('jane');
+/** Names unique to one test: everything it creates carries its suffix */
+const testNames = () => {
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const id = (name: string) => `ap-${name}-${suffix}`;
+  return { suffix, id, email: (name: string) => `${id(name)}@example.com` };
+};
 
 const TEST_CLIENT_SECRET = 'GOCSPX-test-client-secret';
-const PRIMARY_CALENDAR = `${id('calendar')}@example.com`;
+const PRIMARY_CALENDAR = `ap-calendar-${testNames().suffix}@example.com`;
 const TIMEZONE = 'Europe/Paris';
 
 // ── Fake Google (OAuth token endpoint + Calendar v3) ────────
@@ -76,7 +75,10 @@ interface GoogleRequest {
 const googleError = (status: number, message: string) =>
   Response.json({ error: { code: status, message } }, { status });
 
-const createFakeGoogle = () => {
+/** Every token any test's fake Google issued: none may ever appear in an API response */
+const allIssuedTokens = new Set<string>();
+
+const createFakeGoogle = (suffix: string) => {
   let counter = 0;
   const state = {
     /** Every token Google issued: none may ever appear in an API response */
@@ -95,6 +97,7 @@ const createFakeGoogle = () => {
   const issue = (kind: 'access' | 'refresh') => {
     const token = `${kind}-token-${suffix}-${++counter}`;
     state.issuedTokens.add(token);
+    allIssuedTokens.add(token);
     (kind === 'access' ? state.accessTokens : state.refreshTokens).add(token);
     return token;
   };
@@ -220,7 +223,8 @@ const createFakeGoogle = () => {
   return { state, install };
 };
 
-const google = createFakeGoogle();
+// A fresh fake per test (beforeEach): no events, busy times or tokens carry over
+let google: ReturnType<typeof createFakeGoogle>;
 
 // ── API calls, all recorded ─────────────────────────────────
 
@@ -234,8 +238,8 @@ interface RecordedResponse {
 
 const responses: RecordedResponse[] = [];
 let app: ReturnType<typeof createApp>;
-/** Rate limit counters the booking requests touched, deleted after the suite */
-const rateLimitKeys = new Set<string>();
+/** Rate limit counters this test's booking requests touched, removed after it */
+let rateLimitKeys = new Set<string>();
 
 const call = async (
   method: string,
@@ -273,9 +277,10 @@ const call = async (
   };
 };
 
-const login = async (sub: string, email: string) => {
+/** Logs in with Google as this test's user `name` (sub and email derived from it) */
+const login = async (name: string) => {
   const result = await call('POST', '/login', {
-    body: { token: await signGoogleIdToken({ claims: { sub, email } }) }
+    body: { token: await signGoogleIdToken({ claims: { sub: t.id(`sub-${name}`), email: t.email(name) } }) }
   });
   expect(result.status).toBe(200);
   const cookie = `auth=${parseCookie(result.headers.get('Set-Cookie') ?? '')['auth']}`;
@@ -305,33 +310,25 @@ const at = (time: string, date = BOOKING_DATE) => wallClockToUTC(date, time, TIM
 const storedTokens = (userId: string) =>
   User.findById(userId).select('+googleCalendar.refreshToken +googleCalendar.accessToken');
 
-let owner: { cookie: string; userId: string };
-let other: { cookie: string; userId: string };
-const savedSecret = env.GOOGLE_CLIENT_SECRET;
+/** Connects the owner's Google Calendar (calendar scope and a refresh token) */
+const connectOwner = async () => {
+  const connected = await call('POST', '/appointments/connect', { body: { code: 'code-1' }, cookie: owner.cookie });
+  expect(connected.status).toBe(200);
+};
 
-beforeAll(async () => {
-  assertDisposableDatabase(env.MONGO_URL);
-  await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
-  // Indexes first: the unique (schedule, start) index is what refuses a second booking
-  await Promise.all([User.init(), Domain.init(), AppointmentBooking.init(), RateLimitCounter.init()]);
-  env.GOOGLE_CLIENT_SECRET = TEST_CLIENT_SECRET;
-  env.googleCalendarEnabled = true;
+/** API responses (bodies and headers) that contain a token Google issued */
+const tokenLeaks = (recorded: RecordedResponse[]) =>
+  recorded.flatMap((response) =>
+    [...allIssuedTokens]
+      .filter((token) => response.text.includes(token))
+      .map((token) => `${response.method} ${response.path} -> ${token}`)
+  );
 
-  app = createApp();
-  useTestGoogleKeys();
-  owner = await login(id('sub-owner'), OWNER_EMAIL);
-  other = await login(id('sub-other'), OTHER_EMAIL);
-  expect((await call('POST', '/domain/claim', { body: { name: OWNER_DOMAIN }, cookie: owner.cookie })).status).toBe(200);
-  mock.restore();
-});
-
-afterAll(async () => {
-  env.GOOGLE_CLIENT_SECRET = savedSecret;
-  env.googleCalendarEnabled = savedSecret !== undefined;
-  if (mongoose.connection.readyState !== 1) return;
-  const users = await User.find({ email: { $in: emails } });
-  const userIds = users.map((user) => user._id);
-  const domains = await Domain.find({ admin: { $in: userIds } });
+/** Removes what a test created: everything named with its suffix, and what those users own */
+const removeTestData = async (suffix: string) => {
+  const named = new RegExp(`-${suffix}(@|$)`);
+  const userIds = (await User.find({ email: named }, '_id')).map((user) => user._id);
+  const domains = await Domain.find({ $or: [{ admin: { $in: userIds } }, { name: named }] });
   await Experience.deleteMany({ _id: { $in: domains.flatMap((domain) => domain.experiences.map(String)) } });
   await Domain.deleteMany({ _id: { $in: domains.map((domain) => domain._id) } });
   await AppointmentSchedule.deleteMany({ user: { $in: userIds } });
@@ -340,19 +337,56 @@ afterAll(async () => {
     await RateLimitCounter.deleteMany({ _id: { $regex: `^(${[...rateLimitKeys].join('|')}):` } });
   }
   await Workflow.deleteMany({ user: { $in: userIds } });
-  await Skill.deleteMany({ displayName: { $in: SKILL_NAMES } });
+  await Skill.deleteMany({ displayName: named });
   await User.deleteMany({ _id: { $in: userIds } });
-  await mongoose.disconnect();
+};
+
+let t: ReturnType<typeof testNames>;
+/** Index in `responses` of this test's first response */
+let testResponses = 0;
+let owner: { cookie: string; userId: string };
+let other: { cookie: string; userId: string };
+const savedSecret = env.GOOGLE_CLIENT_SECRET;
+// Set once beforeAll has connected. Teardown then always runs: after a dropped
+// connection Mongoose waits for it to come back, or the hook fails (never skipped)
+let connected = false;
+
+beforeAll(async () => {
+  assertDisposableDatabase(env.MONGO_URL);
+  await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
+  connected = true;
+  // Indexes first: the unique (schedule, start) index is what refuses a second booking
+  await Promise.all([User.init(), Domain.init(), AppointmentBooking.init(), RateLimitCounter.init()]);
+  env.GOOGLE_CLIENT_SECRET = TEST_CLIENT_SECRET;
+  env.googleCalendarEnabled = true;
 });
 
-beforeEach(() => {
+afterAll(async () => {
+  env.GOOGLE_CLIENT_SECRET = savedSecret;
+  env.googleCalendarEnabled = savedSecret !== undefined;
+  if (connected) await mongoose.disconnect();
+});
+
+beforeEach(async () => {
+  t = testNames();
+  testResponses = responses.length;
+  rateLimitKeys = new Set();
   app = createApp();
   useTestGoogleKeys();
+  google = createFakeGoogle(t.suffix);
   google.install();
+  // Every test starts with an owner (calendar not connected) who has a domain, and another user
+  owner = await login('owner');
+  other = await login('other');
+  expect((await call('POST', '/domain/claim', { body: { name: t.id('domain') }, cookie: owner.cookie })).status).toBe(200);
 });
 
-afterEach(() => {
+afterEach(async () => {
   mock.restore();
+  // No Google token in any body or header this test received, whichever order the tests run in
+  const leaks = tokenLeaks(responses.slice(testResponses));
+  if (connected) await removeTestData(t.suffix);
+  expect(leaks).toEqual([]);
 });
 
 describe('Google Calendar connection', () => {
@@ -431,7 +465,7 @@ describe('Google Calendar connection', () => {
     // select: false: documents and lean objects loaded the usual ways have no tokens
     const loaded = [
       await User.findById(owner.userId),
-      await User.findOne({ email: OWNER_EMAIL }),
+      await User.findOne({ email: t.email('owner') }),
       (await User.find({ _id: owner.userId }))[0],
       await User.findById(owner.userId).lean()
     ];
@@ -445,6 +479,7 @@ describe('Google Calendar connection', () => {
   });
 
   it('keeps the stored refresh token when Google sends none on reconnect', async () => {
+    await connectOwner();
     const before = await storedTokens(owner.userId);
     const reconnect = await call('POST', '/appointments/connect', {
       body: { code: 'code-without-refresh' },
@@ -458,6 +493,7 @@ describe('Google Calendar connection', () => {
   });
 
   it('lists the writable calendars with the stored access token', async () => {
+    await connectOwner();
     const calendars = await call('GET', '/appointments/calendars', { cookie: owner.cookie });
     expect(calendars.status).toBe(200);
     expect(calendars.json()).toEqual([
@@ -472,6 +508,7 @@ describe('Google Calendar connection', () => {
   });
 
   it('stores the access token Google refreshes', async () => {
+    await connectOwner();
     await User.updateOne({ _id: owner.userId }, { $set: { 'googleCalendar.tokenExpiry': new Date(Date.now() - 60_000) } });
 
     expect((await call('GET', '/appointments/calendars', { cookie: owner.cookie })).status).toBe(200);
@@ -540,13 +577,15 @@ describe('public booking', () => {
   let scheduleId: string;
   let pausedId: string;
 
-  beforeAll(async () => {
+  // After the top-level beforeEach: the owner connects, with one enabled and one paused schedule
+  beforeEach(async () => {
+    await connectOwner();
     scheduleId = (await AppointmentSchedule.create({ ...scheduleBody(), user: owner.userId }))._id.toString();
     pausedId = (await AppointmentSchedule.create({ ...scheduleBody({ title: 'Paused', enabled: false }), user: owner.userId }))._id.toString();
   });
 
   it('lists the enabled schedules of a domain without private fields', async () => {
-    const listed = await call('GET', `/appointments/domains/${OWNER_DOMAIN.toUpperCase()}/schedules`);
+    const listed = await call('GET', `/appointments/domains/${t.id('domain').toUpperCase()}/schedules`);
     expect(listed.status).toBe(200);
     const schedules = listed.json<Record<string, unknown>[]>();
     expect(schedules.map((schedule) => schedule.id)).toEqual([scheduleId]);
@@ -566,7 +605,7 @@ describe('public booking', () => {
     const single = await call('GET', `/appointments/schedules/${scheduleId}/public`);
     expect(single.json()).toEqual(schedules[0]);
     expect((await call('GET', `/appointments/schedules/${pausedId}/public`)).status).toBe(404);
-    expect((await call('GET', `/appointments/domains/${id('nope')}/schedules`)).status).toBe(404);
+    expect((await call('GET', `/appointments/domains/${t.id('nope')}/schedules`)).status).toBe(404);
   });
 
   it('offers the free slots of a day', async () => {
@@ -595,7 +634,7 @@ describe('public booking', () => {
     google.state.busy = [];
     const book = (startTime: string) =>
       call('POST', '/appointments/book', {
-        body: { scheduleId, startTime, name: 'Jane Recruiter', email: JANE_EMAIL, notes: 'Hello' }
+        body: { scheduleId, startTime, name: 'Jane Recruiter', email: t.email('jane'), notes: 'Hello' }
       });
 
     const booked = await book(at('09:00'));
@@ -611,7 +650,7 @@ describe('public booking', () => {
     expect(event).toMatchObject({
       calendarId: PRIMARY_CALENDAR,
       summary: 'Intro call — Jane Recruiter',
-      attendees: [{ email: JANE_EMAIL }],
+      attendees: [{ email: t.email('jane') }],
       extendedProperties: { private: { portfolio_appointment: 'true' } }
     });
     const insert = google.state.requests.find((request) => request.method === 'POST' && request.url.pathname.endsWith('/events'));
@@ -628,10 +667,16 @@ describe('public booking', () => {
   });
 
   it('lists upcoming bookings and cancels only events the app created', async () => {
+    // A visitor's booking, made through the public route
+    const booked = await call('POST', '/appointments/book', {
+      body: { scheduleId, startTime: at('09:00'), name: 'Jane Recruiter', email: t.email('jane'), notes: 'Hello' }
+    });
+    expect(booked.status).toBe(200);
+
     const upcoming = await call('GET', '/appointments/upcoming', { cookie: owner.cookie });
     expect(upcoming.status).toBe(200);
     const [booking] = upcoming.json<{ id: string; calendarId: string; attendees: string[] }[]>();
-    expect(booking).toMatchObject({ calendarId: PRIMARY_CALENDAR, attendees: [JANE_EMAIL] });
+    expect(booking).toMatchObject({ calendarId: PRIMARY_CALENDAR, attendees: [t.email('jane')] });
 
     // One of the owner's own events, on the same calendar
     google.state.events.set('personal', { id: 'personal', calendarId: PRIMARY_CALENDAR, status: 'confirmed', summary: 'Dentist' });
@@ -649,15 +694,15 @@ describe('public booking', () => {
   // two requests' checks: only the server-side reservation refuses a second booking
   const bookSlot = (startTime: string, email: string, id = scheduleId) =>
     call('POST', '/appointments/book', { body: { scheduleId: id, startTime, name: 'Visitor', email } });
-  const bookingsAt = (startTime: string) => AppointmentBooking.find({ start: new Date(startTime) }).lean();
+  const bookingsAt = (startTime: string) =>
+    AppointmentBooking.find({ user: owner.userId, start: new Date(startTime) }).lean();
   const eventsAt = (startTime: string) =>
     [...google.state.events.values()].filter((event) => event.start?.dateTime === startTime);
 
   it('books a slot once when two requests race for it', async () => {
-    google.state.busy = [];
-    const slot = at('10:00', dateIn(8));
+    const slot = at('10:00');
 
-    const results = await Promise.all([bookSlot(slot, visitor('racer-1')), bookSlot(slot, visitor('racer-2'))]);
+    const results = await Promise.all([bookSlot(slot, t.email('racer-1')), bookSlot(slot, t.email('racer-2'))]);
     expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
     expect(results.find((result) => result.status === 409)?.text).toBe('This slot is no longer available');
 
@@ -674,46 +719,41 @@ describe('public booking', () => {
     expect(JSON.stringify(bookings)).not.toContain('racer');
 
     // Later requests too
-    expect((await bookSlot(slot, visitor('racer-3'))).status).toBe(409);
+    expect((await bookSlot(slot, t.email('racer-3'))).status).toBe(409);
     expect(eventsAt(slot)).toHaveLength(1);
   });
 
   it("refuses a slot overlapping another of the owner's bookings, whatever calendar id its schedule names", async () => {
-    google.state.busy = [];
+    expect((await bookSlot(at('10:00'), t.email('first'))).status).toBe(200);
+
     // 'primary': the same calendar as PRIMARY_CALENDAR, by its alias
     const quick = await AppointmentSchedule.create({
       ...scheduleBody({ title: 'Quick chat', durationMinutes: 30, calendarId: 'primary' }),
       user: owner.userId
     });
-    try {
-      const date = dateIn(8);
-      // 10:30-11:00 overlaps the 10:00-11:00 booked above; 11:00-11:30 does not
-      expect((await bookSlot(at('10:30', date), visitor('quick-1'), quick.id)).status).toBe(409);
-      expect((await bookSlot(at('11:00', date), visitor('quick-2'), quick.id)).status).toBe(200);
-      expect(await AppointmentBooking.countDocuments({ schedule: quick._id })).toBe(1);
-    } finally {
-      await AppointmentSchedule.deleteOne({ _id: quick._id });
-    }
+    // 10:30-11:00 overlaps the 10:00-11:00 booking; 11:00-11:30 does not
+    expect((await bookSlot(at('10:30'), t.email('quick-1'), quick.id)).status).toBe(409);
+    expect((await bookSlot(at('11:00'), t.email('quick-2'), quick.id)).status).toBe(200);
+    expect(await AppointmentBooking.countDocuments({ schedule: quick._id })).toBe(1);
   });
 
   it('makes a cancelled slot bookable again', async () => {
-    google.state.busy = [];
-    const slot = at('09:00', dateIn(9));
+    const slot = at('09:00');
     const query = `?calendarId=${encodeURIComponent(PRIMARY_CALENDAR)}`;
 
-    expect((await bookSlot(slot, visitor('first'))).status).toBe(200);
-    expect((await bookSlot(slot, visitor('second'))).status).toBe(409);
+    expect((await bookSlot(slot, t.email('first'))).status).toBe(200);
+    expect((await bookSlot(slot, t.email('second'))).status).toBe(409);
 
     // Cancelled from the admin panel: the booking goes with the event
     const [first] = eventsAt(slot);
     expect((await call('DELETE', `/appointments/events/${first.id}${query}`, { cookie: owner.cookie })).status).toBe(200);
     expect(await bookingsAt(slot)).toEqual([]);
-    expect((await bookSlot(slot, visitor('second'))).status).toBe(200);
+    expect((await bookSlot(slot, t.email('second'))).status).toBe(200);
 
     // Deleted in Google Calendar directly: the stale booking gives way once Google confirms the event is gone
     const [second] = eventsAt(slot);
     google.state.events.delete(second.id);
-    expect((await bookSlot(slot, visitor('third'))).status).toBe(200);
+    expect((await bookSlot(slot, t.email('third'))).status).toBe(200);
     const [third] = eventsAt(slot);
     expect((await bookingsAt(slot)).map((booking) => booking.eventId)).toEqual([third.id]);
 
@@ -723,125 +763,116 @@ describe('public booking', () => {
       { $unset: { eventId: 1 }, $set: { heldAt: new Date(Date.now() - 60 * 60_000) } }
     );
     google.state.events.delete(third.id);
-    expect((await bookSlot(slot, visitor('fourth'))).status).toBe(200);
+    expect((await bookSlot(slot, t.email('fourth'))).status).toBe(200);
     expect(await bookingsAt(slot)).toHaveLength(1);
   });
 
   it('releases a booking Google refused, and keeps one whose event Google may have created', async () => {
-    google.state.busy = [];
-    const date = dateIn(12);
-
     // Refused (403): no event, the slot is free again
     google.state.nextInsert = 'rejected';
-    expect((await bookSlot(at('09:00', date), visitor('refused'))).status).toBe(500);
-    expect(await bookingsAt(at('09:00', date))).toEqual([]);
-    expect((await bookSlot(at('09:00', date), visitor('after-refusal'))).status).toBe(200);
+    expect((await bookSlot(at('09:00'), t.email('refused'))).status).toBe(500);
+    expect(await bookingsAt(at('09:00'))).toEqual([]);
+    expect((await bookSlot(at('09:00'), t.email('after-refusal'))).status).toBe(200);
 
     // Created, but the response was lost: the booking stays, pending
-    const slot = at('10:00', date);
+    const slot = at('10:00');
     google.state.nextInsert = 'response-lost';
-    expect((await bookSlot(slot, visitor('lost'))).status).toBe(500);
+    expect((await bookSlot(slot, t.email('lost'))).status).toBe(500);
     const [pending] = await bookingsAt(slot);
     expect(pending.eventId).toBeUndefined();
     expect(eventsAt(slot).map((event) => event.id)).toEqual([pending._id.toHexString()]);
-    expect((await bookSlot(slot, visitor('retry'))).status).toBe(409);
+    expect((await bookSlot(slot, t.email('retry'))).status).toBe(409);
 
     // Long after, as if the API had stopped: Google has the event under the
     // booking's id, so the booking keeps the slot, and now records it
     await AppointmentBooking.updateOne({ _id: pending._id }, { $set: { heldAt: new Date(Date.now() - 60 * 60_000) } });
-    expect((await bookSlot(slot, visitor('later'))).status).toBe(409);
+    expect((await bookSlot(slot, t.email('later'))).status).toBe(409);
     expect((await AppointmentBooking.findById(pending._id).lean())?.eventId).toBe(pending._id.toHexString());
     expect(eventsAt(slot)).toHaveLength(1);
   });
 
   it('does not let a request take over a booking whose request is still running', async () => {
-    google.state.busy = [];
-    const slot = at('10:00', dateIn(13));
+    const slot = at('10:00');
     const lease = await AppointmentSchedule.create({ ...scheduleBody({ title: 'Lease', durationMinutes: 30 }), user: owner.userId });
-    try {
-      // An earlier 10:00-10:30 booking of another schedule, whose event the owner deleted in Google Calendar
-      expect((await bookSlot(slot, visitor('lease-earlier'), lease.id)).status).toBe(200);
-      const [earlier] = eventsAt(slot);
-      google.state.events.delete(earlier.id);
 
-      // Request A (10:00-11:00) overlaps it, and its lookup of that event hangs
-      let release = () => {};
-      google.state.gates.set(earlier.id, new Promise<void>((resolve) => (release = resolve)));
-      const a = bookSlot(slot, visitor('lease-a'));
-      for (let i = 0; i < 200 && google.state.gates.has(earlier.id); i++) await Bun.sleep(5);
-      expect(google.state.gates.has(earlier.id)).toBe(false);
+    // An earlier 10:00-10:30 booking of another schedule, whose event the owner deleted in Google Calendar
+    expect((await bookSlot(slot, t.email('earlier'), lease.id)).status).toBe(200);
+    const [earlier] = eventsAt(slot);
+    google.state.events.delete(earlier.id);
 
-      // Meanwhile A's booking looks abandoned (held long ago): request B takes it over, and books
-      const [held] = await AppointmentBooking.find({ schedule: scheduleId, start: new Date(slot) }).lean();
-      await AppointmentBooking.updateOne({ _id: held._id }, { $set: { heldAt: new Date(Date.now() - 60 * 60_000) } });
-      expect((await bookSlot(slot, visitor('lease-b'))).status).toBe(200);
+    // Request A (10:00-11:00) overlaps it, and its lookup of that event hangs
+    let release = () => {};
+    google.state.gates.set(earlier.id, new Promise<void>((resolve) => (release = resolve)));
+    const a = bookSlot(slot, t.email('request-a'));
+    for (let i = 0; i < 200 && google.state.gates.has(earlier.id); i++) await Bun.sleep(5);
+    expect(google.state.gates.has(earlier.id)).toBe(false);
 
-      // A resumes: it lost its hold, so it creates no second event
-      release();
-      expect((await a).status).toBe(409);
-      expect(eventsAt(slot)).toHaveLength(1);
-    } finally {
-      await AppointmentSchedule.deleteOne({ _id: lease._id });
-    }
+    // Meanwhile A's booking looks abandoned (held long ago): request B takes it over, and books
+    const [held] = await AppointmentBooking.find({ schedule: scheduleId, start: new Date(slot) }).lean();
+    await AppointmentBooking.updateOne({ _id: held._id }, { $set: { heldAt: new Date(Date.now() - 60 * 60_000) } });
+    expect((await bookSlot(slot, t.email('request-b'))).status).toBe(200);
+
+    // A resumes: it lost its hold, so it creates no second event
+    release();
+    expect((await a).status).toBe(409);
+    expect(eventsAt(slot)).toHaveLength(1);
   });
 
   it('caps the upcoming bookings of one email address on a schedule', async () => {
-    google.state.busy = [];
-    const date = dateIn(10);
-    const mailbox = id('capped');
+    const mailbox = t.id('capped');
     // One mailbox, whatever the case or +tag
     const variants = [`${mailbox}@example.com`, `${mailbox}+b@Example.com`, `${mailbox.toUpperCase()}+c@example.com`];
     expect(MAX_UPCOMING_BOOKINGS_PER_EMAIL).toBe(2);
 
-    expect((await bookSlot(at('09:00', date), variants[0])).status).toBe(200);
-    expect((await bookSlot(at('10:00', date), variants[1])).status).toBe(200);
-    const capped = await bookSlot(at('11:00', date), variants[2]);
+    expect((await bookSlot(at('09:00'), variants[0])).status).toBe(200);
+    expect((await bookSlot(at('10:00'), variants[1])).status).toBe(200);
+    const capped = await bookSlot(at('11:00'), variants[2]);
     expect(capped.status).toBe(429);
     expect(capped.text).toContain('maximum number of upcoming bookings');
     // Refused before the invitation
-    expect(eventsAt(at('11:00', date))).toEqual([]);
+    expect(eventsAt(at('11:00'))).toEqual([]);
 
     // The owner deletes one of them in Google Calendar: it no longer counts
-    google.state.events.delete(eventsAt(at('09:00', date))[0].id);
-    expect((await bookSlot(at('11:00', date), variants[2])).status).toBe(200);
+    google.state.events.delete(eventsAt(at('09:00'))[0].id);
+    expect((await bookSlot(at('11:00'), variants[2])).status).toBe(200);
   });
 
   it('rate limits booking requests per IP address, and per email once the slot is free', async () => {
     const savedHeader = env.CLIENT_IP_HEADER;
     env.CLIENT_IP_HEADER = 'x-real-ip';
     try {
-      google.state.busy = [];
-      const slot = at('09:00', dateIn(11));
+      const slot = at('09:00');
       const unknownSchedule = new mongoose.Types.ObjectId().toString();
       const book = (email: string, ip: string, id = unknownSchedule) =>
         call('POST', '/appointments/book', {
           body: { scheduleId: id, startTime: slot, name: 'Spammer', email },
           headers: { 'X-Real-IP': ip }
         });
-      // A random IPv6 /64 per run: counters outlive the suite until their window ends
+      // A random IPv6 /64 per test: counters are only removed after it
       const group = () => Math.floor(Math.random() * 0x10000).toString(16);
       const network = `2001:db8:${group()}:${group()}`;
       const anotherNetwork = () => `2001:db8:${group()}:${group()}::1`;
 
       // Per IP (IPv6: per /64), whatever the outcome (404 here)
       for (let i = 1; i <= BOOKING_REQUESTS_PER_IP.limit; i++) {
-        expect((await book(visitor(`ip-${i}`), `${network}::${i}`)).status).toBe(404);
+        expect((await book(t.email(`ip-${i}`), `${network}::${i}`)).status).toBe(404);
       }
-      const limited = await book(visitor('ip-over'), `${network}:ffff::1`, scheduleId);
+      const googleRequests = google.state.requests.length;
+      const limited = await book(t.email('ip-over'), `${network}:ffff::1`, scheduleId);
       // Refused before calling Google
-      expect(google.state.requests).toEqual([]);
+      expect(google.state.requests).toHaveLength(googleRequests);
       expect(limited.status).toBe(429);
       expect(limited.text).toStartWith('Too many booking requests from your network. Try again in ');
       const retryAfter = Number(limited.headers.get('retry-after'));
       expect(retryAfter).toBeGreaterThan(0);
       expect(retryAfter).toBeLessThanOrEqual(BOOKING_REQUESTS_PER_IP.windowMs / 1000);
       // Another network is not affected
-      expect((await book(visitor('ip-other'), anotherNetwork())).status).toBe(404);
+      expect((await book(t.email('ip-other'), anotherNetwork())).status).toBe(404);
 
       // Per email (any case or +tag), from different networks. Only requests
       // that reach a free slot count: invalid ones cannot use up the quota of
       // the address they name
-      const mailbox = id('victim');
+      const mailbox = t.id('victim');
       const variant = (i: number) => (i % 2 ? `${mailbox}+${i}@example.com` : `${mailbox.toUpperCase()}@EXAMPLE.COM`);
       for (let i = 1; i <= BOOKING_REQUESTS_PER_EMAIL.limit; i++) {
         expect((await book(variant(i), anotherNetwork())).status).toBe(404);
@@ -867,7 +898,7 @@ describe('public booking', () => {
     // The whole subdocument is gone from MongoDB
     expect((await storedTokens(owner.userId).lean())?.googleCalendar).toBeUndefined();
 
-    expect((await call('GET', `/appointments/domains/${OWNER_DOMAIN}/schedules`)).json()).toEqual([]);
+    expect((await call('GET', `/appointments/domains/${t.id('domain')}/schedules`)).json()).toEqual([]);
     expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(409);
   });
 });
@@ -875,7 +906,8 @@ describe('public booking', () => {
 describe('no Google token in any API response', () => {
   it('calls every route with valid input and finds the tokens in none of the responses', async () => {
     const first = responses.length;
-    const sweep = await login(id('sub-sweep'), SWEEP_EMAIL);
+    const sweepDomain = t.id('domain-sweep');
+    const sweep = await login('sweep');
     const auth = { cookie: sweep.cookie };
 
     // Connected first, so every route below answers while tokens are stored
@@ -884,19 +916,19 @@ describe('no Google token in any API response', () => {
     const stored = await storedTokens(sweep.userId);
     expect(google.state.refreshTokens.has(stored?.googleCalendar?.refreshToken ?? '')).toBe(true);
 
-    await login(id('sub-sweep'), SWEEP_EMAIL);
+    await login('sweep');
     expect((await call('GET', '/isLogged', auth)).status).toBe(200);
     expect((await call('GET', '/health')).status).toBe(200);
-    expect((await call('POST', '/domain/claim', { ...auth, body: { name: SWEEP_DOMAIN } })).status).toBe(200);
+    expect((await call('POST', '/domain/claim', { ...auth, body: { name: sweepDomain } })).status).toBe(200);
     expect((await call('GET', '/appointments/calendar-status', auth)).status).toBe(200);
 
-    expect((await call('GET', `/domain/${SWEEP_DOMAIN}`)).status).toBe(200);
-    expect((await call('PUT', `/domain/${SWEEP_DOMAIN}`, { ...auth, body: { headerTitle: 'Sweep' } })).status).toBe(200);
+    expect((await call('GET', `/domain/${sweepDomain}`)).status).toBe(200);
+    expect((await call('PUT', `/domain/${sweepDomain}`, { ...auth, body: { headerTitle: 'Sweep' } })).status).toBe(200);
 
     const project = {
       ...experienceRequestBody.projects[0],
-      hardSkills: [{ name: SKILL_NAMES[0], level: -1 }],
-      softSkills: [{ name: SKILL_NAMES[1], level: -1 }]
+      hardSkills: [{ name: t.id('skill-hard'), level: -1 }],
+      softSkills: [{ name: t.id('skill-soft'), level: -1 }]
     };
     const experience = await call('POST', '/experiences', { ...auth, body: { ...experienceRequestBody, projects: [project] } });
     expect(experience.status).toBe(200);
@@ -920,11 +952,11 @@ describe('no Google token in any API response', () => {
     expect((await call('GET', '/appointments/schedules', auth)).status).toBe(200);
 
     google.state.busy = [];
-    expect((await call('GET', `/appointments/domains/${SWEEP_DOMAIN}/schedules`)).status).toBe(200);
+    expect((await call('GET', `/appointments/domains/${sweepDomain}/schedules`)).status).toBe(200);
     expect((await call('GET', `/appointments/schedules/${scheduleId}/public`)).status).toBe(200);
     expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(200);
     const booked = await call('POST', '/appointments/book', {
-      body: { scheduleId, startTime: at('11:00'), name: 'Sweep', email: visitor('sweep-visitor') }
+      body: { scheduleId, startTime: at('11:00'), name: 'Sweep', email: t.email('sweep-visitor') }
     });
     expect(booked.status).toBe(200);
 
@@ -964,14 +996,10 @@ describe('no Google token in any API response', () => {
       .map((route) => route.name);
     expect(uncovered).toEqual([]);
 
-    // Neither token, in any body or header of this suite
+    // Neither token, in any body or header of this suite so far (afterEach
+    // also checks each test's own responses, whatever the order)
     expect(google.state.refreshTokens.size).toBeGreaterThan(0);
     expect(google.state.accessTokens.size).toBeGreaterThan(0);
-    const leaks = responses.flatMap((response) =>
-      [...google.state.issuedTokens]
-        .filter((token) => response.text.includes(token))
-        .map((token) => `${response.method} ${response.path} -> ${token}`)
-    );
-    expect(leaks).toEqual([]);
+    expect(tokenLeaks(responses)).toEqual([]);
   });
 });

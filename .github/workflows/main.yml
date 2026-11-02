@@ -75,7 +75,8 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
       - name: Server tests
-        run: bun run --cwd server test
+        # Random order catches tests that depend on each other; a failure prints --seed=N to replay it
+        run: bun run --cwd server test --randomize
       - name: Client unit tests
         run: bun run --cwd client test:unit
 

@@ -7,7 +7,7 @@ import { env } from '../env';
 import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
 import { google } from '../services/google';
 import { logger } from '../services/logger';
-import { authCookie, makeRequest, readJson, useTestGoogleKeys } from './helpers';
+import { afterResponseHooks, authCookie, makeRequest, readJson, useTestGoogleKeys } from './helpers';
 
 // Overrides mongoose.connection.readyState (a prototype getter) for one test
 const setReadyState = (state: number) =>
@@ -97,14 +97,17 @@ describe('request bodies', () => {
   });
 
   it('logs and counts rejected non-JSON requests like any other 4xx', async () => {
+    const cookie = await authCookie();
+    await afterResponseHooks();
     const warn = spyOn(logger, 'warn');
     const add = spyOn(httpRequestCounter, 'add');
 
     const result = await makeRequest(createApp(), '/experiences', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: await authCookie() },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
       body: 'title=x'
     });
+    await afterResponseHooks();
 
     expect(result.status).toBe(415);
     expect(warn).toHaveBeenCalledWith('Unsupported Media Type', expect.objectContaining({ status: 415, method: 'POST' }));
@@ -142,16 +145,17 @@ describe('HTTP metrics', () => {
   });
 
   it('records a real duration for unmatched routes too', async () => {
+    // domain.test.ts requests the same path: its late hooks must not count here
+    await afterResponseHooks();
     const record = spyOn(httpRequestDuration, 'record');
     const add = spyOn(httpRequestCounter, 'add');
 
     const result = await makeRequest(createApp(), '/wp-admin/setup.php');
     expect(result.status).toBe(404);
     // onAfterResponse runs once the response has been sent
-    await Bun.sleep(10);
+    await afterResponseHooks();
 
     expect(add).toHaveBeenCalledWith(1, { method: 'GET', route: 'unmatched' });
-    // (other tests' requests may land in the spy too)
     const call = record.mock.calls.find(([, attributes]) => attributes?.route === 'unmatched');
     expect(call).toBeDefined();
     const duration = call![0];

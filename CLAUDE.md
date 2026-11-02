@@ -46,6 +46,7 @@ bun run --cwd client test:unit    # Vitest unit tests (single run)
 bun run --cwd client test:e2e     # Playwright E2E tests (needs the API running + seeded DB)
 ```
 Server tests load `server/.env`; without `TEST_MONGO_URL` they write to its `MONGO_URL` (the dev database). The Eden suite starts the API on `PORT` (default 3000): stop `bun run dev` first or set another `PORT`.
+Server tests must pass in any order (CI runs them with `--randomize`; replay a failure with `--seed=N`): each test creates its own data, named with a unique suffix, and removes it, never relying on an earlier test or on seeded data.
 
 ### Linting & Type-checking
 ```bash
