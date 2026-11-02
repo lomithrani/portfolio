@@ -13,6 +13,13 @@ import { afterResponseHooks, authCookie, makeRequest, readJson, useTestGoogleKey
 const setReadyState = (state: number) =>
   Object.defineProperty(mongoose.connection, 'readyState', { value: state, configurable: true });
 
+// onAfterResponse (the HTTP metrics) runs after the response is returned: wait
+// until the expected call is in (up to ~1 s) instead of assuming it lands
+// within one tick. The assertions that follow still decide.
+const waitUntil = async (condition: () => boolean) => {
+  for (let attempt = 0; attempt < 100 && !condition(); attempt++) await Bun.sleep(10);
+};
+
 describe('GET /health', () => {
   afterEach(() => {
     delete (mongoose.connection as unknown as Record<string, unknown>).readyState;
@@ -92,6 +99,7 @@ describe('request bodies', () => {
 
   it('logs and counts rejected non-JSON requests like any other 4xx', async () => {
     const cookie = await authCookie();
+    // An earlier test's late POST must not land in the spy and stand in for this one
     await afterResponseHooks();
     const warn = spyOn(logger, 'warn');
     const add = spyOn(httpRequestCounter, 'add');
@@ -101,7 +109,7 @@ describe('request bodies', () => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
       body: 'title=x'
     });
-    await afterResponseHooks();
+    await waitUntil(() => add.mock.calls.some(([, attributes]) => attributes?.method === 'POST'));
 
     expect(result.status).toBe(415);
     expect(warn).toHaveBeenCalledWith('Unsupported Media Type', expect.objectContaining({ status: 415, method: 'POST' }));
@@ -146,8 +154,8 @@ describe('HTTP metrics', () => {
 
     const result = await makeRequest(createApp(), '/wp-admin/setup.php');
     expect(result.status).toBe(404);
-    // onAfterResponse runs once the response has been sent
-    await afterResponseHooks();
+    // The hook counts the request, then records its duration
+    await waitUntil(() => record.mock.calls.some(([, attributes]) => attributes?.route === 'unmatched'));
 
     expect(add).toHaveBeenCalledWith(1, { method: 'GET', route: 'unmatched' });
     const call = record.mock.calls.find(([, attributes]) => attributes?.route === 'unmatched');
