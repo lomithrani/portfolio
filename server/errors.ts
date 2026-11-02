@@ -66,6 +66,17 @@ export class UnsupportedMediaTypeError extends HttpError {
   status = 415
 }
 
+/** A rate limit or quota was hit; `retryAfterSeconds` becomes the Retry-After header */
+export class TooManyRequestsError extends HttpError {
+  status = 429
+  constructor(
+    message: string,
+    public retryAfterSeconds?: number
+  ) {
+    super(message)
+  }
+}
+
 // Appointments (Google Calendar)
 
 /** The owner has not connected Google Calendar, or the API has no OAuth client secret */
@@ -105,6 +116,7 @@ export const errors = {
   DomainAlreadyExistsError,
   UserAlreadyOwnsDomainError,
   UnsupportedMediaTypeError,
+  TooManyRequestsError,
   GoogleCalendarNotConnectedError,
   AppointmentScheduleNotFoundError,
   AppointmentEventNotFoundError,

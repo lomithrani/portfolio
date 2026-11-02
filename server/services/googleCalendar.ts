@@ -15,6 +15,14 @@ export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar'
 /** Tags the events created by the app, so only bookings are listed or deleted */
 export const APPOINTMENT_TAG = 'portfolio_appointment'
 
+/**
+ * Client timeout of an event insert. A booking waiting for Google longer than
+ * a few times this is taken for abandoned (services/appointmentBookings.ts)
+ */
+export const EVENT_INSERT_TIMEOUT_MS = 30_000
+/** Client timeout of an event lookup */
+const EVENT_GET_TIMEOUT_MS = 10_000
+
 type UserId = string | Types.ObjectId
 
 export function createOAuth2Client() {
@@ -29,6 +37,16 @@ export function createOAuth2Client() {
 const httpStatusOf = (error: unknown): number | undefined => {
   const status = (error as { response?: { status?: unknown } } | null)?.response?.status
   return typeof status === 'number' ? status : undefined
+}
+
+/**
+ * Whether Google refused an event insert, so no event exists. A timeout, a
+ * network error or a 5xx may hide an event Google created; a 409 means one
+ * with the requested id exists.
+ */
+export const isRejectedInsert = (error: unknown) => {
+  const status = httpStatusOf(error)
+  return status !== undefined && status >= 400 && status < 500 && status !== 409
 }
 
 async function exchangeCode(code: string) {
@@ -176,6 +194,8 @@ export async function createEvent(
   calendar: calendar_v3.Calendar,
   calendarId: string,
   params: {
+    /** Client-chosen id (base32hex, 5 to 1024 characters), so the event can be looked up whatever happens to the response */
+    id?: string
     summary: string
     description?: string
     startTime: string
@@ -186,6 +206,7 @@ export async function createEvent(
   }
 ) {
   const event: calendar_v3.Schema$Event = {
+    id: params.id,
     summary: params.summary,
     description: params.description,
     start: { dateTime: params.startTime, timeZone: params.timezone },
@@ -204,12 +225,15 @@ export async function createEvent(
     }
   }
 
-  const res = await calendar.events.insert({
-    calendarId,
-    requestBody: event,
-    conferenceDataVersion: params.addGoogleMeet ? 1 : 0,
-    sendUpdates: 'all'
-  })
+  const res = await calendar.events.insert(
+    {
+      calendarId,
+      requestBody: event,
+      conferenceDataVersion: params.addGoogleMeet ? 1 : 0,
+      sendUpdates: 'all'
+    },
+    { timeout: EVENT_INSERT_TIMEOUT_MS }
+  )
 
   return res.data
 }
@@ -238,7 +262,7 @@ export async function getEvent(
   eventId: string
 ) {
   try {
-    const res = await calendar.events.get({ calendarId, eventId })
+    const res = await calendar.events.get({ calendarId, eventId }, { timeout: EVENT_GET_TIMEOUT_MS })
     return res.data
   } catch (error) {
     const status = httpStatusOf(error)

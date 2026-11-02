@@ -28,6 +28,7 @@ with a message listing every problem.
 | `HOST` | no | `::` (dual-stack) | Falls back to `0.0.0.0` when IPv6 is unavailable, unless set explicitly |
 | `PORT` | no | `3000` | |
 | `AUTH_COOKIE_SAMESITE` | no | `strict` | `strict`, `lax` or `none`; the cookie is `Secure` in production or with `none` |
+| `CLIENT_IP_HEADER` | no | `X-Real-IP` on Railway (`RAILWAY_PROJECT_ID` set), else none | Request header holding the visitor's IP, set by the reverse proxy (last entry of a list such as `X-Forwarded-For`); unset: the socket's peer address. Used by the booking rate limit only |
 | `API_DOCS` | no | | `true` serves the OpenAPI docs (`/swagger`) in production; always on otherwise |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | | Enables OpenTelemetry (traces, metrics, logs); fully off when unset |
 | `OTEL_EXPORTER_OTLP_HEADERS` | no | | e.g. the Grafana Cloud authorization header |
@@ -67,6 +68,15 @@ with a message listing every problem.
 - `POST`/`PUT`/`PATCH`/`DELETE` bodies must be JSON: any other
   `Content-Type` gets `415` before the body is parsed, so a cross-site HTML
   form never reaches a handler, whatever `AUTH_COOKIE_SAMESITE` is.
+- `POST /appointments/book` (public) is limited per IP address (IPv6: per
+  /64) and, once the slot is known to be free, per visitor email; an email
+  can hold a few upcoming bookings per schedule (`429`, with `Retry-After`
+  for the rate limits; values in `services/appointmentBookings.ts`). Each
+  booking is reserved in MongoDB (`appointmentbookings`, unique on schedule
+  and start) before the Google event is created, under an id derived from
+  the reservation's, so two concurrent requests cannot book one slot and an
+  event Google created without answering is still found. Emails and IPs are
+  stored as HMACs keyed from `JWT_SECRET`.
 - The session cookie only reaches the API when the web app and the API are
   on the same site (e.g. `example.com` and `api.example.com`); two
   `*.up.railway.app` hosts are different sites.

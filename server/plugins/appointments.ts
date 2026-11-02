@@ -28,9 +28,20 @@ import {
   getEvent,
   getFreeBusy,
   isAppointmentEvent,
+  isRejectedInsert,
   listCalendars,
   listUpcomingEvents
 } from '../services/googleCalendar'
+import {
+  bookingEventId,
+  confirmBooking,
+  limitBookingRequestsForEmail,
+  limitBookingRequestsFromIp,
+  releaseBooking,
+  releaseEventBooking,
+  reserveSlot
+} from '../services/appointmentBookings'
+import { clientAddress } from '../services/clientAddress'
 import {
   computeAvailableSlots,
   isValidTimeZone,
@@ -158,6 +169,8 @@ const appointmentsAdmin = new Elysia()
         throw new AppointmentEventNotFoundError('Appointment not found')
       }
       await deleteEvent(calendar, calendarId, eventId)
+      // The slot is bookable again
+      await releaseEventBooking(userId, eventId)
       return { deleted: true }
     },
     {
@@ -256,8 +269,11 @@ const appointmentsPublic = new Elysia()
   )
   .post(
     '/appointments/book',
-    async ({ body }) => {
+    async ({ body, request, server }) => {
       const { scheduleId, startTime, name, email, notes } = body
+
+      // Before anything else: every request counts, whatever its outcome
+      await limitBookingRequestsFromIp(clientAddress(request, server))
 
       const schedule = await findEnabledSchedule(scheduleId)
 
@@ -276,19 +292,43 @@ const appointmentsPublic = new Elysia()
         throw new SlotUnavailableError('This slot is no longer available')
       }
 
+      // Only now: a request for a taken slot or an unknown schedule must not
+      // use up the quota of the address it names
+      await limitBookingRequestsForEmail(email)
+
+      // Held from here: a concurrent request for the same slot gets a 409
+      const bookingId = await reserveSlot({
+        calendar,
+        schedule,
+        start: new Date(slot.start),
+        end: new Date(slot.end),
+        email
+      })
+
       const description = [
         `Booked via portfolio by ${name} (${email})`,
         notes ? `\nNotes:\n${notes}` : ''
       ].join('')
-      const event = await createEvent(calendar, schedule.calendarId ?? 'primary', {
-        summary: `${schedule.title} — ${name}`,
-        description,
-        startTime: slot.start,
-        endTime: slot.end,
-        timezone: schedule.timezone,
-        attendeeEmail: email,
-        addGoogleMeet: schedule.locationType === 'google_meet'
-      })
+      let event: calendar_v3.Schema$Event
+      try {
+        event = await createEvent(calendar, schedule.calendarId ?? 'primary', {
+          id: bookingEventId(bookingId),
+          summary: `${schedule.title} — ${name}`,
+          description,
+          startTime: slot.start,
+          endTime: slot.end,
+          timezone: schedule.timezone,
+          attendeeEmail: email,
+          addGoogleMeet: schedule.locationType === 'google_meet'
+        })
+      } catch (error) {
+        // Refused: no event. Otherwise (timeout, network, 5xx) Google may have
+        // created it: the booking stays, and the next request for the slot
+        // asks Google for the event by its id before taking it over
+        if (isRejectedInsert(error)) await releaseBooking(bookingId)
+        throw error
+      }
+      await confirmBooking(bookingId, event.id)
 
       return {
         booked: true,

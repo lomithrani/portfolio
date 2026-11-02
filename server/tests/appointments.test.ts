@@ -9,8 +9,25 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock,
 import mongoose from 'mongoose';
 import { env } from '../env';
 import { createApp } from '../app';
-import { AppointmentSchedule, Domain, Experience, Skill, User, Workflow } from '../models/database';
+import {
+  AppointmentBooking,
+  AppointmentSchedule,
+  Domain,
+  Experience,
+  RateLimitCounter,
+  Skill,
+  User,
+  Workflow
+} from '../models/database';
+import {
+  BOOKING_REQUESTS_PER_EMAIL,
+  BOOKING_REQUESTS_PER_IP,
+  MAX_UPCOMING_BOOKINGS_PER_EMAIL,
+  normalizeEmail
+} from '../services/appointmentBookings';
+import { rateLimitAddress } from '../services/clientAddress';
 import { CALENDAR_SCOPE } from '../services/googleCalendar';
+import { rateLimitKey } from '../services/rateLimit';
 import { wallClockToUTC } from '../services/slotComputation';
 import {
   experienceRequestBody,
@@ -70,7 +87,11 @@ const createFakeGoogle = (suffix: string) => {
     refreshTokens: new Set<string>(),
     busy: [] as { start: string; end: string }[],
     events: new Map<string, FakeEvent>(),
-    requests: [] as GoogleRequest[]
+    requests: [] as GoogleRequest[],
+    /** Outcome of the next event insert: refused (403), or created with its response lost */
+    nextInsert: 'ok' as 'ok' | 'rejected' | 'response-lost',
+    /** One-shot: the next lookup of an event id waits for its promise */
+    gates: new Map<string, Promise<void>>()
   };
 
   const issue = (kind: 'access' | 'refresh') => {
@@ -107,7 +128,7 @@ const createFakeGoogle = (suffix: string) => {
     return Response.json({ error: 'unsupported_grant_type' }, { status: 400 });
   };
 
-  const calendarApi = (request: GoogleRequest) => {
+  const calendarApi = async (request: GoogleRequest) => {
     const { method, url, body } = request;
     const accessToken = request.authorization?.replace(/^Bearer /, '') ?? '';
     if (!state.accessTokens.has(accessToken)) return googleError(401, 'Invalid Credentials');
@@ -134,17 +155,23 @@ const createFakeGoogle = (suffix: string) => {
     const eventId = match[2] && decodeURIComponent(match[2]);
 
     if (!eventId && method === 'POST') {
-      const created: FakeEvent = {
-        ...(JSON.parse(body) as Omit<FakeEvent, 'id' | 'calendarId' | 'status'>),
-        id: `evt${++counter}`,
-        calendarId,
-        status: 'confirmed'
-      };
+      const outcome = state.nextInsert;
+      state.nextInsert = 'ok';
+      if (outcome === 'rejected') return googleError(403, 'Forbidden');
+
+      const requested = JSON.parse(body) as Omit<FakeEvent, 'id' | 'calendarId' | 'status'> & { id?: string };
+      // Client-chosen ids: base32hex, 5 to 1024 characters, unique per calendar
+      if (requested.id !== undefined && !/^[a-v0-9]{5,1024}$/.test(requested.id)) return googleError(400, 'Invalid resource id value.');
+      const id = requested.id ?? `evt${++counter}`;
+      if (state.events.has(id)) return googleError(409, 'The requested identifier already exists.');
+      const created: FakeEvent = { ...requested, id, calendarId, status: 'confirmed' };
       created.htmlLink = `https://calendar.google.com/event?eid=${created.id}`;
       if (url.searchParams.get('conferenceDataVersion') === '1') {
         created.hangoutLink = 'https://meet.google.com/abc-defg-hij';
       }
       state.events.set(created.id, created);
+      // Created, but the answer never reaches the API
+      if (outcome === 'response-lost') throw new TypeError('fetch failed');
       return Response.json(created);
     }
     if (!eventId && method === 'GET') {
@@ -156,6 +183,11 @@ const createFakeGoogle = (suffix: string) => {
       return Response.json({ items });
     }
 
+    const gate = eventId && method === 'GET' ? state.gates.get(eventId) : undefined;
+    if (gate) {
+      state.gates.delete(eventId);
+      await gate;
+    }
     const event = eventId ? state.events.get(eventId) : undefined;
     if (!event || event.calendarId !== calendarId) return googleError(404, 'Not Found');
     if (method === 'GET') return Response.json(event);
@@ -206,14 +238,22 @@ interface RecordedResponse {
 
 const responses: RecordedResponse[] = [];
 let app: ReturnType<typeof createApp>;
+/** Rate limit counters this test's booking requests touched, removed after it */
+let rateLimitKeys = new Set<string>();
 
 const call = async (
   method: string,
   path: string,
-  { body, cookie }: { body?: unknown; cookie?: string } = {}
+  { body, cookie, headers: extraHeaders }: { body?: unknown; cookie?: string; headers?: Record<string, string> } = {}
 ) => {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...extraHeaders };
   if (cookie) headers.Cookie = cookie;
+  if (path === '/appointments/book') {
+    const email = (body as { email?: unknown } | undefined)?.email;
+    if (typeof email === 'string') rateLimitKeys.add(rateLimitKey('book:email', normalizeEmail(email)));
+    const ip = headers['X-Real-IP'];
+    if (ip) rateLimitKeys.add(rateLimitKey('book:ip', rateLimitAddress(ip)));
+  }
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const response = await app.fetch(
     new Request(`http://localhost${path}`, {
@@ -292,6 +332,10 @@ const removeTestData = async (suffix: string) => {
   await Experience.deleteMany({ _id: { $in: domains.flatMap((domain) => domain.experiences.map(String)) } });
   await Domain.deleteMany({ _id: { $in: domains.map((domain) => domain._id) } });
   await AppointmentSchedule.deleteMany({ user: { $in: userIds } });
+  await AppointmentBooking.deleteMany({ user: { $in: userIds } });
+  if (rateLimitKeys.size > 0) {
+    await RateLimitCounter.deleteMany({ _id: { $regex: `^(${[...rateLimitKeys].join('|')}):` } });
+  }
   await Workflow.deleteMany({ user: { $in: userIds } });
   await Skill.deleteMany({ displayName: named });
   await User.deleteMany({ _id: { $in: userIds } });
@@ -311,7 +355,8 @@ beforeAll(async () => {
   assertDisposableDatabase(env.MONGO_URL);
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
   connected = true;
-  await Promise.all([User.init(), Domain.init()]);
+  // Indexes first: the unique (schedule, start) index is what refuses a second booking
+  await Promise.all([User.init(), Domain.init(), AppointmentBooking.init(), RateLimitCounter.init()]);
   env.GOOGLE_CLIENT_SECRET = TEST_CLIENT_SECRET;
   env.googleCalendarEnabled = true;
 });
@@ -325,6 +370,7 @@ afterAll(async () => {
 beforeEach(async () => {
   t = testNames();
   testResponses = responses.length;
+  rateLimitKeys = new Set();
   app = createApp();
   useTestGoogleKeys();
   google = createFakeGoogle(t.suffix);
@@ -588,7 +634,7 @@ describe('public booking', () => {
     google.state.busy = [];
     const book = (startTime: string) =>
       call('POST', '/appointments/book', {
-        body: { scheduleId, startTime, name: 'Jane Recruiter', email: 'jane@example.com', notes: 'Hello' }
+        body: { scheduleId, startTime, name: 'Jane Recruiter', email: t.email('jane'), notes: 'Hello' }
       });
 
     const booked = await book(at('09:00'));
@@ -604,7 +650,7 @@ describe('public booking', () => {
     expect(event).toMatchObject({
       calendarId: PRIMARY_CALENDAR,
       summary: 'Intro call — Jane Recruiter',
-      attendees: [{ email: 'jane@example.com' }],
+      attendees: [{ email: t.email('jane') }],
       extendedProperties: { private: { portfolio_appointment: 'true' } }
     });
     const insert = google.state.requests.find((request) => request.method === 'POST' && request.url.pathname.endsWith('/events'));
@@ -623,14 +669,14 @@ describe('public booking', () => {
   it('lists upcoming bookings and cancels only events the app created', async () => {
     // A visitor's booking, made through the public route
     const booked = await call('POST', '/appointments/book', {
-      body: { scheduleId, startTime: at('09:00'), name: 'Jane Recruiter', email: 'jane@example.com', notes: 'Hello' }
+      body: { scheduleId, startTime: at('09:00'), name: 'Jane Recruiter', email: t.email('jane'), notes: 'Hello' }
     });
     expect(booked.status).toBe(200);
 
     const upcoming = await call('GET', '/appointments/upcoming', { cookie: owner.cookie });
     expect(upcoming.status).toBe(200);
     const [booking] = upcoming.json<{ id: string; calendarId: string; attendees: string[] }[]>();
-    expect(booking).toMatchObject({ calendarId: PRIMARY_CALENDAR, attendees: ['jane@example.com'] });
+    expect(booking).toMatchObject({ calendarId: PRIMARY_CALENDAR, attendees: [t.email('jane')] });
 
     // One of the owner's own events, on the same calendar
     google.state.events.set('personal', { id: 'personal', calendarId: PRIMARY_CALENDAR, status: 'confirmed', summary: 'Dentist' });
@@ -642,6 +688,208 @@ describe('public booking', () => {
     const cancelled = await call('DELETE', `/appointments/events/${booking.id}${query}`, { cookie: owner.cookie });
     expect(cancelled.status).toBe(200);
     expect(google.state.events.has(booking.id)).toBe(false);
+  });
+
+  // The fake FreeBusy never reports the events it created, as Google between
+  // two requests' checks: only the server-side reservation refuses a second booking
+  const bookSlot = (startTime: string, email: string, id = scheduleId) =>
+    call('POST', '/appointments/book', { body: { scheduleId: id, startTime, name: 'Visitor', email } });
+  const bookingsAt = (startTime: string) =>
+    AppointmentBooking.find({ user: owner.userId, start: new Date(startTime) }).lean();
+  const eventsAt = (startTime: string) =>
+    [...google.state.events.values()].filter((event) => event.start?.dateTime === startTime);
+
+  it('books a slot once when two requests race for it', async () => {
+    const slot = at('10:00');
+
+    const results = await Promise.all([bookSlot(slot, t.email('racer-1')), bookSlot(slot, t.email('racer-2'))]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    expect(results.find((result) => result.status === 409)?.text).toBe('This slot is no longer available');
+
+    // Both passed the FreeBusy check; one event, one booking, bound to it
+    expect(google.state.requests.filter((request) => request.url.pathname.endsWith('/freeBusy'))).toHaveLength(2);
+    const [event] = eventsAt(slot);
+    expect(eventsAt(slot)).toHaveLength(1);
+    const bookings = await bookingsAt(slot);
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0].eventId).toBe(event.id);
+    // The event carries the booking's id, so Google can be asked for it whatever happens
+    expect(event.id).toBe(bookings[0]._id.toHexString());
+    // Hashed: the visitor's address is not stored
+    expect(JSON.stringify(bookings)).not.toContain('racer');
+
+    // Later requests too
+    expect((await bookSlot(slot, t.email('racer-3'))).status).toBe(409);
+    expect(eventsAt(slot)).toHaveLength(1);
+  });
+
+  it("refuses a slot overlapping another of the owner's bookings, whatever calendar id its schedule names", async () => {
+    expect((await bookSlot(at('10:00'), t.email('first'))).status).toBe(200);
+
+    // 'primary': the same calendar as PRIMARY_CALENDAR, by its alias
+    const quick = await AppointmentSchedule.create({
+      ...scheduleBody({ title: 'Quick chat', durationMinutes: 30, calendarId: 'primary' }),
+      user: owner.userId
+    });
+    // 10:30-11:00 overlaps the 10:00-11:00 booking; 11:00-11:30 does not
+    expect((await bookSlot(at('10:30'), t.email('quick-1'), quick.id)).status).toBe(409);
+    expect((await bookSlot(at('11:00'), t.email('quick-2'), quick.id)).status).toBe(200);
+    expect(await AppointmentBooking.countDocuments({ schedule: quick._id })).toBe(1);
+  });
+
+  it('makes a cancelled slot bookable again', async () => {
+    const slot = at('09:00');
+    const query = `?calendarId=${encodeURIComponent(PRIMARY_CALENDAR)}`;
+
+    expect((await bookSlot(slot, t.email('first'))).status).toBe(200);
+    expect((await bookSlot(slot, t.email('second'))).status).toBe(409);
+
+    // Cancelled from the admin panel: the booking goes with the event
+    const [first] = eventsAt(slot);
+    expect((await call('DELETE', `/appointments/events/${first.id}${query}`, { cookie: owner.cookie })).status).toBe(200);
+    expect(await bookingsAt(slot)).toEqual([]);
+    expect((await bookSlot(slot, t.email('second'))).status).toBe(200);
+
+    // Deleted in Google Calendar directly: the stale booking gives way once Google confirms the event is gone
+    const [second] = eventsAt(slot);
+    google.state.events.delete(second.id);
+    expect((await bookSlot(slot, t.email('third'))).status).toBe(200);
+    const [third] = eventsAt(slot);
+    expect((await bookingsAt(slot)).map((booking) => booking.eventId)).toEqual([third.id]);
+
+    // An abandoned reservation (the API stopped before creating the event) gives way after a while
+    await AppointmentBooking.updateOne(
+      { eventId: third.id },
+      { $unset: { eventId: 1 }, $set: { heldAt: new Date(Date.now() - 60 * 60_000) } }
+    );
+    google.state.events.delete(third.id);
+    expect((await bookSlot(slot, t.email('fourth'))).status).toBe(200);
+    expect(await bookingsAt(slot)).toHaveLength(1);
+  });
+
+  it('releases a booking Google refused, and keeps one whose event Google may have created', async () => {
+    // Refused (403): no event, the slot is free again
+    google.state.nextInsert = 'rejected';
+    expect((await bookSlot(at('09:00'), t.email('refused'))).status).toBe(500);
+    expect(await bookingsAt(at('09:00'))).toEqual([]);
+    expect((await bookSlot(at('09:00'), t.email('after-refusal'))).status).toBe(200);
+
+    // Created, but the response was lost: the booking stays, pending
+    const slot = at('10:00');
+    google.state.nextInsert = 'response-lost';
+    expect((await bookSlot(slot, t.email('lost'))).status).toBe(500);
+    const [pending] = await bookingsAt(slot);
+    expect(pending.eventId).toBeUndefined();
+    expect(eventsAt(slot).map((event) => event.id)).toEqual([pending._id.toHexString()]);
+    expect((await bookSlot(slot, t.email('retry'))).status).toBe(409);
+
+    // Long after, as if the API had stopped: Google has the event under the
+    // booking's id, so the booking keeps the slot, and now records it
+    await AppointmentBooking.updateOne({ _id: pending._id }, { $set: { heldAt: new Date(Date.now() - 60 * 60_000) } });
+    expect((await bookSlot(slot, t.email('later'))).status).toBe(409);
+    expect((await AppointmentBooking.findById(pending._id).lean())?.eventId).toBe(pending._id.toHexString());
+    expect(eventsAt(slot)).toHaveLength(1);
+  });
+
+  it('does not let a request take over a booking whose request is still running', async () => {
+    const slot = at('10:00');
+    const lease = await AppointmentSchedule.create({ ...scheduleBody({ title: 'Lease', durationMinutes: 30 }), user: owner.userId });
+
+    // An earlier 10:00-10:30 booking of another schedule, whose event the owner deleted in Google Calendar
+    expect((await bookSlot(slot, t.email('earlier'), lease.id)).status).toBe(200);
+    const [earlier] = eventsAt(slot);
+    google.state.events.delete(earlier.id);
+
+    // Request A (10:00-11:00) overlaps it, and its lookup of that event hangs
+    let release = () => {};
+    google.state.gates.set(earlier.id, new Promise<void>((resolve) => (release = resolve)));
+    const a = bookSlot(slot, t.email('request-a'));
+    for (let i = 0; i < 200 && google.state.gates.has(earlier.id); i++) await Bun.sleep(5);
+    expect(google.state.gates.has(earlier.id)).toBe(false);
+
+    // Meanwhile A's booking looks abandoned (held long ago): request B takes it over, and books
+    const [held] = await AppointmentBooking.find({ schedule: scheduleId, start: new Date(slot) }).lean();
+    await AppointmentBooking.updateOne({ _id: held._id }, { $set: { heldAt: new Date(Date.now() - 60 * 60_000) } });
+    expect((await bookSlot(slot, t.email('request-b'))).status).toBe(200);
+
+    // A resumes: it lost its hold, so it creates no second event
+    release();
+    expect((await a).status).toBe(409);
+    expect(eventsAt(slot)).toHaveLength(1);
+  });
+
+  it('caps the upcoming bookings of one email address on a schedule', async () => {
+    const mailbox = t.id('capped');
+    // One mailbox, whatever the case or +tag
+    const variants = [`${mailbox}@example.com`, `${mailbox}+b@Example.com`, `${mailbox.toUpperCase()}+c@example.com`];
+    expect(MAX_UPCOMING_BOOKINGS_PER_EMAIL).toBe(2);
+
+    expect((await bookSlot(at('09:00'), variants[0])).status).toBe(200);
+    expect((await bookSlot(at('10:00'), variants[1])).status).toBe(200);
+    const capped = await bookSlot(at('11:00'), variants[2]);
+    expect(capped.status).toBe(429);
+    expect(capped.text).toContain('maximum number of upcoming bookings');
+    // Refused before the invitation
+    expect(eventsAt(at('11:00'))).toEqual([]);
+
+    // The owner deletes one of them in Google Calendar: it no longer counts
+    google.state.events.delete(eventsAt(at('09:00'))[0].id);
+    expect((await bookSlot(at('11:00'), variants[2])).status).toBe(200);
+  });
+
+  it('rate limits booking requests per IP address, and per email once the slot is free', async () => {
+    const savedHeader = env.CLIENT_IP_HEADER;
+    env.CLIENT_IP_HEADER = 'x-real-ip';
+    try {
+      const slot = at('09:00');
+      const unknownSchedule = new mongoose.Types.ObjectId().toString();
+      const book = (email: string, ip: string, id = unknownSchedule) =>
+        call('POST', '/appointments/book', {
+          body: { scheduleId: id, startTime: slot, name: 'Spammer', email },
+          headers: { 'X-Real-IP': ip }
+        });
+      // A random IPv6 /64 per test: counters are only removed after it
+      const group = () => Math.floor(Math.random() * 0x10000).toString(16);
+      const network = `2001:db8:${group()}:${group()}`;
+      const anotherNetwork = () => `2001:db8:${group()}:${group()}::1`;
+
+      // Per IP (IPv6: per /64), whatever the outcome (404 here)
+      for (let i = 1; i <= BOOKING_REQUESTS_PER_IP.limit; i++) {
+        expect((await book(t.email(`ip-${i}`), `${network}::${i}`)).status).toBe(404);
+      }
+      const googleRequests = google.state.requests.length;
+      const limited = await book(t.email('ip-over'), `${network}:ffff::1`, scheduleId);
+      // Refused before calling Google
+      expect(google.state.requests).toHaveLength(googleRequests);
+      expect(limited.status).toBe(429);
+      expect(limited.text).toStartWith('Too many booking requests from your network. Try again in ');
+      const retryAfter = Number(limited.headers.get('retry-after'));
+      expect(retryAfter).toBeGreaterThan(0);
+      expect(retryAfter).toBeLessThanOrEqual(BOOKING_REQUESTS_PER_IP.windowMs / 1000);
+      // Another network is not affected
+      expect((await book(t.email('ip-other'), anotherNetwork())).status).toBe(404);
+
+      // Per email (any case or +tag), from different networks. Only requests
+      // that reach a free slot count: invalid ones cannot use up the quota of
+      // the address they name
+      const mailbox = t.id('victim');
+      const variant = (i: number) => (i % 2 ? `${mailbox}+${i}@example.com` : `${mailbox.toUpperCase()}@EXAMPLE.COM`);
+      for (let i = 1; i <= BOOKING_REQUESTS_PER_EMAIL.limit; i++) {
+        expect((await book(variant(i), anotherNetwork())).status).toBe(404);
+      }
+      expect((await book(variant(0), anotherNetwork(), scheduleId)).status).toBe(200);
+      // The slot is taken now, but these got past FreeBusy: they count
+      for (let i = 2; i <= BOOKING_REQUESTS_PER_EMAIL.limit; i++) {
+        expect((await book(variant(i), anotherNetwork(), scheduleId)).status).toBe(409);
+      }
+      const spammed = await book(`${mailbox}@example.com`, anotherNetwork(), scheduleId);
+      expect(spammed.status).toBe(429);
+      expect(spammed.text).toStartWith('Too many booking requests for this email address');
+      expect(Number(spammed.headers.get('retry-after'))).toBeGreaterThan(0);
+      expect(eventsAt(slot)).toHaveLength(1);
+    } finally {
+      env.CLIENT_IP_HEADER = savedHeader;
+    }
   });
 
   it('offers nothing once the owner disconnects', async () => {
@@ -708,7 +956,7 @@ describe('no Google token in any API response', () => {
     expect((await call('GET', `/appointments/schedules/${scheduleId}/public`)).status).toBe(200);
     expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(200);
     const booked = await call('POST', '/appointments/book', {
-      body: { scheduleId, startTime: at('11:00'), name: 'Sweep', email: 'sweep@example.com' }
+      body: { scheduleId, startTime: at('11:00'), name: 'Sweep', email: t.email('sweep-visitor') }
     });
     expect(booked.status).toBe(200);
 
