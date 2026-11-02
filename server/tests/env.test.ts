@@ -33,7 +33,13 @@ describe('parseEnv', () => {
       authCookieSecure: false,
       apiDocsEnabled: true,
       otelEnabled: false,
-      OTEL_SERVICE_NAME: 'portfolio-server'
+      OTEL_SERVICE_NAME: 'portfolio-server',
+      OTEL_SDK_DISABLED: false,
+      OTEL_TRACES_EXPORTER: 'otlp',
+      OTEL_METRICS_EXPORTER: 'otlp',
+      OTEL_LOGS_EXPORTER: 'otlp',
+      otelSignals: { traces: false, metrics: false, logs: false },
+      MEMORY_LOG_INTERVAL_MS: 600_000
     });
   });
 
@@ -148,7 +154,97 @@ describe('parseEnv', () => {
 
   it('enables telemetry only with an OTLP endpoint', () => {
     expect(parseEnv({ ...base, OTEL_EXPORTER_OTLP_ENDPOINT: '' }).otelEnabled).toBe(false);
-    expect(parseEnv({ ...base, OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otlp.example.com' }).otelEnabled)
-      .toBe(true);
+    expect(parseEnv({ ...base, OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otlp.example.com' })).toMatchObject({
+      otelEnabled: true,
+      otelSignals: { traces: true, metrics: true, logs: true }
+    });
+  });
+
+  describe('OpenTelemetry switches', () => {
+    const otel = { ...base, OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otlp.example.com' };
+
+    it('turns everything off with OTEL_SDK_DISABLED=true (any case), as without an endpoint', () => {
+      for (const value of ['true', 'TRUE', ' True ']) {
+        expect(parseEnv({ ...otel, OTEL_SDK_DISABLED: value })).toMatchObject({
+          OTEL_SDK_DISABLED: true,
+          otelEnabled: false,
+          otelSignals: { traces: false, metrics: false, logs: false }
+        });
+      }
+      for (const value of ['false', 'False', '', ' ']) {
+        expect(parseEnv({ ...otel, OTEL_SDK_DISABLED: value })).toMatchObject({
+          OTEL_SDK_DISABLED: false,
+          otelEnabled: true
+        });
+      }
+    });
+
+    it.each([
+      ['OTEL_TRACES_EXPORTER', { traces: false, metrics: true, logs: true }],
+      ['OTEL_METRICS_EXPORTER', { traces: true, metrics: false, logs: true }],
+      ['OTEL_LOGS_EXPORTER', { traces: true, metrics: true, logs: false }]
+    ] as const)('%s=none turns off that signal only', (name, signals) => {
+      for (const value of ['none', 'NONE', ' none ']) {
+        const env = parseEnv({ ...otel, [name]: value });
+        expect(env[name]).toBe('none');
+        expect(env.otelEnabled).toBe(true);
+        expect(env.otelSignals).toEqual(signals);
+      }
+      expect(parseEnv({ ...otel, [name]: 'OTLP' })[name]).toBe('otlp');
+    });
+
+    it('keeps the SDK on when every signal is none (OTEL_SDK_DISABLED=true is the full off)', () => {
+      const env = parseEnv({
+        ...otel,
+        OTEL_TRACES_EXPORTER: 'none',
+        OTEL_METRICS_EXPORTER: 'none',
+        OTEL_LOGS_EXPORTER: 'none'
+      });
+      expect(env.otelEnabled).toBe(true);
+      expect(env.otelSignals).toEqual({ traces: false, metrics: false, logs: false });
+    });
+
+    it('validates the switches even while telemetry is off', () => {
+      expect(parseEnv({ ...base, OTEL_METRICS_EXPORTER: 'none' })).toMatchObject({
+        OTEL_METRICS_EXPORTER: 'none',
+        otelEnabled: false
+      });
+      expect(problemsOf({ ...base, OTEL_TRACES_EXPORTER: 'console' })).toEqual([
+        'OTEL_TRACES_EXPORTER must be otlp (the default) or none (got "console")'
+      ]);
+    });
+
+    it('rejects values the SDK would ignore, all at once', () => {
+      expect(
+        problemsOf({
+          ...otel,
+          OTEL_SDK_DISABLED: 'yes',
+          OTEL_TRACES_EXPORTER: 'otlp,none',
+          OTEL_METRICS_EXPORTER: 'prometheus',
+          OTEL_LOGS_EXPORTER: 'off'
+        })
+      ).toEqual([
+        'OTEL_SDK_DISABLED must be true or false (got "yes")',
+        'OTEL_TRACES_EXPORTER must be otlp (the default) or none (got "otlp,none")',
+        'OTEL_METRICS_EXPORTER must be otlp (the default) or none (got "prometheus")',
+        'OTEL_LOGS_EXPORTER must be otlp (the default) or none (got "off")'
+      ]);
+    });
+  });
+
+  describe('MEMORY_LOG_INTERVAL_MS', () => {
+    it('defaults to 10 minutes and accepts 0 (off) or 1 s up to the timer limit', () => {
+      expect(parseEnv({ ...base, MEMORY_LOG_INTERVAL_MS: '' }).MEMORY_LOG_INTERVAL_MS).toBe(600_000);
+      expect(parseEnv({ ...base, MEMORY_LOG_INTERVAL_MS: '0' }).MEMORY_LOG_INTERVAL_MS).toBe(0);
+      expect(parseEnv({ ...base, MEMORY_LOG_INTERVAL_MS: ' 1000 ' }).MEMORY_LOG_INTERVAL_MS).toBe(1000);
+      expect(parseEnv({ ...base, MEMORY_LOG_INTERVAL_MS: '2147483647' }).MEMORY_LOG_INTERVAL_MS)
+        .toBe(2_147_483_647);
+    });
+
+    it.each(['abc', '-1', '999', '1.5', '2147483648', 'Infinity', '1e3', '0x3e8'])('rejects %p', (value) => {
+      const problems = problemsOf({ ...base, MEMORY_LOG_INTERVAL_MS: value });
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain('MEMORY_LOG_INTERVAL_MS must be 0 (off)');
+    });
   });
 });

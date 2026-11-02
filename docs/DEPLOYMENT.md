@@ -170,6 +170,9 @@ local development.
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | no       | OTLP endpoint (e.g. Grafana Cloud); telemetry is fully off while it is unset                       |
 | `OTEL_EXPORTER_OTLP_HEADERS`   | no       | e.g. `Authorization=Basic <base64 of instanceId:token>`; sealed                                    |
 | `OTEL_SERVICE_NAME`            | no       | Defaults to `portfolio-server`                                                                     |
+| `OTEL_SDK_DISABLED`            | no       | `true` turns telemetry fully off, like an unset endpoint (see [Diagnosing memory growth](#diagnosing-memory-growth)) |
+| `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER` | no | `none` switches off that one signal; leave unset (`otlp`) normally            |
+| `MEMORY_LOG_INTERVAL_MS`       | no       | Period of the `memory` log line; leave unset (`600000`, 10 minutes); `0` turns it off               |
 
 Railway provides `PORT`; Railpack sets `NODE_ENV=production` (the auth cookie is then `Secure`
 and the API docs are off). Leave `HOST` unset: the default `::` listens on IPv6 and IPv4, which
@@ -364,6 +367,59 @@ the deploy.
    signed in (the `auth` cookie is stored for the API domain). With `GOOGLE_CLIENT_SECRET` set,
    **Admin, Appointments** shows the calendar as connected (or offers to connect it).
 5. **Rollback** if needed: the previous deployment's menu has **Rollback**.
+
+## Diagnosing memory growth
+
+If the API's memory keeps climbing on Railway, find the cause with service variables alone, no
+code change. **Every variable change redeploys the service** (Railway stages the change and
+deploys it), which restarts the process and resets its memory: compare the **slope** of each
+deployment, not absolute values, and give each step about **12-24 hours**.
+
+### Reading the `memory` lines
+
+The API logs one `memory` line at startup, then every `MEMORY_LOG_INTERVAL_MS` (default 10
+minutes). Read them in the service's **Deploy Logs** (search `memory`, or
+`railway logs --service "portfolio api develop" | grep '\[INFO\] memory'`), not in Grafana: from
+step 3 on, OpenTelemetry logs are off.
+
+```
+[INFO] memory {"rss":105.1,"heapUsed":32.2,"heapTotal":12.9,"external":21.4,"arrayBuffers":17.4,"objectCount":137142,"protectedObjectCount":1281,"topObjectTypes":"string=17592 Structure=16552 Function=14286 Array=12694 UnlinkedFunctionExecutable=12527 FunctionExecutable=10106 Object=6020 SymbolTable=5053"}
+```
+
+- `rss`, `heapUsed`, `heapTotal`, `external`, `arrayBuffers` are `process.memoryUsage()` in MB
+  (on Bun, `heapUsed` is often larger than `heapTotal`: that is how Bun reports them, not an error);
+  `objectCount`, `protectedObjectCount` and `topObjectTypes` (the 8 most numerous object types)
+  come from the JavaScript heap (`bun:jsc` `heapStats()`).
+- `rss` climbs **with** `heapUsed` and `objectCount`: JavaScript objects are being kept alive. The
+  type that keeps climbing in `topObjectTypes` shows what is accumulating.
+- `rss` climbs while `heapUsed` and `objectCount` stay flat: the growth is native memory (Bun's
+  runtime, HTTP/TLS buffers); `external` or `arrayBuffers` climbing points at buffers.
+- No garbage collection is forced, so heap values saw-tooth: compare the lows over hours.
+
+The `Running at ...` line of each deployment shows what telemetry exports, e.g.
+`"telemetry":"traces=otlp metrics=none logs=otlp"`: check it after every change. A value other
+than `otlp`/`none` (or `true`/`false` for `OTEL_SDK_DISABLED`) stops the new deployment at
+startup with the list of problems, and the previous deployment stays live.
+
+### Bisection steps
+
+On the API service (`portfolio api develop`), **Variables**, add one variable per step and keep
+the ones from the previous steps. Stop at the first step whose memory stays flat.
+
+| Step | Add                          | What it switches off                                                                                   |
+| ---- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 1    | nothing (deploy this version) | Baseline: watch the `memory` lines with telemetry fully on                                            |
+| 2    | `OTEL_METRICS_EXPORTER=none` | The metric reader and OTLP metric exporter: the export to Grafana every 60 s (while idle, the only other OTLP traffic is the `memory` log record every 10 min, until step 3). The HTTP request counter and duration histogram become no-ops |
+| 3    | `OTEL_LOGS_EXPORTER=none`    | The log record processor and OTLP log exporter. Logs still reach Railway's deploy logs                 |
+| 4    | `OTEL_TRACES_EXPORTER=none`  | The Elysia tracing plugin (no spans at all), the span processor and the OTLP trace exporter            |
+| 5    | `OTEL_SDK_DISABLED=true`     | The OpenTelemetry SDK itself (context manager, propagator, the empty logger provider): same as no endpoint |
+
+- **Memory goes flat at step N**: what step N switched off causes the growth. To confirm, delete
+  the variables of the earlier steps (one redeploy) so only step N's switch remains, and check
+  that memory stays flat.
+- **Still growing at step 5**: OpenTelemetry is ruled out. The cause is elsewhere (Bun runtime,
+  MongoDB driver, platform); the `memory` lines then tell JavaScript heap from native growth.
+- **When done**, delete the variables again to restore full telemetry (one more redeploy).
 
 ## Why there is no railway.json
 
