@@ -10,6 +10,7 @@ import {
   normalizeDomainName,
   wallDateInTimezone
 } from 'portfolio-common'
+import type { BookingHorizon } from 'portfolio-common'
 import { env } from '../env'
 import { userLogged } from './userLogged'
 import { AppointmentSchedule, Domain } from '../models/database'
@@ -45,6 +46,7 @@ import {
   bookingEventId,
   confirmBooking,
   heldBookingBlocks,
+  limitAvailabilityRequestsFromIp,
   limitBookingRequestsForEmail,
   limitBookingRequestsFromIp,
   releaseBooking,
@@ -218,8 +220,10 @@ const findEnabledSchedule = async (id: string) => {
 }
 
 // The YYYY-MM-DD pattern lets 2026-02-30 through
-const assertCalendarDates = (...dates: string[]) => {
-  if (!dates.every(isCalendarDate)) throw new BadRequestError('Invalid date')
+const assertCalendarDates = (...dates: (string | undefined)[]) => {
+  if (!dates.every((date) => date === undefined || isCalendarDate(date))) {
+    throw new BadRequestError('Invalid date')
+  }
 }
 
 /**
@@ -233,9 +237,9 @@ const getAvailableSlotsByDate = async (
   calendar: calendar_v3.Calendar,
   schedule: ScheduleDocument,
   from: string,
-  to: string
+  to: string,
+  horizon: BookingHorizon = bookingHorizon(schedule)
 ): Promise<Map<string, Slot[]>> => {
-  const horizon = bookingHorizon(schedule)
   const first = from > horizon.first ? from : horizon.first
   const last = to < horizon.last ? to : horizon.last
   if (first > last) return new Map()
@@ -282,7 +286,9 @@ const appointmentsPublic = new Elysia()
   )
   .get(
     '/appointments/available-slots',
-    async ({ query: { scheduleId, date } }) => {
+    async ({ query: { scheduleId, date }, request, server }) => {
+      // Each lookup asks Google: every request counts, whatever its outcome
+      await limitAvailabilityRequestsFromIp(clientAddress(request, server))
       assertCalendarDates(date)
       const schedule = await findEnabledSchedule(scheduleId)
       // Throws GoogleCalendarNotConnectedError (409) when the owner disconnected
@@ -294,22 +300,32 @@ const appointmentsPublic = new Elysia()
     }
   )
   // The dates of [from, to] that /appointments/available-slots has slots for,
-  // so the booking page only offers those
+  // so the booking page only offers those, with the booking horizon by the
+  // API's clock: the page asks without `from` first, so its calendar never
+  // depends on the visitor's clock, then for the rest of the horizon
   .get(
     '/appointments/available-dates',
-    async ({ query: { scheduleId, from, to } }) => {
+    async ({ query: { scheduleId, from, to }, request, server }) => {
+      await limitAvailabilityRequestsFromIp(clientAddress(request, server))
       assertCalendarDates(from, to)
-      const dates = daysBetween(from, to) + 1
+      const schedule = await findEnabledSchedule(scheduleId)
+
+      const horizon = bookingHorizon(schedule)
+      const first = from ?? horizon.first
+      const last = to ?? addDays(first, MAX_AVAILABLE_DATES_RANGE - 1)
+      const dates = daysBetween(first, last) + 1
       if (dates < 1) throw new BadRequestError('The range must not end before it starts')
       if (dates > MAX_AVAILABLE_DATES_RANGE) {
         throw new BadRequestError(`At most ${MAX_AVAILABLE_DATES_RANGE} dates per request`)
       }
 
-      const schedule = await findEnabledSchedule(scheduleId)
       // Throws GoogleCalendarNotConnectedError (409) when the owner disconnected
       const calendar = await getCalendarClient(schedule.user)
-      const slotsByDate = await getAvailableSlotsByDate(calendar, schedule, from, to)
-      return [...slotsByDate].filter(([, slots]) => slots.length > 0).map(([date]) => date)
+      const slotsByDate = await getAvailableSlotsByDate(calendar, schedule, first, last, horizon)
+      return {
+        horizon,
+        dates: [...slotsByDate].filter(([, slots]) => slots.length > 0).map(([date]) => date)
+      }
     },
     {
       query: availableDatesQuery

@@ -271,8 +271,10 @@ to the address the visitor typed. `POST /appointments/book` therefore:
   /64) and per email address (5 per 24 hours, counting only requests for a free slot, so nobody
   can use up someone else's quota with invalid requests; case, `+tag` and Gmail dots ignored),
   and caps an email at 2 upcoming bookings per schedule (bookings whose event was deleted in
-  Google Calendar no longer count). Over a limit the API answers `429` (with `Retry-After`, which
-  CORS lets the browser read, for the rate limits) and `/hire` shows its message. Counters live
+  Google Calendar no longer count). The availability lookups of `/hire` (free dates and free
+  times, each one a Google FreeBusy call) share a limit of 300 per hour per IP address. Over a
+  limit the API answers `429` (with `Retry-After`, which CORS lets the browser read, for the rate
+  limits) and `/hire` shows its message. Counters live
   in MongoDB (`ratelimitcounters`, deleted when their window ends), so they hold across restarts
   and deploys. Change the values in `server/services/appointmentBookings.ts`.
 - **Hashes** emails and IP addresses with an HMAC keyed from `JWT_SECRET`, so a database dump

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { addDays } from 'portfolio-common'
+import { addDays, wallDateInTimezone } from 'portfolio-common'
 import {
   computeAvailableSlots,
   computeAvailableSlotsByDate,
@@ -44,7 +44,94 @@ describe('wallClockToUTC', () => {
       '2026-03-28T09:00:00.000Z'
     )
   })
+
+  it('uses the offset in force at the instant, not at the wall time read as UTC (regression)', () => {
+    // Los Angeles goes to summer time at 10:00 UTC on 14 March 2027: 09:00 there
+    // is 16:00 UTC (it was 17:00, 10:00 local: 09:00 UTC is still winter time)
+    expect(wallClockToUTC('2027-03-14', '09:00', 'America/Los_Angeles').toISOString()).toBe(
+      '2027-03-14T16:00:00.000Z'
+    )
+    // Back to winter time at 09:00 UTC on 7 November 2027: 08:00 is 16:00 UTC (it was 15:00, 07:00 local)
+    expect(wallClockToUTC('2027-11-07', '08:00', 'America/Los_Angeles').toISOString()).toBe(
+      '2027-11-07T16:00:00.000Z'
+    )
+    // Auckland leaves summer time (UTC+13) at 14:00 UTC on 3 April 2027: 23:00
+    // that evening is 10:00 UTC (it was 11:00, already 4 April there)
+    expect(wallClockToUTC('2027-04-03', '23:00', 'Pacific/Auckland').toISOString()).toBe(
+      '2027-04-03T10:00:00.000Z'
+    )
+  })
+
+  it('reads a time the clocks skip as past the change, and a time they show twice as the first', () => {
+    // Los Angeles, 14 March 2027: 02:00 -> 03:00, so 02:30 is read as 03:30
+    expect(wallClockToUTC('2027-03-14', '02:30', 'America/Los_Angeles').toISOString()).toBe(
+      '2027-03-14T10:30:00.000Z'
+    )
+    // Santiago, 5 September 2027: 00:00 -> 01:00, so the date starts at 01:00
+    expect(wallClockToUTC('2027-09-05', '00:00', 'America/Santiago').toISOString()).toBe(
+      '2027-09-05T04:00:00.000Z'
+    )
+    // Los Angeles, 7 November 2027: 01:30 in summer time, then again in winter time
+    expect(wallClockToUTC('2027-11-07', '01:30', 'America/Los_Angeles').toISOString()).toBe(
+      '2027-11-07T08:30:00.000Z'
+    )
+    // Paris, 31 October 2027: 02:30 in summer time (UTC+2) first
+    expect(wallClockToUTC('2027-10-31', '02:30', 'Europe/Paris').toISOString()).toBe(
+      '2027-10-31T00:30:00.000Z'
+    )
+  })
+
+  it('lands every wall time of a DST change day on that date, at that time unless skipped (property)', () => {
+    const clock = (timezone: string) =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
+    const offsetAtNoon = (date: string, timezone: string) =>
+      new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'longOffset' })
+        .formatToParts(new Date(`${date}T12:00:00Z`))
+        .find((part) => part.type === 'timeZoneName')?.value
+
+    for (const timezone of TRANSITION_ZONES) {
+      const shown = clock(timezone)
+      // The days around each change of offset in 2027
+      const days = new Set<string>()
+      for (let date = '2027-01-01'; date <= '2027-12-31'; date = addDays(date, 1)) {
+        if (offsetAtNoon(date, timezone) !== offsetAtNoon(addDays(date, 1), timezone)) {
+          for (const shift of [-1, 0, 1, 2]) days.add(addDays(date, shift))
+        }
+      }
+      expect({ timezone, changes: days.size > 0 }).toEqual({ timezone, changes: true })
+
+      for (const date of days) {
+        for (let minute = 0; minute < 24 * 60; minute += 15) {
+          const time = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
+          const instant = wallClockToUTC(date, time, timezone)
+          expect({ timezone, date, time, on: wallDateInTimezone(instant, timezone) }).toEqual({
+            timezone,
+            date,
+            time,
+            on: date
+          })
+          // Skipped: moved by the length of the change at most (an hour, 30 minutes on Lord Howe)
+          const moved = Math.abs(minutes(shown.format(instant)) - minute)
+          expect({ timezone, date, time, moved: moved <= 60 }).toEqual({ timezone, date, time, moved: true })
+        }
+      }
+    }
+  })
 })
+
+/** Zones whose offset changes in 2027, some at midnight (Santiago, Havana, Beirut) or by 30 minutes (Lord Howe) */
+const TRANSITION_ZONES = [
+  'Europe/Paris',
+  'America/Los_Angeles',
+  'America/Santiago',
+  'America/Havana',
+  'America/St_Johns',
+  'Pacific/Auckland',
+  'Pacific/Chatham',
+  'Australia/Lord_Howe',
+  'Asia/Beirut'
+]
 
 const makeSchedule = (overrides: Record<string, unknown> = {}) =>
   ({
@@ -253,6 +340,24 @@ describe('computeAvailableSlotsByDate', () => {
     expect(autumn.get('2027-10-31')?.[0].start).toBe('2027-10-31T08:00:00.000Z')
   })
 
+  it('keeps the hours of the schedule on the DST change days of Los Angeles (regression)', () => {
+    const losAngeles = mondayAndSunday({ timezone: 'America/Los_Angeles' })
+    // Sunday 14 March 2027, summer time from 02:00: 09:00-12:00 PDT (UTC-7). It
+    // lost its 09:00 slot (offset of the wall time read as UTC: still winter time)
+    expect(computeAvailableSlotsByDate(losAngeles, '2027-03-14', '2027-03-14', [], JANUARY_1).get('2027-03-14')).toEqual([
+      slot('2027-03-14T16:00:00.000Z', '2027-03-14T17:00:00.000Z'),
+      slot('2027-03-14T17:00:00.000Z', '2027-03-14T18:00:00.000Z'),
+      slot('2027-03-14T18:00:00.000Z', '2027-03-14T19:00:00.000Z')
+    ])
+    // Sunday 7 November 2027, winter time from 02:00: 09:00-12:00 PST (UTC-8). It
+    // offered 08:00, before the owner's hours
+    expect(computeAvailableSlotsByDate(losAngeles, '2027-11-07', '2027-11-07', [], JANUARY_1).get('2027-11-07')).toEqual([
+      slot('2027-11-07T17:00:00.000Z', '2027-11-07T18:00:00.000Z'),
+      slot('2027-11-07T18:00:00.000Z', '2027-11-07T19:00:00.000Z'),
+      slot('2027-11-07T19:00:00.000Z', '2027-11-07T20:00:00.000Z')
+    ])
+  })
+
   it('removes a DST day busy from midnight to midnight, and only that day', () => {
     // 28 March 2027 lasts 23 hours in Paris, 31 October 2027 lasts 25
     const spring = computeAvailableSlotsByDate(
@@ -274,7 +379,7 @@ describe('computeAvailableSlotsByDate', () => {
     expect(bookable(autumn)).toEqual(['2027-11-01'])
   })
 
-  it('gives each date the slots computeAvailableSlots gives it against every busy block (property)', () => {
+  it('gives each date the slots computeAvailableSlots gives it against every busy block, all on that date (property)', () => {
     // Deterministic pseudo-random numbers (mulberry32)
     let state = 20270328
     const random = () => {
@@ -291,7 +396,11 @@ describe('computeAvailableSlotsByDate', () => {
       ['Europe/Paris', '2027-03-20', '2027-04-04'],
       ['Europe/Paris', '2027-10-24', '2027-11-07'],
       ['America/Los_Angeles', '2027-03-07', '2027-03-21'],
+      ['America/Los_Angeles', '2027-10-31', '2027-11-14'],
       ['Pacific/Auckland', '2027-03-28', '2027-04-11'],
+      ['Pacific/Chatham', '2027-09-19', '2027-10-03'],
+      ['Australia/Lord_Howe', '2027-09-26', '2027-10-10'],
+      ['Asia/Beirut', '2027-03-21', '2027-04-04'],
       // Changes at midnight: 00:00 does not exist on 5 September 2027, and 23:00-00:00 happens twice on 3 April
       ['America/Santiago', '2027-08-29', '2027-09-12'],
       ['America/Santiago', '2027-03-28', '2027-04-11'],
@@ -330,6 +439,9 @@ describe('computeAvailableSlotsByDate', () => {
         dates.slice(1).forEach((date, i) => expect(date).toBe(addDays(dates[i], 1)))
         for (const [date, slots] of slotsByDate) {
           expect({ date, slots }).toEqual({ date, slots: computeAvailableSlots(schedule, date, busy, JANUARY_1) })
+          // POST /book looks for a slot among those of the date it starts on, in the schedule's zone
+          const startsOn = slots.map((s) => wallDateInTimezone(new Date(s.start), timezone))
+          expect({ timezone, date, startsOn }).toEqual({ timezone, date, startsOn: slots.map(() => date) })
         }
       }
     }

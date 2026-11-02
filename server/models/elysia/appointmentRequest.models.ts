@@ -50,11 +50,13 @@ export const availableSlotsQuery = t.Object({
   date: isoDate
 })
 
-// At most MAX_AVAILABLE_DATES_RANGE dates, from <= to: checked by the route
+// At most MAX_AVAILABLE_DATES_RANGE dates, from <= to: checked by the route.
+// Without `from`, the range starts today in the schedule's time zone (by the
+// API's clock); without `to`, it is as long as allowed
 export const availableDatesQuery = t.Object({
   scheduleId: objectId,
-  from: isoDate,
-  to: isoDate
+  from: t.Optional(isoDate),
+  to: t.Optional(isoDate)
 })
 
 export const bookAppointmentRequest = t.Object({

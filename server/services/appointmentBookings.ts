@@ -22,6 +22,13 @@ export const BOOKING_REQUESTS_PER_IP: RateLimit = { limit: 10, windowMs: 60 * 60
  * someone else's quota for free
  */
 export const BOOKING_REQUESTS_PER_EMAIL: RateLimit = { limit: 5, windowMs: 24 * 60 * 60_000 }
+/**
+ * Availability lookups (available-slots and available-dates together) per IP
+ * address: each one asks Google's FreeBusy for the owner's calendar.
+ * Generous: a visit takes one per meeting type looked at (a few for a booking
+ * horizon past 62 days) and one per date picked
+ */
+export const AVAILABILITY_REQUESTS_PER_IP: RateLimit = { limit: 300, windowMs: 60 * 60_000 }
 /** Upcoming bookings one email address may hold on one schedule */
 export const MAX_UPCOMING_BOOKINGS_PER_EMAIL = 2
 
@@ -72,6 +79,20 @@ export async function limitBookingRequestsFromIp(ip: string | null) {
   if (retryAfter !== null) {
     throw new TooManyRequestsError(
       `Too many booking requests from your network. Try again in ${waitText(retryAfter)}`,
+      retryAfter
+    )
+  }
+}
+
+/** Counts an availability lookup from an IP; throws TooManyRequestsError (429) over the limit */
+export async function limitAvailabilityRequestsFromIp(ip: string | null) {
+  // Unknown without a server or proxy header (tests)
+  if (!ip) return
+  const key = rateLimitKey('availability:ip', rateLimitAddress(ip))
+  const retryAfter = await consumeRateLimit(key, AVAILABILITY_REQUESTS_PER_IP)
+  if (retryAfter !== null) {
+    throw new TooManyRequestsError(
+      `Too many requests from your network. Try again in ${waitText(retryAfter)}`,
       retryAfter
     )
   }

@@ -21,6 +21,7 @@ import {
   Workflow
 } from '../models/database';
 import {
+  AVAILABILITY_REQUESTS_PER_IP,
   BOOKING_REQUESTS_PER_EMAIL,
   BOOKING_REQUESTS_PER_IP,
   MAX_UPCOMING_BOOKINGS_PER_EMAIL,
@@ -274,7 +275,7 @@ interface RecordedResponse {
 
 const responses: RecordedResponse[] = [];
 let app: ReturnType<typeof createApp>;
-/** Rate limit counters this test's booking requests touched, removed after it */
+/** Rate limit counters this test's booking and availability requests touched, removed after it */
 let rateLimitKeys = new Set<string>();
 
 const call = async (
@@ -289,6 +290,9 @@ const call = async (
     if (typeof email === 'string') rateLimitKeys.add(rateLimitKey('book:email', normalizeEmail(email)));
     const ip = headers['X-Real-IP'];
     if (ip) rateLimitKeys.add(rateLimitKey('book:ip', rateLimitAddress(ip)));
+  }
+  if (path.startsWith('/appointments/available-') && headers['X-Real-IP']) {
+    rateLimitKeys.add(rateLimitKey('availability:ip', rateLimitAddress(headers['X-Real-IP'])));
   }
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const response = await app.fetch(
@@ -959,6 +963,8 @@ describe('bookable dates', () => {
 
   const availableDates = (from: string, to: string, id = scheduleId, headers?: Record<string, string>) =>
     call('GET', `/appointments/available-dates?scheduleId=${id}&from=${from}&to=${to}`, { headers });
+  /** The bookable dates of an available-dates answer */
+  const datesOf = (response: { json: <T>() => T }) => response.json<{ dates: string[] }>().dates;
   const availableSlots = (date: string, id = scheduleId, headers?: Record<string, string>) =>
     call('GET', `/appointments/available-slots?scheduleId=${id}&date=${date}`, { headers });
   const freeBusyRequests = () => google.state.requests.filter((request) => request.url.pathname.endsWith('/freeBusy'));
@@ -986,7 +992,9 @@ describe('bookable dates', () => {
 
   it('lists exactly the dates available-slots has slots for, with one FreeBusy call', async () => {
     const { first, last } = horizon();
-    const mondays = Array.from({ length: 5 }, (_, i) => nextWeekday(1, addDays(busySunday, 1 + 7 * i)));
+    // The three Mondays after the one off: offMonday is at most 9 days away, the third one 30
+    const mondays = [7, 14, 21].map((days) => addDays(offMonday, days));
+    expect(mondays.every((monday) => weekday(monday) === 1 && monday <= last)).toBe(true);
     google.state.busy = [
       // All of a Sunday in Paris
       { start: midnight(busySunday), end: midnight(addDays(busySunday, 1)) },
@@ -1002,7 +1010,8 @@ describe('bookable dates', () => {
     const before = freeBusyRequests().length;
     const listed = await availableDates(first, last);
     expect(listed.status).toBe(200);
-    const dates = listed.json<string[]>();
+    expect(listed.json<{ horizon: unknown }>().horizon).toEqual({ first, last });
+    const dates = datesOf(listed);
     expect(freeBusyRequests()).toHaveLength(before + 1);
     expect(JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}')).toMatchObject({
       timeMin: midnight(first),
@@ -1039,13 +1048,13 @@ describe('bookable dates', () => {
 
     const fromThePast = await availableDates(addDays(first, -10), addDays(first, 20));
     expect(fromThePast.status).toBe(200);
-    expect(fromThePast.json<string[]>().every((date) => date >= first)).toBe(true);
+    expect(datesOf(fromThePast).every((date) => date >= first)).toBe(true);
     expect(JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}').timeMin).toBe(midnight(first));
 
     // Six days hold a Monday or a Sunday
     const pastTheEnd = await availableDates(addDays(last, -5), addDays(last, 20));
-    expect(pastTheEnd.json<string[]>().length).toBeGreaterThan(0);
-    expect(pastTheEnd.json<string[]>().every((date) => date <= last)).toBe(true);
+    expect(datesOf(pastTheEnd).length).toBeGreaterThan(0);
+    expect(datesOf(pastTheEnd).every((date) => date <= last)).toBe(true);
     expect(JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}').timeMax).toBe(midnight(addDays(last, 1)));
 
     const before = freeBusyRequests().length;
@@ -1055,9 +1064,50 @@ describe('bookable dates', () => {
     ]) {
       const outside = await availableDates(from, to);
       expect(outside.status).toBe(200);
-      expect(outside.json()).toEqual([]);
+      // The horizon still: the page learns it from any answer
+      expect(outside.json()).toEqual({ horizon: { first, last }, dates: [] });
     }
     expect(freeBusyRequests()).toHaveLength(before);
+  });
+
+  it("starts the range today by the API's clock without `from`, and makes it as long as allowed without `to`", async () => {
+    const { first, last } = horizon();
+    const asked = (query: string, id = scheduleId) => call('GET', `/appointments/available-dates?scheduleId=${id}${query}`);
+    const lastFreeBusy = () => JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}');
+
+    // What the booking page asks first: the visitor's clock plays no part
+    const head = await asked('');
+    expect(head.status).toBe(200);
+    expect(head.json<{ horizon: unknown }>().horizon).toEqual({ first, last });
+    expect(datesOf(head)).toEqual(datesOf(await availableDates(first, last)));
+    expect(datesOf(head)).toContain(extraWednesday);
+
+    // A horizon longer than one range: the first answer covers its first 62 dates, and the rest is asked for
+    const far = await AppointmentSchedule.create({
+      ...scheduleBody({ maxAdvanceDays: 200 }),
+      user: owner.userId
+    });
+    const farHead = await asked('', far.id);
+    expect(farHead.json<{ horizon: unknown }>().horizon).toEqual({ first, last: addDays(first, 200) });
+    expect(lastFreeBusy()).toMatchObject({
+      timeMin: midnight(first),
+      timeMax: midnight(addDays(first, MAX_AVAILABLE_DATES_RANGE))
+    });
+    expect(datesOf(farHead).at(-1)).toBe(addDays(first, MAX_AVAILABLE_DATES_RANGE - 1));
+    const next = addDays(first, MAX_AVAILABLE_DATES_RANGE);
+    const rest = await asked(`&from=${next}`, far.id);
+    expect(datesOf(rest)[0]).toBe(next);
+    expect(lastFreeBusy()).toMatchObject({
+      timeMin: midnight(next),
+      timeMax: midnight(addDays(next, MAX_AVAILABLE_DATES_RANGE))
+    });
+
+    // `to` alone: from today
+    expect(datesOf(await asked(`&to=${addDays(first, 9)}`))).toEqual(
+      datesOf(head).filter((date) => date <= addDays(first, 9))
+    );
+    const tooLong = await asked(`&to=${addDays(first, MAX_AVAILABLE_DATES_RANGE)}`);
+    expect([tooLong.status, tooLong.text]).toEqual([400, `At most ${MAX_AVAILABLE_DATES_RANGE} dates per request`]);
   });
 
   it('validates the range, and refuses impossible dates on available-slots too', async () => {
@@ -1066,7 +1116,7 @@ describe('bookable dates', () => {
 
     expect((await availableDates('tomorrow', first)).status).toBe(422);
     expect((await availableDates(first, first, 'not-an-id')).status).toBe(422);
-    expect((await call('GET', `/appointments/available-dates?scheduleId=${scheduleId}&from=${first}`)).status).toBe(422);
+    expect((await call('GET', `/appointments/available-dates?from=${first}&to=${first}`)).status).toBe(422);
 
     for (const [from, to, message] of [
       ['2027-02-30', '2027-03-02', 'Invalid date'],
@@ -1106,7 +1156,7 @@ describe('bookable dates', () => {
   it('counts a booking whose event is being created as busy, and no other', async () => {
     const monday = nextWeekday(1, addDays(offMonday, 1));
     const { first, last } = horizon();
-    const isListed = async () => (await availableDates(first, last)).json<string[]>().includes(monday);
+    const isListed = async () => datesOf(await availableDates(first, last)).includes(monday);
     const slotsOfMonday = async () => (await availableSlots(monday)).json<unknown[]>().length;
     expect(await isListed()).toBe(true);
 
@@ -1144,7 +1194,7 @@ describe('bookable dates', () => {
       for (let i = 0; i <= BOOKING_REQUESTS_PER_IP.limit; i++) {
         const listed = await availableDates(first, last, scheduleId, headers);
         expect(listed.status).toBe(200);
-        dates = listed.json<string[]>();
+        dates = datesOf(listed);
         expect((await availableSlots(dates[0], scheduleId, headers)).status).toBe(200);
       }
 
@@ -1158,6 +1208,49 @@ describe('bookable dates', () => {
         _id: { $regex: `^${rateLimitKey('book:ip', rateLimitAddress(headers['X-Real-IP']))}:` }
       }).lean();
       expect(counter?.count).toBe(1);
+    } finally {
+      env.CLIENT_IP_HEADER = savedHeader;
+    }
+  });
+
+  it('rate limits availability lookups per IP address, both routes together, before asking Google', async () => {
+    const savedHeader = env.CLIENT_IP_HEADER;
+    env.CLIENT_IP_HEADER = 'x-real-ip';
+    try {
+      const group = () => Math.floor(Math.random() * 0x10000).toString(16);
+      const network = `2001:db8:${group()}:${group()}`;
+      const fromNetwork = (host: number) => ({ 'X-Real-IP': `${network}::${host.toString(16)}` });
+      const { first, last } = horizon();
+      // Past the horizon: answered without asking Google
+      const outside = addDays(last, 1);
+
+      // Per IP (IPv6: per /64), whatever the outcome
+      for (let i = 1; i <= AVAILABILITY_REQUESTS_PER_IP.limit; i++) {
+        const lookup = i % 2
+          ? availableDates(outside, outside, scheduleId, fromNetwork(i))
+          : availableSlots(outside, scheduleId, fromNetwork(i));
+        expect((await lookup).status).toBe(200);
+      }
+      const before = freeBusyRequests().length;
+      for (const limited of [
+        await availableDates(first, last, scheduleId, fromNetwork(0xffff)),
+        await availableSlots(first, scheduleId, fromNetwork(0xffff))
+      ]) {
+        expect(limited.status).toBe(429);
+        expect(limited.text).toStartWith('Too many requests from your network. Try again in ');
+        expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+      }
+      expect(freeBusyRequests()).toHaveLength(before);
+
+      // Another network is not affected, and booking from this one is counted on its own
+      const otherNetwork = { 'X-Real-IP': `2001:db8:${group()}:${group()}::1` };
+      const [date] = datesOf(await availableDates(first, last, scheduleId, otherNetwork));
+      const [slot] = (await availableSlots(date, scheduleId, otherNetwork)).json<{ start: string }[]>();
+      const booked = await call('POST', '/appointments/book', {
+        body: { scheduleId, startTime: slot.start, name: 'Visitor', email: t.email('limited-network') },
+        headers: fromNetwork(1)
+      });
+      expect(booked.status).toBe(200);
     } finally {
       env.CLIENT_IP_HEADER = savedHeader;
     }
