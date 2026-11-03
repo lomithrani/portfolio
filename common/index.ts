@@ -4,5 +4,13 @@ export {
 	RESERVED_DOMAIN_NAMES,
 	isValidDomainName,
 	normalizeDomainName,
-	DEFAULT_GOOGLE_CLIENT_ID
+	DEFAULT_GOOGLE_CLIENT_ID,
+	MAX_AVAILABLE_DATES_RANGE,
+	addDays,
+	bookingHorizon,
+	daysBetween,
+	isCalendarDate,
+	splitDateRange,
+	wallDateInTimezone
 } from './models';
+export type { BookingHorizon, DateRange } from './models';

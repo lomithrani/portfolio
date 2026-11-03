@@ -7,6 +7,7 @@
 // after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose from 'mongoose';
+import { MAX_AVAILABLE_DATES_RANGE, addDays, bookingHorizon } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import {
@@ -20,6 +21,7 @@ import {
   Workflow
 } from '../models/database';
 import {
+  AVAILABILITY_REQUESTS_PER_IP,
   BOOKING_REQUESTS_PER_EMAIL,
   BOOKING_REQUESTS_PER_IP,
   MAX_UPCOMING_BOOKINGS_PER_EMAIL,
@@ -273,7 +275,7 @@ interface RecordedResponse {
 
 const responses: RecordedResponse[] = [];
 let app: ReturnType<typeof createApp>;
-/** Rate limit counters this test's booking requests touched, removed after it */
+/** Rate limit counters this test's booking and availability requests touched, removed after it */
 let rateLimitKeys = new Set<string>();
 
 const call = async (
@@ -288,6 +290,9 @@ const call = async (
     if (typeof email === 'string') rateLimitKeys.add(rateLimitKey('book:email', normalizeEmail(email)));
     const ip = headers['X-Real-IP'];
     if (ip) rateLimitKeys.add(rateLimitKey('book:ip', rateLimitAddress(ip)));
+  }
+  if (path.startsWith('/appointments/available-') && headers['X-Real-IP']) {
+    rateLimitKeys.add(rateLimitKey('availability:ip', rateLimitAddress(headers['X-Real-IP'])));
   }
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const response = await app.fetch(
@@ -938,6 +943,320 @@ describe('public booking', () => {
   });
 });
 
+// The booking page greys out every date this route leaves out: it must list
+// exactly the dates available-slots has slots for
+describe('bookable dates', () => {
+  let scheduleId: string;
+  /** A Monday off, a Wednesday with hours of its own, a Sunday busy all day: all past the minimum notice */
+  let offMonday: string;
+  let extraWednesday: string;
+  let busySunday: string;
+
+  /** The test schedule's booking horizon (maxAdvanceDays 30), as the API computes it now */
+  const horizon = () => bookingHorizon({ timezone: TIMEZONE, maxAdvanceDays: 30 });
+  /** Day of the week of a YYYY-MM-DD date (0 = Sunday) */
+  const weekday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay();
+  /** The first date on or after `from` that falls on `day` */
+  const nextWeekday = (day: number, from: string) => addDays(from, (day - weekday(from) + 7) % 7);
+  /** Midnight in Paris at the start of a date */
+  const midnight = (date: string) => wallClockToUTC(date, '00:00', TIMEZONE).toISOString();
+
+  const availableDates = (from: string, to: string, id = scheduleId, headers?: Record<string, string>) =>
+    call('GET', `/appointments/available-dates?scheduleId=${id}&from=${from}&to=${to}`, { headers });
+  /** The bookable dates of an available-dates answer */
+  const datesOf = (response: { json: <T>() => T }) => response.json<{ dates: string[] }>().dates;
+  const availableSlots = (date: string, id = scheduleId, headers?: Record<string, string>) =>
+    call('GET', `/appointments/available-slots?scheduleId=${id}&date=${date}`, { headers });
+  const freeBusyRequests = () => google.state.requests.filter((request) => request.url.pathname.endsWith('/freeBusy'));
+
+  // After the top-level beforeEach: the owner connects, with a Monday and Sunday schedule
+  beforeEach(async () => {
+    await connectOwner();
+    // Past the 24 hours of minimum notice, wherever today falls in the week
+    const start = addDays(horizon().first, 3);
+    offMonday = nextWeekday(1, start);
+    extraWednesday = nextWeekday(3, start);
+    busySunday = nextWeekday(0, addDays(start, 7));
+    const schedule = await AppointmentSchedule.create({
+      ...scheduleBody({
+        availability: [1, 0].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '12:00' })),
+        dateOverrides: [
+          { date: offMonday, available: false },
+          { date: extraWednesday, available: true, windows: [{ startTime: '14:00', endTime: '16:00' }] }
+        ]
+      }),
+      user: owner.userId
+    });
+    scheduleId = schedule._id.toString();
+  });
+
+  it('lists exactly the dates available-slots has slots for, with one FreeBusy call', async () => {
+    const { first, last } = horizon();
+    // The three Mondays after the one off: offMonday is at most 9 days away, the third one 30
+    const mondays = [7, 14, 21].map((days) => addDays(offMonday, days));
+    expect(mondays.every((monday) => weekday(monday) === 1 && monday <= last)).toBe(true);
+    google.state.busy = [
+      // All of a Sunday in Paris
+      { start: midnight(busySunday), end: midnight(addDays(busySunday, 1)) },
+      // Part of the next Monday
+      { start: at('09:00', mondays[0]), end: at('11:00', mondays[0]) },
+      // From a Sunday morning to the Monday morning after it
+      { start: at('10:00', addDays(mondays[1], -1)), end: at('10:00', mondays[1]) },
+      // All the slots of a Monday, in pieces
+      { start: at('08:00', mondays[2]), end: at('10:00', mondays[2]) },
+      { start: at('10:00', mondays[2]), end: at('12:30', mondays[2]) }
+    ];
+
+    const before = freeBusyRequests().length;
+    const listed = await availableDates(first, last);
+    expect(listed.status).toBe(200);
+    expect(listed.json<{ horizon: unknown }>().horizon).toEqual({ first, last });
+    const dates = datesOf(listed);
+    expect(freeBusyRequests()).toHaveLength(before + 1);
+    expect(JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}')).toMatchObject({
+      timeMin: midnight(first),
+      timeMax: midnight(addDays(last, 1)),
+      items: [{ id: PRIMARY_CALENDAR }]
+    });
+
+    expect(dates).toEqual([...dates].sort());
+    expect(dates).toContain(extraWednesday);
+    expect(dates).not.toContain(offMonday);
+    expect(dates).not.toContain(busySunday);
+    expect(dates).toContain(mondays[0]);
+    expect(dates).toContain(mondays[1]);
+    expect(dates).not.toContain(mondays[2]);
+    // Past the minimum notice, every Monday and Sunday but those
+    const expected: string[] = [];
+    for (let date = addDays(first, 2); date <= last; date = addDays(date, 1)) {
+      if ((weekday(date) <= 1 && ![offMonday, busySunday, mondays[2]].includes(date)) || date === extraWednesday) {
+        expected.push(date);
+      }
+    }
+    expect(dates.filter((date) => date >= addDays(first, 2))).toEqual(expected);
+
+    // Every date of the horizon, either way
+    for (let date = first; date <= last; date = addDays(date, 1)) {
+      const slots = await availableSlots(date);
+      expect(slots.status).toBe(200);
+      expect({ date, bookable: slots.json<unknown[]>().length > 0 }).toEqual({ date, bookable: dates.includes(date) });
+    }
+  });
+
+  it('clamps the range to the booking horizon, without asking Google outside it', async () => {
+    const { first, last } = horizon();
+
+    const fromThePast = await availableDates(addDays(first, -10), addDays(first, 20));
+    expect(fromThePast.status).toBe(200);
+    expect(datesOf(fromThePast).every((date) => date >= first)).toBe(true);
+    expect(JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}').timeMin).toBe(midnight(first));
+
+    // Six days hold a Monday or a Sunday
+    const pastTheEnd = await availableDates(addDays(last, -5), addDays(last, 20));
+    expect(datesOf(pastTheEnd).length).toBeGreaterThan(0);
+    expect(datesOf(pastTheEnd).every((date) => date <= last)).toBe(true);
+    expect(JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}').timeMax).toBe(midnight(addDays(last, 1)));
+
+    const before = freeBusyRequests().length;
+    for (const [from, to] of [
+      [addDays(first, -40), addDays(first, -1)],
+      [addDays(last, 1), addDays(last, 30)]
+    ]) {
+      const outside = await availableDates(from, to);
+      expect(outside.status).toBe(200);
+      // The horizon still: the page learns it from any answer
+      expect(outside.json()).toEqual({ horizon: { first, last }, dates: [] });
+    }
+    expect(freeBusyRequests()).toHaveLength(before);
+  });
+
+  it("starts the range today by the API's clock without `from`, and makes it as long as allowed without `to`", async () => {
+    const { first, last } = horizon();
+    const asked = (query: string, id = scheduleId) => call('GET', `/appointments/available-dates?scheduleId=${id}${query}`);
+    const lastFreeBusy = () => JSON.parse(freeBusyRequests().at(-1)?.body ?? '{}');
+
+    // What the booking page asks first: the visitor's clock plays no part
+    const head = await asked('');
+    expect(head.status).toBe(200);
+    expect(head.json<{ horizon: unknown }>().horizon).toEqual({ first, last });
+    expect(datesOf(head)).toEqual(datesOf(await availableDates(first, last)));
+    expect(datesOf(head)).toContain(extraWednesday);
+
+    // A horizon longer than one range: the first answer covers its first 62 dates, and the rest is asked for
+    const far = await AppointmentSchedule.create({
+      ...scheduleBody({ maxAdvanceDays: 200 }),
+      user: owner.userId
+    });
+    const farHead = await asked('', far.id);
+    expect(farHead.json<{ horizon: unknown }>().horizon).toEqual({ first, last: addDays(first, 200) });
+    expect(lastFreeBusy()).toMatchObject({
+      timeMin: midnight(first),
+      timeMax: midnight(addDays(first, MAX_AVAILABLE_DATES_RANGE))
+    });
+    expect(datesOf(farHead).at(-1)).toBe(addDays(first, MAX_AVAILABLE_DATES_RANGE - 1));
+    const next = addDays(first, MAX_AVAILABLE_DATES_RANGE);
+    const rest = await asked(`&from=${next}`, far.id);
+    expect(datesOf(rest)[0]).toBe(next);
+    expect(lastFreeBusy()).toMatchObject({
+      timeMin: midnight(next),
+      timeMax: midnight(addDays(next, MAX_AVAILABLE_DATES_RANGE))
+    });
+
+    // `to` alone: from today
+    expect(datesOf(await asked(`&to=${addDays(first, 9)}`))).toEqual(
+      datesOf(head).filter((date) => date <= addDays(first, 9))
+    );
+    const tooLong = await asked(`&to=${addDays(first, MAX_AVAILABLE_DATES_RANGE)}`);
+    expect([tooLong.status, tooLong.text]).toEqual([400, `At most ${MAX_AVAILABLE_DATES_RANGE} dates per request`]);
+  });
+
+  it('validates the range, and refuses impossible dates on available-slots too', async () => {
+    const { first } = horizon();
+    const before = google.state.requests.length;
+
+    expect((await availableDates('tomorrow', first)).status).toBe(422);
+    expect((await availableDates(first, first, 'not-an-id')).status).toBe(422);
+    expect((await call('GET', `/appointments/available-dates?from=${first}&to=${first}`)).status).toBe(422);
+
+    for (const [from, to, message] of [
+      ['2027-02-30', '2027-03-02', 'Invalid date'],
+      [first, '2027-13-01', 'Invalid date'],
+      [addDays(first, 1), first, 'The range must not end before it starts'],
+      [first, addDays(first, MAX_AVAILABLE_DATES_RANGE), `At most ${MAX_AVAILABLE_DATES_RANGE} dates per request`]
+    ]) {
+      const refused = await availableDates(from, to);
+      expect({ from, to, status: refused.status, text: refused.text }).toEqual({ from, to, status: 400, text: message });
+    }
+    // It used to answer with the slots of 2 March
+    const impossible = await availableSlots('2027-02-30');
+    expect([impossible.status, impossible.text]).toEqual([400, 'Invalid date']);
+    expect(google.state.requests).toHaveLength(before);
+
+    expect((await availableDates(first, addDays(first, MAX_AVAILABLE_DATES_RANGE - 1))).status).toBe(200);
+  });
+
+  it('answers like available-slots for a paused or unknown schedule and a disconnected calendar', async () => {
+    const { first, last } = horizon();
+    const paused = await AppointmentSchedule.create({ ...scheduleBody({ enabled: false }), user: owner.userId });
+    const answers = async (id: string) => {
+      const [dates, slots] = await Promise.all([availableDates(first, last, id), availableSlots(first, id)]);
+      return [`${dates.status} ${dates.text}`, `${slots.status} ${slots.text}`];
+    };
+
+    expect(await answers(paused.id)).toEqual(['404 Schedule not found', '404 Schedule not found']);
+    expect(await answers(new mongoose.Types.ObjectId().toString())).toEqual([
+      '404 Schedule not found',
+      '404 Schedule not found'
+    ]);
+
+    expect((await call('POST', '/appointments/disconnect', { body: {}, cookie: owner.cookie })).status).toBe(200);
+    expect(await answers(scheduleId)).toEqual(['409 Google Calendar not connected', '409 Google Calendar not connected']);
+  });
+
+  it('counts a booking whose event is being created as busy, and no other', async () => {
+    const monday = nextWeekday(1, addDays(offMonday, 1));
+    const { first, last } = horizon();
+    const isListed = async () => datesOf(await availableDates(first, last)).includes(monday);
+    const slotsOfMonday = async () => (await availableSlots(monday)).json<unknown[]>().length;
+    expect(await isListed()).toBe(true);
+
+    // Another schedule of the owner holds the whole morning: its request is creating the event
+    const booking = await AppointmentBooking.create({
+      schedule: new mongoose.Types.ObjectId(),
+      user: owner.userId,
+      calendarId: 'work@example.com',
+      start: new Date(at('09:00', monday)),
+      end: new Date(at('12:00', monday)),
+      emailHash: 'hash'
+    });
+    expect(await isListed()).toBe(false);
+    expect(await slotsOfMonday()).toBe(0);
+
+    // Held long ago: its request stopped, and Google has no event for it
+    await AppointmentBooking.updateOne({ _id: booking._id }, { $set: { heldAt: new Date(Date.now() - 60 * 60_000) } });
+    expect(await isListed()).toBe(true);
+    expect(await slotsOfMonday()).toBe(3);
+
+    // Confirmed: FreeBusy reports its event while it exists (here, the owner deleted it)
+    await AppointmentBooking.updateOne({ _id: booking._id }, { $set: { eventId: 'deleted', heldAt: new Date() } });
+    expect(await isListed()).toBe(true);
+  });
+
+  it('does not count availability lookups against the booking rate limit', async () => {
+    const savedHeader = env.CLIENT_IP_HEADER;
+    env.CLIENT_IP_HEADER = 'x-real-ip';
+    try {
+      const group = () => Math.floor(Math.random() * 0x10000).toString(16);
+      const headers = { 'X-Real-IP': `2001:db8:${group()}:${group()}::1` };
+      const { first, last } = horizon();
+
+      let dates: string[] = [];
+      for (let i = 0; i <= BOOKING_REQUESTS_PER_IP.limit; i++) {
+        const listed = await availableDates(first, last, scheduleId, headers);
+        expect(listed.status).toBe(200);
+        dates = datesOf(listed);
+        expect((await availableSlots(dates[0], scheduleId, headers)).status).toBe(200);
+      }
+
+      const [slot] = (await availableSlots(dates[0], scheduleId, headers)).json<{ start: string }[]>();
+      const booked = await call('POST', '/appointments/book', {
+        body: { scheduleId, startTime: slot.start, name: 'Visitor', email: t.email('browser') },
+        headers
+      });
+      expect(booked.status).toBe(200);
+      const counter = await RateLimitCounter.findOne({
+        _id: { $regex: `^${rateLimitKey('book:ip', rateLimitAddress(headers['X-Real-IP']))}:` }
+      }).lean();
+      expect(counter?.count).toBe(1);
+    } finally {
+      env.CLIENT_IP_HEADER = savedHeader;
+    }
+  });
+
+  it('rate limits availability lookups per IP address, both routes together, before asking Google', async () => {
+    const savedHeader = env.CLIENT_IP_HEADER;
+    env.CLIENT_IP_HEADER = 'x-real-ip';
+    try {
+      const group = () => Math.floor(Math.random() * 0x10000).toString(16);
+      const network = `2001:db8:${group()}:${group()}`;
+      const fromNetwork = (host: number) => ({ 'X-Real-IP': `${network}::${host.toString(16)}` });
+      const { first, last } = horizon();
+      // Past the horizon: answered without asking Google
+      const outside = addDays(last, 1);
+
+      // Per IP (IPv6: per /64), whatever the outcome
+      for (let i = 1; i <= AVAILABILITY_REQUESTS_PER_IP.limit; i++) {
+        const lookup = i % 2
+          ? availableDates(outside, outside, scheduleId, fromNetwork(i))
+          : availableSlots(outside, scheduleId, fromNetwork(i));
+        expect((await lookup).status).toBe(200);
+      }
+      const before = freeBusyRequests().length;
+      for (const limited of [
+        await availableDates(first, last, scheduleId, fromNetwork(0xffff)),
+        await availableSlots(first, scheduleId, fromNetwork(0xffff))
+      ]) {
+        expect(limited.status).toBe(429);
+        expect(limited.text).toStartWith('Too many requests from your network. Try again in ');
+        expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+      }
+      expect(freeBusyRequests()).toHaveLength(before);
+
+      // Another network is not affected, and booking from this one is counted on its own
+      const otherNetwork = { 'X-Real-IP': `2001:db8:${group()}:${group()}::1` };
+      const [date] = datesOf(await availableDates(first, last, scheduleId, otherNetwork));
+      const [slot] = (await availableSlots(date, scheduleId, otherNetwork)).json<{ start: string }[]>();
+      const booked = await call('POST', '/appointments/book', {
+        body: { scheduleId, startTime: slot.start, name: 'Visitor', email: t.email('limited-network') },
+        headers: fromNetwork(1)
+      });
+      expect(booked.status).toBe(200);
+    } finally {
+      env.CLIENT_IP_HEADER = savedHeader;
+    }
+  });
+});
+
 // Production, 2026-11-01: Google answered invalid_grant to the stored refresh
 // token, and every Calendar call failed with a 500 and a gaxios stack trace.
 // The fake Google answers like the real one, so the error each test runs into
@@ -1158,6 +1477,9 @@ describe('no Google token in any API response', () => {
     expect((await call('GET', `/appointments/domains/${sweepDomain}/schedules`)).status).toBe(200);
     expect((await call('GET', `/appointments/schedules/${scheduleId}/public`)).status).toBe(200);
     expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(200);
+    expect(
+      (await call('GET', `/appointments/available-dates?scheduleId=${scheduleId}&from=${BOOKING_DATE}&to=${dateIn(14)}`)).status
+    ).toBe(200);
     const booked = await call('POST', '/appointments/book', {
       body: { scheduleId, startTime: at('11:00'), name: 'Sweep', email: t.email('sweep-visitor') }
     });

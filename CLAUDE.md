@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A portfolio web application with a Bun workspace monorepo structure:
 - **client/** — SvelteKit 3 frontend (Svelte 5 with runes, Skeleton 5, Tailwind CSS 4, `@sveltejs/adapter-bun`)
 - **server/** — Elysia backend API (Bun runtime, MongoDB via Mongoose)
-- **common/** — Shared code used by both client and server (`ExperienceType`, domain-name validation, `DEFAULT_GOOGLE_CLIENT_ID`)
+- **common/** — Shared code used by both client and server (`ExperienceType`, domain-name validation, `DEFAULT_GOOGLE_CLIENT_ID`, booking calendar dates: `bookingHorizon`, `splitDateRange`)
 
 Bun 1.4.4 is pinned in the root `package.json` (`packageManager`); the text lockfile `bun.lock` uses the isolated linker (each workspace has its own `node_modules`).
 
@@ -82,13 +82,21 @@ Node [subpath imports](https://svelte.dev/docs/kit/$lib) in the `imports` field 
 - Svelte 5 runes syntax (`$state`, `$derived`, `$effect`, etc.)
 - Skeleton 5 components via `@skeletonlabs/skeleton-svelte`
 
+## Pull Requests
+
+Follow `.github/pull_request_template.md` (Summary, Screenshots, Test plan, Deployment notes).
+
+**Every PR that changes something visible in the UI shows it with screenshots in the PR description**: desktop and mobile (390 px), light and dark when colours are involved, the notable states (loading, empty, error), and before/after when it changes existing UI. Capture them with Playwright against the real app running locally (seeded MongoDB; stub only external services such as Google), and look at each one before posting. A PR without UI changes says "No UI change" under Screenshots.
+
+The GitHub API cannot upload attachments, so screenshots travel through the PR branch: commit the PNGs under `.github/pr-assets/pr-<number>/`, embed them with commit-SHA URLs (`https://github.com/lomithrani/portfolio/blob/<sha>/.github/pr-assets/pr-<number>/<file>.png?raw=true`), then delete the folder in the next commit. PRs are squash-merged, so the images never reach `develop`, while GitHub keeps the PR's commits and the links keep working.
+
 ## Environment Variables
 
 Templates with every variable: `server/.env.example`, `client/.env.example` (copy to `.env`; Bun and Vite load them).
 
 **Server** (validated once at startup by `server/env.ts`):
 - Required: `MONGO_URL`, `JWT_SECRET`, `ALLOWED_DOMAINS` (JSON array of allowed CORS origins)
-- Optional: `PORT` (3000), `HOST` (`::`, falls back to `0.0.0.0` without IPv6), `GOOGLE_CLIENT_ID` (default `DEFAULT_GOOGLE_CLIENT_ID` from portfolio-common), `GOOGLE_CLIENT_SECRET` (secret of that OAuth client; Google Calendar appointments are off without it), `AUTH_COOKIE_SAMESITE` (`strict`|`lax`|`none`, default `strict`), `CLIENT_IP_HEADER` (header with the visitor's IP for the booking rate limit; default `x-real-ip` when `RAILWAY_PROJECT_ID` is set, else the socket address), `API_DOCS` (`true` exposes OpenAPI docs in production), `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_SERVICE_NAME` (telemetry off without the endpoint), `OTEL_SDK_DISABLED` (`true` = telemetry off) and `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` (`none` switches one signal off; see "Diagnosing memory growth" in `docs/DEPLOYMENT.md`), `MEMORY_LOG_INTERVAL_MS` (periodic `memory` log line, default 600000, `0` = off), `TLS_PASSPHRASE`, `NODE_ENV`
+- Optional: `PORT` (3000), `HOST` (`::`, falls back to `0.0.0.0` without IPv6), `GOOGLE_CLIENT_ID` (default `DEFAULT_GOOGLE_CLIENT_ID` from portfolio-common), `GOOGLE_CLIENT_SECRET` (secret of that OAuth client; Google Calendar appointments are off without it), `AUTH_COOKIE_SAMESITE` (`strict`|`lax`|`none`, default `strict`), `CLIENT_IP_HEADER` (header with the visitor's IP for the booking and availability rate limits; default `x-real-ip` when `RAILWAY_PROJECT_ID` is set, else the socket address), `API_DOCS` (`true` exposes OpenAPI docs in production), `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_SERVICE_NAME` (telemetry off without the endpoint), `OTEL_SDK_DISABLED` (`true` = telemetry off) and `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` (`none` switches one signal off; see "Diagnosing memory growth" in `docs/DEPLOYMENT.md`), `MEMORY_LOG_INTERVAL_MS` (periodic `memory` log line, default 600000, `0` = off), `TLS_PASSPHRASE`, `NODE_ENV`
 
 **Client** (declared in `client/src/env.ts`, read at server start, not at build time):
 - `PUBLIC_PORTFOLIO_API_URL` (default `http://localhost:3000`), `PUBLIC_GOOGLE_CLIENT_ID` (default `DEFAULT_GOOGLE_CLIENT_ID`; must match the server's `GOOGLE_CLIENT_ID`)

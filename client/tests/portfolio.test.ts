@@ -154,6 +154,140 @@ test('the hire page renders the booking view inside the hydrated portfolio layou
 	await expect(page.getByText('Online booking is not available right now.')).toBeVisible();
 });
 
+test.describe('hire page calendar (appointment API stubbed in the browser)', () => {
+	// The CI API has no Google Calendar: the browser's calls to the appointment routes are
+	// answered here, with two meeting types on a Paris schedule
+	const ZONE = 'Europe/Paris';
+	const schedule = (id: string, title: string) => ({
+		id: id.repeat(24),
+		title,
+		description: null,
+		durationMinutes: 60,
+		minNoticeHours: 24,
+		maxAdvanceDays: 30,
+		timezone: ZONE,
+		locationType: 'google_meet',
+		locationDetails: null,
+		availability: [1, 0].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '12:00' }))
+	});
+	const INTRO = schedule('a', 'Intro call');
+	const DEEP_DIVE = schedule('b', 'Deep dive');
+
+	const addDays = (date: string, days: number) =>
+		new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+	const sameMonth = (a: string, b: string) => a.slice(0, 7) === b.slice(0, 7);
+	const todayIn = (timezone: string) => {
+		const parts = new Intl.DateTimeFormat('en-US', {
+			timeZone: timezone,
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit'
+		}).formatToParts(new Date());
+		const part = (type: string) => parts.find((p) => p.type === type)?.value;
+		return `${part('year')}-${part('month')}-${part('day')}`;
+	};
+
+	// Two bookable dates and, between them or next to them, one that is not; all in one month
+	const first = todayIn(ZONE);
+	const horizon = { first, last: addDays(first, 30) };
+	const bookable = addDays(first, 2);
+	const step = sameMonth(bookable, addDays(bookable, 2)) ? 1 : -1;
+	const unbookable = addDays(bookable, step);
+	const otherBookable = addDays(bookable, 2 * step);
+
+	/**
+	 * Answers the browser's calls to the appointment routes; returns the dates asked for slots.
+	 * `paused`: a schedule listed at first, then paused: asked about, it answers 404 and leaves the list
+	 */
+	const stubAppointments = async (page: Page, { paused }: { paused?: string } = {}) => {
+		let schedules = [INTRO, DEEP_DIVE];
+		const slotRequests: string[] = [];
+		await page.route(`${API_URL}/appointments/**`, async (route) => {
+			const url = new URL(route.request().url());
+			const cors = { 'access-control-allow-origin': '*' };
+			const json = (body: unknown) => route.fulfill({ json: body, headers: cors });
+			if (url.pathname === `/appointments/domains/${DOMAIN}/schedules`) return json(schedules);
+			const scheduleId = url.searchParams.get('scheduleId');
+			if (scheduleId === paused) {
+				schedules = schedules.filter((s) => s.id !== paused);
+				return route.fulfill({ status: 404, body: 'Schedule not found', headers: cors });
+			}
+			if (url.pathname === '/appointments/available-dates') {
+				return json({ horizon, dates: [bookable, otherBookable].sort() });
+			}
+			if (url.pathname === '/appointments/available-slots') {
+				const date = url.searchParams.get('date') ?? '';
+				slotRequests.push(date);
+				// 10:00 in Paris, summer or winter time alike: UTC+1 or +2
+				return json([{ start: `${date}T08:00:00.000Z`, end: `${date}T09:00:00.000Z` }]);
+			}
+			return route.fulfill({ status: 404, body: 'Not stubbed', headers: cors });
+		});
+		return slotRequests;
+	};
+
+	const cell = (page: Page, date: string) =>
+		page.locator(
+			`[data-scope="date-picker"][data-part="table-cell-trigger"][data-value="${date}"]`
+		);
+	const selected = (page: Page) =>
+		page.locator('[data-scope="date-picker"][data-part="table-cell-trigger"][data-selected]');
+
+	test('greys out the dates without a free slot, which neither a click nor the keyboard picks', async ({
+		page
+	}) => {
+		const slotRequests = await stubAppointments(page);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		await page.getByRole('button', { name: /Intro call/ }).click();
+
+		await expect(cell(page, unbookable)).toHaveAttribute('aria-disabled', 'true');
+		await expect(cell(page, unbookable)).toHaveAttribute('data-unavailable');
+		await expect(cell(page, bookable)).not.toHaveAttribute('aria-disabled', 'true');
+		await expect(cell(page, otherBookable)).not.toHaveAttribute('aria-disabled', 'true');
+
+		// A click on a greyed-out date (dispatched: it takes no pointer events) picks nothing
+		await cell(page, unbookable).dispatchEvent('click');
+		await expect(selected(page)).toHaveCount(0);
+
+		await cell(page, bookable).click();
+		await expect(page.getByText('Times shown in your timezone')).toBeVisible();
+		await expect(selected(page)).toHaveAttribute('data-value', bookable);
+
+		// The arrow keys move the focus onto a greyed-out date: Enter and Space leave it unpicked
+		const arrow = step === 1 ? 'ArrowRight' : 'ArrowLeft';
+		await page.keyboard.press(arrow);
+		await expect(cell(page, unbookable)).toBeFocused();
+		await page.keyboard.press('Enter');
+		await page.keyboard.press(' ');
+		await expect(selected(page)).toHaveAttribute('data-value', bookable);
+
+		// Space picks a bookable one, as Enter does
+		await page.keyboard.press(arrow);
+		await expect(cell(page, otherBookable)).toBeFocused();
+		await page.keyboard.press(' ');
+		await expect(selected(page)).toHaveAttribute('data-value', otherBookable);
+		await expect.poll(() => slotRequests).toEqual([bookable, otherBookable]);
+	});
+
+	test('a meeting type paused while the visitor looks leaves the others to pick, saying why', async ({
+		page
+	}) => {
+		await stubAppointments(page, { paused: DEEP_DIVE.id });
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+
+		await page.getByRole('button', { name: /Deep dive/ }).click();
+		await expect(
+			page.getByText('Deep dive is not available anymore. Please pick another meeting type.')
+		).toBeVisible();
+		// One meeting type left, not selected for the visitor: listed to pick
+		await expect(page.getByRole('button', { name: /Deep dive/ })).toHaveCount(0);
+		await page.getByRole('button', { name: /Intro call/ }).click();
+
+		await expect(cell(page, bookable)).not.toHaveAttribute('aria-disabled', 'true');
+		await expect(page.getByText('is not available anymore')).toHaveCount(0);
+	});
+});
+
 test('/healthz answers 200 ok', async ({ request }) => {
 	const response = await request.get('/healthz');
 
