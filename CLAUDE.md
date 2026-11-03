@@ -82,6 +82,14 @@ Node [subpath imports](https://svelte.dev/docs/kit/$lib) in the `imports` field 
 - Svelte 5 runes syntax (`$state`, `$derived`, `$effect`, etc.)
 - Skeleton 5 components via `@skeletonlabs/skeleton-svelte`
 
+## Pull Requests
+
+Follow `.github/pull_request_template.md` (Summary, Screenshots, Test plan, Deployment notes).
+
+**Every PR that changes something visible in the UI shows it with screenshots in the PR description**: desktop and mobile (390 px), light and dark when colours are involved, the notable states (loading, empty, error), and before/after when it changes existing UI. Capture them with Playwright against the real app running locally (seeded MongoDB; stub only external services such as Google), and look at each one before posting. A PR without UI changes says "No UI change" under Screenshots.
+
+The GitHub API cannot upload attachments, so screenshots travel through the PR branch: commit the PNGs under `.github/pr-assets/pr-<number>/`, embed them with commit-SHA URLs (`https://github.com/lomithrani/portfolio/blob/<sha>/.github/pr-assets/pr-<number>/<file>.png?raw=true`), then delete the folder in the next commit. PRs are squash-merged, so the images never reach `develop`, while GitHub keeps the PR's commits and the links keep working.
+
 ## Environment Variables
 
 Templates with every variable: `server/.env.example`, `client/.env.example` (copy to `.env`; Bun and Vite load them).
