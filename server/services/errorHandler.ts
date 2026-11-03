@@ -1,6 +1,6 @@
 import { ValidationError } from 'elysia';
 import mongoose from 'mongoose';
-import { HttpError, TooManyRequestsError } from '../errors';
+import { FieldValidationError, HttpError, TooManyRequestsError } from '../errors';
 import { isDuplicateKeyError } from './mongoErrors';
 
 export type ErrorBody = string | { type: 'validation'; on: string; property: string; message: string };
@@ -23,6 +23,17 @@ const INTERNAL_SERVER_ERROR: ResolvedError = {
   level: 'error'
 };
 
+/**
+ * TypeBox's JSON pointer ('/projects/1/name') as the dotted path Mongoose and
+ * FieldValidationError use ('projects.1.name'): `property` has one format
+ */
+const dottedPath = (pointer: string) =>
+  pointer
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => segment.replaceAll('~1', '/').replaceAll('~0', '~'))
+    .join('.');
+
 // Body of a request validation error, without the submitted value
 // (`found`) or a sample of the schema (`expected`) that Elysia includes
 const validationBody = (error: ValidationError): ErrorBody => {
@@ -30,7 +41,7 @@ const validationBody = (error: ValidationError): ErrorBody => {
   return {
     type: 'validation',
     on: String(error.type),
-    property: valueError?.path || 'root',
+    property: dottedPath(valueError?.path ?? '') || 'root',
     message: valueError?.message ?? 'Invalid request'
   };
 };
@@ -58,6 +69,14 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
   if (code === 'PARSE') return { status: 400, body: 'Bad Request', level: 'warn' };
   if (code === 'INVALID_COOKIE_SIGNATURE') return { status: 400, body: 'Bad Request', level: 'warn' };
   if (code === 'INVALID_FILE_TYPE') return { status: 422, body: 'Invalid file type', level: 'warn' };
+
+  if (error instanceof FieldValidationError) {
+    return {
+      status: 422,
+      body: { type: 'validation', on: 'body', property: error.property, message: error.message },
+      level: 'warn'
+    };
+  }
 
   if (error instanceof TooManyRequestsError && error.retryAfterSeconds !== undefined) {
     return {

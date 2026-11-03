@@ -139,6 +139,13 @@ describe('typed Eden client against the running server', () => {
     expect(api.domain.claim.post).toBeFunction()
     expect(api.experiences.post).toBeFunction()
     expect(api.experiences({ id: 'x' }).put).toBeFunction()
+    expect(api.experiences({ id: 'x' }).delete).toBeFunction()
+  })
+
+  test('DELETE /experiences/:id requires a session', async () => {
+    const { data, error } = await api.experiences({ id: '0123456789abcdef01234567' }).delete()
+    expect(data).toBeNull()
+    expect(error?.status as number).toBe(401)
   })
 
   test('GET /health', async () => {

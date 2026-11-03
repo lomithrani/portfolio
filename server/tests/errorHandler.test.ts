@@ -7,6 +7,7 @@ import {
   HttpError,
   ConflictError,
   DomainDoesNotExistError,
+  FieldValidationError,
   ForbiddenError,
   GoogleCalendarReconnectRequiredError,
   InvalidGoogleTokenError,
@@ -51,6 +52,14 @@ describe('resolveError', () => {
     expect(resolveError('UNKNOWN', new TooManyRequestsError('Quota reached'))).toEqual({
       status: 429,
       body: 'Quota reached',
+      level: 'warn'
+    });
+  });
+
+  it('maps a FieldValidationError to a 422 validation body naming the field', () => {
+    expect(resolveError('FieldValidationError', new FieldValidationError('title', 'Title is required'))).toEqual({
+      status: 422,
+      body: { type: 'validation', on: 'body', property: 'title', message: 'Title is required' },
       level: 'warn'
     });
   });
@@ -118,6 +127,12 @@ describe('error responses through Elysia', () => {
     })
     .post('/validated', ({ body }) => body, {
       body: t.Object({ name: t.String({ minLength: 1 }) })
+    })
+    .post('/nested', ({ body }) => body, {
+      body: t.Object({ items: t.Array(t.Object({ name: t.String({ minLength: 1 }) })) })
+    })
+    .get('/field-rule', () => {
+      throw new FieldValidationError('projects.1.end', 'Project end date must not be before its start date');
     });
 
   const request = (path: string, init?: RequestInit) =>
@@ -142,7 +157,28 @@ describe('error responses through Elysia', () => {
     expect(result.status).toBe(422);
     const text = await result.text();
     expect(text).not.toContain('hunter2');
-    expect(JSON.parse(text)).toMatchObject({ type: 'validation', on: 'body', property: '/name' });
+    expect(JSON.parse(text)).toMatchObject({ type: 'validation', on: 'body', property: 'name' });
+  });
+
+  it('names a nested field by its dotted path, like Mongoose and FieldValidationError do', async () => {
+    const result = await request('/nested', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ name: 'ok' }, { name: '' }] })
+    });
+    expect(result.status).toBe(422);
+    expect(await result.json()).toMatchObject({ type: 'validation', on: 'body', property: 'items.1.name' });
+  });
+
+  it('answers a FieldValidationError like a schema validation error', async () => {
+    const result = await request('/field-rule');
+    expect(result.status).toBe(422);
+    expect(await result.json()).toEqual({
+      type: 'validation',
+      on: 'body',
+      property: 'projects.1.end',
+      message: 'Project end date must not be before its start date'
+    });
   });
 
   it('answers 400 for a malformed JSON body', async () => {

@@ -211,3 +211,11 @@ export function postWithCookie(app: FetchApp, path: string, body: unknown, cooki
 export function putWithCookie(app: FetchApp, path: string, body: unknown, cookie: string) {
   return putJson(app, path, body, { Cookie: cookie });
 }
+
+/** A body-less DELETE, as the client sends it (no Content-Type) */
+export function deleteWithCookie(app: FetchApp, path: string, cookie: string) {
+  return makeRequest(app, path, {
+    method: 'DELETE',
+    headers: cookie ? { Cookie: cookie } : {},
+  });
+}

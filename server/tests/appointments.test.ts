@@ -1460,6 +1460,7 @@ describe('no Google token in any API response', () => {
         body: { ...experienceRequestBody, title: 'Staff Engineer', projects: [project] }
       })).status
     ).toBe(200);
+    expect((await call('DELETE', `/experiences/${experience.json()._id}`, auth)).status).toBe(200);
 
     const workflow = await call('POST', '/workflows', { ...auth, body: workflowRequestBody });
     expect(workflow.status).toBe(200);

@@ -1,4 +1,5 @@
 export { ExperienceType } from './experienceType';
+export { EXPERIENCE_LIMITS } from './experienceLimits';
 export {
 	DOMAIN_NAME_PATTERN,
 	RESERVED_DOMAIN_NAMES,

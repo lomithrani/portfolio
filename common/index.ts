@@ -1,5 +1,6 @@
 export {
 	ExperienceType,
+	EXPERIENCE_LIMITS,
 	DOMAIN_NAME_PATTERN,
 	RESERVED_DOMAIN_NAMES,
 	isValidDomainName,

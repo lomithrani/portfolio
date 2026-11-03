@@ -66,6 +66,22 @@ export class UnsupportedMediaTypeError extends HttpError {
   status = 415
 }
 
+/**
+ * A request field fails a rule its TypeBox schema cannot express (e.g. an end
+ * date before the start). Answered like a schema validation error: 422 with
+ * `{ type: 'validation', on: 'body', property, message }`, where `property` is
+ * the field's dotted path (e.g. `projects.1.end`)
+ */
+export class FieldValidationError extends HttpError {
+  status = 422
+  constructor(
+    public property: string,
+    message: string
+  ) {
+    super(message)
+  }
+}
+
 /** A rate limit or quota was hit; `retryAfterSeconds` becomes the Retry-After header */
 export class TooManyRequestsError extends HttpError {
   status = 429
@@ -125,6 +141,7 @@ export const errors = {
   DomainAlreadyExistsError,
   UserAlreadyOwnsDomainError,
   UnsupportedMediaTypeError,
+  FieldValidationError,
   TooManyRequestsError,
   GoogleCalendarNotConnectedError,
   AppointmentScheduleNotFoundError,
