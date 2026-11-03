@@ -42,6 +42,15 @@ export interface ServerEnv {
    * the socket's peer address. Only used to rate limit public routes
    */
   CLIENT_IP_HEADER?: string;
+  /**
+   * Claude API key billed for résumé imports (services/resumeImport.ts); the
+   * feature is off without it. Secret: never logged, returned or traced
+   */
+  ANTHROPIC_API_KEY?: string;
+  /** Résumé imports per user per 30-day window (0 turns the feature off) */
+  RESUME_IMPORT_MONTHLY_LIMIT: number;
+  /** Résumé imports per UTC day across all users (0 turns the feature off) */
+  RESUME_IMPORT_DAILY_LIMIT: number;
   /** Serve OpenAPI docs (always outside production, opt-in with API_DOCS=true) */
   apiDocsEnabled: boolean;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
@@ -194,6 +203,28 @@ const parseMemoryLogInterval = (raw: string | undefined, problems: string[]): nu
   return ms;
 };
 
+const DEFAULT_RESUME_IMPORT_MONTHLY_LIMIT = 3;
+const DEFAULT_RESUME_IMPORT_DAILY_LIMIT = 30;
+
+// A count of requests: 0 or more, digits only (Number() would also accept
+// '1e3', '0x3e8' or '2.5')
+const parseLimit = (
+  name: string,
+  raw: string | undefined,
+  defaultValue: number,
+  problems: string[]
+): number => {
+  if (raw === undefined || raw.trim() === '') return defaultValue;
+  const value = /^\s*\d+\s*$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!Number.isSafeInteger(value)) {
+    problems.push(
+      `${name} must be a whole number, 0 (résumé import off) or more (got ${JSON.stringify(raw)})`
+    );
+    return defaultValue;
+  }
+  return value;
+};
+
 export const parseEnv = (source: Record<string, string | undefined>): ServerEnv => {
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -256,6 +287,28 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     rawClientIpHeader?.toLowerCase() ??
     (optional(source.RAILWAY_PROJECT_ID) !== undefined ? 'x-real-ip' : undefined);
 
+  // Copied from the Claude Console; like GOOGLE_CLIENT_SECRET, a pasted value
+  // with quotes or spaces would only fail at the first import. The message
+  // never repeats the value: it is a secret
+  const ANTHROPIC_API_KEY = optional(source.ANTHROPIC_API_KEY);
+  if (ANTHROPIC_API_KEY && /[\s"']/.test(ANTHROPIC_API_KEY)) {
+    problems.push(
+      'ANTHROPIC_API_KEY must be the bare API key from the Claude Console (no quotes or spaces)'
+    );
+  }
+  const RESUME_IMPORT_MONTHLY_LIMIT = parseLimit(
+    'RESUME_IMPORT_MONTHLY_LIMIT',
+    source.RESUME_IMPORT_MONTHLY_LIMIT,
+    DEFAULT_RESUME_IMPORT_MONTHLY_LIMIT,
+    problems
+  );
+  const RESUME_IMPORT_DAILY_LIMIT = parseLimit(
+    'RESUME_IMPORT_DAILY_LIMIT',
+    source.RESUME_IMPORT_DAILY_LIMIT,
+    DEFAULT_RESUME_IMPORT_DAILY_LIMIT,
+    problems
+  );
+
   const OTEL_SDK_DISABLED = parseOtelBoolean('OTEL_SDK_DISABLED', source.OTEL_SDK_DISABLED, problems);
   const OTEL_TRACES_EXPORTER = parseOtelExporter('OTEL_TRACES_EXPORTER', source.OTEL_TRACES_EXPORTER, problems);
   const OTEL_METRICS_EXPORTER = parseOtelExporter('OTEL_METRICS_EXPORTER', source.OTEL_METRICS_EXPORTER, problems);
@@ -289,6 +342,9 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     AUTH_COOKIE_SAMESITE,
     authCookieSecure: isProduction || AUTH_COOKIE_SAMESITE === 'none',
     CLIENT_IP_HEADER,
+    ANTHROPIC_API_KEY,
+    RESUME_IMPORT_MONTHLY_LIMIT,
+    RESUME_IMPORT_DAILY_LIMIT,
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',

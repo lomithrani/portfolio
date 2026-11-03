@@ -6,5 +6,9 @@ for (const name of Object.keys(process.env)) {
   if (name.startsWith('OTEL_')) delete process.env[name];
 }
 
+// Never call the real Claude API (billed to that key) from a test: résumé
+// import tests set a fake key and answer for api.anthropic.com themselves
+delete process.env.ANTHROPIC_API_KEY;
+
 // TEST_MONGO_URL, when set, is the database the tests use instead of MONGO_URL
 if (process.env.TEST_MONGO_URL) process.env.MONGO_URL = process.env.TEST_MONGO_URL;

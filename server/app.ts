@@ -2,15 +2,30 @@ import { Elysia } from 'elysia'
 import mongoose from 'mongoose'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
-import { experiences, googleAuth, domain, workflows, appointments, corsConf } from './plugins'
-import { errors, UnsupportedMediaTypeError } from './errors'
+import { experiences, resumeImport, googleAuth, domain, workflows, appointments, corsConf } from './plugins'
+import { errors, PayloadTooLargeError, UnsupportedMediaTypeError } from './errors'
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
 import { logger } from './services/logger'
 import { resolveError } from './services/errorHandler'
 
-// Hard cap on request bodies (Bun answers 413 above it). The largest legit
-// payload is an experience with a ~22KB data-URL icon and markdown text.
-const MAX_REQUEST_BODY_SIZE = 1024 * 1024
+// Hard cap on request bodies, enforced by Bun itself (it answers 413, without
+// CORS headers, before the app runs). Sized for the one large route: a 4 MB
+// PDF posted to POST /experiences/import is ~5.4 MB of base64 JSON.
+const MAX_REQUEST_BODY_SIZE = 6 * 1024 * 1024
+
+// Cap of every other route, checked on Content-Length before the body is
+// parsed (a 413 with CORS headers). The largest legit payload there is an
+// experience with a ~22KB data-URL icon and markdown text. A body sent
+// without Content-Length (chunked) is only bounded by the cap above.
+const MAX_JSON_BODY_SIZE = 1024 * 1024
+const LARGE_BODY_ROUTE = { method: 'POST', path: '/experiences/import' }
+
+const hasOversizedBody = (request: Request) => {
+  const contentLength = Number(request.headers.get('content-length'))
+  if (!(contentLength > MAX_JSON_BODY_SIZE)) return false
+  // Only parsed for the rare request over the cap
+  return !(request.method === LARGE_BODY_ROUTE.method && new URL(request.url).pathname === LARGE_BODY_ROUTE.path)
+}
 
 // Bodies of requests that change data must be JSON (the only type the client
 // sends). An HTML form on another site can only send urlencoded, multipart or
@@ -61,9 +76,11 @@ export const createApp = () =>
       if (start !== undefined) httpRequestDuration.record(performance.now() - start, attrs)
     })
     .use(corsConf())
-    // After CORS, so the 415 still carries the CORS headers. Thrown (not
-    // returned) so it goes through onError: logged and counted like any 4xx
+    // After CORS, so the 413 and 415 still carry the CORS headers. Thrown (not
+    // returned) so they go through onError: logged and counted like any 4xx.
+    // Both run before the body is read
     .onRequest(({ request }) => {
+      if (hasOversizedBody(request)) throw new PayloadTooLargeError('Payload Too Large')
       if (hasNonJsonBody(request)) throw new UnsupportedMediaTypeError('Unsupported Media Type')
     })
     .use(apiDocs())
@@ -102,6 +119,7 @@ export const createApp = () =>
     .use(googleAuth)
     .use(domain)
     .use(experiences)
+    .use(resumeImport)
     .use(workflows)
     .use(appointments)
 

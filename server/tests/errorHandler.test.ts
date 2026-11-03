@@ -12,7 +12,9 @@ import {
   InvalidGoogleTokenError,
   MissingAuthCookieError,
   ResourceNotFoundError,
-  TooManyRequestsError
+  TooManyRequestsError,
+  ServiceUnavailableError,
+  PayloadTooLargeError
 } from '../errors';
 import { Domain } from '../models/database';
 
@@ -26,6 +28,7 @@ describe('resolveError', () => {
     [new DomainDoesNotExistError('Domain not found'), 404],
     [new ConflictError('Conflict'), 409],
     [new GoogleCalendarReconnectRequiredError('Reconnect Google Calendar'), 409],
+    [new PayloadTooLargeError('Payload Too Large'), 413],
   ])('keeps the status of %p', (error, status) => {
     const resolved = resolveError('UNKNOWN', error);
     expect(resolved.status).toBe(status);
@@ -52,6 +55,25 @@ describe('resolveError', () => {
       status: 429,
       body: 'Quota reached',
       level: 'warn'
+    });
+  });
+
+  it('sends the message of a ServiceUnavailableError with its 503 (the thrower logged the cause)', () => {
+    expect(resolveError('ServiceUnavailableError', new ServiceUnavailableError('Try again later'))).toEqual({
+      status: 503,
+      body: 'Try again later',
+      level: 'warn'
+    });
+  });
+
+  it('keeps other 5xx HttpErrors generic', () => {
+    class GatewayError extends HttpError {
+      status = 502;
+    }
+    expect(resolveError('UNKNOWN', new GatewayError('upstream said: secret detail'))).toEqual({
+      status: 500,
+      body: 'Internal Server Error',
+      level: 'error'
     });
   });
 

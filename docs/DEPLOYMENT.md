@@ -166,6 +166,9 @@ local development.
 | `GOOGLE_CLIENT_SECRET`         | for appointments | Client secret of that same OAuth client; sealed. Enables Google Calendar appointments (see [Google Calendar appointments](#google-calendar-appointments)) |
 | `AUTH_COOKIE_SAMESITE`         | no       | Leave unset (`strict`); see [Custom domains](#custom-domains-are-required-for-login)               |
 | `CLIENT_IP_HEADER`             | no       | Leave unset: on Railway it defaults to `X-Real-IP`. Set it only behind another proxy (see [Booking protection](#booking-protection)) |
+| `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé import (see [Résumé import](#résumé-import)) |
+| `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
+| `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
 | `API_DOCS`                     | no       | `true` to serve the OpenAPI docs (`/swagger`) in production; off by default there                  |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | no       | OTLP endpoint (e.g. Grafana Cloud); telemetry is fully off while it is unset                       |
 | `OTEL_EXPORTER_OTLP_HEADERS`   | no       | e.g. `Authorization=Basic <base64 of instanceId:token>`; sealed                                    |
@@ -290,6 +293,55 @@ holding the visitor's address there (`CF-Connecting-IP` for Cloudflare). For a l
 `X-Forwarded-For`, the API takes the last entry, the one the closest proxy appended. Only name a
 header that proxy overwrites: anything else, a client can set to any value. An invalid header
 name stops the deployment with `CLIENT_IP_HEADER must be an HTTP header name`.
+
+## Résumé import
+
+Portfolio owners can upload a PDF résumé: the API (`POST /experiences/import`) has **Claude Haiku
+5.5** (`claude-haiku-5-5`) extract its experiences and answers with drafts the admin reviews; only
+the drafts the owner accepts are saved (through `POST /experiences`). Every import is billed to
+the operator's Anthropic API key, so the feature is **off until `ANTHROPIC_API_KEY` is set**: the
+API boots without it, `GET /experiences/import` answers `enabled: false` and `POST` answers 404.
+
+To enable it on Railway (service `portfolio api develop`, and any other API service):
+
+1. In the [Claude Console](https://platform.claude.com), **Settings, Workspaces**: create a
+   workspace for this site (e.g. `portfolio`) and give it a **monthly spend limit** (e.g. $5).
+   Spend limits cannot be set on the Default workspace, hence the dedicated one. Once the limit is
+   reached, Claude refuses the workspace's requests until the next month: imports answer `503`
+   ("Résumé import is temporarily unavailable"), are not counted against anyone's allowance, and
+   each one logs `Résumé import: the Claude API refused the request` at `error`.
+2. In that workspace, **API keys**: create a key (it is scoped to the workspace, so its usage
+   counts against that limit).
+3. On the API service, add `ANTHROPIC_API_KEY` (sealed) and deploy. A value with quotes or spaces
+   stops the deployment with `ANTHROPIC_API_KEY must be the bare API key ...`. The startup line
+   `Running at ...` then says `"resumeImport":"on (3 per user per 30 days, 30 per day)"`.
+
+| Variable                      | Default | What it does                                                                             |
+| ----------------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`           | unset   | The key billed for imports; the feature is off without it. Never logged, returned or traced |
+| `RESUME_IMPORT_MONTHLY_LIMIT` | `3`     | Imports per user per 30-day window (windows are fixed, not rolling); `0` turns the feature off |
+| `RESUME_IMPORT_DAILY_LIMIT`   | `30`    | Imports per UTC day across all users, a cap on the site's daily spend; `0` turns the feature off |
+
+**Cost.** A one- or two-page résumé costs about **$0.002 to $0.005** per import (Haiku 5.5: $0.10
+per million input tokens and $0.50 per million output tokens for prompts up to 100K tokens; a PDF
+page is roughly 2,000 to 5,000 tokens, text and page image together). The API caps each import at
+a 4 MB PDF, about 10 pages (60,000 input tokens, counted for free before the paid call, a longer
+PDF gets `422`) and 16,000 output tokens, so one import costs at most about $0.015. At the
+defaults the site spends at most 30 imports a day, and the workspace's spend limit is the hard
+stop. Each import logs one line, `Résumé import {"experiences":…,"inputTokens":…,"outputTokens":…,"estimatedCostUsd":…,"stopReason":…}`,
+with nothing about the résumé or its owner.
+
+**What counts.** Both limits are MongoDB counters (`ratelimitcounters`, like the booking limits);
+over one, the API answers `429` with `Retry-After` and when it resets. An import is counted once
+Claude has answered, whatever it found (drafts, nothing, a refusal or an answer cut short, the
+last two as `422`): it was paid for. A failure on the operator's side is given back: Claude
+overloaded, rate limited or unreachable (`503`, logged at `warn`), or refusing the key, the model
+or the request, including the spend limit (`503`, logged at `error`: fix the key or the limit).
+Invalid files never reach Claude: not base64 or not a PDF (`422`), over 4 MB (`413`).
+
+**Request size.** The API's body cap is 6 MB (Bun answers `413` above it, before the app runs): a
+4 MB PDF is about 5.4 MB of base64 JSON. Every other route keeps a 1 MB cap, checked on
+`Content-Length` before the body is read (`413` with CORS headers).
 
 ## Custom domains are required for login
 

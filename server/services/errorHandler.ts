@@ -1,6 +1,6 @@
 import { ValidationError } from 'elysia';
 import mongoose from 'mongoose';
-import { HttpError, TooManyRequestsError } from '../errors';
+import { HttpError, ServiceUnavailableError, TooManyRequestsError } from '../errors';
 import { isDuplicateKeyError } from './mongoErrors';
 
 export type ErrorBody = string | { type: 'validation'; on: string; property: string; message: string };
@@ -69,6 +69,12 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
   }
 
   if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
+    return { status: error.status, body: error.message, level: 'warn' };
+  }
+
+  // An upstream failure the code that threw it already logged with its cause
+  // (e.g. the Claude API during a résumé import): only its message goes out
+  if (error instanceof ServiceUnavailableError) {
     return { status: error.status, body: error.message, level: 'warn' };
   }
 

@@ -139,6 +139,37 @@ describe('typed Eden client against the running server', () => {
     expect(api.domain.claim.post).toBeFunction()
     expect(api.experiences.post).toBeFunction()
     expect(api.experiences({ id: 'x' }).put).toBeFunction()
+    expect(api.experiences.import.get).toBeFunction()
+    expect(api.experiences.import.post).toBeFunction()
+  })
+
+  test('GET /experiences/import needs a session', async () => {
+    const { error } = await api.experiences.import.get()
+    expect(error?.status as number).toBe(401)
+  })
+
+  test('caps request bodies at 1 MB, and at 6 MB (Bun) for the résumé import', async () => {
+    const MB = 1024 * 1024
+    const origin = env.ALLOWED_DOMAINS[0]
+    // {"file":""} is 11 characters; fetch sends Content-Length, as browsers do
+    const post = (path: string, bytes: number) =>
+      fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: origin },
+        body: JSON.stringify({ file: 'x'.repeat(bytes - 11) })
+      })
+
+    const tooLarge = await post('/experiences', MB + 1)
+    expect(tooLarge.status).toBe(413)
+    expect(await tooLarge.text()).toBe('Payload Too Large')
+    // The browser can read the 413 (CORS headers present)
+    expect(tooLarge.headers.get('access-control-allow-origin')).toBe(origin)
+
+    // Past both caps, to the route: no session
+    expect((await post('/experiences/import', 6 * MB)).status).toBe(401)
+
+    // Over Bun's own cap: refused before the app runs
+    expect((await post('/experiences/import', 6 * MB + 1)).status).toBe(413)
   })
 
   test('GET /health', async () => {
@@ -177,7 +208,10 @@ describe('typed Eden client against the running server', () => {
     // Logged right after listening, before /health answers, but stdout is read
     // asynchronously: wait for the memory line (the later of the two)
     const output = await waitForOutput(server!, /^\[INFO\] memory \{.*\}$/m)
-    expect(output).toMatch(/^\[INFO\] Running at .+"telemetry":"(off \(.+\)|traces=\w+ metrics=\w+ logs=\w+)"\}$/m)
+    // tests/setup.ts removes ANTHROPIC_API_KEY, which the server inherits
+    expect(output).toMatch(
+      /^\[INFO\] Running at .+"telemetry":"(off \(.+\)|traces=\w+ metrics=\w+ logs=\w+)","resumeImport":"off \(no ANTHROPIC_API_KEY\)"\}$/m
+    )
     const memoryLine = output.match(/^\[INFO\] memory (\{.*\})$/m)
     expect(memoryLine).not.toBeNull()
     const fields = JSON.parse(memoryLine![1])

@@ -122,6 +122,62 @@ describe('request bodies', () => {
     expect(add).toHaveBeenCalledWith(1, expect.objectContaining({ method: 'POST' }));
   });
 
+  describe('size', () => {
+    const MB = 1024 * 1024;
+
+    /** A JSON POST whose Content-Length is `bytes`, as a browser sends it (a Request built in code has none) */
+    const postOfSize = (path: string, bytes: number, headers: Record<string, string> = {}) => {
+      // {"title":""} is 12 characters
+      const body = JSON.stringify({ title: 'x'.repeat(bytes - 12) });
+      expect(body.length).toBe(bytes);
+      return makeRequest(createApp(), path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': String(bytes), ...headers },
+        body
+      });
+    };
+
+    it('answers 413 above 1 MB, before any handler, with the CORS headers', async () => {
+      const origin = env.ALLOWED_DOMAINS[0];
+      const verifyIdToken = spyOn(google, 'verifyIdToken');
+
+      for (const path of ['/experiences', '/login', '/domain/claim']) {
+        const result = await postOfSize(path, MB + 1, { Origin: origin, Cookie: await authCookie() });
+        expect({ path, status: result.status }).toEqual({ path, status: 413 });
+        expect(await result.text()).toBe('Payload Too Large');
+        expect(result.headers.get('access-control-allow-origin')).toBe(origin);
+      }
+      expect(verifyIdToken).not.toHaveBeenCalled();
+    });
+
+    it('lets 1 MB through to the route', async () => {
+      // No session: the route's own 401, not the size guard's 413
+      expect((await postOfSize('/experiences', MB)).status).toBe(401);
+    });
+
+    it('lets the résumé import (a base64 PDF) above 1 MB through to its route', async () => {
+      expect((await postOfSize('/experiences/import', 5 * MB)).status).toBe(401);
+      // Only POST: another method on that path keeps the 1 MB cap
+      const put = await makeRequest(createApp(), '/experiences/import', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': String(MB + 1) },
+        body: '{}'
+      });
+      expect(put.status).toBe(413);
+    });
+
+    it('logs and counts the 413 like any other 4xx, without the body', async () => {
+      await afterResponseHooks();
+      const warn = spyOn(logger, 'warn');
+
+      const result = await postOfSize('/experiences', 2 * MB);
+
+      expect(result.status).toBe(413);
+      expect(warn).toHaveBeenCalledWith('Payload Too Large', expect.objectContaining({ status: 413, method: 'POST' }));
+      expect(JSON.stringify(warn.mock.calls).length).toBeLessThan(1_000);
+    });
+  });
+
   it('lets JSON (with parameters) and body-less requests through', async () => {
     useTestGoogleKeys();
 

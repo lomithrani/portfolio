@@ -39,7 +39,10 @@ describe('parseEnv', () => {
       OTEL_METRICS_EXPORTER: 'otlp',
       OTEL_LOGS_EXPORTER: 'otlp',
       otelSignals: { traces: false, metrics: false, logs: false },
-      MEMORY_LOG_INTERVAL_MS: 600_000
+      MEMORY_LOG_INTERVAL_MS: 600_000,
+      ANTHROPIC_API_KEY: undefined,
+      RESUME_IMPORT_MONTHLY_LIMIT: 3,
+      RESUME_IMPORT_DAILY_LIMIT: 30
     });
   });
 
@@ -121,6 +124,47 @@ describe('parseEnv', () => {
     expect(problems[0]).toContain('GOOGLE_CLIENT_SECRET');
     // The secret itself is never echoed into logs
     expect(problems[0]).not.toContain('abc');
+  });
+
+  describe('résumé import', () => {
+    it('reads ANTHROPIC_API_KEY trimmed, an empty one as unset', () => {
+      expect(parseEnv({ ...base, ANTHROPIC_API_KEY: '  ' }).ANTHROPIC_API_KEY).toBeUndefined();
+      expect(parseEnv({ ...base, ANTHROPIC_API_KEY: ' sk-ant-api03-abc_DEF-123 ' }).ANTHROPIC_API_KEY)
+        .toBe('sk-ant-api03-abc_DEF-123');
+    });
+
+    it.each([
+      ['quoted', '"sk-ant-api03-topsecret"'],
+      ['single-quoted', "'sk-ant-api03-topsecret'"],
+      ['with a space inside', 'sk-ant-api03 topsecret'],
+    ])('rejects an ANTHROPIC_API_KEY %s, without repeating it', (_label, value) => {
+      const problems = problemsOf({ ...base, ANTHROPIC_API_KEY: value });
+      expect(problems).toEqual([
+        'ANTHROPIC_API_KEY must be the bare API key from the Claude Console (no quotes or spaces)'
+      ]);
+      expect(problems[0]).not.toContain('topsecret');
+    });
+
+    it('parses the limits: whole numbers, 0 included (feature off)', () => {
+      expect(parseEnv({ ...base, RESUME_IMPORT_MONTHLY_LIMIT: ' 5 ', RESUME_IMPORT_DAILY_LIMIT: '0' })).toMatchObject({
+        RESUME_IMPORT_MONTHLY_LIMIT: 5,
+        RESUME_IMPORT_DAILY_LIMIT: 0
+      });
+      expect(parseEnv({ ...base, RESUME_IMPORT_MONTHLY_LIMIT: '', RESUME_IMPORT_DAILY_LIMIT: ' ' })).toMatchObject({
+        RESUME_IMPORT_MONTHLY_LIMIT: 3,
+        RESUME_IMPORT_DAILY_LIMIT: 30
+      });
+    });
+
+    it.each(['-1', '2.5', '1e3', '0x10', 'three', '99999999999999999999'])(
+      'rejects the limit %p',
+      (value) => {
+        expect(problemsOf({ ...base, RESUME_IMPORT_MONTHLY_LIMIT: value })).toEqual([
+          `RESUME_IMPORT_MONTHLY_LIMIT must be a whole number, 0 (résumé import off) or more (got ${JSON.stringify(value)})`
+        ]);
+        expect(problemsOf({ ...base, RESUME_IMPORT_DAILY_LIMIT: value })[0]).toStartWith('RESUME_IMPORT_DAILY_LIMIT');
+      }
+    );
   });
 
   it('warns about a short JWT_SECRET in production', () => {
