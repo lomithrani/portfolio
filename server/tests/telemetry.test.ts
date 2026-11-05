@@ -1,22 +1,23 @@
 // What the trace exporter receives when telemetry is on. Requests go through
 // the real Elysia OpenTelemetry plugin and the app's routes; spans land in an
-// in-memory exporter behind the same redacting wrapper production uses.
+// in-memory exporter behind the span processors production uses (redaction,
+// then the batch queue, whose exporter is the redacting wrapper).
 import { describe, it, expect, beforeAll, afterAll, afterEach, mock, spyOn } from 'bun:test';
 import { Elysia } from 'elysia';
 import { opentelemetry } from '@elysiajs/opentelemetry';
 import { context, trace } from '@opentelemetry/api';
 import {
+  BatchSpanProcessor,
   InMemorySpanExporter,
-  SimpleSpanProcessor,
   StackContextManager,
   TracerProvider
 } from '@opentelemetry/sdk-trace';
 import type { ReadableSpan } from '@opentelemetry/sdk-trace';
 import { createApp } from '../app';
 import { env } from '../env';
-import { SENSITIVE_SPAN_ATTRIBUTES, redactingSpanExporter } from '../instrumentation';
+import { SENSITIVE_SPAN_ATTRIBUTES, createSpanProcessors } from '../instrumentation';
 import { Domain, RateLimitCounter, User } from '../models/database';
-import { authCookie, makeUser, parseCookie, signGoogleIdToken, useTestGoogleKeys } from './helpers';
+import { authCookie, makeUser, messageStream, parseCookie, signGoogleIdToken, useTestGoogleKeys } from './helpers';
 
 let memory: InMemorySpanExporter;
 let provider: TracerProvider;
@@ -24,9 +25,7 @@ let app: Elysia;
 
 beforeAll(() => {
   memory = new InMemorySpanExporter();
-  provider = new TracerProvider({
-    spanProcessors: [new SimpleSpanProcessor({ exporter: redactingSpanExporter(memory) })]
-  });
+  provider = new TracerProvider({ spanProcessors: createSpanProcessors(memory) });
   // Registered before the plugin is created, so it uses this provider
   // instead of starting its own SDK
   trace.setGlobalTracerProvider(provider);
@@ -45,6 +44,10 @@ afterEach(() => {
   mock.restore();
   memory.reset();
 });
+
+/** Literal keys: toHaveProperty('http.request.body') would look for a nested path */
+const sensitiveKeysOf = (attributes: object) =>
+  Object.keys(attributes).filter((key) => SENSITIVE_SPAN_ATTRIBUTES.includes(key));
 
 /** Spans exported so far (root spans end after the response is sent) */
 const exportedSpans = async (): Promise<ReadableSpan[]> => {
@@ -90,10 +93,7 @@ describe('exported spans', () => {
     for (const secret of [sessionJwt, googleToken, sentinel, issuedJwt, 'test@gmail.com']) {
       expect(exported).not.toContain(secret);
     }
-    // Literal keys: toHaveProperty('http.request.body') would look for a nested path
-    for (const span of spans) {
-      expect(Object.keys(span.attributes).filter((key) => SENSITIVE_SPAN_ATTRIBUTES.includes(key))).toEqual([]);
-    }
+    for (const span of spans) expect(sensitiveKeysOf(span.attributes)).toEqual([]);
 
     // One root span per request (they end in any order)
     const summaries = spans
@@ -113,6 +113,37 @@ describe('exported spans', () => {
     ]);
   });
 
+  it('lose bodies, cookies and credentials before the batch queue: queued spans never hold them', async () => {
+    useTestGoogleKeys();
+    // What each span holds when the batch processor queues it (until the next export)
+    const queued: { name: string; sensitive: string[]; bodySize: unknown }[] = [];
+    const onEnd = BatchSpanProcessor.prototype.onEnd;
+    spyOn(BatchSpanProcessor.prototype, 'onEnd').mockImplementation(function (this: BatchSpanProcessor, span: ReadableSpan) {
+      queued.push({
+        name: span.name,
+        sensitive: sensitiveKeysOf(span.attributes),
+        bodySize: span.attributes['http.request.body.size']
+      });
+      return onEnd.call(this, span);
+    });
+
+    spyOn(User, 'findById').mockResolvedValue(makeUser() as never);
+    spyOn(User, 'findOne').mockResolvedValue(makeUser() as never);
+    const body = JSON.stringify({ token: await signGoogleIdToken() });
+    const login = await request('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: await authCookie(), Authorization: 'Bearer abc' },
+      body
+    });
+    expect(login.status).toBe(200);
+    await exportedSpans();
+
+    const root = queued.find((span) => span.name === 'POST /login');
+    // The body was traced (its size is kept), then dropped as the span ended
+    expect(root).toEqual({ name: 'POST /login', sensitive: [], bodySize: body.length });
+    expect(queued.flatMap((span) => span.sensitive)).toEqual([]);
+  });
+
   it('carry neither the résumé PDF nor the Anthropic API key of an import, the SDK spans included', async () => {
     const apiKey = 'sk-ant-api03-telemetry-test-key';
     const pdf = Buffer.from(`%PDF-1.7\n% telemetry-sentinel-${Date.now()}\n%%EOF\n`).toString('base64');
@@ -129,7 +160,8 @@ describe('exported spans', () => {
         if (url.origin !== 'https://api.anthropic.com') throw new Error(`Unexpected request to ${url}`);
         anthropicPaths.push(url.pathname);
         if (url.pathname === '/v1/messages/count_tokens') return Response.json({ input_tokens: 3_000 });
-        return Response.json({
+        // The paid call is streamed
+        return messageStream({
           id: 'msg_test',
           type: 'message',
           role: 'assistant',

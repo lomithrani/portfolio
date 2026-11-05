@@ -155,8 +155,76 @@ describe('request bodies', () => {
       expect((await postOfSize('/experiences', MB)).status).toBe(401);
     });
 
+    /** A body that records whether anything read it (pulled only on read) */
+    const watchedBody = (bytes: number) => {
+      const watch = { read: 0 };
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            const chunk = Math.min(64 * 1024, bytes - watch.read);
+            if (chunk <= 0) return controller.close();
+            controller.enqueue(new Uint8Array(chunk).fill(0x20));
+            watch.read += chunk;
+          }
+        },
+        { highWaterMark: 0 }
+      );
+      return { stream, watch };
+    };
+
+    /** A JSON POST without Content-Length (chunked, as a proxy or an HTTP/2 client may forward it) */
+    const streamedPost = (path: string, body: ReadableStream<Uint8Array>, headers: Record<string, string> = {}) =>
+      createApp().fetch(
+        new Request(`http://localhost${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body,
+          duplex: 'half'
+        } as RequestInit)
+      );
+
+    it('answers 413 to a body over 1 MB sent without Content-Length, reading no more than 1 MB of it', async () => {
+      const origin = env.ALLOWED_DOMAINS[0];
+      const verifyIdToken = spyOn(google, 'verifyIdToken');
+
+      for (const path of ['/login', '/experiences']) {
+        const { stream, watch } = watchedBody(8 * MB);
+        const result = await streamedPost(path, stream, { Origin: origin });
+        expect({ path, status: result.status }).toEqual({ path, status: 413 });
+        expect(await result.text()).toBe('Payload Too Large');
+        expect(result.headers.get('access-control-allow-origin')).toBe(origin);
+        expect(watch.read).toBeLessThanOrEqual(MB + 64 * 1024);
+      }
+      expect(verifyIdToken).not.toHaveBeenCalled();
+    });
+
+    it('reads a body of exactly 1 MB sent without Content-Length, and refuses invalid JSON with 400', async () => {
+      // {"title":""} is 12 characters; no session: the route's own 401
+      const body = new TextEncoder().encode(JSON.stringify({ title: 'x'.repeat(MB - 12) }));
+      const exact = await streamedPost('/experiences', new Blob([body]).stream());
+      expect(exact.status).toBe(401);
+
+      const invalid = await streamedPost('/login', new Blob(['{"token":']).stream());
+      expect(invalid.status).toBe(400);
+      expect(await invalid.text()).toBe('Bad Request');
+    });
+
+    it('refuses the résumé import without a session cookie before reading its body, with the CORS headers', async () => {
+      const origin = env.ALLOWED_DOMAINS[0];
+      const { stream, watch } = watchedBody(5 * MB);
+
+      const result = await streamedPost('/experiences/import', stream, { Origin: origin, Cookie: 'other=1; auth=' });
+      expect(result.status).toBe(401);
+      expect(await result.text()).toBe('Unauthorized');
+      expect(result.headers.get('access-control-allow-origin')).toBe(origin);
+      expect(watch.read).toBe(0);
+    });
+
     it('lets the résumé import (a base64 PDF) above 1 MB through to its route', async () => {
-      expect((await postOfSize('/experiences/import', 5 * MB)).status).toBe(401);
+      // An invalid session: the route's own 401, once the body is read
+      expect((await postOfSize('/experiences/import', 5 * MB, { Cookie: 'auth=invalid' })).status).toBe(401);
+      const chunked = new Blob([JSON.stringify({ file: 'x'.repeat(5 * MB) })]).stream();
+      expect((await streamedPost('/experiences/import', chunked, { Cookie: 'auth=invalid' })).status).toBe(401);
       // Only POST: another method on that path keeps the 1 MB cap
       const put = await makeRequest(createApp(), '/experiences/import', {
         method: 'PUT',

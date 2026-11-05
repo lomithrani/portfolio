@@ -32,10 +32,11 @@ import { rateLimitAddress } from '../services/clientAddress';
 import { CALENDAR_SCOPE, RECONNECT_REQUIRED_MESSAGE } from '../services/googleCalendar';
 import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
-import { resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
+import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
 import {
   experienceRequestBody,
+  messageStream,
   parseCookie,
   signGoogleIdToken,
   useTestGoogleKeys,
@@ -1475,11 +1476,13 @@ describe('no Google token in any API response', () => {
     resumeImportCounters.globalKey = `resume-import:global:${t.id('sweep')}`;
     rateLimitKeys.add(resumeImportCounters.globalKey);
     rateLimitKeys.add(resumeImportUserKey(sweep.userId));
+    rateLimitKeys.add(resumeImportAttemptsKey(sweep.userId));
     try {
       const fetchSpy = globalThis.fetch as unknown as Mock<(input: string | URL | Request) => Promise<Response>>;
       fetchSpy.mockImplementationOnce(async () => Response.json({ input_tokens: 1_000 }));
+      // The paid call is streamed
       fetchSpy.mockImplementationOnce(async () =>
-        Response.json({
+        messageStream({
           id: 'msg_sweep',
           type: 'message',
           role: 'assistant',

@@ -51,6 +51,11 @@ export interface ServerEnv {
   RESUME_IMPORT_MONTHLY_LIMIT: number;
   /** Résumé imports per UTC day across all users (0 turns the feature off) */
   RESUME_IMPORT_DAILY_LIMIT: number;
+  /**
+   * Résumé import attempts per user per UTC day, failed ones included and
+   * never given back (0 turns the feature off)
+   */
+  RESUME_IMPORT_ATTEMPTS_PER_DAY: number;
   /** Serve OpenAPI docs (always outside production, opt-in with API_DOCS=true) */
   apiDocsEnabled: boolean;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
@@ -205,6 +210,7 @@ const parseMemoryLogInterval = (raw: string | undefined, problems: string[]): nu
 
 const DEFAULT_RESUME_IMPORT_MONTHLY_LIMIT = 3;
 const DEFAULT_RESUME_IMPORT_DAILY_LIMIT = 30;
+const DEFAULT_RESUME_IMPORT_ATTEMPTS_PER_DAY = 10;
 
 // A count of requests: 0 or more, digits only (Number() would also accept
 // '1e3', '0x3e8' or '2.5')
@@ -308,6 +314,12 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     DEFAULT_RESUME_IMPORT_DAILY_LIMIT,
     problems
   );
+  const RESUME_IMPORT_ATTEMPTS_PER_DAY = parseLimit(
+    'RESUME_IMPORT_ATTEMPTS_PER_DAY',
+    source.RESUME_IMPORT_ATTEMPTS_PER_DAY,
+    DEFAULT_RESUME_IMPORT_ATTEMPTS_PER_DAY,
+    problems
+  );
 
   const OTEL_SDK_DISABLED = parseOtelBoolean('OTEL_SDK_DISABLED', source.OTEL_SDK_DISABLED, problems);
   const OTEL_TRACES_EXPORTER = parseOtelExporter('OTEL_TRACES_EXPORTER', source.OTEL_TRACES_EXPORTER, problems);
@@ -345,6 +357,7 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     ANTHROPIC_API_KEY,
     RESUME_IMPORT_MONTHLY_LIMIT,
     RESUME_IMPORT_DAILY_LIMIT,
+    RESUME_IMPORT_ATTEMPTS_PER_DAY,
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',

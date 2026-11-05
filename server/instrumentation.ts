@@ -2,7 +2,7 @@ import { Elysia } from 'elysia'
 import { opentelemetry } from '@elysiajs/opentelemetry'
 import { NodeSDK } from '@opentelemetry/sdk-node'
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace'
-import type { SpanExporter } from '@opentelemetry/sdk-trace'
+import type { ReadableSpan, SpanExporter, SpanProcessor } from '@opentelemetry/sdk-trace'
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import type { PushMetricExporter } from '@opentelemetry/sdk-metrics'
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs'
@@ -29,13 +29,33 @@ export const SENSITIVE_SPAN_ATTRIBUTES = [
 	'http.response.header.set-cookie'
 ]
 
-/** Wraps a span exporter so the sensitive attributes are dropped before export */
+// Ended spans are not frozen: this deletes from what processors and exporters read
+const dropSensitiveAttributes = (span: ReadableSpan) => {
+	for (const key of SENSITIVE_SPAN_ATTRIBUTES) delete span.attributes[key]
+}
+
+/**
+ * Drops the sensitive attributes as each span ends. Placed before the batch
+ * processor, so the spans it queues until the next export (seconds, up to
+ * 2048 of them) never hold a request body: some are megabytes (a résumé PDF)
+ */
+export class RedactingSpanProcessor implements SpanProcessor {
+	onStart() {}
+	onEnd(span: ReadableSpan) {
+		dropSensitiveAttributes(span)
+	}
+	forceFlush() {
+		return Promise.resolve()
+	}
+	shutdown() {
+		return Promise.resolve()
+	}
+}
+
+/** Wraps a span exporter so the sensitive attributes are dropped before export (a second layer) */
 export const redactingSpanExporter = (exporter: SpanExporter): SpanExporter => ({
 	export(spans, resultCallback) {
-		for (const span of spans) {
-			// Ended spans are not frozen: this deletes from what the exporter reads
-			for (const key of SENSITIVE_SPAN_ATTRIBUTES) delete span.attributes[key]
-		}
+		for (const span of spans) dropSensitiveAttributes(span)
 		exporter.export(spans, resultCallback)
 	},
 	shutdown: () => exporter.shutdown(),
@@ -68,6 +88,12 @@ const otlpExporters: TelemetryExporters = {
 
 const METRIC_EXPORT_INTERVAL_MS = 60_000
 
+/** The span processors of exported traces, in order: redaction, then batching */
+export const createSpanProcessors = (exporter: SpanExporter): SpanProcessor[] => [
+	new RedactingSpanProcessor(),
+	new BatchSpanProcessor({ exporter: redactingSpanExporter(exporter) })
+]
+
 /**
  * The SDK (not started yet) for the signals the environment exports, or
  * undefined when telemetry is off (no endpoint, or OTEL_SDK_DISABLED=true).
@@ -89,9 +115,7 @@ export const createTelemetrySdk = (
 			[ATTR_SERVICE_NAME]: settings.OTEL_SERVICE_NAME,
 			'deployment.environment.name': settings.NODE_ENV
 		}),
-		spanProcessors: signals.traces
-			? [new BatchSpanProcessor({ exporter: redactingSpanExporter(exporters.traces()) })]
-			: [],
+		spanProcessors: signals.traces ? createSpanProcessors(exporters.traces()) : [],
 		metricReaders: signals.metrics
 			? [new PeriodicExportingMetricReader({
 				exporter: exporters.metrics(),

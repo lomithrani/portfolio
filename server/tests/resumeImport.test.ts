@@ -21,10 +21,19 @@ import {
   RESUME_IMPORT_MAX_OUTPUT_TOKENS,
   RESUME_IMPORT_MODEL,
   RESUME_IMPORT_MONTHLY_WINDOW_MS,
+  resumeImportAttemptsKey,
   resumeImportCounters,
+  resumeImportTimeouts,
   resumeImportUserKey
 } from '../services/resumeImport';
-import { parseCookie, signGoogleIdToken, useTestGoogleKeys } from './helpers';
+import {
+  messageStream,
+  messageStreamEvents,
+  parseCookie,
+  signGoogleIdToken,
+  sseResponse,
+  useTestGoogleKeys
+} from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
@@ -49,7 +58,8 @@ interface ClaudeRequest {
   body: Record<string, any>;
 }
 
-type Answer = () => Response | Promise<Response>;
+/** An answer of the fake API; `signal` is the fetch's (the SDK aborts it on a timeout or a deadline) */
+type Answer = (signal: AbortSignal) => Response | Promise<Response>;
 
 /** A Messages API error body, as Anthropic sends it; retry-after-ms 0 keeps the SDK's retry instant */
 const apiError = (status: number, type: string, message: string): Answer => () =>
@@ -64,28 +74,43 @@ const connectionFailure: Answer = () => {
 
 const usage = { input_tokens: 4_200, output_tokens: 1_800, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
 
-/** A message of Claude Haiku 5.5: thinking first, then the JSON text */
-const message = (text: string, overrides: Record<string, unknown> = {}): Answer => () =>
-  Response.json(
-    {
-      id: 'msg_test',
-      type: 'message',
-      role: 'assistant',
-      model: RESUME_IMPORT_MODEL,
-      content: [
-        { type: 'thinking', thinking: '', signature: 'sig' },
-        { type: 'text', text }
-      ],
-      stop_reason: 'end_turn',
-      stop_sequence: null,
-      stop_details: null,
-      usage,
-      ...overrides
-    },
-    { headers: { 'request-id': 'req_test' } }
-  );
+/** A message of Claude Haiku 5.5, streamed: thinking first, then the JSON text */
+const message = (text: string, overrides: Record<string, unknown> = {}) => ({
+  id: 'msg_test',
+  type: 'message',
+  role: 'assistant',
+  model: RESUME_IMPORT_MODEL,
+  content: [
+    { type: 'thinking', thinking: '', signature: 'sig' },
+    { type: 'text', text }
+  ],
+  stop_reason: 'end_turn',
+  stop_sequence: null,
+  stop_details: null,
+  usage,
+  ...overrides
+});
 
-const extraction = (output: unknown) => message(JSON.stringify(output));
+const streamed = (text: string, overrides: Record<string, unknown> = {}): Answer => () => messageStream(message(text, overrides));
+
+/** The first event of a streamed message: the model has started */
+const messageStart = () => messageStreamEvents(message('')).slice(0, 1);
+
+// Paid calls that fail once the request was sent: the model may have run
+/** No answer at all until the deadline */
+const noAnswer: Answer = (signal) =>
+  new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), {
+      once: true
+    });
+  });
+/** The answer starts, then stalls until the deadline */
+const stalledStream: Answer = (signal) => sseResponse(messageStart(), signal);
+/** The answer starts, then the stream reports an error (after its 200) */
+const streamError: Answer = () =>
+  sseResponse([...messageStart(), { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }]);
+
+const extraction = (output: unknown) => streamed(JSON.stringify(output));
 
 const ONE_EXPERIENCE = {
   experiences: [
@@ -127,14 +152,15 @@ const createFakeClaude = () => {
   const install = () =>
     spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
       const request = input instanceof Request ? new Request(input, init) : new Request(String(input), init);
+      const signal = init?.signal ?? request.signal;
       const url = new URL(request.url);
       if (url.origin !== 'https://api.anthropic.com') throw new Error(`Unexpected request to ${request.method} ${url}`);
       state.requests.push({ path: url.pathname, headers: request.headers, body: JSON.parse(await request.text()) });
       if (url.pathname === '/v1/messages/count_tokens') {
-        return (state.counts.shift() ?? (() => Response.json({ input_tokens: state.inputTokens })))();
+        return (state.counts.shift() ?? (() => Response.json({ input_tokens: state.inputTokens })))(signal);
       }
-      if (url.pathname === '/v1/messages') return (state.messages.shift() ?? extraction(state.output))();
-      return apiError(404, 'not_found_error', 'Not found')();
+      if (url.pathname === '/v1/messages') return (state.messages.shift() ?? extraction(state.output))(signal);
+      return apiError(404, 'not_found_error', 'Not found')(signal);
     }) as typeof fetch);
 
   const paths = () => state.requests.map((request) => request.path);
@@ -209,7 +235,10 @@ const removeTestData = async (suffix: string, userIds: string[]) => {
   const domains = await Domain.find({ $or: [{ admin: { $in: users } }, { name: named }] });
   await Experience.deleteMany({ _id: { $in: domains.flatMap((domain) => domain.experiences.map(String)) } });
   await Domain.deleteMany({ _id: { $in: domains.map((domain) => domain._id) } });
-  const counterKeys = [resumeImportCounters.globalKey, ...userIds.map(resumeImportUserKey)];
+  const counterKeys = [
+    resumeImportCounters.globalKey,
+    ...userIds.flatMap((userId) => [resumeImportUserKey(userId), resumeImportAttemptsKey(userId)])
+  ];
   await RateLimitCounter.deleteMany({ _id: { $regex: `^(${counterKeys.join('|')}):` } });
   await User.deleteMany({ _id: { $in: users } });
 };
@@ -229,7 +258,9 @@ const saved = {
   key: env.ANTHROPIC_API_KEY,
   monthly: env.RESUME_IMPORT_MONTHLY_LIMIT,
   daily: env.RESUME_IMPORT_DAILY_LIMIT,
-  globalKey: resumeImportCounters.globalKey
+  attempts: env.RESUME_IMPORT_ATTEMPTS_PER_DAY,
+  globalKey: resumeImportCounters.globalKey,
+  timeouts: { ...resumeImportTimeouts }
 };
 let connected = false;
 
@@ -244,6 +275,7 @@ afterAll(async () => {
   env.ANTHROPIC_API_KEY = saved.key;
   env.RESUME_IMPORT_MONTHLY_LIMIT = saved.monthly;
   env.RESUME_IMPORT_DAILY_LIMIT = saved.daily;
+  env.RESUME_IMPORT_ATTEMPTS_PER_DAY = saved.attempts;
   resumeImportCounters.globalKey = saved.globalKey;
   if (connected) await mongoose.disconnect();
 });
@@ -255,6 +287,8 @@ beforeEach(async () => {
   env.ANTHROPIC_API_KEY = TEST_API_KEY;
   env.RESUME_IMPORT_MONTHLY_LIMIT = 3;
   env.RESUME_IMPORT_DAILY_LIMIT = 30;
+  env.RESUME_IMPORT_ATTEMPTS_PER_DAY = 10;
+  Object.assign(resumeImportTimeouts, saved.timeouts);
   resumeImportCounters.globalKey = `resume-import:global:${t.id('test')}`;
   app = createApp();
   useTestGoogleKeys();
@@ -285,6 +319,8 @@ const userCount = async (userId: string) =>
   (await peekRateLimit(resumeImportUserKey(userId), { windowMs: RESUME_IMPORT_MONTHLY_WINDOW_MS })).count;
 const siteCount = async () =>
   (await peekRateLimit(resumeImportCounters.globalKey, { windowMs: RESUME_IMPORT_DAILY_WINDOW_MS })).count;
+const attemptCount = async (userId: string) =>
+  (await peekRateLimit(resumeImportAttemptsKey(userId), { windowMs: RESUME_IMPORT_DAILY_WINDOW_MS })).count;
 
 const windowEnd = (windowMs: number) => new Date((Math.floor(Date.now() / windowMs) + 1) * windowMs).toISOString();
 
@@ -304,11 +340,13 @@ describe('availability', () => {
   it.each([
     ['without ANTHROPIC_API_KEY', { key: undefined }],
     ['with RESUME_IMPORT_MONTHLY_LIMIT=0', { monthly: 0 }],
-    ['with RESUME_IMPORT_DAILY_LIMIT=0', { daily: 0 }]
+    ['with RESUME_IMPORT_DAILY_LIMIT=0', { daily: 0 }],
+    ['with RESUME_IMPORT_ATTEMPTS_PER_DAY=0', { attempts: 0 }]
   ])('is off %s: GET says so, POST answers 404 and nothing is counted', async (_label, settings) => {
     if ('key' in settings) env.ANTHROPIC_API_KEY = settings.key;
     if ('monthly' in settings) env.RESUME_IMPORT_MONTHLY_LIMIT = settings.monthly!;
     if ('daily' in settings) env.RESUME_IMPORT_DAILY_LIMIT = settings.daily!;
+    if ('attempts' in settings) env.RESUME_IMPORT_ATTEMPTS_PER_DAY = settings.attempts!;
 
     expect((await status()).json()).toEqual({
       enabled: false,
@@ -321,6 +359,7 @@ describe('availability', () => {
     expect(result.text).toBe('Résumé import is not enabled on this server');
     expect(claude.state.requests).toHaveLength(0);
     expect(await userCount(owner.userId)).toBe(0);
+    expect(await attemptCount(owner.userId)).toBe(0);
   });
 
   it('requires a domain, like POST /experiences', async () => {
@@ -406,10 +445,12 @@ describe('the Claude request', () => {
       expect(request.headers.get('anthropic-version')).toBeString();
     }
 
-    // The same content is counted, then sent
-    const { max_tokens, ...content } = sent.body;
+    // The same content is counted, then sent, streamed: no response-wide
+    // timeout cuts a long answer short
+    const { max_tokens, stream, ...content } = sent.body;
     expect(counted.body).toEqual(content);
     expect(max_tokens).toBe(RESUME_IMPORT_MAX_OUTPUT_TOKENS);
+    expect(stream).toBe(true);
 
     expect(sent.body.model).toBe('claude-haiku-5-5');
     expect(sent.body.system).toContain('untrusted');
@@ -429,7 +470,7 @@ describe('the Claude request', () => {
       format: { type: 'json_schema', schema: RESUME_EXTRACTION_SCHEMA }
     });
     // Claude Haiku 5.5 refuses sampling parameters and budgets; thinking stays adaptive by default
-    for (const key of ['temperature', 'top_p', 'top_k', 'thinking', 'stream']) {
+    for (const key of ['temperature', 'top_p', 'top_k', 'thinking']) {
       expect(sent.body).not.toHaveProperty(key);
     }
   });
@@ -464,14 +505,31 @@ describe('the Claude request', () => {
     expect(await siteCount()).toBe(0);
   });
 
-  it('answers 422 when Claude cannot read the PDF while counting, and counts nothing', async () => {
-    claude.state.counts.push(apiError(400, 'invalid_request_error', 'The PDF specified was not valid.'));
+  it('answers 503 to a request the API rejects while counting, logged at error with its message for the operator', async () => {
+    // e.g. a schema or a parameter the API does not accept: no user can fix it
+    // (the API's message is masked should it ever quote the key)
+    const apiMessage = `output_config.format.schema: unsupported keyword (key ${TEST_API_KEY}) ${'x'.repeat(400)}`;
+    claude.state.counts.push(apiError(400, 'invalid_request_error', apiMessage));
 
     const result = await importFile(pdf);
-    expect(result.status).toBe(422);
-    expect(result.text).toBe('This PDF could not be read. Export it again as a standard PDF without a password, then retry');
+    expect(result.status).toBe(503);
+    expect(result.text).toBe('Résumé import is temporarily unavailable, try again later');
     expect(claude.paths()).toEqual(['/v1/messages/count_tokens']);
     expect(await userCount(owner.userId)).toBe(0);
+    expect(await siteCount()).toBe(0);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Résumé import: the Claude API refused the request',
+      expect.objectContaining({
+        step: 'count',
+        status: 400,
+        type: 'invalid_request_error',
+        message: expect.stringContaining('output_config.format.schema: unsupported keyword (key ***)')
+      })
+    );
+    const logged = (logger.error as unknown as { mock: { calls: [string, { message: string }][] } }).mock.calls.find(
+      ([text]) => text === 'Résumé import: the Claude API refused the request'
+    )!;
+    expect(logged[1].message.length).toBeLessThanOrEqual(300);
   });
 });
 
@@ -637,7 +695,7 @@ describe('a successful import', () => {
   });
 
   it('counts an answer that is not JSON, returning no drafts', async () => {
-    claude.state.messages.push(message('Sorry, here is a summary instead.'));
+    claude.state.messages.push(streamed('Sorry, here is a summary instead.'));
 
     const result = await importFile(pdf);
     expect(result.status).toBe(200);
@@ -649,7 +707,7 @@ describe('a successful import', () => {
 describe('answers Claude did not finish', () => {
   it('answers 422 to a refusal, and counts it (it was paid for)', async () => {
     claude.state.messages.push(
-      message('I cannot help with that.', { stop_reason: 'refusal', stop_details: { type: 'refusal', category: null, explanation: null } })
+      streamed('I cannot help with that.', { stop_reason: 'refusal', stop_details: { type: 'refusal', category: null, explanation: null } })
     );
 
     const result = await importFile(pdf);
@@ -661,7 +719,7 @@ describe('answers Claude did not finish', () => {
   });
 
   it('answers 422 when the answer ran out of tokens, and counts it', async () => {
-    claude.state.messages.push(message('{"experiences":[{"type":"profess', { stop_reason: 'max_tokens' }));
+    claude.state.messages.push(streamed('{"experiences":[{"type":"profess', { stop_reason: 'max_tokens' }));
 
     const result = await importFile(pdf);
     expect(result.status).toBe(422);
@@ -672,30 +730,67 @@ describe('answers Claude did not finish', () => {
 
 describe('failures on the operator side', () => {
   it.each([
-    ['overloaded (529)', apiError(529, 'overloaded_error', 'Overloaded'), 2, 'warn'],
-    ['an internal error (500)', apiError(500, 'api_error', 'Internal server error'), 2, 'warn'],
-    ['rate limited (429)', apiError(429, 'rate_limit_error', 'Rate limited'), 2, 'warn'],
-    ['unreachable', connectionFailure, 2, 'warn'],
-    ['refusing the key (401)', apiError(401, 'authentication_error', 'invalid x-api-key'), 1, 'error'],
-    ['refusing the request (400, e.g. a spend limit)', apiError(400, 'invalid_request_error', 'You have reached your specified workspace API usage limits.'), 1, 'error'],
-    ['without access to the model (404)', apiError(404, 'not_found_error', 'model: claude-haiku-5-5'), 1, 'error']
-  ] as const)('answers 503 when Claude is %s, and gives the import back', async (_label, answer, attempts, level) => {
-    // The SDK retries once (MAX_RETRIES) what can succeed later
-    for (let attempt = 0; attempt < attempts; attempt++) claude.state.messages.push(answer);
+    ['overloaded (529)', apiError(529, 'overloaded_error', 'Overloaded'), 'warn'],
+    ['an internal error (500)', apiError(500, 'api_error', 'Internal server error'), 'warn'],
+    ['rate limited (429)', apiError(429, 'rate_limit_error', 'Rate limited'), 'warn'],
+    ['refusing the key (401)', apiError(401, 'authentication_error', 'invalid x-api-key'), 'error'],
+    ['refusing the request (400, e.g. a spend limit)', apiError(400, 'invalid_request_error', 'You have reached your specified workspace API usage limits.'), 'error'],
+    ['without access to the model (404)', apiError(404, 'not_found_error', 'model: claude-haiku-5-5'), 'error']
+  ] as const)('answers 503 when Claude is %s (an error status, not billed): the import is given back, the attempt is not', async (_label, answer, level) => {
+    claude.state.messages.push(answer);
 
     const result = await importFile(pdf);
     expect(result.status).toBe(503);
     expect(result.text).toBe('Résumé import is temporarily unavailable, try again later');
-    expect(claude.paths()).toEqual(['/v1/messages/count_tokens', ...Array(attempts).fill('/v1/messages')]);
+    // Sent once: the paid call is never retried
+    expect(claude.paths()).toEqual(['/v1/messages/count_tokens', '/v1/messages']);
 
-    // Given back: the allowance is untouched
+    // Given back: the allowance is untouched, but the attempt counts
     expect(await userCount(owner.userId)).toBe(0);
     expect(await siteCount()).toBe(0);
+    expect(await attemptCount(owner.userId)).toBe(1);
     expect((await status()).json()).toMatchObject({ remaining: 3, resetsAt: null });
     expect(logger[level]).toHaveBeenCalledWith(
       level === 'error' ? 'Résumé import: the Claude API refused the request' : 'Résumé import: the Claude API is unavailable',
       expect.objectContaining({ step: 'extract' })
     );
+  });
+
+  it.each([
+    ['the connection fails', connectionFailure, false],
+    ['no answer comes before the deadline', noAnswer, true],
+    ['the answer stalls past the deadline', stalledStream, true],
+    ['the stream reports an error after it started', streamError, false]
+  ] as const)('counts the import when %s once the paid request was sent (the model may have run), without retrying', async (_label, answer, deadlineReached) => {
+    resumeImportTimeouts.extractMs = 200;
+    claude.state.messages.push(answer);
+
+    const result = await importFile(pdf);
+    expect(result.status).toBe(503);
+    expect(result.text).toBe(
+      'The import did not finish. It still counts toward your imports (the résumé may already have been read): try again later, or with a shorter résumé'
+    );
+    expect(claude.paths()).toEqual(['/v1/messages/count_tokens', '/v1/messages']);
+
+    expect(await userCount(owner.userId)).toBe(1);
+    expect(await siteCount()).toBe(1);
+    expect(await attemptCount(owner.userId)).toBe(1);
+    expect((await status()).json()).toMatchObject({ remaining: 2 });
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Résumé import: the Claude call did not finish, the import counts',
+      expect.objectContaining({ step: 'extract', deadlineReached })
+    );
+  });
+
+  it('retries counting tokens once when the API is unreachable (it is free), then gives the import back', async () => {
+    claude.state.counts.push(connectionFailure, connectionFailure);
+
+    const result = await importFile(pdf);
+    expect(result.status).toBe(503);
+    expect(result.text).toBe('Résumé import is temporarily unavailable, try again later');
+    expect(claude.paths()).toEqual(['/v1/messages/count_tokens', '/v1/messages/count_tokens']);
+    expect(await userCount(owner.userId)).toBe(0);
+    expect(await attemptCount(owner.userId)).toBe(1);
   });
 
   it('answers 503 when counting tokens fails, and counts nothing', async () => {
@@ -754,6 +849,50 @@ describe('quotas', () => {
 
     // Their own allowance is intact, but nothing is left today
     expect((await status(other.cookie)).json()).toEqual({ enabled: true, limit: 3, remaining: 0, resetsAt: reset });
+  });
+
+  it('stops a user at RESUME_IMPORT_ATTEMPTS_PER_DAY, failed attempts included, without using up their imports', async () => {
+    env.RESUME_IMPORT_ATTEMPTS_PER_DAY = 2;
+    claude.state.messages.push(apiError(529, 'overloaded_error', 'Overloaded'), apiError(529, 'overloaded_error', 'Overloaded'));
+    expect((await importFile(pdf)).status).toBe(503);
+    expect((await importFile(pdf)).status).toBe(503);
+    const requestsBefore = claude.state.requests.length;
+
+    const refused = await importFile(pdf);
+    expect(refused.status).toBe(429);
+    const reset = windowEnd(RESUME_IMPORT_DAILY_WINDOW_MS);
+    expect(refused.text).toBe(
+      `You have used your 2 résumé import attempts for today. Try again after ${reset.slice(0, 16).replace('T', ' ')} UTC`
+    );
+    expect(Number(refused.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(Number(refused.headers.get('retry-after'))).toBeLessThanOrEqual(RESUME_IMPORT_DAILY_WINDOW_MS / 1000);
+    expect(claude.state.requests).toHaveLength(requestsBefore);
+
+    // Their imports are untouched; nothing can start before tomorrow
+    expect(await userCount(owner.userId)).toBe(0);
+    expect(await siteCount()).toBe(0);
+    expect((await status()).json()).toEqual({ enabled: true, limit: 3, remaining: 0, resetsAt: reset });
+  });
+
+  it('gives no reset time while a counter tied at the remaining imports has nothing used', async () => {
+    // The site's daily allowance has exactly this user's 3 imports left
+    const day = Math.floor(Date.now() / RESUME_IMPORT_DAILY_WINDOW_MS) * RESUME_IMPORT_DAILY_WINDOW_MS;
+    await RateLimitCounter.updateOne(
+      { _id: `${resumeImportCounters.globalKey}:${day}` },
+      { $set: { count: 27, expiresAt: new Date(day + RESUME_IMPORT_DAILY_WINDOW_MS) } },
+      { upsert: true }
+    );
+    // Nothing used by the user: tomorrow, they can still start only 3
+    expect((await status()).json()).toEqual({ enabled: true, limit: 3, remaining: 3, resetsAt: null });
+
+    // Once both are used, `remaining` goes up when both have reset
+    expect((await importFile(pdf)).status).toBe(200);
+    expect((await status()).json()).toEqual({
+      enabled: true,
+      limit: 3,
+      remaining: 2,
+      resetsAt: windowEnd(RESUME_IMPORT_MONTHLY_WINDOW_MS)
+    });
   });
 
   it('lets only one of two concurrent imports through the last slot', async () => {

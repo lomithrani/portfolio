@@ -86,6 +86,22 @@ describe('normalizeExtraction', () => {
     ]);
   });
 
+  it('says experiences were left out only when one past the 30th would have been kept', () => {
+    const thirty = Array.from({ length: 30 }, (_, index) => experience({ title: `E${index}` }));
+
+    // The extra entries would have been skipped anyway: nothing was lost to the cap
+    const skippedAnyway = normalizeExtraction(output([...thirty, experience({ title: '  ' }), experience({ type: 'job' })]));
+    expect(skippedAnyway.experiences).toHaveLength(30);
+    expect(skippedAnyway.warnings).toEqual([
+      'Skipped 1 entry that came back in an unexpected shape',
+      'Skipped 1 entry without a title'
+    ]);
+
+    const lost = normalizeExtraction(output([...thirty, experience({ title: '' }), experience({ title: 'E30' })]));
+    expect(lost.experiences.map((entry) => entry.title)).toEqual(thirty.map((entry) => entry.title));
+    expect(lost.warnings).toEqual(['Skipped 1 entry without a title', 'Only the first 30 experiences were kept']);
+  });
+
   it('caps each text at what POST /experiences accepts, never splitting a character', () => {
     // An emoji is two UTF-16 code units: cutting at 300 would leave half of one
     const title = `${'a'.repeat(299)}😀 and more`;
@@ -220,17 +236,16 @@ describe('estimateCostUsd', () => {
 describe('describeResumeImport', () => {
   it('says whether the feature is on, and why not, never with the key', () => {
     const key = 'sk-ant-api03-secret';
-    expect(describeResumeImport({ ANTHROPIC_API_KEY: undefined, RESUME_IMPORT_MONTHLY_LIMIT: 3, RESUME_IMPORT_DAILY_LIMIT: 30 })).toBe(
-      'off (no ANTHROPIC_API_KEY)'
-    );
-    expect(describeResumeImport({ ANTHROPIC_API_KEY: key, RESUME_IMPORT_MONTHLY_LIMIT: 0, RESUME_IMPORT_DAILY_LIMIT: 30 })).toBe(
-      'off (RESUME_IMPORT_MONTHLY_LIMIT=0)'
-    );
-    expect(describeResumeImport({ ANTHROPIC_API_KEY: key, RESUME_IMPORT_MONTHLY_LIMIT: 3, RESUME_IMPORT_DAILY_LIMIT: 0 })).toBe(
-      'off (RESUME_IMPORT_DAILY_LIMIT=0)'
-    );
-    expect(describeResumeImport({ ANTHROPIC_API_KEY: key, RESUME_IMPORT_MONTHLY_LIMIT: 3, RESUME_IMPORT_DAILY_LIMIT: 30 })).toBe(
-      'on (3 per user per 30 days, 30 per day)'
-    );
+    const on = {
+      ANTHROPIC_API_KEY: key,
+      RESUME_IMPORT_MONTHLY_LIMIT: 3,
+      RESUME_IMPORT_DAILY_LIMIT: 30,
+      RESUME_IMPORT_ATTEMPTS_PER_DAY: 10
+    };
+    expect(describeResumeImport({ ...on, ANTHROPIC_API_KEY: undefined })).toBe('off (no ANTHROPIC_API_KEY)');
+    expect(describeResumeImport({ ...on, RESUME_IMPORT_MONTHLY_LIMIT: 0 })).toBe('off (RESUME_IMPORT_MONTHLY_LIMIT=0)');
+    expect(describeResumeImport({ ...on, RESUME_IMPORT_DAILY_LIMIT: 0 })).toBe('off (RESUME_IMPORT_DAILY_LIMIT=0)');
+    expect(describeResumeImport({ ...on, RESUME_IMPORT_ATTEMPTS_PER_DAY: 0 })).toBe('off (RESUME_IMPORT_ATTEMPTS_PER_DAY=0)');
+    expect(describeResumeImport(on)).toBe('on (3 per user per 30 days, 30 per day, 10 attempts per user per day)');
   });
 });

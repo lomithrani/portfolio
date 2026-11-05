@@ -350,14 +350,20 @@ export function normalizeExtraction(output: unknown): ResumeExtraction {
   const entries = isRecord(output) && Array.isArray(output.experiences) ? output.experiences : []
 
   for (const entry of entries) {
-    if (experiences.length === EXTRACTION_LIMITS.experiences) {
-      changes.experiencesOverCap = true
-      break
-    }
     const raw = asExperienceOutput(entry)
     if (!raw) {
       changes.malformed++
       continue
+    }
+    // Past the cap, only an entry that would have been kept is a lost
+    // experience; the others are reported as skipped, like before the cap
+    if (experiences.length === EXTRACTION_LIMITS.experiences) {
+      if (!cleanLine(raw.title)) {
+        changes.untitled++
+        continue
+      }
+      changes.experiencesOverCap = true
+      break
     }
     const experience = normalizeExperience(raw, changes)
     if (experience) experiences.push(experience)

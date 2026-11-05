@@ -42,7 +42,8 @@ describe('parseEnv', () => {
       MEMORY_LOG_INTERVAL_MS: 600_000,
       ANTHROPIC_API_KEY: undefined,
       RESUME_IMPORT_MONTHLY_LIMIT: 3,
-      RESUME_IMPORT_DAILY_LIMIT: 30
+      RESUME_IMPORT_DAILY_LIMIT: 30,
+      RESUME_IMPORT_ATTEMPTS_PER_DAY: 10
     });
   });
 
@@ -146,13 +147,19 @@ describe('parseEnv', () => {
     });
 
     it('parses the limits: whole numbers, 0 included (feature off)', () => {
-      expect(parseEnv({ ...base, RESUME_IMPORT_MONTHLY_LIMIT: ' 5 ', RESUME_IMPORT_DAILY_LIMIT: '0' })).toMatchObject({
+      expect(
+        parseEnv({ ...base, RESUME_IMPORT_MONTHLY_LIMIT: ' 5 ', RESUME_IMPORT_DAILY_LIMIT: '0', RESUME_IMPORT_ATTEMPTS_PER_DAY: '4' })
+      ).toMatchObject({
         RESUME_IMPORT_MONTHLY_LIMIT: 5,
-        RESUME_IMPORT_DAILY_LIMIT: 0
+        RESUME_IMPORT_DAILY_LIMIT: 0,
+        RESUME_IMPORT_ATTEMPTS_PER_DAY: 4
       });
-      expect(parseEnv({ ...base, RESUME_IMPORT_MONTHLY_LIMIT: '', RESUME_IMPORT_DAILY_LIMIT: ' ' })).toMatchObject({
+      expect(
+        parseEnv({ ...base, RESUME_IMPORT_MONTHLY_LIMIT: '', RESUME_IMPORT_DAILY_LIMIT: ' ', RESUME_IMPORT_ATTEMPTS_PER_DAY: '' })
+      ).toMatchObject({
         RESUME_IMPORT_MONTHLY_LIMIT: 3,
-        RESUME_IMPORT_DAILY_LIMIT: 30
+        RESUME_IMPORT_DAILY_LIMIT: 30,
+        RESUME_IMPORT_ATTEMPTS_PER_DAY: 10
       });
     });
 
@@ -163,6 +170,7 @@ describe('parseEnv', () => {
           `RESUME_IMPORT_MONTHLY_LIMIT must be a whole number, 0 (résumé import off) or more (got ${JSON.stringify(value)})`
         ]);
         expect(problemsOf({ ...base, RESUME_IMPORT_DAILY_LIMIT: value })[0]).toStartWith('RESUME_IMPORT_DAILY_LIMIT');
+        expect(problemsOf({ ...base, RESUME_IMPORT_ATTEMPTS_PER_DAY: value })[0]).toStartWith('RESUME_IMPORT_ATTEMPTS_PER_DAY');
       }
     );
   });

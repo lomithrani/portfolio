@@ -160,11 +160,13 @@ describe('switches with the production OTLP exporters', () => {
     expect(describeTelemetry(settings)).toBe('traces=otlp metrics=otlp logs=otlp');
     expect(registered).toEqual({
       providers: { tracer: true, meter: true, logger: true },
-      spanProcessors: ['BatchSpanProcessor'],
+      spanProcessors: ['RedactingSpanProcessor', 'BatchSpanProcessor'],
       metricReaders: ['PeriodicExportingMetricReader'],
       logProcessors: ['BatchLogRecordProcessor'],
-      // The span exporter is the redacting wrapper (a plain object) around OTLP
-      exporters: { traces: ['Object'], metrics: ['OTLPMetricExporter'], logs: ['OTLPLogExporter'] }
+      // Bodies are dropped as spans end, before the batch queue (the redacting
+      // processor has no exporter); the span exporter is the redacting wrapper
+      // (a plain object) around OTLP
+      exporters: { traces: ['none', 'Object'], metrics: ['OTLPMetricExporter'], logs: ['OTLPLogExporter'] }
     });
     const bytes = exported();
     expect(bytes.traces).toBeGreaterThan(0);
@@ -184,7 +186,7 @@ describe('switches with the production OTLP exporters', () => {
     expect(describeTelemetry(settings)).toBe('traces=otlp metrics=none logs=otlp');
     expect(registered.providers).toEqual({ tracer: true, meter: false, logger: true });
     expect(registered.metricReaders).toEqual([]);
-    expect(registered.spanProcessors).toEqual(['BatchSpanProcessor']);
+    expect(registered.spanProcessors).toEqual(['RedactingSpanProcessor', 'BatchSpanProcessor']);
     expect(registered.logProcessors).toEqual(['BatchLogRecordProcessor']);
     const bytes = exported();
     expect(bytes.metrics).toBe(0);
@@ -199,7 +201,7 @@ describe('switches with the production OTLP exporters', () => {
 
     expect(registered.providers).toEqual({ tracer: true, meter: true, logger: true });
     expect(registered.logProcessors).toEqual([]);
-    expect(registered.spanProcessors).toEqual(['BatchSpanProcessor']);
+    expect(registered.spanProcessors).toEqual(['RedactingSpanProcessor', 'BatchSpanProcessor']);
     expect(registered.metricReaders).toEqual(['PeriodicExportingMetricReader']);
     const bytes = exported();
     expect(bytes.logs).toBe(0);

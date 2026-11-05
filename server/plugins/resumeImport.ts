@@ -22,7 +22,7 @@ export const resumeImport = new Elysia()
 
     const { file, fileName } = body;
     // The tracing plugin copies the parsed body into the request span again
-    // when the response is sent (the exporter drops it: instrumentation.ts);
+    // when the response is sent (dropped as the span ends: instrumentation.ts);
     // the handler has its copy, so the span keeps a few bytes, not megabytes
     body.file = '';
 
