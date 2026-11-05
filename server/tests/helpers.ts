@@ -219,3 +219,67 @@ export function deleteWithCookie(app: FetchApp, path: string, cookie: string) {
     headers: cookie ? { Cookie: cookie } : {},
   });
 }
+// ── Claude API (streamed Messages) ──────────────────────────
+// Résumé import streams its paid call: fetch fakes of api.anthropic.com
+// answer /v1/messages with these server-sent events.
+
+export type StreamEvent = { type: string } & Record<string, unknown>;
+
+/**
+ * A text/event-stream response of `events`, as the Messages API sends them.
+ * With `holdOpen` (the fetch's signal), the stream then stays open until that
+ * signal aborts, like an answer still being written
+ */
+export const sseResponse = (events: StreamEvent[], holdOpen?: AbortSignal) => {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const event of events) {
+        controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`));
+      }
+      if (!holdOpen) return controller.close();
+      holdOpen.addEventListener(
+        'abort',
+        () => controller.error(new DOMException('The operation was aborted.', 'AbortError')),
+        { once: true }
+      );
+    }
+  });
+  return new Response(body, { headers: { 'content-type': 'text/event-stream', 'request-id': 'req_test' } });
+};
+
+export interface FakeClaudeMessage {
+  content: ({ type: string; text?: string } & Record<string, unknown>)[];
+  stop_reason?: string | null;
+  stop_details?: unknown;
+  usage: { input_tokens: number; output_tokens: number } & Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** The events streaming `message` (a whole Message, as the API answers without streaming) */
+export const messageStreamEvents = (message: FakeClaudeMessage): StreamEvent[] => {
+  const { content, stop_reason = 'end_turn', stop_sequence = null, stop_details = null, usage, ...rest } = message;
+  return [
+    {
+      type: 'message_start',
+      message: { ...rest, content: [], stop_reason: null, stop_sequence: null, stop_details: null, usage: { ...usage, output_tokens: 1 } }
+    },
+    ...content.flatMap((block, index): StreamEvent[] =>
+      block.type === 'text'
+        ? [
+            { type: 'content_block_start', index, content_block: { type: 'text', text: '' } },
+            { type: 'content_block_delta', index, delta: { type: 'text_delta', text: block.text ?? '' } },
+            { type: 'content_block_stop', index }
+          ]
+        : [
+            { type: 'content_block_start', index, content_block: block },
+            { type: 'content_block_stop', index }
+          ]
+    ),
+    { type: 'message_delta', delta: { stop_reason, stop_sequence, stop_details }, usage: { output_tokens: usage.output_tokens } },
+    { type: 'message_stop' }
+  ];
+};
+
+/** `message` as the Messages API streams it */
+export const messageStream = (message: FakeClaudeMessage) => sseResponse(messageStreamEvents(message));

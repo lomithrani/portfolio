@@ -5,6 +5,7 @@
 // with a unique suffix, removed after) and each describe block starts its own
 // server, so tests pass in any order (--randomize).
 import { test, expect, describe, beforeAll, afterAll } from 'bun:test'
+import { connect } from 'node:net'
 import { treaty } from '@elysiajs/eden'
 import type { Subprocess } from 'bun'
 import mongoose from 'mongoose'
@@ -88,6 +89,40 @@ const waitForOutput = async (server: Server, pattern: RegExp, timeoutMs = 5_000)
   return server.output()
 }
 
+/**
+ * Sends a request over a raw socket, to control its framing (fetch always
+ * sends one valid Content-Length or a chunked body), and resolves with the
+ * response's status and text once the server closes the connection
+ */
+const rawRequest = (head: string[], body: string) =>
+  new Promise<{ status: number; text: string }>((resolve) => {
+    let response = ''
+    const socket = connect(port, '127.0.0.1')
+    const done = () => {
+      clearTimeout(timer)
+      socket.destroy()
+      resolve({ status: Number(response.match(/^HTTP\/1\.1 (\d{3})/)?.[1] ?? 0), text: response })
+    }
+    const timer = setTimeout(done, 10_000)
+    socket.setEncoding('latin1')
+    socket.on('data', (chunk: string) => (response += chunk))
+    // The server may answer, then close, before the whole body is sent
+    socket.on('error', done)
+    socket.on('close', done)
+    socket.write(`${[...head, 'Host: 127.0.0.1', 'Connection: close'].join('\r\n')}\r\n\r\n`)
+    socket.write(body)
+  })
+
+/** `text` as a chunked body, in 64 KiB chunks */
+const chunked = (text: string) => {
+  let body = ''
+  for (let start = 0; start < text.length; start += 64 * 1024) {
+    const chunk = text.slice(start, start + 64 * 1024)
+    body += `${chunk.length.toString(16)}\r\n${chunk}\r\n`
+  }
+  return `${body}0\r\n\r\n`
+}
+
 /** Kills the server if it still runs, and waits until it has exited (PORT is free again) */
 const stopServer = async (server: Server | undefined) => {
   if (!server) return
@@ -140,12 +175,64 @@ describe('typed Eden client against the running server', () => {
     expect(api.experiences.post).toBeFunction()
     expect(api.experiences({ id: 'x' }).put).toBeFunction()
     expect(api.experiences({ id: 'x' }).delete).toBeFunction()
+    expect(api.experiences.import.get).toBeFunction()
+    expect(api.experiences.import.post).toBeFunction()
   })
 
   test('DELETE /experiences/:id requires a session', async () => {
     const { data, error } = await api.experiences({ id: '0123456789abcdef01234567' }).delete()
     expect(data).toBeNull()
     expect(error?.status as number).toBe(401)
+  })
+
+  test('GET /experiences/import needs a session', async () => {
+    const { error } = await api.experiences.import.get()
+    expect(error?.status as number).toBe(401)
+  })
+
+  test('caps request bodies at 1 MB, and at 6 MB (Bun) for the résumé import', async () => {
+    const MB = 1024 * 1024
+    const origin = env.ALLOWED_DOMAINS[0]
+    // {"file":""} is 11 characters; fetch sends Content-Length, as browsers do
+    const post = (path: string, bytes: number) =>
+      fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: origin },
+        body: JSON.stringify({ file: 'x'.repeat(bytes - 11) })
+      })
+
+    const tooLarge = await post('/experiences', MB + 1)
+    expect(tooLarge.status).toBe(413)
+    expect(await tooLarge.text()).toBe('Payload Too Large')
+    // The browser can read the 413 (CORS headers present)
+    expect(tooLarge.headers.get('access-control-allow-origin')).toBe(origin)
+
+    // Past both caps, to the route: no session
+    expect((await post('/experiences/import', 6 * MB)).status).toBe(401)
+
+    // Over Bun's own cap: refused before the app runs
+    expect((await post('/experiences/import', 6 * MB + 1)).status).toBe(413)
+  })
+
+  test('caps bodies without a usable Content-Length at 1 MB too: chunked, or with the header repeated', async () => {
+    const MB = 1024 * 1024
+    const origin = env.ALLOWED_DOMAINS[0]
+    // Valid JSON, so that only the size can refuse it: {"title":""} is 12 characters
+    const json = (bytes: number) => JSON.stringify({ title: 'x'.repeat(bytes - 12) })
+    const head = ['POST /experiences HTTP/1.1', 'Content-Type: application/json', `Origin: ${origin}`]
+
+    const tooLarge = await rawRequest([...head, 'Transfer-Encoding: chunked'], chunked(json(2 * MB)))
+    expect(tooLarge.status).toBe(413)
+    expect(tooLarge.text).toContain('Payload Too Large')
+    expect(tooLarge.text.toLowerCase()).toContain(`access-control-allow-origin: ${origin}`)
+
+    // Up to 1 MB, a chunked body reaches the route: no session
+    expect((await rawRequest([...head, 'Transfer-Encoding: chunked'], chunked(json(MB)))).status).toBe(401)
+
+    // The header twice: "2097152, 2097152" is not a number for the Content-Length check
+    const body = json(2 * MB)
+    const repeated = await rawRequest([...head, `Content-Length: ${body.length}`, `Content-Length: ${body.length}`], body)
+    expect(repeated.status).toBe(413)
   })
 
   test('GET /health', async () => {
@@ -184,7 +271,11 @@ describe('typed Eden client against the running server', () => {
     // Logged right after listening, before /health answers, but stdout is read
     // asynchronously: wait for the memory line (the later of the two)
     const output = await waitForOutput(server!, /^\[INFO\] memory \{.*\}$/m)
-    expect(output).toMatch(/^\[INFO\] Running at .+"telemetry":"(off \(.+\)|traces=\w+ metrics=\w+ logs=\w+)"\}$/m)
+    // Either state: tests/setup.ts removes ANTHROPIC_API_KEY, but the server
+    // loads server/.env again, which may set it
+    expect(output).toMatch(
+      /^\[INFO\] Running at .+"telemetry":"(off \(.+\)|traces=\w+ metrics=\w+ logs=\w+)","resumeImport":"(off|on) \(.+\)"\}$/m
+    )
     const memoryLine = output.match(/^\[INFO\] memory (\{.*\})$/m)
     expect(memoryLine).not.toBeNull()
     const fields = JSON.parse(memoryLine![1])

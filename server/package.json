@@ -13,6 +13,7 @@
     "kill": "sudo lsof -t -i:3000 | xargs sudo kill -9"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
     "@elysiajs/cors": "^1.4.2",
     "@elysiajs/jwt": "^1.4.2",
     "@elysiajs/openapi": "^1.4.16",

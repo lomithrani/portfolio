@@ -6,6 +6,7 @@
 // Google, named with a suffix unique to that test, and its data is removed
 // after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
+import type { Mock } from 'bun:test';
 import mongoose from 'mongoose';
 import { MAX_AVAILABLE_DATES_RANGE, addDays, bookingHorizon } from 'portfolio-common';
 import { env } from '../env';
@@ -31,9 +32,11 @@ import { rateLimitAddress } from '../services/clientAddress';
 import { CALENDAR_SCOPE, RECONNECT_REQUIRED_MESSAGE } from '../services/googleCalendar';
 import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
+import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
 import {
   experienceRequestBody,
+  messageStream,
   parseCookie,
   signGoogleIdToken,
   useTestGoogleKeys,
@@ -1465,6 +1468,39 @@ describe('no Google token in any API response', () => {
     const workflow = await call('POST', '/workflows', { ...auth, body: workflowRequestBody });
     expect(workflow.status).toBe(200);
     expect((await call('PUT', `/workflows/${workflow.json()._id}`, { ...auth, body: workflowRequestBody })).status).toBe(200);
+
+    // Résumé import (tests/resumeImport.test.ts covers it): its two requests,
+    // to api.anthropic.com, are answered here instead of by the fake Google
+    const savedAnthropicKey = env.ANTHROPIC_API_KEY;
+    const savedGlobalKey = resumeImportCounters.globalKey;
+    env.ANTHROPIC_API_KEY = 'sk-ant-api03-sweep-test-key';
+    resumeImportCounters.globalKey = `resume-import:global:${t.id('sweep')}`;
+    rateLimitKeys.add(resumeImportCounters.globalKey);
+    rateLimitKeys.add(resumeImportUserKey(sweep.userId));
+    rateLimitKeys.add(resumeImportAttemptsKey(sweep.userId));
+    try {
+      const fetchSpy = globalThis.fetch as unknown as Mock<(input: string | URL | Request) => Promise<Response>>;
+      fetchSpy.mockImplementationOnce(async () => Response.json({ input_tokens: 1_000 }));
+      // The paid call is streamed
+      fetchSpy.mockImplementationOnce(async () =>
+        messageStream({
+          id: 'msg_sweep',
+          type: 'message',
+          role: 'assistant',
+          model: 'claude-haiku-5-5',
+          content: [{ type: 'text', text: '{"experiences":[],"unplacedSkills":[]}' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 1_000, output_tokens: 20 }
+        })
+      );
+      expect((await call('GET', '/experiences/import', auth)).status).toBe(200);
+      const pdf = Buffer.from('%PDF-1.7\n%%EOF\n').toString('base64');
+      expect((await call('POST', '/experiences/import', { ...auth, body: { file: pdf } })).status).toBe(200);
+    } finally {
+      env.ANTHROPIC_API_KEY = savedAnthropicKey;
+      resumeImportCounters.globalKey = savedGlobalKey;
+    }
 
     expect((await call('GET', '/appointments/calendars', auth)).status).toBe(200);
 

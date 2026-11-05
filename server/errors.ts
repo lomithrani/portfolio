@@ -1,7 +1,8 @@
 // Errors that map to an HTTP status. `status` is picked up by Elysia and by the
-// app's onError handler (services/errorHandler.ts); for 4xx statuses the
-// message is sent to the client as a plain-text body, so keep it free of
-// internal details. Anything that is not an HttpError becomes a generic 500.
+// app's onError handler (services/errorHandler.ts); for 4xx statuses (and
+// ServiceUnavailableError) the message is sent to the client as a plain-text
+// body, so keep it free of internal details. Any other error becomes a generic
+// 500.
 export class HttpError extends Error {
   status = 500
   constructor(public message: string) {
@@ -62,6 +63,11 @@ export class UserAlreadyOwnsDomainError extends HttpError {
   status = 409
 }
 
+/** A request body over the size its route accepts */
+export class PayloadTooLargeError extends HttpError {
+  status = 413
+}
+
 export class UnsupportedMediaTypeError extends HttpError {
   status = 415
 }
@@ -80,6 +86,11 @@ export class FieldValidationError extends HttpError {
   ) {
     super(message)
   }
+}
+
+/** Well-formed request whose content cannot be processed, e.g. a file that is not a PDF */
+export class UnprocessableContentError extends HttpError {
+  status = 422
 }
 
 /** A rate limit or quota was hit; `retryAfterSeconds` becomes the Retry-After header */
@@ -126,6 +137,22 @@ export class GoogleCalendarReconnectRequiredError extends HttpError {
   status = 409
 }
 
+/**
+ * A service the request depends on failed in a way that is not the caller's
+ * fault (an upstream outage, the operator's spend limit). Unlike other 5xx,
+ * its message is sent to the client, so keep it free of internal details
+ */
+export class ServiceUnavailableError extends HttpError {
+  status = 503
+}
+
+// Résumé import (Claude)
+
+/** Résumé import is off: no ANTHROPIC_API_KEY, or a limit set to 0 */
+export class ResumeImportDisabledError extends HttpError {
+  status = 404
+}
+
 export const errors = {
   BadRequestError,
   InvalidDomainNameError,
@@ -140,13 +167,17 @@ export const errors = {
   ConflictError,
   DomainAlreadyExistsError,
   UserAlreadyOwnsDomainError,
+  PayloadTooLargeError,
   UnsupportedMediaTypeError,
   FieldValidationError,
+  UnprocessableContentError,
   TooManyRequestsError,
   GoogleCalendarNotConnectedError,
   AppointmentScheduleNotFoundError,
   AppointmentEventNotFoundError,
   SlotUnavailableError,
   GoogleCalendarAuthorizationError,
-  GoogleCalendarReconnectRequiredError
+  GoogleCalendarReconnectRequiredError,
+  ServiceUnavailableError,
+  ResumeImportDisabledError
 }

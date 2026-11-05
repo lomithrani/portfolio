@@ -166,6 +166,10 @@ local development.
 | `GOOGLE_CLIENT_SECRET`         | for appointments | Client secret of that same OAuth client; sealed. Enables Google Calendar appointments (see [Google Calendar appointments](#google-calendar-appointments)) |
 | `AUTH_COOKIE_SAMESITE`         | no       | Leave unset (`strict`); see [Custom domains](#custom-domains-are-required-for-login)               |
 | `CLIENT_IP_HEADER`             | no       | Leave unset: on Railway it defaults to `X-Real-IP`. Set it only behind another proxy (see [Booking protection](#booking-protection)) |
+| `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé import (see [Résumé import](#résumé-import)) |
+| `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
+| `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
+| `RESUME_IMPORT_ATTEMPTS_PER_DAY` | no     | Import attempts per user per UTC day, failed ones included; leave unset (`10`); `0` turns résumé import off |
 | `API_DOCS`                     | no       | `true` to serve the OpenAPI docs (`/swagger`) in production; off by default there                  |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | no       | OTLP endpoint (e.g. Grafana Cloud); telemetry is fully off while it is unset                       |
 | `OTEL_EXPORTER_OTLP_HEADERS`   | no       | e.g. `Authorization=Basic <base64 of instanceId:token>`; sealed                                    |
@@ -290,6 +294,84 @@ holding the visitor's address there (`CF-Connecting-IP` for Cloudflare). For a l
 `X-Forwarded-For`, the API takes the last entry, the one the closest proxy appended. Only name a
 header that proxy overwrites: anything else, a client can set to any value. An invalid header
 name stops the deployment with `CLIENT_IP_HEADER must be an HTTP header name`.
+
+## Résumé import
+
+Portfolio owners can upload a PDF résumé: the API (`POST /experiences/import`) has **Claude Haiku
+5.5** (`claude-haiku-5-5`) extract its experiences and answers with drafts the admin reviews; only
+the drafts the owner accepts are saved (through `POST /experiences`). Every import is billed to
+the operator's Anthropic API key, so the feature is **off until `ANTHROPIC_API_KEY` is set**: the
+API boots without it, `GET /experiences/import` answers `enabled: false` and `POST` answers 404.
+
+To enable it on Railway (service `portfolio api develop`, and any other API service):
+
+1. In the [Claude Console](https://platform.claude.com), **Settings, Workspaces**: create a
+   workspace for this site (e.g. `portfolio`) and give it a **monthly spend limit** (e.g. $5).
+   Spend limits cannot be set on the Default workspace, hence the dedicated one. Once the limit is
+   reached, Claude refuses the workspace's requests until the next month: imports answer `503`
+   ("Résumé import is temporarily unavailable"), are not counted against anyone's imports (each
+   still uses one of the user's attempts of the day), and each one logs
+   `Résumé import: the Claude API refused the request` at `error`.
+2. In that workspace, **API keys**: create a key (it is scoped to the workspace, so its usage
+   counts against that limit).
+3. On the API service, add `ANTHROPIC_API_KEY` (sealed) and deploy. A value with quotes or spaces
+   stops the deployment with `ANTHROPIC_API_KEY must be the bare API key ...`. The startup line
+   `Running at ...` then says
+   `"resumeImport":"on (3 per user per 30 days, 30 per day, 10 attempts per user per day)"`.
+
+| Variable                      | Default | What it does                                                                             |
+| ----------------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`           | unset   | The key billed for imports; the feature is off without it. Never logged, returned or traced |
+| `RESUME_IMPORT_MONTHLY_LIMIT` | `3`     | Imports per user per 30-day window (windows are fixed, not rolling); `0` turns the feature off |
+| `RESUME_IMPORT_DAILY_LIMIT`   | `30`    | Imports per UTC day across all users, a cap on the site's daily spend; `0` turns the feature off |
+| `RESUME_IMPORT_ATTEMPTS_PER_DAY` | `10` | Attempts per user per UTC day, whatever their outcome and never given back, so no failure can be retried in a loop; `0` turns the feature off (there is no unlimited setting) |
+
+**Cost.** A one- or two-page résumé costs about **$0.002 to $0.005** per import (Haiku 5.5: $0.10
+per million input tokens and $0.50 per million output tokens for prompts up to 100K tokens; a PDF
+page is roughly 2,000 to 5,000 tokens, text and page image together). The API caps each import at
+a 4 MB PDF, about 10 pages (60,000 input tokens, counted for free before the paid call, a longer
+PDF gets `422`) and 16,000 output tokens, and sends the paid request once (never retried), so one
+import costs at most about $0.015 (60,000 × $0.10 + 16,000 × $0.50 per million). Every paid
+request that may have been billed counts against both limits (see below), so at the defaults the
+site spends at most 30 imports a day (about $0.42), each user at most 3 per 30 days, and the
+workspace's spend limit is the hard stop. Each answered import logs one line,
+`Résumé import {"experiences":…,"inputTokens":…,"outputTokens":…,"estimatedCostUsd":…,"stopReason":…}`,
+with nothing about the résumé or its owner.
+
+**What counts.** The limits are MongoDB counters (`ratelimitcounters`, like the booking limits);
+over one, the API answers `429` with `Retry-After` and when it resets. The paid call is streamed,
+with a 3-minute deadline for the whole answer (no shorter timeout cuts a long résumé short).
+
+- **Counted:** everything once the paid request has been sent, since Anthropic may have run, and
+  billed, the model: drafts or nothing found (`200`), a refusal or an answer cut short at 16,000
+  tokens (`422`), and a call that did not finish: the deadline passed, the connection failed or
+  dropped, or the stream reported an error after it started (`503` "The import did not finish. It
+  still counts toward your imports...", logged at `warn` as
+  `Résumé import: the Claude call did not finish, the import counts`, with `deadlineReached`).
+- **Given back:** anything before the paid call (the free token count failing, a PDF over ~10
+  pages), and a paid request Anthropic refused with an error status, which is not billed: overloaded
+  (`529`), `5xx` or rate limited (`429`), logged at `warn`; or the key, the model, the request or
+  the spend limit refused (`400`/`401`/`403`/`404`), logged at `error` with the API's message (key
+  masked): fix the key or the limit. Both answer `503` ("temporarily unavailable"). A request the
+  API rejects while counting tokens (`400`, e.g. a schema it does not accept) is also an operator
+  problem: `503`, logged at `error` with the API's message.
+- **Attempts:** each request that passes the file checks and both limits uses one of the user's
+  `RESUME_IMPORT_ATTEMPTS_PER_DAY` (10) attempts of the UTC day, whatever happens next, and
+  attempts are never given back (`429` past them). Outages or abuse cannot loop on what is given
+  back: the paid calls Anthropic refused cost nothing, and each user makes at most 10 a day.
+- Invalid files never reach Claude or the counters: not base64 or not a PDF (`422`), over 4 MB
+  (`413`).
+
+**Request size.** The API's body cap is 6 MB (Bun answers `413` above it, before the app runs): a
+4 MB PDF is about 5.4 MB of base64 JSON. `POST /experiences/import` without the session cookie gets
+`401` before its body is read. Every other route keeps a 1 MB cap: checked on `Content-Length`
+before the body is read, then on the bytes actually read, so a body without a usable
+`Content-Length` (chunked, as a proxy or an HTTP/2 client may forward it, or with the header
+repeated) stops at 1 MB too; both answer `413` with CORS headers.
+
+**Traces.** Request and response bodies, cookies and the `Authorization` header are dropped from
+each span as it ends, before the batch processor queues it for export (and again in the
+exporter), so queued spans never hold a PDF.
 
 ## Custom domains are required for login
 

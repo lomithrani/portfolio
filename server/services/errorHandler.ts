@@ -1,6 +1,6 @@
 import { ValidationError } from 'elysia';
 import mongoose from 'mongoose';
-import { FieldValidationError, HttpError, TooManyRequestsError } from '../errors';
+import { FieldValidationError, HttpError, PayloadTooLargeError, ServiceUnavailableError, TooManyRequestsError } from '../errors';
 import { isDuplicateKeyError } from './mongoErrors';
 
 export type ErrorBody = string | { type: 'validation'; on: string; property: string; message: string };
@@ -66,7 +66,13 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
     };
   }
 
-  if (code === 'PARSE') return { status: 400, body: 'Bad Request', level: 'warn' };
+  if (code === 'PARSE') {
+    // app.ts's bounded body reader stops at its cap inside Elysia's parse
+    // step, which wraps whatever it throws in a ParseError
+    const cause = error instanceof Error ? error.cause : undefined;
+    if (cause instanceof PayloadTooLargeError) return { status: cause.status, body: cause.message, level: 'warn' };
+    return { status: 400, body: 'Bad Request', level: 'warn' };
+  }
   if (code === 'INVALID_COOKIE_SIGNATURE') return { status: 400, body: 'Bad Request', level: 'warn' };
   if (code === 'INVALID_FILE_TYPE') return { status: 422, body: 'Invalid file type', level: 'warn' };
 
@@ -88,6 +94,12 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
   }
 
   if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
+    return { status: error.status, body: error.message, level: 'warn' };
+  }
+
+  // An upstream failure the code that threw it already logged with its cause
+  // (e.g. the Claude API during a résumé import): only its message goes out
+  if (error instanceof ServiceUnavailableError) {
     return { status: error.status, body: error.message, level: 'warn' };
   }
 
