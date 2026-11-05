@@ -70,17 +70,20 @@
 		darkMode = !darkMode;
 	}
 
-	let isOpen = $state(true);
+	let isOpen = $state(false);
 	let pinned = $state(false);
+	// Wide screens show the rail for 3 s on page load, as a hint. Small screens never do: it would
+	// cover the content (the CSS also ignores it there, so the server render never flashes it).
+	let peeking = $state(true);
+	let open = $derived(isOpen || peeking);
 
-	// Auto-collapse after 3 seconds on mount
 	$effect(() => {
 		if (!browser) return;
-		const timer = setTimeout(() => {
-			if (!pinned) {
-				isOpen = false;
-			}
-		}, 3000);
+		if (!window.matchMedia('(min-width: 768px)').matches) {
+			peeking = false;
+			return;
+		}
+		const timer = setTimeout(() => (peeking = false), 3000);
 		return () => clearTimeout(timer);
 	});
 
@@ -91,12 +94,19 @@
 	}
 
 	function onMouseLeave() {
+		peeking = false;
 		if (!pinned) {
 			isOpen = false;
 		}
 	}
 
 	function handleToggle() {
+		if (peeking && !isOpen) {
+			// Only the load-time peek shows it: the handle reads "Close sidebar"
+			peeking = false;
+			return;
+		}
+		peeking = false;
 		if (pinned) {
 			pinned = false;
 			isOpen = false;
@@ -111,11 +121,12 @@
 <div
 	class="drawer-wrapper"
 	class:drawer-open={isOpen}
+	class:drawer-peek={peeking && !isOpen}
 	onmouseenter={onMouseEnter}
 	onmouseleave={onMouseLeave}
 >
 	<!-- inert while collapsed: the off-screen links must not stay in the tab order -->
-	<div class="drawer-content" inert={!isOpen}>
+	<div class="drawer-content" inert={!open}>
 		<Navigation layout="rail">
 			<Navigation.Content>
 				{#each menuItems as item (item.path)}
@@ -159,7 +170,7 @@
 	<button
 		class="drawer-handle"
 		onclick={handleToggle}
-		aria-label={isOpen ? 'Close sidebar' : 'Open sidebar'}
+		aria-label={open ? 'Close sidebar' : 'Open sidebar'}
 	>
 		<span class="handle-icon" class:rotated={isOpen}>
 			<ChevronRight size="14" />
@@ -183,6 +194,17 @@
 
 	.drawer-wrapper.drawer-open {
 		transform: translateX(0);
+	}
+
+	/* The load-time peek is for wide screens only */
+	@media (min-width: 768px) {
+		.drawer-wrapper.drawer-peek {
+			transform: translateX(0);
+		}
+
+		.drawer-peek .handle-icon {
+			transform: rotate(180deg);
+		}
 	}
 
 	.drawer-content {

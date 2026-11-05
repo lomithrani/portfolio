@@ -1,146 +1,296 @@
 import { describe, it, expect } from 'vitest';
-import { activeSkillFilters, filterExperiences, type SkillFilters } from '../filters';
-import type { Experience, Skill } from 'portfolio-api/models/database';
+import { ExperienceType } from 'portfolio-common';
+import {
+	activeFilters,
+	applyFilters,
+	emptyFilters,
+	filtersFromSearchParams,
+	filtersToSearchParams,
+	hasActiveFilters,
+	isSkillHighlighted,
+	normalizeSkill,
+	skillOptions,
+	toggleSkill,
+	toggleType,
+	typeOptions,
+	type ExperienceFilters
+} from '../filters';
 
-// Helper to build mock experience data
-function makeExperience(title: string, hardSkills: string[], softSkills: string[]): Experience {
+type Skills = { hard?: string[]; soft?: string[] };
+
+// An experience as the API returns it (populated skills), one project per skill set
+function makeExperience(
+	title: string,
+	type: ExperienceType,
+	...projects: Skills[]
+): { title: string; type: ExperienceType; projects: object[] } {
+	const entries = (names: string[] = []) =>
+		names.map((name) => ({ skill: { displayName: name, names: [name] }, level: 5 }));
 	return {
 		title,
-		type: 'professional',
-		summary: 'test',
-		projects: [
-			{
-				name: 'Project',
-				summary: 'test',
-				hardSkills: hardSkills.map((name) => ({
-					skill: { displayName: name, names: [name] } as Skill,
-					level: 5
-				})),
-				softSkills: softSkills.map((name) => ({
-					skill: { displayName: name, names: [name] } as Skill,
-					level: 4
-				}))
-			}
-		]
-	} as unknown as Experience;
+		type,
+		projects: projects.map((skills, index) => ({
+			name: `Project ${index}`,
+			hardSkills: entries(skills.hard),
+			softSkills: entries(skills.soft)
+		}))
+	};
 }
 
-const tsExperience = makeExperience('TS Dev', ['TypeScript', 'Node.js'], ['Communication']);
-const pyExperience = makeExperience('Py Dev', ['Python', 'Django'], ['Teamwork']);
-const fullStackExperience = makeExperience('Full Stack', ['TypeScript', 'Python'], ['Leadership']);
-const allExperiences = [tsExperience, pyExperience, fullStackExperience];
+const filters = (skills: string[] = [], types: ExperienceType[] = []): ExperienceFilters => ({
+	skills,
+	types
+});
 
-function emptyFilters(): SkillFilters {
-	return { softSkills: new Set(), hardSkills: new Set() };
-}
+const ts = makeExperience('TS Dev', ExperienceType.Professional, {
+	hard: ['TypeScript', 'Node.js'],
+	soft: ['Communication']
+});
+const py = makeExperience('Py Dev', ExperienceType.Professional, {
+	hard: ['Python', 'Django'],
+	soft: ['Teamwork']
+});
+const msc = makeExperience(
+	'MSc',
+	ExperienceType.Educational,
+	{ hard: ['typescript'] },
+	{ hard: ['Python'], soft: ['Leadership'] }
+);
+const climbing = makeExperience('Climbing', ExperienceType.Leisure, { soft: ['Teamwork'] });
+const all = [ts, py, msc, climbing];
 
-describe('filterExperiences', () => {
-	it('should return all experiences when no filters are active', () => {
-		const result = filterExperiences(allExperiences, emptyFilters());
-		expect(result).toEqual(allExperiences);
-		expect(result).toHaveLength(3);
-	});
-
-	it('should filter by hard skill', () => {
-		const filters: SkillFilters = {
-			hardSkills: new Set(['TypeScript']),
-			softSkills: new Set()
-		};
-		const result = filterExperiences(allExperiences, filters);
-		expect(result).toHaveLength(2);
-		expect(result).toContain(tsExperience);
-		expect(result).toContain(fullStackExperience);
-		expect(result).not.toContain(pyExperience);
-	});
-
-	it('should filter by soft skill', () => {
-		const filters: SkillFilters = {
-			hardSkills: new Set(),
-			softSkills: new Set(['Teamwork'])
-		};
-		const result = filterExperiences(allExperiences, filters);
-		expect(result).toHaveLength(1);
-		expect(result).toContain(pyExperience);
-	});
-
-	it('should filter by both hard and soft skills (OR within categories)', () => {
-		const filters: SkillFilters = {
-			hardSkills: new Set(['Django']),
-			softSkills: new Set(['Leadership'])
-		};
-		const result = filterExperiences(allExperiences, filters);
-		// Django matches pyExperience, Leadership matches fullStackExperience
-		expect(result).toHaveLength(2);
-		expect(result).toContain(pyExperience);
-		expect(result).toContain(fullStackExperience);
-	});
-
-	it('should return empty array when no experiences match filter', () => {
-		const filters: SkillFilters = {
-			hardSkills: new Set(['Rust']),
-			softSkills: new Set()
-		};
-		const result = filterExperiences(allExperiences, filters);
-		expect(result).toHaveLength(0);
-	});
-
-	it('should handle empty experiences array', () => {
-		const result = filterExperiences([], emptyFilters());
-		expect(result).toEqual([]);
-		expect(result).toHaveLength(0);
-	});
-
-	it('should handle multiple hard skill filters', () => {
-		const filters: SkillFilters = {
-			hardSkills: new Set(['TypeScript', 'Python']),
-			softSkills: new Set()
-		};
-		const result = filterExperiences(allExperiences, filters);
-		// All three have either TypeScript or Python
-		expect(result).toHaveLength(3);
+describe('normalizeSkill', () => {
+	it('ignores case and surrounding spaces', () => {
+		expect(normalizeSkill('  TypeScript ')).toBe('typescript');
+		expect(normalizeSkill('gRPC')).toBe(normalizeSkill('GRPC'));
+		expect(normalizeSkill('Node.js')).toBe('node.js');
 	});
 });
 
-describe('activeSkillFilters', () => {
-	it('keeps the selected skills that the experiences still use', () => {
-		const filters: SkillFilters = {
-			hardSkills: new Set(['TypeScript', 'Django']),
-			softSkills: new Set(['Teamwork'])
-		};
-
-		expect(activeSkillFilters(allExperiences, filters)).toEqual(filters);
+describe('applyFilters', () => {
+	it('returns every experience, in order, without filters', () => {
+		expect(applyFilters(all, emptyFilters())).toEqual(all);
+		expect(applyFilters([], emptyFilters())).toEqual([]);
 	});
 
-	it('drops a selected skill that no experience uses any more', () => {
-		const filters: SkillFilters = {
-			hardSkills: new Set(['Go', 'Python']),
-			softSkills: new Set(['Go'])
-		};
+	it('matches skills ignoring case, in any project', () => {
+		// 'TypeScript' and the MSc's 'typescript' are the same skill
+		expect(applyFilters(all, filters(['typescript']))).toEqual([ts, msc]);
+		// The MSc uses Python in its second project
+		expect(applyFilters(all, filters(['python']))).toEqual([py, msc]);
+	});
 
-		expect(activeSkillFilters(allExperiences, filters)).toEqual({
-			hardSkills: new Set(['Python']),
-			softSkills: new Set()
+	it('keeps an experience having any of the selected skills (OR), technical or soft', () => {
+		expect(applyFilters(all, filters(['django', 'leadership']))).toEqual([py, msc]);
+		expect(applyFilters(all, filters(['teamwork']))).toEqual([py, climbing]);
+	});
+
+	it('keeps the experiences of any of the selected types', () => {
+		expect(applyFilters(all, filters([], [ExperienceType.Professional]))).toEqual([ts, py]);
+		expect(
+			applyFilters(all, filters([], [ExperienceType.Educational, ExperienceType.Leisure]))
+		).toEqual([msc, climbing]);
+	});
+
+	it('combines skills AND types', () => {
+		expect(applyFilters(all, filters(['python'], [ExperienceType.Educational]))).toEqual([msc]);
+		expect(applyFilters(all, filters(['teamwork'], [ExperienceType.Leisure]))).toEqual([climbing]);
+		expect(applyFilters(all, filters(['django'], [ExperienceType.Leisure]))).toEqual([]);
+	});
+
+	it('ignores a selected skill that no experience has any more', () => {
+		// An edit replaced the only 'Go': the stale selection has no chip left to clear it
+		expect(applyFilters(all, filters(['go']))).toEqual(all);
+		expect(applyFilters(all, filters(['go', 'django']))).toEqual([py]);
+	});
+
+	it('ignores a selected type that no experience has', () => {
+		expect(applyFilters(all, filters([], [ExperienceType.Personal]))).toEqual(all);
+		expect(
+			applyFilters(all, filters([], [ExperienceType.Personal, ExperienceType.Leisure]))
+		).toEqual([climbing]);
+	});
+
+	it('copes with unpopulated skills and missing projects', () => {
+		const bare = { type: ExperienceType.Personal, projects: undefined };
+		const unpopulated = {
+			type: ExperienceType.Personal,
+			projects: [{ hardSkills: [{ skill: '665f1c2e8b3a4d0012345678' }], softSkills: null }]
+		};
+		expect(applyFilters([bare, unpopulated, ts], filters(['typescript']))).toEqual([ts]);
+	});
+});
+
+describe('activeFilters', () => {
+	it('keeps what still applies, normalized and deduped', () => {
+		expect(
+			activeFilters(
+				all,
+				filters(
+					['TypeScript', 'typescript', 'go', 'teamwork'],
+					[ExperienceType.Leisure, ExperienceType.Personal, ExperienceType.Leisure]
+				)
+			)
+		).toEqual(filters(['typescript', 'teamwork'], [ExperienceType.Leisure]));
+	});
+
+	it('is empty when nothing applies', () => {
+		expect(hasActiveFilters(activeFilters(all, filters(['go'], [ExperienceType.Personal])))).toBe(
+			false
+		);
+		expect(hasActiveFilters(filters(['go']))).toBe(true);
+		expect(hasActiveFilters(emptyFilters())).toBe(false);
+	});
+});
+
+describe('isSkillHighlighted', () => {
+	it('matches a display name ignoring case', () => {
+		const selected = filters(['typescript']);
+		expect(isSkillHighlighted(selected, 'TypeScript')).toBe(true);
+		expect(isSkillHighlighted(selected, ' typescript')).toBe(true);
+		expect(isSkillHighlighted(selected, 'JavaScript')).toBe(false);
+		expect(isSkillHighlighted(emptyFilters(), 'TypeScript')).toBe(false);
+	});
+});
+
+describe('skillOptions', () => {
+	it('lists each skill once, labelled with its most used spelling, sorted', () => {
+		const typescriptFan = makeExperience('Fan', ExperienceType.Personal, {
+			hard: ['typescript', 'node.js']
+		});
+		expect(skillOptions([ts, msc, typescriptFan, py]).hard).toEqual([
+			{ key: 'django', label: 'Django' },
+			// 'Node.js' first seen, 'node.js' as often: the first seen wins
+			{ key: 'node.js', label: 'Node.js' },
+			{ key: 'python', label: 'Python' },
+			// 'typescript' used twice, 'TypeScript' once
+			{ key: 'typescript', label: 'typescript' }
+		]);
+	});
+
+	it('keeps the first seen spelling on a tie', () => {
+		const lower = makeExperience('Lower', ExperienceType.Personal, { hard: ['grpc'] });
+		const mixed = makeExperience('Mixed', ExperienceType.Personal, { hard: ['gRPC'] });
+		expect(skillOptions([mixed, lower]).hard).toEqual([{ key: 'grpc', label: 'gRPC' }]);
+		expect(skillOptions([lower, mixed]).hard).toEqual([{ key: 'grpc', label: 'grpc' }]);
+	});
+
+	it('separates technical and soft skills', () => {
+		expect(skillOptions(all).soft).toEqual([
+			{ key: 'communication', label: 'Communication' },
+			{ key: 'leadership', label: 'Leadership' },
+			{ key: 'teamwork', label: 'Teamwork' }
+		]);
+	});
+
+	it('lists a skill used as both kinds once, under the kind it is used most as', () => {
+		const softly = makeExperience('Soft', ExperienceType.Personal, { soft: ['Mentoring'] });
+		const twice = makeExperience('Twice', ExperienceType.Personal, { soft: ['mentoring'] });
+		const hardly = makeExperience('Hard', ExperienceType.Personal, { hard: ['Mentoring'] });
+		expect(skillOptions([softly, twice, hardly])).toEqual({
+			hard: [],
+			soft: [{ key: 'mentoring', label: 'Mentoring' }]
+		});
+		// A tie goes to technical
+		expect(skillOptions([softly, hardly])).toEqual({
+			hard: [{ key: 'mentoring', label: 'Mentoring' }],
+			soft: []
 		});
 	});
 
-	it('matches a skill within its own kind only', () => {
-		// 'Communication' is a soft skill: selecting it as a hard skill matches nothing
-		const filters: SkillFilters = {
-			hardSkills: new Set(['Communication']),
-			softSkills: new Set()
+	it('skips blank and unpopulated skills', () => {
+		const odd = {
+			type: ExperienceType.Personal,
+			projects: [
+				{
+					hardSkills: [{ skill: { displayName: '  ' } }, { skill: 'an-object-id' }],
+					softSkills: []
+				}
+			]
 		};
+		expect(skillOptions([odd])).toEqual({ hard: [], soft: [] });
+		expect(skillOptions([])).toEqual({ hard: [], soft: [] });
+	});
+});
 
-		expect(activeSkillFilters(allExperiences, filters).hardSkills.size).toBe(0);
+describe('typeOptions', () => {
+	it('lists the present types in order, with their counts', () => {
+		expect(typeOptions(all, emptyFilters())).toEqual({
+			all: 4,
+			types: [
+				{ type: ExperienceType.Professional, count: 2 },
+				{ type: ExperienceType.Educational, count: 1 },
+				{ type: ExperienceType.Leisure, count: 1 }
+			]
+		});
 	});
 
-	it('shows every experience again once an edit removed the only selected skill', () => {
-		const filters: SkillFilters = { hardSkills: new Set(['Go']), softSkills: new Set() };
-		const goExperience = makeExperience('Go Dev', ['Go'], []);
-		const before = [...allExperiences, goExperience];
-		expect(filterExperiences(before, activeSkillFilters(before, filters))).toEqual([goExperience]);
+	it('counts the experiences matching the selected skills, whatever the selected types', () => {
+		expect(typeOptions(all, filters(['teamwork'], [ExperienceType.Leisure]))).toEqual({
+			all: 2,
+			types: [
+				{ type: ExperienceType.Professional, count: 1 },
+				{ type: ExperienceType.Educational, count: 0 },
+				{ type: ExperienceType.Leisure, count: 1 }
+			]
+		});
+	});
+});
 
-		// The edit replaced 'Go': the stale selection has no chip left and must not hide everything
-		const after = [...allExperiences, makeExperience('Go Dev', ['Rust'], [])];
-		expect(filterExperiences(after, activeSkillFilters(after, filters))).toEqual(after);
+describe('toggleSkill / toggleType', () => {
+	it('adds a skill last and removes it again', () => {
+		const once = toggleSkill(filters(['python']), 'TypeScript');
+		expect(once).toEqual(filters(['python', 'typescript']));
+		expect(toggleSkill(once, 'typescript ')).toEqual(filters(['python']));
+	});
+
+	it('keeps the types in their display order', () => {
+		const leisure = toggleType(emptyFilters(), ExperienceType.Leisure);
+		const both = toggleType(leisure, ExperienceType.Professional);
+		expect(both.types).toEqual([ExperienceType.Professional, ExperienceType.Leisure]);
+		expect(toggleType(both, ExperienceType.Leisure).types).toEqual([ExperienceType.Professional]);
+	});
+
+	it('does not change the filters it is given', () => {
+		const selected = filters(['python'], [ExperienceType.Leisure]);
+		toggleSkill(selected, 'python');
+		toggleType(selected, ExperienceType.Leisure);
+		expect(selected).toEqual(filters(['python'], [ExperienceType.Leisure]));
+	});
+});
+
+describe('search params', () => {
+	it('reads one parameter per skill and per type', () => {
+		const params = new URLSearchParams(
+			'skills=TypeScript&skills=%20kafka&skills=typescript&skills=&type=professional&type=Leisure&type=unknown'
+		);
+		expect(filtersFromSearchParams(params)).toEqual(
+			filters(['typescript', 'kafka'], [ExperienceType.Professional, ExperienceType.Leisure])
+		);
+		expect(filtersFromSearchParams(new URLSearchParams())).toEqual(emptyFilters());
+	});
+
+	it('writes the filters and keeps the other parameters', () => {
+		const base = new URLSearchParams('skills=old&tab=projects&type=leisure');
+		const params = filtersToSearchParams(
+			filters(['typescript', 'node.js'], [ExperienceType.Educational]),
+			base
+		);
+		expect(params.toString()).toBe(
+			'tab=projects&skills=typescript&skills=node.js&type=educational'
+		);
+		// The base is not modified
+		expect(base.toString()).toBe('skills=old&tab=projects&type=leisure');
+		expect(filtersToSearchParams(emptyFilters(), base).toString()).toBe('tab=projects');
+	});
+
+	it('round-trips, including names with commas, spaces and symbols', () => {
+		const selected = filters(
+			['c, c++', 'ci/cd', 'node.js', 'a&b=c', 'déploiement'],
+			[ExperienceType.Personal]
+		);
+		const url = new URL('https://example.com/louis.gentil/experiences');
+		url.search = filtersToSearchParams(selected, url.searchParams).toString();
+		expect(filtersFromSearchParams(new URL(url.href).searchParams)).toEqual(selected);
 	});
 });

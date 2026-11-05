@@ -22,22 +22,21 @@
 	});
 </script>
 
-<AppBar>
-	<AppBar.Toolbar class="grid-cols-[auto_1fr_auto]">
-		<AppBar.Lead><Logo height="50" width="50" /></AppBar.Lead>
-		<AppBar.Headline class="text-center">
-			{#if headerTitle}
-				<h1 class="text-3xl font-bold">
+<AppBar class="px-3 py-2 md:p-4">
+	<AppBar.Toolbar class="grid-cols-[auto_minmax(0,1fr)_auto] gap-2 md:gap-4">
+		<AppBar.Lead>
+			<!-- currentColor: the logo follows the text colour, visible in light and dark mode -->
+			<span class="logo block size-9 text-surface-950-50 md:size-[50px]"><Logo /></span>
+		</AppBar.Lead>
+		<!-- Small screens: one line, smaller font, so the header stays short -->
+		<AppBar.Headline class="min-w-0 text-center">
+			<h1 class="truncate text-lg font-bold md:overflow-visible md:text-3xl md:whitespace-normal">
+				{#if headerTitle}
 					<span
 						class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
 						>{headerTitle}</span
 					>
-				</h1>
-				{#if headerSubtitle}
-					<p class="text-sm opacity-75">{headerSubtitle}</p>
-				{/if}
-			{:else}
-				<h1 class="text-3xl font-bold">
+				{:else}
 					<span
 						class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
 						>Problem Solver</span
@@ -52,10 +51,13 @@
 						class="bg-gradient-to-br from-pink-500 to-violet-500 bg-clip-text text-transparent box-decoration-clone"
 						>Programmer</span
 					>
-				</h1>
+				{/if}
+			</h1>
+			{#if headerTitle && headerSubtitle}
+				<p class="truncate text-xs opacity-75 md:whitespace-normal md:text-sm">{headerSubtitle}</p>
 			{/if}
 		</AppBar.Headline>
-		<AppBar.Trail>
+		<AppBar.Trail class="items-center">
 			{#if !$sessionCheckedStore}
 				...
 			{:else if isSessionValid($authenticationStore)}
@@ -68,3 +70,11 @@
 		</AppBar.Trail>
 	</AppBar.Toolbar>
 </AppBar>
+
+<style>
+	.logo :global(svg) {
+		width: 100%;
+		height: 100%;
+		fill: currentColor;
+	}
+</style>

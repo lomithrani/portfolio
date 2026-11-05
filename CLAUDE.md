@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A portfolio web application with a Bun workspace monorepo structure:
 - **client/** — SvelteKit 3 frontend (Svelte 5 with runes, Skeleton 5, Tailwind CSS 4, `@sveltejs/adapter-bun`)
 - **server/** — Elysia backend API (Bun runtime, MongoDB via Mongoose)
-- **common/** — Shared code used by both client and server (`ExperienceType`, domain-name validation, `DEFAULT_GOOGLE_CLIENT_ID`, booking calendar dates: `bookingHorizon`, `splitDateRange`)
+- **common/** — Shared code used by both client and server (`ExperienceType`, `EXPERIENCE_LIMITS` (field lengths and counts the API enforces and the editor validates), domain-name validation, `DEFAULT_GOOGLE_CLIENT_ID`, booking calendar dates: `bookingHorizon`, `splitDateRange`)
 
 Bun 1.4.4 is pinned in the root `package.json` (`packageManager`); the text lockfile `bun.lock` uses the isolated linker (each workspace has its own `node_modules`).
 
@@ -45,6 +45,7 @@ TEST_MONGO_URL=mongodb://127.0.0.1:27017/portfolio-test bun run --cwd server tes
 bun run --cwd client test:unit    # Vitest unit tests (single run)
 bun run --cwd client test:e2e     # Playwright E2E tests (needs the API running + seeded DB)
 ```
+The e2e tests serve the production build on port 4173 against the API at `PUBLIC_PORTFOLIO_API_URL` (default `http://localhost:3000`), seeded with `bun run --cwd server seed` and `bun run --cwd server seed:e2e` (the `e2e-owner` domain of `client/tests/experiences-owner.test.ts`). The owner tests sign in without Google, with a session JWT signed with the API's secret: run them with `JWT_SECRET` set to it (they are skipped without it); see the e2e job of `.github/workflows/main.yml`.
 Server tests load `server/.env`; without `TEST_MONGO_URL` they write to its `MONGO_URL` (the dev database). The Eden suite starts the API on `PORT` (default 3000): stop `bun run dev` first or set another `PORT`.
 Server tests must pass in any order (CI runs them with `--randomize`; replay a failure with `--seed=N`): each test creates its own data, named with a unique suffix, and removes it, never relying on an earlier test or on seeded data.
 
@@ -63,11 +64,14 @@ The client uses **Eden Treaty** (`@elysiajs/eden`) for type-safe API calls. The 
 ### Routing
 SvelteKit dynamic routes under `[domain]/` — the root (`/`) redirects to `/louis.gentil/experiences`. Each portfolio is loaded by domain name via `+layout.server.ts` calling the API.
 
+### Experiences page
+`routes/[domain]/experiences/+page.svelte` lists the experiences (sorted by `sortExperiences` of `client/src/services/experienceDates.ts`) and mounts one editor dialog for the owner: `client/src/lib/components/experience-editor/ExperienceEditor.svelte` (add, edit, delete, unsaved-changes guard, drafts in localStorage; form helpers and validation in `client/src/services/experienceForm.ts`). Card helpers live in `client/src/lib/components/experience-list/`. The filters (`Filters.svelte` there, logic in `client/src/services/filters.ts`) keep their state in the URL (`?skills=kafka&type=professional`). Toasts: `toaster` from `client/src/services/toaster.ts`, whose group is mounted in `routes/[domain]/+layout.svelte`.
+
 ### Authentication Flow
 Google OAuth 2.0 → server verifies token → upserts user in MongoDB → issues JWT (7-day, httpOnly cookie). Client tracks auth state via `svelte-persisted-store`. Protected server routes use the `userLogged` Elysia plugin middleware.
 
 ### Server Plugin Structure
-Elysia routes are organized as plugins in `server/plugins/` — `auth.ts`, `domain.ts`, `experiences.ts`, `workflows.ts`, `appointments.ts` (Google Calendar: admin schedules + public booking; Google calls live in `server/services/googleCalendar.ts`, slots in `server/services/slotComputation.ts`, booking reservations and rate limits in `server/services/appointmentBookings.ts`). Custom error classes live in `server/errors.ts`.
+Elysia routes are organized as plugins in `server/plugins/` — `auth.ts`, `domain.ts`, `experiences.ts` (POST, PUT and DELETE `/experiences`, owner only), `workflows.ts`, `appointments.ts` (Google Calendar: admin schedules + public booking; Google calls live in `server/services/googleCalendar.ts`, slots in `server/services/slotComputation.ts`, booking reservations and rate limits in `server/services/appointmentBookings.ts`). Custom error classes live in `server/errors.ts`.
 
 ### Database Models
 Mongoose schemas in `server/models/database/`. Key entities: Domain, User, Experience, Company, Project, Skill, Workflow (with steps/instances), AppointmentSchedule, AppointmentBooking (slot reservations of `POST /appointments/book`, unique on `(schedule, start)`, released on cancellation; logic in `server/services/appointmentBookings.ts`), RateLimitCounter (Mongo fixed-window counters of `server/services/rateLimit.ts`). The User's Google Calendar OAuth tokens (`googleCalendar.refreshToken` / `accessToken`) are `select: false`: only `services/googleCalendar.ts` loads them (`.select('+googleCalendar.refreshToken')`), and `tests/appointments.test.ts` fails if any API response contains one. Every Calendar call goes through `callGoogle` there: a grant Google refuses (`invalid_grant`, `unauthorized_client`, Calendar 401) is cleared (`googleCalendar.revokedAt` set) and becomes a 409 `GoogleCalendarReconnectRequiredError`, not a 500. Elysia request validation schemas use TypeBox in `server/models/elysia/`.

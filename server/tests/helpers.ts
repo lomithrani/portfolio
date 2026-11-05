@@ -72,8 +72,8 @@ export const makeWorkflow = (overrides: Record<string, unknown> = {}) =>
     ...overrides
   });
 
-// What the admin modal sends when creating an experience (newExperienceStore
-// defaults: company { name: '' })
+// An experience as clients send it; the blank company ({ name: '' }, what older clients sent
+// without a company name) is dropped by the API
 export const experienceRequestBody = {
   type: 'professional',
   title: 'Software Engineer',

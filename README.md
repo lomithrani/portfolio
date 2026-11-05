@@ -112,11 +112,15 @@ Playwright. They need the API running against a seeded database, with `http://lo
 the API's `ALLOWED_DOMAINS` (the example `.env` has it):
 
 ```bash
-bun run db:up && bun run db:seed
+bun run db:up && bun run db:seed && bun run --cwd server seed:e2e
 bun run start:server                # in another terminal
 cd client && bunx playwright install chromium && cd ..   # once
-bun run --cwd client test:e2e
+JWT_SECRET=<the API's JWT_SECRET> bun run --cwd client test:e2e
 ```
+
+The owner tests (`client/tests/experiences-owner.test.ts`) add, edit and delete experiences of
+the `e2e-owner` domain that `seed:e2e` creates. They sign in without Google, with a session
+signed with the API's `JWT_SECRET` (from `server/.env`), and are skipped when it is not set.
 
 CI (`.github/workflows/main.yml`) runs on pushes and pull requests to `develop` and `main`, in
 three jobs: lint, type-check and build; API and web unit tests against MongoDB 7 (production) and 9; Playwright end
