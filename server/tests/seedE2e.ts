@@ -1,6 +1,7 @@
-// Seeds what the Playwright owner tests sign in as (client/tests/experiences-owner.test.ts): a
-// user and the domain 'e2e-owner' it owns, kept for those tests alone (they add and remove its
-// experiences). Idempotent: safe to run against a seeded database.
+// Seeds what the Playwright owner tests sign in as: per test file, a user and the domain it owns,
+// kept for that file alone (its tests add and remove the domain's experiences, so files running in
+// parallel never share one): 'e2e-owner' for client/tests/experiences-owner.test.ts, 'e2e-import'
+// for client/tests/resume-import.test.ts. Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose from "mongoose";
 import { Domain, User } from "../models/database";
@@ -17,18 +18,26 @@ console.log(`Connecting to: ${redactConnectionString(mongoUrl)}`);
 
 await mongoose.connect(mongoUrl);
 
-const user = await User.findOneAndUpdate(
-  { email: 'e2e.owner@example.com' },
-  { $setOnInsert: { name: 'Eve', surname: 'Owner' } },
-  { upsert: true, returnDocument: 'after' }
-);
+// One domain per user: an owner can own only one
+const owners = [
+  { email: 'e2e.owner@example.com', name: 'Eve', surname: 'Owner', domain: 'e2e-owner' },
+  { email: 'e2e.import@example.com', name: 'Ivy', surname: 'Importer', domain: 'e2e-import' }
+];
 
-await Domain.findOneAndUpdate(
-  { name: 'e2e-owner' },
-  { $setOnInsert: { admin: user._id, experiences: [] } },
-  { upsert: true }
-);
+for (const owner of owners) {
+  const user = await User.findOneAndUpdate(
+    { email: owner.email },
+    { $setOnInsert: { name: owner.name, surname: owner.surname } },
+    { upsert: true, returnDocument: 'after' }
+  );
 
-console.log('Seeded the e2e owner');
+  await Domain.findOneAndUpdate(
+    { name: owner.domain },
+    { $setOnInsert: { admin: user._id, experiences: [] } },
+    { upsert: true }
+  );
+}
+
+console.log(`Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}`);
 await mongoose.disconnect();
 process.exit(0);

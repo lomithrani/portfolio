@@ -341,6 +341,9 @@ with nothing about the résumé or its owner.
 **What counts.** The limits are MongoDB counters (`ratelimitcounters`, like the booking limits);
 over one, the API answers `429` with `Retry-After` and when it resets. The paid call is streamed,
 with a 3-minute deadline for the whole answer (no shorter timeout cuts a long résumé short).
+Counting the tokens first (free) has a 30-second deadline, its retry included, so the API answers
+within 3.5 minutes; the browser waits 4.5 (`RESUME_IMPORT_TIMEOUTS` in portfolio-common), so an
+answer that counted is not thrown away.
 
 - **Counted:** everything once the paid request has been sent, since Anthropic may have run, and
   billed, the model: drafts or nothing found (`200`), a refusal or an answer cut short at 16,000
@@ -363,8 +366,8 @@ with a 3-minute deadline for the whole answer (no shorter timeout cuts a long r�
   (`413`).
 
 **Request size.** The API's body cap is 6 MB (Bun answers `413` above it, before the app runs): a
-4 MB PDF is about 5.4 MB of base64 JSON. `POST /experiences/import` without the session cookie gets
-`401` before its body is read. Every other route keeps a 1 MB cap: checked on `Content-Length`
+4 MB PDF is about 5.4 MB of base64 JSON. `POST /experiences/import` without a valid session (the
+`auth` cookie's JWT is verified: signature, expiry, subject) gets `401` before its body is read. Every other route keeps a 1 MB cap: checked on `Content-Length`
 before the body is read, then on the bytes actually read, so a body without a usable
 `Content-Length` (chunked, as a proxy or an HTTP/2 client may forward it, or with the header
 repeated) stops at 1 MB too; both answer `413` with CORS headers.

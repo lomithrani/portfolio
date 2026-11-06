@@ -429,7 +429,7 @@
 				</h2>
 			{/snippet}
 		</Dialog.Title>
-		<div class="flex flex-wrap items-center gap-x-2 text-sm text-surface-600-400">
+		<div class="flex flex-wrap items-center gap-x-2 text-sm text-surface-700-300">
 			<Dialog.Description>
 				{#snippet element(attributes)}
 					<p {...attributes} class={statusText ? 'max-sm:sr-only' : ''}>
@@ -608,7 +608,7 @@
 					ongoingLabel={ongoingLabel(form.type)}
 				/>
 				{#if projectsPeriod && !form.start && !form.end && !form.ongoing}
-					<p class="text-xs text-surface-600-400">
+					<p class="text-xs text-surface-700-300">
 						Left empty, the period of the projects is shown: {projectsPeriod}.
 					</p>
 				{/if}
@@ -635,12 +635,12 @@
 				<h3 id="{uid}-projects" class="text-base font-semibold">
 					Projects
 					{#if form.projects.length > 0}
-						<span class="ms-1 text-sm font-normal text-surface-600-400">
+						<span class="ms-1 text-sm font-normal text-surface-700-300">
 							({form.projects.length})
 						</span>
 					{/if}
 				</h3>
-				<p class="text-sm text-surface-600-400">
+				<p class="text-sm text-surface-700-300">
 					Missions, products or courses of this experience, each with its own skills.
 				</p>
 			</div>
@@ -805,7 +805,9 @@
 			<button
 				type="submit"
 				form={formId}
-				class="btn preset-filled-primary-500 {status === 'saving' ? 'disabled:opacity-100' : ''}"
+				class="btn preset-filled-primary-700-300 {status === 'saving'
+					? 'disabled:opacity-100'
+					: ''}"
 				disabled={busy}
 			>
 				{#if status === 'saving'}

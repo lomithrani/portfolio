@@ -107,6 +107,12 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
     return { status: 400, body: `Invalid value for ${error.path}`, level: 'warn' };
   }
 
+  // save() of a document deleted meanwhile, e.g. an experience edited in one
+  // tab while another deletes it: what the client asked for no longer exists
+  if (error instanceof mongoose.Error.DocumentNotFoundError) {
+    return { status: 404, body: 'Not Found', level: 'warn' };
+  }
+
   if (error instanceof mongoose.Error.ValidationError) {
     return {
       status: 422,

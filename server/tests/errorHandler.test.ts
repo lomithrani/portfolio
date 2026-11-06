@@ -103,6 +103,11 @@ describe('resolveError', () => {
     expect(resolveError('UNKNOWN', error)).toMatchObject({ status: 400 });
   });
 
+  it('maps a save of a document deleted meanwhile (DocumentNotFoundError) to 404, at warn', () => {
+    const error = new mongoose.Error.DocumentNotFoundError('No document found');
+    expect(resolveError('UNKNOWN', error)).toEqual({ status: 404, body: 'Not Found', level: 'warn' });
+  });
+
   it('maps a Mongoose ValidationError to 422 without echoing values', async () => {
     const error = await new Domain({ name: '-bad name-' }).validate().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(mongoose.Error.ValidationError);

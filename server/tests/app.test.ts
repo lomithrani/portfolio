@@ -7,7 +7,8 @@ import { env } from '../env';
 import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
 import { google } from '../services/google';
 import { logger } from '../services/logger';
-import { afterResponseHooks, authCookie, makeRequest, readJson, useTestGoogleKeys } from './helpers';
+import { SignJWT } from 'jose';
+import { afterResponseHooks, authCookie, makeRequest, readJson, TEST_USER_ID, useTestGoogleKeys } from './helpers';
 
 // Overrides mongoose.connection.readyState (a prototype getter) for one test
 const setReadyState = (state: number) =>
@@ -209,22 +210,36 @@ describe('request bodies', () => {
       expect(await invalid.text()).toBe('Bad Request');
     });
 
-    it('refuses the résumé import without a session cookie before reading its body, with the CORS headers', async () => {
+    /** A session JWT signed with `secret`, as /login issues them */
+    const sessionToken = (secret: string, expiresIn: string | number = '1h', subject: string | null = TEST_USER_ID) => {
+      const jwt = new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setExpirationTime(expiresIn);
+      return (subject ? jwt.setSubject(subject) : jwt).sign(new TextEncoder().encode(secret));
+    };
+
+    it.each([
+      ['no session cookie', async () => 'other=1'],
+      ['an empty session cookie', async () => 'other=1; auth='],
+      ['a session cookie that is not a JWT', async () => 'auth=x'],
+      ['a JWT signed with another secret', async () => `auth=${await sessionToken('another secret')}`],
+      ['an expired session', async () => `auth=${await sessionToken(env.JWT_SECRET, Math.floor(Date.now() / 1000) - 60)}`],
+      ['a session without a subject', async () => `auth=${await sessionToken(env.JWT_SECRET, '1h', null)}`]
+    ])('refuses the résumé import with %s before reading its body, with the CORS headers', async (_label, cookie) => {
       const origin = env.ALLOWED_DOMAINS[0];
       const { stream, watch } = watchedBody(5 * MB);
 
-      const result = await streamedPost('/experiences/import', stream, { Origin: origin, Cookie: 'other=1; auth=' });
+      const result = await streamedPost('/experiences/import', stream, { Origin: origin, Cookie: await cookie() });
       expect(result.status).toBe(401);
       expect(await result.text()).toBe('Unauthorized');
       expect(result.headers.get('access-control-allow-origin')).toBe(origin);
       expect(watch.read).toBe(0);
     });
 
-    it('lets the résumé import (a base64 PDF) above 1 MB through to its route', async () => {
-      // An invalid session: the route's own 401, once the body is read
-      expect((await postOfSize('/experiences/import', 5 * MB, { Cookie: 'auth=invalid' })).status).toBe(401);
-      const chunked = new Blob([JSON.stringify({ file: 'x'.repeat(5 * MB) })]).stream();
-      expect((await streamedPost('/experiences/import', chunked, { Cookie: 'auth=invalid' })).status).toBe(401);
+    it('lets the résumé import (a base64 PDF) above 1 MB through to its route, with a session', async () => {
+      const cookie = await authCookie();
+      // Read, parsed and checked by the route: no file (422), not a size or session refusal
+      expect((await postOfSize('/experiences/import', 5 * MB, { Cookie: cookie })).status).toBe(422);
+      const chunked = new Blob([JSON.stringify({ title: 'x'.repeat(5 * MB) })]).stream();
+      expect((await streamedPost('/experiences/import', chunked, { Cookie: cookie })).status).toBe(422);
       // Only POST: another method on that path keeps the 1 MB cap
       const put = await makeRequest(createApp(), '/experiences/import', {
         method: 'PUT',

@@ -78,7 +78,7 @@
 				<span class="block truncate font-medium {project.name.trim() ? '' : 'italic opacity-80'}">
 					{displayName}
 				</span>
-				<span class="block truncate text-xs text-surface-600-400">
+				<span class="block truncate text-xs text-surface-700-300">
 					{period} · {skillCount === 0
 						? 'No skills'
 						: `${skillCount} skill${skillCount > 1 ? 's' : ''}`}

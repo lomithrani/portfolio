@@ -6,6 +6,8 @@ export {
 	isValidDomainName,
 	normalizeDomainName,
 	DEFAULT_GOOGLE_CLIENT_ID,
+	RESUME_IMPORT_TIMEOUTS,
+	RESUME_IMPORT_CLIENT_TIMEOUT_MS,
 	MAX_AVAILABLE_DATES_RANGE,
 	addDays,
 	bookingHorizon,

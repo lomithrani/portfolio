@@ -125,7 +125,7 @@
 			useFile(input.files?.[0]).finally(() => (input.value = ''));
 		}}
 	/>
-	<p id={hintId} class="text-xs text-surface-600-400">
+	<p id={hintId} class="text-xs text-surface-700-300">
 		PNG, JPEG, WebP, SVG or ICO. Large images are resized to {ICON_SIZE} px.
 	</p>
 	{#if localError}

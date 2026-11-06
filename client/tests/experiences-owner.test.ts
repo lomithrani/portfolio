@@ -5,42 +5,26 @@ import {
 	type APIRequestContext,
 	type Page
 } from '@playwright/test';
+import {
+	API_URL,
+	JWT_SECRET,
+	blockGoogle,
+	gotoHydrated,
+	ownerSession,
+	signIn,
+	type OwnerSession
+} from './support/owner';
 
 // The owner's flows on the experiences page: add, edit, delete, discard, and the filters.
 // They run against the e2e seed (`bun run --cwd server seed:e2e`): the domain 'e2e-owner' and its
-// owner, kept for these tests. They sign in without Google, with a session JWT signed with the
-// API's JWT_SECRET (the claims POST /login issues), and each test adds the experiences it needs
-// through the API, named with its own tag, and removes them afterwards. They share the domain, so
-// they run one after the other (as the tests of a file do by default: keep it that way).
+// owner, kept for these tests. They sign in without Google (./support/owner.ts), and each test
+// adds the experiences it needs through the API, named with its own tag, and removes them
+// afterwards. They share the domain, so they run one after the other (as the tests of a file do
+// by default: keep it that way).
 
 const DOMAIN = 'e2e-owner';
-// Same API as the web server under test (see playwright.config.ts)
-const API_URL = process.env.PUBLIC_PORTFOLIO_API_URL ?? 'http://localhost:3000';
-const JWT_SECRET = process.env.JWT_SECRET;
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e owner');
-
-const base64url = (bytes: Uint8Array) =>
-	btoa(String.fromCharCode(...bytes))
-		.replace(/\+/g, '-')
-		.replace(/\//g, '_')
-		.replace(/=+$/, '');
-
-/** An HS256 session JWT ({ sub, exp }), as POST /login issues it */
-const signSession = async (userId: string, exp: number) => {
-	const encoder = new TextEncoder();
-	const encode = (value: unknown) => base64url(encoder.encode(JSON.stringify(value)));
-	const unsigned = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: userId, exp })}`;
-	const key = await crypto.subtle.importKey(
-		'raw',
-		encoder.encode(JWT_SECRET),
-		{ name: 'HMAC', hash: 'SHA-256' },
-		false,
-		['sign']
-	);
-	const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(unsigned));
-	return `${unsigned}.${base64url(new Uint8Array(signature))}`;
-};
 
 type ListedExperience = {
 	_id: string;
@@ -54,8 +38,7 @@ type ListedExperience = {
 	}[];
 };
 
-let ownerId = '';
-let session = { token: '', exp: 0 };
+let session: OwnerSession;
 let api: APIRequestContext;
 
 const listExperiences = async (): Promise<ListedExperience[]> => {
@@ -101,14 +84,7 @@ const createExperience = async (body: {
 };
 
 test.beforeAll(async () => {
-	const anonymous = await playwrightRequest.newContext();
-	const domain = await anonymous.get(`${API_URL}/domain/${DOMAIN}`);
-	expect(domain.ok(), `GET /domain/${DOMAIN}: run \`bun run --cwd server seed:e2e\``).toBe(true);
-	ownerId = String((await domain.json()).admin);
-	await anonymous.dispose();
-
-	const exp = Math.floor(Date.now() / 1000) + 3600;
-	session = { token: await signSession(ownerId, exp), exp };
+	session = await ownerSession(DOMAIN);
 	api = await playwrightRequest.newContext({
 		extraHTTPHeaders: { cookie: `auth=${session.token}` }
 	});
@@ -122,13 +98,9 @@ test.afterAll(async () => {
 
 // Unique per test: names its experiences, which it removes afterwards
 let tag = '';
-test.beforeEach(async ({ context }, testInfo) => {
+test.beforeEach(async ({ page }, testInfo) => {
 	tag = `${testInfo.workerIndex}-${Date.now().toString(36)}`;
-	// Google (Sign-In script, fonts) is never reached
-	await context.route(
-		/^https?:\/\/([^/]*\.)?(google|gstatic|googleapis|googleusercontent)\.com\//,
-		(route) => route.abort()
-	);
+	await blockGoogle(page);
 });
 
 test.afterEach(async () => {
@@ -137,34 +109,8 @@ test.afterEach(async () => {
 	}
 });
 
-/** The owner's session: the auth cookie of the API and the persisted session of the client */
-const signIn = async (page: Page) => {
-	await page.context().addCookies([
-		{
-			name: 'auth',
-			value: session.token,
-			url: API_URL,
-			httpOnly: true,
-			sameSite: 'Strict',
-			expires: session.exp
-		}
-	]);
-	await page.addInitScript(
-		(value) => localStorage.setItem('authenticationStore', value),
-		JSON.stringify({ user: { _id: ownerId }, expires: session.exp })
-	);
-};
-
-/** Navigates and waits until the page has hydrated and the session was checked with the API */
-const gotoHydrated = async (page: Page, path: string) => {
-	const isLogged = page.waitForResponse((response) => response.url().endsWith('/isLogged'));
-	const response = await page.goto(path);
-	await isLogged;
-	return response;
-};
-
 const openAsOwner = async (page: Page) => {
-	await signIn(page);
+	await signIn(page, session);
 	await gotoHydrated(page, `/${DOMAIN}/experiences`);
 };
 
@@ -220,6 +166,8 @@ test.describe('the owner of a portfolio', () => {
 		await expect(dialog).toBeHidden();
 		const added = card(page, title);
 		await expect(added).toBeVisible();
+		// The empty state's button is gone with the empty state: the new card takes the focus
+		await expect(added.getByRole('button', { name: `Edit ${title}` })).toBeFocused();
 		await expect(added).toContainText('Acme');
 		await expect(added).toContainText('Mar 2022 – Present');
 		await expect(added).toContainText(`Ingestion ${tag}`);

@@ -117,6 +117,7 @@
 				type="button"
 				class="btn preset-tonal min-h-10 min-w-10 shrink-0 px-2.5 sm:px-3"
 				aria-label="Edit {experience.title}"
+				data-edit-experience
 				onclick={() => onEdit?.()}
 			>
 				<PencilSquare size="18" aria-hidden="true" />

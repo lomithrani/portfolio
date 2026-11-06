@@ -130,7 +130,7 @@
 	<div bind:this={suggestionBox}>
 		{#if matches.length > 0}
 			<div class="flex flex-wrap items-center gap-1" role="group" aria-label="Suggestions">
-				<span class="me-1 text-xs text-surface-600-400" aria-hidden="true">Suggestions:</span>
+				<span class="me-1 text-xs text-surface-700-300" aria-hidden="true">Suggestions:</span>
 				{#each matches as skill (skill)}
 					<button
 						type="button"
@@ -144,7 +144,7 @@
 			</div>
 		{/if}
 	</div>
-	<p id={hintId} class="text-xs text-surface-600-400">
+	<p id={hintId} class="text-xs text-surface-700-300">
 		Press Enter, or separate skills with a comma.
 	</p>
 	<FieldError {field} />

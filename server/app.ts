@@ -1,4 +1,5 @@
 import { Elysia } from 'elysia'
+import { jwtVerify } from 'jose'
 import mongoose from 'mongoose'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
@@ -62,12 +63,29 @@ const parseBoundedJson = async ({ request }: { request: Request }, contentType: 
   return JSON.parse(await readBodyText(request.body, MAX_JSON_BODY_SIZE)) as unknown
 }
 
+/** The value of the request's session cookie ('auth'), if any */
+const sessionCookie = (request: Request) => {
+  for (const pair of (request.headers.get('cookie') ?? '').split(';')) {
+    const [name, ...value] = pair.split('=')
+    if (name.trim() === 'auth') return value.join('=').trim()
+  }
+  return undefined
+}
+
 // The résumé import takes a ~6 MB body and needs a session: a request without
-// the session cookie is refused before its body is read (and copied into the
-// request span). userLogged still checks the cookie's value
-const lacksSessionCookie = (request: Request) =>
-  isLargeBodyRoute(request) &&
-  !(request.headers.get('cookie') ?? '').split(';').some((pair) => /^\s*auth=\S/.test(pair))
+// a valid session JWT (signed with JWT_SECRET, unexpired, with a subject:
+// what userLogged accepts) is refused before its body is read, parsed and
+// copied into the request span. Any cookie named auth is not enough
+const lacksValidSession = async (request: Request) => {
+  const token = sessionCookie(request)
+  if (!token) return true
+  try {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET))
+    return !payload.sub || !payload.exp
+  } catch {
+    return true
+  }
+}
 
 // Bodies of requests that change data must be JSON (the only type the client
 // sends). An HTML form on another site can only send urlencoded, multipart or
@@ -120,11 +138,16 @@ export const createApp = () =>
     .use(corsConf())
     // After CORS, so the 413, 415 and 401 still carry the CORS headers. Thrown
     // (not returned) so they go through onError: logged and counted like any
-    // 4xx. All run before the body is read
+    // 4xx. All run before the body is read (the session check is async, in a
+    // hook of its own: it verifies a JWT for the résumé import only)
     .onRequest(({ request }) => {
       if (hasOversizedBody(request)) throw new PayloadTooLargeError('Payload Too Large')
       if (hasNonJsonBody(request)) throw new UnsupportedMediaTypeError('Unsupported Media Type')
-      if (lacksSessionCookie(request)) throw new MissingAuthCookieError('Unauthorized')
+    })
+    .onRequest(async ({ request }) => {
+      if (isLargeBodyRoute(request) && (await lacksValidSession(request))) {
+        throw new MissingAuthCookieError('Unauthorized')
+      }
     })
     .onParse({ as: 'global' }, parseBoundedJson)
     .use(apiDocs())

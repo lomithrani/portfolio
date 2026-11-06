@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { RESUME_IMPORT_TIMEOUTS } from 'portfolio-common'
 import { env } from '../env'
 import type { ServerEnv } from '../env'
 import {
@@ -50,12 +51,18 @@ export const MAX_RESUME_INPUT_TOKENS = 60_000
 export const RESUME_IMPORT_MAX_OUTPUT_TOKENS = 16_000
 
 /**
- * Time limits of the two calls; a property so tests can shorten them. The
- * paid call is streamed, so no response-wide timeout cuts a long answer
- * short: its deadline (connection, prompt and the whole answer) leaves
- * 16,000 output tokens about 90 tokens a second
+ * Time limits of the two steps (RESUME_IMPORT_TIMEOUTS of portfolio-common,
+ * which the browser outlasts); a property so tests can shorten them. Each is
+ * one deadline: counting, its retry and any wait the API asks for included,
+ * so an import answers within countMs + extractMs. The paid call is streamed,
+ * so no response-wide timeout cuts a long answer short: its deadline
+ * (connection, prompt and the whole answer) leaves 16,000 output tokens about
+ * 90 tokens a second
  */
-export const resumeImportTimeouts = { countMs: 20_000, extractMs: 180_000 }
+export const resumeImportTimeouts: { countMs: number; extractMs: number } = {
+  countMs: RESUME_IMPORT_TIMEOUTS.countMs,
+  extractMs: RESUME_IMPORT_TIMEOUTS.extractMs
+}
 
 export const RESUME_IMPORT_MONTHLY_WINDOW_MS = 30 * 24 * 60 * 60_000
 export const RESUME_IMPORT_DAILY_WINDOW_MS = 24 * 60 * 60_000
@@ -398,9 +405,16 @@ export async function importResume(userId: string, file: string, fileName?: stri
     const request = extractionRequest(pdf, fileName)
 
     // Free (not billed), and stops a long PDF before the paid call; retried
-    // once on what can succeed later (connection errors, 408/409/429/5xx)
+    // once on what can succeed later (connection errors, 408/409/429/5xx).
+    // One deadline for the step: the SDK would otherwise wait as long as a
+    // 429's Retry-After asks before its retry
+    const countDeadline = AbortSignal.timeout(resumeImportTimeouts.countMs)
     const { input_tokens: inputTokens } = await client.messages
-      .countTokens(request, { timeout: resumeImportTimeouts.countMs, maxRetries: 1 })
+      .countTokens(request, {
+        timeout: Math.ceil(resumeImportTimeouts.countMs / 2),
+        maxRetries: 1,
+        signal: countDeadline
+      })
       .catch((error: unknown) => {
         throw claudeFailure('count', error, settings.apiKey)
       })

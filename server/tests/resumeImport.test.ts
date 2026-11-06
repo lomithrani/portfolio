@@ -8,6 +8,7 @@
 // (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose from 'mongoose';
+import { RESUME_IMPORT_CLIENT_TIMEOUT_MS } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import { Domain, Experience, RateLimitCounter, User } from '../models/database';
@@ -791,6 +792,31 @@ describe('failures on the operator side', () => {
     expect(claude.paths()).toEqual(['/v1/messages/count_tokens', '/v1/messages/count_tokens']);
     expect(await userCount(owner.userId)).toBe(0);
     expect(await attemptCount(owner.userId)).toBe(1);
+  });
+
+  it('gives counting tokens one deadline, the wait a 429 asks for before the retry included', async () => {
+    resumeImportTimeouts.countMs = 300;
+    // Without the deadline, the SDK would wait 10 minutes before its retry
+    claude.state.counts.push(() =>
+      Response.json(
+        { type: 'error', error: { type: 'rate_limit_error', message: 'Rate limited' }, request_id: 'req_429' },
+        { status: 429, headers: { 'request-id': 'req_429', 'retry-after': '600' } }
+      )
+    );
+
+    const started = performance.now();
+    const result = await importFile(pdf);
+    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(result.status).toBe(503);
+    expect(result.text).toBe('Résumé import is temporarily unavailable, try again later');
+    expect(claude.paths()).toEqual(['/v1/messages/count_tokens']);
+    expect(await userCount(owner.userId)).toBe(0);
+  });
+
+  it('answers within the client\'s timeout: the API\'s two deadlines leave the browser its margin', () => {
+    expect(RESUME_IMPORT_CLIENT_TIMEOUT_MS).toBeGreaterThanOrEqual(
+      saved.timeouts.countMs + saved.timeouts.extractMs + 60_000
+    );
   });
 
   it('answers 503 when counting tokens fails, and counts nothing', async () => {

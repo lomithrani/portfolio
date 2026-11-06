@@ -1,6 +1,7 @@
 import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
 import { Domain, Experience, Skill } from '../models/database';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
+import { logger } from '../services/logger';
 import { createApp } from '../app';
 import {
   makeDomain,
@@ -364,6 +365,22 @@ describe('PUT /experiences/:id', () => {
     const result = await putWithCookie(app, `/experiences/${TEST_EXPERIENCE_ID}`, experienceRequestBody, await authCookie());
 
     expect(result.status).toBe(404);
+  });
+
+  it('returns 404, not a 500, when a concurrent DELETE removed the experience before it was saved', async () => {
+    stubPersistence(makeDomain({ experiences: [new Types.ObjectId(TEST_EXPERIENCE_ID)] }));
+    const experience = makeExperience();
+    spyOn(Experience, 'findById').mockResolvedValue(experience as never);
+    // What save() throws once the document is gone (another tab deleted it)
+    spyOn(Experience.prototype, 'save').mockRejectedValue(
+      new mongoose.Error.DocumentNotFoundError(`No document found for query "{ _id: '${TEST_EXPERIENCE_ID}' }"`) as never
+    );
+    const errorLog = spyOn(logger, 'error');
+
+    const result = await putWithCookie(app, `/experiences/${TEST_EXPERIENCE_ID}`, experienceRequestBody, await authCookie());
+
+    expect(result.status).toBe(404);
+    expect(errorLog).not.toHaveBeenCalled();
   });
 
   it('returns 422 for an id that is not an ObjectId', async () => {

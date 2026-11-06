@@ -81,11 +81,11 @@
 			{#if value.trim()}
 				<Markdown content={value} headingOffset={2} compact />
 			{:else}
-				<p class="text-surface-600-400">Nothing to preview yet.</p>
+				<p class="text-surface-700-300">Nothing to preview yet.</p>
 			{/if}
 		</div>
 	</Tabs.Content>
-	<p id={hintId} class="text-xs text-surface-600-400">
+	<p id={hintId} class="text-xs text-surface-700-300">
 		Markdown: **bold**, _italic_, lists with “-”, [links](https://…).
 	</p>
 	<FieldError {field} />
