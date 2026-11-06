@@ -9,6 +9,7 @@ import { formatListenUrl, listenWithFallback } from './services/listen';
 import { startMemoryDiagnostics } from './services/memoryDiagnostics';
 import { createShutdown } from './services/shutdown';
 import { describeResumeImport } from './services/resumeImport';
+import { describeJobImport } from './services/jobImport';
 
 export { app };
 export type { Portfolio } from './app';
@@ -45,7 +46,8 @@ const host = listenWithFallback(app, {
 logger.info(`Running at ${formatListenUrl(host, app.server!.port ?? env.PORT, !!env.TLS_PASSPHRASE)}`, {
   allowedDomains: env.ALLOWED_DOMAINS.join(', '),
   telemetry: describeTelemetry(env),
-  resumeImport: describeResumeImport(env)
+  resumeImport: describeResumeImport(env),
+  jobImport: describeJobImport(env)
 });
 
 // 'memory' log line at startup, then every MEMORY_LOG_INTERVAL_MS

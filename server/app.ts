@@ -3,15 +3,27 @@ import { jwtVerify } from 'jose'
 import mongoose from 'mongoose'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
-import { experiences, resumeImport, googleAuth, domain, workflows, appointments, corsConf } from './plugins'
+import {
+  account,
+  experiences,
+  resumeImport,
+  googleAuth,
+  domain,
+  workflows,
+  appointments,
+  corsConf,
+  jobs,
+  jobImport
+} from './plugins'
 import { errors, MissingAuthCookieError, PayloadTooLargeError, UnsupportedMediaTypeError } from './errors'
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
 import { logger } from './services/logger'
 import { resolveError } from './services/errorHandler'
 
 // Hard cap on request bodies, enforced by Bun itself (it answers 413, without
-// CORS headers, before the app runs). Sized for the one large route: a 4 MB
-// PDF posted to POST /experiences/import is ~5.4 MB of base64 JSON.
+// CORS headers, before the app runs). Sized for the large routes: a 4 MB PDF
+// posted to POST /experiences/import or POST /jobs/import is ~5.4 MB of
+// base64 JSON.
 const MAX_REQUEST_BODY_SIZE = 6 * 1024 * 1024
 
 // Cap of every other route (a 413 with CORS headers). The largest legit
@@ -21,10 +33,11 @@ const MAX_REQUEST_BODY_SIZE = 6 * 1024 * 1024
 // usable Content-Length (chunked, as proxies and HTTP/2 clients may forward
 // it, or with the header repeated)
 const MAX_JSON_BODY_SIZE = 1024 * 1024
-const LARGE_BODY_ROUTE = { method: 'POST', path: '/experiences/import' }
+// The PDF imports (résumé, job description): POST only
+const LARGE_BODY_PATHS = new Set(['/experiences/import', '/jobs/import'])
 
 const isLargeBodyRoute = (request: Request) =>
-  request.method === LARGE_BODY_ROUTE.method && new URL(request.url).pathname === LARGE_BODY_ROUTE.path
+  request.method === 'POST' && LARGE_BODY_PATHS.has(new URL(request.url).pathname)
 
 const hasOversizedBody = (request: Request) => {
   const contentLength = Number(request.headers.get('content-length'))
@@ -54,7 +67,7 @@ const readBodyText = async (body: ReadableStream<Uint8Array>, maxBytes: number) 
 /**
  * Parses JSON bodies in place of Elysia's parser, reading at most
  * MAX_JSON_BODY_SIZE bytes; other bodies are refused (415) or never read.
- * The résumé import keeps Elysia's parser, under Bun's cap. Invalid JSON is a
+ * The PDF imports keep Elysia's parser, under Bun's cap. Invalid JSON is a
  * 400, as with Elysia's parser (it throws inside the parse step)
  */
 const parseBoundedJson = async ({ request }: { request: Request }, contentType: string) => {
@@ -72,7 +85,7 @@ const sessionCookie = (request: Request) => {
   return undefined
 }
 
-// The résumé import takes a ~6 MB body and needs a session: a request without
+// The PDF imports take a ~6 MB body and need a session: a request without
 // a valid session JWT (signed with JWT_SECRET, unexpired, with a subject:
 // what userLogged accepts) is refused before its body is read, parsed and
 // copied into the request span. Any cookie named auth is not enough
@@ -139,7 +152,7 @@ export const createApp = () =>
     // After CORS, so the 413, 415 and 401 still carry the CORS headers. Thrown
     // (not returned) so they go through onError: logged and counted like any
     // 4xx. All run before the body is read (the session check is async, in a
-    // hook of its own: it verifies a JWT for the résumé import only)
+    // hook of its own: it verifies a JWT for the PDF imports only)
     .onRequest(({ request }) => {
       if (hasOversizedBody(request)) throw new PayloadTooLargeError('Payload Too Large')
       if (hasNonJsonBody(request)) throw new UnsupportedMediaTypeError('Unsupported Media Type')
@@ -184,11 +197,15 @@ export const createApp = () =>
       return 'Service Unavailable'
     })
     .use(googleAuth)
+    .use(account)
     .use(domain)
     .use(experiences)
     .use(resumeImport)
     .use(workflows)
     .use(appointments)
+    // Before jobs: its static /jobs/import routes, then the /jobs/:id ones
+    .use(jobImport)
+    .use(jobs)
 
 // App instance used by index.ts and tests importing from root
 export const app = createApp()

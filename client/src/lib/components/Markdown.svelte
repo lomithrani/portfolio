@@ -55,7 +55,16 @@
 		hljs.registerLanguage(name, language);
 	}
 
-	const createParser = (headingOffset: number) => {
+	/** Text shown as written: a style tag stays the characters it is, never an element */
+	const escapeHtml = (text: string) =>
+		text
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+
+	const createParser = (headingOffset: number, html: boolean) => {
 		const parser = new Marked(
 			markedHighlight({
 				langPrefix: 'hljs language-',
@@ -79,16 +88,74 @@
 				}
 			});
 		}
+		if (!html) {
+			// Raw HTML (a block or an inline tag) is shown as the text it is
+			parser.use({
+				renderer: {
+					html({ text, block }) {
+						return block ? `<p>${escapeHtml(text.trim())}</p>\n` : escapeHtml(text);
+					}
+				}
+			});
+		}
 		return parser;
 	};
 
-	// One shared parser per heading offset, for every Markdown instance (one per experience and
-	// per project)
-	const parsers: Record<number, Marked> = {};
-	const parserFor = (headingOffset: number) => {
+	// One shared parser per heading offset and HTML mode, for every Markdown instance (one per
+	// experience and per project)
+	const parsers: Record<string, Marked> = {};
+	const parserFor = (headingOffset: number, html: boolean) => {
 		const offset = Math.max(0, Math.min(5, Math.trunc(headingOffset) || 0));
-		parsers[offset] ??= createParser(offset);
-		return parsers[offset];
+		const key = `${offset}:${html}`;
+		parsers[key] ??= createParser(offset, html);
+		return parsers[key];
+	};
+
+	/** The depth of the markdown's highest heading (1 for '#', 2 for '##'); undefined without one */
+	const topHeadingDepth = (content: string): number | undefined => {
+		const parser = parserFor(0, true);
+		let top: number | undefined;
+		parser.walkTokens(parser.lexer(content), (token) => {
+			if (token.type === 'heading') top = Math.min(top ?? 6, token.depth);
+		});
+		return top;
+	};
+
+	/**
+	 * Markdown anyone can publish (html: false): only the elements markdown itself makes, without
+	 * styles, forms or images. Raw HTML is already text by then: this holds should it not be.
+	 */
+	const STRICT = {
+		ALLOWED_TAGS: [
+			'p',
+			'br',
+			'hr',
+			'h1',
+			'h2',
+			'h3',
+			'h4',
+			'h5',
+			'h6',
+			'ul',
+			'ol',
+			'li',
+			'a',
+			'strong',
+			'em',
+			'del',
+			'code',
+			'pre',
+			'span',
+			'blockquote',
+			'table',
+			'thead',
+			'tbody',
+			'tr',
+			'th',
+			'td'
+		],
+		ALLOWED_ATTR: ['href', 'title', 'class', 'start', 'align'],
+		ALLOW_DATA_ATTR: false
 	};
 </script>
 
@@ -96,21 +163,42 @@
 	let {
 		content = '',
 		headingOffset = 0,
+		topHeadingLevel,
+		html = true,
 		compact = false
 	}: {
 		content: string;
 		/** Levels added to the markdown headings: 2 turns '# Title' into an <h3> */
 		headingOffset?: number;
+		/**
+		 * Instead of headingOffset: the level of the content's highest heading, the others keeping
+		 * their distance (4 turns '## Mission' and '### Details' into an <h4> and an <h5>), so the
+		 * outline never skips a level whichever heading the content starts with
+		 */
+		topHeadingLevel?: number;
+		/**
+		 * Raw HTML in the markdown is rendered (sanitized). false shows it as text and keeps only
+		 * what markdown makes: for markdown anyone can publish (job descriptions)
+		 */
+		html?: boolean;
 		/** Small headings without underline, for markdown inside cards */
 		compact?: boolean;
 	} = $props();
 
-	let html = $derived(DOMPurify.sanitize(parserFor(headingOffset).parse(content ?? '') as string));
+	let offset = $derived(
+		topHeadingLevel === undefined
+			? headingOffset
+			: topHeadingLevel - (topHeadingDepth(content ?? '') ?? topHeadingLevel)
+	);
+	let rendered = $derived.by(() => {
+		const markup = parserFor(offset, html).parse(content ?? '') as string;
+		return html ? DOMPurify.sanitize(markup) : DOMPurify.sanitize(markup, STRICT);
+	});
 </script>
 
 <div class="markdown" class:compact>
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized with DOMPurify above -->
-	{@html html}
+	{@html rendered}
 </div>
 
 <style>

@@ -16,6 +16,8 @@ import {
   AppointmentSchedule,
   Domain,
   Experience,
+  JobApplication,
+  JobPosting,
   RateLimitCounter,
   Skill,
   User,
@@ -32,6 +34,7 @@ import { rateLimitAddress } from '../services/clientAddress';
 import { CALENDAR_SCOPE, RECONNECT_REQUIRED_MESSAGE } from '../services/googleCalendar';
 import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
+import { jobImportAttemptsKey, jobImportCounters } from '../services/jobImport';
 import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
 import {
@@ -380,6 +383,9 @@ const removeTestData = async (suffix: string) => {
     await RateLimitCounter.deleteMany({ _id: { $regex: `^(${[...rateLimitKeys].join('|')}):` } });
   }
   await Workflow.deleteMany({ user: { $in: userIds } });
+  const jobIds = (await JobPosting.find({ recruiter: { $in: userIds } }, '_id')).map((job) => job._id);
+  await JobApplication.deleteMany({ $or: [{ job: { $in: jobIds } }, { candidate: { $in: userIds } }] });
+  await JobPosting.deleteMany({ _id: { $in: jobIds } });
   await Skill.deleteMany({ displayName: named });
   await User.deleteMany({ _id: { $in: userIds } });
 };
@@ -1501,6 +1507,68 @@ describe('no Google token in any API response', () => {
       env.ANTHROPIC_API_KEY = savedAnthropicKey;
       resumeImportCounters.globalKey = savedGlobalKey;
     }
+
+    // Account spaces (tests/account.test.ts covers them)
+    expect((await call('GET', '/me', auth)).status).toBe(200);
+    expect((await call('PUT', '/me/mode', { ...auth, body: { mode: 'recruiter' } })).status).toBe(200);
+
+    // Job description import (tests/jobImport.test.ts covers it), answered
+    // like the résumé import's
+    const savedJobImportKey = jobImportCounters.globalKey;
+    env.ANTHROPIC_API_KEY = 'sk-ant-api03-sweep-test-key';
+    jobImportCounters.globalKey = `job-import:global:${t.id('sweep')}`;
+    rateLimitKeys.add(jobImportCounters.globalKey);
+    rateLimitKeys.add(jobImportAttemptsKey(sweep.userId));
+    try {
+      const fetchSpy = globalThis.fetch as unknown as Mock<(input: string | URL | Request) => Promise<Response>>;
+      fetchSpy.mockImplementationOnce(async () => Response.json({ input_tokens: 1_000 }));
+      fetchSpy.mockImplementationOnce(async () =>
+        messageStream({
+          id: 'msg_sweep_job',
+          type: 'message',
+          role: 'assistant',
+          model: 'claude-haiku-5-5',
+          content: [{ type: 'text', text: '{}' }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 1_000, output_tokens: 20 }
+        })
+      );
+      expect((await call('GET', '/jobs/import', auth)).status).toBe(200);
+      const pdf = Buffer.from('%PDF-1.7\n%%EOF\n').toString('base64');
+      expect((await call('POST', '/jobs/import', { ...auth, body: { file: pdf } })).status).toBe(200);
+    } finally {
+      env.ANTHROPIC_API_KEY = savedAnthropicKey;
+      jobImportCounters.globalKey = savedJobImportKey;
+    }
+
+    // Job postings and their applicants (tests/jobs.test.ts covers them)
+    const jobBody = {
+      title: 'Backend engineer',
+      description: 'Build the billing service',
+      status: 'open',
+      location: { country: 'FR', city: 'Lyon', workMode: 'on_site' },
+      contract: { type: 'cdi' },
+      workingTime: { arrangement: 'weekly_hours', hoursPerWeek: 35 },
+      pay: { min: 45_000, max: 55_000, currency: 'EUR', period: 'year' }
+    };
+    const job = await call('POST', '/jobs', { ...auth, body: jobBody });
+    expect(job.status).toBe(200);
+    const jobId = job.json()._id as string;
+    expect((await call('PUT', `/jobs/${jobId}`, { ...auth, body: { ...jobBody, title: 'Staff engineer' } })).status).toBe(200);
+    expect((await call('PUT', `/jobs/${jobId}/status`, { ...auth, body: { status: 'open' } })).status).toBe(200);
+    expect((await call('GET', '/jobs')).status).toBe(200);
+    expect((await call('GET', `/jobs/${jobId}`)).status).toBe(200);
+    expect((await call('GET', '/recruiter/jobs', auth)).status).toBe(200);
+    expect((await call('GET', `/recruiter/jobs/${jobId}`, auth)).status).toBe(200);
+    const added = await call('POST', `/jobs/${jobId}/applicants`, { ...auth, body: { domain: t.id('domain') } });
+    expect(added.status).toBe(200);
+    expect((await call('DELETE', `/jobs/${jobId}/applicants/${added.json()._id}`, auth)).status).toBe(200);
+    const candidate = { cookie: owner.cookie };
+    expect((await call('GET', `/jobs/${jobId}/application`, candidate)).status).toBe(200);
+    expect((await call('POST', `/jobs/${jobId}/application`, { ...candidate, body: {} })).status).toBe(200);
+    expect((await call('DELETE', `/jobs/${jobId}/application`, candidate)).status).toBe(200);
+    expect((await call('DELETE', `/jobs/${jobId}`, auth)).status).toBe(200);
 
     expect((await call('GET', '/appointments/calendars', auth)).status).toBe(200);
 

@@ -170,6 +170,8 @@ local development.
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
 | `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
 | `RESUME_IMPORT_ATTEMPTS_PER_DAY` | no     | Import attempts per user per UTC day, failed ones included; leave unset (`10`); `0` turns résumé import off |
+| `JOB_IMPORT_DAILY_LIMIT`       | no       | Job description imports per UTC day for the whole site; leave unset (`30`); `0` turns job import off |
+| `JOB_IMPORT_ATTEMPTS_PER_DAY`  | no       | Job import attempts per recruiter per UTC day, failed ones included; leave unset (`10`); `0` turns job import off |
 | `API_DOCS`                     | no       | `true` to serve the OpenAPI docs (`/swagger`) in production; off by default there                  |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | no       | OTLP endpoint (e.g. Grafana Cloud); telemetry is fully off while it is unset                       |
 | `OTEL_EXPORTER_OTLP_HEADERS`   | no       | e.g. `Authorization=Basic <base64 of instanceId:token>`; sealed                                    |
@@ -366,8 +368,10 @@ answer that counted is not thrown away.
   (`413`).
 
 **Request size.** The API's body cap is 6 MB (Bun answers `413` above it, before the app runs): a
-4 MB PDF is about 5.4 MB of base64 JSON. `POST /experiences/import` without a valid session (the
-`auth` cookie's JWT is verified: signature, expiry, subject) gets `401` before its body is read. Every other route keeps a 1 MB cap: checked on `Content-Length`
+4 MB PDF is about 5.4 MB of base64 JSON, so the two PDF imports, `POST /experiences/import` and
+`POST /jobs/import` (see "Job description import" below), take bodies up to that cap. Without a
+valid session (the `auth` cookie's JWT is verified: signature, expiry, subject) they get `401`
+before their body is read. Every other route keeps a 1 MB cap: checked on `Content-Length`
 before the body is read, then on the bytes actually read, so a body without a usable
 `Content-Length` (chunked, as a proxy or an HTTP/2 client may forward it, or with the header
 repeated) stops at 1 MB too; both answer `413` with CORS headers.
@@ -375,6 +379,27 @@ repeated) stops at 1 MB too; both answer `413` with CORS headers.
 **Traces.** Request and response bodies, cookies and the `Authorization` header are dropped from
 each span as it ends, before the batch processor queues it for export (and again in the
 exporter), so queued spans never hold a PDF.
+
+## Job description import
+
+Recruiters can upload a job description as a PDF: the API (`POST /jobs/import`) has the same
+model (**Claude Haiku 5.5**) extract a job posting draft, which the recruiter completes and saves
+through `POST /jobs` (nothing is saved by the import). It uses the same `ANTHROPIC_API_KEY`, so it
+is off while the key is unset (`GET /jobs/import` answers `enabled: false`, `POST` answers 404),
+and follows the résumé import's rules above: the same file checks (4 MB, about 10 pages), the
+same deadlines, a paid request sent once, and the same rules for what counts and what is given
+back. The startup line `Running at ...` says `"jobImport":"on (...)"` or why it is off.
+
+| Variable                      | Default | What it does                                                                             |
+| ----------------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `JOB_IMPORT_DAILY_LIMIT`      | `30`    | Imports per UTC day across all recruiters, a cap on the site's daily spend; `0` turns the feature off |
+| `JOB_IMPORT_ATTEMPTS_PER_DAY` | `10`    | Attempts per recruiter per UTC day, whatever their outcome and never given back; `0` turns the feature off |
+
+**Plans.** Each recruiter's own allowance is set by their plan (`RECRUITER_PLANS` in
+portfolio-common), not by a variable: every recruiter is on the free plan, which includes **3
+imports for the lifetime of the account** (`users.recruiter.jobImportsUsed` counts them). Past them
+the API answers `402` ("Paid plans are coming soon"), without calling Claude. At the defaults the
+site spends at most 30 job imports a day (about $0.45), on top of the résumé imports.
 
 ## Custom domains are required for login
 
