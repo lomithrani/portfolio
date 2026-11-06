@@ -226,18 +226,19 @@ const DEFAULT_JOB_IMPORT_DAILY_LIMIT = 30;
 const DEFAULT_JOB_IMPORT_ATTEMPTS_PER_DAY = 10;
 
 // A count of requests: 0 or more, digits only (Number() would also accept
-// '1e3', '0x3e8' or '2.5')
+// '1e3', '0x3e8' or '2.5'); 0 turns `feature` off
 const parseLimit = (
   name: string,
   raw: string | undefined,
   defaultValue: number,
-  problems: string[]
+  problems: string[],
+  feature: string
 ): number => {
   if (raw === undefined || raw.trim() === '') return defaultValue;
   const value = /^\s*\d+\s*$/.test(raw) ? Number(raw) : Number.NaN;
   if (!Number.isSafeInteger(value)) {
     problems.push(
-      `${name} must be a whole number, 0 (résumé import off) or more (got ${JSON.stringify(raw)})`
+      `${name} must be a whole number, 0 (${feature} off) or more (got ${JSON.stringify(raw)})`
     );
     return defaultValue;
   }
@@ -319,31 +320,36 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     'RESUME_IMPORT_MONTHLY_LIMIT',
     source.RESUME_IMPORT_MONTHLY_LIMIT,
     DEFAULT_RESUME_IMPORT_MONTHLY_LIMIT,
-    problems
+    problems,
+    'résumé import'
   );
   const RESUME_IMPORT_DAILY_LIMIT = parseLimit(
     'RESUME_IMPORT_DAILY_LIMIT',
     source.RESUME_IMPORT_DAILY_LIMIT,
     DEFAULT_RESUME_IMPORT_DAILY_LIMIT,
-    problems
+    problems,
+    'résumé import'
   );
   const RESUME_IMPORT_ATTEMPTS_PER_DAY = parseLimit(
     'RESUME_IMPORT_ATTEMPTS_PER_DAY',
     source.RESUME_IMPORT_ATTEMPTS_PER_DAY,
     DEFAULT_RESUME_IMPORT_ATTEMPTS_PER_DAY,
-    problems
+    problems,
+    'résumé import'
   );
   const JOB_IMPORT_DAILY_LIMIT = parseLimit(
     'JOB_IMPORT_DAILY_LIMIT',
     source.JOB_IMPORT_DAILY_LIMIT,
     DEFAULT_JOB_IMPORT_DAILY_LIMIT,
-    problems
+    problems,
+    'job description import'
   );
   const JOB_IMPORT_ATTEMPTS_PER_DAY = parseLimit(
     'JOB_IMPORT_ATTEMPTS_PER_DAY',
     source.JOB_IMPORT_ATTEMPTS_PER_DAY,
     DEFAULT_JOB_IMPORT_ATTEMPTS_PER_DAY,
-    problems
+    problems,
+    'job description import'
   );
 
   const OTEL_SDK_DISABLED = parseOtelBoolean('OTEL_SDK_DISABLED', source.OTEL_SDK_DISABLED, problems);

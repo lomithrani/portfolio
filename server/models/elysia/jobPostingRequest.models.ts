@@ -22,8 +22,12 @@ import {
 
 const line = (maxLength: number) => t.String({ maxLength });
 const list = (maxItems: number) => t.Array(line(JOB_LIMITS.listItem), { maxItems });
+// t.UnionEnum defaults to its first value, which Elysia fills in for a
+// missing field: a posting without travel would be stored with 'none', a
+// status change without a status would make a draft. Missing stays missing
+const noDefault = { default: undefined };
 
-export const jobStatus = t.UnionEnum(JOB_STATUSES);
+export const jobStatus = t.UnionEnum(JOB_STATUSES, noDefault);
 
 export const jobPostingRequest = t.Object({
   title: t.String({ minLength: 1, maxLength: JOB_LIMITS.title }),
@@ -32,14 +36,14 @@ export const jobPostingRequest = t.Object({
   status: jobStatus,
   openings: t.Optional(t.Number()),
   location: t.Object({
-    country: t.UnionEnum(JOB_COUNTRIES),
+    country: t.UnionEnum(JOB_COUNTRIES, noDefault),
     city: t.Optional(line(JOB_LIMITS.city)),
     postalCode: t.Optional(line(JOB_LIMITS.postalCode)),
-    workMode: t.UnionEnum(WORK_MODES),
+    workMode: t.UnionEnum(WORK_MODES, noDefault),
     remoteDaysPerWeek: t.Optional(t.Number())
   }),
   contract: t.Object({
-    type: t.UnionEnum(FR_CONTRACT_TYPES),
+    type: t.UnionEnum(FR_CONTRACT_TYPES, noDefault),
     durationMonths: t.Optional(t.Number()),
     // YYYY-MM-DD, checked to be a real date by validateJobPosting
     startDate: t.Optional(t.String({ maxLength: 10 })),
@@ -47,7 +51,7 @@ export const jobPostingRequest = t.Object({
     collectiveAgreement: t.Optional(line(JOB_LIMITS.collectiveAgreement))
   }),
   workingTime: t.Object({
-    arrangement: t.UnionEnum(WORKING_TIME_ARRANGEMENTS),
+    arrangement: t.UnionEnum(WORKING_TIME_ARRANGEMENTS, noDefault),
     hoursPerWeek: t.Optional(t.Number()),
     daysPerYear: t.Optional(t.Number()),
     rttDaysPerYear: t.Optional(t.Number())
@@ -55,8 +59,8 @@ export const jobPostingRequest = t.Object({
   pay: t.Object({
     min: t.Number(),
     max: t.Number(),
-    currency: t.UnionEnum(PAY_CURRENCIES),
-    period: t.UnionEnum(PAY_PERIODS),
+    currency: t.UnionEnum(PAY_CURRENCIES, noDefault),
+    period: t.UnionEnum(PAY_PERIODS, noDefault),
     variable: t.Optional(line(JOB_LIMITS.variablePay))
   }),
   organization: t.Optional(t.Object({
@@ -65,13 +69,13 @@ export const jobPostingRequest = t.Object({
     levelsToCeo: t.Optional(t.Number())
   })),
   requirements: t.Optional(t.Object({
-    seniority: t.Optional(t.UnionEnum(SENIORITY_LEVELS)),
-    education: t.Optional(t.UnionEnum(EDUCATION_LEVELS)),
+    seniority: t.Optional(t.UnionEnum(SENIORITY_LEVELS, noDefault)),
+    education: t.Optional(t.UnionEnum(EDUCATION_LEVELS, noDefault)),
     skills: t.Optional(list(JOB_LIMITS.skills)),
     languages: t.Optional(list(JOB_LIMITS.languages))
   })),
   benefits: t.Optional(list(JOB_LIMITS.benefits)),
-  travel: t.Optional(t.UnionEnum(TRAVEL_FREQUENCIES))
+  travel: t.Optional(t.UnionEnum(TRAVEL_FREQUENCIES, noDefault))
 });
 
 /** Body of PUT /jobs/:id/status */
@@ -89,7 +93,9 @@ export const jobApplicantParams = t.Object({
 });
 
 /** Body of PUT /me/mode, and the optional mode of POST /login */
-export const userMode = t.UnionEnum(USER_MODES);
+// No default: t.UnionEnum defaults to its first value, which Elysia fills in
+// for a missing field (a /login without a mode would switch to 'candidate')
+export const userMode = t.UnionEnum(USER_MODES, { default: undefined });
 
 /**
  * Body of POST /jobs/import. The file's size and type are checked by

@@ -43,7 +43,9 @@ describe('parseEnv', () => {
       ANTHROPIC_API_KEY: undefined,
       RESUME_IMPORT_MONTHLY_LIMIT: 3,
       RESUME_IMPORT_DAILY_LIMIT: 30,
-      RESUME_IMPORT_ATTEMPTS_PER_DAY: 10
+      RESUME_IMPORT_ATTEMPTS_PER_DAY: 10,
+      JOB_IMPORT_DAILY_LIMIT: 30,
+      JOB_IMPORT_ATTEMPTS_PER_DAY: 10
     });
   });
 
@@ -173,6 +175,34 @@ describe('parseEnv', () => {
         expect(problemsOf({ ...base, RESUME_IMPORT_ATTEMPTS_PER_DAY: value })[0]).toStartWith('RESUME_IMPORT_ATTEMPTS_PER_DAY');
       }
     );
+  });
+
+  describe('job description import', () => {
+    it('parses the limits: whole numbers, 0 included (feature off)', () => {
+      expect(parseEnv({ ...base, JOB_IMPORT_DAILY_LIMIT: ' 50 ', JOB_IMPORT_ATTEMPTS_PER_DAY: '0' })).toMatchObject({
+        JOB_IMPORT_DAILY_LIMIT: 50,
+        JOB_IMPORT_ATTEMPTS_PER_DAY: 0
+      });
+      expect(parseEnv({ ...base, JOB_IMPORT_DAILY_LIMIT: '', JOB_IMPORT_ATTEMPTS_PER_DAY: ' ' })).toMatchObject({
+        JOB_IMPORT_DAILY_LIMIT: 30,
+        JOB_IMPORT_ATTEMPTS_PER_DAY: 10
+      });
+    });
+
+    it('reads them apart from the résumé import limits', () => {
+      expect(parseEnv({ ...base, RESUME_IMPORT_DAILY_LIMIT: '0', RESUME_IMPORT_ATTEMPTS_PER_DAY: '1' })).toMatchObject({
+        JOB_IMPORT_DAILY_LIMIT: 30,
+        JOB_IMPORT_ATTEMPTS_PER_DAY: 10
+      });
+    });
+
+    it.each(['-1', '2.5', '1e3', '0x10', 'three', '99999999999999999999'])('rejects the limit %p', (value) => {
+      // 0 turns the job description import off, not the résumé import
+      expect(problemsOf({ ...base, JOB_IMPORT_DAILY_LIMIT: value, JOB_IMPORT_ATTEMPTS_PER_DAY: value })).toEqual([
+        `JOB_IMPORT_DAILY_LIMIT must be a whole number, 0 (job description import off) or more (got ${JSON.stringify(value)})`,
+        `JOB_IMPORT_ATTEMPTS_PER_DAY must be a whole number, 0 (job description import off) or more (got ${JSON.stringify(value)})`
+      ]);
+    });
   });
 
   it('warns about a short JWT_SECRET in production', () => {

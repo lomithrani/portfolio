@@ -64,6 +64,7 @@ describe('exported spans', () => {
     useTestGoogleKeys();
     spyOn(User, 'findById').mockResolvedValue(makeUser() as never);
     spyOn(User, 'findOne').mockResolvedValue(makeUser() as never);
+    spyOn(Domain, 'findOne').mockResolvedValue(null as never);
     const cookie = await authCookie();
     const sessionJwt = cookie.slice('auth='.length);
     const googleToken = await signGoogleIdToken();
@@ -129,6 +130,7 @@ describe('exported spans', () => {
 
     spyOn(User, 'findById').mockResolvedValue(makeUser() as never);
     spyOn(User, 'findOne').mockResolvedValue(makeUser() as never);
+    spyOn(Domain, 'findOne').mockResolvedValue(null as never);
     const body = JSON.stringify({ token: await signGoogleIdToken() });
     const login = await request('/login', {
       method: 'POST',

@@ -1,14 +1,28 @@
-import Anthropic from '@anthropic-ai/sdk'
+import type Anthropic from '@anthropic-ai/sdk'
 import { RESUME_IMPORT_TIMEOUTS } from 'portfolio-common'
 import { env } from '../env'
 import type { ServerEnv } from '../env'
 import {
-  PayloadTooLargeError,
   ResumeImportDisabledError,
-  ServiceUnavailableError,
   TooManyRequestsError,
   UnprocessableContentError
 } from '../errors'
+import {
+  MAX_PDF_BYTES,
+  MAX_PDF_INPUT_TOKENS,
+  PDF_IMPORT_MODEL,
+  countInputTokens,
+  createClaudeClient,
+  estimateCostUsd,
+  giveBack,
+  outputJson,
+  pdfExtractionRequest,
+  plural,
+  readPdfBase64,
+  streamPaidCall,
+  utcText
+} from './claudePdfExtraction'
+import type { PdfImportLabels } from './claudePdfExtraction'
 import { logger } from './logger'
 import { peekRateLimit, rateLimitKey, refundRateLimit, takeRateLimit } from './rateLimit'
 import type { RateLimit, RateLimitTaken, RateLimitUsage } from './rateLimit'
@@ -35,18 +49,19 @@ import type { ExtractedExperience } from './resumeExtraction'
 // day) and never given back, so no failure can be retried in a loop.
 //
 // Neither the API key nor the PDF ever reaches a log line, a response or a
-// span: the SDK client below logs at warn and above only (its debug lines
-// carry request bodies), and traces in metadata_only mode whatever the
-// ANTHROPIC_OPEN_TELEMETRY_* variables say.
+// span: see the client of services/claudePdfExtraction.ts, shared with the
+// job description import.
 
-export const RESUME_IMPORT_MODEL = 'claude-haiku-5-5'
+export { estimateCostUsd }
+
+export const RESUME_IMPORT_MODEL = PDF_IMPORT_MODEL
 /** Largest PDF accepted, decoded */
-export const MAX_RESUME_PDF_BYTES = 4 * 1024 * 1024
+export const MAX_RESUME_PDF_BYTES = MAX_PDF_BYTES
 /**
  * Longest prompt imported (PDF and instructions), counted for free before the
  * import: about 10 pages, each page costing its text and its image
  */
-export const MAX_RESUME_INPUT_TOKENS = 60_000
+export const MAX_RESUME_INPUT_TOKENS = MAX_PDF_INPUT_TOKENS
 /** Room for adaptive thinking and the JSON of a long résumé */
 export const RESUME_IMPORT_MAX_OUTPUT_TOKENS = 16_000
 
@@ -76,17 +91,12 @@ export const resumeImportAttemptsKey = (userId: string) => rateLimitKey('resume-
 /** Counter key of the site-wide daily limit; a property so each test can count on a key of its own */
 export const resumeImportCounters = { globalKey: 'resume-import:global' }
 
-// Claude Haiku 5.5 prices in USD per million tokens: one rate card for prompts
-// up to 100K tokens, another above (never reached under MAX_RESUME_INPUT_TOKENS)
-const PRICING = {
-  longPromptTokens: 100_000,
-  standard: { input: 0.1, output: 0.5 },
-  longPrompt: { input: 0.5, output: 2.5 }
+const LABELS: PdfImportLabels = {
+  name: 'Résumé import',
+  unavailable: 'Résumé import is temporarily unavailable, try again later',
+  interrupted:
+    'The import did not finish. It still counts toward your imports (the résumé may already have been read): try again later, or with a shorter résumé'
 }
-
-const UNAVAILABLE = 'Résumé import is temporarily unavailable, try again later'
-const INTERRUPTED =
-  'The import did not finish. It still counts toward your imports (the résumé may already have been read): try again later, or with a shorter résumé'
 
 interface ResumeImportSettings {
   apiKey: string
@@ -185,17 +195,7 @@ export async function getResumeImportStatus(userId: string): Promise<ResumeImpor
   return { enabled: true, ...quotaOf(settings, { user, site, attempts }) }
 }
 
-/** e.g. "2026-11-20 00:00 UTC" (windows end at midnight UTC) */
-const utcText = (date: Date) => `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`
-
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
-
 // ── The file ────────────────────────────────────────────────
-
-// A data URL's header, e.g. what FileReader.readAsDataURL() puts before the base64
-const DATA_URL_HEADER = /^data:[^,]{0,200};base64,/i
-// Standard alphabet, padded (what btoa(), Buffer and readAsDataURL() produce)
-const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
 
 /**
  * The PDF of a request, as base64 without a data URL header. Throws 422 for
@@ -203,139 +203,7 @@ const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
  * Only its first bytes are decoded: the base64 is what Claude receives.
  */
 export function readResumePdf(file: string): string {
-  const header = DATA_URL_HEADER.exec(file.slice(0, 256))
-  const base64 = header ? file.slice(header[0].length) : file
-  if (base64.length % 4 !== 0 || !BASE64.test(base64)) {
-    throw new UnprocessableContentError('The file is not valid base64')
-  }
-  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
-  if ((base64.length / 4) * 3 - padding > MAX_RESUME_PDF_BYTES) {
-    throw new PayloadTooLargeError('The file is too large: résumé import takes PDFs of up to 4 MB')
-  }
-  if (Buffer.from(base64.slice(0, 8), 'base64').toString('latin1').slice(0, 5) !== '%PDF-') {
-    throw new UnprocessableContentError('Only PDF files can be imported')
-  }
-  return base64
-}
-
-// ── Claude ──────────────────────────────────────────────────
-
-// The SDK's log lines, as one-line records of the app's logger. Only the
-// message: the SDK passes request details as extra arguments
-const sdkLogger = {
-  error: (message: string) => logger.error(`Anthropic SDK: ${message}`),
-  warn: (message: string) => logger.warn(`Anthropic SDK: ${message}`),
-  info: (message: string) => logger.info(`Anthropic SDK: ${message}`),
-  debug: (message: string) => logger.debug(`Anthropic SDK: ${message}`)
-}
-
-// Built for each import (a few per day): it then follows env (tests change the
-// key) and the tracer provider registered at the time. No retries unless a
-// call asks for them: a paid call sent twice is billed twice
-const createClient = (apiKey: string) =>
-  new Anthropic({
-    apiKey,
-    // Explicit, so neither ANTHROPIC_AUTH_TOKEN nor ANTHROPIC_BASE_URL can redirect the call
-    authToken: null,
-    baseURL: 'https://api.anthropic.com',
-    maxRetries: 0,
-    // Looked up on each request rather than when the client is built, so tests can stub it
-    fetch: (input, init) => globalThis.fetch(input, init),
-    // Debug lines (ANTHROPIC_LOG=debug) would print the request, PDF included
-    logLevel: 'warn',
-    logger: sdkLogger,
-    // Given in code, so ANTHROPIC_OPEN_TELEMETRY_TRACES_CONTENT_MODE=content cannot put the PDF in spans
-    openTelemetry: { traces: { contentMode: 'metadata_only' } }
-  })
-
-/** The request, without max_tokens: the same content is counted, then sent */
-const extractionRequest = (pdf: string, fileName: string | undefined) => {
-  // Part of the untrusted document, like its content
-  const title = fileName === undefined ? undefined : cleanLine(fileName)
-  return {
-    model: RESUME_IMPORT_MODEL,
-    system: RESUME_EXTRACTION_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user' as const,
-        // Document first: Claude reads PDFs best placed before the request
-        content: [
-          {
-            type: 'document' as const,
-            source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: pdf },
-            ...(title && { title })
-          },
-          { type: 'text' as const, text: RESUME_EXTRACTION_REQUEST }
-        ]
-      }
-    ],
-    // Thinking stays adaptive (the default of this model), at low effort. No
-    // temperature/top_p/top_k and no prefill: Claude Haiku 5.5 refuses them
-    output_config: {
-      effort: 'low' as const,
-      format: { type: 'json_schema' as const, schema: RESUME_EXTRACTION_SCHEMA }
-    }
-  }
-}
-
-/**
- * Estimated cost of a Claude Haiku 5.5 response, in USD (6 decimals). The
- * import uses no prompt caching: cache tokens only count toward the size of
- * the prompt that picks the rate card
- */
-export const estimateCostUsd = (usage: Pick<Anthropic.Usage, 'input_tokens' | 'output_tokens' | 'cache_creation_input_tokens' | 'cache_read_input_tokens'>) => {
-  const prompt = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0)
-  const card = prompt > PRICING.longPromptTokens ? PRICING.longPrompt : PRICING.standard
-  const usd = (usage.input_tokens * card.input + usage.output_tokens * card.output) / 1_000_000
-  return Math.round(usd * 1_000_000) / 1_000_000
-}
-
-/**
- * Whether Anthropic answered the request with an error status, before running
- * the model: such a request is not billed. Every other failure of the paid
- * call (a timeout, a lost connection, the deadline, an error event in the
- * stream after its 200) may come after the model ran
- */
-const refusedBeforeRunning = (error: unknown) => error instanceof Anthropic.APIError && error.status !== undefined
-
-/**
- * What a failed Claude call becomes, always a 503 (a 500 for what is not an
- * API error: a bug):
- * - outages and rate limits (Anthropic's or the workspace's), at warn;
- * - a request Claude refuses (bad key, spend limit, model access, a request
- *   or schema the API rejects, while counting too), at error with the API's
- *   message: the operator must act;
- * - the paid call cut off after it was sent, at warn: that import counts.
- */
-const claudeFailure = (step: 'count' | 'extract', error: unknown, apiKey: string, deadlineReached = false): unknown => {
-  if (!(error instanceof Anthropic.APIError)) return error
-  const details = {
-    step,
-    // The SDK's classes keep the name "Error"
-    errorName: error.constructor.name,
-    status: error.status,
-    type: error.type ?? undefined,
-    requestId: error.requestID ?? undefined,
-    // The API's own explanation (e.g. an invalid key, a spend limit), short; it
-    // never quotes the request, and the key is masked should it ever appear
-    message: error.message.replaceAll(apiKey, '***').slice(0, 300)
-  }
-  if (error.status === undefined) {
-    // No answer, or the stream broke off: the connection failed or timed out,
-    // the deadline passed, or an error event came after the 200
-    if (step === 'count') {
-      logger.warn('Résumé import: the Claude API is unavailable', details)
-      return new ServiceUnavailableError(UNAVAILABLE)
-    }
-    logger.warn('Résumé import: the Claude call did not finish, the import counts', { ...details, deadlineReached })
-    return new ServiceUnavailableError(INTERRUPTED)
-  }
-  if (error instanceof Anthropic.RateLimitError || error instanceof Anthropic.InternalServerError) {
-    logger.warn('Résumé import: the Claude API is unavailable', details)
-    return new ServiceUnavailableError(UNAVAILABLE)
-  }
-  logger.error('Résumé import: the Claude API refused the request', details)
-  return new ServiceUnavailableError(UNAVAILABLE)
+  return readPdfBase64(file, 'The file is too large: résumé import takes PDFs of up to 4 MB')
 }
 
 // ── Import ──────────────────────────────────────────────────
@@ -349,15 +217,8 @@ export interface ResumeImportResult {
 }
 
 /** Gives back counted imports; a failure is logged, not thrown (the request's own error matters more) */
-const refund = async (taken: RateLimitTaken[]) => {
-  try {
-    await Promise.all(taken.map((counter) => refundRateLimit(counter.counterId)))
-  } catch (error) {
-    logger.error('Résumé import: could not give back a counted import', {
-      error: error instanceof Error ? error.message : String(error)
-    })
-  }
-}
+const refund = (taken: RateLimitTaken[]) =>
+  giveBack(LABELS, taken.map((counter) => () => refundRateLimit(counter.counterId)))
 
 /**
  * POST /experiences/import, once the caller is known to own a domain: checks
@@ -401,29 +262,33 @@ export async function importResume(userId: string, file: string, fileName?: stri
       )
     }
 
-    const client = createClient(settings.apiKey)
-    const request = extractionRequest(pdf, fileName)
+    const client = createClaudeClient(settings.apiKey)
+    const request = pdfExtractionRequest({
+      system: RESUME_EXTRACTION_SYSTEM_PROMPT,
+      instruction: RESUME_EXTRACTION_REQUEST,
+      schema: RESUME_EXTRACTION_SCHEMA,
+      pdf,
+      // Part of the untrusted document, like its content
+      title: fileName === undefined ? undefined : cleanLine(fileName)
+    })
 
-    // Free (not billed), and stops a long PDF before the paid call; retried
-    // once on what can succeed later (connection errors, 408/409/429/5xx).
-    // One deadline for the step: the SDK would otherwise wait as long as a
-    // 429's Retry-After asks before its retry
-    const countDeadline = AbortSignal.timeout(resumeImportTimeouts.countMs)
-    const { input_tokens: inputTokens } = await client.messages
-      .countTokens(request, {
-        timeout: Math.ceil(resumeImportTimeouts.countMs / 2),
-        maxRetries: 1,
-        signal: countDeadline
-      })
-      .catch((error: unknown) => {
-        throw claudeFailure('count', error, settings.apiKey)
-      })
+    const inputTokens = await countInputTokens(client, request, {
+      labels: LABELS,
+      apiKey: settings.apiKey,
+      deadlineMs: resumeImportTimeouts.countMs
+    })
     if (inputTokens > MAX_RESUME_INPUT_TOKENS) {
       throw new UnprocessableContentError('This PDF is too long for an import (more than ~10 pages)')
     }
 
-    const message = await extract(client, request, settings.apiKey, () => {
-      counted = true
+    const message = await streamPaidCall(client, request, {
+      labels: LABELS,
+      apiKey: settings.apiKey,
+      maxTokens: RESUME_IMPORT_MAX_OUTPUT_TOKENS,
+      deadlineMs: resumeImportTimeouts.extractMs,
+      onCounted: () => {
+        counted = true
+      }
     })
     counted = true
 
@@ -432,34 +297,6 @@ export async function importResume(userId: string, file: string, fileName?: stri
   } catch (error) {
     if (!counted) await refund(taken)
     throw error
-  }
-}
-
-/**
- * The paid call, streamed and sent once (no retries), within
- * resumeImportTimeouts.extractMs. `onCounted` runs when it fails after the
- * model may have run: the import then counts
- */
-const extract = async (
-  client: Anthropic,
-  request: ReturnType<typeof extractionRequest>,
-  apiKey: string,
-  onCounted: () => void
-) => {
-  const deadline = new AbortController()
-  const timer = setTimeout(() => deadline.abort(), resumeImportTimeouts.extractMs)
-  try {
-    return await client.messages
-      .stream(
-        { ...request, max_tokens: RESUME_IMPORT_MAX_OUTPUT_TOKENS },
-        { maxRetries: 0, timeout: resumeImportTimeouts.extractMs, signal: deadline.signal }
-      )
-      .finalMessage()
-  } catch (error) {
-    if (!refusedBeforeRunning(error)) onCounted()
-    throw claudeFailure('extract', error, apiKey, deadline.signal.aborted)
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -487,16 +324,9 @@ const readExtraction = (message: Anthropic.Message) => {
     )
   }
 
-  // Blocks by type: the answer starts with thinking blocks
-  const text = message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('')
-  let output: unknown
-  try {
-    output = JSON.parse(text)
-  } catch {
-    // Structured outputs make this unlikely; the drafts are then empty, with a warning
-    output = undefined
-  }
-  const extraction = normalizeExtraction(output)
+  // Structured outputs make an answer that is not JSON unlikely; the drafts
+  // are then empty, with a warning
+  const extraction = normalizeExtraction(outputJson(message))
   logCall(extraction.experiences.length)
   return extraction
 }

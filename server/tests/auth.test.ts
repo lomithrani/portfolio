@@ -1,6 +1,6 @@
 import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
 import { createLocalJWKSet, decodeJwt, errors as joseErrors, exportJWK, generateKeyPair } from 'jose';
-import { User } from '../models/database';
+import { Domain, User } from '../models/database';
 import {
   parseCookie,
   makeUser,
@@ -26,6 +26,8 @@ let app: ReturnType<typeof createApp>;
 beforeEach(() => {
   app = createApp();
   useTestGoogleKeys();
+  // The user DTO names the domain the user owns (none here)
+  spyOn(Domain, 'findOne').mockResolvedValue(null as never);
 });
 
 afterEach(() => {
@@ -156,7 +158,8 @@ describe('POST /login', () => {
       _id: TEST_USER_ID,
       email: 'test@gmail.com',
       name: 'Test',
-      surname: 'User'
+      surname: 'User',
+      recruiter: false
     });
     expect(response.expires).toBeGreaterThan((Date.now() + sevenDaysMinusOneSecond) / 1000);
     expect(Math.abs(decoded.exp! - response.expires)).toBeLessThan(2);
