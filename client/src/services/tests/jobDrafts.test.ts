@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
 	clearImportedDraft,
 	clearJobDraft,
+	editorDraftStorageKey,
+	importEditsStorageKey,
 	importedDraftStorageKey,
 	jobDraftStorageKey,
 	jobFormFromStorage,
@@ -52,6 +54,15 @@ describe('storage keys', () => {
 		expect(jobDraftStorageKey('u1')).toBe('jobDraft:u1:new');
 		expect(jobDraftStorageKey('u1', 'j9')).toBe('jobDraft:u1:j9');
 		expect(importedDraftStorageKey('u1')).toBe('jobImportDraft:u1');
+		expect(importEditsStorageKey('u1')).toBe('jobDraft:u1:import');
+	});
+
+	it('keeps a blank form, an import and each posting under keys of their own', () => {
+		expect(editorDraftStorageKey('u1')).toBe('jobDraft:u1:new');
+		expect(editorDraftStorageKey('u1', { imported: true })).toBe('jobDraft:u1:import');
+		expect(editorDraftStorageKey('u1', { jobId: 'j9' })).toBe('jobDraft:u1:j9');
+		expect(editorDraftStorageKey('u1', { jobId: 'j9', imported: true })).toBe('jobDraft:u1:j9');
+		expect(new Set([jobDraftStorageKey('u1'), importEditsStorageKey('u1')]).size).toBe(2);
 	});
 });
 
@@ -134,6 +145,27 @@ describe('imported drafts', () => {
 		expect(loadImportedDraft('u1', storage)).toBeUndefined();
 	});
 
+	it('removes the changes made to an import with it, never the draft of a blank form', () => {
+		const storage = new MemoryStorage();
+		const blankDraft = { form: filledForm({ title: 'Blank draft' }), basis: 'blank' };
+		saveJobDraft(jobDraftStorageKey('u1'), blankDraft, storage);
+		saveImportedDraft('u1', imported, storage);
+		const importEdits = { form: filledForm({ title: 'Imported, edited' }), basis: 'import' };
+		saveJobDraft(importEditsStorageKey('u1'), importEdits, storage);
+		expect(loadJobDraft(jobDraftStorageKey('u1'), storage)).toEqual(blankDraft);
+
+		// A new import replaces the previous one and the changes made to it
+		saveImportedDraft('u1', { ...imported, fileName: 'other.pdf' }, storage);
+		expect(loadJobDraft(importEditsStorageKey('u1'), storage)).toBeUndefined();
+		expect(loadImportedDraft('u1', storage)?.fileName).toBe('other.pdf');
+
+		saveJobDraft(importEditsStorageKey('u1'), importEdits, storage);
+		clearImportedDraft('u1', storage);
+		expect(loadImportedDraft('u1', storage)).toBeUndefined();
+		expect(loadJobDraft(importEditsStorageKey('u1'), storage)).toBeUndefined();
+		expect(loadJobDraft(jobDraftStorageKey('u1'), storage)).toEqual(blankDraft);
+	});
+
 	it('cleans what it reads back', () => {
 		const storage = new MemoryStorage();
 		storage.setItem(
@@ -166,7 +198,8 @@ describe('startingJobForms', () => {
 			form: blank,
 			restored: false,
 			stale: false,
-			basis: draftBasis(blank)
+			basis: draftBasis(blank),
+			draftBasis: draftBasis(blank)
 		});
 	});
 
@@ -176,6 +209,14 @@ describe('startingJobForms', () => {
 		expect(start.restored).toBe(true);
 		expect(start.form).toEqual(filledForm());
 		expect(start.baseline).toEqual(blank);
+		expect(start.draftBasis).toBe(draftBasis(blank));
+	});
+
+	it('restores the draft of a blank form whatever basis it carries (its key says what it is)', () => {
+		expect(startingJobForms({}, () => ({ form: filledForm() })).restored).toBe(true);
+		expect(startingJobForms({}, () => ({ form: filledForm(), basis: 'older' })).restored).toBe(
+			true
+		);
 	});
 
 	it('does not restore a draft that does not differ from the start', () => {
@@ -222,6 +263,47 @@ describe('startingJobForms', () => {
 			basis: draftBasis(jobToForm(job))
 		}));
 		expect(current.stale).toBe(false);
+		expect(current.draftBasis).toBe(current.basis);
+	});
+
+	it('keeps the basis of a stale draft: it still warns after the next reload', () => {
+		const job = {
+			title: 'Backend engineer',
+			description: 'Build things',
+			status: 'open' as const,
+			location: { country: 'FR' as const, city: 'Lyon', workMode: 'on_site' as const },
+			pay: { min: 53000, max: 60000, currency: 'EUR' as const, period: 'year' as const }
+		};
+		const older = draftBasis(jobToForm({ ...job, pay: { ...job.pay, min: 52000 } }));
+		const edited = { ...jobToForm(job), title: 'Staff engineer', payMin: '52000' };
+		const storage = new MemoryStorage();
+		const key = jobDraftStorageKey('u1', 'j1');
+		saveJobDraft(key, { form: edited, basis: older }, storage);
+
+		// First visit: stale; the editor stores the draft again with the basis it is given
+		const first = startingJobForms({ job }, () => loadJobDraft(key, storage));
+		expect(first.stale).toBe(true);
+		expect(first.draftBasis).toBe(older);
+		saveJobDraft(key, { form: first.form, basis: first.draftBasis }, storage);
+
+		// Second visit: still stale
+		const second = startingJobForms({ job }, () => loadJobDraft(key, storage));
+		expect(second.stale).toBe(true);
+		expect(second.form.payMin).toBe('52000');
+	});
+
+	it('restores an import draft only over the same import, and keeps it stale-free', () => {
+		const imported = { title: 'Designer', location: { country: 'FR' as const, city: 'Nantes' } };
+		const importForm = jobToForm(imported);
+		const edited = { ...importForm, company: 'Acme' };
+		const start = startingJobForms({ imported }, () => ({
+			form: edited,
+			basis: draftBasis(importForm)
+		}));
+		expect(start).toMatchObject({ restored: true, stale: false });
+		expect(start.draftBasis).toBe(draftBasis(importForm));
+		const other = startingJobForms({ imported }, () => ({ form: edited, basis: 'another import' }));
+		expect(other.restored).toBe(false);
 	});
 
 	it('gives a copy of the baseline, not the same object', () => {

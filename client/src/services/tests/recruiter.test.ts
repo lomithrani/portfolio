@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { JobStatus } from 'portfolio-common';
 import {
 	APPLICANT_SOURCE_LABELS,
+	NETWORK_ERROR,
 	addApplicantError,
 	applicantCountText,
 	applicantDateText,
@@ -11,6 +12,7 @@ import {
 	countByStatus,
 	deleteJobText,
 	domainFromInput,
+	failureText,
 	filterJobs,
 	formatDay,
 	hasPublicPage,
@@ -215,9 +217,28 @@ describe('addApplicantError', () => {
 		});
 		expect(addApplicantError(403, 'Create your recruiter space first', 'ada').field).toBe(false);
 		expect(addApplicantError(401, 'Unauthorized', 'ada').message).toMatch(/session expired/);
+		expect(addApplicantError(503, new TypeError('Failed to fetch'), 'ada')).toEqual({
+			message: NETWORK_ERROR,
+			field: false
+		});
 		expect(addApplicantError(500, 'boom', 'ada')).toEqual({
 			message: 'Could not add this portfolio. Try again in a moment.',
 			field: false
 		});
+	});
+});
+
+describe('failureText', () => {
+	it('blames the connection when the request got no answer', () => {
+		expect(failureText(new TypeError('Failed to fetch'), 'Could not delete it.')).toBe(
+			NETWORK_ERROR
+		);
+	});
+
+	it('keeps the given text when the API answered', () => {
+		expect(failureText('Internal Server Error', 'Could not delete it.')).toBe(
+			'Could not delete it.'
+		);
+		expect(failureText(undefined, 'Could not delete it.')).toBe('Could not delete it.');
 	});
 });

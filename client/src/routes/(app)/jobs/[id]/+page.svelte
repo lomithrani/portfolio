@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { ArrowLeft, PaperAirplane } from 'svelte-heros-v2';
+	import { ArrowLeft, Briefcase, CheckCircle, PaperAirplane } from 'svelte-heros-v2';
 	import { APPLICABLE_JOB_STATUS } from 'portfolio-common';
 	import JobDetails from '#components/jobs/JobDetails.svelte';
 	import ApplyPanel from '#components/apply/ApplyPanel.svelte';
@@ -25,13 +25,15 @@
 	let published = $derived(publishedText(job));
 	let isOpen = $derived(job.status === APPLICABLE_JOB_STATUS);
 
-	// Small screens show the panel after the description: a link next to the title leads to it
-	// (not for the posting's own recruiter, who has nothing to apply to)
+	// Small screens show the panel after the description: a link next to the title leads to it,
+	// or, for the posting's own recruiter (nothing to apply to), straight to managing it
 	let ownPosting = $derived(
 		$sessionCheckedStore &&
 			isSessionValid($authenticationStore) &&
 			isOwnPosting(job, $authenticationStore.user)
 	);
+	// Whether the viewer is on the applicant list (told by the panel): the link then says so
+	let applied = $state(false);
 </script>
 
 <svelte:head>
@@ -53,24 +55,46 @@
 			All jobs
 		</a>
 
-		<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+		<!-- Shrinkable columns on every screen: a long portfolio name in the panel (truncated in its
+		     button) never widens the page past the viewport -->
+		<div
+			class="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start"
+		>
 			<JobDetails {job} showStatus={!isOpen} headingLevel={2}>
 				{#snippet meta()}
 					{#if published}<p>{published}</p>{/if}
 				{/snippet}
 				{#snippet actions()}
-					{#if isOpen && !ownPosting}
-						<a href="#apply" class="btn preset-filled-primary-500 min-h-11 max-sm:w-full lg:hidden">
-							<PaperAirplane size="18" aria-hidden="true" />
-							Apply
+					{#if ownPosting}
+						<a
+							href={resolve('/(app)/recruiter/jobs/[id]', { id: job._id })}
+							class="btn preset-tonal min-h-11 max-sm:w-full lg:hidden"
+						>
+							<Briefcase size="18" aria-hidden="true" />
+							Manage it
+						</a>
+					{:else if isOpen}
+						<a
+							href="#apply"
+							class="btn min-h-11 max-sm:w-full lg:hidden {applied
+								? 'preset-tonal'
+								: 'preset-filled-primary-500'}"
+						>
+							{#if applied}
+								<CheckCircle size="18" class="text-success-700-300" aria-hidden="true" />
+								Your application
+							{:else}
+								<PaperAirplane size="18" aria-hidden="true" />
+								Apply
+							{/if}
 						</a>
 					{/if}
 				{/snippet}
 			</JobDetails>
 
-			<aside class="lg:sticky lg:top-4" aria-label="Apply">
+			<aside class="min-w-0 lg:sticky lg:top-4" aria-label="Apply">
 				{#key job._id}
-					<ApplyPanel {job} id="apply" />
+					<ApplyPanel {job} id="apply" onAppliedChange={(value) => (applied = value)} />
 				{/key}
 			</aside>
 		</div>

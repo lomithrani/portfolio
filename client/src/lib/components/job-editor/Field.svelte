@@ -1,7 +1,8 @@
 <!--
 @component
 A labelled field of the job editor: label (with a required mark), the control, an optional unit
-after it, a hint and the field's error. The control is a snippet given the attributes to spread
+after it (also in the label for screen readers: 'Trial period (months)'), a hint and the field's
+error. The control is a snippet given the attributes to spread
 on the input or select (`id`, `aria-invalid`, `aria-describedby`, `aria-required`), so the
 label, the hint, the error and the error summary's link all point to it.
 -->
@@ -17,6 +18,7 @@ label, the hint, the error and the error summary's link all point to it.
 		required = false,
 		hint = '',
 		unit = '',
+		unitLabel,
 		class: className = '',
 		control
 	}: {
@@ -27,6 +29,11 @@ label, the hint, the error and the error summary's link all point to it.
 		hint?: string;
 		/** Shown after the control, e.g. 'months' */
 		unit?: string;
+		/**
+		 * How screen readers hear the unit, at the end of the label (default: the unit); empty
+		 * when the label already says it ('Hours per week')
+		 */
+		unitLabel?: string;
 		class?: string;
 		control: Snippet<[ControlAttributes]>;
 	} = $props();
@@ -35,6 +42,7 @@ label, the hint, the error and the error summary's link all point to it.
 	let id = $derived(editor.fieldId(field));
 	let hintId = $derived(`${id}-hint`);
 	let error = $derived(editor.error(field));
+	let spokenUnit = $derived(unitLabel ?? unit);
 	let attributes: ControlAttributes = $derived({
 		id,
 		'aria-invalid': error ? true : undefined,
@@ -45,9 +53,12 @@ label, the hint, the error and the error summary's link all point to it.
 	});
 </script>
 
-<div class="min-w-0 space-y-1 {className}">
+<div class="relative min-w-0 space-y-1 {className}">
 	<label for={id} class="label-text text-sm">
 		{label}
+		{#if spokenUnit}
+			<span class="sr-only">({spokenUnit})</span>
+		{/if}
 		{#if required}
 			<span class="text-error-700-300" aria-hidden="true">*</span>
 		{/if}
@@ -55,7 +66,8 @@ label, the hint, the error and the error summary's link all point to it.
 	{#if unit}
 		<div class="flex items-center gap-2">
 			<div class="min-w-0 flex-1">{@render control(attributes)}</div>
-			<span class="shrink-0 text-sm text-surface-700-300">{unit}</span>
+			<!-- In the label already: read once -->
+			<span class="shrink-0 text-sm text-surface-700-300" aria-hidden="true">{unit}</span>
 		</div>
 	{:else}
 		{@render control(attributes)}

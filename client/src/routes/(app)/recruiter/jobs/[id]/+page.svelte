@@ -16,6 +16,7 @@
 		Trash
 	} from 'svelte-heros-v2';
 	import type { JobStatus } from 'portfolio-common';
+	import { SIGN_IN_ID } from '#components/Login.svelte';
 	import JobDetails from '#components/jobs/JobDetails.svelte';
 	import EditorPlaceholder from '#components/job-editor/EditorPlaceholder.svelte';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
@@ -30,8 +31,10 @@
 	import { clearJobDraft, jobDraftStorageKey } from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
+		NETWORK_ERROR,
 		applicantName,
 		deleteJobText,
+		failureText,
 		formatDay,
 		hasPublicPage,
 		isoDate,
@@ -55,7 +58,6 @@
 		| { kind: 'error' };
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const NETWORK_ERROR = 'Could not reach the server. Check your connection and try again.';
 	const SESSION_EXPIRED = 'Your session expired. Sign in again.';
 
 	let jobId = $derived(page.params.id ?? '');
@@ -160,7 +162,11 @@
 				const code = errorStatus(error);
 				if (code === 401) sessionExpired();
 				else if (code === 404) loadState = { kind: 'not-found' };
-				else toaster.error({ title: 'Could not change the status. Try again in a moment.' });
+				else {
+					toaster.error({
+						title: failureText(error?.value, 'Could not change the status. Try again in a moment.')
+					});
+				}
 				return;
 			}
 			// The answer has no applicants: they stay as listed
@@ -213,7 +219,10 @@
 					deleting = null;
 					sessionExpired();
 				} else {
-					deleting = { busy: false, error: 'Could not delete it. Try again in a moment.' };
+					deleting = {
+						busy: false,
+						error: failureText(error.value, 'Could not delete it. Try again in a moment.')
+					};
 				}
 				return;
 			}
@@ -279,7 +288,10 @@
 					removing = {
 						applicant,
 						busy: false,
-						error: 'Could not remove this applicant. Try again in a moment.'
+						error: failureText(
+							error.value,
+							'Could not remove this applicant. Try again in a moment.'
+						)
 					};
 				}
 				return;
@@ -292,6 +304,9 @@
 			removing = { applicant, busy: false, error: NETWORK_ERROR };
 		}
 	}
+
+	/** After a dialog closed on an expired session: the header's sign-in (else the default) */
+	const signedOutFocus = () => (user ? null : document.getElementById(SIGN_IN_ID));
 
 	beforeNavigate(() => {
 		// Close the dialogs before the page unmounts (their focus trap would read a destroyed page)
@@ -518,6 +533,7 @@
 	error={deleting?.error ?? ''}
 	onConfirm={confirmDelete}
 	onCancel={() => (deleting = null)}
+	finalFocusEl={signedOutFocus}
 />
 
 <ConfirmDialog
@@ -530,5 +546,5 @@
 	error={removing?.error ?? ''}
 	onConfirm={confirmRemove}
 	onCancel={() => (removing = null)}
-	finalFocusEl={() => (focusAfterRemove?.isConnected ? focusAfterRemove : null)}
+	finalFocusEl={() => (focusAfterRemove?.isConnected ? focusAfterRemove : signedOutFocus())}
 />

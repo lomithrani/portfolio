@@ -83,7 +83,7 @@ candidate without a portfolio is sent to the claim form instead (`onClaimPortfol
 			toaster.error({ title: result.message });
 			return;
 		}
-		await goto(resolve('/recruiter'));
+		await goto(resolve('/(app)/recruiter'));
 	}
 
 	function select({ value }: { value: string }) {
@@ -185,7 +185,7 @@ candidate without a portfolio is sent to the claim form instead (`onClaimPortfol
 					{#snippet element(attributes)}
 						<a
 							{...attributes as HTMLAttributes<HTMLAnchorElement>}
-							href={resolve('/jobs')}
+							href={resolve('/(app)/jobs')}
 							class="{itemClass} justify-start"
 						>
 							<span class="{iconClass} preset-tonal" aria-hidden="true">

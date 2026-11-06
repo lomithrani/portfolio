@@ -46,7 +46,7 @@ the page (`onRemove`), which confirms first. Each Remove button carries
 					<span
 						class="badge text-xs {applicant.source === 'applied'
 							? 'preset-tonal-success'
-							: 'preset-tonal-surface'}"
+							: 'preset-filled-surface-200-800'}"
 					>
 						{APPLICANT_SOURCE_LABELS[applicant.source]}
 					</span>

@@ -28,16 +28,14 @@
 	<div class="mx-auto w-full max-w-4xl space-y-6">
 		<header class="space-y-1">
 			<h2 class="text-2xl font-bold md:text-3xl">Open positions</h2>
-			<p class="text-surface-700-300">
-				{#if jobs.length > 0}
+			{#if jobs.length > 0}
+				<p class="text-surface-700-300">
 					{countText}, most recently updated first.
 					{#if jobs.length >= PUBLIC_JOBS_LIMIT}
 						Showing the {PUBLIC_JOBS_LIMIT} most recent.
 					{/if}
-				{:else}
-					Job descriptions appear here as soon as recruiters publish them.
-				{/if}
-			</p>
+				</p>
+			{/if}
 		</header>
 
 		{#if jobs.length > 0}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { isLogged, isSessionValid, watchSessionExpiry } from '#services/authentication.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
-	import Login from '#components/Login.svelte';
+	import Login, { SIGN_IN_ID } from '#components/Login.svelte';
 	import AccountMenu, { ACCOUNT_MENU_TRIGGER_ID } from '#components/AccountMenu.svelte';
 	import SpaceChooser from '#components/SpaceChooser.svelte';
 	import { AppBar } from '@skeletonlabs/skeleton-svelte';
@@ -32,6 +32,17 @@
 		chooserStart = start;
 		chooserOpen = true;
 	};
+
+	// The session ended (expired, or a logout in another tab: the session is shared between tabs):
+	// the chooser closes for good, so a later sign-in elsewhere does not bring it back here
+	let signedIn = $derived(!!user);
+	$effect(() => {
+		if (!signedIn) chooserOpen = false;
+	});
+
+	/** Back to the account menu; once the session ended, to the sign-in that replaced it */
+	const chooserFinalFocus = () =>
+		document.getElementById(ACCOUNT_MENU_TRIGGER_ID) ?? document.getElementById(SIGN_IN_ID);
 </script>
 
 <AppBar class="px-3 py-2 md:p-4">
@@ -87,7 +98,7 @@
 	open={chooserOpen && !!user}
 	start={chooserStart}
 	onClose={() => (chooserOpen = false)}
-	finalFocusEl={() => document.getElementById(ACCOUNT_MENU_TRIGGER_ID)}
+	finalFocusEl={chooserFinalFocus}
 />
 
 <style>

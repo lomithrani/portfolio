@@ -14,6 +14,7 @@
 		Trash,
 		Users
 	} from 'svelte-heros-v2';
+	import { SIGN_IN_ID } from '#components/Login.svelte';
 	import JobCard from '#components/jobs/JobCard.svelte';
 	import JobImport from '#components/job-import/JobImport.svelte';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
@@ -39,7 +40,9 @@
 	} from '#services/jobImport.ts';
 	import {
 		applicantCountText,
+		NETWORK_ERROR,
 		deleteJobText,
+		failureText,
 		filterJobs,
 		formatDay,
 		isoDate,
@@ -62,7 +65,6 @@
 		| { kind: 'error'; userId: string };
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const NETWORK_ERROR = 'Could not reach the server. Check your connection and try again.';
 	const SESSION_EXPIRED = 'Your session expired. Sign in again.';
 
 	// The signed-in account, once the session has been checked with the API
@@ -84,6 +86,8 @@
 		requested = userId;
 		listState = { kind: 'loading', userId };
 		deleting = null;
+		// This account's own (kept in this browser): never the one of the account signed in before
+		pendingImport = loadImportedDraft(userId) ?? null;
 		try {
 			const { data, error } = await portfolioApi.recruiter.jobs.get(withCredentials);
 			if (requested !== userId) return;
@@ -102,7 +106,6 @@
 				return;
 			}
 			listState = { kind: 'loaded', userId, jobs: data.jobs };
-			pendingImport = loadImportedDraft(userId) ?? null;
 			if (focusHeading) {
 				focusHeading = false;
 				await tick();
@@ -137,6 +140,12 @@
 		}
 	}
 
+	function openImport() {
+		// Read again: it may have been saved as a posting, or replaced, in another tab
+		if (user) pendingImport = loadImportedDraft(user._id) ?? null;
+		importOpen = true;
+	}
+
 	async function onImported({ fileName, warnings }: { fileName: string; warnings: string[] }) {
 		importOpen = false;
 		toaster.success({
@@ -151,8 +160,13 @@
 		const userId = user?._id;
 		const hasSpace = user?.recruiter;
 		if (!userId) {
-			// Signed out (or the session ended): the landing shows. Signing in again reloads
+			// Signed out (or the session ended): the landing shows. Signing in again (maybe with
+			// another account) reloads: nothing of this account is kept meanwhile
 			requested = null;
+			untrack(() => {
+				listState = { kind: 'idle' };
+				pendingImport = null;
+			});
 			return;
 		}
 		// No recruiter space: the page offers to create it (unknown: the API decides)
@@ -171,23 +185,33 @@
 	let createError = $state('');
 
 	async function createSpace() {
-		if (creatingSpace) return;
+		const userId = user?._id;
+		if (creatingSpace || !userId) return;
 		creatingSpace = true;
 		createError = '';
+		// This function loads the list once the space exists: the effect above, run again when
+		// switchMode stores the account, leaves it alone (one load, not two)
+		const before = requested;
+		requested = userId;
 		const result = await switchMode('recruiter');
 		creatingSpace = false;
 		if (!result.ok) {
+			// Unless the session ended meanwhile (the effect then forgot the account)
+			if (requested === userId) requested = before;
 			if (result.reason === 'session-expired') toaster.error({ title: result.message });
 			else createError = result.message;
 			return;
 		}
 		toaster.success({
 			title: 'Your recruiter space is ready',
-			description: 'Write your first job description, or import one from a PDF.'
+			description: 'Write your first job description.'
 		});
+		// Signed out, or into another account, meanwhile: the effect has taken over
+		if (user?._id !== userId || requested !== userId) return;
 		focusHeading = true;
-		importUserId = result.user._id;
-		loadJobs(result.user._id);
+		importUserId = userId;
+		importStatus = null;
+		loadJobs(userId);
 		refreshImportStatus();
 	}
 
@@ -250,7 +274,11 @@
 					clearAuthentication();
 					toaster.error({ title: SESSION_EXPIRED });
 				} else {
-					deleting = { job, busy: false, error: 'Could not delete it. Try again in a moment.' };
+					deleting = {
+						job,
+						busy: false,
+						error: failureText(error.value, 'Could not delete it. Try again in a moment.')
+					};
 				}
 				return;
 			}
@@ -261,6 +289,23 @@
 			deleting = { job, busy: false, error: NETWORK_ERROR };
 		}
 	}
+
+	/** After a dialog closed on an expired session: the header's sign-in (else the default) */
+	const signedOutFocus = () => (user ? null : document.getElementById(SIGN_IN_ID));
+
+	let importAllowance: HTMLElement | undefined = $state();
+
+	/**
+	 * Where the focus goes when the import dialog closes: back to "Import from PDF", else (the
+	 * import became unavailable meanwhile: the button is disabled or gone) to what says why, else
+	 * to the heading; to the header's sign-in once the session ended
+	 */
+	const importFinalFocus = (): HTMLElement | null => {
+		if (importTrigger?.isConnected && !importTrigger.disabled) return importTrigger;
+		if (!user) return signedOutFocus();
+		if (importAllowance?.isConnected) return importAllowance;
+		return heading?.isConnected ? heading : null;
+	};
 
 	beforeNavigate((navigation) => {
 		// A PDF being read: leaving now would lose an import that counts. Back, a link or a reload
@@ -339,7 +384,7 @@
 					class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-container preset-tonal-primary px-4 py-3 text-sm"
 				>
 					<InformationCircle size="20" class="shrink-0" aria-hidden="true" />
-					<p class="min-w-0 flex-1 text-surface-950-50">
+					<p class="min-w-60 flex-1 text-surface-950-50">
 						You imported <span class="font-semibold wrap-anywhere"
 							>{pendingImport.fileName || 'a job description'}</span
 						> but have not created the posting yet.
@@ -384,8 +429,10 @@
 					</div>
 					<h3 id="empty-jobs-title" class="text-xl font-bold">No job descriptions yet</h3>
 					<p class="mx-auto max-w-md text-surface-700-300">
-						Write your first one, or import an existing job description from a PDF. It stays a
-						draft, visible only to you, until you open it to candidates.
+						{importStatus?.enabled
+							? 'Write your first one, or import an existing job description from a PDF.'
+							: 'Write your first one.'}
+						It stays a draft, visible only to you, until you open it to candidates.
 					</p>
 					{@render listActions('items-center')}
 				</section>
@@ -503,7 +550,7 @@
 					class="btn preset-tonal min-h-11 max-sm:flex-1"
 					disabled={importAvailability !== 'available'}
 					aria-describedby="import-allowance"
-					onclick={() => (importOpen = true)}
+					onclick={openImport}
 				>
 					<DocumentArrowUp size="18" aria-hidden="true" />
 					Import from PDF
@@ -518,9 +565,13 @@
 			</a>
 		</div>
 		{#if allowance}
+			<!-- Focusable from code: where the focus goes when the import closed on a refusal -->
 			<p
+				bind:this={importAllowance}
 				id="import-allowance"
-				class="max-w-sm text-xs {importAvailability === 'available'
+				tabindex="-1"
+				class="max-w-sm rounded-base text-xs outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 focus-visible:outline-solid {importAvailability ===
+				'available'
 					? 'text-surface-700-300'
 					: 'font-medium text-warning-800-200'}"
 			>
@@ -542,8 +593,8 @@
 			if (importStatus) importStatus = { ...importStatus, ...quota };
 		}}
 		refreshStatus={refreshImportStatus}
-		finalFocusEl={() =>
-			importTrigger?.isConnected && !importTrigger.disabled ? importTrigger : null}
+		{pendingImport}
+		finalFocusEl={importFinalFocus}
 	/>
 {/if}
 
@@ -556,5 +607,5 @@
 	error={deleting?.error ?? ''}
 	onConfirm={confirmDelete}
 	onCancel={() => (deleting = null)}
-	finalFocusEl={() => (focusAfterDelete?.isConnected ? focusAfterDelete : null)}
+	finalFocusEl={() => (focusAfterDelete?.isConnected ? focusAfterDelete : signedOutFocus())}
 />

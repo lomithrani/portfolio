@@ -4,10 +4,10 @@
 	import ThemeToggle from '#components/ThemeToggle.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
-	import { isCurrentSection } from '#services/account.ts';
+	import { isCurrentSection, spaceToRecord, switchMode } from '#services/account.ts';
 	import { isSessionValid } from '#services/authentication.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { browser } from '$app/env';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -33,6 +33,21 @@
 
 	let inJobs = $derived(isCurrentSection(page.url.pathname, '/jobs'));
 
+	// Entering the recruiter space by a link or a bookmark records it, as choosing it in the
+	// account menu does, so the menu names the space shown. Only on entering (or once the session
+	// is known): a space chosen meanwhile from the menu is not overridden, and a failure only
+	// leaves the menu's label as it was.
+	$effect(() => {
+		if (!inRecruiterSpace || !$sessionCheckedStore) return;
+		untrack(() => {
+			const auth = $authenticationStore;
+			if (!isSessionValid(auth)) return;
+			if (spaceToRecord(auth.user, page.url.pathname) === 'recruiter') {
+				void switchMode('recruiter');
+			}
+		});
+	});
+
 	let header = $derived(
 		inRecruiterSpace
 			? {
@@ -56,7 +71,7 @@
 				{#if isRecruiter || inRecruiterSpace}
 					<li class="shrink-0">
 						<a
-							href={resolve('/recruiter')}
+							href={resolve('/(app)/recruiter')}
 							class={linkClass(inRecruiterSpace)}
 							aria-current={inRecruiterSpace ? 'page' : undefined}>My job descriptions</a
 						>
@@ -64,7 +79,7 @@
 				{/if}
 				<li class="shrink-0">
 					<a
-						href={resolve('/jobs')}
+						href={resolve('/(app)/jobs')}
 						class={linkClass(inJobs)}
 						aria-current={inJobs ? 'page' : undefined}>Browse jobs</a
 					>

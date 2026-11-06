@@ -25,8 +25,11 @@ The apply panel's claim form, for a signed-in account without a portfolio: a por
 		onSessionExpired
 	}: {
 		user: AuthUser;
-		/** The account owns `name` now (claimed here, or found to own it already) */
-		onClaimed: (name: string) => void;
+		/**
+		 * The account owns `name` now: claimed here, or (`existing`) found to own it already, the
+		 * name typed here then left unclaimed
+		 */
+		onClaimed: (name: string, existing?: boolean) => void;
 		/** The session ended (it is cleared): the panel asks to sign in again */
 		onSessionExpired: (message: string) => void;
 	} = $props();
@@ -91,9 +94,10 @@ The apply panel's claim form, for a signed-in account without a portfolio: a por
 				await tick();
 				nameInput?.focus();
 			} else if (result.cause === 'owns-domain') {
-				// The session was behind: the account's portfolio is known once reloaded
+				// The session was behind (claimed elsewhere meanwhile): the account's portfolio is
+				// known once reloaded, and the panel offers to apply with it
 				const account = await refreshAccount();
-				if (account.ok && account.user.domain) onClaimed(account.user.domain);
+				if (account.ok && account.user.domain) onClaimed(account.user.domain, true);
 				else await showError(result.message);
 			} else {
 				await showError(result.message);

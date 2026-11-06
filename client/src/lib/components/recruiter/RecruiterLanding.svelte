@@ -4,10 +4,13 @@
 Google" button that signs in straight into it (POST /login with mode 'recruiter': the space is
 created the first time). `onSignedIn` runs once the session is stored.
 
-Google Identity Services routes every credential to the handler registered last (this page's,
-once it is shown). The handler is not released when the page goes: the header's own sign-in
-button, still on screen on the next page, would be left without one. Once this page is gone it
-signs in without choosing a space, like the header does.
+Google Identity Services routes every credential to the handler registered last. The header's
+sign-in (on screen with this page, and the one that set GSI up) keeps that role: its button and
+One Tap sign in and then ask which space to use. This page registers its own handler only when
+its button is clicked (`click_listener`), so the header's keeps working until then.
+googleIdentity.ts cannot give the role back yet (`release` clears it): after a click on this
+button that did not end in a sign-in (popup closed, sign-in failed), the header's button signs in
+here, and once this page is gone, without choosing a space.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -21,7 +24,7 @@ signs in without choosing a space, like the header does.
 		Users
 	} from 'svelte-heros-v2';
 	import { login } from '#services/authentication.ts';
-	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
+	import { loadGoogleIdentity, setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { FREE_PLAN_IMPORTS } from '#services/jobImport.ts';
 
@@ -42,7 +45,7 @@ signs in without choosing a space, like the header does.
 		{
 			icon: DocumentArrowUp,
 			title: 'Start from a PDF',
-			text: `Import an existing job description: Claude drafts it for you to complete. ${FREE_PLAN_IMPORTS} imports are free.`
+			text: `Where PDF import is offered, Claude drafts the job description from your file for you to complete. The free plan includes ${FREE_PLAN_IMPORTS} imports.`
 		},
 		{
 			icon: Users,
@@ -56,9 +59,9 @@ signs in without choosing a space, like the header does.
 	onMount(() => {
 		let mounted = true;
 
-		setupGoogleIdentity(async ({ credential }) => {
+		const onCredential = async ({ credential }: google.accounts.id.CredentialResponse) => {
 			if (!mounted) {
-				// This page is gone: the header's sign-in button (see above)
+				// This page is gone, and its handler was the last registered (see above)
 				if (!(await login(credential))) toaster.error({ title: 'Sign-in failed. Try again.' });
 				return;
 			}
@@ -74,20 +77,26 @@ signs in without choosing a space, like the header does.
 			}
 			toaster.success({
 				title: 'Welcome to your recruiter space',
-				description: 'Write your first job description, or import one from a PDF.'
+				description: 'Write your first job description.'
 			});
 			notify?.();
-		})
-			.then((gsi) => {
+		};
+
+		// GSI is set up by the header's sign-in, mounted before this page (same condition: signed
+		// out), so the button can render without taking the credential callback from it
+		loadGoogleIdentity()
+			.then((id) => {
 				if (!mounted || !buttonContainer) return;
-				gsi.id.renderButton(buttonContainer, {
+				id.renderButton(buttonContainer, {
 					theme: isDark() ? 'filled_black' : 'outline',
 					size: 'large',
 					type: 'standard',
 					text: 'signin_with',
 					shape: 'pill',
 					logo_alignment: 'left',
-					width: Math.min(320, Math.max(200, buttonContainer.clientWidth))
+					width: Math.min(320, Math.max(200, buttonContainer.clientWidth)),
+					// This button's credential comes back here (into the recruiter space)
+					click_listener: () => void setupGoogleIdentity(onCredential).catch(() => {})
 				});
 				gsiState = 'ready';
 			})
@@ -112,16 +121,6 @@ signs in without choosing a space, like the header does.
 			candidates who apply with their portfolio.
 		</p>
 	</div>
-
-	<ul class="grid gap-3 sm:grid-cols-3">
-		{#each features as feature (feature.title)}
-			<li class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-2 p-4">
-				<feature.icon size="22" class="text-primary-700-300" aria-hidden="true" />
-				<p class="font-semibold">{feature.title}</p>
-				<p class="text-sm text-surface-700-300">{feature.text}</p>
-			</li>
-		{/each}
-	</ul>
 
 	<div class="flex flex-col items-center gap-3 text-center">
 		{#if errorMessage}
@@ -165,8 +164,21 @@ signs in without choosing a space, like the header does.
 			Free to use. The same Google account can also keep a candidate portfolio: switch spaces from
 			the account menu.
 		</p>
+	</div>
+
+	<ul class="grid gap-3 sm:grid-cols-3">
+		{#each features as feature (feature.title)}
+			<li class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-2 p-4">
+				<feature.icon size="22" class="text-primary-700-300" aria-hidden="true" />
+				<p class="font-semibold">{feature.title}</p>
+				<p class="text-sm text-surface-700-300">{feature.text}</p>
+			</li>
+		{/each}
+	</ul>
+
+	<p class="text-center">
 		<a href={resolve('/(app)/jobs')} class="btn btn-sm hover:preset-tonal underline">
 			Browse open jobs
 		</a>
-	</div>
+	</p>
 </section>

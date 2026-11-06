@@ -223,6 +223,19 @@ export const applicantDomainProblem = (raw: string): string | null => {
 	return null;
 };
 
+/** What the pages say when the API could not be reached */
+export const NETWORK_ERROR = 'Could not reach the server. Check your connection and try again.';
+
+/**
+ * Whether a request got no answer at all: Eden Treaty turns a fetch that failed (offline, the
+ * connection dropped) into a 503 error whose value is the fetch error, not the API's text
+ */
+export const isNetworkFailure = (value: unknown): boolean => value instanceof Error;
+
+/** `fallback` (what failed), or the connection's problem when the request got no answer */
+export const failureText = (value: unknown, fallback: string): string =>
+	isNetworkFailure(value) ? NETWORK_ERROR : fallback;
+
 const bodyText = (value: unknown): string =>
 	typeof value === 'string'
 		? value.trim()
@@ -241,6 +254,7 @@ export const addApplicantError = (
 	value: unknown,
 	domain: string
 ): { message: string; field: boolean } => {
+	if (isNetworkFailure(value)) return { message: NETWORK_ERROR, field: false };
 	const text = bodyText(value);
 	switch (status) {
 		case 401:

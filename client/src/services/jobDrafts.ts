@@ -18,8 +18,9 @@ import {
 } from './jobPosting';
 
 // What the job editor keeps in this browser:
-// - its unsaved state, per user and posting ('new' while adding): `jobDraft:<userId>:new`,
-//   `jobDraft:<userId>:<jobId>`, restored when the recruiter comes back;
+// - its unsaved state, per user and posting, restored when the recruiter comes back:
+//   `jobDraft:<userId>:<jobId>` (editing), `jobDraft:<userId>:new` (adding, from a blank form),
+//   `jobDraft:<userId>:import` (adding, from the import below; it goes with that import);
 // - the draft of the last job description PDF import, per user: `jobImportDraft:<userId>`,
 //   written by the import dialog and read by /recruiter/jobs/new?import=1, removed once the
 //   posting is saved or the recruiter discards it (an import is paid: a reload keeps it).
@@ -67,13 +68,31 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 // --- The editor's draft -----------------------------------------------------------------
 
-/** `jobDraft:<userId>:new` (adding) or `jobDraft:<userId>:<jobId>` (editing) */
+/** `jobDraft:<userId>:new` (adding from a blank form) or `jobDraft:<userId>:<jobId>` (editing) */
 export const jobDraftStorageKey = (userId: string, jobId?: string): string =>
 	`jobDraft:${userId}:${jobId ?? 'new'}`;
 
 /**
- * What a draft started from, for a new posting: a blank form, or one imported file. A stored
- * add draft is only restored over the same start: never over another import.
+ * `jobDraft:<userId>:import`: the changes made to the imported draft (adding from an import). A
+ * key of its own: editing an import never overwrites the draft of a blank form, nor the reverse.
+ */
+export const importEditsStorageKey = (userId: string): string => `jobDraft:${userId}:import`;
+
+/** The key of the editor's draft, for what it edits: a posting, an import or a blank form */
+export const editorDraftStorageKey = (
+	userId: string,
+	{ jobId, imported = false }: { jobId?: string; imported?: boolean } = {}
+): string =>
+	jobId
+		? jobDraftStorageKey(userId, jobId)
+		: imported
+			? importEditsStorageKey(userId)
+			: jobDraftStorageKey(userId);
+
+/**
+ * What a draft started from: the posting as it was loaded, or the imported file. A posting's
+ * draft made before the posting was saved elsewhere is `stale`; an import's draft is only
+ * restored over that same import (a new import replaces the previous one).
  */
 export const draftBasis = (start: JobForm): string => jobFormSignature(start);
 
@@ -175,15 +194,25 @@ export function clearJobDraft(
  * What the editor starts from. `baseline` is what the unsaved-changes check compares to (and
  * what "Discard draft" goes back to): the posting being edited, else the imported draft, else
  * an empty form. `form` is what is shown: the stored draft when it differs from the baseline
- * (`restored`), else a copy of the baseline. A new posting's stored draft is only restored over
- * the start it was made from (`basis`): a blank form's draft never replaces a fresh import, an
- * import's never a blank form. A posting's draft is always restored, `stale` when the posting
- * was saved since the draft started.
+ * (`restored`), else a copy of the baseline. A posting's draft and a blank form's are always
+ * restored (their keys say what they were made from), a posting's draft `stale` when the posting
+ * was saved since the draft started; an import's draft only over the same import (`basis`).
+ *
+ * `basis` is the signature of the baseline. `draftBasis` is the basis to store with the draft
+ * from now on: the baseline's, except for a stale draft, which keeps its own so that the warning
+ * stays until the recruiter saves or discards it.
  */
 export function startingJobForms(
 	{ job, imported }: { job?: JobPostingLike | null; imported?: JobPostingLike | null },
 	readDraft: () => StoredJobDraft | undefined
-): { baseline: JobForm; form: JobForm; restored: boolean; stale: boolean; basis: string } {
+): {
+	baseline: JobForm;
+	form: JobForm;
+	restored: boolean;
+	stale: boolean;
+	basis: string;
+	draftBasis: string;
+} {
 	const baseline = job
 		? jobToForm(job)
 		: imported
@@ -191,13 +220,27 @@ export function startingJobForms(
 			: emptyJobForm();
 	const basis = draftBasis(baseline);
 	const draft = readDraft();
-	const sameStart = !!job || draft?.basis === basis;
+	const sameStart = !!job || !imported || draft?.basis === basis;
 	if (draft && sameStart && jobFormSignature(draft.form) !== jobFormSignature(baseline)) {
 		// A posting saved since the draft started (e.g. in another tab): the draft is older
 		const stale = !!job && !!draft.basis && draft.basis !== basis;
-		return { baseline, form: draft.form, restored: true, stale, basis };
+		return {
+			baseline,
+			form: draft.form,
+			restored: true,
+			stale,
+			basis,
+			draftBasis: stale && draft.basis ? draft.basis : basis
+		};
 	}
-	return { baseline, form: structuredClone(baseline), restored: false, stale: false, basis };
+	return {
+		baseline,
+		form: structuredClone(baseline),
+		restored: false,
+		stale: false,
+		basis,
+		draftBasis: basis
+	};
 }
 
 // --- The imported draft -----------------------------------------------------------------
@@ -227,12 +270,16 @@ export type ImportedJobDraft = {
 /** `jobImportDraft:<userId>` */
 export const importedDraftStorageKey = (userId: string): string => `jobImportDraft:${userId}`;
 
-/** Keeps an import's result for /recruiter/jobs/new?import=1 (replaces the previous one) */
+/**
+ * Keeps an import's result for /recruiter/jobs/new?import=1. It replaces the previous import,
+ * and the changes made to it (they were made to another file).
+ */
 export function saveImportedDraft(
 	userId: string,
 	imported: ImportedJobDraft,
 	storage: DraftStorage | undefined = browserStorage()
 ): void {
+	remove(importEditsStorageKey(userId), storage);
 	write(importedDraftStorageKey(userId), imported, storage);
 }
 
@@ -251,9 +298,11 @@ export function loadImportedDraft(
 	return { draft: stored.draft as JobPostingLike, warnings, fileName };
 }
 
+/** Removes the import kept for this user, and the changes made to it */
 export function clearImportedDraft(
 	userId: string,
 	storage: DraftStorage | undefined = browserStorage()
 ): void {
 	remove(importedDraftStorageKey(userId), storage);
+	remove(importEditsStorageKey(userId), storage);
 }

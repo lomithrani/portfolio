@@ -136,6 +136,20 @@ export const suggestDomainName = (
 export const isCurrentSection = (pathname: string, base: string): boolean =>
 	pathname === base || pathname.startsWith(base.endsWith('/') ? base : `${base}/`);
 
+/**
+ * The space to record (PUT /me/mode) for a page entered without choosing it in the account menu
+ * (a link, a bookmark): 'recruiter' on a /recruiter page for an account that has a recruiter space
+ * but another active one, so the menu names the space shown; null otherwise. An account without a
+ * recruiter space creates it from the page instead.
+ */
+export const spaceToRecord = (
+	user: Pick<AuthUser, 'activeMode' | 'recruiter'> | null | undefined,
+	pathname: string
+): UserMode | null =>
+	user?.recruiter && user.activeMode !== 'recruiter' && isCurrentSection(pathname, '/recruiter')
+		? 'recruiter'
+		: null;
+
 const bodyText = (value: unknown): string => {
 	if (typeof value === 'string') return value;
 	if (value && typeof value === 'object' && 'message' in value) {

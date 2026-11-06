@@ -8,7 +8,9 @@ the job editor on it (/recruiter/jobs/new?import=1). Nothing is saved on the ser
 
 The page owns `open`, the allowance (`status`, GET /jobs/import: the dialog is only offered when
 it says `enabled`), the toasts and the navigation. After a failure the dialog asks the page to
-refresh the allowance (`refreshStatus`): a failed import may have counted.
+refresh the allowance (`refreshStatus`): a failed import may have counted. An import kept in this
+browser but not saved as a posting yet (`pendingImport`) is replaced by a new one: the upload step
+says so, with a link back to it.
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
@@ -19,8 +21,10 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 		ExclamationTriangle,
 		InformationCircle,
 		LockClosed,
+		PencilSquare,
 		XMark
 	} from 'svelte-heros-v2';
+	import { resolve } from '$app/paths';
 	import { portfolioApi } from '#services';
 	import { clearAuthentication } from '#services/authentication.ts';
 	import { errorStatus } from '#services/apiErrors.ts';
@@ -54,6 +58,7 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 		onImported,
 		onQuota,
 		refreshStatus,
+		pendingImport = null,
 		finalFocusEl
 	}: {
 		/** Controlled by the page */
@@ -70,6 +75,8 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 		onQuota: (quota: JobImportQuota) => void;
 		/** Asks the API for the allowance again (after a failure: it may have counted) */
 		refreshStatus: () => void;
+		/** The import kept in this browser, not saved as a posting yet: a new import replaces it */
+		pendingImport?: { fileName: string } | null;
 		/** Where the focus goes once the dialog closes (by default, what had it when it opened) */
 		finalFocusEl?: () => HTMLElement | null;
 	} = $props();
@@ -77,6 +84,11 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 	const uid = $props.id();
 
 	let reading = $state(false);
+	// The file is being checked and read, before it is sent: set before the first await, so a
+	// second activation of Import meanwhile (a double click) sends nothing more. Each import counts
+	let preparing = $state(false);
+	// The attempt being prepared: closing the dialog (or leaving) meanwhile drops it
+	let attempt = 0;
 	let file = $state.raw<File | null>(null);
 	let fileInput: HTMLInputElement | undefined = $state();
 	let dragging = $state(false);
@@ -94,8 +106,13 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 	let chooseButton: HTMLButtonElement | undefined = $state();
 	let keepWaitingButton: HTMLButtonElement | undefined = $state();
 
+	// The last import answered 401: nothing can start until the recruiter signs in again
+	let sessionEnded = $state(false);
+
 	let availability = $derived(status?.enabled ? jobImportAvailability(status) : null);
-	let canImport = $derived(availability === 'available');
+	let canImport = $derived(availability === 'available' && !sessionEnded);
+	// The unsaved import a new one would replace (only worth saying when one can start)
+	let replacing = $derived(canImport ? pendingImport : null);
 
 	// --- Upload --------------------------------------------------------------------------
 
@@ -107,8 +124,9 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 		clearInterval(ticker);
 		clearTimeout(deadline);
 	};
-	// Leaving the page stops a running import
+	// Leaving the page stops a running import, and drops one being prepared
 	$effect(() => () => {
+		attempt += 1;
 		controller?.abort();
 		clearTimers();
 	});
@@ -129,7 +147,7 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 		!document.activeElement.isConnected;
 
 	function chooseFile(picked: File | undefined) {
-		if (!picked || reading) return;
+		if (!picked || reading || preparing) return;
 		notice = '';
 		allowanceRefused = false;
 		uploadError = jobFileProblem(picked) ?? '';
@@ -163,27 +181,40 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 			reader.readAsDataURL(picked);
 		});
 
+	/** The file as the API takes it (base64), or what is wrong with it */
+	async function readPdf(picked: File): Promise<{ pdf: string } | { problem: string }> {
+		try {
+			// The API checks it too: this answers at once, and costs no import
+			if (!hasPdfHeader(new Uint8Array(await picked.slice(0, 5).arrayBuffer()))) {
+				return {
+					problem: 'This file is not a PDF, whatever its name. Choose a PDF job description.'
+				};
+			}
+			return { pdf: await readAsBase64(picked) };
+		} catch {
+			return { problem: 'This file could not be read. Choose it again.' };
+		}
+	}
+
 	async function startImport() {
 		const picked = file;
-		if (!picked || reading || !canImport) return;
+		if (!picked || reading || preparing || !canImport) return;
+		preparing = true;
+		const mine = ++attempt;
 		uploadError = '';
 		allowanceRefused = false;
 		notice = '';
 
-		let pdf: string;
-		try {
-			// The API checks it too: this answers at once, and costs no import
-			if (!hasPdfHeader(new Uint8Array(await picked.slice(0, 5).arrayBuffer()))) {
-				uploadError = 'This file is not a PDF, whatever its name. Choose a PDF job description.';
-				file = null;
-				return focusAlert();
-			}
-			pdf = await readAsBase64(picked);
-		} catch {
-			uploadError = 'This file could not be read. Choose it again.';
+		const read = await readPdf(picked);
+		// Closed (or left) while the file was read: nothing is sent
+		if (mine !== attempt) return;
+		preparing = false;
+		if ('problem' in read) {
+			uploadError = read.problem;
 			file = null;
 			return focusAlert();
 		}
+		const pdf = read.pdf;
 
 		const current = new AbortController();
 		controller = current;
@@ -211,7 +242,10 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 			if (controller !== current) return;
 			if (error || !data) {
 				const code = errorStatus(error);
-				if (code === 401) clearAuthentication();
+				if (code === 401) {
+					sessionEnded = true;
+					clearAuthentication();
+				}
 				allowanceRefused = !timedOut && isAllowanceRefusal(code);
 				failure = timedOut ? JOB_IMPORT_TIMED_OUT : jobImportErrorMessage(code, error?.value);
 			} else {
@@ -264,9 +298,9 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 		await focusAlert();
 	}
 
-	/** Whether a PDF is being read: leaving the page now would lose an import that counts */
+	/** Whether a PDF is being read, or about to be sent: leaving now would lose an import */
 	export function isBusy(): boolean {
-		return reading;
+		return reading || preparing;
 	}
 
 	async function askToStop() {
@@ -290,11 +324,15 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 			askToStop();
 			return;
 		}
+		// Closed before the file was sent: it is not
+		attempt += 1;
+		preparing = false;
 		// A file picked but not sent, an error or a notice: gone next time
 		file = null;
 		uploadError = '';
 		notice = '';
 		allowanceRefused = false;
+		sessionEnded = false;
 		onClose();
 	}
 </script>
@@ -375,6 +413,30 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 									</div>
 								{/if}
 
+								{#if replacing}
+									<div
+										id="{uid}-replaces"
+										class="flex items-start gap-3 rounded-base preset-tonal-warning p-3 text-sm"
+									>
+										<ExclamationTriangle size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
+										<div class="min-w-0 flex-1 space-y-2">
+											<p class="text-surface-950-50">
+												A new import replaces your unsaved import of
+												<span class="font-semibold wrap-anywhere"
+													>{replacing.fileName || 'a job description'}</span
+												>, and any changes you made to it.
+											</p>
+											<a
+												href={resolve('/(app)/recruiter/jobs/new?import=1')}
+												class="btn btn-sm preset-tonal min-h-9"
+											>
+												<PencilSquare size="16" aria-hidden="true" />
+												Continue editing it instead
+											</a>
+										</div>
+									</div>
+								{/if}
+
 								<div
 									role="group"
 									aria-labelledby="{uid}-drop-label"
@@ -435,7 +497,7 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 											bind:this={chooseButton}
 											type="button"
 											class="btn preset-filled-primary-700-300 min-h-10"
-											disabled={!canImport}
+											disabled={!canImport || preparing}
 											onclick={() => fileInput?.click()}
 										>
 											Choose a PDF
@@ -456,7 +518,9 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 									}}
 								/>
 
-								{#if status?.enabled}
+								{#if sessionEnded}
+									<!-- The alert above says to sign in again -->
+								{:else if status?.enabled}
 									{#if availability === 'available'}
 										<p class="text-sm text-surface-700-300">
 											<span class="font-semibold">{jobImportQuotaText(status)}.</span>
@@ -571,7 +635,8 @@ refresh the allowance (`refreshStatus`): a failed import may have counted.
 									type="button"
 									class="btn preset-filled-primary-700-300"
 									data-footer="import"
-									disabled={!file || !canImport}
+									disabled={!file || !canImport || preparing}
+									aria-describedby={replacing ? `${uid}-replaces` : undefined}
 									onclick={startImport}
 								>
 									Import

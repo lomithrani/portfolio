@@ -153,9 +153,12 @@ const apiText = (value: unknown): string | undefined => {
 /**
  * What to tell the recruiter when POST /jobs/import fails. The API's own message for the
  * statuses it explains (402, 413, 422, 429, 503): which limit was hit, when the next import is
- * possible, what is wrong with the file.
+ * possible, what is wrong with the file. A request that got no answer (the connection failed)
+ * reaches here as Eden's 503 holding the fetch error: the connection is to blame, not the API.
  */
 export function jobImportErrorMessage(status: number | undefined, value: unknown): string {
+	// Eden Treaty answers a fetch that failed (no response at all) as a 503 holding the error
+	if (value instanceof Error) return JOB_IMPORT_NETWORK_ERROR;
 	const text = apiText(value);
 	switch (status) {
 		case 401:

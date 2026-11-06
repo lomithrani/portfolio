@@ -3,7 +3,9 @@
 A short list of the job editor (skills, languages, benefits): type an item and press Enter (or
 Add); paste several lines to add one item per line. Items show as chips with a remove button.
 Duplicates (ignoring case), blanks and what goes over the limits are not added, and the reason
-is announced. The text input carries the field's id: the label and the error summary point to it.
+is announced. Text typed and not added yet is added when the editor saves (it registers how); what
+cannot be added then stops the save, as the field's error. The text input carries the field's
+id: the label and the error summary point to it.
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
@@ -51,20 +53,43 @@ is announced. The text input carries the field's id: the label and the error sum
 
 	const quoted = (items: string[]) => items.map((item) => `“${item}”`).join(', ');
 
+	let problems = $derived({
+		duplicate: `Already in the list.`,
+		full: `The list is full: ${max} ${itemName}s at most.`,
+		too_long: `Each ${itemName} must be at most ${maxLength} characters.`
+	});
+
 	function add(raw: string) {
 		const result = addListItems(value, raw, { max, maxLength });
 		if (result.added.length > 0) value = result.list;
-		const problems = {
-			duplicate: `Already in the list.`,
-			full: `The list is full: ${max} ${itemName}s at most.`,
-			too_long: `Each ${itemName} must be at most ${maxLength} characters.`
-		};
 		const added = result.added.length > 0 ? `Added ${quoted(result.added)}.` : '';
 		problem = result.problem ? problems[result.problem] : '';
 		message = [added, problem].filter(Boolean).join(' ');
 		// Keep what could not be added in the field, to fix it; clear it otherwise
 		if (!result.problem || result.added.length > 0) text = '';
+		editor.pendingTextChanged(field);
 	}
+
+	/**
+	 * Before a save: adds the text typed and not added yet (a duplicate is already there: the
+	 * text goes). Answers why it cannot be added, if it cannot: the text stays, to fix it.
+	 */
+	function commit(): string | undefined {
+		if (!text.trim()) return undefined;
+		const result = addListItems(value, text, { max, maxLength });
+		if (result.added.length > 0) value = result.list;
+		problem = '';
+		if (!result.problem || result.problem === 'duplicate') {
+			text = '';
+			message = result.added.length > 0 ? `Added ${quoted(result.added)}.` : '';
+			return undefined;
+		}
+		return result.problem === 'full'
+			? `Not added: the list is full (${max} ${itemName}s at most). Remove one, or clear the text.`
+			: `Not added: each ${itemName} must be at most ${maxLength} characters. Shorten it, or clear it.`;
+	}
+
+	$effect(() => editor.registerPendingText(field, commit));
 
 	function onkeydown(event: KeyboardEvent) {
 		if (event.key !== 'Enter' || event.isComposing) return;
@@ -85,6 +110,7 @@ is announced. The text input carries the field's id: the label and the error sum
 		value = value.filter((_, position) => position !== index);
 		problem = '';
 		message = `Removed “${item}”.`;
+		editor.pendingTextChanged(field);
 		await tick();
 		// The next chip's remove button, else the previous one, else the text field
 		const buttons = list?.querySelectorAll<HTMLButtonElement>('[data-remove-item]');
@@ -99,14 +125,17 @@ is announced. The text input carries the field's id: the label and the error sum
 		<input
 			bind:this={input}
 			bind:value={text}
-			oninput={() => (problem = '')}
+			oninput={() => {
+				problem = '';
+				editor.pendingTextChanged(field);
+			}}
 			{id}
 			class="input min-w-0 flex-1"
 			type="text"
 			autocomplete="off"
 			enterkeyhint="done"
 			maxlength={maxLength}
-			disabled={full}
+			disabled={full && !text}
 			placeholder={full ? `${max} ${itemName}s at most` : placeholder}
 			aria-invalid={error ? true : undefined}
 			aria-describedby={[hintId, error ? editor.errorId(field) : ''].filter(Boolean).join(' ')}

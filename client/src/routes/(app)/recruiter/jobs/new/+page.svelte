@@ -25,9 +25,15 @@
 			: undefined
 	);
 
-	// The account the editor was opened for. Kept when the session ends (a 401 while saving):
-	// the editor keeps the form and says to sign in again
+	// The account the editor was opened for
 	let editorUser: string | null = $state(null);
+	// The editor's own save found the session expired: the editor stays (its form, and its
+	// message to sign in again) until the next sign-in. Any other end of the session (Log out)
+	// closes it: the page asks to sign in, and the changes wait in this browser.
+	let expiredWhileSaving = $state(false);
+	let showEditor = $derived(
+		!!editorUser && (user?._id === editorUser || (!user && expiredWhileSaving))
+	);
 	let imported: ImportedJobDraft | null = $state.raw(null);
 	let importMissing = $state(false);
 	// Starts the editor over (a discarded import)
@@ -35,6 +41,7 @@
 
 	$effect(() => {
 		const id = user?._id;
+		if (id) expiredWhileSaving = false;
 		// No recruiter space: the page says how to create one (unknown: the API decides on save)
 		if (!id || user?.recruiter === false || id === editorUser) return;
 		untrack(() => {
@@ -46,25 +53,33 @@
 
 	const recruiterHref = resolve('/(app)/recruiter');
 
-	const onSaved = async (saved: { _id: string; status: string }) => {
+	const onSaved = async (
+		saved: { _id: string; status: string },
+		_mode: string,
+		{ left }: { left: boolean }
+	) => {
+		const open = () => goto(resolve('/(app)/recruiter/jobs/[id]', { id: saved._id }));
 		toaster.success({
 			title: 'Job posting created',
 			description:
 				saved.status === 'draft'
-					? 'It is a draft: only you can see it until you open it.'
-					: 'It is public on its job page.'
+					? 'It is a draft: only you can see it until you set its status to Open.'
+					: 'It is public on its job page.',
+			// Created after the recruiter went elsewhere: they stay there, the toast leads to it
+			action: left ? { label: 'Open it', onClick: open } : undefined
 		});
-		await goto(resolve('/(app)/recruiter/jobs/[id]', { id: saved._id }));
+		if (!left) await open();
 	};
 
 	let heading: HTMLElement | undefined = $state();
 
 	const onImportDiscarded = async () => {
+		// The URL loses ?import=1 first (a reload starts from a blank form too), with the import's
+		// editor still there, finished: then the blank form's
+		await goto(resolve('/(app)/recruiter/jobs/new'), { shallow: true, replace: true });
 		imported = null;
 		importMissing = false;
 		editorRun += 1;
-		// The URL loses ?import=1: a reload starts from a blank form too
-		await goto(resolve('/(app)/recruiter/jobs/new'), { shallow: true, replace: true });
 		toaster.info({ title: 'Import discarded', description: 'You are starting from a blank form.' });
 		// The banner that had the focus is gone: back to the top of the form
 		await tick();
@@ -83,7 +98,7 @@
 			Job postings
 		</a>
 
-		{#if editorUser}
+		{#if showEditor && editorUser}
 			<div class="space-y-1">
 				<h2 bind:this={heading} tabindex="-1" class="text-2xl font-bold outline-none md:text-3xl">
 					New job posting
@@ -91,7 +106,7 @@
 				<p class="text-surface-700-300">
 					{imported
 						? 'Read from your PDF. Complete it, then create the posting.'
-						: 'Describe the job: candidates see it once you open the posting.'}
+						: 'Describe the job: candidates see it once its status is Open.'}
 				</p>
 			</div>
 			{#if importMissing}
@@ -115,6 +130,7 @@
 					{recruiterHref}
 					{onSaved}
 					{onImportDiscarded}
+					onSessionExpired={() => (expiredWhileSaving = true)}
 				/>
 			{/key}
 		{:else if !$sessionCheckedStore}

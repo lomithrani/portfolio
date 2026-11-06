@@ -3,7 +3,7 @@
 What the job editor's pages show while the session is checked or the posting loads: the shape of
 the form, without content (no flash of a signed-out page).
 -->
-<div class="space-y-6" aria-busy="true">
+<div class="relative space-y-6" aria-busy="true">
 	<p class="sr-only" role="status">Loading…</p>
 	<div class="space-y-2" aria-hidden="true">
 		<div class="placeholder h-8 w-2/3 animate-pulse motion-reduce:animate-none"></div>

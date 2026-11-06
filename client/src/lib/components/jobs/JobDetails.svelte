@@ -42,7 +42,7 @@ description: applicants...).
 	let description = $derived(job.description?.trim() ?? '');
 </script>
 
-<article class="space-y-6" aria-labelledby="{uid}-title">
+<article class="relative space-y-6" aria-labelledby="{uid}-title">
 	<header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
 		<div class="min-w-0 flex-1 space-y-2">
 			{#if showStatus && job.status}

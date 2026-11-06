@@ -236,13 +236,56 @@ export const applicationSummary = (status: ApplicationStatus, timeZone?: string)
 	return day ? `You applied on ${day}` : 'You applied';
 };
 
-export type ApplicationAction = 'apply' | 'withdraw' | 'status';
+/**
+ * 'withdraw': the viewer's own application; 'remove': leaving an applicant list the recruiter put
+ * the viewer's portfolio on (source 'added_by_recruiter'). Both are DELETE /jobs/:id/application.
+ */
+export type ApplicationAction = 'apply' | 'withdraw' | 'remove' | 'status';
+
+/** The action that takes the viewer off a posting's applicant list, by how they got on it */
+export const leaveAction = (source: ApplicationSource | undefined): 'withdraw' | 'remove' =>
+	source === 'added_by_recruiter' ? 'remove' : 'withdraw';
+
+/** What the panel says about leaving an applicant list, by how the viewer got on it */
+export type LeaveCopy = {
+	/** The button that asks first */
+	button: string;
+	/** The confirmation's question */
+	question: string;
+	/** The confirming button, and while its request runs */
+	confirm: string;
+	busy: string;
+	/** Once done: the toast's title (announced too) and description */
+	done: string;
+	doneDescription: string;
+};
+
+export const leaveCopy = (source: ApplicationSource | undefined): LeaveCopy =>
+	leaveAction(source) === 'remove'
+		? {
+				button: 'Remove me from the list',
+				question:
+					'Remove your portfolio from this applicant list? The recruiter will no longer see it there.',
+				confirm: 'Remove me',
+				busy: 'Removing…',
+				done: 'Removed from the applicant list',
+				doneDescription: 'The recruiter no longer sees your portfolio on this list.'
+			}
+		: {
+				button: 'Withdraw my application',
+				question:
+					'Withdraw your application? The recruiter will no longer see you as an applicant.',
+				confirm: 'Withdraw',
+				busy: 'Withdrawing…',
+				done: 'Application withdrawn',
+				doneDescription: 'The recruiter no longer sees you as an applicant.'
+			};
 
 /**
  * What a failed application request means for the panel:
  * - 'session-expired' (401): the session is cleared, sign in again;
  * - 'already-applied' (409): reload the status, nothing went wrong;
- * - 'not-applied' (404 on withdraw): the application is gone already;
+ * - 'not-applied' (404 on withdraw or remove): the application is gone already;
  * - 'not-open' (409): the posting stopped taking applications: reload it;
  * - 'no-portfolio' (403): the account has no portfolio (any more): reload the account;
  * - 'own-posting' (403), 'full' (409), 'not-found' (404), 'network', 'error': a message only.
@@ -272,7 +315,15 @@ const bodyText = (value: unknown): string => {
 const FALLBACK_MESSAGES: Record<ApplicationAction, string> = {
 	apply: 'Could not send your application. Try again.',
 	withdraw: 'Could not withdraw your application. Try again.',
+	remove: 'Could not remove you from the list. Try again.',
 	status: 'Could not check whether you applied. Try again.'
+};
+
+const SESSION_EXPIRED_MESSAGES: Record<ApplicationAction, string> = {
+	apply: 'Your session expired. Sign in again to apply.',
+	withdraw: 'Your session expired. Sign in again to withdraw your application.',
+	remove: 'Your session expired. Sign in again to remove yourself from the list.',
+	status: 'Your session expired. Sign in again to apply.'
 };
 
 export const APPLICATION_NETWORK_MESSAGE =
@@ -291,13 +342,7 @@ export const applicationFailure = (
 	const fallback: ApplicationFailure = { kind: 'error', message: FALLBACK_MESSAGES[action] };
 	if (status === undefined) return { kind: 'network', message: APPLICATION_NETWORK_MESSAGE };
 	if (status === 401) {
-		return {
-			kind: 'session-expired',
-			message:
-				action === 'withdraw'
-					? 'Your session expired. Sign in again to withdraw your application.'
-					: 'Your session expired. Sign in again to apply.'
-		};
+		return { kind: 'session-expired', message: SESSION_EXPIRED_MESSAGES[action] };
 	}
 	if (status === 403) {
 		if (/own job posting/i.test(text)) {
@@ -326,6 +371,9 @@ export const applicationFailure = (
 	if (status === 404) {
 		if (action === 'withdraw' && /not applied/i.test(text)) {
 			return { kind: 'not-applied', message: 'Your application had already been withdrawn.' };
+		}
+		if (action === 'remove' && /not applied/i.test(text)) {
+			return { kind: 'not-applied', message: 'You were no longer on the applicant list.' };
 		}
 		return { kind: 'not-found', message: 'This job description is no longer published.' };
 	}

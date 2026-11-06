@@ -16,8 +16,10 @@ a first attempt to save, then live; an error summary at the top links to the fie
 
 It owns the API calls (POST /jobs, PUT /jobs/:id), the unsaved-changes guard (beforeNavigate:
 a dialog for links and Back, the browser's prompt for a reload or closing the tab) and the
-drafts kept in this browser (`jobDraft:<userId>:new` / `jobDraft:<userId>:<jobId>`, restored
-with a notice). The page owns the session gate, the toast and where to go after a save.
+drafts kept in this browser (`jobDraft:<userId>:<jobId>`, `jobDraft:<userId>:new` for a blank
+form, `jobDraft:<userId>:import` for an import; restored with a notice). The page owns the
+session gate, the toast and where to go after a save. A save the recruiter left during still
+ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in this browser).
 
 - `job` set: edit mode (the posting as GET /recruiter/jobs/:id returns it); else add mode.
 - `imported` (add mode): starts from a job description import (the stored result of
@@ -27,7 +29,7 @@ with a notice). The page owns the session gate, the toast and where to go after 
 -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { SegmentedControl } from '@skeletonlabs/skeleton-svelte';
 	import {
 		ArrowPath,
@@ -77,10 +79,11 @@ with a notice). The page owns the session gate, the toast and where to go after 
 		type JobFormField,
 		type JobPostingLike
 	} from '#services/jobPosting.ts';
+	import { toaster } from '#services/toaster.ts';
 	import {
 		clearImportedDraft,
 		clearJobDraft,
-		jobDraftStorageKey,
+		editorDraftStorageKey,
 		loadJobDraft,
 		saveJobDraft,
 		startingJobForms,
@@ -104,7 +107,8 @@ with a notice). The page owns the session gate, the toast and where to go after 
 		cancelHref,
 		recruiterHref,
 		onSaved,
-		onImportDiscarded
+		onImportDiscarded,
+		onSessionExpired
 	}: {
 		/** The recruiter's user id: scopes the drafts kept in this browser */
 		userId: string;
@@ -116,10 +120,22 @@ with a notice). The page owns the session gate, the toast and where to go after 
 		cancelHref: string;
 		/** The recruiter space, where an account without one creates it */
 		recruiterHref: string;
-		/** After a save; the draft is already gone. Typically a toast and a navigation */
-		onSaved: (saved: SavedJob, mode: 'created' | 'updated') => void | Promise<void>;
+		/**
+		 * After a save; the draft is already gone. Typically a toast and a navigation, but not
+		 * when the recruiter `left` the editor while it was saving (no navigation then)
+		 */
+		onSaved: (
+			saved: SavedJob,
+			mode: 'created' | 'updated',
+			context: { left: boolean }
+		) => void | Promise<void>;
 		/** The recruiter discarded the import (already removed from this browser) */
 		onImportDiscarded?: () => void;
+		/**
+		 * A save found the session expired (401), just before the session is cleared: the page
+		 * keeps the editor (its form and its message to sign in again) until the next sign-in
+		 */
+		onSessionExpired?: () => void;
 	} = $props();
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -132,11 +148,13 @@ with a notice). The page owns the session gate, the toast and where to go after 
 	const owner = untrack(() => userId);
 	const mode: 'add' | 'edit' = initialJob ? 'edit' : 'add';
 	const jobId = initialJob?._id;
-	const storageKey = jobDraftStorageKey(owner, jobId);
+	const storageKey = editorDraftStorageKey(owner, { jobId, imported: !!initialImport });
 	const start = startingJobForms({ job: initialJob, imported: initialImport?.draft }, () =>
 		loadJobDraft(storageKey)
 	);
 	const baselineSignature = jobFormSignature(start.baseline);
+	// Stored with the draft: what it started from (a stale draft keeps its own, to keep warning)
+	let basisToStore = start.draftBasis;
 
 	let form: JobForm = $state(start.form);
 	let dirty = $derived(jobFormSignature(form) !== baselineSignature);
@@ -149,22 +167,25 @@ with a notice). The page owns the session gate, the toast and where to go after 
 	let announcement = $state('');
 	// Saved or discarded: nothing is written to the draft any more, and leaving asks nothing
 	let finished = false;
-	// Whether the stored draft is this editor's (restored, or written since): only then does a
-	// form back to its start remove it. A stored draft of another start (a blank form's, while
-	// this one starts from an import) is left alone
-	let ownsDraft = mode === 'edit' || start.restored;
+	// The page went on without this editor (e.g. a link followed while saving)
+	let destroyed = false;
+	$effect(() => () => {
+		destroyed = true;
+	});
 
 	// Keep unsaved changes in this browser: a reload, a navigation or an expired session loses
-	// nothing. A form back to where it started has no draft.
+	// nothing. A form back to where it started has no draft. Each start has its own key, so the
+	// draft under it is this editor's.
 	$effect(() => {
 		const changed = dirty;
 		const snapshot = $state.snapshot(form) as JobForm;
 		if (finished) return;
 		if (changed) {
-			saveJobDraft(storageKey, { form: snapshot, basis: start.basis });
-			ownsDraft = true;
-		} else if (ownsDraft) {
+			saveJobDraft(storageKey, { form: snapshot, basis: basisToStore });
+		} else {
 			clearJobDraft(storageKey);
+			// Back to the current posting: changes from now on start from it
+			basisToStore = start.basis;
 		}
 	});
 
@@ -175,8 +196,10 @@ with a notice). The page owns the session gate, the toast and where to go after 
 	// A field the API refused (422): shown until that field changes
 	let serverError = $state<{ field: JobFormField; message: string; snapshot: string } | null>(null);
 	const snapshotOf = (field: JobFormField) => JSON.stringify(form[field]);
+	// Text typed in a list (skills…) that a save could not add: shown until that text changes
+	let pendingTextErrors = $state<Partial<Record<JobFormField, string>>>({});
 	let errors = $derived.by(() => {
-		const found = attempted ? jobFormErrors(form) : {};
+		const found = { ...(attempted ? jobFormErrors(form) : {}), ...pendingTextErrors };
 		if (serverError && snapshotOf(serverError.field) === serverError.snapshot) {
 			found[serverError.field] ??= serverError.message;
 		}
@@ -184,10 +207,41 @@ with a notice). The page owns the session gate, the toast and where to go after 
 	});
 	let errorList = $derived(orderedJobFormErrors(errors));
 
+	// How each list adds the text typed in it and not added yet (ListInput registers it). Only
+	// read by save(): nothing shows it, so it need not be reactive
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- see above
+	const pendingTextCommits = new Map<JobFormField, () => string | undefined>();
+
+	/** Adds the text typed in the lists and not added yet; what cannot be added, per field */
+	function commitPendingText(): Partial<Record<JobFormField, string>> {
+		const problems: Partial<Record<JobFormField, string>> = {};
+		for (const [field, commit] of pendingTextCommits) {
+			const problem = commit();
+			if (problem) problems[field] = problem;
+		}
+		return problems;
+	}
+
 	const uid = $props.id();
 	const fieldId = (field: JobFormField) => `${uid}-${field}`;
 	const errorId = (field: JobFormField) => `${fieldId(field)}-error`;
-	setJobEditorContext({ fieldId, errorId, error: (field) => errors[field] });
+	setJobEditorContext({
+		fieldId,
+		errorId,
+		error: (field) => errors[field],
+		registerPendingText: (field, commit) => {
+			pendingTextCommits.set(field, commit);
+			return () => {
+				if (pendingTextCommits.get(field) === commit) pendingTextCommits.delete(field);
+			};
+		},
+		pendingTextChanged: (field) => {
+			if (!(field in pendingTextErrors)) return;
+			const rest = { ...pendingTextErrors };
+			delete rest[field];
+			pendingTextErrors = rest;
+		}
+	});
 
 	let summaryElement: HTMLElement | undefined = $state();
 
@@ -247,10 +301,34 @@ with a notice). The page owns the session gate, the toast and where to go after 
 			? String((value as { property: unknown }).property)
 			: undefined;
 
-	async function handleSaveError(error: { status: unknown; value?: unknown }) {
+	/**
+	 * A save that ended after the recruiter left the editor: the page is another one, so a toast
+	 * says it, with the way back (the changes are kept in this browser)
+	 */
+	function saveFailedAfterLeaving(code: number | undefined, editorUrl: string) {
+		toaster.error({
+			title: mode === 'add' ? 'The job posting was not created' : 'Your changes were not saved',
+			description:
+				code === 401
+					? 'Your session expired: sign in again, then open the editor to save. Your changes are kept in this browser.'
+					: 'Open the editor again to see why and save: your changes are kept in this browser.',
+			action: {
+				label: 'Open the editor',
+				// eslint-disable-next-line svelte/no-navigation-without-resolve -- this editor's own URL
+				onClick: () => goto(editorUrl)
+			}
+		});
+	}
+
+	async function handleSaveError(error: { status: unknown; value?: unknown }, editorUrl: string) {
 		const code = errorStatus(error);
 		const text = apiText(error.value);
+		if (destroyed) {
+			if (code === 401) clearAuthentication();
+			return saveFailedAfterLeaving(code, editorUrl);
+		}
 		if (code === 401) {
+			onSessionExpired?.();
 			clearAuthentication();
 			return showSubmitError({
 				message:
@@ -305,7 +383,9 @@ with a notice). The page owns the session gate, the toast and where to go after 
 		if (status !== 'idle' || finished) return;
 		attempted = true;
 		submitError = null;
-		const found = orderedJobFormErrors(jobFormErrors(form));
+		// Text typed in a list without pressing Enter is part of the posting: added now
+		pendingTextErrors = commitPendingText();
+		const found = orderedJobFormErrors({ ...jobFormErrors(form), ...pendingTextErrors });
 		if (found.length > 0) {
 			announcement =
 				found.length === 1
@@ -318,6 +398,8 @@ with a notice). The page owns the session gate, the toast and where to go after 
 		status = 'saving';
 		announcement = 'Saving…';
 		const body = formToJobInput($state.snapshot(form) as JobForm);
+		// Where to come back to, should the recruiter leave before the answer and it fail
+		const editorUrl = `${location.pathname}${location.search}`;
 		let saved: SavedJob;
 		try {
 			const { data, error } = jobId
@@ -326,12 +408,13 @@ with a notice). The page owns the session gate, the toast and where to go after 
 			if (error || !data) {
 				status = 'idle';
 				announcement = '';
-				return handleSaveError(error ?? { status: undefined });
+				return handleSaveError(error ?? { status: undefined }, editorUrl);
 			}
 			saved = data;
 		} catch {
 			status = 'idle';
 			announcement = '';
+			if (destroyed) return saveFailedAfterLeaving(undefined, editorUrl);
 			return showSubmitError({ message: NETWORK_ERROR });
 		}
 
@@ -341,8 +424,11 @@ with a notice). The page owns the session gate, the toast and where to go after 
 		announcement = 'Saved.';
 		clearJobDraft(storageKey);
 		if (initialImport) clearImportedDraft(owner);
+		const savedMode = mode === 'add' ? 'created' : 'updated';
+		// Left while it was saving: the page the recruiter went to stays
+		if (destroyed) return onSaved(saved, savedMode, { left: true });
 		try {
-			await onSaved(saved, mode === 'add' ? 'created' : 'updated');
+			await onSaved(saved, savedMode, { left: false });
 		} catch {
 			await showSubmitError({
 				message: 'The job posting is saved, but its page could not be opened.',
@@ -353,15 +439,22 @@ with a notice). The page owns the session gate, the toast and where to go after 
 
 	// --- Drafts and the import ------------------------------------------------------------
 
-	/** Back to where the editor started (the posting, the import or a blank form) */
-	async function resetForm() {
+	/** The form as the editor started (the posting, the import or a blank form), no draft */
+	function startOver() {
 		form = structuredClone(start.baseline);
 		restoredNotice = false;
 		confirming = null;
 		attempted = false;
 		serverError = null;
+		pendingTextErrors = {};
 		submitError = null;
 		clearJobDraft(storageKey);
+		basisToStore = start.basis;
+	}
+
+	/** "Discard draft": back to where the editor started */
+	async function resetForm() {
+		startOver();
 		announcement = 'Draft discarded.';
 		await tick();
 		document.getElementById(fieldId('title'))?.focus();
@@ -370,9 +463,8 @@ with a notice). The page owns the session gate, the toast and where to go after 
 	function discardImport() {
 		finished = true;
 		confirming = null;
+		// The changes made to the import go with it (a blank form's draft has its own key)
 		clearImportedDraft(owner);
-		// The changes made to the import go with it (a blank form's draft stays)
-		if (ownsDraft) clearJobDraft(storageKey);
 		importBanner = false;
 		onImportDiscarded?.();
 	}
@@ -394,8 +486,14 @@ with a notice). The page owns the session gate, the toast and where to go after 
 	type LeaveTarget = { url: URL; delta?: number; external: boolean };
 	let leaveTarget = $state<LeaveTarget | null>(null);
 	let leaveAllowed = false;
+	// The recruiter left with "Discard changes": should the page keep this editor (a link to
+	// the same page), it starts over
+	let discardedOnLeave = false;
 
 	beforeNavigate((navigation) => {
+		// A shallow navigation only changes the URL (the discarded import): the editor stays.
+		// While saving, leaving is allowed: the save still ends (see save)
+		if (navigation.shallow) return;
 		if (finished || leaveAllowed || !dirty || status === 'saving') return;
 		// A reload, closing the tab, typing an address: the browser asks
 		if (navigation.type === 'leave') {
@@ -411,11 +509,25 @@ with a notice). The page owns the session gate, the toast and where to go after 
 		};
 	});
 
+	// After a navigation that kept this editor (a link to the same page), it guards again, and
+	// starts over when the recruiter left discarding their changes. (Also called for the
+	// navigation that brought it, if any: nothing to do then.)
+	afterNavigate((navigation) => {
+		if (navigation.shallow) return;
+		leaveAllowed = false;
+		if (discardedOnLeave) {
+			discardedOnLeave = false;
+			finished = false;
+			startOver();
+		}
+	});
+
 	async function leave(discard: boolean) {
 		const target = leaveTarget;
 		if (!target) return;
 		if (discard) {
 			finished = true;
+			discardedOnLeave = true;
 			clearJobDraft(storageKey);
 		}
 		leaveAllowed = true;
@@ -466,7 +578,9 @@ with a notice). The page owns the session gate, the toast and where to go after 
 	const daysOptions = [1, 2, 3, 4];
 </script>
 
-<div class="space-y-6">
+<!-- relative: what is only for screen readers (sr-only) is placed in the editor, not at the top
+     of the document, which scrollIntoView would then scroll -->
+<div class="relative space-y-6">
 	{#if importBanner && initialImport}
 		<section
 			class="space-y-3 rounded-container border border-primary-500/40 preset-tonal-primary p-4 text-sm text-surface-950-50 sm:p-5"
@@ -917,6 +1031,7 @@ with a notice). The page owns the session gate, the toast and where to go after 
 						field="hoursPerWeek"
 						label="Hours per week"
 						unit="h / week"
+						unitLabel=""
 						required
 						hint="35 h is full time in France; less is part-time."
 					>
@@ -936,6 +1051,7 @@ with a notice). The page owns the session gate, the toast and where to go after 
 						field="daysPerYear"
 						label="Days per year"
 						unit="days / year"
+						unitLabel=""
 						required
 						hint="{FR_FORFAIT_JOURS_STANDARD_DAYS} days is the standard forfait jours."
 					>
@@ -955,6 +1071,7 @@ with a notice). The page owns the session gate, the toast and where to go after 
 					field="rttDaysPerYear"
 					label="RTT days"
 					unit="days / year"
+					unitLabel="days per year"
 					hint="Reduced working time days, if any."
 				>
 					{#snippet control(attributes)}
@@ -983,7 +1100,7 @@ with a notice). The page owns the session gate, the toast and where to go after 
 				</p>
 			</div>
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-				<Field field="payMin" label="Minimum pay" unit="€" required>
+				<Field field="payMin" label="Minimum pay" unit="€" unitLabel="euros, gross" required>
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
@@ -996,7 +1113,7 @@ with a notice). The page owns the session gate, the toast and where to go after 
 						/>
 					{/snippet}
 				</Field>
-				<Field field="payMax" label="Maximum pay" unit="€" required>
+				<Field field="payMax" label="Maximum pay" unit="€" unitLabel="euros, gross" required>
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
@@ -1185,10 +1302,13 @@ with a notice). The page owns the session gate, the toast and where to go after 
 				{/if}
 			</p>
 			<div class="flex gap-2 max-sm:w-full">
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by the page -->
-				<a href={cancelHref} class="btn preset-tonal max-sm:flex-1" aria-disabled={busy}>
-					Cancel
-				</a>
+				{#if busy}
+					<!-- Saving: Cancel would leave a save behind it -->
+					<button type="button" class="btn preset-tonal max-sm:flex-1" disabled>Cancel</button>
+				{:else}
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by the page -->
+					<a href={cancelHref} class="btn preset-tonal max-sm:flex-1">Cancel</a>
+				{/if}
 				<button
 					type="submit"
 					class="btn preset-filled-primary-700-300 max-sm:flex-1 {status === 'saving'

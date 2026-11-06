@@ -48,6 +48,10 @@
 	let loadState = $state.raw<LoadState>({ kind: 'idle' });
 	// What was asked for last (account and posting): an older answer is ignored
 	let requested: string | null = null;
+	// The editor's own save found the session expired: the editor stays (its form, and its
+	// message to sign in again) until the next sign-in. Any other end of the session (Log out)
+	// closes it: the page asks to sign in, and the changes wait in this browser.
+	let expiredWhileSaving = $state(false);
 
 	async function load(userId: string, id: string) {
 		const key = `${userId}:${id}`;
@@ -82,9 +86,18 @@
 	$effect(() => {
 		const userId = user?._id;
 		const id = jobId;
-		// The editor stays once loaded, even when the session ends (a 401 while saving): it keeps
-		// the form and says to sign in again
-		if (!userId || user?.recruiter === false || !id) return;
+		if (!userId) {
+			// Signed out: the private posting goes, and signing in loads it again (unless the
+			// editor's save found the session expired: it stays until the next sign-in)
+			untrack(() => {
+				if (expiredWhileSaving || requested === null) return;
+				requested = null;
+				loadState = { kind: 'idle' };
+			});
+			return;
+		}
+		expiredWhileSaving = false;
+		if (user?.recruiter === false || !id) return;
 		if (requested === `${userId}:${id}`) return;
 		untrack(() => load(userId, id));
 	});
@@ -96,9 +109,14 @@
 	let job = $derived(loadState.kind === 'loaded' ? loadState.job : null);
 	const recruiterHref = resolve('/(app)/recruiter');
 
-	const onSaved = async (saved: { _id: string }) => {
-		toaster.success({ title: 'Changes saved' });
-		await goto(resolve('/(app)/recruiter/jobs/[id]', { id: saved._id }));
+	const onSaved = async (saved: { _id: string }, _mode: string, { left }: { left: boolean }) => {
+		const open = () => goto(resolve('/(app)/recruiter/jobs/[id]', { id: saved._id }));
+		toaster.success({
+			title: 'Changes saved',
+			// Saved after the recruiter went elsewhere: they stay there, the toast leads to it
+			action: left ? { label: 'Open the job posting', onClick: open } : undefined
+		});
+		if (!left) await open();
 	};
 </script>
 
@@ -108,7 +126,7 @@
 
 <div class="p-4 md:p-6">
 	<div class="mx-auto w-full max-w-3xl space-y-6">
-		{#if loadState.kind === 'loaded'}
+		{#if loadState.kind === 'loaded' && (user?._id === loadState.userId || (!user && expiredWhileSaving))}
 			<a
 				href={resolve('/(app)/recruiter/jobs/[id]', { id: loadState.job._id })}
 				class="btn btn-sm -ms-2 max-w-full px-2 text-surface-700-300 hover:preset-tonal"
@@ -127,6 +145,7 @@
 					cancelHref={resolve('/(app)/recruiter/jobs/[id]', { id: loadState.job._id })}
 					{recruiterHref}
 					{onSaved}
+					onSessionExpired={() => (expiredWhileSaving = true)}
 				/>
 			{/key}
 		{:else}
@@ -134,7 +153,7 @@
 				<ArrowLeft size="16" aria-hidden="true" />
 				Job postings
 			</a>
-			{#if !$sessionCheckedStore || loadState.kind === 'loading' || (user && loadState.kind === 'idle' && user.recruiter !== false)}
+			{#if !$sessionCheckedStore || loadState.kind === 'loading' || (user && loadState.kind === 'loaded') || (user && loadState.kind === 'idle' && user.recruiter !== false)}
 				<EditorPlaceholder />
 			{:else if !user}
 				<PageNotice title="Sign in as a recruiter" icon={LockClosed}>

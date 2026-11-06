@@ -47,39 +47,38 @@ does not say is left out. Lists (skills, languages, benefits) show as chips.
 	<dl class="grid gap-x-6 gap-y-4 sm:grid-cols-2 {className}">
 		{#each facts as fact (fact.id)}
 			{@const Icon = ICONS[fact.id]}
-			<div class="flex min-w-0 gap-3 {WIDE.includes(fact.id) ? 'sm:col-span-2' : ''}">
-				<span
-					class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full preset-tonal-primary"
-				>
-					<Icon size="16" aria-hidden="true" />
-				</span>
-				<div class="min-w-0 flex-1">
-					<dt class="text-xs font-medium tracking-wide text-surface-700-300 uppercase">
-						{fact.label}
-					</dt>
-					{#each fact.lines as line, index (index)}
-						<dd
-							class="break-words {index === 0
-								? 'font-medium text-surface-950-50'
-								: 'text-sm text-surface-700-300'}"
-						>
-							{line}
-						</dd>
-					{/each}
-					{#if fact.items && fact.items.length > 0}
-						<dd class="mt-1">
-							<ul class="flex flex-wrap gap-1.5" aria-label={fact.label}>
-								{#each fact.items as item (item)}
-									<li
-										class="chip preset-tonal max-w-full py-1 text-sm break-words whitespace-normal"
-									>
-										{item}
-									</li>
-								{/each}
-							</ul>
-						</dd>
-					{/if}
-				</div>
+			<!-- Only a dt and its dd in each group (a valid definition list): the icon is in the dt,
+			     placed in the group's padding -->
+			<div class="relative min-h-8 min-w-0 ps-11 {WIDE.includes(fact.id) ? 'sm:col-span-2' : ''}">
+				<dt class="text-xs font-medium tracking-wide text-surface-700-300 uppercase">
+					<span
+						class="absolute start-0 top-0.5 flex size-8 items-center justify-center rounded-full preset-tonal-primary"
+						aria-hidden="true"
+					>
+						<Icon size="16" />
+					</span>
+					{fact.label}
+				</dt>
+				{#each fact.lines as line, index (index)}
+					<dd
+						class="break-words {index === 0
+							? 'font-medium text-surface-950-50'
+							: 'text-sm text-surface-700-300'}"
+					>
+						{line}
+					</dd>
+				{/each}
+				{#if fact.items && fact.items.length > 0}
+					<dd class="mt-1">
+						<ul class="flex flex-wrap gap-1.5" aria-label={fact.label}>
+							{#each fact.items as item (item)}
+								<li class="chip preset-tonal max-w-full py-1 text-sm break-words whitespace-normal">
+									{item}
+								</li>
+							{/each}
+						</ul>
+					</dd>
+				{/if}
 			</div>
 		{/each}
 	</dl>

@@ -76,6 +76,11 @@ closing the dialog keeps the person where they are.
 	let submitted = $derived(freshOn(open, false));
 	/** The API refused the name (taken, invalid): shown until it is changed */
 	let refusedName = $derived<{ name: string; message: string } | null>(freshOn(open, null));
+	/**
+	 * A refused claim, announced (role=alert) when it is submitted: the visible message under the
+	 * field follows the typing and stays quiet. Cleared once the name is edited.
+	 */
+	let claimAlert = $derived(freshOn([open, name], ''));
 
 	let candidateButton: HTMLButtonElement | undefined = $state();
 	let recruiterButton: HTMLButtonElement | undefined = $state();
@@ -123,6 +128,17 @@ closing the dialog keeps the person where they are.
 		toaster.error({ title: result.message, description: 'Your choice was not saved.' });
 	};
 
+	/**
+	 * Says why the claim was refused, also when it was submitted with Enter from the field (the
+	 * focus does not move then), and puts the focus back on the field.
+	 */
+	const announceClaimError = async (message: string) => {
+		claimAlert = '';
+		await tick();
+		claimAlert = message;
+		if (document.activeElement !== nameInput) nameInput?.focus();
+	};
+
 	const goToStep = async (next: Step) => {
 		step = next;
 		errorMessage = '';
@@ -163,7 +179,7 @@ closing the dialog keeps the person where they are.
 			return;
 		}
 		onClose();
-		await goto(resolve('/recruiter'));
+		await goto(resolve('/(app)/recruiter'));
 	}
 
 	async function claim(event: SubmitEvent) {
@@ -171,8 +187,9 @@ closing the dialog keeps the person where they are.
 		if (busy) return;
 		submitted = true;
 		errorMessage = '';
-		if (domainNameProblem(name)) {
-			nameInput?.focus();
+		const problem = domainNameProblem(name);
+		if (problem) {
+			await announceClaimError(problem);
 			return;
 		}
 
@@ -184,8 +201,7 @@ closing the dialog keeps the person where they are.
 				sessionExpired(result);
 			} else if (result.cause === 'name') {
 				refusedName = { name: normalizedName, message: result.message };
-				await tick();
-				nameInput?.focus();
+				await announceClaimError(result.message);
 			} else if (result.cause === 'owns-domain') {
 				// The session was behind: the account's portfolio is known once reloaded
 				await refreshAccount();
@@ -337,6 +353,7 @@ closing the dialog keeps the person where they are.
 										>{host}/{normalizedName || 'your-name'}</span
 									>.
 								</p>
+								<p class="sr-only" role="alert">{claimAlert}</p>
 							</form>
 						{/if}
 
@@ -405,7 +422,7 @@ closing the dialog keeps the person where they are.
 			? 'border-primary-500 bg-primary-500/5'
 			: 'border-surface-200-800 bg-surface-100-900'}"
 		aria-labelledby="{uid}-{mode}-title"
-		aria-describedby="{uid}-{mode}-description{isLastUsed ? ` ${uid}-{mode}-last` : ''}"
+		aria-describedby={`${uid}-${mode}-description${isLastUsed ? ` ${uid}-${mode}-last` : ''}`}
 		aria-disabled={busy ? 'true' : undefined}
 		aria-busy={isBusy ? 'true' : undefined}
 		data-space={mode}

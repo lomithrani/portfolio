@@ -4,6 +4,11 @@ The header's Google sign-in: the round "Sign in with Google" button and the One 
 `onLogin` runs once a sign-in succeeded (the session is stored), with the signed-in account: the
 header then asks which space to use (SpaceChooser).
 -->
+<script module lang="ts">
+	/** The sign-in's id: where the focus goes when a dialog closes because the session ended */
+	export const SIGN_IN_ID = 'header-sign-in';
+</script>
+
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { get } from 'svelte/store';
@@ -60,7 +65,14 @@ header then asks which space to use (SpaceChooser).
 	});
 </script>
 
-<div class="flex items-center gap-2">
+<!-- Focusable from code only (tabindex -1): the Google button inside is an iframe -->
+<div
+	id={SIGN_IN_ID}
+	class="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+	role="group"
+	aria-label="Sign in"
+	tabindex="-1"
+>
 	{#if errorMessage}
 		<span class="text-xs text-error-700-300" role="alert">{errorMessage}</span>
 	{/if}

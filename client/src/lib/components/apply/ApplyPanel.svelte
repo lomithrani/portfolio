@@ -6,6 +6,7 @@ applications, the posting's own recruiter (a link to manage it), a visitor to si
 without a portfolio (claim one here), or "Apply with <portfolio>" / "You applied on <date>" with
 Withdraw (GET, POST, DELETE /jobs/:id/application). Whatever depends on the session waits for it
 to be checked with the API. Give it a new instance per posting ({#key job._id}).
+`onAppliedChange` tells the page whether the viewer is on the posting's applicant list.
 -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
@@ -33,6 +34,8 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 		applyView,
 		closedNotice,
 		isOwnPosting,
+		leaveAction,
+		leaveCopy,
 		needsApplicationStatus,
 		readApplicationStatus,
 		type ApplicationFailure,
@@ -45,11 +48,14 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 
 	let {
 		job,
-		id = 'apply'
+		id = 'apply',
+		onAppliedChange
 	}: {
 		job: { _id: string; status: JobStatus; recruiter: string };
 		/** The panel's id: the page's "Apply" link points to it */
 		id?: string;
+		/** Whether the viewer is on the applicant list, as far as the panel knows (false at first) */
+		onAppliedChange?: (applied: boolean) => void;
 	} = $props();
 
 	const uid = $props.id();
@@ -79,7 +85,11 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 	let application = $state.raw<LoadedApplication | null>(null);
 	// The application of the current viewer only (another account's never shows)
 	let current = $derived(application && application.key === statusKey ? application : null);
-	let applied = $derived(current?.state === 'loaded' && current.status.applied);
+	let hasApplied = $derived(current?.state === 'loaded' && current.status.applied);
+	// Told to the page (its "Apply" link becomes "Your application")
+	$effect(() => {
+		onAppliedChange?.(hasApplied);
+	});
 	// What was asked for last: an older answer is ignored
 	let requested: string | null = null;
 
@@ -89,10 +99,18 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 	let confirmingWithdraw = $derived(freshOn(statusKey, false));
 	/** A failed apply or withdraw, next to its button */
 	let actionError = $derived(freshOn(statusKey, ''));
-	/** Why the panel changed on its own (session expired, no portfolio any more) */
-	let notice = $state('');
-	/** The portfolio claimed here: it is empty, the panel says so */
-	let claimedDomain = $state('');
+	/**
+	 * Why the panel changed on its own (session expired, no portfolio any more), for the viewer it
+	 * is about: undefined once signed out. It goes once someone else is shown, so a sign-in from
+	 * the header, One Tap or another tab never leaves "Your session expired" on screen.
+	 */
+	let notice = $state.raw<{ message: string; viewer: string | undefined } | null>(null);
+	let noticeText = $derived(notice && notice.viewer === user?._id ? notice.message : '');
+	/** The portfolio claimed here (empty: the panel says so), or found to be owned already */
+	let claimed = $state.raw<{ name: string; existing: boolean } | null>(null);
+	let claimedNote = $derived(claimed && claimed.name === domain ? claimed : null);
+	/** How the viewer leaves the applicant list: withdraw an application or remove a listing */
+	let leave = $derived(leaveCopy(current?.state === 'loaded' ? current.status.source : undefined));
 	/** Read by screen readers (the visible text changes with it) */
 	let announcement = $state('');
 
@@ -109,7 +127,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 
 	const expireSession = async (message: string) => {
 		clearAuthentication();
-		notice = message;
+		notice = { message, viewer: undefined };
 		confirmingWithdraw = false;
 		toaster.error({ title: message });
 		await focusAfterUpdate(() => headingElement);
@@ -188,7 +206,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 				// The session thought the account had a portfolio: reloaded, the panel offers to claim one
 				const account = await refreshAccount();
 				if (account.ok && !account.user.domain) {
-					notice = failure.message;
+					notice = { message: failure.message, viewer: account.user._id };
 					await focusAfterUpdate(() => headingElement);
 				} else {
 					actionError = failure.message;
@@ -206,7 +224,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 		const portfolio = domain;
 		busy = 'apply';
 		actionError = '';
-		notice = '';
+		notice = null;
 		try {
 			const { data, error } = await portfolioApi
 				.jobs({ id: job._id })
@@ -248,6 +266,9 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 	async function withdraw() {
 		if (busy || !statusKey) return;
 		const key = statusKey;
+		const source = current?.state === 'loaded' ? current.status.source : undefined;
+		const action = leaveAction(source);
+		const copy = leaveCopy(source);
 		busy = 'withdraw';
 		actionError = '';
 		try {
@@ -255,7 +276,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 				.jobs({ id: job._id })
 				.application.delete(undefined, withCredentials);
 			if (error) {
-				const failure = applicationFailure('withdraw', errorStatus(error), error.value);
+				const failure = applicationFailure(action, errorStatus(error), error.value);
 				await handleFailure(failure, key);
 				if (failure.kind !== 'session-expired' && failure.kind !== 'not-applied') {
 					confirmingWithdraw = false;
@@ -265,14 +286,11 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 			}
 			application = { key, state: 'loaded', status: { applied: false } };
 			confirmingWithdraw = false;
-			announcement = 'Application withdrawn.';
-			toaster.success({
-				title: 'Application withdrawn',
-				description: 'The recruiter no longer sees you as an applicant.'
-			});
+			announcement = `${copy.done}.`;
+			toaster.success({ title: copy.done, description: copy.doneDescription });
 			await focusAfterUpdate(() => applyButton);
 		} catch {
-			await handleFailure(applicationFailure('withdraw', undefined), key);
+			await handleFailure(applicationFailure(action, undefined), key);
 			confirmingWithdraw = false;
 			await focusAfterUpdate(() => withdrawButton);
 		} finally {
@@ -289,14 +307,17 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 
 	// --- Sign-in and claim ---------------------------------------------------------------------
 	const onSignedIn = () => {
-		notice = '';
+		notice = null;
 		focusAfterUpdate(() => headingElement);
 	};
 
-	const onClaimed = (name: string) => {
-		notice = '';
-		claimedDomain = name;
-		announcement = `Portfolio ${name} claimed. You can apply with it now.`;
+	/** `existing`: nothing was claimed, the account turned out to own `name` already */
+	const onClaimed = (name: string, existing = false) => {
+		notice = null;
+		claimed = { name, existing };
+		announcement = existing
+			? `Your account already owns the portfolio ${name}: no other portfolio was claimed. You can apply with ${name}.`
+			: `Portfolio ${name} claimed. You can apply with it now.`;
 		focusAfterUpdate(() => headingElement);
 	};
 
@@ -308,7 +329,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 			case 'not-open':
 				return closed.title;
 			case 'own-posting':
-				return 'Your job description';
+				return 'This is your job description';
 			case 'signed-out':
 				return 'Sign in to apply with your portfolio';
 			case 'can-apply':
@@ -336,15 +357,20 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 		if (view === 'own-posting') return Briefcase;
 		if (view === 'signed-out') return LockClosed;
 		if (view === 'no-portfolio') return UserCircle;
-		return applied ? CheckCircle : PaperAirplane;
+		return hasApplied ? CheckCircle : PaperAirplane;
 	});
 
 	let iconTone = $derived(
-		view === 'not-open' ? 'preset-tonal' : applied ? 'preset-tonal-success' : 'preset-tonal-primary'
+		view === 'not-open'
+			? 'preset-tonal'
+			: hasApplied
+				? 'preset-tonal-success'
+				: 'preset-tonal-primary'
 	);
 
+	// A long portfolio name wraps only where it would overflow, never mid-word otherwise
 	const linkClass =
-		'anchor font-medium break-all underline-offset-2 hover:underline focus-visible:underline';
+		'anchor font-medium wrap-anywhere underline-offset-2 hover:underline focus-visible:underline';
 </script>
 
 {#snippet portfolioLink(name: string)}
@@ -399,9 +425,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 					role="group"
 					aria-labelledby="{uid}-confirm"
 				>
-					<p id="{uid}-confirm" class="text-sm font-medium">
-						Withdraw your application? The recruiter will no longer see you as an applicant.
-					</p>
+					<p id="{uid}-confirm" class="text-sm font-medium">{leave.question}</p>
 					<div class="flex flex-wrap gap-2">
 						<button
 							type="button"
@@ -415,9 +439,9 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 									class="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
 									aria-hidden="true"
 								></span>
-								<span>Withdrawing…</span>
+								<span>{leave.busy}</span>
 							{:else}
-								<span>Withdraw</span>
+								<span>{leave.confirm}</span>
 							{/if}
 						</button>
 						<button
@@ -439,9 +463,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 					class="btn preset-outlined-surface-300-700 min-h-11 w-full hover:preset-tonal-error"
 					onclick={askWithdraw}
 				>
-					{current.status.source === 'added_by_recruiter'
-						? 'Remove me from the list'
-						: 'Withdraw my application'}
+					{leave.button}
 				</button>
 			{/if}
 		</div>
@@ -473,7 +495,13 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 
 	{#if view === 'not-open'}
 		<p class="text-surface-700-300">{closed.text}</p>
-		{#if ownPosting}
+		{#if noticeText}
+			<p class="rounded-base preset-tonal-warning p-3 text-sm" role="alert">{noticeText}</p>
+		{/if}
+		{#if !user && noticeText}
+			<!-- The session expired while withdrawing: signed in again, the application shows again -->
+			<ApplySignIn {onSignedIn} />
+		{:else if ownPosting}
 			<div class="space-y-3 border-t border-surface-200-800 pt-4">
 				<p class="text-sm text-surface-700-300">
 					This is your job description. Reopen it from your recruiter space to take applications
@@ -498,7 +526,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 		<p class="sr-only">Loading…</p>
 	{:else if view === 'own-posting'}
 		<p class="text-surface-700-300">
-			This is your job description: candidates apply to it from this page. You see them in your
+			Candidates apply to it from this page. You see who applied, and change the posting, in your
 			recruiter space.
 		</p>
 		<a
@@ -506,17 +534,17 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 			class="btn preset-filled-primary-500 min-h-11 w-full">Manage it</a
 		>
 	{:else if view === 'signed-out'}
-		{#if notice}
-			<p class="rounded-base preset-tonal-warning p-3 text-sm" role="alert">{notice}</p>
+		{#if noticeText}
+			<p class="rounded-base preset-tonal-warning p-3 text-sm" role="alert">{noticeText}</p>
 		{/if}
 		<p class="text-surface-700-300">
-			The recruiter sees your portfolio: your experience, skills and projects. Never your email. No
-			portfolio yet? You can claim one once signed in.
+			The recruiter sees your name and your portfolio: your experience, skills and projects. Never
+			your email. No portfolio yet? You can claim one once signed in.
 		</p>
 		<ApplySignIn {onSignedIn} />
 	{:else if view === 'no-portfolio' && user}
-		{#if notice}
-			<p class="rounded-base preset-tonal-warning p-3 text-sm" role="alert">{notice}</p>
+		{#if noticeText}
+			<p class="rounded-base preset-tonal-warning p-3 text-sm" role="alert">{noticeText}</p>
 		{/if}
 		<p class="text-surface-700-300">
 			Claim one first: it is free, and it is what the recruiter sees when you apply.
@@ -525,10 +553,18 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 	{:else if view === 'can-apply'}
 		{#if current?.state === 'loaded' && !current.status.applied}
 			<div class="space-y-3">
-				{#if claimedDomain && claimedDomain === domain}
+				{#if claimedNote?.existing}
 					<p class="rounded-base preset-tonal-primary p-3 text-sm">
-						Your portfolio is empty for now. {@render portfolioLink(domain)}: add your experience
-						first, so the recruiter sees it.
+						Your account already owns {@render portfolioLink(domain)}, so no other portfolio was
+						claimed: an account has one portfolio. Apply with this one.
+					</p>
+				{:else if claimedNote}
+					<p class="rounded-base preset-tonal-primary p-3 text-sm">
+						Your new portfolio is empty for now.
+						<a href={resolve('/[domain]/experiences', { domain })} class={linkClass}
+							>Add your experience</a
+						>
+						first, so the recruiter sees more than your name.
 					</p>
 				{/if}
 				<p class="text-surface-700-300">

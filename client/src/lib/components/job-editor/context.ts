@@ -9,6 +9,14 @@ export type JobEditorContext = {
 	errorId: (field: JobFormField) => string;
 	/** The error currently shown for the field (reactive) */
 	error: (field: JobFormField) => string | undefined;
+	/**
+	 * A list field (ListInput) registers how to add the text typed in it and not added yet: a
+	 * save adds it first. `commit` answers why it could not (the save then stops on the field).
+	 * Returns the unregistration.
+	 */
+	registerPendingText: (field: JobFormField, commit: () => string | undefined) => () => void;
+	/** The text of a list field changed: the error of its text not added goes */
+	pendingTextChanged: (field: JobFormField) => void;
 };
 
 export const [getJobEditorContext, setJobEditorContext] = createContext<JobEditorContext>();

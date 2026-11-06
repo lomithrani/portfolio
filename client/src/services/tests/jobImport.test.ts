@@ -3,6 +3,7 @@ import { RESUME_IMPORT_CLIENT_TIMEOUT_MS } from 'portfolio-common';
 import {
 	FREE_PLAN_IMPORTS,
 	JOB_IMPORT_CLIENT_TIMEOUT_MS,
+	JOB_IMPORT_NETWORK_ERROR,
 	JOB_IMPORT_SESSION_EXPIRED,
 	MAX_JOB_PDF_BYTES,
 	base64OfDataUrl,
@@ -183,6 +184,15 @@ describe('jobImportErrorMessage', () => {
 		);
 		expect(jobImportErrorMessage(404, 'Job description import is not enabled on this server')).toBe(
 			'Job description import is not available on this site right now.'
+		);
+	});
+
+	it('blames the connection when no answer came (Eden: a 503 holding the fetch error)', () => {
+		expect(jobImportErrorMessage(503, new TypeError('Failed to fetch'))).toBe(
+			JOB_IMPORT_NETWORK_ERROR
+		);
+		expect(jobImportErrorMessage(503, 'The import did not finish')).toBe(
+			'The import did not finish'
 		);
 	});
 

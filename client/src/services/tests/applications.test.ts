@@ -12,6 +12,8 @@ import {
 	isOwnPosting,
 	jobPageTitle,
 	jobShareDescription,
+	leaveAction,
+	leaveCopy,
 	needsApplicationStatus,
 	openPositionsText,
 	publishedText,
@@ -298,6 +300,20 @@ describe('applicationFailure', () => {
 		);
 	});
 
+	it('speaks of the applicant list when the recruiter added the portfolio', () => {
+		expect(applicationFailure('remove', 401).message).toBe(
+			'Your session expired. Sign in again to remove yourself from the list.'
+		);
+		expect(applicationFailure('remove', 404, 'You have not applied to this job posting')).toEqual({
+			kind: 'not-applied',
+			message: 'You were no longer on the applicant list.'
+		});
+		expect(applicationFailure('remove', 404, JOB_NOT_FOUND_MESSAGE).kind).toBe('not-found');
+		expect(applicationFailure('remove', 500).message).toBe(
+			'Could not remove you from the list. Try again.'
+		);
+	});
+
 	it('treats withdrawing an application that is gone as done', () => {
 		expect(
 			applicationFailure('withdraw', 404, 'You have not applied to this job posting').kind
@@ -317,5 +333,26 @@ describe('applicationFailure', () => {
 			kind: 'network',
 			message: APPLICATION_NETWORK_MESSAGE
 		});
+	});
+});
+
+describe('leaveAction and leaveCopy', () => {
+	it('withdraws an application the candidate sent', () => {
+		expect(leaveAction('applied')).toBe('withdraw');
+		expect(leaveAction(undefined)).toBe('withdraw');
+		const copy = leaveCopy('applied');
+		expect(copy.button).toBe('Withdraw my application');
+		expect(copy.question).toMatch(/^Withdraw your application\?/);
+		expect(copy.confirm).toBe('Withdraw');
+		expect(copy.done).toBe('Application withdrawn');
+	});
+
+	it('removes a portfolio the recruiter added, never calling it an application', () => {
+		expect(leaveAction('added_by_recruiter')).toBe('remove');
+		const copy = leaveCopy('added_by_recruiter');
+		expect(copy.button).toBe('Remove me from the list');
+		expect(copy.confirm).toBe('Remove me');
+		expect(copy.done).toBe('Removed from the applicant list');
+		for (const text of Object.values(copy)) expect(text).not.toMatch(/application|withdraw/i);
 	});
 });

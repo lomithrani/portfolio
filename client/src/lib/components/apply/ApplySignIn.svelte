@@ -3,11 +3,15 @@
 The apply panel's sign-in: a "Sign in with Google" button that signs in to the candidate space
 (login(credential, 'candidate'): no space chooser, the visitor stays on the job page to apply).
 `onSignedIn` runs once the session is stored.
+Google Identity has one credential callback for the whole page. The header's sign-in (shown
+whenever this one is: both are for signed-out visitors) keeps it, with its space chooser and its
+own errors; this button takes it only when it is clicked.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { login } from '#services/authentication.ts';
-	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
+	import { loadGoogleIdentity, setupGoogleIdentity } from '#services/googleIdentity.ts';
+	import { toaster } from '#services/toaster.ts';
 
 	let { onSignedIn }: { onSignedIn?: () => void } = $props();
 
@@ -19,54 +23,72 @@ The apply panel's sign-in: a "Sign in with Google" button that signs in to the c
 
 	/** A click on this button is followed by its credential within this delay (Google's popup) */
 	const CLICK_WINDOW_MS = 10 * 60_000;
+	const FAILED_MESSAGE = 'Sign-in failed. Try again.';
 
 	onMount(() => {
 		let destroyed = false;
 		let clickedAt = 0;
 
-		// Google Identity has one credential callback for the whole page, shared with the header's
-		// button and its One Tap: the latest registered gets every credential
 		const onCredential = async ({ credential }: google.accounts.id.CredentialResponse) => {
 			if (destroyed || Date.now() - clickedAt > CLICK_WINDOW_MS) {
-				// The header's button or One Tap: signed in like the header does, in the space the
-				// account last chose
-				await login(credential);
+				// Not this button's: the header's button or One Tap, after a click here that did not
+				// sign in (this callback is still the page's). Signed in like the header does, in the
+				// space the account last chose, and a failure is said wherever the visitor is
+				if (!(await login(credential))) toaster.error({ title: FAILED_MESSAGE });
 				return;
 			}
 			clickedAt = 0;
 			errorMessage = '';
 			status = 'signing-in';
+			// Read before signing in: once the session is stored, the panel replaces this component
+			// (destroyed by the time login() returns), and still has to hear about it
 			const notify = onSignedIn;
 			const signedIn = await login(credential, 'candidate');
-			if (destroyed) return;
-			status = 'ready';
+			if (!destroyed) {
+				status = 'ready';
+				if (!signedIn) errorMessage = FAILED_MESSAGE;
+			}
 			if (signedIn) notify?.();
-			else errorMessage = 'Sign-in failed. Try again.';
 		};
 
-		setupGoogleIdentity(onCredential)
-			.then((gsi) => {
-				// Never released: releasing clears the page's only credential callback, and the
-				// header's button would then do nothing (onCredential signs in for it instead)
-				if (destroyed || !buttonContainer) return;
-				gsi.id.renderButton(buttonContainer, {
-					theme: isDark() ? 'filled_black' : 'outline',
-					size: 'large',
-					type: 'standard',
-					text: 'signin_with',
-					shape: 'pill',
-					logo_alignment: 'left',
-					click_listener: () => {
-						clickedAt = Date.now();
-						// This button's credential comes back here, whoever registered last
-						void setupGoogleIdentity(onCredential).catch(() => {});
-					}
-				});
-				status = 'ready';
-			})
-			.catch(() => {
-				if (!destroyed) status = 'unavailable';
+		/** Renders the button; false when Google Identity is not set up yet (nothing rendered) */
+		const render = (id: typeof google.accounts.id): boolean => {
+			if (!buttonContainer) return false;
+			id.renderButton(buttonContainer, {
+				theme: isDark() ? 'filled_black' : 'outline',
+				size: 'large',
+				type: 'standard',
+				text: 'signin_with',
+				shape: 'pill',
+				logo_alignment: 'left',
+				click_listener: () => {
+					clickedAt = Date.now();
+					// This button's credential comes back here (the page's callback until a sign-in
+					// from the header takes it back: it does whenever it shows again)
+					void setupGoogleIdentity(onCredential).catch(() => {});
+				}
 			});
+			return buttonContainer.childElementCount > 0;
+		};
+
+		const show = async () => {
+			// Loaded without taking the callback. The header's sign-in sets Google Identity up as the
+			// same script loads: rendered a task later, once it did
+			const id = await loadGoogleIdentity();
+			await new Promise((resolve) => setTimeout(resolve));
+			if (destroyed || !buttonContainer) return;
+			if (!render(id)) {
+				// Nothing set it up (no header sign-in on this page): set up here
+				const gsi = await setupGoogleIdentity(onCredential);
+				if (destroyed) return;
+				render(gsi.id);
+			}
+			status = 'ready';
+		};
+
+		show().catch(() => {
+			if (!destroyed) status = 'unavailable';
+		});
 
 		return () => {
 			destroyed = true;

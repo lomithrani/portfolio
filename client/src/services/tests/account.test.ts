@@ -33,6 +33,7 @@ import {
 	refreshAccount,
 	spaceHome,
 	spaceLabel,
+	spaceToRecord,
 	suggestDomainName,
 	switchMode,
 	userDisplayName,
@@ -163,6 +164,25 @@ describe('isCurrentSection', () => {
 		expect(isCurrentSection('/recruiter/jobs/1', '/recruiter')).toBe(true);
 		expect(isCurrentSection('/recruiters', '/recruiter')).toBe(false);
 		expect(isCurrentSection('/jobs', '/recruiter')).toBe(false);
+	});
+});
+
+describe('spaceToRecord', () => {
+	it('records the recruiter space entered by a link while another space is active', () => {
+		const user = { recruiter: true, activeMode: 'candidate' as const };
+		expect(spaceToRecord(user, '/recruiter')).toBe('recruiter');
+		expect(spaceToRecord(user, '/recruiter/jobs/1/edit')).toBe('recruiter');
+		expect(spaceToRecord({ recruiter: true }, '/recruiter')).toBe('recruiter');
+	});
+
+	it('records nothing when the space is already active, missing, or not shown', () => {
+		expect(spaceToRecord({ recruiter: true, activeMode: 'recruiter' }, '/recruiter')).toBeNull();
+		// Without a recruiter space the page offers to create it: entering it creates nothing
+		expect(spaceToRecord({ recruiter: false, activeMode: 'candidate' }, '/recruiter')).toBeNull();
+		expect(spaceToRecord({ activeMode: 'candidate' }, '/recruiter')).toBeNull();
+		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/jobs')).toBeNull();
+		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/recruiters')).toBeNull();
+		expect(spaceToRecord(undefined, '/recruiter')).toBeNull();
 	});
 });
 
