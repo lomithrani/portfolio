@@ -1,9 +1,11 @@
 // Seeds what the Playwright owner tests sign in as: per test file, a user and the domain it owns,
 // kept for that file alone (its tests add and remove the domain's experiences, so files running in
 // parallel never share one): 'e2e-owner' for client/tests/experiences-owner.test.ts, 'e2e-import'
-// for client/tests/resume-import.test.ts. Idempotent: safe to run against a seeded database.
+// for client/tests/resume-import.test.ts. client/tests/recruiter.test.ts signs in as the
+// recruiter 'e2e.recruiter@example.com' (a recruiter space, no domain) and applies as the owner
+// of 'e2e-applicant'. Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { Domain, User } from "../models/database";
 import { redactConnectionString } from "../services/redact";
 
@@ -21,7 +23,8 @@ await mongoose.connect(mongoUrl);
 // One domain per user: an owner can own only one
 const owners = [
   { email: 'e2e.owner@example.com', name: 'Eve', surname: 'Owner', domain: 'e2e-owner' },
-  { email: 'e2e.import@example.com', name: 'Ivy', surname: 'Importer', domain: 'e2e-import' }
+  { email: 'e2e.import@example.com', name: 'Ivy', surname: 'Importer', domain: 'e2e-import' },
+  { email: 'e2e.applicant@example.com', name: 'Ada', surname: 'Applicant', domain: 'e2e-applicant' }
 ];
 
 for (const owner of owners) {
@@ -38,6 +41,23 @@ for (const owner of owners) {
   );
 }
 
-console.log(`Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}`);
+// A recruiter space without a domain, on the free plan with no import used. Its id is fixed:
+// with no domain, the e2e tests could not look it up (client/tests/support/owner.ts signs its
+// session with E2E_RECRUITER_ID)
+await User.findOneAndUpdate(
+  { email: 'e2e.recruiter@example.com' },
+  {
+    $setOnInsert: {
+      _id: new Types.ObjectId('65e2e0000000000000000001'),
+      name: 'Rita',
+      surname: 'Recruiter',
+      activeMode: 'recruiter',
+      recruiter: { enabledAt: new Date(), plan: 'free', jobImportsUsed: 0 }
+    }
+  },
+  { upsert: true }
+);
+
+console.log(`Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, and the e2e recruiter`);
 await mongoose.disconnect();
 process.exit(0);
