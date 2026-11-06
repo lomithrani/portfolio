@@ -124,7 +124,7 @@
 		bind:this={container}
 		tabindex="-1"
 		aria-label="Filter experiences"
-		class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-3 p-3 shadow-sm outline-offset-2 md:p-4"
+		class="card preset-outlined-surface-200-800 bg-surface-50-950 flex flex-col gap-3 p-3 shadow-sm outline-offset-2 md:p-4"
 	>
 		<button
 			type="button"
