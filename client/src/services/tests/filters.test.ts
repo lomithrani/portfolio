@@ -11,8 +11,6 @@ import {
 	normalizeSkill,
 	skillOptions,
 	toggleSkill,
-	toggleType,
-	typeOptions,
 	type ExperienceFilters
 } from '../filters';
 
@@ -37,10 +35,7 @@ function makeExperience(
 	};
 }
 
-const filters = (skills: string[] = [], types: ExperienceType[] = []): ExperienceFilters => ({
-	skills,
-	types
-});
+const filters = (skills: string[] = []): ExperienceFilters => ({ skills });
 
 const ts = makeExperience('TS Dev', ExperienceType.Professional, {
 	hard: ['TypeScript', 'Node.js'],
@@ -85,30 +80,10 @@ describe('applyFilters', () => {
 		expect(applyFilters(all, filters(['teamwork']))).toEqual([py, climbing]);
 	});
 
-	it('keeps the experiences of any of the selected types', () => {
-		expect(applyFilters(all, filters([], [ExperienceType.Professional]))).toEqual([ts, py]);
-		expect(
-			applyFilters(all, filters([], [ExperienceType.Educational, ExperienceType.Leisure]))
-		).toEqual([msc, climbing]);
-	});
-
-	it('combines skills AND types', () => {
-		expect(applyFilters(all, filters(['python'], [ExperienceType.Educational]))).toEqual([msc]);
-		expect(applyFilters(all, filters(['teamwork'], [ExperienceType.Leisure]))).toEqual([climbing]);
-		expect(applyFilters(all, filters(['django'], [ExperienceType.Leisure]))).toEqual([]);
-	});
-
 	it('ignores a selected skill that no experience has any more', () => {
 		// An edit replaced the only 'Go': the stale selection has no chip left to clear it
 		expect(applyFilters(all, filters(['go']))).toEqual(all);
 		expect(applyFilters(all, filters(['go', 'django']))).toEqual([py]);
-	});
-
-	it('ignores a selected type that no experience has', () => {
-		expect(applyFilters(all, filters([], [ExperienceType.Personal]))).toEqual(all);
-		expect(
-			applyFilters(all, filters([], [ExperienceType.Personal, ExperienceType.Leisure]))
-		).toEqual([climbing]);
 	});
 
 	it('copes with unpopulated skills and missing projects', () => {
@@ -123,21 +98,13 @@ describe('applyFilters', () => {
 
 describe('activeFilters', () => {
 	it('keeps what still applies, normalized and deduped', () => {
-		expect(
-			activeFilters(
-				all,
-				filters(
-					['TypeScript', 'typescript', 'go', 'teamwork'],
-					[ExperienceType.Leisure, ExperienceType.Personal, ExperienceType.Leisure]
-				)
-			)
-		).toEqual(filters(['typescript', 'teamwork'], [ExperienceType.Leisure]));
+		expect(activeFilters(all, filters(['TypeScript', 'typescript', 'go', 'teamwork']))).toEqual(
+			filters(['typescript', 'teamwork'])
+		);
 	});
 
 	it('is empty when nothing applies', () => {
-		expect(hasActiveFilters(activeFilters(all, filters(['go'], [ExperienceType.Personal])))).toBe(
-			false
-		);
+		expect(hasActiveFilters(activeFilters(all, filters(['go'])))).toBe(false);
 		expect(hasActiveFilters(filters(['go']))).toBe(true);
 		expect(hasActiveFilters(emptyFilters())).toBe(false);
 	});
@@ -213,82 +180,41 @@ describe('skillOptions', () => {
 	});
 });
 
-describe('typeOptions', () => {
-	it('lists the present types in order, with their counts', () => {
-		expect(typeOptions(all, emptyFilters())).toEqual({
-			all: 4,
-			types: [
-				{ type: ExperienceType.Professional, count: 2 },
-				{ type: ExperienceType.Educational, count: 1 },
-				{ type: ExperienceType.Leisure, count: 1 }
-			]
-		});
-	});
-
-	it('counts the experiences matching the selected skills, whatever the selected types', () => {
-		expect(typeOptions(all, filters(['teamwork'], [ExperienceType.Leisure]))).toEqual({
-			all: 2,
-			types: [
-				{ type: ExperienceType.Professional, count: 1 },
-				{ type: ExperienceType.Educational, count: 0 },
-				{ type: ExperienceType.Leisure, count: 1 }
-			]
-		});
-	});
-});
-
-describe('toggleSkill / toggleType', () => {
+describe('toggleSkill', () => {
 	it('adds a skill last and removes it again', () => {
 		const once = toggleSkill(filters(['python']), 'TypeScript');
 		expect(once).toEqual(filters(['python', 'typescript']));
 		expect(toggleSkill(once, 'typescript ')).toEqual(filters(['python']));
 	});
 
-	it('keeps the types in their display order', () => {
-		const leisure = toggleType(emptyFilters(), ExperienceType.Leisure);
-		const both = toggleType(leisure, ExperienceType.Professional);
-		expect(both.types).toEqual([ExperienceType.Professional, ExperienceType.Leisure]);
-		expect(toggleType(both, ExperienceType.Leisure).types).toEqual([ExperienceType.Professional]);
-	});
-
 	it('does not change the filters it is given', () => {
-		const selected = filters(['python'], [ExperienceType.Leisure]);
+		const selected = filters(['python']);
 		toggleSkill(selected, 'python');
-		toggleType(selected, ExperienceType.Leisure);
-		expect(selected).toEqual(filters(['python'], [ExperienceType.Leisure]));
+		expect(selected).toEqual(filters(['python']));
 	});
 });
 
 describe('search params', () => {
-	it('reads one parameter per skill and per type', () => {
+	it('reads one parameter per skill, and ignores the type parameter of older links', () => {
 		const params = new URLSearchParams(
-			'skills=TypeScript&skills=%20kafka&skills=typescript&skills=&type=professional&type=Leisure&type=unknown'
+			'skills=TypeScript&skills=%20kafka&skills=typescript&skills=&type=professional'
 		);
-		expect(filtersFromSearchParams(params)).toEqual(
-			filters(['typescript', 'kafka'], [ExperienceType.Professional, ExperienceType.Leisure])
-		);
+		expect(filtersFromSearchParams(params)).toEqual(filters(['typescript', 'kafka']));
 		expect(filtersFromSearchParams(new URLSearchParams())).toEqual(emptyFilters());
 	});
 
 	it('writes the filters and keeps the other parameters', () => {
 		const base = new URLSearchParams('skills=old&tab=projects&type=leisure');
-		const params = filtersToSearchParams(
-			filters(['typescript', 'node.js'], [ExperienceType.Educational]),
-			base
-		);
-		expect(params.toString()).toBe(
-			'tab=projects&skills=typescript&skills=node.js&type=educational'
-		);
+		const params = filtersToSearchParams(filters(['typescript', 'node.js']), base);
+		// The type parameter of older links is dropped
+		expect(params.toString()).toBe('tab=projects&skills=typescript&skills=node.js');
 		// The base is not modified
 		expect(base.toString()).toBe('skills=old&tab=projects&type=leisure');
 		expect(filtersToSearchParams(emptyFilters(), base).toString()).toBe('tab=projects');
 	});
 
 	it('round-trips, including names with commas, spaces and symbols', () => {
-		const selected = filters(
-			['c, c++', 'ci/cd', 'node.js', 'a&b=c', 'déploiement'],
-			[ExperienceType.Personal]
-		);
+		const selected = filters(['c, c++', 'ci/cd', 'node.js', 'a&b=c', 'déploiement']);
 		const url = new URL('https://example.com/louis.gentil/experiences');
 		url.search = filtersToSearchParams(selected, url.searchParams).toString();
 		expect(filtersFromSearchParams(new URL(url.href).searchParams)).toEqual(selected);

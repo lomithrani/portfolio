@@ -277,7 +277,7 @@ test.describe('the owner of a portfolio', () => {
 });
 
 test.describe('filters', () => {
-	test('narrow the list by type and skill, and keep the selection in the URL', async ({ page }) => {
+	test('narrow the list by skill, and keep the selection in the URL', async ({ page }) => {
 		const backend = `Backend Engineer ${tag}`;
 		const frontend = `Frontend Engineer ${tag}`;
 		const side = `Side project ${tag}`;
@@ -297,22 +297,21 @@ test.describe('filters', () => {
 		// A visitor's view: no session needed
 		await gotoHydrated(page, `/${DOMAIN}/experiences`);
 		await expect(headings).toHaveText([backend, frontend, side]);
+		// Skills only: no type chips
+		await expect(
+			filters.getByRole('button', { name: /^(All|Professional|Personal)\b/ })
+		).toHaveCount(0);
 
-		await filters.getByRole('button', { name: 'Professional 2' }).click();
-		await expect(filters.getByRole('status')).toHaveText('2 of 3 experiences');
 		await filters.getByRole('button', { name: 'Kafka', exact: true }).click();
-		await expect(filters.getByRole('status')).toHaveText('1 of 3 experiences');
-		await expect(headings).toHaveText([backend]);
-		await expect.poll(() => new URL(page.url()).search).toBe('?skills=kafka&type=professional');
+		await expect(filters.getByRole('status')).toHaveText('2 of 3 experiences');
+		await expect(headings).toHaveText([backend, side]);
+		await expect.poll(() => new URL(page.url()).search).toBe('?skills=kafka');
 
-		// A shared link renders the same selection (on the server, then hydrated)
-		await gotoHydrated(page, page.url());
-		await expect(headings).toHaveText([backend]);
+		// A shared link renders the same selection (on the server, then hydrated); the type
+		// parameter of links from before is ignored
+		await gotoHydrated(page, `/${DOMAIN}/experiences?skills=kafka&type=professional`);
+		await expect(headings).toHaveText([backend, side]);
 		await expect(filters.getByRole('button', { name: 'Kafka', exact: true })).toHaveAttribute(
-			'aria-pressed',
-			'true'
-		);
-		await expect(filters.getByRole('button', { name: 'Professional 1' })).toHaveAttribute(
 			'aria-pressed',
 			'true'
 		);
