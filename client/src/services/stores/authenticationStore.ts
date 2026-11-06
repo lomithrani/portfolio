@@ -1,12 +1,20 @@
 import { persisted } from 'svelte-persisted-store';
 import { writable, type Writable } from 'svelte/store';
+import type { UserMode } from 'portfolio-common';
 
-// Public profile of the logged-in user, as returned (JSON) by POST /login and GET /isLogged.
+// Public profile of the logged-in user, as returned (JSON) by POST /login, GET /isLogged, GET /me
+// and PUT /me/mode (UserDto of server/services/users.ts).
 export type AuthUser = {
 	_id: string;
 	email?: string;
 	name?: string;
 	surname?: string;
+	/** The space the account last chose (portfolio-common USER_MODES); absent until it chooses */
+	activeMode?: UserMode;
+	/** Whether the account has a recruiter space (created the first time it chooses 'recruiter') */
+	recruiter?: boolean;
+	/** Name of the domain (portfolio) the account owns, if any */
+	domain?: string;
 };
 
 // Client-side mirror of the httpOnly auth cookie. It is only a hint for the UI: the API

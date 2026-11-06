@@ -26,7 +26,8 @@
 		claiming = true;
 
 		try {
-			if (!(await login(credential))) {
+			// Claiming a portfolio is choosing the candidate space: no space chooser here
+			if (!(await login(credential, 'candidate'))) {
 				errorMessage = 'Login failed. Please try again.';
 				return;
 			}

@@ -309,10 +309,34 @@ const NUMBER_FIELDS: [JobFormField, string][] = [
 	['levelsToCeo', 'Levels to the CEO']
 ];
 
-/** Errors of the form, one message per field (the first), in form order; empty when it can be saved */
+/**
+ * Whether a field applies to the form as it is (the editor hides the others, and they are not
+ * sent): the remote days of a hybrid job, the duration of a contract that has one, the hours
+ * or the days of the working time arrangement chosen.
+ */
+export const jobFieldApplies = (form: JobForm, field: JobFormField): boolean => {
+	switch (field) {
+		case 'remoteDaysPerWeek':
+			return form.workMode === 'hybrid';
+		case 'durationMonths':
+			return contractHasDuration(form.contractType);
+		case 'hoursPerWeek':
+			return form.arrangement === 'weekly_hours';
+		case 'daysPerYear':
+			return form.arrangement === 'annual_days';
+		default:
+			return true;
+	}
+};
+
+/**
+ * Errors of the form, one message per field (the first); empty when it can be saved. Fields
+ * that do not apply (hidden, not sent) have none. orderedJobFormErrors lists them in form order.
+ */
 export const jobFormErrors = (form: JobForm): Partial<Record<JobFormField, string>> => {
 	const errors: Partial<Record<JobFormField, string>> = {};
 	for (const [field, label] of NUMBER_FIELDS) {
+		if (!jobFieldApplies(form, field)) continue;
 		if (Number.isNaN(parseFormNumber(form[field] as string))) {
 			errors[field] = `${label} must be a number`;
 		}
@@ -336,6 +360,87 @@ export const contractHasDuration = (type: ContractType): boolean =>
 
 /** Same posting, ignoring how numbers and blanks were typed: to warn about unsaved changes */
 export const jobFormSignature = (form: JobForm): string => JSON.stringify(formToJobInput(form));
+
+/** The editor's fields in the order it shows them */
+export const JOB_FORM_FIELDS: readonly JobFormField[] = [
+	'title',
+	'company',
+	'status',
+	'openings',
+	'description',
+	'workMode',
+	'city',
+	'postalCode',
+	'remoteDaysPerWeek',
+	'contractType',
+	'durationMonths',
+	'startDate',
+	'trialPeriodMonths',
+	'collectiveAgreement',
+	'arrangement',
+	'hoursPerWeek',
+	'daysPerYear',
+	'rttDaysPerYear',
+	'payMin',
+	'payMax',
+	'payPeriod',
+	'payVariable',
+	'directReports',
+	'peers',
+	'levelsToCeo',
+	'seniority',
+	'education',
+	'skills',
+	'languages',
+	'benefits',
+	'travel'
+];
+
+/** How the editor names each field (its label; the error summary's links) */
+export const JOB_FIELD_LABELS: Record<JobFormField, string> = {
+	title: 'Job title',
+	company: 'Company',
+	status: 'Status',
+	openings: 'Openings',
+	description: 'Description',
+	workMode: 'Work mode',
+	city: 'City',
+	postalCode: 'Postal code',
+	remoteDaysPerWeek: 'Remote days a week',
+	contractType: 'Contract type',
+	durationMonths: 'Duration',
+	startDate: 'Start date',
+	trialPeriodMonths: 'Trial period',
+	collectiveAgreement: 'Collective agreement',
+	arrangement: 'Working time',
+	hoursPerWeek: 'Hours per week',
+	daysPerYear: 'Days per year',
+	rttDaysPerYear: 'RTT days per year',
+	payMin: 'Minimum pay',
+	payMax: 'Maximum pay',
+	payPeriod: 'Pay period',
+	payVariable: 'Variable pay',
+	directReports: 'Direct reports',
+	peers: 'Peers under the same manager',
+	levelsToCeo: 'Levels to the CEO',
+	seniority: 'Seniority',
+	education: 'Education',
+	skills: 'Skills',
+	languages: 'Languages',
+	benefits: 'Benefits',
+	travel: 'Travel'
+};
+
+export type JobFieldError = { field: JobFormField; label: string; message: string };
+
+/** The errors of jobFormErrors (or any per-field messages), in the editor's order */
+export const orderedJobFormErrors = (
+	errors: Partial<Record<JobFormField, string>>
+): JobFieldError[] =>
+	JOB_FORM_FIELDS.flatMap((field) => {
+		const message = errors[field];
+		return message ? [{ field, label: JOB_FIELD_LABELS[field], message }] : [];
+	});
 
 // --- Display ----------------------------------------------------------------------------
 
@@ -458,7 +563,7 @@ export const statusLabel = (status: JobStatus): string => JOB_STATUS_LABELS[stat
 /** Skeleton preset of a status badge */
 export const statusBadgeClass = (status: JobStatus): string =>
 	({
-		draft: 'preset-tonal-surface',
+		draft: 'preset-filled-surface-300-700',
 		open: 'preset-filled-success-500',
 		on_hold: 'preset-filled-warning-500',
 		filled: 'preset-filled-primary-500',
@@ -473,3 +578,162 @@ export const educationLabel = (level: EducationLevel | undefined): string =>
 
 export const travelLabel = (travel: TravelFrequency | undefined): string =>
 	travel ? TRAVEL_LABELS[travel] : '';
+
+/** One-word contracts, for one-line summaries: 'CDI', 'CDD (6 months)' */
+export const CONTRACT_SHORT_LABELS: Record<ContractType, string> = {
+	cdi: 'CDI',
+	cdd: 'CDD',
+	interim: 'Temporary',
+	apprenticeship: 'Apprenticeship',
+	professionalisation: 'Work-study',
+	internship: 'Internship',
+	freelance: 'Freelance'
+};
+
+/** 'CDI', 'CDD (6 months)', 'Internship (6 months)' */
+export const formatContractShort = (contract: JobPostingLike['contract']): string => {
+	if (!contract?.type) return '';
+	const label = CONTRACT_SHORT_LABELS[contract.type];
+	return contract.durationMonths ? `${label} (${months(contract.durationMonths)})` : label;
+};
+
+/** '1 position', '3 positions' */
+export const formatOpenings = (count: number | undefined): string =>
+	count === undefined ? '' : `${count} ${count === 1 ? 'position' : 'positions'}`;
+
+/**
+ * The parts of a posting's one-line summary (a list item): city (or the work mode alone when
+ * fully remote without one), work mode, contract, pay. 'Lyon · Hybrid · CDI · €45,000 – …'
+ */
+export const jobSummaryParts = (job: JobPostingLike): string[] => {
+	const location = job.location;
+	const mode = location?.workMode ? WORK_MODE_LABELS[location.workMode] : '';
+	return [location?.city ?? '', mode, formatContractShort(job.contract), formatPay(job.pay)].filter(
+		Boolean
+	);
+};
+
+export type JobFactId =
+	| 'place'
+	| 'contract'
+	| 'workingTime'
+	| 'pay'
+	| 'openings'
+	| 'team'
+	| 'profile'
+	| 'skills'
+	| 'languages'
+	| 'benefits'
+	| 'travel';
+
+/**
+ * One entry of a posting's facts: `lines` (the first is the main value) and/or `items` (shown
+ * as chips: skills, languages, benefits).
+ */
+export type JobFact = { id: JobFactId; label: string; lines: string[]; items?: string[] };
+
+/**
+ * What a posting says about the job, in reading order, every value through the formatters
+ * above; entries without anything to show are left out.
+ */
+export const jobFacts = (job: JobPostingLike): JobFact[] => {
+	const { location, contract, workingTime, pay, organization, requirements } = job;
+	const facts: JobFact[] = [
+		{
+			id: 'place',
+			label: 'Location',
+			lines: [formatPlace(location), formatWorkMode(location)]
+		},
+		{
+			id: 'contract',
+			label: 'Contract',
+			lines: contract?.type
+				? [
+						formatContract(contract),
+						formatStart(contract),
+						formatTrialPeriod(contract.trialPeriodMonths),
+						contract.collectiveAgreement
+							? `Collective agreement: ${contract.collectiveAgreement}`
+							: ''
+					]
+				: []
+		},
+		{ id: 'workingTime', label: 'Working time', lines: [formatWorkingTime(workingTime)] },
+		{
+			id: 'pay',
+			label: 'Pay',
+			lines: [formatPay(pay), pay?.variable ? `Variable: ${pay.variable}` : '']
+		},
+		{ id: 'openings', label: 'Openings', lines: [formatOpenings(job.openings)] },
+		{
+			id: 'team',
+			label: 'Team',
+			lines: [
+				formatDirectReports(organization?.directReports),
+				formatPeers(organization?.peers),
+				formatLevelsToCeo(organization?.levelsToCeo)
+			]
+		},
+		{
+			id: 'profile',
+			label: 'Profile',
+			lines: [seniorityLabel(requirements?.seniority), educationLabel(requirements?.education)]
+		},
+		{ id: 'skills', label: 'Skills', lines: [], items: requirements?.skills ?? [] },
+		{ id: 'languages', label: 'Languages', lines: [], items: requirements?.languages ?? [] },
+		{ id: 'benefits', label: 'Benefits', lines: [], items: job.benefits ?? [] },
+		{ id: 'travel', label: 'Travel', lines: [travelLabel(job.travel)] }
+	];
+	return facts
+		.map((fact) => ({ ...fact, lines: fact.lines.filter(Boolean) }))
+		.filter((fact) => fact.lines.length > 0 || (fact.items?.length ?? 0) > 0);
+};
+
+// --- Editor helpers ---------------------------------------------------------------------
+
+/** What each status means for the posting's visibility (the editor's hint) */
+export const JOB_STATUS_DESCRIPTIONS: Record<JobStatus, string> = {
+	draft: 'Only you can see it.',
+	open: 'Public: candidates can apply.',
+	on_hold: 'Public, but not taking applications for now.',
+	filled: 'Public, marked as filled: no more applications.',
+	closed: 'Public, marked as closed: no more applications.'
+};
+
+export type ListAddProblem = 'duplicate' | 'full' | 'too_long';
+
+/**
+ * Adds what was typed (or pasted: one item per line) to a short list (skills, languages,
+ * benefits): spaces tidied, blanks skipped, each item once (ignoring case), at most `max` items
+ * of at most `maxLength` characters. `problem` is the first reason something was not added.
+ */
+export const addListItems = (
+	list: readonly string[],
+	text: string,
+	{ max, maxLength }: { max: number; maxLength: number }
+): { list: string[]; added: string[]; problem?: ListAddProblem } => {
+	const next = [...list];
+	const added: string[] = [];
+	let problem: ListAddProblem | undefined;
+	const items = text
+		.split(/\r?\n/)
+		.map((item) => item.replace(/\s+/g, ' ').trim())
+		.filter(Boolean);
+	for (const item of items) {
+		if (item.length > maxLength) {
+			problem ??= 'too_long';
+			continue;
+		}
+		if (next.some((existing) => existing.toLowerCase() === item.toLowerCase())) {
+			problem ??= 'duplicate';
+			continue;
+		}
+		if (next.length >= max) {
+			problem ??= 'full';
+			break;
+		}
+		next.push(item);
+		added.push(item);
+	}
+	return { list: next, added, problem };
+};

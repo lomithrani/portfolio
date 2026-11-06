@@ -193,6 +193,22 @@ describe('login', () => {
 		expect(get(authenticationStore)).toEqual(session);
 	});
 
+	it('sends the chosen space and stores the account the API returned', async () => {
+		const session = {
+			user: { ...user, activeMode: 'recruiter', recruiter: true, domain: 'jane' },
+			expires: nowSeconds() + 3600
+		};
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(login('google-cred-token', 'recruiter')).resolves.toBe(true);
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'google-cred-token', mode: 'recruiter' },
+			{ fetch: { credentials: 'include' } }
+		);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
 	it('returns false when the API rejects the token (401)', async () => {
 		mockLoginPost.mockResolvedValue(apiError(401));
 

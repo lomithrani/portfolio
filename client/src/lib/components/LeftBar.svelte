@@ -2,16 +2,10 @@
 	import { page } from '$app/state';
 	import { Navigation } from '@skeletonlabs/skeleton-svelte';
 	import type { Domain, Experience } from 'portfolio-api/models/database';
-	import {
-		AcademicCap,
-		ComputerDesktop,
-		WrenchScrewdriver,
-		ChevronRight,
-		Sun,
-		Moon
-	} from 'svelte-heros-v2';
+	import { AcademicCap, ComputerDesktop, WrenchScrewdriver, ChevronRight } from 'svelte-heros-v2';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { isDomainAdmin } from '#services/authentication.ts';
+	import ThemeToggle from '#components/ThemeToggle.svelte';
 	import { browser } from '$app/env';
 
 	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } =
@@ -45,30 +39,6 @@
 	];
 
 	const pathAreEquals = (path: string, pagePathName: string) => pagePathName === path;
-
-	const DARK_MODE_KEY = 'portfolio-dark-mode';
-
-	function getInitialDarkMode(): boolean {
-		if (!browser) return true;
-		const stored = localStorage.getItem(DARK_MODE_KEY);
-		if (stored !== null) return stored === 'true';
-		if (domain?.defaultDarkMode !== undefined && domain.defaultDarkMode !== null)
-			return domain.defaultDarkMode;
-		return window.matchMedia('(prefers-color-scheme: dark)').matches;
-	}
-
-	let darkMode = $state(getInitialDarkMode());
-
-	$effect(() => {
-		if (!browser) return;
-		document.documentElement.classList.toggle('dark', darkMode);
-		document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
-		localStorage.setItem(DARK_MODE_KEY, String(darkMode));
-	});
-
-	function toggleDarkMode() {
-		darkMode = !darkMode;
-	}
 
 	let isOpen = $state(false);
 	let pinned = $state(false);
@@ -147,22 +117,7 @@
 				{/each}
 			</Navigation.Content>
 			<Navigation.Footer class="mt-auto flex justify-center">
-				<button
-					class="theme-toggle"
-					class:is-dark={darkMode}
-					onclick={toggleDarkMode}
-					aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-				>
-					<span class="toggle-track">
-						<span class="toggle-icon sun-icon">
-							<Sun size="14" />
-						</span>
-						<span class="toggle-icon moon-icon">
-							<Moon size="14" />
-						</span>
-						<span class="toggle-thumb"></span>
-					</span>
-				</button>
+				<ThemeToggle defaultDark={domain?.defaultDarkMode} />
 			</Navigation.Footer>
 		</Navigation>
 	</div>
@@ -264,74 +219,6 @@
 
 	.handle-icon.rotated {
 		transform: rotate(180deg);
-	}
-
-	/* Sun/Moon theme toggle */
-	.theme-toggle {
-		border: none;
-		background: none;
-		padding: 0;
-		cursor: pointer;
-		display: flex;
-		justify-content: center;
-	}
-
-	.toggle-track {
-		position: relative;
-		width: 48px;
-		height: 26px;
-		border-radius: 13px;
-		background: linear-gradient(135deg, #89cff0, #ffd700);
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0 5px;
-		transition: background 0.4s ease;
-	}
-
-	.is-dark .toggle-track {
-		background: linear-gradient(135deg, #1a1a3e, #2d2d6b);
-	}
-
-	.toggle-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 1;
-		transition: opacity 0.3s ease;
-	}
-
-	.sun-icon {
-		color: #f59e0b;
-	}
-
-	.is-dark .sun-icon {
-		opacity: 0.3;
-	}
-
-	.moon-icon {
-		color: #fbbf24;
-	}
-
-	:not(.is-dark) > .toggle-track > .moon-icon {
-		opacity: 0.3;
-	}
-
-	.toggle-thumb {
-		position: absolute;
-		top: 3px;
-		left: 3px;
-		width: 20px;
-		height: 20px;
-		border-radius: 50%;
-		background: white;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-		transition: transform 0.3s ease;
-	}
-
-	.is-dark .toggle-thumb {
-		transform: translateX(22px);
-		background: #e2e8f0;
 	}
 
 	/* Mobile: bigger tap target */
