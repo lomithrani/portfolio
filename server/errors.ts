@@ -153,6 +153,26 @@ export class ResumeImportDisabledError extends HttpError {
   status = 404
 }
 
+// Recruiter space and job postings
+
+/** A recruiter route called by an account without a recruiter space (PUT /me/mode creates it) */
+export class RecruiterSpaceRequiredError extends HttpError {
+  status = 403
+}
+
+/**
+ * The account's plan does not include more of something (job description
+ * imports on the free plan). 402: only a paid plan lifts it, waiting does not
+ */
+export class PlanLimitReachedError extends HttpError {
+  status = 402
+}
+
+/** Job description import is off: no ANTHROPIC_API_KEY, or a limit set to 0 */
+export class JobImportDisabledError extends HttpError {
+  status = 404
+}
+
 export const errors = {
   BadRequestError,
   InvalidDomainNameError,
@@ -179,5 +199,8 @@ export const errors = {
   GoogleCalendarAuthorizationError,
   GoogleCalendarReconnectRequiredError,
   ServiceUnavailableError,
-  ResumeImportDisabledError
+  ResumeImportDisabledError,
+  RecruiterSpaceRequiredError,
+  PlanLimitReachedError,
+  JobImportDisabledError
 }

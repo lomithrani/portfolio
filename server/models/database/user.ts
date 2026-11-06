@@ -1,5 +1,6 @@
 import { Schema, model } from "mongoose";
 import type { InferSchemaType } from "mongoose";
+import { RECRUITER_PLANS, USER_MODES } from "portfolio-common";
 
 export const userSchema = new Schema({
   name: { type: String },
@@ -19,6 +20,22 @@ export const userSchema = new Schema({
     // Set, with the tokens removed, when Google refused the stored grant
     // (revoked, expired, other OAuth client): the admin is asked to reconnect
     revokedAt: { type: Date }
+  },
+  // The space the account last chose (portfolio-common USER_MODES): what the
+  // client shows after login. Unset until the account first chooses one. It
+  // never authorises anything: routes check what the account has
+  activeMode: { type: String, enum: USER_MODES },
+  // The recruiter space, created the first time the account chooses it
+  // (services/recruiters.ts). Its plan sets the job description PDF imports
+  // it gets; jobImportsUsed counts them for the lifetime of the account, and
+  // is only changed atomically (services/jobImport.ts)
+  recruiter: {
+    type: new Schema({
+      enabledAt: { type: Date, required: true },
+      plan: { type: String, enum: Object.keys(RECRUITER_PLANS), required: true, default: 'free' },
+      jobImportsUsed: { type: Number, required: true, default: 0, min: 0 }
+    }, { _id: false }),
+    default: undefined
   }
 });
 
