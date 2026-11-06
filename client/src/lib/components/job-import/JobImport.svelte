@@ -610,7 +610,11 @@ says so, with a link back to it.
 									>
 										Keep waiting
 									</button>
-									<button type="button" class="btn preset-filled-error-500" onclick={stopImport}>
+									<button
+										type="button"
+										class="btn preset-filled-error-700-300"
+										onclick={stopImport}
+									>
 										Stop import
 									</button>
 								</div>

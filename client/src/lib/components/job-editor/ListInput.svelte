@@ -4,8 +4,9 @@ A short list of the job editor (skills, languages, benefits): type an item and p
 Add); paste several lines to add one item per line. Items show as chips with a remove button.
 Duplicates (ignoring case), blanks and what goes over the limits are not added, and the reason
 is announced. Text typed and not added yet is added when the editor saves (it registers how); what
-cannot be added then stops the save, as the field's error. The text input carries the field's
-id: the label and the error summary point to it.
+cannot be added then stops the save, as the field's error. Until then it is the editor's too
+(`bind:text`): an unsaved change, kept with the draft. The text input carries the field's id: the
+label and the error summary point to it.
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
@@ -18,6 +19,7 @@ id: the label and the error summary point to it.
 		field,
 		label,
 		value = $bindable([]),
+		text = $bindable(''),
 		max,
 		maxLength,
 		itemName,
@@ -27,6 +29,8 @@ id: the label and the error summary point to it.
 		field: JobFormField;
 		label: string;
 		value?: string[];
+		/** What is typed in the field and not added yet */
+		text?: string;
 		/** Items the list can hold */
 		max: number;
 		/** Characters per item */
@@ -42,7 +46,6 @@ id: the label and the error summary point to it.
 	let hintId = $derived(`${id}-hint`);
 	let error = $derived(editor.error(field));
 
-	let text = $state('');
 	/** Announced to screen readers: what was added or removed, and why something was not */
 	let message = $state('');
 	/** Shown under the field too: why what was typed was not added */

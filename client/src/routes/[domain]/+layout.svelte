@@ -4,11 +4,26 @@
 	import LeftBar from '#components/LeftBar.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
+	import { recordSpaceShown } from '#services/account.ts';
+	import { sessionCheckedStore } from '#services/stores/index.ts';
 	import type { LayoutData } from './$types';
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
+	import { get } from 'svelte/store';
 	import { browser } from '$app/env';
+	import { afterNavigate } from '$app/navigation';
+	import { page } from '$app/state';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
+
+	// The account's own portfolio records the candidate space as its active one, as the recruiter
+	// pages record theirs ((app)/+layout.svelte), so the account menu names the space shown
+	const recordShown = () => {
+		if (get(sessionCheckedStore)) void recordSpaceShown(page.url.pathname);
+	};
+	afterNavigate(recordShown);
+	$effect(() => {
+		if ($sessionCheckedStore) untrack(recordShown);
+	});
 
 	$effect(() => {
 		if (!browser) return;

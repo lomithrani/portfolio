@@ -3,7 +3,7 @@ import { portfolioApi } from '#services';
 import { JOBS_UNAVAILABLE_MESSAGE } from '#services/applications.ts';
 import type { PageServerLoad } from './$types';
 
-// The public list of open job postings (GET /jobs: most recently updated first). Rendered on the
+// The public list of open job postings (GET /jobs: most recently published first). Rendered on the
 // server: the list is the same for every visitor, applying happens on each posting's page.
 export const load: PageServerLoad = async () => {
 	// Eden throws when the API cannot be reached at all (connection refused, DNS)

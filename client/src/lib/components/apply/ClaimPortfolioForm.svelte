@@ -148,7 +148,7 @@ The apply panel's claim form, for a signed-in account without a portfolio: a por
 			{formError}
 		</p>
 	{/if}
-	<button type="submit" class="btn preset-filled-primary-500 min-h-11 w-full" disabled={busy}>
+	<button type="submit" class="btn preset-filled-primary-700-300 min-h-11 w-full" disabled={busy}>
 		{#if busy}
 			<span
 				class="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"

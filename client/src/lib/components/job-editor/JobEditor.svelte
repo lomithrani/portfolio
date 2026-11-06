@@ -84,10 +84,13 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		clearImportedDraft,
 		clearJobDraft,
 		editorDraftStorageKey,
+		emptyPendingText,
+		hasPendingText,
 		loadJobDraft,
 		saveJobDraft,
 		startingJobForms,
-		type ImportedJobDraft
+		type ImportedJobDraft,
+		type PendingListText
 	} from '#services/jobDrafts.ts';
 	import DescriptionField from './DescriptionField.svelte';
 	import Field from './Field.svelte';
@@ -97,8 +100,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 
 	type SavedJob = NonNullable<Awaited<ReturnType<(typeof portfolioApi)['jobs']['post']>>['data']>;
 
-	/** A message above the form, with an optional way out */
-	type SubmitError = { message: string; link?: { href: string; label: string } };
+	/** A message above the form, with an optional way out (a link, or a button's action) */
+	type SubmitError = {
+		message: string;
+		link?: { href: string; label: string };
+		action?: { label: string; run: () => void };
+	};
 
 	let {
 		userId,
@@ -112,8 +119,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	}: {
 		/** The recruiter's user id: scopes the drafts kept in this browser */
 		userId: string;
-		/** The posting to edit (GET /recruiter/jobs/:id); null or undefined to add one */
-		job?: (JobPostingLike & { _id: string }) | null;
+		/**
+		 * The posting to edit (GET /recruiter/jobs/:id); null or undefined to add one. Its
+		 * `updatedAt` goes with the save: a posting changed since (in another tab) is not overwritten
+		 */
+		job?: (JobPostingLike & { _id: string; updatedAt?: Date | string }) | null;
 		/** Add mode: the job description import to start from */
 		imported?: ImportedJobDraft | null;
 		/** Where Cancel goes (the posting, or the recruiter space) */
@@ -141,6 +151,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 	const NETWORK_ERROR = 'Could not reach the server. Check your connection and try again.';
 	const RECRUITER_SPACE_REQUIRED = 'Create your recruiter space first';
+	/** The API's 409 when the posting changed since the editor loaded it (PUT /jobs/:id) */
+	const JOB_CHANGED = 'This job posting was changed since you opened it';
 
 	// The editor works on the props as they were when it was mounted
 	const initialJob = untrack(() => job);
@@ -155,9 +167,17 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	const baselineSignature = jobFormSignature(start.baseline);
 	// Stored with the draft: what it started from (a stale draft keeps its own, to keep warning)
 	let basisToStore = start.draftBasis;
+	/** The version the edit starts from (PUT /jobs/:id answers 409 when it changed since) */
+	const loadedVersion = (() => {
+		const updatedAt = initialJob?.updatedAt;
+		const date = updatedAt ? new Date(updatedAt) : undefined;
+		return date && !Number.isNaN(date.getTime()) ? date.toISOString() : undefined;
+	})();
 
 	let form: JobForm = $state(start.form);
-	let dirty = $derived(jobFormSignature(form) !== baselineSignature);
+	// Text typed in the lists (skills…) and not added yet: a change too (ListInput's bind:text)
+	let pendingText: PendingListText = $state(start.pending);
+	let dirty = $derived(jobFormSignature(form) !== baselineSignature || hasPendingText(pendingText));
 	let restoredNotice = $state(start.restored);
 	let importBanner = $state(!!initialImport);
 	let confirming = $state<'reset' | 'import' | null>(null);
@@ -179,9 +199,14 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	$effect(() => {
 		const changed = dirty;
 		const snapshot = $state.snapshot(form) as JobForm;
+		const pending = $state.snapshot(pendingText);
 		if (finished) return;
 		if (changed) {
-			saveJobDraft(storageKey, { form: snapshot, basis: basisToStore });
+			saveJobDraft(storageKey, {
+				form: snapshot,
+				basis: basisToStore,
+				...(hasPendingText(pending) ? { pending } : {})
+			});
 		} else {
 			clearJobDraft(storageKey);
 			// Back to the current posting: changes from now on start from it
@@ -307,7 +332,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	 */
 	function saveFailedAfterLeaving(code: number | undefined, editorUrl: string) {
 		toaster.error({
-			title: mode === 'add' ? 'The job posting was not created' : 'Your changes were not saved',
+			title: mode === 'add' ? 'The job description was not created' : 'Your changes were not saved',
 			description:
 				code === 401
 					? 'Your session expired: sign in again, then open the editor to save. Your changes are kept in this browser.'
@@ -343,23 +368,30 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								'This account has no recruiter space yet. Open the recruiter space to create it, then come back to save: your changes are kept in this browser.',
 							link: { href: recruiterHref, label: 'Open the recruiter space' }
 						}
-					: { message: text ?? 'You cannot save this job posting.' }
+					: { message: text ?? 'You cannot save this job description.' }
 			);
 		}
 		if (code === 404 && mode === 'edit') {
 			return showSubmitError({
-				message: 'This job posting no longer exists: it may have been deleted in another tab.',
-				link: { href: recruiterHref, label: 'Back to your job postings' }
+				message: 'This job description no longer exists: it may have been deleted in another tab.',
+				link: { href: recruiterHref, label: 'Back to your job descriptions' }
+			});
+		}
+		if (code === 409 && mode === 'edit' && text === JOB_CHANGED) {
+			return showSubmitError({
+				message:
+					'This job description was changed since you opened it (in another tab, or its status from its page). Your changes are kept in this browser: reload to see the saved version, with your changes over it to check.',
+				action: { label: 'Reload', run: reloadEditor }
 			});
 		}
 		if (code === 409) {
 			return showSubmitError({
-				message: text ?? 'You have too many job postings: delete one to add another.'
+				message: text ?? 'You have too many job descriptions: delete one to add another.'
 			});
 		}
 		if (code === 413) {
 			return showSubmitError({
-				message: 'This job posting is too large: shorten the description and try again.'
+				message: 'This job description is too large: shorten the description and try again.'
 			});
 		}
 		if (code === 400 || code === 422) {
@@ -374,7 +406,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				message: text ?? 'Some fields are invalid. Check them and try again.'
 			});
 		}
-		return showSubmitError({ message: 'Could not save the job posting. Try again in a moment.' });
+		return showSubmitError({
+			message: 'Could not save the job description. Try again in a moment.'
+		});
 	}
 
 	// --- Saving ---------------------------------------------------------------------------
@@ -395,6 +429,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			return focusField(found[0].field);
 		}
 
+		// The fields are disabled while saving (see the form): what is sent is all there is
 		status = 'saving';
 		announcement = 'Saving…';
 		const body = formToJobInput($state.snapshot(form) as JobForm);
@@ -403,7 +438,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		let saved: SavedJob;
 		try {
 			const { data, error } = jobId
-				? await portfolioApi.jobs({ id: jobId }).put(body, withCredentials)
+				? await portfolioApi
+						.jobs({ id: jobId })
+						.put(loadedVersion ? { ...body, updatedAt: loadedVersion } : body, withCredentials)
 				: await portfolioApi.jobs.post(body, withCredentials);
 			if (error || !data) {
 				status = 'idle';
@@ -431,17 +468,27 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			await onSaved(saved, savedMode, { left: false });
 		} catch {
 			await showSubmitError({
-				message: 'The job posting is saved, but its page could not be opened.',
-				link: { href: recruiterHref, label: 'Go to your job postings' }
+				message: 'The job description is saved, but its page could not be opened.',
+				link: { href: recruiterHref, label: 'Go to your job descriptions' }
 			});
 		}
 	}
 
 	// --- Drafts and the import ------------------------------------------------------------
 
+	/**
+	 * The page again, with the posting as it is now: the draft kept in this browser comes back
+	 * over it, marked as made before the last save (startingJobForms' `stale`)
+	 */
+	function reloadEditor() {
+		leaveAllowed = true;
+		location.reload();
+	}
+
 	/** The form as the editor started (the posting, the import or a blank form), no draft */
 	function startOver() {
 		form = structuredClone(start.baseline);
+		pendingText = emptyPendingText();
 		restoredNotice = false;
 		confirming = null;
 		attempted = false;
@@ -621,7 +668,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					>
 						Keep it
 					</button>
-					<button type="button" class="btn btn-sm preset-filled-error-500" onclick={discardImport}>
+					<button
+						type="button"
+						class="btn btn-sm preset-filled-error-700-300"
+						onclick={discardImport}
+					>
 						Discard import
 					</button>
 				</div>
@@ -650,7 +701,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				<p class="min-w-0 flex-1">
 					Restored your unsaved changes from this browser.
 					{#if start.stale}
-						This job posting was saved since you made them: check them before saving.
+						This job description was saved since you made them: check them before saving.
 					{/if}
 				</p>
 			</div>
@@ -663,7 +714,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				>
 					<p id="{uid}-confirm-reset" class="me-auto font-medium">
 						{mode === 'edit'
-							? 'Discard your changes and go back to the saved job posting?'
+							? 'Discard your changes and go back to the saved job description?'
 							: 'Discard this draft?'}
 					</p>
 					<button
@@ -674,7 +725,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					>
 						Keep it
 					</button>
-					<button type="button" class="btn btn-sm preset-filled-error-500" onclick={resetForm}>
+					<button type="button" class="btn btn-sm preset-filled-error-700-300" onclick={resetForm}>
 						Discard
 					</button>
 				</div>
@@ -707,9 +758,18 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						<p id="{uid}-summary-title" class="font-semibold">{submitError.message}</p>
 						{#if submitError.link}
 							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by the page -->
-							<a href={submitError.link.href} class="btn btn-sm preset-filled-error-500">
+							<a href={submitError.link.href} class="btn btn-sm preset-filled-error-700-300">
 								{submitError.link.label}
 							</a>
+						{/if}
+						{#if submitError.action}
+							<button
+								type="button"
+								class="btn btn-sm preset-filled-error-700-300"
+								onclick={submitError.action.run}
+							>
+								{submitError.action.label}
+							</button>
 						{/if}
 					</div>
 				</div>
@@ -754,179 +814,331 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			save();
 		}}
 	>
-		<!-- Basics -->
-		<section class={sectionClass} aria-labelledby="{uid}-section-basics">
-			<h3 id="{uid}-section-basics" class={headingClass}>Basics</h3>
-			<Field field="title" label="Job title" required>
-				{#snippet control(attributes)}
-					<input
-						{...attributes}
-						class="input"
-						type="text"
-						autocomplete="off"
-						maxlength={JOB_LIMITS.title}
-						placeholder="e.g. Senior backend engineer"
-						bind:value={form.title}
-					/>
-				{/snippet}
-			</Field>
-			<Field field="company" label="Company" hint="Leave it empty to keep the company anonymous.">
-				{#snippet control(attributes)}
-					<input
-						{...attributes}
-						class="input"
-						type="text"
-						autocomplete="organization"
-						maxlength={JOB_LIMITS.company}
-						placeholder="e.g. Acme"
-						bind:value={form.company}
-					/>
-				{/snippet}
-			</Field>
-			<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
-				<Field field="status" label="Status" hint={JOB_STATUS_DESCRIPTIONS[form.status]}>
-					{#snippet control(attributes)}
-						<select {...attributes} class="select" bind:value={form.status}>
-							{#each JOB_STATUSES as value (value)}
-								<option {value}>{JOB_STATUS_LABELS[value]}</option>
-							{/each}
-						</select>
-					{/snippet}
-				</Field>
-				<Field field="openings" label="Openings" unit="positions">
+		<!-- Disabled while saving: what is typed then would be lost (the save sends what was
+		     there when it started, then the draft goes). min-w-0: a fieldset is no narrower
+		     than its content otherwise -->
+		<fieldset class="min-w-0 space-y-6" disabled={busy}>
+			<!-- Basics -->
+			<section class={sectionClass} aria-labelledby="{uid}-section-basics">
+				<h3 id="{uid}-section-basics" class={headingClass}>Basics</h3>
+				<Field field="title" label="Job title" required>
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
 							class="input"
 							type="text"
-							inputmode="numeric"
 							autocomplete="off"
-							bind:value={form.openings}
+							maxlength={JOB_LIMITS.title}
+							placeholder="e.g. Senior backend engineer"
+							bind:value={form.title}
 						/>
 					{/snippet}
 				</Field>
-			</div>
-		</section>
+				<Field field="company" label="Company" hint="Leave it empty to keep the company anonymous.">
+					{#snippet control(attributes)}
+						<input
+							{...attributes}
+							class="input"
+							type="text"
+							autocomplete="organization"
+							maxlength={JOB_LIMITS.company}
+							placeholder="e.g. Acme"
+							bind:value={form.company}
+						/>
+					{/snippet}
+				</Field>
+				<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+					<Field field="status" label="Status" hint={JOB_STATUS_DESCRIPTIONS[form.status]}>
+						{#snippet control(attributes)}
+							<select {...attributes} class="select" bind:value={form.status}>
+								{#each JOB_STATUSES as value (value)}
+									<option {value}>{JOB_STATUS_LABELS[value]}</option>
+								{/each}
+							</select>
+						{/snippet}
+					</Field>
+					<Field field="openings" label="Openings" unit="positions">
+						{#snippet control(attributes)}
+							<input
+								{...attributes}
+								class="input"
+								type="text"
+								inputmode="numeric"
+								autocomplete="off"
+								bind:value={form.openings}
+							/>
+						{/snippet}
+					</Field>
+				</div>
+			</section>
 
-		<!-- Description -->
-		<section class={sectionClass} aria-labelledby="{uid}-section-description">
-			<div>
-				<h3 id="{uid}-section-description" class={headingClass}>Description</h3>
-				<p class={introClass}>
-					The job, its team and its missions, as candidates will read them on the job page.
-				</p>
-			</div>
-			<DescriptionField
-				bind:value={form.description}
-				required
-				placeholder={DESCRIPTION_PLACEHOLDER}
-			/>
-		</section>
+			<!-- Description -->
+			<section class={sectionClass} aria-labelledby="{uid}-section-description">
+				<div>
+					<h3 id="{uid}-section-description" class={headingClass}>Description</h3>
+					<p class={introClass}>
+						The job, its team and its missions, as candidates will read them on the job page.
+					</p>
+				</div>
+				<DescriptionField
+					bind:value={form.description}
+					required
+					placeholder={DESCRIPTION_PLACEHOLDER}
+				/>
+			</section>
 
-		<!-- Location -->
-		<section class={sectionClass} aria-labelledby="{uid}-section-location">
-			<h3 id="{uid}-section-location" class={headingClass}>Location</h3>
-			<SegmentedControl
-				value={form.workMode}
-				onValueChange={(details) => {
-					if (details.value) form.workMode = details.value as WorkMode;
-				}}
-				name="{uid}-work-mode"
-				ids={{ root: fieldId('workMode') }}
-				class="gap-1"
-			>
-				<SegmentedControl.Label class="label-text text-sm">
-					Work mode <span class="text-error-700-300" aria-hidden="true">*</span>
-				</SegmentedControl.Label>
-				<SegmentedControl.Control class="grid w-full grid-cols-3 gap-1 p-1">
-					<SegmentedControl.Indicator />
-					{#each WORK_MODES as value (value)}
-						<SegmentedControl.Item {value} class="min-h-10 px-2">
-							<SegmentedControl.ItemText>{WORK_MODE_LABELS[value]}</SegmentedControl.ItemText>
-							<SegmentedControl.ItemHiddenInput />
-						</SegmentedControl.Item>
-					{/each}
-				</SegmentedControl.Control>
-			</SegmentedControl>
-			<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
-				<Field
-					field="city"
-					label="City"
-					required={form.workMode !== 'remote'}
-					hint={form.workMode === 'remote' ? 'Optional for a fully remote job.' : ''}
+			<!-- Location -->
+			<section class={sectionClass} aria-labelledby="{uid}-section-location">
+				<h3 id="{uid}-section-location" class={headingClass}>Location</h3>
+				<SegmentedControl
+					value={form.workMode}
+					onValueChange={(details) => {
+						if (details.value) form.workMode = details.value as WorkMode;
+					}}
+					name="{uid}-work-mode"
+					ids={{ root: fieldId('workMode') }}
+					class="gap-1"
 				>
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							autocomplete="address-level2"
-							maxlength={JOB_LIMITS.city}
-							placeholder="e.g. Lyon"
-							bind:value={form.city}
-						/>
-					{/snippet}
-				</Field>
-				<Field field="postalCode" label="Postal code">
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							inputmode="numeric"
-							autocomplete="postal-code"
-							maxlength={JOB_LIMITS.postalCode}
-							placeholder="e.g. 69003"
-							bind:value={form.postalCode}
-						/>
-					{/snippet}
-				</Field>
-			</div>
-			{#if form.workMode === 'hybrid'}
-				<Field field="remoteDaysPerWeek" label="Remote days a week" class="sm:max-w-xs">
-					{#snippet control(attributes)}
-						<select {...attributes} class="select" bind:value={form.remoteDaysPerWeek}>
-							<option value="">Not specified</option>
-							{#each daysOptions as days (days)}
-								<option value={String(days)}>{days} {days === 1 ? 'day' : 'days'} a week</option>
-							{/each}
-						</select>
-					{/snippet}
-				</Field>
-			{/if}
-			<div class="space-y-1">
-				<p class="label-text text-sm" id="{uid}-country-label">Country</p>
-				<p class="font-medium" aria-describedby="{uid}-country-hint">
-					{COUNTRY_LABELS.FR}
-				</p>
-				<p id="{uid}-country-hint" class="text-xs text-surface-700-300">
-					Only jobs in France for now.
-				</p>
-			</div>
-		</section>
-
-		<!-- Contract -->
-		<section class={sectionClass} aria-labelledby="{uid}-section-contract">
-			<h3 id="{uid}-section-contract" class={headingClass}>Contract</h3>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Field field="contractType" label="Contract type" required>
-					{#snippet control(attributes)}
-						<select {...attributes} class="select" bind:value={form.contractType}>
-							{#each FR_CONTRACT_TYPES as value (value)}
-								<option {value}>{CONTRACT_TYPE_LABELS[value]}</option>
-							{/each}
-						</select>
-					{/snippet}
-				</Field>
-				{#if contractHasDuration(form.contractType)}
+					<SegmentedControl.Label class="label-text text-sm">
+						Work mode <span class="text-error-700-300" aria-hidden="true">*</span>
+					</SegmentedControl.Label>
+					<SegmentedControl.Control class="grid w-full grid-cols-3 gap-1 p-1">
+						<SegmentedControl.Indicator />
+						{#each WORK_MODES as value (value)}
+							<SegmentedControl.Item {value} class="min-h-10 px-2">
+								<SegmentedControl.ItemText>{WORK_MODE_LABELS[value]}</SegmentedControl.ItemText>
+								<SegmentedControl.ItemHiddenInput />
+							</SegmentedControl.Item>
+						{/each}
+					</SegmentedControl.Control>
+				</SegmentedControl>
+				<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
 					<Field
-						field="durationMonths"
-						label="Duration"
-						unit="months"
-						required={contractNeedsDuration(form.contractType)}
-						hint={contractNeedsDuration(form.contractType)
-							? ''
-							: 'Optional for a freelance mission.'}
+						field="city"
+						label="City"
+						required={form.workMode !== 'remote'}
+						hint={form.workMode === 'remote' ? 'Optional for a fully remote job.' : ''}
+					>
+						{#snippet control(attributes)}
+							<input
+								{...attributes}
+								class="input"
+								type="text"
+								autocomplete="address-level2"
+								maxlength={JOB_LIMITS.city}
+								placeholder="e.g. Lyon"
+								bind:value={form.city}
+							/>
+						{/snippet}
+					</Field>
+					<Field field="postalCode" label="Postal code">
+						{#snippet control(attributes)}
+							<input
+								{...attributes}
+								class="input"
+								type="text"
+								inputmode="numeric"
+								autocomplete="postal-code"
+								maxlength={JOB_LIMITS.postalCode}
+								placeholder="e.g. 69003"
+								bind:value={form.postalCode}
+							/>
+						{/snippet}
+					</Field>
+				</div>
+				{#if form.workMode === 'hybrid'}
+					<Field field="remoteDaysPerWeek" label="Remote days a week" class="sm:max-w-xs">
+						{#snippet control(attributes)}
+							<select {...attributes} class="select" bind:value={form.remoteDaysPerWeek}>
+								<option value="">Not specified</option>
+								{#each daysOptions as days (days)}
+									<option value={String(days)}>{days} {days === 1 ? 'day' : 'days'} a week</option>
+								{/each}
+							</select>
+						{/snippet}
+					</Field>
+				{/if}
+				<div class="space-y-1">
+					<p class="label-text text-sm" id="{uid}-country-label">Country</p>
+					<p class="font-medium" aria-describedby="{uid}-country-hint">
+						{COUNTRY_LABELS.FR}
+					</p>
+					<p id="{uid}-country-hint" class="text-xs text-surface-700-300">
+						Only jobs in France for now.
+					</p>
+				</div>
+			</section>
+
+			<!-- Contract -->
+			<section class={sectionClass} aria-labelledby="{uid}-section-contract">
+				<h3 id="{uid}-section-contract" class={headingClass}>Contract</h3>
+				<div class="grid gap-4 sm:grid-cols-2">
+					<Field field="contractType" label="Contract type" required>
+						{#snippet control(attributes)}
+							<select {...attributes} class="select" bind:value={form.contractType}>
+								{#each FR_CONTRACT_TYPES as value (value)}
+									<option {value}>{CONTRACT_TYPE_LABELS[value]}</option>
+								{/each}
+							</select>
+						{/snippet}
+					</Field>
+					{#if contractHasDuration(form.contractType)}
+						<Field
+							field="durationMonths"
+							label="Duration"
+							unit="months"
+							required={contractNeedsDuration(form.contractType)}
+							hint={contractNeedsDuration(form.contractType)
+								? ''
+								: 'Optional for a freelance mission.'}
+						>
+							{#snippet control(attributes)}
+								<input
+									{...attributes}
+									class="input"
+									type="text"
+									inputmode="numeric"
+									autocomplete="off"
+									placeholder="e.g. 6"
+									bind:value={form.durationMonths}
+								/>
+							{/snippet}
+						</Field>
+					{/if}
+					<Field
+						field="startDate"
+						label="Start date"
+						hint={form.startDate ? '' : 'Leave it empty for as soon as possible.'}
+					>
+						{#snippet control(attributes)}
+							<div class="flex gap-2">
+								<input
+									{...attributes}
+									class="input min-w-0 flex-1"
+									type="date"
+									min="{JOB_LIMITS.startDateYear.min}-01-01"
+									max="{JOB_LIMITS.startDateYear.max}-12-31"
+									bind:value={form.startDate}
+								/>
+								{#if form.startDate}
+									<button
+										type="button"
+										class="btn preset-tonal shrink-0"
+										onclick={() => {
+											form.startDate = '';
+											document.getElementById(fieldId('startDate'))?.focus();
+										}}
+									>
+										Clear<span class="sr-only"> the start date (as soon as possible)</span>
+									</button>
+								{/if}
+							</div>
+						{/snippet}
+					</Field>
+					<Field field="trialPeriodMonths" label="Trial period" unit="months">
+						{#snippet control(attributes)}
+							<input
+								{...attributes}
+								class="input"
+								type="text"
+								inputmode="numeric"
+								autocomplete="off"
+								placeholder="e.g. 3"
+								bind:value={form.trialPeriodMonths}
+							/>
+						{/snippet}
+					</Field>
+					<Field field="collectiveAgreement" label="Collective agreement" class="sm:col-span-2">
+						{#snippet control(attributes)}
+							<input
+								{...attributes}
+								class="input"
+								type="text"
+								autocomplete="off"
+								maxlength={JOB_LIMITS.collectiveAgreement}
+								placeholder="e.g. Syntec"
+								bind:value={form.collectiveAgreement}
+							/>
+						{/snippet}
+					</Field>
+				</div>
+			</section>
+
+			<!-- Working time -->
+			<section class={sectionClass} aria-labelledby="{uid}-section-working-time">
+				<h3 id="{uid}-section-working-time" class={headingClass}>Working time</h3>
+				<SegmentedControl
+					value={form.arrangement}
+					onValueChange={(details) => {
+						if (details.value) setArrangement(details.value as WorkingTimeArrangement);
+					}}
+					name="{uid}-arrangement"
+					ids={{ root: fieldId('arrangement') }}
+					class="gap-1"
+				>
+					<SegmentedControl.Label class="label-text text-sm">
+						Counted in <span class="text-error-700-300" aria-hidden="true">*</span>
+					</SegmentedControl.Label>
+					<SegmentedControl.Control class="grid w-full grid-cols-2 gap-1 p-1">
+						<SegmentedControl.Indicator />
+						{#each WORKING_TIME_ARRANGEMENTS as value (value)}
+							<SegmentedControl.Item {value} class="min-h-10 px-2">
+								<SegmentedControl.ItemText class="text-center whitespace-normal">
+									{WORKING_TIME_LABELS[value]}
+								</SegmentedControl.ItemText>
+								<SegmentedControl.ItemHiddenInput />
+							</SegmentedControl.Item>
+						{/each}
+					</SegmentedControl.Control>
+				</SegmentedControl>
+				<div class="grid gap-4 sm:grid-cols-2">
+					{#if form.arrangement === 'weekly_hours'}
+						<Field
+							field="hoursPerWeek"
+							label="Hours per week"
+							unit="h / week"
+							unitLabel=""
+							required
+							hint="35 h is full time in France; less is part-time."
+						>
+							{#snippet control(attributes)}
+								<input
+									{...attributes}
+									class="input"
+									type="text"
+									inputmode="decimal"
+									autocomplete="off"
+									bind:value={form.hoursPerWeek}
+								/>
+							{/snippet}
+						</Field>
+					{:else}
+						<Field
+							field="daysPerYear"
+							label="Days per year"
+							unit="days / year"
+							unitLabel=""
+							required
+							hint="{FR_FORFAIT_JOURS_STANDARD_DAYS} days is the standard forfait jours. Candidates read it as counted in days worked, with no weekly hours."
+						>
+							{#snippet control(attributes)}
+								<input
+									{...attributes}
+									class="input"
+									type="text"
+									inputmode="numeric"
+									autocomplete="off"
+									bind:value={form.daysPerYear}
+								/>
+							{/snippet}
+						</Field>
+					{/if}
+					<Field
+						field="rttDaysPerYear"
+						label="RTT days"
+						unit="days / year"
+						unitLabel="days per year"
+						hint="Reduced working time days, if any. Candidates read them as extra days off a year."
 					>
 						{#snippet control(attributes)}
 							<input
@@ -935,106 +1147,26 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder="e.g. 6"
-								bind:value={form.durationMonths}
+								placeholder="e.g. 10"
+								bind:value={form.rttDaysPerYear}
 							/>
 						{/snippet}
 					</Field>
-				{/if}
-				<Field
-					field="startDate"
-					label="Start date"
-					hint={form.startDate ? '' : 'Leave it empty for as soon as possible.'}
-				>
-					{#snippet control(attributes)}
-						<div class="flex gap-2">
-							<input
-								{...attributes}
-								class="input min-w-0 flex-1"
-								type="date"
-								bind:value={form.startDate}
-							/>
-							{#if form.startDate}
-								<button
-									type="button"
-									class="btn preset-tonal shrink-0"
-									onclick={() => {
-										form.startDate = '';
-										document.getElementById(fieldId('startDate'))?.focus();
-									}}
-								>
-									Clear<span class="sr-only"> the start date (as soon as possible)</span>
-								</button>
-							{/if}
-						</div>
-					{/snippet}
-				</Field>
-				<Field field="trialPeriodMonths" label="Trial period" unit="months">
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							inputmode="numeric"
-							autocomplete="off"
-							placeholder="e.g. 3"
-							bind:value={form.trialPeriodMonths}
-						/>
-					{/snippet}
-				</Field>
-				<Field field="collectiveAgreement" label="Collective agreement" class="sm:col-span-2">
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							autocomplete="off"
-							maxlength={JOB_LIMITS.collectiveAgreement}
-							placeholder="e.g. Syntec"
-							bind:value={form.collectiveAgreement}
-						/>
-					{/snippet}
-				</Field>
-			</div>
-		</section>
+				</div>
+			</section>
 
-		<!-- Working time -->
-		<section class={sectionClass} aria-labelledby="{uid}-section-working-time">
-			<h3 id="{uid}-section-working-time" class={headingClass}>Working time</h3>
-			<SegmentedControl
-				value={form.arrangement}
-				onValueChange={(details) => {
-					if (details.value) setArrangement(details.value as WorkingTimeArrangement);
-				}}
-				name="{uid}-arrangement"
-				ids={{ root: fieldId('arrangement') }}
-				class="gap-1"
-			>
-				<SegmentedControl.Label class="label-text text-sm">
-					Counted in <span class="text-error-700-300" aria-hidden="true">*</span>
-				</SegmentedControl.Label>
-				<SegmentedControl.Control class="grid w-full grid-cols-2 gap-1 p-1">
-					<SegmentedControl.Indicator />
-					{#each WORKING_TIME_ARRANGEMENTS as value (value)}
-						<SegmentedControl.Item {value} class="min-h-10 px-2">
-							<SegmentedControl.ItemText class="text-center whitespace-normal">
-								{WORKING_TIME_LABELS[value]}
-							</SegmentedControl.ItemText>
-							<SegmentedControl.ItemHiddenInput />
-						</SegmentedControl.Item>
-					{/each}
-				</SegmentedControl.Control>
-			</SegmentedControl>
-			<div class="grid gap-4 sm:grid-cols-2">
-				{#if form.arrangement === 'weekly_hours'}
-					<Field
-						field="hoursPerWeek"
-						label="Hours per week"
-						unit="h / week"
-						unitLabel=""
-						required
-						hint="35 h is full time in France; less is part-time."
-					>
+			<!-- Pay -->
+			<section class={sectionClass} aria-labelledby="{uid}-section-pay">
+				<div>
+					<h3 id="{uid}-section-pay" class={headingClass}>
+						Pay <span class="text-error-700-300" aria-hidden="true">*</span>
+					</h3>
+					<p class={introClass}>
+						Gross amounts (brut) in euros. The same minimum and maximum for a fixed pay.
+					</p>
+				</div>
+				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+					<Field field="payMin" label="Minimum pay" unit="€" unitLabel="euros, gross" required>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1042,19 +1174,68 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="decimal"
 								autocomplete="off"
-								bind:value={form.hoursPerWeek}
+								placeholder="e.g. 45 000"
+								bind:value={form.payMin}
 							/>
 						{/snippet}
 					</Field>
-				{:else}
-					<Field
-						field="daysPerYear"
-						label="Days per year"
-						unit="days / year"
-						unitLabel=""
-						required
-						hint="{FR_FORFAIT_JOURS_STANDARD_DAYS} days is the standard forfait jours."
-					>
+					<Field field="payMax" label="Maximum pay" unit="€" unitLabel="euros, gross" required>
+						{#snippet control(attributes)}
+							<input
+								{...attributes}
+								class="input"
+								type="text"
+								inputmode="decimal"
+								autocomplete="off"
+								placeholder="e.g. 55 000"
+								bind:value={form.payMax}
+							/>
+						{/snippet}
+					</Field>
+					<Field field="payPeriod" label="Pay period" required class="col-span-2 sm:col-span-1">
+						{#snippet control(attributes)}
+							<select {...attributes} class="select" bind:value={form.payPeriod}>
+								{#each PAY_PERIODS as value (value)}
+									<option {value}>{PAY_PERIOD_LABELS[value]}</option>
+								{/each}
+							</select>
+						{/snippet}
+					</Field>
+				</div>
+				{#if payPreview}
+					<p class="text-sm text-surface-700-300">
+						Candidates see: <span class="font-medium text-surface-950-50">{payPreview}</span>
+					</p>
+				{/if}
+				<Field
+					field="payVariable"
+					label="Variable pay"
+					hint="Bonus, commission, profit-sharing… in a few words."
+				>
+					{#snippet control(attributes)}
+						<input
+							{...attributes}
+							class="input"
+							type="text"
+							autocomplete="off"
+							maxlength={JOB_LIMITS.variablePay}
+							placeholder="e.g. Up to 10% annual bonus"
+							bind:value={form.payVariable}
+						/>
+					{/snippet}
+				</Field>
+			</section>
+
+			<!-- Team & organisation -->
+			<section class={sectionClass} aria-labelledby="{uid}-section-team">
+				<div>
+					<h3 id="{uid}-section-team" class={headingClass}>
+						Team &amp; organisation <span class={optionalClass}>(optional)</span>
+					</h3>
+					<p class={introClass}>Where the job sits: candidates often ask.</p>
+				</div>
+				<div class="grid gap-4 sm:grid-cols-3">
+					<Field field="directReports" label="Direct reports" hint="People reporting to this job.">
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1062,227 +1243,116 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								bind:value={form.daysPerYear}
+								placeholder="e.g. 0"
+								bind:value={form.directReports}
 							/>
 						{/snippet}
 					</Field>
-				{/if}
-				<Field
-					field="rttDaysPerYear"
-					label="RTT days"
-					unit="days / year"
-					unitLabel="days per year"
-					hint="Reduced working time days, if any."
-				>
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							inputmode="numeric"
-							autocomplete="off"
-							placeholder="e.g. 10"
-							bind:value={form.rttDaysPerYear}
-						/>
-					{/snippet}
-				</Field>
-			</div>
-		</section>
+					<Field field="peers" label="Peers" hint="Colleagues under the same manager.">
+						{#snippet control(attributes)}
+							<input
+								{...attributes}
+								class="input"
+								type="text"
+								inputmode="numeric"
+								autocomplete="off"
+								placeholder="e.g. 5"
+								bind:value={form.peers}
+							/>
+						{/snippet}
+					</Field>
+					<Field field="levelsToCeo" label="Levels to the CEO" hint="1 = reports to the CEO.">
+						{#snippet control(attributes)}
+							<input
+								{...attributes}
+								class="input"
+								type="text"
+								inputmode="numeric"
+								autocomplete="off"
+								placeholder="e.g. 3"
+								bind:value={form.levelsToCeo}
+							/>
+						{/snippet}
+					</Field>
+				</div>
+			</section>
 
-		<!-- Pay -->
-		<section class={sectionClass} aria-labelledby="{uid}-section-pay">
-			<div>
-				<h3 id="{uid}-section-pay" class={headingClass}>
-					Pay <span class="text-error-700-300" aria-hidden="true">*</span>
+			<!-- Requirements -->
+			<section class={sectionClass} aria-labelledby="{uid}-section-requirements">
+				<h3 id="{uid}-section-requirements" class={headingClass}>
+					Requirements <span class={optionalClass}>(optional)</span>
 				</h3>
-				<p class={introClass}>
-					Gross amounts (brut) in euros. The same minimum and maximum for a fixed pay.
-				</p>
-			</div>
-			<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-				<Field field="payMin" label="Minimum pay" unit="€" unitLabel="euros, gross" required>
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							inputmode="decimal"
-							autocomplete="off"
-							placeholder="e.g. 45 000"
-							bind:value={form.payMin}
-						/>
-					{/snippet}
-				</Field>
-				<Field field="payMax" label="Maximum pay" unit="€" unitLabel="euros, gross" required>
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							inputmode="decimal"
-							autocomplete="off"
-							placeholder="e.g. 55 000"
-							bind:value={form.payMax}
-						/>
-					{/snippet}
-				</Field>
-				<Field field="payPeriod" label="Pay period" required class="col-span-2 sm:col-span-1">
-					{#snippet control(attributes)}
-						<select {...attributes} class="select" bind:value={form.payPeriod}>
-							{#each PAY_PERIODS as value (value)}
-								<option {value}>{PAY_PERIOD_LABELS[value]}</option>
-							{/each}
-						</select>
-					{/snippet}
-				</Field>
-			</div>
-			{#if payPreview}
-				<p class="text-sm text-surface-700-300">
-					Candidates see: <span class="font-medium text-surface-950-50">{payPreview}</span>
-				</p>
-			{/if}
-			<Field
-				field="payVariable"
-				label="Variable pay"
-				hint="Bonus, commission, profit-sharing… in a few words."
-			>
-				{#snippet control(attributes)}
-					<input
-						{...attributes}
-						class="input"
-						type="text"
-						autocomplete="off"
-						maxlength={JOB_LIMITS.variablePay}
-						placeholder="e.g. Up to 10% annual bonus"
-						bind:value={form.payVariable}
-					/>
-				{/snippet}
-			</Field>
-		</section>
+				<div class="grid gap-4 sm:grid-cols-2">
+					<Field field="seniority" label="Seniority">
+						{#snippet control(attributes)}
+							<select {...attributes} class="select" bind:value={form.seniority}>
+								<option value="">Not specified</option>
+								{#each SENIORITY_LEVELS as value (value)}
+									<option {value}>{SENIORITY_LABELS[value]}</option>
+								{/each}
+							</select>
+						{/snippet}
+					</Field>
+					<Field field="education" label="Education">
+						{#snippet control(attributes)}
+							<select {...attributes} class="select" bind:value={form.education}>
+								<option value="">Not specified</option>
+								{#each EDUCATION_LEVELS as value (value)}
+									<option {value}>{EDUCATION_LABELS[value]}</option>
+								{/each}
+							</select>
+						{/snippet}
+					</Field>
+				</div>
+				<ListInput
+					field="skills"
+					label="Skills"
+					itemName="skill"
+					bind:value={form.skills}
+					bind:text={pendingText.skills}
+					max={JOB_LIMITS.skills}
+					maxLength={JOB_LIMITS.listItem}
+					placeholder="e.g. TypeScript"
+				/>
+				<ListInput
+					field="languages"
+					label="Languages"
+					itemName="language"
+					bind:value={form.languages}
+					bind:text={pendingText.languages}
+					max={JOB_LIMITS.languages}
+					maxLength={JOB_LIMITS.listItem}
+					placeholder="e.g. English (C1)"
+				/>
+			</section>
 
-		<!-- Team & organisation -->
-		<section class={sectionClass} aria-labelledby="{uid}-section-team">
-			<div>
-				<h3 id="{uid}-section-team" class={headingClass}>
-					Team &amp; organisation <span class={optionalClass}>(optional)</span>
+			<!-- Conditions -->
+			<section class={sectionClass} aria-labelledby="{uid}-section-conditions">
+				<h3 id="{uid}-section-conditions" class={headingClass}>
+					Conditions <span class={optionalClass}>(optional)</span>
 				</h3>
-				<p class={introClass}>Where the job sits: candidates often ask.</p>
-			</div>
-			<div class="grid gap-4 sm:grid-cols-3">
-				<Field field="directReports" label="Direct reports" hint="People reporting to this job.">
+				<ListInput
+					field="benefits"
+					label="Benefits"
+					itemName="benefit"
+					bind:value={form.benefits}
+					bind:text={pendingText.benefits}
+					max={JOB_LIMITS.benefits}
+					maxLength={JOB_LIMITS.listItem}
+					placeholder="e.g. Meal vouchers"
+				/>
+				<Field field="travel" label="Travel" class="sm:max-w-xs">
 					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							inputmode="numeric"
-							autocomplete="off"
-							placeholder="e.g. 0"
-							bind:value={form.directReports}
-						/>
-					{/snippet}
-				</Field>
-				<Field field="peers" label="Peers" hint="Colleagues under the same manager.">
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							inputmode="numeric"
-							autocomplete="off"
-							placeholder="e.g. 5"
-							bind:value={form.peers}
-						/>
-					{/snippet}
-				</Field>
-				<Field field="levelsToCeo" label="Levels to the CEO" hint="1 = reports to the CEO.">
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							inputmode="numeric"
-							autocomplete="off"
-							placeholder="e.g. 3"
-							bind:value={form.levelsToCeo}
-						/>
-					{/snippet}
-				</Field>
-			</div>
-		</section>
-
-		<!-- Requirements -->
-		<section class={sectionClass} aria-labelledby="{uid}-section-requirements">
-			<h3 id="{uid}-section-requirements" class={headingClass}>
-				Requirements <span class={optionalClass}>(optional)</span>
-			</h3>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Field field="seniority" label="Seniority">
-					{#snippet control(attributes)}
-						<select {...attributes} class="select" bind:value={form.seniority}>
+						<select {...attributes} class="select" bind:value={form.travel}>
 							<option value="">Not specified</option>
-							{#each SENIORITY_LEVELS as value (value)}
-								<option {value}>{SENIORITY_LABELS[value]}</option>
+							{#each TRAVEL_FREQUENCIES as value (value)}
+								<option {value}>{TRAVEL_LABELS[value]}</option>
 							{/each}
 						</select>
 					{/snippet}
 				</Field>
-				<Field field="education" label="Education">
-					{#snippet control(attributes)}
-						<select {...attributes} class="select" bind:value={form.education}>
-							<option value="">Not specified</option>
-							{#each EDUCATION_LEVELS as value (value)}
-								<option {value}>{EDUCATION_LABELS[value]}</option>
-							{/each}
-						</select>
-					{/snippet}
-				</Field>
-			</div>
-			<ListInput
-				field="skills"
-				label="Skills"
-				itemName="skill"
-				bind:value={form.skills}
-				max={JOB_LIMITS.skills}
-				maxLength={JOB_LIMITS.listItem}
-				placeholder="e.g. TypeScript"
-			/>
-			<ListInput
-				field="languages"
-				label="Languages"
-				itemName="language"
-				bind:value={form.languages}
-				max={JOB_LIMITS.languages}
-				maxLength={JOB_LIMITS.listItem}
-				placeholder="e.g. English (C1)"
-			/>
-		</section>
-
-		<!-- Conditions -->
-		<section class={sectionClass} aria-labelledby="{uid}-section-conditions">
-			<h3 id="{uid}-section-conditions" class={headingClass}>
-				Conditions <span class={optionalClass}>(optional)</span>
-			</h3>
-			<ListInput
-				field="benefits"
-				label="Benefits"
-				itemName="benefit"
-				bind:value={form.benefits}
-				max={JOB_LIMITS.benefits}
-				maxLength={JOB_LIMITS.listItem}
-				placeholder="e.g. Meal vouchers"
-			/>
-			<Field field="travel" label="Travel" class="sm:max-w-xs">
-				{#snippet control(attributes)}
-					<select {...attributes} class="select" bind:value={form.travel}>
-						<option value="">Not specified</option>
-						{#each TRAVEL_FREQUENCIES as value (value)}
-							<option {value}>{TRAVEL_LABELS[value]}</option>
-						{/each}
-					</select>
-				{/snippet}
-			</Field>
-		</section>
+			</section>
+		</fieldset>
 
 		<!-- Actions: stuck to the bottom of the page while it scrolls -->
 		<div
@@ -1324,7 +1394,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						/>
 						Saving…
 					{:else}
-						{mode === 'add' ? 'Create job posting' : 'Save changes'}
+						{mode === 'add' ? 'Create job description' : 'Save changes'}
 					{/if}
 				</button>
 			</div>

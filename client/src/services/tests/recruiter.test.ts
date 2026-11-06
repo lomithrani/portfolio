@@ -16,6 +16,7 @@ import {
 	filterJobs,
 	formatDay,
 	hasPublicPage,
+	isJobPostingGone,
 	isoDate,
 	removeApplicantText,
 	shownJobsText,
@@ -184,6 +185,16 @@ describe('domainFromInput', () => {
 		expect(applicantDomainProblem('not a name!')).toMatch(/not a portfolio name/);
 		expect(applicantDomainProblem('louis.gentil')).toBe(null);
 		expect(applicantDomainProblem('https://site.test/louis.gentil/experiences')).toBe(null);
+	});
+});
+
+describe('isJobPostingGone', () => {
+	it('tells a deleted posting from an applicant already removed', () => {
+		expect(isJobPostingGone(404, 'Job posting not found')).toBe(true);
+		expect(isJobPostingGone(404, { message: 'Job posting not found' })).toBe(true);
+		expect(isJobPostingGone(404, 'Applicant not found')).toBe(false);
+		expect(isJobPostingGone(409, 'Job posting not found')).toBe(false);
+		expect(isJobPostingGone(undefined, new TypeError('Failed to fetch'))).toBe(false);
 	});
 });
 

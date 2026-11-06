@@ -368,8 +368,10 @@ answer that counted is not thrown away.
   (`413`).
 
 **Request size.** The API's body cap is 6 MB (Bun answers `413` above it, before the app runs): a
-4 MB PDF is about 5.4 MB of base64 JSON. `POST /experiences/import` without a valid session (the
-`auth` cookie's JWT is verified: signature, expiry, subject) gets `401` before its body is read. Every other route keeps a 1 MB cap: checked on `Content-Length`
+4 MB PDF is about 5.4 MB of base64 JSON, so the two PDF imports, `POST /experiences/import` and
+`POST /jobs/import` (see "Job description import" below), take bodies up to that cap. Without a
+valid session (the `auth` cookie's JWT is verified: signature, expiry, subject) they get `401`
+before their body is read. Every other route keeps a 1 MB cap: checked on `Content-Length`
 before the body is read, then on the bytes actually read, so a body without a usable
 `Content-Length` (chunked, as a proxy or an HTTP/2 client may forward it, or with the header
 repeated) stops at 1 MB too; both answer `413` with CORS headers.

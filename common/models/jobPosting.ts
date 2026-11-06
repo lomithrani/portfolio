@@ -130,6 +130,8 @@ export const JOB_LIMITS = {
 	rttDaysPerYear: { min: 0, max: 60 },
 	/** Pay amounts, in the currency's units (cents allowed) */
 	pay: { min: 0.01, max: 10_000_000 },
+	/** Years a start date can fall in: a typo (0202) or a placeholder (0000) is refused */
+	startDateYear: { min: 2000, max: 2100 },
 	directReports: { min: 0, max: 100_000 },
 	peers: { min: 0, max: 100_000 },
 	/** 0: the job is the CEO; 1: reports to the CEO */
@@ -236,6 +238,16 @@ export const normalizeList = (items: readonly string[] | undefined): string[] =>
 	return list;
 };
 
+/** At most two decimals (cents), float noise aside (0.1 + 0.2) */
+const hasCents = (value: number) => Math.abs(Math.round(value * 100) - value * 100) < 1e-6;
+
+/**
+ * An amount of at most two decimals as exactly that (45000.000000001 is 45000): what is stored
+ * never carries float noise. Other values are left for validation to refuse (45000.001, NaN).
+ */
+const roundedCents = (value: number) =>
+	Number.isFinite(value) && hasCents(value) ? Math.round(value * 100) / 100 : value;
+
 /** Drops the keys whose value is undefined; undefined when nothing is left */
 const compact = <T extends object>(value: T): T | undefined => {
 	const entries = Object.entries(value).filter(([, item]) => item !== undefined);
@@ -295,8 +307,8 @@ export function normalizeJobPosting(input: JobPostingInput): JobPostingInput {
 			rttDaysPerYear: workingTime.rttDaysPerYear
 		})!,
 		pay: compact({
-			min: pay.min,
-			max: pay.max,
+			min: roundedCents(pay.min),
+			max: roundedCents(pay.max),
 			currency: pay.currency,
 			period: pay.period,
 			variable: trimmed(pay.variable)
@@ -322,8 +334,9 @@ const inRange = (value: number, { min, max }: NumberRange) =>
 
 const isWhole = (value: number) => Number.isInteger(value);
 
-/** At most two decimals (cents) */
-const hasCents = (value: number) => Math.abs(Math.round(value * 100) - value * 100) < 1e-6;
+/** A start date: a YYYY-MM-DD calendar date of a year JOB_LIMITS.startDateYear allows */
+export const isJobStartDate = (value: string): boolean =>
+	isCalendarDate(value) && inRange(Number(value.slice(0, 4)), JOB_LIMITS.startDateYear);
 
 /**
  * Every rule a (normalised) posting breaks, in form order; empty when it can be saved. The
@@ -395,8 +408,11 @@ export function validateJobPosting(job: JobPostingInput): JobPostingProblem[] {
 		JOB_LIMITS.durationMonths,
 		'Duration'
 	);
-	if (contract.startDate !== undefined && !isCalendarDate(contract.startDate)) {
-		problem('contract.startDate', 'Start date must be a date (YYYY-MM-DD)');
+	if (contract.startDate !== undefined && !isJobStartDate(contract.startDate)) {
+		problem(
+			'contract.startDate',
+			`Start date must be a date (YYYY-MM-DD) from ${JOB_LIMITS.startDateYear.min} to ${JOB_LIMITS.startDateYear.max}`
+		);
 	}
 	wholeNumber(
 		'contract.trialPeriodMonths',

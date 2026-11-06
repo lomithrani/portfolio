@@ -3,7 +3,8 @@
 "Add a portfolio": lists a portfolio among a job description's applicants by its name (or its
 address, pasted from the browser): POST /jobs/:id/applicants. Problems with the name (no such
 portfolio, already listed, your own) show under the field; the others (expired session, deleted
-posting, full list) as an alert. `onAdded` gets the new applicant.
+posting, full list) as an alert. `onAdded` gets the new applicant: the page's toast announces
+it (this form does not, to say it once).
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
@@ -15,7 +16,6 @@ posting, full list) as an alert. `onAdded` gets the new applicant.
 	import {
 		addApplicantError,
 		applicantDomainProblem,
-		applicantName,
 		domainFromInput,
 		type Applicant
 	} from '#services/recruiter.ts';
@@ -86,7 +86,7 @@ posting, full list) as an alert. `onAdded` gets the new applicant.
 			value = '';
 			submitted = false;
 			refused = null;
-			announcement = `${applicantName(data)} added to the applicants.`;
+			// Announced by the page's toast (onAdded) alone
 			onAdded(data);
 			input?.focus();
 		} catch {

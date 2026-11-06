@@ -2,8 +2,10 @@
 @component
 The signed-in account's menu in the header: its initials and current space on the trigger, then
 the two spaces (radio items: the active one is checked), Browse jobs and Log out. Choosing a space
-records it (PUT /me/mode: the recruiter space is created the first time) and opens its home; a
-candidate without a portfolio is sent to the claim form instead (`onClaimPortfolio`).
+opens its home, and the space is recorded once its page shows (recordSpaceShown, PUT /me/mode): a
+page that keeps the visitor (unsaved changes) leaves the space as it was. The recruiter space is
+created first, the first time. A candidate without a portfolio is sent to the claim form instead
+(`onClaimPortfolio`).
 -->
 <script module lang="ts">
 	/** The trigger's id: where the focus goes back once the space chooser closes */
@@ -13,6 +15,7 @@ candidate without a portfolio is sent to the claim form instead (`onClaimPortfol
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { Menu, Portal } from '@skeletonlabs/skeleton-svelte';
 	import {
 		ArrowPath,
@@ -26,7 +29,13 @@ candidate without a portfolio is sent to the claim form instead (`onClaimPortfol
 	import type { HTMLAttributes } from 'svelte/elements';
 	import type { UserMode } from 'portfolio-common';
 	import { logout } from '#services/authentication.ts';
-	import { spaceLabel, switchMode, userDisplayName, userInitials } from '#services/account.ts';
+	import {
+		recordSpaceShown,
+		spaceLabel,
+		switchMode,
+		userDisplayName,
+		userInitials
+	} from '#services/account.ts';
 	import type { AuthUser } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
 
@@ -65,25 +74,32 @@ candidate without a portfolio is sent to the claim form instead (`onClaimPortfol
 			return;
 		}
 		pending = 'candidate';
-		const result = await switchMode('candidate');
-		pending = null;
-		if (!result.ok && result.reason === 'session-expired') {
-			toaster.error({ title: result.message });
-			return;
+		try {
+			await goto(resolve('/[domain]/experiences', { domain }));
+		} finally {
+			pending = null;
 		}
-		// Any other failure only leaves the choice unrecorded: the portfolio is public
-		await goto(resolve('/[domain]/experiences', { domain }));
+		// Recorded once the portfolio shows (the layout does it too: one request)
+		void recordSpaceShown(page.url.pathname);
 	}
 
 	async function openRecruiterSpace() {
 		pending = 'recruiter';
-		const result = await switchMode('recruiter');
-		pending = null;
-		if (!result.ok) {
-			toaster.error({ title: result.message });
-			return;
+		try {
+			// The first time, the space is created (which makes it the active one)
+			if (!user.recruiter) {
+				const result = await switchMode('recruiter');
+				if (!result.ok) {
+					toaster.error({ title: result.message });
+					return;
+				}
+			}
+			await goto(resolve('/(app)/recruiter'));
+		} finally {
+			pending = null;
 		}
-		await goto(resolve('/(app)/recruiter'));
+		// The space of the page shown: the recruiter space, or the page that kept the visitor
+		void recordSpaceShown(page.url.pathname);
 	}
 
 	function select({ value }: { value: string }) {
@@ -113,7 +129,7 @@ candidate without a portfolio is sent to the claim form instead (`onClaimPortfol
 		data-account-menu
 	>
 		<span
-			class="grid size-8 shrink-0 place-items-center rounded-full preset-filled-primary-500 text-xs font-bold"
+			class="grid size-8 shrink-0 place-items-center rounded-full preset-filled-primary-700-300 text-xs font-bold"
 			aria-hidden="true"
 		>
 			{initials}

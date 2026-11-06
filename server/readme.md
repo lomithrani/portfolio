@@ -74,9 +74,9 @@ with a message listing every problem.
   form never reaches a handler, whatever `AUTH_COOKIE_SAMESITE` is.
 - Request bodies are capped at 1 MB (`413`, checked on `Content-Length`
   before the body is read, then on the bytes read, so chunked bodies are
-  capped too), except `POST /experiences/import`, which needs the session
-  cookie before its body is read (`401`); Bun refuses anything over 6 MB
-  itself.
+  capped too), except the PDF imports (`POST /experiences/import`,
+  `POST /jobs/import`), which need the session cookie before their body is
+  read (`401`); Bun refuses anything over 6 MB itself.
 - `GET /experiences/import` says whether résumé import is on and what is left
   of the caller's allowance (`{enabled, limit, remaining, resetsAt}`).
   `POST /experiences/import` (`{file: base64 PDF, fileName?}`, the caller must

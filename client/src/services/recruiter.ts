@@ -288,6 +288,13 @@ export const addApplicantError = (
 	}
 };
 
+/**
+ * Whether a 404 of a route of one posting (DELETE /jobs/:id/applicants/:applicationId...) says
+ * the posting itself is gone (deleted in another tab), not the applicant
+ */
+export const isJobPostingGone = (status: number | undefined, value: unknown): boolean =>
+	status === 404 && /job posting not found/i.test(bodyText(value));
+
 /** What the confirmation says before an applicant is removed */
 export const removeApplicantText = (applicant: ApplicantLike): string =>
 	applicant.source === 'applied'

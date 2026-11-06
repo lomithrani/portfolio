@@ -5,7 +5,7 @@
 	import { PUBLIC_JOBS_LIMIT, openPositionsText, publishedText } from '#services/applications.ts';
 	import type { PageProps } from './$types';
 
-	// The open job postings (GET /jobs, rendered on the server), most recently updated first. Each
+	// The open job postings (GET /jobs, rendered on the server), most recently published first. Each
 	// card opens the posting's page, where candidates apply with their portfolio.
 	let { data }: PageProps = $props();
 
@@ -30,7 +30,7 @@
 			<h2 class="text-2xl font-bold md:text-3xl">Open positions</h2>
 			{#if jobs.length > 0}
 				<p class="text-surface-700-300">
-					{countText}, most recently updated first.
+					{countText}, most recently published first.
 					{#if jobs.length >= PUBLIC_JOBS_LIMIT}
 						Showing the {PUBLIC_JOBS_LIMIT} most recent.
 					{/if}
@@ -67,7 +67,9 @@
 				</p>
 				<p class="text-sm text-surface-700-300">
 					Hiring?
-					<a href={resolve('/(app)/recruiter')} class="anchor font-medium"
+					<a
+						href={resolve('/(app)/recruiter')}
+						class="font-medium text-primary-700-300 underline underline-offset-2 hover:decoration-2"
 						>Publish a job description</a
 					>
 					from the recruiter space.

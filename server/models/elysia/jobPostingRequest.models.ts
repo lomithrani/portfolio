@@ -78,6 +78,15 @@ export const jobPostingRequest = t.Object({
   travel: t.Optional(t.UnionEnum(TRAVEL_FREQUENCIES, noDefault))
 });
 
+/**
+ * Body of PUT /jobs/:id: the posting, and the `updatedAt` of the version the edit started from
+ * (as the API returned it). With it, the edit is refused (409) when the posting changed since
+ */
+export const jobPostingEditRequest = t.Object({
+  ...jobPostingRequest.properties,
+  updatedAt: t.Optional(t.String({ format: "date-time" }))
+});
+
 /** Body of PUT /jobs/:id/status */
 export const jobStatusRequest = t.Object({ status: jobStatus });
 

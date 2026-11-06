@@ -4,11 +4,13 @@
 	import ThemeToggle from '#components/ThemeToggle.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
-	import { isCurrentSection, spaceToRecord, switchMode } from '#services/account.ts';
+	import { isCurrentSection, recordSpaceShown } from '#services/account.ts';
 	import { isSessionValid } from '#services/authentication.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { untrack, type Snippet } from 'svelte';
+	import { get } from 'svelte/store';
 	import { browser } from '$app/env';
+	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 
@@ -33,19 +35,16 @@
 
 	let inJobs = $derived(isCurrentSection(page.url.pathname, '/jobs'));
 
-	// Entering the recruiter space by a link or a bookmark records it, as choosing it in the
-	// account menu does, so the menu names the space shown. Only on entering (or once the session
-	// is known): a space chosen meanwhile from the menu is not overridden, and a failure only
-	// leaves the menu's label as it was.
+	// A page of the recruiter space records it as the account's active space (recordSpaceShown),
+	// so the account menu names the space shown: after each navigation (a link, a bookmark, the
+	// menu, which only navigates), and once the session is known for the page the visit began on.
+	// A navigation the page kept (unsaved changes) records nothing.
+	const recordShown = () => {
+		if (get(sessionCheckedStore)) void recordSpaceShown(page.url.pathname);
+	};
+	afterNavigate(recordShown);
 	$effect(() => {
-		if (!inRecruiterSpace || !$sessionCheckedStore) return;
-		untrack(() => {
-			const auth = $authenticationStore;
-			if (!isSessionValid(auth)) return;
-			if (spaceToRecord(auth.user, page.url.pathname) === 'recruiter') {
-				void switchMode('recruiter');
-			}
-		});
+		if ($sessionCheckedStore) untrack(recordShown);
 	});
 
 	let header = $derived(
@@ -88,7 +87,10 @@
 		</nav>
 		<ThemeToggle />
 	</div>
-	<main class="flex-1 overflow-auto scroll-smooth" id="page">
+	<!-- relative: the page's absolutely positioned elements (sr-only text, live regions) are
+	     placed in this scroll container, not at the top of the document, which they would make
+	     scrollable: following an in-page link would then scroll the header out of reach -->
+	<main class="relative flex-1 overflow-auto scroll-smooth" id="page">
 		{@render children()}
 	</main>
 </div>

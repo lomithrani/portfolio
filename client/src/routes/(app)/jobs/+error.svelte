@@ -7,7 +7,7 @@
 	// posting that is not published (or no longer), or the API out of reach.
 	let notFound = $derived(page.status === 404);
 	let title = $derived(
-		notFound ? 'Job posting not found' : 'The job board is temporarily unavailable'
+		notFound ? 'Job description not found' : 'The job board is temporarily unavailable'
 	);
 	let onListPage = $derived(page.url.pathname.replace(/\/+$/, '') === resolve('/(app)/jobs'));
 </script>
@@ -54,7 +54,7 @@
 				{#if !notFound}
 					<button
 						type="button"
-						class="btn preset-filled-primary-500 min-h-11"
+						class="btn preset-filled-primary-700-300 min-h-11"
 						onclick={() => location.reload()}
 					>
 						Try again
@@ -63,7 +63,7 @@
 				{#if notFound || !onListPage}
 					<a
 						href={resolve('/(app)/jobs')}
-						class="btn min-h-11 {notFound ? 'preset-filled-primary-500' : 'preset-tonal'}"
+						class="btn min-h-11 {notFound ? 'preset-filled-primary-700-300' : 'preset-tonal'}"
 					>
 						See the open positions
 					</a>

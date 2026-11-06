@@ -95,7 +95,9 @@ the editor focuses the field while the preview shows, it switches back to Write 
 			role="region"
 		>
 			{#if value.trim()}
-				<Markdown content={value} headingOffset={3} compact />
+				<!-- As candidates will read it (JobDetails): raw HTML as text, headings under the
+				     section's h3 -->
+				<Markdown content={value} topHeadingLevel={4} html={false} compact />
 			{:else}
 				<p class="text-surface-700-300">Nothing to preview yet.</p>
 			{/if}

@@ -148,15 +148,19 @@ export const startDateKey = (value: string | Date | undefined | null): string =>
 
 // --- Conversions ------------------------------------------------------------------------
 
-/** The form of a posting (to edit it) or of an imported draft (to complete it) */
+/**
+ * The form of a posting (to edit it) or of an imported draft (to complete it). A saved posting
+ * (it has an `_id`) without openings keeps none: the new form's '1' would be saved over it
+ */
 export const jobToForm = (job: JobPostingLike): JobForm => {
 	const empty = emptyJobForm();
+	const saved = '_id' in job;
 	return {
 		title: job.title ?? '',
 		description: job.description ?? '',
 		company: job.company ?? '',
 		status: job.status ?? empty.status,
-		openings: job.openings === undefined ? empty.openings : numberText(job.openings),
+		openings: job.openings === undefined ? (saved ? '' : empty.openings) : numberText(job.openings),
 		city: job.location?.city ?? '',
 		postalCode: job.location?.postalCode ?? '',
 		workMode: job.location?.workMode ?? empty.workMode,
@@ -466,7 +470,10 @@ export const formatPay = (pay: JobPostingLike['pay']): string => {
 	return `${range} gross${pay.period ? ` ${PAY_PERIOD_LABELS[pay.period]}` : ''}`;
 };
 
-/** '39 h/week', '28 h/week (part-time)', '218 days/year (forfait jours)', plus RTT days */
+/**
+ * '39 h/week', '28 h/week (part-time)', '218 days a year (forfait jours: …)', plus RTT days. The
+ * French terms are explained where candidates read them
+ */
 export const formatWorkingTime = (workingTime: JobPostingLike['workingTime']): string => {
 	if (!workingTime) return '';
 	const parts: string[] = [];
@@ -475,11 +482,16 @@ export const formatWorkingTime = (workingTime: JobPostingLike['workingTime']): s
 		parts.push(`${hours} h/week${hours < FR_FULL_TIME_HOURS_PER_WEEK ? ' (part-time)' : ''}`);
 	}
 	if (workingTime.arrangement === 'annual_days' && workingTime.daysPerYear !== undefined) {
-		parts.push(`${workingTime.daysPerYear} days/year (forfait jours)`);
+		parts.push(
+			`${workingTime.daysPerYear} days a year (forfait jours: counted in days worked, no weekly hours)`
+		);
 	}
 	if (workingTime.rttDaysPerYear) {
+		const days = workingTime.rttDaysPerYear;
 		parts.push(
-			`${workingTime.rttDaysPerYear} RTT ${workingTime.rttDaysPerYear === 1 ? 'day' : 'days'}`
+			days === 1
+				? '1 RTT day (an extra day off a year)'
+				: `${days} RTT days (extra days off a year)`
 		);
 	}
 	return parts.join(' · ');
@@ -566,7 +578,7 @@ export const statusBadgeClass = (status: JobStatus): string =>
 		draft: 'preset-filled-surface-300-700',
 		open: 'preset-filled-success-500',
 		on_hold: 'preset-filled-warning-500',
-		filled: 'preset-filled-primary-500',
+		filled: 'preset-filled-primary-700-300',
 		closed: 'preset-tonal-error'
 	})[status];
 
@@ -579,7 +591,7 @@ export const educationLabel = (level: EducationLevel | undefined): string =>
 export const travelLabel = (travel: TravelFrequency | undefined): string =>
 	travel ? TRAVEL_LABELS[travel] : '';
 
-/** One-word contracts, for one-line summaries: 'CDI', 'CDD (6 months)' */
+/** One-word contracts, for one-line summaries: 'CDI', 'CDD', 'Internship' */
 export const CONTRACT_SHORT_LABELS: Record<ContractType, string> = {
 	cdi: 'CDI',
 	cdd: 'CDD',
@@ -590,11 +602,21 @@ export const CONTRACT_SHORT_LABELS: Record<ContractType, string> = {
 	freelance: 'Freelance'
 };
 
-/** 'CDI', 'CDD (6 months)', 'Internship (6 months)' */
+/** What the French contract names mean, for candidates who do not know them */
+const CONTRACT_GLOSSES: Partial<Record<ContractType, string>> = {
+	cdi: 'permanent',
+	cdd: 'fixed-term'
+};
+
+/** 'CDI (permanent)', 'CDD (fixed-term, 6 months)', 'Internship (6 months)' */
 export const formatContractShort = (contract: JobPostingLike['contract']): string => {
 	if (!contract?.type) return '';
 	const label = CONTRACT_SHORT_LABELS[contract.type];
-	return contract.durationMonths ? `${label} (${months(contract.durationMonths)})` : label;
+	const details = [
+		CONTRACT_GLOSSES[contract.type],
+		contract.durationMonths ? months(contract.durationMonths) : ''
+	].filter(Boolean);
+	return details.length ? `${label} (${details.join(', ')})` : label;
 };
 
 /** '1 position', '3 positions' */

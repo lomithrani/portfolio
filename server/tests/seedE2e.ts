@@ -1,9 +1,10 @@
 // Seeds what the Playwright owner tests sign in as: per test file, a user and the domain it owns,
 // kept for that file alone (its tests add and remove the domain's experiences, so files running in
 // parallel never share one): 'e2e-owner' for client/tests/experiences-owner.test.ts, 'e2e-import'
-// for client/tests/resume-import.test.ts. client/tests/recruiter.test.ts signs in as the
-// recruiter 'e2e.recruiter@example.com' (a recruiter space, no domain) and applies as the owner
-// of 'e2e-applicant'. Idempotent: safe to run against a seeded database.
+// for client/tests/resume-import.test.ts. client/tests/recruiter.test.ts and
+// client/tests/jobs-apply.test.ts sign in as the recruiter 'e2e.recruiter@example.com' (a
+// recruiter space, no domain) and as the owner of 'e2e-applicant', who applies or is added to the
+// applicants. Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose, { Types } from "mongoose";
 import { Domain, User } from "../models/database";

@@ -86,8 +86,9 @@ describe('orderedJobFormErrors', () => {
 
 describe('formatContractShort', () => {
 	it.each([
-		[{ type: 'cdi' as const }, 'CDI'],
-		[{ type: 'cdd' as const, durationMonths: 6 }, 'CDD (6 months)'],
+		[{ type: 'cdi' as const }, 'CDI (permanent)'],
+		[{ type: 'cdd' as const, durationMonths: 6 }, 'CDD (fixed-term, 6 months)'],
+		[{ type: 'freelance' as const }, 'Freelance'],
 		[{ type: 'internship' as const, durationMonths: 1 }, 'Internship (1 month)'],
 		[undefined, ''],
 		[{}, '']
@@ -114,7 +115,7 @@ describe('jobSummaryParts', () => {
 				contract: { type: 'cdd', durationMonths: 6 },
 				pay: { min: 45000, max: 55000, currency: 'EUR', period: 'year' }
 			})
-		).toEqual(['Lyon', 'Hybrid', 'CDD (6 months)', '€45,000 – €55,000 gross per year']);
+		).toEqual(['Lyon', 'Hybrid', 'CDD (fixed-term, 6 months)', '€45,000 – €55,000 gross per year']);
 	});
 
 	it('leaves out what a posting does not say', () => {
@@ -164,7 +165,9 @@ describe('jobFacts', () => {
 			'3 months trial period',
 			'Collective agreement: Syntec'
 		]);
-		expect(byId.workingTime.lines).toEqual(['218 days/year (forfait jours) · 10 RTT days']);
+		expect(byId.workingTime.lines).toEqual([
+			'218 days a year (forfait jours: counted in days worked, no weekly hours) · 10 RTT days (extra days off a year)'
+		]);
 		expect(byId.pay.lines).toEqual(['€50,000 gross per year', 'Variable: 10% bonus']);
 		expect(byId.openings.lines).toEqual(['2 positions']);
 		expect(byId.team.lines).toEqual([

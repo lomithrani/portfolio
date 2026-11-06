@@ -4,9 +4,10 @@ Applying to a job posting with a portfolio, on the public job page. What it show
 posting and the viewer (applyView of `#services/applications.ts`): a posting that takes no
 applications, the posting's own recruiter (a link to manage it), a visitor to sign in, an account
 without a portfolio (claim one here), or "Apply with <portfolio>" / "You applied on <date>" with
-Withdraw (GET, POST, DELETE /jobs/:id/application). Whatever depends on the session waits for it
-to be checked with the API. Give it a new instance per posting ({#key job._id}).
-`onAppliedChange` tells the page whether the viewer is on the posting's applicant list.
+Withdraw (GET, POST, DELETE /jobs/:id/application, which also tells the posting's own recruiter
+that it is theirs). Whatever depends on the session waits for it, and for that answer, to be
+checked with the API. Give it a new instance per posting ({#key job._id}). `onActionChange` tells
+the page what its link next to the title offers (jobPageAction).
 -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
@@ -33,13 +34,14 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 		applicationSummary,
 		applyView,
 		closedNotice,
-		isOwnPosting,
+		jobPageAction,
 		leaveAction,
 		leaveCopy,
 		needsApplicationStatus,
 		readApplicationStatus,
 		type ApplicationFailure,
-		type ApplicationStatus
+		type ApplicationStatus,
+		type JobPageAction
 	} from '#services/applications.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
@@ -49,13 +51,13 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 	let {
 		job,
 		id = 'apply',
-		onAppliedChange
+		onActionChange
 	}: {
-		job: { _id: string; status: JobStatus; recruiter: string };
+		job: { _id: string; status: JobStatus };
 		/** The panel's id: the page's "Apply" link points to it */
 		id?: string;
-		/** Whether the viewer is on the applicant list, as far as the panel knows (false at first) */
-		onAppliedChange?: (applied: boolean) => void;
+		/** What the page's link next to the title offers, as far as the panel knows */
+		onActionChange?: (action: JobPageAction) => void;
 	} = $props();
 
 	const uid = $props.id();
@@ -72,23 +74,27 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 			? $authenticationStore.user
 			: undefined
 	);
-	let view = $derived(applyView({ job, user, sessionChecked: $sessionCheckedStore }));
-	let ownPosting = $derived($sessionCheckedStore && isOwnPosting(job, user));
 	let domain = $derived(user?.domain ?? '');
 
-	// --- Whether the viewer applied ------------------------------------------------------------
+	// --- Where the viewer stands: applied, or the posting's recruiter --------------------------
 	let statusKey = $derived(
-		user && needsApplicationStatus(view, job, user, $sessionCheckedStore)
-			? `${user._id}:${job._id}`
-			: null
+		user && needsApplicationStatus(user, $sessionCheckedStore) ? `${user._id}:${job._id}` : null
 	);
 	let application = $state.raw<LoadedApplication | null>(null);
 	// The application of the current viewer only (another account's never shows)
 	let current = $derived(application && application.key === statusKey ? application : null);
-	let hasApplied = $derived(current?.state === 'loaded' && current.status.applied);
-	// Told to the page (its "Apply" link becomes "Your application")
+	// undefined while it loads, null when it could not be loaded
+	let viewerStatus = $derived(
+		current?.state === 'loaded' ? current.status : current?.state === 'error' ? null : undefined
+	);
+	let view = $derived(
+		applyView({ job, user, sessionChecked: $sessionCheckedStore, status: viewerStatus })
+	);
+	let ownPosting = $derived(viewerStatus?.own === true);
+	let hasApplied = $derived(viewerStatus?.applied === true);
+	// Told to the page (its link next to the title: Apply, Your application, Manage it)
 	$effect(() => {
-		onAppliedChange?.(hasApplied);
+		onActionChange?.(jobPageAction(view, viewerStatus));
 	});
 	// What was asked for last: an older answer is ignored
 	let requested: string | null = null;
@@ -192,7 +198,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 			case 'not-applied':
 				application = { key, state: 'loaded', status: { applied: false } };
 				confirmingWithdraw = false;
-				announcement = failure.message;
+				// Announced by the toast alone
 				toaster.info({ title: failure.message });
 				await focusAfterUpdate(() => applyButton);
 				return;
@@ -239,7 +245,8 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 				source: 'applied'
 			};
 			application = { key, state: 'loaded', status };
-			announcement = `Application sent. ${applicationSummary(status)} with ${portfolio}.`;
+			// Said once: the toast (a polite live region) announces it, and focus moves to the
+			// summary ("You applied on…"), which the panel's heading now says too
 			toaster.success({
 				title: 'Application sent',
 				description: `The recruiter can now see your portfolio, ${portfolio}.`
@@ -286,7 +293,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 			}
 			application = { key, state: 'loaded', status: { applied: false } };
 			confirmingWithdraw = false;
-			announcement = `${copy.done}.`;
+			// Announced by the toast alone
 			toaster.success({ title: copy.done, description: copy.doneDescription });
 			await focusAfterUpdate(() => applyButton);
 		} catch {
@@ -315,9 +322,10 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 	const onClaimed = (name: string, existing = false) => {
 		notice = null;
 		claimed = { name, existing };
+		// A new portfolio is announced by the claim form's toast alone
 		announcement = existing
 			? `Your account already owns the portfolio ${name}: no other portfolio was claimed. You can apply with ${name}.`
-			: `Portfolio ${name} claimed. You can apply with it now.`;
+			: '';
 		focusAfterUpdate(() => headingElement);
 	};
 
@@ -370,7 +378,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 
 	// A long portfolio name wraps only where it would overflow, never mid-word otherwise
 	const linkClass =
-		'anchor font-medium wrap-anywhere underline-offset-2 hover:underline focus-visible:underline';
+		'font-medium text-primary-700-300 underline underline-offset-2 wrap-anywhere hover:decoration-2';
 </script>
 
 {#snippet portfolioLink(name: string)}
@@ -394,7 +402,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 			<p>{current.message}</p>
 			<button
 				type="button"
-				class="btn btn-sm preset-filled-error-500 min-h-11"
+				class="btn btn-sm preset-filled-error-700-300 min-h-11"
 				onclick={retryStatus}
 			>
 				Try again
@@ -429,7 +437,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 					<div class="flex flex-wrap gap-2">
 						<button
 							type="button"
-							class="btn preset-filled-error-500 min-h-11 flex-1"
+							class="btn preset-filled-error-700-300 min-h-11 flex-1"
 							disabled={busy === 'withdraw'}
 							onclick={withdraw}
 							onkeydown={onConfirmKeydown}
@@ -509,10 +517,10 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 				</p>
 				<a
 					href={resolve('/(app)/recruiter/jobs/[id]', { id: job._id })}
-					class="btn preset-filled-primary-500 min-h-11 w-full">Manage it</a
+					class="btn preset-filled-primary-700-300 min-h-11 w-full">Manage it</a
 				>
 			</div>
-		{:else if current && (current.state !== 'loaded' || current.status.applied)}
+		{:else if user?.domain && current && (current.state !== 'loaded' || current.status.applied)}
 			<div class="border-t border-surface-200-800 pt-4">{@render applicationState()}</div>
 		{/if}
 	{:else if view === 'checking'}
@@ -531,7 +539,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 		</p>
 		<a
 			href={resolve('/(app)/recruiter/jobs/[id]', { id: job._id })}
-			class="btn preset-filled-primary-500 min-h-11 w-full">Manage it</a
+			class="btn preset-filled-primary-700-300 min-h-11 w-full">Manage it</a
 		>
 	{:else if view === 'signed-out'}
 		{#if noticeText}
@@ -574,7 +582,7 @@ to be checked with the API. Give it a new instance per posting ({#key job._id}).
 				<button
 					bind:this={applyButton}
 					type="button"
-					class="btn preset-filled-primary-500 min-h-11 w-full"
+					class="btn preset-filled-primary-700-300 min-h-11 w-full"
 					disabled={busy === 'apply'}
 					onclick={apply}
 				>

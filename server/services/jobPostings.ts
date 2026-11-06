@@ -27,16 +27,21 @@ import { isDuplicateKeyError } from './mongoErrors';
 
 // ── DTOs ────────────────────────────────────────────────────
 
-/** A job posting as the API returns it: the fields that are set, its id, owner and dates */
+/**
+ * A job posting as the API returns it: the fields that are set, its id and dates. Never who
+ * posted it: a public posting must not lead to its recruiter's account (and portfolio)
+ */
 export interface JobPostingDto extends JobPostingInput {
   _id: string;
-  /** User id of the posting's recruiter */
-  recruiter: string;
   createdAt: Date;
+  /** Also the version an edit starts from (PUT /jobs/:id's `updatedAt`) */
   updatedAt: Date;
   /** First time the posting left the draft status */
   publishedAt?: Date;
 }
+
+/** A posting of the public list (GET /jobs): without its description, which the list never shows */
+export type JobPostingSummaryDto = Omit<JobPostingDto, 'description'>;
 
 /** A posting of GET /recruiter/jobs */
 export interface RecruiterJobPostingDto extends JobPostingDto {
@@ -68,9 +73,14 @@ export interface ApplicationStatusDto {
   applied: boolean;
   appliedAt?: Date;
   source?: JobApplicationSource;
+  /** GET only: the caller is the posting's recruiter (who cannot apply to it) */
+  own?: true;
 }
 
 export const JOB_NOT_FOUND = 'Job posting not found';
+
+/** 409 of an edit that started from an older version of the posting */
+export const JOB_CHANGED = 'This job posting was changed since you opened it';
 
 /** `value` without its unset keys (null or undefined, as MongoDB and Mongoose leave them) */
 const withoutUnset = <T extends Record<string, unknown>>(value: T) =>
@@ -89,7 +99,6 @@ export function toJobPostingDto(job: StoredJobPosting): JobPostingDto {
   const { location, contract, workingTime, pay, organization, requirements } = job;
   return withoutUnset({
     _id: job._id.toString(),
-    recruiter: job.recruiter.toString(),
     title: job.title,
     description: job.description,
     company: job.company,
@@ -147,6 +156,12 @@ export function toJobPostingDto(job: StoredJobPosting): JobPostingDto {
     updatedAt: job.updatedAt,
     publishedAt: job.publishedAt
   });
+}
+
+/** A posting of the public list, read without its description */
+export function toJobPostingSummaryDto(job: Omit<StoredJobPosting, 'description'>): JobPostingSummaryDto {
+  const { description: _description, ...summary } = toJobPostingDto({ ...job, description: '' });
+  return summary;
 }
 
 // ── Postings ────────────────────────────────────────────────

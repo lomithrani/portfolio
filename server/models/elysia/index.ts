@@ -10,6 +10,7 @@ export {
 } from "./appointmentRequest.models";
 export {
   jobPostingRequest,
+  jobPostingEditRequest,
   jobStatus,
   jobStatusRequest,
   jobApplicantRequest,

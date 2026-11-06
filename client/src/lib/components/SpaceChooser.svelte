@@ -4,8 +4,9 @@
 right after a sign-in from the header, or from the account menu (`start: 'claim'` opens it on the
 claim form). Candidate goes to the portfolio the account owns (or claims one first: POST
 /domain/claim), Recruiter to /recruiter (its space is created the first time). Either choice is
-recorded as the account's active mode (PUT /me/mode). The last used space is marked and focused;
-closing the dialog keeps the person where they are.
+recorded as the account's active mode (PUT /me/mode) once its page shows (recordSpaceShown: a page
+that keeps the person, with unsaved changes, records nothing). The last used space is marked and
+focused; closing the dialog keeps the person where they are.
 -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
@@ -28,6 +29,7 @@ closing the dialog keeps the person where they are.
 		DOMAIN_NAME_MAX_LENGTH,
 		claimPortfolio,
 		domainNameProblem,
+		recordSpaceShown,
 		refreshAccount,
 		suggestDomainName,
 		switchMode,
@@ -154,32 +156,31 @@ closing the dialog keeps the person where they are.
 			await goToStep('claim');
 			return;
 		}
-		busy = 'candidate';
 		errorMessage = '';
-		const result = await switchMode('candidate');
-		busy = null;
-		if (!result.ok && result.reason === 'session-expired') {
-			sessionExpired(result);
-			return;
-		}
-		// Any other failure only leaves the choice unrecorded: the portfolio is public
 		onClose();
 		await goto(resolve('/[domain]/experiences', { domain }));
+		// Recorded once the portfolio shows (its layout does it too: one request)
+		void recordSpaceShown(page.url.pathname);
 	}
 
 	async function chooseRecruiter() {
 		if (busy) return;
-		busy = 'recruiter';
 		errorMessage = '';
-		const result = await switchMode('recruiter');
-		busy = null;
-		if (!result.ok) {
-			if (result.reason === 'session-expired') sessionExpired(result);
-			else await showError(result.message);
-			return;
+		// The first time, the space is created (which makes it the active one)
+		if (!user?.recruiter) {
+			busy = 'recruiter';
+			const result = await switchMode('recruiter');
+			busy = null;
+			if (!result.ok) {
+				if (result.reason === 'session-expired') sessionExpired(result);
+				else await showError(result.message);
+				return;
+			}
 		}
 		onClose();
 		await goto(resolve('/(app)/recruiter'));
+		// The space of the page shown: the recruiter space, or the page that kept the person
+		void recordSpaceShown(page.url.pathname);
 	}
 
 	async function claim(event: SubmitEvent) {
@@ -217,19 +218,15 @@ closing the dialog keeps the person where they are.
 			return;
 		}
 
-		// Records the choice; the portfolio exists either way
-		const switched = await switchMode('candidate');
 		busy = null;
-		if (!switched.ok && switched.reason === 'session-expired') {
-			sessionExpired(switched);
-			return;
-		}
 		toaster.success({
 			title: 'Portfolio claimed',
 			description: `${result.name} is yours. Add your first experience to it.`
 		});
 		onClose();
 		await goto(resolve('/[domain]/experiences', { domain: result.name }));
+		// The candidate space, recorded once the new portfolio shows
+		void recordSpaceShown(page.url.pathname);
 	}
 
 	const choiceClass =
@@ -376,7 +373,7 @@ closing the dialog keeps the person where they are.
 							<button
 								type="submit"
 								form="{uid}-claim"
-								class="btn preset-filled-primary-500"
+								class="btn preset-filled-primary-700-300"
 								aria-disabled={busy ? 'true' : undefined}
 							>
 								{#if busy === 'claim'}
@@ -453,7 +450,7 @@ closing the dialog keeps the person where they are.
 			<span class="flex flex-wrap items-center gap-2">
 				<span id="{uid}-{mode}-title" class="text-base font-semibold">{title}</span>
 				{#if isLastUsed}
-					<span id="{uid}-{mode}-last" class="badge preset-filled-primary-500 text-xs"
+					<span id="{uid}-{mode}-last" class="badge preset-filled-primary-700-300 text-xs"
 						>Last used</span
 					>
 				{/if}

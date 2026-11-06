@@ -96,8 +96,30 @@ export const editorDraftStorageKey = (
  */
 export const draftBasis = (start: JobForm): string => jobFormSignature(start);
 
-/** A stored editor draft: the form, and the signature of the form it started from */
-export type StoredJobDraft = { form: JobForm; basis?: string };
+/** The lists that take typed items (ListInput): skills, languages, benefits */
+export type JobListField = 'skills' | 'languages' | 'benefits';
+
+/**
+ * Text typed in a list and not added yet (no Enter): part of the posting (a save adds it), so a
+ * change the draft keeps and the unsaved-changes guard counts
+ */
+export type PendingListText = Record<JobListField, string>;
+
+export const emptyPendingText = (): PendingListText => ({
+	skills: '',
+	languages: '',
+	benefits: ''
+});
+
+/** Whether any list holds text not added yet */
+export const hasPendingText = (pending: PendingListText | undefined): boolean =>
+	!!pending && Object.values(pending).some((text) => text.trim() !== '');
+
+/**
+ * A stored editor draft: the form, the signature of the form it started from, and the text typed
+ * in the lists and not added yet
+ */
+export type StoredJobDraft = { form: JobForm; basis?: string; pending?: PendingListText };
 
 const TEXT_FIELDS = [
 	'title',
@@ -172,7 +194,18 @@ export function loadJobDraft(
 	if (!isRecord(stored)) return undefined;
 	const form = jobFormFromStorage(stored.form);
 	if (!form) return undefined;
-	return { form, basis: typeof stored.basis === 'string' ? stored.basis : undefined };
+	const pending = emptyPendingText();
+	if (isRecord(stored.pending)) {
+		for (const field of LIST_FIELDS) {
+			const text = stored.pending[field];
+			if (typeof text === 'string') pending[field] = text;
+		}
+	}
+	return {
+		form,
+		basis: typeof stored.basis === 'string' ? stored.basis : undefined,
+		...(hasPendingText(pending) ? { pending } : {})
+	};
 }
 
 export function saveJobDraft(
@@ -200,7 +233,8 @@ export function clearJobDraft(
  *
  * `basis` is the signature of the baseline. `draftBasis` is the basis to store with the draft
  * from now on: the baseline's, except for a stale draft, which keeps its own so that the warning
- * stays until the recruiter saves or discards it.
+ * stays until the recruiter saves or discards it. `pending` is the text typed in the lists and not
+ * added yet: the restored draft's (a draft of such text alone is restored too), else none.
  */
 export function startingJobForms(
 	{ job, imported }: { job?: JobPostingLike | null; imported?: JobPostingLike | null },
@@ -212,6 +246,7 @@ export function startingJobForms(
 	stale: boolean;
 	basis: string;
 	draftBasis: string;
+	pending: PendingListText;
 } {
 	const baseline = job
 		? jobToForm(job)
@@ -221,7 +256,10 @@ export function startingJobForms(
 	const basis = draftBasis(baseline);
 	const draft = readDraft();
 	const sameStart = !!job || !imported || draft?.basis === basis;
-	if (draft && sameStart && jobFormSignature(draft.form) !== jobFormSignature(baseline)) {
+	const changed =
+		!!draft &&
+		(jobFormSignature(draft.form) !== jobFormSignature(baseline) || hasPendingText(draft.pending));
+	if (draft && sameStart && changed) {
 		// A posting saved since the draft started (e.g. in another tab): the draft is older
 		const stale = !!job && !!draft.basis && draft.basis !== basis;
 		return {
@@ -230,7 +268,8 @@ export function startingJobForms(
 			restored: true,
 			stale,
 			basis,
-			draftBasis: stale && draft.basis ? draft.basis : basis
+			draftBasis: stale && draft.basis ? draft.basis : basis,
+			pending: { ...emptyPendingText(), ...draft.pending }
 		};
 	}
 	return {
@@ -239,7 +278,8 @@ export function startingJobForms(
 		restored: false,
 		stale: false,
 		basis,
-		draftBasis: basis
+		draftBasis: basis,
+		pending: emptyPendingText()
 	};
 }
 

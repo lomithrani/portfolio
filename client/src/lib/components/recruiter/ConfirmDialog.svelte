@@ -95,7 +95,7 @@ choice); Escape and the backdrop cancel, except while the request runs.
 					<!-- Kept focusable while busy (aria-disabled): disabling it would drop the focus -->
 					<button
 						type="button"
-						class="btn preset-filled-error-500"
+						class="btn preset-filled-error-700-300"
 						aria-disabled={busy ? 'true' : undefined}
 						onclick={() => {
 							if (!busy) onConfirm();

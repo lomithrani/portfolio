@@ -15,7 +15,8 @@ import {
 	jobToForm,
 	parseFormNumber,
 	startDateKey,
-	type JobForm
+	type JobForm,
+	type JobPostingLike
 } from '../jobPosting';
 
 /** A complete posting: a hybrid CDI in Lyon, 39 h a week, €45,000 to €55,000 a year */
@@ -181,6 +182,16 @@ describe('jobToForm', () => {
 		expect(formToJobInput(jobToForm(input))).toEqual(input);
 	});
 
+	it('round-trips a saved posting without openings, which the editor does not fill in', () => {
+		const input = formToJobInput(validForm({ openings: '' }));
+		expect(input).not.toHaveProperty('openings');
+		const form = jobToForm({ ...input, _id: '65aaaaaaaaaaaaaaaaaaaaaa' } as JobPostingLike);
+		expect(form.openings).toBe('');
+		expect(formToJobInput(form)).toEqual(input);
+		// A new or imported posting starts from 1
+		expect(jobToForm(input).openings).toBe('1');
+	});
+
 	it('reads a start date that arrived as a Date', () => {
 		const form = jobToForm({ contract: { type: 'cdd', startDate: new Date('2027-01-04') } });
 		expect(form.startDate).toBe('2027-01-04');
@@ -226,13 +237,16 @@ describe('display', () => {
 	it('formats the working time', () => {
 		expect(
 			formatWorkingTime({ arrangement: 'weekly_hours', hoursPerWeek: 39, rttDaysPerYear: 10 })
-		).toBe('39 h/week · 10 RTT days');
+		).toBe('39 h/week · 10 RTT days (extra days off a year)');
 		expect(formatWorkingTime({ arrangement: 'weekly_hours', hoursPerWeek: 28 })).toBe(
 			'28 h/week (part-time)'
 		);
 		expect(formatWorkingTime({ arrangement: 'annual_days', daysPerYear: 218 })).toBe(
-			'218 days/year (forfait jours)'
+			'218 days a year (forfait jours: counted in days worked, no weekly hours)'
 		);
+		expect(
+			formatWorkingTime({ arrangement: 'weekly_hours', hoursPerWeek: 35, rttDaysPerYear: 1 })
+		).toBe('35 h/week · 1 RTT day (an extra day off a year)');
 	});
 
 	it('formats the place and work mode', () => {

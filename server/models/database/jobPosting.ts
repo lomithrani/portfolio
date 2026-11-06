@@ -83,8 +83,8 @@ export const jobPostingSchema = new Schema({
   publishedAt: Date
 }, { timestamps: true });
 
-// The public list (GET /jobs): open postings, most recently updated first
-jobPostingSchema.index({ status: 1, updatedAt: -1 });
+// The public list (GET /jobs): open postings, most recently published first
+jobPostingSchema.index({ status: 1, publishedAt: -1 });
 
 export type JobPosting = InferSchemaType<typeof jobPostingSchema> & { _id: Types.ObjectId };
 export const JobPosting = model('JobPosting', jobPostingSchema);

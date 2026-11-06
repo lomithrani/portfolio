@@ -12,7 +12,8 @@ import {
 	saveImportedDraft,
 	saveJobDraft,
 	startingJobForms,
-	draftBasis
+	draftBasis,
+	hasPendingText
 } from '../jobDrafts';
 import { emptyJobForm, jobFormSignature, jobToForm, type JobForm } from '../jobPosting';
 
@@ -199,7 +200,44 @@ describe('startingJobForms', () => {
 			restored: false,
 			stale: false,
 			basis: draftBasis(blank),
-			draftBasis: draftBasis(blank)
+			draftBasis: draftBasis(blank),
+			pending: { skills: '', languages: '', benefits: '' }
+		});
+	});
+
+	it('restores text typed in a list and not added yet, even as the only change', () => {
+		const storage = new MemoryStorage();
+		const key = jobDraftStorageKey('u1', 'j1');
+		const job = {
+			title: 'Backend engineer',
+			description: 'Build things',
+			status: 'open' as const,
+			location: { country: 'FR' as const, city: 'Lyon', workMode: 'on_site' as const }
+		};
+		const form = jobToForm(job);
+		saveJobDraft(
+			key,
+			{
+				form,
+				basis: draftBasis(form),
+				pending: { skills: 'Rust', languages: '', benefits: 'Gym' }
+			},
+			storage
+		);
+
+		const start = startingJobForms({ job }, () => loadJobDraft(key, storage));
+
+		expect(start.restored).toBe(true);
+		expect(start.pending).toEqual({ skills: 'Rust', languages: '', benefits: 'Gym' });
+		expect(hasPendingText(start.pending)).toBe(true);
+		// Blank text alone is no change; what is not text is dropped
+		saveJobDraft(key, { form, pending: { skills: '  ', languages: '', benefits: '' } }, storage);
+		expect(startingJobForms({ job }, () => loadJobDraft(key, storage)).restored).toBe(false);
+		storage.setItem(key, JSON.stringify({ form, pending: { skills: 3, languages: 'English' } }));
+		expect(loadJobDraft(key, storage)?.pending).toEqual({
+			skills: '',
+			languages: 'English',
+			benefits: ''
 		});
 	});
 

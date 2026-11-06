@@ -30,6 +30,7 @@ import {
 	claimPortfolio,
 	domainNameProblem,
 	isCurrentSection,
+	recordSpaceShown,
 	refreshAccount,
 	spaceHome,
 	spaceLabel,
@@ -183,6 +184,50 @@ describe('spaceToRecord', () => {
 		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/jobs')).toBeNull();
 		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/recruiters')).toBeNull();
 		expect(spaceToRecord(undefined, '/recruiter')).toBeNull();
+	});
+
+	it("records the candidate space on the account's own portfolio while another space is active", () => {
+		const both = { recruiter: true, domain: 'bo.both', activeMode: 'recruiter' as const };
+		expect(spaceToRecord(both, '/bo.both/experiences')).toBe('candidate');
+		expect(spaceToRecord(both, '/BO.both')).toBe('candidate');
+		expect(spaceToRecord({ domain: 'bo.both' }, '/bo.both/admin')).toBe('candidate');
+		// Already active, someone else's portfolio, or a page of no space
+		expect(spaceToRecord({ ...both, activeMode: 'candidate' }, '/bo.both/experiences')).toBeNull();
+		expect(spaceToRecord(both, '/someone.else/experiences')).toBeNull();
+		expect(spaceToRecord(both, '/bo.both2/experiences')).toBeNull();
+		expect(spaceToRecord(both, '/jobs')).toBeNull();
+		expect(spaceToRecord({ ...both, domain: undefined }, '/bo.both/experiences')).toBeNull();
+	});
+});
+
+describe('recordSpaceShown', () => {
+	const recruiter = { ...user, recruiter: true, domain: 'rita', activeMode: 'candidate' as const };
+
+	it('records the space of the page shown, once while a request is in flight', async () => {
+		authenticationStore.set({ user: recruiter, expires });
+		mockModePut.mockResolvedValue({
+			data: { user: { ...recruiter, activeMode: 'recruiter' } },
+			error: null
+		});
+
+		await Promise.all([recordSpaceShown('/recruiter/jobs/new'), recordSpaceShown('/recruiter')]);
+
+		expect(mockModePut).toHaveBeenCalledTimes(1);
+		expect(mockModePut).toHaveBeenCalledWith({ mode: 'recruiter' }, withCredentials);
+		expect(get(authenticationStore).user?.activeMode).toBe('recruiter');
+		// Back on the account's portfolio: the candidate space
+		mockModePut.mockResolvedValue({ data: { user: recruiter }, error: null });
+		await recordSpaceShown('/rita/experiences');
+		expect(mockModePut).toHaveBeenLastCalledWith({ mode: 'candidate' }, withCredentials);
+	});
+
+	it('records nothing on a page of no space, the active one, or signed out', async () => {
+		authenticationStore.set({ user: recruiter, expires });
+		await recordSpaceShown('/jobs');
+		await recordSpaceShown('/rita/experiences');
+		authenticationStore.set(loggedOut);
+		await recordSpaceShown('/recruiter');
+		expect(mockModePut).not.toHaveBeenCalled();
 	});
 });
 

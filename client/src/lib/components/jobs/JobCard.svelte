@@ -26,7 +26,7 @@ line under it (applicant count, dates...); links or buttons in it stay clickable
 	} = $props();
 
 	let titleTag = $derived(`h${headingLevel}`);
-	let title = $derived(job.title?.trim() || 'Untitled job posting');
+	let title = $derived(job.title?.trim() || 'Untitled job description');
 	let parts = $derived(jobSummaryParts(job));
 </script>
 

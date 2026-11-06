@@ -60,7 +60,7 @@
 	) => {
 		const open = () => goto(resolve('/(app)/recruiter/jobs/[id]', { id: saved._id }));
 		toaster.success({
-			title: 'Job posting created',
+			title: 'Job description created',
 			description:
 				saved.status === 'draft'
 					? 'It is a draft: only you can see it until you set its status to Open.'
@@ -88,20 +88,20 @@
 </script>
 
 <svelte:head>
-	<title>New job posting | Recruiter</title>
+	<title>New job description | Recruiter</title>
 </svelte:head>
 
 <div class="p-4 md:p-6">
 	<div class="mx-auto w-full max-w-3xl space-y-6">
 		<a href={recruiterHref} class="btn btn-sm -ms-2 px-2 text-surface-700-300 hover:preset-tonal">
 			<ArrowLeft size="16" aria-hidden="true" />
-			Job postings
+			Job descriptions
 		</a>
 
 		{#if showEditor && editorUser}
 			<div class="space-y-1">
 				<h2 bind:this={heading} tabindex="-1" class="text-2xl font-bold outline-none md:text-3xl">
-					New job posting
+					New job description
 				</h2>
 				<p class="text-surface-700-300">
 					{imported
@@ -118,7 +118,7 @@
 					<p>
 						The imported job description is no longer in this browser: it was saved or discarded.
 						Start from this blank form, or import the PDF again from
-						<a href={recruiterHref} class="underline underline-offset-2">your job postings</a>.
+						<a href={recruiterHref} class="underline underline-offset-2">your job descriptions</a>.
 					</p>
 				</div>
 			{/if}
@@ -137,7 +137,7 @@
 			<EditorPlaceholder />
 		{:else if !user}
 			<PageNotice title="Sign in as a recruiter" icon={LockClosed}>
-				<p>Sign in to write job postings and see the portfolios that apply.</p>
+				<p>Sign in to write job descriptions and see the portfolios that apply.</p>
 				{#snippet actions()}
 					<a href={recruiterHref} class="btn preset-filled-primary-700-300 min-h-11">
 						Sign in as a recruiter
@@ -146,7 +146,7 @@
 			</PageNotice>
 		{:else}
 			<PageNotice title="Create your recruiter space first" icon={Briefcase}>
-				<p>Your account has no recruiter space yet. Create it to write job postings.</p>
+				<p>Your account has no recruiter space yet. Create it to write job descriptions.</p>
 				{#snippet actions()}
 					<a href={recruiterHref} class="btn preset-filled-primary-700-300 min-h-11">
 						Open the recruiter space

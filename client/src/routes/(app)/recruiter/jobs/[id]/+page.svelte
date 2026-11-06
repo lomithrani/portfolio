@@ -37,6 +37,7 @@
 		failureText,
 		formatDay,
 		hasPublicPage,
+		isJobPostingGone,
 		isoDate,
 		removeApplicantText,
 		statusChangedText,
@@ -280,6 +281,12 @@
 				.applicants({ applicationId: applicant._id })
 				.delete(undefined, withCredentials);
 			const code = errorStatus(error);
+			if (error && isJobPostingGone(code, error.value)) {
+				// The posting itself is gone (deleted in another tab): the page says so
+				removing = null;
+				loadState = { kind: 'not-found' };
+				return;
+			}
 			if (error && code !== 404) {
 				if (code === 401) {
 					removing = null;
@@ -296,7 +303,7 @@
 				}
 				return;
 			}
-			// 404: already removed (or the candidate withdrew): the same outcome
+			// Another 404: the applicant was already removed (or withdrew): the same outcome
 			dropApplicant(applicant._id);
 			removing = null;
 			toaster.success({ title: `${applicantName(applicant)} removed from the applicants` });

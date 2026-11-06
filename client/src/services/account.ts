@@ -8,7 +8,7 @@ import {
 } from 'portfolio-common';
 import { portfolioApi } from '#services';
 import { authenticationStore, type AuthUser } from './stores';
-import { clearAuthentication } from './authentication';
+import { clearAuthentication, isSessionValid } from './authentication';
 import { errorStatus } from './apiErrors';
 
 // The account's spaces (portfolio-common USER_MODES): the candidate space is the portfolio of the
@@ -136,19 +136,32 @@ export const suggestDomainName = (
 export const isCurrentSection = (pathname: string, base: string): boolean =>
 	pathname === base || pathname.startsWith(base.endsWith('/') ? base : `${base}/`);
 
+/** The portfolio (domain name) a page belongs to: its first path segment, lower case */
+const portfolioOfPath = (pathname: string): string => {
+	try {
+		return decodeURIComponent(pathname.split('/')[1] ?? '').toLowerCase();
+	} catch {
+		return '';
+	}
+};
+
 /**
- * The space to record (PUT /me/mode) for a page entered without choosing it in the account menu
- * (a link, a bookmark): 'recruiter' on a /recruiter page for an account that has a recruiter space
- * but another active one, so the menu names the space shown; null otherwise. An account without a
- * recruiter space creates it from the page instead.
+ * The space to record (PUT /me/mode) for the page shown, so the account menu names it: 'recruiter'
+ * on a /recruiter page for an account that has a recruiter space, 'candidate' on the account's
+ * own portfolio, when another space is active; null otherwise. An account without a recruiter
+ * space creates it from the page instead.
  */
 export const spaceToRecord = (
-	user: Pick<AuthUser, 'activeMode' | 'recruiter'> | null | undefined,
+	user: Pick<AuthUser, 'activeMode' | 'recruiter' | 'domain'> | null | undefined,
 	pathname: string
-): UserMode | null =>
-	user?.recruiter && user.activeMode !== 'recruiter' && isCurrentSection(pathname, '/recruiter')
-		? 'recruiter'
-		: null;
+): UserMode | null => {
+	if (!user) return null;
+	if (isCurrentSection(pathname, '/recruiter')) {
+		return user.recruiter && user.activeMode !== 'recruiter' ? 'recruiter' : null;
+	}
+	const ownPortfolio = !!user.domain && portfolioOfPath(pathname) === user.domain.toLowerCase();
+	return ownPortfolio && user.activeMode !== 'candidate' ? 'candidate' : null;
+};
 
 const bodyText = (value: unknown): string => {
 	if (typeof value === 'string') return value;
@@ -245,6 +258,29 @@ export const switchMode = (mode: UserMode): Promise<AccountResult> =>
 		() => portfolioApi.me.mode.put({ mode }, withCredentials),
 		switchErrorMessage(mode)
 	);
+
+/** The space being recorded by recordSpaceShown: one request at a time per space */
+let recording: UserMode | null = null;
+
+/**
+ * Records the space of the page shown (spaceToRecord) as the account's active one, once a
+ * navigation to it ended: the layouts call it after every navigation (a link, a bookmark, the
+ * account menu or the space chooser, which only navigate) and once the session is known. A
+ * navigation the page kept (unsaved changes) records nothing, so the menu never names a space
+ * the page is not in. A failure only leaves the menu's label as it was.
+ */
+export const recordSpaceShown = async (pathname: string): Promise<void> => {
+	const auth = get(authenticationStore);
+	if (!isSessionValid(auth)) return;
+	const mode = spaceToRecord(auth.user, pathname);
+	if (!mode || recording === mode) return;
+	recording = mode;
+	try {
+		await switchMode(mode);
+	} finally {
+		recording = null;
+	}
+};
 
 /** Reloads the signed-in account (GET /me), e.g. once it claimed a domain */
 export const refreshAccount = (): Promise<AccountResult> =>

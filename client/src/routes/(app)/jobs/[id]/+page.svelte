@@ -5,14 +5,12 @@
 	import { APPLICABLE_JOB_STATUS } from 'portfolio-common';
 	import JobDetails from '#components/jobs/JobDetails.svelte';
 	import ApplyPanel from '#components/apply/ApplyPanel.svelte';
-	import { isSessionValid } from '#services/authentication.ts';
 	import {
-		isOwnPosting,
 		jobPageTitle,
 		jobShareDescription,
-		publishedText
+		publishedText,
+		type JobPageAction
 	} from '#services/applications.ts';
-	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import type { PageProps } from './$types';
 
 	// A public job posting (rendered on the server: search engines, link previews) and how to
@@ -26,14 +24,10 @@
 	let isOpen = $derived(job.status === APPLICABLE_JOB_STATUS);
 
 	// Small screens show the panel after the description: a link next to the title leads to it,
-	// or, for the posting's own recruiter (nothing to apply to), straight to managing it
-	let ownPosting = $derived(
-		$sessionCheckedStore &&
-			isSessionValid($authenticationStore) &&
-			isOwnPosting(job, $authenticationStore.user)
-	);
-	// Whether the viewer is on the applicant list (told by the panel): the link then says so
-	let applied = $state(false);
+	// or, for the posting's own recruiter (nothing to apply to), straight to managing it. The
+	// panel tells which once the session and the viewer's status are known; until then (and on
+	// the server) a placeholder holds its place, so the link never changes under the reader
+	let action = $derived<JobPageAction>(isOpen ? 'pending' : 'none');
 </script>
 
 <svelte:head>
@@ -65,7 +59,7 @@
 					{#if published}<p>{published}</p>{/if}
 				{/snippet}
 				{#snippet actions()}
-					{#if ownPosting}
+					{#if action === 'manage'}
 						<a
 							href={resolve('/(app)/recruiter/jobs/[id]', { id: job._id })}
 							class="btn preset-tonal min-h-11 max-sm:w-full lg:hidden"
@@ -73,14 +67,19 @@
 							<Briefcase size="18" aria-hidden="true" />
 							Manage it
 						</a>
-					{:else if isOpen}
+					{:else if action === 'pending'}
+						<span
+							class="placeholder block min-h-11 w-28 animate-pulse rounded-base motion-reduce:animate-none max-sm:w-full lg:hidden"
+							aria-hidden="true"
+						></span>
+					{:else if action !== 'none'}
 						<a
 							href="#apply"
-							class="btn min-h-11 max-sm:w-full lg:hidden {applied
+							class="btn min-h-11 max-sm:w-full lg:hidden {action === 'application'
 								? 'preset-tonal'
-								: 'preset-filled-primary-500'}"
+								: 'preset-filled-primary-700-300'}"
 						>
-							{#if applied}
+							{#if action === 'application'}
 								<CheckCircle size="18" class="text-success-700-300" aria-hidden="true" />
 								Your application
 							{:else}
@@ -94,7 +93,7 @@
 
 			<aside class="min-w-0 lg:sticky lg:top-4" aria-label="Apply">
 				{#key job._id}
-					<ApplyPanel {job} id="apply" onAppliedChange={(value) => (applied = value)} />
+					<ApplyPanel {job} id="apply" onActionChange={(value) => (action = value)} />
 				{/key}
 			</aside>
 		</div>

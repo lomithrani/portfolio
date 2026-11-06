@@ -114,14 +114,14 @@
 		toaster.success({
 			title: 'Changes saved',
 			// Saved after the recruiter went elsewhere: they stay there, the toast leads to it
-			action: left ? { label: 'Open the job posting', onClick: open } : undefined
+			action: left ? { label: 'Open the job description', onClick: open } : undefined
 		});
 		if (!left) await open();
 	};
 </script>
 
 <svelte:head>
-	<title>{job ? `Edit ${job.title}` : 'Edit job posting'} | Recruiter</title>
+	<title>{job ? `Edit ${job.title}` : 'Edit job description'} | Recruiter</title>
 </svelte:head>
 
 <div class="p-4 md:p-6">
@@ -135,7 +135,7 @@
 				<span class="truncate">{loadState.job.title}</span>
 			</a>
 			<div class="space-y-1">
-				<h2 class="text-2xl font-bold md:text-3xl">Edit job posting</h2>
+				<h2 class="text-2xl font-bold md:text-3xl">Edit job description</h2>
 				<p class="text-surface-700-300">Changes show on the job page as soon as you save them.</p>
 			</div>
 			{#key loadState.key}
@@ -151,13 +151,13 @@
 		{:else}
 			<a href={recruiterHref} class="btn btn-sm -ms-2 px-2 text-surface-700-300 hover:preset-tonal">
 				<ArrowLeft size="16" aria-hidden="true" />
-				Job postings
+				Job descriptions
 			</a>
 			{#if !$sessionCheckedStore || loadState.kind === 'loading' || (user && loadState.kind === 'loaded') || (user && loadState.kind === 'idle' && user.recruiter !== false)}
 				<EditorPlaceholder />
 			{:else if !user}
 				<PageNotice title="Sign in as a recruiter" icon={LockClosed}>
-					<p>Sign in to edit your job postings.</p>
+					<p>Sign in to edit your job descriptions.</p>
 					{#snippet actions()}
 						<a href={recruiterHref} class="btn preset-filled-primary-700-300 min-h-11">
 							Sign in as a recruiter
@@ -166,7 +166,7 @@
 				</PageNotice>
 			{:else if user.recruiter === false || loadState.kind === 'no-space'}
 				<PageNotice title="Create your recruiter space first" icon={Briefcase}>
-					<p>Your account has no recruiter space yet. Create it to write job postings.</p>
+					<p>Your account has no recruiter space yet. Create it to write job descriptions.</p>
 					{#snippet actions()}
 						<a href={recruiterHref} class="btn preset-filled-primary-700-300 min-h-11">
 							Open the recruiter space
@@ -174,19 +174,23 @@
 					{/snippet}
 				</PageNotice>
 			{:else if loadState.kind === 'not-found'}
-				<PageNotice title="Job posting not found" icon={DocumentMagnifyingGlass}>
+				<PageNotice title="Job description not found" icon={DocumentMagnifyingGlass}>
 					<p>
-						It may have been deleted, or it belongs to another recruiter account. Your job postings
-						are listed in your recruiter space.
+						It may have been deleted, or it belongs to another recruiter account. Your job
+						descriptions are listed in your recruiter space.
 					</p>
 					{#snippet actions()}
 						<a href={recruiterHref} class="btn preset-filled-primary-700-300 min-h-11">
-							Back to your job postings
+							Back to your job descriptions
 						</a>
 					{/snippet}
 				</PageNotice>
 			{:else}
-				<PageNotice title="Could not load this job posting" icon={ExclamationTriangle} tone="error">
+				<PageNotice
+					title="Could not load this job description"
+					icon={ExclamationTriangle}
+					tone="error"
+				>
 					<p>The server could not be reached, or it failed. Check your connection and try again.</p>
 					{#snippet actions()}
 						<button
@@ -196,7 +200,9 @@
 						>
 							Try again
 						</button>
-						<a href={recruiterHref} class="btn preset-tonal min-h-11">Back to your job postings</a>
+						<a href={recruiterHref} class="btn preset-tonal min-h-11"
+							>Back to your job descriptions</a
+						>
 					{/snippet}
 				</PageNotice>
 			{/if}

@@ -16,7 +16,7 @@ export const JOB_NOT_FOUND_MESSAGE = 'Job posting not found';
 export const JOBS_UNAVAILABLE_MESSAGE =
 	'The job board is temporarily unavailable. Please retry shortly.';
 
-/** GET /jobs returns at most this many postings, most recently updated first */
+/** GET /jobs returns at most this many postings, most recently published first */
 export const PUBLIC_JOBS_LIMIT = 100;
 
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
@@ -114,8 +114,10 @@ export const jobShareDescription = (job: JobPostingLike): string => {
  * What the apply panel shows:
  * - 'not-open': the posting takes no applications (on hold, filled, closed), known without the
  *   session (rendered on the server too);
- * - 'checking': the session is being checked with the API (no flash of signed-out UI);
- * - 'own-posting': the viewer is the posting's recruiter;
+ * - 'checking': the session, or where the signed-in viewer stands on the posting, is being
+ *   checked with the API (no flash of the wrong panel);
+ * - 'own-posting': the viewer is the posting's recruiter (the API says so: public postings never
+ *   name their recruiter);
  * - 'signed-out': sign in to apply;
  * - 'no-portfolio': signed in without a portfolio, claim one first;
  * - 'can-apply': signed in with a portfolio (whether they applied comes from the API).
@@ -125,46 +127,54 @@ export type ApplyView =
 
 type ApplyViewer = Pick<AuthUser, '_id' | 'domain'> | null | undefined;
 
-/** Whether the signed-in viewer is the recruiter of the posting */
-export const isOwnPosting = (job: { recruiter?: unknown }, user: ApplyViewer): boolean =>
-	!!user?._id && job.recruiter != null && String(job.recruiter) === String(user._id);
+/** Whether the panel asks the API where the viewer stands (GET /jobs/:id/application): signed in */
+export const needsApplicationStatus = (user: ApplyViewer, sessionChecked: boolean): boolean =>
+	sessionChecked && !!user?._id;
 
 export const applyView = ({
 	job,
 	user,
-	sessionChecked
+	sessionChecked,
+	status
 }: {
-	job: { status?: JobStatus; recruiter?: unknown };
+	job: { status?: JobStatus };
 	/** The signed-in account, once the session is valid (undefined when signed out) */
 	user: ApplyViewer;
 	sessionChecked: boolean;
+	/**
+	 * Where the signed-in viewer stands (GET /jobs/:id/application): undefined while it loads,
+	 * null when it could not be loaded
+	 */
+	status: ApplicationStatus | null | undefined;
 }): ApplyView => {
 	if (job.status !== APPLICABLE_JOB_STATUS) return 'not-open';
 	if (!sessionChecked) return 'checking';
-	if (isOwnPosting(job, user)) return 'own-posting';
 	if (!user?._id) return 'signed-out';
+	if (status === undefined) return 'checking';
+	if (status?.own) return 'own-posting';
 	if (!user.domain) return 'no-portfolio';
 	return 'can-apply';
 };
 
 /**
- * Whether the panel asks the API if the viewer applied: always when they can apply, and on a
- * posting that is not open for a candidate with a portfolio (who can still withdraw).
+ * The link next to the title on small screens, where the panel comes after the description:
+ * - 'pending': not known yet (rendered on the server, or the session or the viewer's status is
+ *   being checked): a placeholder, never a link that changes once it is known;
+ * - 'manage': the posting's own recruiter;
+ * - 'application': the viewer is on the applicant list;
+ * - 'apply': to apply (or to sign in, or claim a portfolio, first);
+ * - 'none': nothing to do (the posting takes no applications).
  */
-export const needsApplicationStatus = (
+export type JobPageAction = 'pending' | 'manage' | 'application' | 'apply' | 'none';
+
+export const jobPageAction = (
 	view: ApplyView,
-	job: { recruiter?: unknown },
-	user: ApplyViewer,
-	sessionChecked: boolean
-): boolean => {
-	if (view === 'can-apply') return true;
-	return (
-		view === 'not-open' &&
-		sessionChecked &&
-		!!user?._id &&
-		!!user.domain &&
-		!isOwnPosting(job, user)
-	);
+	status: ApplicationStatus | null | undefined
+): JobPageAction => {
+	if (status?.own || view === 'own-posting') return 'manage';
+	if (view === 'not-open') return 'none';
+	if (view === 'checking') return 'pending';
+	return status?.applied ? 'application' : 'apply';
 };
 
 /** Why a posting takes no applications, by status */
@@ -197,6 +207,8 @@ export type ApplicationStatus = {
 	applied: boolean;
 	appliedAt?: Date;
 	source?: ApplicationSource;
+	/** The viewer is the posting's recruiter (GET only) */
+	own?: boolean;
 };
 
 /**
@@ -207,7 +219,11 @@ export const readApplicationStatus = (data: unknown): ApplicationStatus | undefi
 	if (!data || typeof data !== 'object' || !('applied' in data)) return undefined;
 	const value = data as { applied?: unknown; appliedAt?: unknown; source?: unknown };
 	if (typeof value.applied !== 'boolean') return undefined;
-	if (!value.applied) return { applied: false };
+	if (!value.applied) {
+		return (data as { own?: unknown }).own === true
+			? { applied: false, own: true }
+			: { applied: false };
+	}
 	const appliedAt =
 		value.appliedAt instanceof Date || typeof value.appliedAt === 'string'
 			? toDate(value.appliedAt)
@@ -285,7 +301,8 @@ export const leaveCopy = (source: ApplicationSource | undefined): LeaveCopy =>
  * What a failed application request means for the panel:
  * - 'session-expired' (401): the session is cleared, sign in again;
  * - 'already-applied' (409): reload the status, nothing went wrong;
- * - 'not-applied' (404 on withdraw or remove): the application is gone already;
+ * - 'not-applied' (404 on withdraw or remove): the application is gone already (withdrawn
+ *   elsewhere, or removed by the recruiter);
  * - 'not-open' (409): the posting stopped taking applications: reload it;
  * - 'no-portfolio' (403): the account has no portfolio (any more): reload the account;
  * - 'own-posting' (403), 'full' (409), 'not-found' (404), 'network', 'error': a message only.
@@ -370,7 +387,8 @@ export const applicationFailure = (
 	}
 	if (status === 404) {
 		if (action === 'withdraw' && /not applied/i.test(text)) {
-			return { kind: 'not-applied', message: 'Your application had already been withdrawn.' };
+			// Withdrawn in another tab, or removed by the recruiter: who did it is not known
+			return { kind: 'not-applied', message: 'You are no longer on this job’s applicant list.' };
 		}
 		if (action === 'remove' && /not applied/i.test(text)) {
 			return { kind: 'not-applied', message: 'You were no longer on the applicant list.' };

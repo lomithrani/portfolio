@@ -38,7 +38,7 @@ description: applicants...).
 	const uid = $props.id();
 	let titleTag = $derived(`h${headingLevel}`);
 	let sectionTag = $derived(`h${headingLevel + 1}`);
-	let title = $derived(job.title?.trim() || 'Untitled job posting');
+	let title = $derived(job.title?.trim() || 'Untitled job description');
 	let description = $derived(job.description?.trim() ?? '');
 </script>
 
@@ -83,7 +83,9 @@ description: applicants...).
 			About the job
 		</svelte:element>
 		{#if description}
-			<Markdown content={description} headingOffset={headingLevel + 1} />
+			<!-- Written by any recruiter: its raw HTML shows as text. Its headings rank right under
+			     "About the job", whichever level the description starts with -->
+			<Markdown content={description} topHeadingLevel={headingLevel + 2} html={false} />
 		{:else}
 			<p class="text-surface-700-300">No description yet.</p>
 		{/if}

@@ -9,7 +9,7 @@ import {
 	formatDay,
 	isJobNotFound,
 	isJobPostingId,
-	isOwnPosting,
+	jobPageAction,
 	jobPageTitle,
 	jobShareDescription,
 	leaveAction,
@@ -22,11 +22,10 @@ import {
 } from '../applications';
 import type { JobPostingLike } from '../jobPosting';
 
-const job: JobPostingLike & { recruiter: string } = {
+const job: JobPostingLike = {
 	title: 'Backend engineer',
 	company: 'Acme',
 	status: 'open',
-	recruiter: 'recruiter-1',
 	location: { country: 'FR', city: 'Lyon', workMode: 'hybrid', remoteDaysPerWeek: 2 },
 	contract: { type: 'cdi' },
 	pay: { min: 45000, max: 55000, currency: 'EUR', period: 'year' }
@@ -109,7 +108,7 @@ describe('truncateText', () => {
 describe('jobShareDescription', () => {
 	it('is plain text: company, city, work mode, contract and pay', () => {
 		expect(jobShareDescription(job)).toBe(
-			'Acme · Lyon · Hybrid · CDI · €45,000 – €55,000 gross per year'
+			'Acme · Lyon · Hybrid · CDI (permanent) · €45,000 – €55,000 gross per year'
 		);
 	});
 
@@ -137,74 +136,109 @@ describe('jobShareDescription', () => {
 
 describe('applyView', () => {
 	const candidate = { _id: 'candidate-1', domain: 'jane.doe' };
+	const notApplied = { applied: false };
 
 	it('says a posting that is not open takes no applications, even before the session check', () => {
 		for (const status of ['on_hold', 'filled', 'closed'] as const) {
-			expect(applyView({ job: { ...job, status }, user: undefined, sessionChecked: false })).toBe(
-				'not-open'
-			);
-			expect(applyView({ job: { ...job, status }, user: candidate, sessionChecked: true })).toBe(
-				'not-open'
-			);
+			expect(
+				applyView({
+					job: { ...job, status },
+					user: undefined,
+					sessionChecked: false,
+					status: undefined
+				})
+			).toBe('not-open');
+			expect(
+				applyView({
+					job: { ...job, status },
+					user: candidate,
+					sessionChecked: true,
+					status: notApplied
+				})
+			).toBe('not-open');
 		}
 	});
 
-	it('waits for the session check before anything that depends on the viewer', () => {
-		expect(applyView({ job, user: candidate, sessionChecked: false })).toBe('checking');
-		expect(applyView({ job, user: undefined, sessionChecked: false })).toBe('checking');
+	it('waits for the session check, then for where the signed-in viewer stands', () => {
+		expect(applyView({ job, user: candidate, sessionChecked: false, status: undefined })).toBe(
+			'checking'
+		);
+		expect(applyView({ job, user: undefined, sessionChecked: false, status: undefined })).toBe(
+			'checking'
+		);
+		// Signed in: the API tells whether the posting is theirs before anything is offered
+		expect(applyView({ job, user: candidate, sessionChecked: true, status: undefined })).toBe(
+			'checking'
+		);
+		expect(
+			applyView({ job, user: { _id: 'recruiter-1' }, sessionChecked: true, status: undefined })
+		).toBe('checking');
 	});
 
-	it("recognises the posting's recruiter", () => {
-		expect(applyView({ job, user: { _id: 'recruiter-1' }, sessionChecked: true })).toBe(
-			'own-posting'
-		);
+	it("recognises the posting's recruiter from the API's answer (postings never name them)", () => {
+		const own = { applied: false, own: true };
+		expect(
+			applyView({ job, user: { _id: 'recruiter-1' }, sessionChecked: true, status: own })
+		).toBe('own-posting');
 		// Even with a portfolio of their own
 		expect(
-			applyView({ job, user: { _id: 'recruiter-1', domain: 'rita' }, sessionChecked: true })
+			applyView({
+				job,
+				user: { _id: 'recruiter-1', domain: 'rita' },
+				sessionChecked: true,
+				status: own
+			})
 		).toBe('own-posting');
 	});
 
 	it('asks to sign in, then to claim a portfolio, then offers to apply', () => {
-		expect(applyView({ job, user: undefined, sessionChecked: true })).toBe('signed-out');
-		expect(applyView({ job, user: { _id: 'candidate-1' }, sessionChecked: true })).toBe(
-			'no-portfolio'
+		expect(applyView({ job, user: undefined, sessionChecked: true, status: undefined })).toBe(
+			'signed-out'
 		);
-		expect(applyView({ job, user: candidate, sessionChecked: true })).toBe('can-apply');
-	});
-});
-
-describe('isOwnPosting', () => {
-	it('compares ids as strings', () => {
-		expect(isOwnPosting({ recruiter: 'abc' }, { _id: 'abc' })).toBe(true);
-		expect(isOwnPosting({ recruiter: { toString: () => 'abc' } }, { _id: 'abc' })).toBe(true);
-		expect(isOwnPosting({ recruiter: 'abc' }, { _id: 'def' })).toBe(false);
-		expect(isOwnPosting({ recruiter: 'abc' }, undefined)).toBe(false);
-		expect(isOwnPosting({}, { _id: 'abc' })).toBe(false);
+		expect(
+			applyView({ job, user: { _id: 'candidate-1' }, sessionChecked: true, status: notApplied })
+		).toBe('no-portfolio');
+		expect(applyView({ job, user: candidate, sessionChecked: true, status: notApplied })).toBe(
+			'can-apply'
+		);
+		// The status could not be loaded: the panel offers what it can (and to try again)
+		expect(applyView({ job, user: candidate, sessionChecked: true, status: null })).toBe(
+			'can-apply'
+		);
 	});
 });
 
 describe('needsApplicationStatus', () => {
-	const candidate = { _id: 'candidate-1', domain: 'jane.doe' };
+	it('asks once the session is known, for anyone signed in', () => {
+		expect(needsApplicationStatus({ _id: 'candidate-1', domain: 'jane.doe' }, true)).toBe(true);
+		// Without a portfolio too: the posting may be theirs
+		expect(needsApplicationStatus({ _id: 'recruiter-1' }, true)).toBe(true);
+		expect(needsApplicationStatus({ _id: 'candidate-1' }, false)).toBe(false);
+		expect(needsApplicationStatus(undefined, true)).toBe(false);
+	});
+});
 
-	it('asks whenever the viewer can apply', () => {
-		expect(needsApplicationStatus('can-apply', job, candidate, true)).toBe(true);
+describe('jobPageAction', () => {
+	it('holds a placeholder until the panel knows, so the link never changes once shown', () => {
+		expect(jobPageAction('checking', undefined)).toBe('pending');
 	});
 
-	it('asks on a posting that is not open, for a candidate with a portfolio only', () => {
-		const closed = { ...job, status: 'closed' as const };
-		expect(needsApplicationStatus('not-open', closed, candidate, true)).toBe(true);
-		expect(needsApplicationStatus('not-open', closed, candidate, false)).toBe(false);
-		expect(needsApplicationStatus('not-open', closed, { _id: 'candidate-1' }, true)).toBe(false);
-		expect(needsApplicationStatus('not-open', closed, undefined, true)).toBe(false);
-		expect(
-			needsApplicationStatus('not-open', closed, { _id: 'recruiter-1', domain: 'r' }, true)
-		).toBe(false);
+	it('leads the recruiter to manage the posting, whatever its status', () => {
+		expect(jobPageAction('own-posting', { applied: false, own: true })).toBe('manage');
+		expect(jobPageAction('not-open', { applied: false, own: true })).toBe('manage');
 	});
 
-	it('does not ask otherwise', () => {
-		for (const view of ['checking', 'own-posting', 'signed-out', 'no-portfolio'] as const) {
-			expect(needsApplicationStatus(view, job, candidate, true)).toBe(false);
-		}
+	it('leads a candidate to their application, or to apply', () => {
+		expect(jobPageAction('can-apply', { applied: true })).toBe('application');
+		expect(jobPageAction('can-apply', { applied: false })).toBe('apply');
+		expect(jobPageAction('can-apply', null)).toBe('apply');
+		expect(jobPageAction('signed-out', undefined)).toBe('apply');
+		expect(jobPageAction('no-portfolio', { applied: false })).toBe('apply');
+	});
+
+	it('offers nothing on a posting that takes no applications', () => {
+		expect(jobPageAction('not-open', undefined)).toBe('none');
+		expect(jobPageAction('not-open', { applied: true })).toBe('none');
 	});
 });
 
@@ -234,6 +268,14 @@ describe('readApplicationStatus', () => {
 				source: 'added_by_recruiter'
 			})
 		).toEqual({ applied: true, appliedAt, source: 'added_by_recruiter' });
+	});
+
+	it("reads the recruiter's own posting", () => {
+		expect(readApplicationStatus({ applied: false, own: true })).toEqual({
+			applied: false,
+			own: true
+		});
+		expect(readApplicationStatus({ applied: false, own: 'yes' })).toEqual({ applied: false });
 	});
 
 	it('drops what it cannot read', () => {
@@ -315,9 +357,10 @@ describe('applicationFailure', () => {
 	});
 
 	it('treats withdrawing an application that is gone as done', () => {
-		expect(
-			applicationFailure('withdraw', 404, 'You have not applied to this job posting').kind
-		).toBe('not-applied');
+		const gone = applicationFailure('withdraw', 404, 'You have not applied to this job posting');
+		expect(gone.kind).toBe('not-applied');
+		// Withdrawn in another tab, or removed by the recruiter: the wording blames no one
+		expect(gone.message).toBe('You are no longer on this job’s applicant list.');
 		expect(applicationFailure('apply', 404, JOB_NOT_FOUND_MESSAGE).kind).toBe('not-found');
 		expect(applicationFailure('withdraw', 404, JOB_NOT_FOUND_MESSAGE).kind).toBe('not-found');
 	});
