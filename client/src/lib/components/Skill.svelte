@@ -7,7 +7,7 @@
 		highlighted = false
 	}: {
 		skill: Pick<Skill, 'displayName'>;
-		/** Technical skills are filled chips, soft skills outlined */
+		/** Same chip for both; soft skills (listed after the technical ones) are a lighter tint */
 		variant?: 'hard' | 'soft';
 		/** Matches the active filters: a colour change only, so rows never shift */
 		highlighted?: boolean;
@@ -19,7 +19,7 @@
 		? 'preset-filled-primary-700-300 border-primary-700-300'
 		: variant === 'hard'
 			? 'preset-tonal-primary border-transparent'
-			: 'border-surface-300-700 text-surface-800-200'}"
+			: 'border-transparent bg-[color-mix(in_oklab,var(--color-primary-50-950)_45%,transparent)] text-primary-950-50'}"
 	data-variant={variant}
 	data-highlighted={highlighted || undefined}
 >

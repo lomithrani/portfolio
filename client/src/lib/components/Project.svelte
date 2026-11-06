@@ -40,7 +40,8 @@
 		</div>
 	{/if}
 	{#if hardSkills.length > 0 || softSkills.length > 0}
-		<!-- Technical skills filled, soft skills outlined (see Skill.svelte) -->
+		<!-- Technical skills, then soft skills on their own line in a lighter tint (Skill.svelte):
+			the order and the names tell them apart -->
 		<div class="space-y-1.5 pt-1">
 			{#if hardSkills.length > 0}
 				<ul class="flex flex-wrap gap-1.5" aria-label="Technical skills">

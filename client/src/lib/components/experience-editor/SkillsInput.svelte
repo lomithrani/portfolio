@@ -25,7 +25,7 @@
 		known: readonly string[];
 		/** Offered while typing */
 		suggestions: readonly string[];
-		/** Technical skills are filled chips, soft skills outlined (as on the cards) */
+		/** Technical skills tonal chips, soft skills a lighter tint (as on the cards) */
 		variant: 'hard' | 'soft';
 		onchange: (value: string[]) => void;
 	} = $props();
@@ -83,7 +83,7 @@
 	const chipClass = $derived(
 		variant === 'hard'
 			? 'preset-tonal-primary'
-			: 'bg-transparent text-surface-800-200 border border-surface-300-700'
+			: 'bg-[color-mix(in_oklab,var(--color-primary-50-950)_45%,transparent)] text-primary-950-50'
 	);
 </script>
 
