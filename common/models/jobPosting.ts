@@ -83,7 +83,15 @@ export const SENIORITY_LEVELS = ['entry', 'junior', 'mid', 'senior', 'lead', 'ex
 export type SeniorityLevel = (typeof SENIORITY_LEVELS)[number];
 
 /** French education levels (niveau d'études): none, CAP/BEP, Bac, Bac+2, Bac+3, Bac+5, doctorate */
-export const EDUCATION_LEVELS = ['none', 'cap_bep', 'bac', 'bac_2', 'bac_3', 'bac_5', 'doctorate'] as const;
+export const EDUCATION_LEVELS = [
+	'none',
+	'cap_bep',
+	'bac',
+	'bac_2',
+	'bac_3',
+	'bac_5',
+	'doctorate'
+] as const;
 export type EducationLevel = (typeof EDUCATION_LEVELS)[number];
 
 /** How much the job travels */
@@ -281,7 +289,8 @@ export function normalizeJobPosting(input: JobPostingInput): JobPostingInput {
 		})!,
 		workingTime: compact({
 			arrangement: workingTime.arrangement,
-			hoursPerWeek: workingTime.arrangement === 'weekly_hours' ? workingTime.hoursPerWeek : undefined,
+			hoursPerWeek:
+				workingTime.arrangement === 'weekly_hours' ? workingTime.hoursPerWeek : undefined,
 			daysPerYear: workingTime.arrangement === 'annual_days' ? workingTime.daysPerYear : undefined,
 			rttDaysPerYear: workingTime.rttDaysPerYear
 		})!,
@@ -324,7 +333,12 @@ const hasCents = (value: number) => Math.abs(Math.round(value * 100) - value * 1
 export function validateJobPosting(job: JobPostingInput): JobPostingProblem[] {
 	const problems: JobPostingProblem[] = [];
 	const problem = (field: string, message: string) => problems.push({ field, message });
-	const wholeNumber = (field: string, value: number | undefined, range: NumberRange, label: string) => {
+	const wholeNumber = (
+		field: string,
+		value: number | undefined,
+		range: NumberRange,
+		label: string
+	) => {
 		if (value === undefined) return;
 		if (!isWhole(value) || !inRange(value, range)) {
 			problem(field, `${label} must be a whole number from ${range.min} to ${range.max}`);
@@ -375,7 +389,12 @@ export function validateJobPosting(job: JobPostingInput): JobPostingProblem[] {
 	if (FIXED_TERM_CONTRACT_TYPES.includes(contract.type) && contract.durationMonths === undefined) {
 		problem('contract.durationMonths', 'Duration is required for this contract');
 	}
-	wholeNumber('contract.durationMonths', contract.durationMonths, JOB_LIMITS.durationMonths, 'Duration');
+	wholeNumber(
+		'contract.durationMonths',
+		contract.durationMonths,
+		JOB_LIMITS.durationMonths,
+		'Duration'
+	);
 	if (contract.startDate !== undefined && !isCalendarDate(contract.startDate)) {
 		problem('contract.startDate', 'Start date must be a date (YYYY-MM-DD)');
 	}
@@ -414,7 +433,12 @@ export function validateJobPosting(job: JobPostingInput): JobPostingProblem[] {
 		if (workingTime.daysPerYear === undefined) {
 			problem('workingTime.daysPerYear', 'Days per year are required');
 		} else {
-			wholeNumber('workingTime.daysPerYear', workingTime.daysPerYear, JOB_LIMITS.daysPerYear, 'Days per year');
+			wholeNumber(
+				'workingTime.daysPerYear',
+				workingTime.daysPerYear,
+				JOB_LIMITS.daysPerYear,
+				'Days per year'
+			);
 		}
 	}
 	wholeNumber(
@@ -446,9 +470,19 @@ export function validateJobPosting(job: JobPostingInput): JobPostingProblem[] {
 
 	// Team and organisation
 	const organization = job.organization ?? {};
-	wholeNumber('organization.directReports', organization.directReports, JOB_LIMITS.directReports, 'Direct reports');
+	wholeNumber(
+		'organization.directReports',
+		organization.directReports,
+		JOB_LIMITS.directReports,
+		'Direct reports'
+	);
 	wholeNumber('organization.peers', organization.peers, JOB_LIMITS.peers, 'Peers');
-	wholeNumber('organization.levelsToCeo', organization.levelsToCeo, JOB_LIMITS.levelsToCeo, 'Levels to the CEO');
+	wholeNumber(
+		'organization.levelsToCeo',
+		organization.levelsToCeo,
+		JOB_LIMITS.levelsToCeo,
+		'Levels to the CEO'
+	);
 
 	// Requirements and conditions
 	const requirements = job.requirements ?? {};
