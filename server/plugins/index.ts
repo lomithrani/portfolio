@@ -1,5 +1,6 @@
 export { googleAuth } from './auth'
 export { experiences } from './experiences'
+export { resumeImport } from './resumeImport'
 export { workflows } from './workflows'
 export { corsConf } from './corsConf'
 export { domain } from './domain'

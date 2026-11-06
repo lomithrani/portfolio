@@ -3,8 +3,8 @@
 // creates the users, domains and skills it needs, named with a suffix unique
 // to that test, and removes them after: tests pass in any order (--randomize)
 // and never touch data they did not create.
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock } from 'bun:test';
-import mongoose from 'mongoose';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
+import mongoose, { Types } from 'mongoose';
 import { env } from '../env';
 import { createApp } from '../app';
 import { Domain, Experience, Skill, User, Workflow } from '../models/database';
@@ -16,6 +16,7 @@ import {
   postJson,
   postWithCookie,
   putWithCookie,
+  deleteWithCookie,
   signGoogleIdToken,
   useTestGoogleKeys,
   workflowRequestBody,
@@ -41,7 +42,8 @@ const removeTestData = async (suffix: string) => {
   await Domain.deleteMany({ _id: { $in: domains.map((domain) => domain._id) } });
   await Workflow.deleteMany({ user: { $in: userIds } });
   await User.deleteMany({ _id: { $in: userIds } });
-  await Skill.deleteMany({ displayName: named });
+  // Skill names match ignoring case: a test may create any casing of its names
+  await Skill.deleteMany({ displayName: new RegExp(named.source, 'i') });
 };
 
 let app: ReturnType<typeof createApp>;
@@ -271,6 +273,186 @@ describe('domains and experiences (real collections)', () => {
   });
 });
 
+describe('experience fields and validation (real collections)', () => {
+  it('stores location and period, serves them, and changes or clears them on edit', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
+    const project = experienceBody().projects[0];
+
+    const posted = await postWithCookie(
+      app,
+      '/experiences',
+      experienceBody({
+        location: ' Paris, France ',
+        // Month precision: stored as the 1st of the month (UTC)
+        start: '2024-03-15T10:00:00.000Z',
+        projects: [{ ...project, start: '2024-03-01T00:00:00.000Z' }]
+      }),
+      owner.cookie
+    );
+    expect(posted.status).toBe(200);
+    const created = await readJson(posted);
+    expect(created).toMatchObject({ location: 'Paris, France', start: '2024-03-01T00:00:00.000Z' });
+    // Ongoing
+    expect(created.end).toBeUndefined();
+
+    const served = (await readJson(await makeRequest(app, `/domain/${domainName}`))).experiences[0];
+    expect(served).toMatchObject({ _id: created._id, location: 'Paris, France', start: '2024-03-01T00:00:00.000Z' });
+    expect(served.end).toBeUndefined();
+    expect(served.projects[0].start).toBe('2024-03-01T00:00:00.000Z');
+    expect(served.projects[0].end).toBeUndefined();
+
+    // Ended, location cleared
+    const ended = await putWithCookie(
+      app,
+      `/experiences/${created._id}`,
+      experienceBody({ location: '  ', start: '2024-03-01T00:00:00.000Z', end: '2025-06-01T00:00:00.000Z' }),
+      owner.cookie
+    );
+    expect(ended.status).toBe(200);
+    let stored = (await Experience.findById(created._id))!.toObject();
+    expect(stored).not.toHaveProperty('location');
+    expect(stored.start?.toISOString()).toBe('2024-03-01T00:00:00.000Z');
+    expect(stored.end?.toISOString()).toBe('2025-06-01T00:00:00.000Z');
+
+    // No period at all
+    const undated = await putWithCookie(app, `/experiences/${created._id}`, experienceBody(), owner.cookie);
+    expect(undated.status).toBe(200);
+    stored = (await Experience.findById(created._id))!.toObject();
+    expect(stored).not.toHaveProperty('start');
+    expect(stored).not.toHaveProperty('end');
+  });
+
+  it('answers 422 naming the field for an end before the start or a blank name, writing nothing', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
+    const title = t.id('invalid');
+    const project = experienceBody().projects[0];
+    const invalid: [Record<string, unknown>, string][] = [
+      [{ title, start: '2024-03-01T00:00:00.000Z', end: '2023-12-01T00:00:00.000Z' }, 'end'],
+      [{ title, projects: [{ ...project, start: '2024-03-01T00:00:00.000Z', end: '2024-01-01T00:00:00.000Z' }] }, 'projects.0.end'],
+      [{ title: '  ' }, 'title'],
+      [{ title, projects: [project, { ...project, name: '   ' }] }, 'projects.1.name']
+    ];
+
+    for (const [fields, property] of invalid) {
+      const result = await postWithCookie(app, '/experiences', experienceBody(fields), owner.cookie);
+      expect(result.status).toBe(422);
+      expect(await readJson(result)).toMatchObject({ type: 'validation', property });
+    }
+    expect(await Experience.countDocuments({ title })).toBe(0);
+    expect((await Domain.findOne({ name: domainName }))!.experiences).toHaveLength(0);
+    // Skills are only created for a valid request
+    expect(await Skill.countDocuments({ displayName: new RegExp(`-${t.suffix}$`, 'i') })).toBe(0);
+
+    // An invalid edit leaves the stored experience as it was
+    const created = await readJson(await postWithCookie(app, '/experiences', experienceBody({ title }), owner.cookie));
+    const edit = await putWithCookie(
+      app,
+      `/experiences/${created._id}`,
+      experienceBody({ title: 'Edited', start: '2024-03-01T00:00:00.000Z', end: '2024-02-01T00:00:00.000Z' }),
+      owner.cookie
+    );
+    expect(edit.status).toBe(422);
+    expect((await readJson(edit)).property).toBe('end');
+    expect((await Experience.findById(created._id))?.title).toBe(title);
+  });
+
+  it('reuses an existing skill whatever the case of the name sent', async () => {
+    const owner = await loginWithDomain('owner', t.id('domain'));
+    const displayName = t.id('TypeScript');
+    const existing = await Skill.create({ displayName, names: [displayName] });
+
+    const posted = await postWithCookie(
+      app,
+      '/experiences',
+      experienceBody({
+        projects: [{
+          ...experienceRequestBody.projects[0],
+          hardSkills: [{ name: ` ${displayName.toLowerCase()} `, level: -1 }, { name: displayName.toUpperCase(), level: -1 }],
+          softSkills: [{ name: displayName.toLowerCase(), level: -1 }]
+        }]
+      }),
+      owner.cookie
+    );
+
+    expect(posted.status).toBe(200);
+    const { projects } = await readJson(posted);
+    // One entry per skill, shown with the existing spelling
+    expect(projects[0].hardSkills).toHaveLength(1);
+    expect(projects[0].hardSkills[0].skill).toMatchObject({ _id: String(existing._id), displayName });
+    expect(projects[0].softSkills[0].skill._id).toBe(String(existing._id));
+    expect(await Skill.countDocuments({ displayName: new RegExp(`-${t.suffix}$`, 'i') })).toBe(1);
+  });
+
+  it('keeps every experience posted concurrently', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
+
+    const results = await Promise.all(
+      [1, 2, 3].map((n) => postWithCookie(app, '/experiences', experienceBody({ title: `Concurrent ${n}` }), owner.cookie))
+    );
+
+    expect(results.map((result) => result.status)).toEqual([200, 200, 200]);
+    const ids = await Promise.all(results.map(async (result) => (await readJson(result))._id));
+    const domain = await Domain.findOne({ name: domainName });
+    expect(domain!.experiences.map(String).sort()).toEqual(ids.sort());
+  });
+
+  it('leaves no orphan experience when its domain cannot be updated', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
+    const title = t.id('orphan');
+    spyOn(Domain, 'updateOne').mockRejectedValueOnce(new Error('write conflict') as never);
+
+    const result = await postWithCookie(app, '/experiences', experienceBody({ title }), owner.cookie);
+
+    expect(result.status).toBe(500);
+    expect(await Experience.countDocuments({ title })).toBe(0);
+    expect((await Domain.findOne({ name: domainName }))!.experiences).toHaveLength(0);
+  });
+});
+
+describe('DELETE /experiences/:id (real collections)', () => {
+  it('deletes an experience of the owner: gone from the domain and the collection', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
+    const ids: string[] = [];
+    for (const title of ['First', 'Second']) {
+      const posted = await postWithCookie(app, '/experiences', experienceBody({ title }), owner.cookie);
+      ids.push((await readJson(posted))._id);
+    }
+
+    const result = await deleteWithCookie(app, `/experiences/${ids[0]}`, owner.cookie);
+
+    expect(result.status).toBe(200);
+    expect(await readJson(result)).toEqual({ id: ids[0] });
+    const domain = await readJson(await makeRequest(app, `/domain/${domainName}`));
+    expect(domain.experiences.map((experience: { _id: string }) => experience._id)).toEqual([ids[1]]);
+    expect(await Experience.exists({ _id: ids[0] })).toBeNull();
+    expect(await Experience.exists({ _id: ids[1] })).toBeTruthy();
+
+    // Already gone
+    expect((await deleteWithCookie(app, `/experiences/${ids[0]}`, owner.cookie)).status).toBe(404);
+  });
+
+  it('answers 404 for another user\'s experience or an unknown id, 422 for a malformed id, 401 without auth', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
+    const other = await loginWithDomain('other', t.id('domain-other'));
+    const { _id: id } = await readJson(await postWithCookie(app, '/experiences', experienceBody(), owner.cookie));
+
+    expect((await deleteWithCookie(app, `/experiences/${id}`, other.cookie)).status).toBe(404);
+    expect((await deleteWithCookie(app, `/experiences/${new Types.ObjectId()}`, owner.cookie)).status).toBe(404);
+    expect((await deleteWithCookie(app, '/experiences/not-an-id', owner.cookie)).status).toBe(422);
+    expect((await deleteWithCookie(app, `/experiences/${id}`, '')).status).toBe(401);
+
+    // Untouched
+    expect(await Experience.exists({ _id: id })).toBeTruthy();
+    expect((await Domain.findOne({ name: domainName }))!.experiences.map(String)).toEqual([id]);
+  });
+});
+
 describe('cross-site form bodies (real collections)', () => {
   const formRequest = (path: string, body: FormData | URLSearchParams, cookie: string) =>
     makeRequest(app, path, { method: 'POST', headers: { Cookie: cookie }, body });
@@ -342,5 +524,24 @@ describe('Skill.findOrCreate under concurrency', () => {
 
     expect(new Set(ids.map(String)).size).toBe(1);
     expect(await Skill.countDocuments({ displayName: skillName })).toBe(1);
+  });
+
+  it('matches names and aliases ignoring case and spaces, keeping the display name', async () => {
+    const displayName = t.id('Kubernetes');
+    const alias = t.id('k8s');
+    const skill = await Skill.create({ displayName, names: [displayName, alias] });
+
+    expect(String(await Skill.findOrCreate(alias.toUpperCase()))).toBe(String(skill._id));
+    expect(String(await Skill.findOrCreate(` ${displayName.toLowerCase()} `))).toBe(String(skill._id));
+
+    expect((await Skill.findById(skill._id))?.displayName).toBe(displayName);
+    expect(await Skill.countDocuments({ displayName: new RegExp(`-${t.suffix}$`, 'i') })).toBe(1);
+  });
+
+  it('resolves to the oldest of case variants stored before matching ignored case', async () => {
+    const older = await Skill.create({ displayName: t.id('Rust') });
+    await Skill.create({ displayName: t.id('rust') });
+
+    expect(String(await Skill.findOrCreate(t.id('RUST')))).toBe(String(older._id));
   });
 });

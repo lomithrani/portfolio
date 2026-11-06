@@ -1,31 +1,32 @@
 import { t } from "elysia";
-import { ExperienceType } from "portfolio-common";
+import { EXPERIENCE_LIMITS, ExperienceType } from "portfolio-common";
 
-// Generous bounds: they only stop abusive payloads (documents are served on
-// every public GET /domain/:name), never what the admin forms produce.
-const MAX_TEXT = 20_000; // markdown summaries
-const MAX_NAME = 300;
-// The client caps icon files at 16 KB, i.e. a ~22 KB base64 data URL
-const MAX_ICON = 32_768;
+// Limits shared with the client's form validation (portfolio-common). The
+// company logo is not edited by the client, only sent back as received.
+const MAX_COMPANY_SVG = 100_000;
 
 export const skillModel = t.Object({
-  name: t.String({ minLength: 1, maxLength: 100 }),
+  name: t.String({ minLength: 1, maxLength: EXPERIENCE_LIMITS.skillName }),
   level: t.Number({ minimum: -1, maximum: 100 })
 })
 
+// Dates have month precision: stored as UTC midnight of the 1st of the month
 export const projectModel = t.Object({
-  name: t.String({ maxLength: MAX_NAME }),
+  // Not blank: also trimmed on save, a whitespace-only name answers 422
+  name: t.String({ minLength: 1, maxLength: EXPERIENCE_LIMITS.projectName }),
   start: t.Optional(t.Date()),
+  // Unset: ongoing (when start is set)
   end: t.Optional(t.Date()),
-  summary: t.String({ maxLength: MAX_TEXT }),
-  hardSkills: t.Array(skillModel, { maxItems: 100 }),
-  softSkills: t.Array(skillModel, { maxItems: 100 })
+  summary: t.String({ maxLength: EXPERIENCE_LIMITS.text }),
+  hardSkills: t.Array(skillModel, { maxItems: EXPERIENCE_LIMITS.skillsPerProject }),
+  softSkills: t.Array(skillModel, { maxItems: EXPERIENCE_LIMITS.skillsPerProject })
 })
 
 export const companyModel = t.Object({
-  name: t.String({ maxLength: 200 }),
-  summary: t.Optional(t.String({ maxLength: 5_000 })),
-  svg: t.Optional(t.String({ maxLength: 100_000 })),
+  // A blank name means "no company"
+  name: t.String({ maxLength: EXPERIENCE_LIMITS.companyName }),
+  summary: t.Optional(t.String({ maxLength: EXPERIENCE_LIMITS.companySummary })),
+  svg: t.Optional(t.String({ maxLength: MAX_COMPANY_SVG })),
 })
 
 export const experienceRequest = t.Object({
@@ -35,9 +36,15 @@ export const experienceRequest = t.Object({
     t.Literal(ExperienceType.Leisure),
     t.Literal(ExperienceType.Personal),
   ]),
-  title: t.String({ maxLength: MAX_NAME }),
+  // Not blank: also trimmed on save, a whitespace-only title answers 422
+  title: t.String({ minLength: 1, maxLength: EXPERIENCE_LIMITS.title }),
   company: t.Optional(companyModel),
-  summary: t.String({ maxLength: MAX_TEXT }),
-  icon: t.Optional(t.String({ maxLength: MAX_ICON })),
-  projects: t.Array(projectModel, { maxItems: 50 }),
+  // Trimmed; blank means none
+  location: t.Optional(t.String({ maxLength: EXPERIENCE_LIMITS.location })),
+  start: t.Optional(t.Date()),
+  // Unset with a start: ongoing ("Present")
+  end: t.Optional(t.Date()),
+  summary: t.String({ maxLength: EXPERIENCE_LIMITS.text }),
+  icon: t.Optional(t.String({ maxLength: EXPERIENCE_LIMITS.icon })),
+  projects: t.Array(projectModel, { maxItems: EXPERIENCE_LIMITS.projects }),
 })

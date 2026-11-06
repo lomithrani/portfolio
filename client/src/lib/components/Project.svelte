@@ -2,52 +2,65 @@
 	import type { Project, Skill as SkillModel } from 'portfolio-api/models/database';
 	import Skill from './Skill.svelte';
 	import Markdown from './Markdown.svelte';
+	import { formatMonthRange } from '#services/experienceDates.ts';
+
 	let {
 		project,
 		experienceId,
-		activeFilters = { softSkills: new Set<string>(), hardSkills: new Set<string>() }
+		highlightSkill = () => false
 	}: {
 		project: Project;
 		experienceId: string;
-		activeFilters?: { softSkills: Set<string>; hardSkills: Set<string> };
+		/** Whether a skill (by display name) matches the active filters */
+		highlightSkill?: (displayName: string) => boolean;
 	} = $props();
 
-	const castSkill = (skill: unknown) => {
-		return skill as SkillModel;
-	};
+	// The API populates the skills (GET /domain/:name)
+	const skillsOf = (entries: Project['hardSkills']) =>
+		entries
+			.map((entry) => entry.skill as SkillModel)
+			.filter((skill) => typeof skill?.displayName === 'string');
 
-	const formatDate = (date: unknown) => {
-		if (!date) return '';
-		const d = date instanceof Date ? date : new Date(String(date));
-		return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-	};
+	let headingId = $derived(`project-${experienceId}-${String(project._id ?? '')}`);
+	let period = $derived(formatMonthRange(project.start, project.end));
+	let hardSkills = $derived(skillsOf(project.hardSkills));
+	let softSkills = $derived(skillsOf(project.softSkills));
 </script>
 
-<div class="card preset-tonal-surface p-3 space-y-2 shadow-sm">
-	<article>
-		<h3 class="font-semibold" id={`project-${experienceId}-${String(project._id ?? '')}`}>
-			{project.name}
-		</h3>
-		<p class="text-xs opacity-70">{formatDate(project.start)} — {formatDate(project.end)}</p>
-		<div class="text-sm mt-1">
-			<Markdown content={project.summary ?? ''} />
-		</div>
-
-		{#if project.hardSkills.length > 0 || project.softSkills.length > 0}
-			<div class="flex flex-wrap gap-1 pt-2">
-				{#each project.hardSkills as hardSkill, index (index)}
-					<Skill
-						skill={castSkill(hardSkill.skill)}
-						highlighted={activeFilters.hardSkills.has(castSkill(hardSkill.skill).displayName)}
-					/>
-				{/each}
-				{#each project.softSkills as softSkill, index (index)}
-					<Skill
-						skill={castSkill(softSkill.skill)}
-						highlighted={activeFilters.softSkills.has(castSkill(softSkill.skill).displayName)}
-					/>
-				{/each}
-			</div>
+<article class="space-y-1.5" aria-labelledby={headingId}>
+	<div class="flex flex-wrap items-baseline justify-between gap-x-3">
+		<h3 class="font-semibold" id={headingId}>{project.name}</h3>
+		{#if period}
+			<p class="text-xs text-surface-700-300 whitespace-nowrap">{period}</p>
 		{/if}
-	</article>
-</div>
+	</div>
+	{#if project.summary}
+		<div class="text-sm">
+			<Markdown content={project.summary} headingOffset={3} compact />
+		</div>
+	{/if}
+	{#if hardSkills.length > 0 || softSkills.length > 0}
+		<!-- Technical skills, then soft skills on their own line in a lighter tint (Skill.svelte):
+			the order and the names tell them apart -->
+		<div class="space-y-1.5 pt-1">
+			{#if hardSkills.length > 0}
+				<ul class="flex flex-wrap gap-1.5" aria-label="Technical skills">
+					{#each hardSkills as skill, index (index)}
+						<li>
+							<Skill {skill} variant="hard" highlighted={highlightSkill(skill.displayName)} />
+						</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if softSkills.length > 0}
+				<ul class="flex flex-wrap gap-1.5" aria-label="Soft skills">
+					{#each softSkills as skill, index (index)}
+						<li>
+							<Skill {skill} variant="soft" highlighted={highlightSkill(skill.displayName)} />
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+	{/if}
+</article>

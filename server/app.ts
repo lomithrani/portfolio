@@ -1,16 +1,91 @@
 import { Elysia } from 'elysia'
+import { jwtVerify } from 'jose'
 import mongoose from 'mongoose'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
-import { experiences, googleAuth, domain, workflows, appointments, corsConf } from './plugins'
-import { errors, UnsupportedMediaTypeError } from './errors'
+import { experiences, resumeImport, googleAuth, domain, workflows, appointments, corsConf } from './plugins'
+import { errors, MissingAuthCookieError, PayloadTooLargeError, UnsupportedMediaTypeError } from './errors'
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
 import { logger } from './services/logger'
 import { resolveError } from './services/errorHandler'
 
-// Hard cap on request bodies (Bun answers 413 above it). The largest legit
-// payload is an experience with a ~22KB data-URL icon and markdown text.
-const MAX_REQUEST_BODY_SIZE = 1024 * 1024
+// Hard cap on request bodies, enforced by Bun itself (it answers 413, without
+// CORS headers, before the app runs). Sized for the one large route: a 4 MB
+// PDF posted to POST /experiences/import is ~5.4 MB of base64 JSON.
+const MAX_REQUEST_BODY_SIZE = 6 * 1024 * 1024
+
+// Cap of every other route (a 413 with CORS headers). The largest legit
+// payload there is an experience with a ~22KB data-URL icon and markdown
+// text. Checked twice: on Content-Length before the body is read (the fast
+// path), then on the bytes actually read, since a body can come without a
+// usable Content-Length (chunked, as proxies and HTTP/2 clients may forward
+// it, or with the header repeated)
+const MAX_JSON_BODY_SIZE = 1024 * 1024
+const LARGE_BODY_ROUTE = { method: 'POST', path: '/experiences/import' }
+
+const isLargeBodyRoute = (request: Request) =>
+  request.method === LARGE_BODY_ROUTE.method && new URL(request.url).pathname === LARGE_BODY_ROUTE.path
+
+const hasOversizedBody = (request: Request) => {
+  const contentLength = Number(request.headers.get('content-length'))
+  if (!(contentLength > MAX_JSON_BODY_SIZE)) return false
+  // Only parsed for the rare request over the cap
+  return !isLargeBodyRoute(request)
+}
+
+/** The body as text, read up to `maxBytes`: past that, reading stops with a 413 */
+const readBodyText = async (body: ReadableStream<Uint8Array>, maxBytes: number) => {
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {})
+      throw new PayloadTooLargeError('Payload Too Large')
+    }
+    chunks.push(value)
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks))
+}
+
+/**
+ * Parses JSON bodies in place of Elysia's parser, reading at most
+ * MAX_JSON_BODY_SIZE bytes; other bodies are refused (415) or never read.
+ * The résumé import keeps Elysia's parser, under Bun's cap. Invalid JSON is a
+ * 400, as with Elysia's parser (it throws inside the parse step)
+ */
+const parseBoundedJson = async ({ request }: { request: Request }, contentType: string) => {
+  if (!request.body || isLargeBodyRoute(request)) return undefined
+  if (contentType.toLowerCase() !== 'application/json') return undefined
+  return JSON.parse(await readBodyText(request.body, MAX_JSON_BODY_SIZE)) as unknown
+}
+
+/** The value of the request's session cookie ('auth'), if any */
+const sessionCookie = (request: Request) => {
+  for (const pair of (request.headers.get('cookie') ?? '').split(';')) {
+    const [name, ...value] = pair.split('=')
+    if (name.trim() === 'auth') return value.join('=').trim()
+  }
+  return undefined
+}
+
+// The résumé import takes a ~6 MB body and needs a session: a request without
+// a valid session JWT (signed with JWT_SECRET, unexpired, with a subject:
+// what userLogged accepts) is refused before its body is read, parsed and
+// copied into the request span. Any cookie named auth is not enough
+const lacksValidSession = async (request: Request) => {
+  const token = sessionCookie(request)
+  if (!token) return true
+  try {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET))
+    return !payload.sub || !payload.exp
+  } catch {
+    return true
+  }
+}
 
 // Bodies of requests that change data must be JSON (the only type the client
 // sends). An HTML form on another site can only send urlencoded, multipart or
@@ -61,11 +136,20 @@ export const createApp = () =>
       if (start !== undefined) httpRequestDuration.record(performance.now() - start, attrs)
     })
     .use(corsConf())
-    // After CORS, so the 415 still carries the CORS headers. Thrown (not
-    // returned) so it goes through onError: logged and counted like any 4xx
+    // After CORS, so the 413, 415 and 401 still carry the CORS headers. Thrown
+    // (not returned) so they go through onError: logged and counted like any
+    // 4xx. All run before the body is read (the session check is async, in a
+    // hook of its own: it verifies a JWT for the résumé import only)
     .onRequest(({ request }) => {
+      if (hasOversizedBody(request)) throw new PayloadTooLargeError('Payload Too Large')
       if (hasNonJsonBody(request)) throw new UnsupportedMediaTypeError('Unsupported Media Type')
     })
+    .onRequest(async ({ request }) => {
+      if (isLargeBodyRoute(request) && (await lacksValidSession(request))) {
+        throw new MissingAuthCookieError('Unauthorized')
+      }
+    })
+    .onParse({ as: 'global' }, parseBoundedJson)
     .use(apiDocs())
     .error(errors)
     .onError(({ code, error, set, request, route, path }) => {
@@ -102,6 +186,7 @@ export const createApp = () =>
     .use(googleAuth)
     .use(domain)
     .use(experiences)
+    .use(resumeImport)
     .use(workflows)
     .use(appointments)
 

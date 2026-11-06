@@ -18,11 +18,11 @@ export interface Project extends Document {
 }
 
 export const projectSchema = new Schema({
-  name: { type: String, required: true },
+  name: { type: String, required: true, trim: true },
+  // Month precision (UTC midnight of the 1st); no end = ongoing
   start: Date,
   end: Date,
   summary: String,
-  summaryType: String,
   hardSkills: [{
     skill: { type: Types.ObjectId, ref: 'Skill', required: true },
     level: Number

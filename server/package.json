@@ -9,9 +9,11 @@
     "test": "bun test tests/",
     "typecheck": "tsc --noEmit -p .",
     "seed": "bun run tests/seedDb.ts",
+    "seed:e2e": "bun run tests/seedE2e.ts",
     "kill": "sudo lsof -t -i:3000 | xargs sudo kill -9"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
     "@elysiajs/cors": "^1.4.2",
     "@elysiajs/jwt": "^1.4.2",
     "@elysiajs/openapi": "^1.4.16",

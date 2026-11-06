@@ -363,7 +363,7 @@
 			{#if confirmation.meetLink}
 				<!-- eslint-disable svelte/no-navigation-without-resolve -- external Google Meet URL -->
 				<a
-					class="btn preset-filled-primary-500"
+					class="btn preset-filled-primary-700-300"
 					href={confirmation.meetLink}
 					target="_blank"
 					rel="noopener noreferrer"
@@ -502,7 +502,7 @@
 															{#each week as day (day.toString())}
 																<DatePicker.TableCell value={day} class="size-9 sm:size-10">
 																	<DatePicker.TableCellTrigger
-																		class="focus-visible:outline-2 focus-visible:outline-primary-500 data-[unavailable]:line-through data-[unavailable]:opacity-40 data-[outside-range]:invisible [&[data-selectable]:not([data-selected])]:preset-tonal-primary [&[data-selectable]:not([data-selected])]:hover:preset-filled-primary-200-800 data-[selectable]:cursor-pointer data-[selectable]:font-semibold data-[selected]:preset-filled-primary-500"
+																		class="focus-visible:outline-2 focus-visible:outline-primary-500 data-[unavailable]:line-through data-[unavailable]:opacity-40 data-[outside-range]:invisible [&[data-selectable]:not([data-selected])]:preset-tonal-primary [&[data-selectable]:not([data-selected])]:hover:preset-filled-primary-200-800 data-[selectable]:cursor-pointer data-[selectable]:font-semibold data-[selected]:preset-filled-primary-700-300"
 																	>
 																		{day.day}
 																	</DatePicker.TableCellTrigger>
@@ -545,7 +545,7 @@
 							{#each slots as slot (slot.start)}
 								<button
 									class="btn {selectedSlot?.start === slot.start
-										? 'preset-filled-primary-500'
+										? 'preset-filled-primary-700-300'
 										: 'preset-tonal'}"
 									onclick={() => (selectedSlot = slot)}
 								>
@@ -592,7 +592,7 @@
 						{#if bookingError}
 							<p class="text-sm text-error-500">{bookingError}</p>
 						{/if}
-						<button class="btn preset-filled-primary-500" type="submit" disabled={booking}>
+						<button class="btn preset-filled-primary-700-300" type="submit" disabled={booking}>
 							{booking ? 'Booking...' : 'Confirm booking'}
 						</button>
 					</form>

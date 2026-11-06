@@ -97,6 +97,9 @@ jobs:
           --health-start-period 10s
     env:
       MONGO_URL: mongodb://127.0.0.1:27017/portfolio-e2e
+      # The API's secret; the owner tests (client/tests/experiences-owner.test.ts) sign their
+      # session with it
+      JWT_SECRET: ci-jwt-secret
     steps:
       - uses: actions/checkout@v7
         with:
@@ -109,7 +112,6 @@ jobs:
         run: nohup bun run start:server > api.log 2>&1 &
         env:
           PORT: 3000
-          JWT_SECRET: ci-jwt-secret
           # Playwright serves the production build on :4173 (client/playwright.config.ts)
           ALLOWED_DOMAINS: '["http://localhost:4173"]'
       - name: Wait for the API health check
@@ -119,7 +121,8 @@ jobs:
           http://localhost:3000/health
           || { cat api.log; exit 1; }
       - name: Seed MongoDB
-        run: bun run --cwd server seed
+        # The default portfolio, and the e2e owner's domain of the owner tests
+        run: bun run --cwd server seed && bun run --cwd server seed:e2e
       - name: Install Playwright browser (chromium)
         run: cd client && bunx playwright install --with-deps chromium
       - name: Playwright tests

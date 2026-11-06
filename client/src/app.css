@@ -29,3 +29,8 @@ html,
 body {
 	@apply h-full overflow-hidden;
 }
+
+/* Fields flagged invalid (aria-invalid) keep an error-coloured edge, focused or not */
+:is(.input, .select, .textarea)[aria-invalid='true'] {
+	--tw-ring-color: var(--color-error-500);
+}

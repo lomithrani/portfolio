@@ -7,7 +7,8 @@ import { env } from '../env';
 import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
 import { google } from '../services/google';
 import { logger } from '../services/logger';
-import { afterResponseHooks, authCookie, makeRequest, readJson, useTestGoogleKeys } from './helpers';
+import { SignJWT } from 'jose';
+import { afterResponseHooks, authCookie, makeRequest, readJson, TEST_USER_ID, useTestGoogleKeys } from './helpers';
 
 // Overrides mongoose.connection.readyState (a prototype getter) for one test
 const setReadyState = (state: number) =>
@@ -120,6 +121,144 @@ describe('request bodies', () => {
     expect(result.status).toBe(415);
     expect(warn).toHaveBeenCalledWith('Unsupported Media Type', expect.objectContaining({ status: 415, method: 'POST' }));
     expect(add).toHaveBeenCalledWith(1, expect.objectContaining({ method: 'POST' }));
+  });
+
+  describe('size', () => {
+    const MB = 1024 * 1024;
+
+    /** A JSON POST whose Content-Length is `bytes`, as a browser sends it (a Request built in code has none) */
+    const postOfSize = (path: string, bytes: number, headers: Record<string, string> = {}) => {
+      // {"title":""} is 12 characters
+      const body = JSON.stringify({ title: 'x'.repeat(bytes - 12) });
+      expect(body.length).toBe(bytes);
+      return makeRequest(createApp(), path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': String(bytes), ...headers },
+        body
+      });
+    };
+
+    it('answers 413 above 1 MB, before any handler, with the CORS headers', async () => {
+      const origin = env.ALLOWED_DOMAINS[0];
+      const verifyIdToken = spyOn(google, 'verifyIdToken');
+
+      for (const path of ['/experiences', '/login', '/domain/claim']) {
+        const result = await postOfSize(path, MB + 1, { Origin: origin, Cookie: await authCookie() });
+        expect({ path, status: result.status }).toEqual({ path, status: 413 });
+        expect(await result.text()).toBe('Payload Too Large');
+        expect(result.headers.get('access-control-allow-origin')).toBe(origin);
+      }
+      expect(verifyIdToken).not.toHaveBeenCalled();
+    });
+
+    it('lets 1 MB through to the route', async () => {
+      // No session: the route's own 401, not the size guard's 413
+      expect((await postOfSize('/experiences', MB)).status).toBe(401);
+    });
+
+    /** A body that records whether anything read it (pulled only on read) */
+    const watchedBody = (bytes: number) => {
+      const watch = { read: 0 };
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            const chunk = Math.min(64 * 1024, bytes - watch.read);
+            if (chunk <= 0) return controller.close();
+            controller.enqueue(new Uint8Array(chunk).fill(0x20));
+            watch.read += chunk;
+          }
+        },
+        { highWaterMark: 0 }
+      );
+      return { stream, watch };
+    };
+
+    /** A JSON POST without Content-Length (chunked, as a proxy or an HTTP/2 client may forward it) */
+    const streamedPost = (path: string, body: ReadableStream<Uint8Array>, headers: Record<string, string> = {}) =>
+      createApp().fetch(
+        new Request(`http://localhost${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body,
+          duplex: 'half'
+        } as RequestInit)
+      );
+
+    it('answers 413 to a body over 1 MB sent without Content-Length, reading no more than 1 MB of it', async () => {
+      const origin = env.ALLOWED_DOMAINS[0];
+      const verifyIdToken = spyOn(google, 'verifyIdToken');
+
+      for (const path of ['/login', '/experiences']) {
+        const { stream, watch } = watchedBody(8 * MB);
+        const result = await streamedPost(path, stream, { Origin: origin });
+        expect({ path, status: result.status }).toEqual({ path, status: 413 });
+        expect(await result.text()).toBe('Payload Too Large');
+        expect(result.headers.get('access-control-allow-origin')).toBe(origin);
+        expect(watch.read).toBeLessThanOrEqual(MB + 64 * 1024);
+      }
+      expect(verifyIdToken).not.toHaveBeenCalled();
+    });
+
+    it('reads a body of exactly 1 MB sent without Content-Length, and refuses invalid JSON with 400', async () => {
+      // {"title":""} is 12 characters; no session: the route's own 401
+      const body = new TextEncoder().encode(JSON.stringify({ title: 'x'.repeat(MB - 12) }));
+      const exact = await streamedPost('/experiences', new Blob([body]).stream());
+      expect(exact.status).toBe(401);
+
+      const invalid = await streamedPost('/login', new Blob(['{"token":']).stream());
+      expect(invalid.status).toBe(400);
+      expect(await invalid.text()).toBe('Bad Request');
+    });
+
+    /** A session JWT signed with `secret`, as /login issues them */
+    const sessionToken = (secret: string, expiresIn: string | number = '1h', subject: string | null = TEST_USER_ID) => {
+      const jwt = new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setExpirationTime(expiresIn);
+      return (subject ? jwt.setSubject(subject) : jwt).sign(new TextEncoder().encode(secret));
+    };
+
+    it.each([
+      ['no session cookie', async () => 'other=1'],
+      ['an empty session cookie', async () => 'other=1; auth='],
+      ['a session cookie that is not a JWT', async () => 'auth=x'],
+      ['a JWT signed with another secret', async () => `auth=${await sessionToken('another secret')}`],
+      ['an expired session', async () => `auth=${await sessionToken(env.JWT_SECRET, Math.floor(Date.now() / 1000) - 60)}`],
+      ['a session without a subject', async () => `auth=${await sessionToken(env.JWT_SECRET, '1h', null)}`]
+    ])('refuses the résumé import with %s before reading its body, with the CORS headers', async (_label, cookie) => {
+      const origin = env.ALLOWED_DOMAINS[0];
+      const { stream, watch } = watchedBody(5 * MB);
+
+      const result = await streamedPost('/experiences/import', stream, { Origin: origin, Cookie: await cookie() });
+      expect(result.status).toBe(401);
+      expect(await result.text()).toBe('Unauthorized');
+      expect(result.headers.get('access-control-allow-origin')).toBe(origin);
+      expect(watch.read).toBe(0);
+    });
+
+    it('lets the résumé import (a base64 PDF) above 1 MB through to its route, with a session', async () => {
+      const cookie = await authCookie();
+      // Read, parsed and checked by the route: no file (422), not a size or session refusal
+      expect((await postOfSize('/experiences/import', 5 * MB, { Cookie: cookie })).status).toBe(422);
+      const chunked = new Blob([JSON.stringify({ title: 'x'.repeat(5 * MB) })]).stream();
+      expect((await streamedPost('/experiences/import', chunked, { Cookie: cookie })).status).toBe(422);
+      // Only POST: another method on that path keeps the 1 MB cap
+      const put = await makeRequest(createApp(), '/experiences/import', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': String(MB + 1) },
+        body: '{}'
+      });
+      expect(put.status).toBe(413);
+    });
+
+    it('logs and counts the 413 like any other 4xx, without the body', async () => {
+      await afterResponseHooks();
+      const warn = spyOn(logger, 'warn');
+
+      const result = await postOfSize('/experiences', 2 * MB);
+
+      expect(result.status).toBe(413);
+      expect(warn).toHaveBeenCalledWith('Payload Too Large', expect.objectContaining({ status: 413, method: 'POST' }));
+      expect(JSON.stringify(warn.mock.calls).length).toBeLessThan(1_000);
+    });
   });
 
   it('lets JSON (with parameters) and body-less requests through', async () => {

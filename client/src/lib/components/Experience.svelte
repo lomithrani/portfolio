@@ -1,13 +1,13 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
-	import { beforeNavigate, invalidateAll } from '$app/navigation';
-
-	import Project from './Project.svelte';
-	import ExperienceModal from './modals/ExperienceModal.svelte';
-	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { PencilSquare, Briefcase, User, AcademicCap, Heart } from 'svelte-heros-v2';
 	import { ExperienceType } from 'portfolio-common';
+	import Project from './Project.svelte';
 	import Markdown from './Markdown.svelte';
+	import {
+		experienceSubtitle,
+		experienceTypeLabels
+	} from '#components/experience-list/experienceList.ts';
 
 	const typeIcons: Record<ExperienceType, typeof Briefcase> = {
 		[ExperienceType.Professional]: Briefcase,
@@ -19,78 +19,155 @@
 	let {
 		experience,
 		canEdit = false,
-		activeFilters = { softSkills: new Set<string>(), hardSkills: new Set<string>() }
+		onEdit,
+		highlightSkill = () => false,
+		highlighted = false
 	}: {
 		experience: ExperienceModel;
+		/** Shows the owner's Edit button */
 		canEdit?: boolean;
-		activeFilters?: { softSkills: Set<string>; hardSkills: Set<string> };
+		onEdit?: () => void;
+		/** Whether a skill (by display name) matches the active filters */
+		highlightSkill?: (displayName: string) => boolean;
+		/** Briefly outlined after it was saved */
+		highlighted?: boolean;
 	} = $props();
 
-	let DefaultIcon = $derived(typeIcons[experience.type]);
-	let showEditModal = $state(false);
+	let id = $derived(String(experience._id));
+	let DefaultIcon = $derived(typeIcons[experience.type] ?? Briefcase);
+	// Plain spaces around the dot: lines may break after it
+	const SEPARATOR = ' · ';
+	let subtitle = $derived(experienceSubtitle(experience));
+	let summary = $derived(experience.summary?.trim() ?? '');
 
-	// Close the dialog before the page unmounts: an open Dialog's focus trap would otherwise read
-	// state of the destroyed page (Svelte's derived_inert warning)
-	beforeNavigate(() => {
-		showEditModal = false;
+	// The summary is clamped to ~4 lines; "Show more" appears only when it overflows, which
+	// can only be measured in the browser (the server render shows the clamp alone)
+	let summaryElement: HTMLDivElement | undefined = $state();
+	let toggleButton: HTMLButtonElement | undefined = $state();
+	let expanded = $state(false);
+	let overflows = $state(false);
+
+	$effect(() => {
+		const element = summaryElement;
+		if (!element) return;
+		void summary;
+		const measure = () => {
+			if (!expanded) overflows = element.scrollHeight > element.clientHeight + 1;
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		return () => observer.disconnect();
 	});
 
-	const onEditResponse = async (response: ExperienceModel | undefined) => {
-		showEditModal = false;
-		// The PUT response is not populated (skills are ids): reload the domain instead
-		if (response !== undefined) await invalidateAll();
+	const toggleSummary = () => {
+		expanded = !expanded;
+		// Collapsing a long summary can leave the button above the viewport: bring it back
+		if (!expanded) requestAnimationFrame(() => toggleButton?.scrollIntoView({ block: 'nearest' }));
 	};
 </script>
 
-<div class="card preset-outlined-surface-200-800 relative rounded-lg p-4 text-left shadow-md">
-	{#if canEdit}
-		<button
-			class="btn-icon btn-icon-sm preset-tonal-primary absolute top-3 right-3"
-			onclick={() => (showEditModal = true)}
+<article
+	id="experience-{id}"
+	aria-labelledby="experience-{id}-title"
+	class="card preset-outlined-surface-200-800 bg-surface-50-950 scroll-mt-4 space-y-4 rounded-lg p-4 shadow-sm motion-safe:transition-shadow motion-safe:duration-700 md:p-5 {highlighted
+		? 'ring-2 ring-primary-500'
+		: 'ring-0 ring-transparent'}"
+	data-highlighted={highlighted || undefined}
+>
+	<div class="flex items-start gap-3">
+		<div
+			class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md preset-tonal-primary"
 		>
-			<PencilSquare size="16" />
-			<span class="sr-only">Edit</span>
-		</button>
-	{/if}
-	<article class="space-y-3">
-		<div class="flex items-center gap-2">
 			{#if experience.icon}
-				<img src={experience.icon} alt={experience.type} class="size-6" />
+				<img src={experience.icon} alt="" class="size-8 object-contain" />
 			{:else}
-				<DefaultIcon size="24" />
+				<DefaultIcon size="22" aria-hidden="true" />
 			{/if}
-			<h2 class="text-xl font-bold">{experience.title}</h2>
 		</div>
-		<div class="text-sm opacity-90">
-			<Markdown content={experience.summary} />
-		</div>
-		{#if experience.projects.length > 0}
-			<div class="space-y-3 pt-2">
-				{#each experience.projects as project, index (String(project._id ?? index))}
-					<Project {project} experienceId={String(experience._id)} {activeFilters} />
-				{/each}
-			</div>
-		{/if}
-	</article>
-</div>
-
-<Dialog open={showEditModal} onOpenChange={(details) => (showEditModal = details.open)}>
-	<Portal>
-		<Dialog.Backdrop class="fixed inset-0 z-50 bg-surface-50-950/50" />
-		<Dialog.Positioner class="fixed inset-0 z-50 flex justify-center items-center p-4">
-			<Dialog.Content
-				class="card bg-surface-100-900 w-full max-w-xl shadow-xl max-h-[calc(100vh-2rem)] overflow-y-auto"
-			>
-				{#if showEditModal}
-					<ExperienceModal
-						existingExperience={experience}
-						title="Experience"
-						body="Edit an experience from your resume."
-						onResponse={onEditResponse}
-						onClose={() => (showEditModal = false)}
-					/>
+		<div class="min-w-0 flex-1 space-y-0.5">
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+				<h2
+					id="experience-{id}-title"
+					class="text-lg font-bold leading-snug wrap-anywhere md:text-xl"
+				>
+					{experience.title}
+				</h2>
+				{#if experience.type !== ExperienceType.Professional && experienceTypeLabels[experience.type]}
+					<span
+						class="rounded-full px-2 py-0.5 text-xs font-medium preset-tonal-secondary whitespace-nowrap"
+					>
+						{experienceTypeLabels[experience.type]}
+					</span>
 				{/if}
-			</Dialog.Content>
-		</Dialog.Positioner>
-	</Portal>
-</Dialog>
+			</div>
+			{#if subtitle.length > 0}
+				<!-- Lines break between parts, and never inside a period or a duration -->
+				<p class="text-sm text-surface-700-300">
+					{#each subtitle as part, index (part.kind)}{#if index > 0}{SEPARATOR}{/if}<span
+							class:whitespace-nowrap={part.kind === 'period' || part.kind === 'duration'}
+							>{part.text}</span
+						>{/each}
+				</p>
+			{/if}
+		</div>
+		{#if canEdit}
+			<!-- In the flex row (not absolutely positioned): a long title wraps instead of running under it -->
+			<button
+				type="button"
+				class="btn preset-tonal min-h-10 min-w-10 shrink-0 px-2.5 sm:px-3"
+				aria-label="Edit {experience.title}"
+				data-edit-experience
+				onclick={() => onEdit?.()}
+			>
+				<PencilSquare size="18" aria-hidden="true" />
+				<span class="hidden sm:inline">Edit</span>
+			</button>
+		{/if}
+	</div>
+
+	{#if summary}
+		<div>
+			<div
+				id="experience-{id}-summary"
+				class="summary text-sm"
+				class:clamped={!expanded}
+				class:faded={!expanded && overflows}
+				bind:this={summaryElement}
+			>
+				<Markdown content={summary} headingOffset={2} compact />
+			</div>
+			{#if overflows}
+				<button
+					type="button"
+					class="btn btn-sm -ml-2 mt-1 min-h-9 px-2 text-primary-700-300 hover:underline"
+					aria-expanded={expanded}
+					aria-controls="experience-{id}-summary"
+					onclick={toggleSummary}
+					bind:this={toggleButton}
+				>
+					{expanded ? 'Show less' : 'Show more'}
+				</button>
+			{/if}
+		</div>
+	{/if}
+
+	{#if experience.projects.length > 0}
+		<div class="ml-1 space-y-4 border-l-2 border-surface-200-800 pl-4">
+			{#each experience.projects as project, index (String(project._id ?? index))}
+				<Project {project} experienceId={id} {highlightSkill} />
+			{/each}
+		</div>
+	{/if}
+</article>
+
+<style>
+	/* ~4 lines of the summary (line-height 1.6, see Markdown.svelte) */
+	.clamped {
+		max-height: calc(1.6em * 4);
+		overflow: hidden;
+	}
+	.faded {
+		mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6em), transparent);
+	}
+</style>

@@ -29,6 +29,10 @@ with a message listing every problem.
 | `PORT` | no | `3000` | |
 | `AUTH_COOKIE_SAMESITE` | no | `strict` | `strict`, `lax` or `none`; the cookie is `Secure` in production or with `none` |
 | `CLIENT_IP_HEADER` | no | `X-Real-IP` on Railway (`RAILWAY_PROJECT_ID` set), else none | Request header holding the visitor's IP, set by the reverse proxy (last entry of a list such as `X-Forwarded-For`); unset: the socket's peer address. Used by the booking and availability rate limits only |
+| `ANTHROPIC_API_KEY` | no | | Claude API key billed for résumé imports (off while unset); never logged, returned or traced. Quotes or spaces stop the server |
+| `RESUME_IMPORT_MONTHLY_LIMIT` | no | `3` | Résumé imports per user per 30-day window; `0` turns the feature off |
+| `RESUME_IMPORT_DAILY_LIMIT` | no | `30` | Résumé imports per UTC day across all users; `0` turns the feature off |
+| `RESUME_IMPORT_ATTEMPTS_PER_DAY` | no | `10` | Résumé import attempts per user per UTC day, failed ones included and never given back; `0` turns the feature off |
 | `API_DOCS` | no | | `true` serves the OpenAPI docs (`/swagger`) in production; always on otherwise |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | | Enables OpenTelemetry (traces, metrics, logs); fully off when unset |
 | `OTEL_EXPORTER_OTLP_HEADERS` | no | | e.g. the Grafana Cloud authorization header |
@@ -68,6 +72,21 @@ with a message listing every problem.
 - `POST`/`PUT`/`PATCH`/`DELETE` bodies must be JSON: any other
   `Content-Type` gets `415` before the body is parsed, so a cross-site HTML
   form never reaches a handler, whatever `AUTH_COOKIE_SAMESITE` is.
+- Request bodies are capped at 1 MB (`413`, checked on `Content-Length`
+  before the body is read, then on the bytes read, so chunked bodies are
+  capped too), except `POST /experiences/import`, which needs the session
+  cookie before its body is read (`401`); Bun refuses anything over 6 MB
+  itself.
+- `GET /experiences/import` says whether résumé import is on and what is left
+  of the caller's allowance (`{enabled, limit, remaining, resetsAt}`).
+  `POST /experiences/import` (`{file: base64 PDF, fileName?}`, the caller must
+  own a domain) answers `{experiences, warnings, quota}`: drafts extracted by
+  Claude Haiku 5.5, normalised, never saved. Errors: `404` feature off or no
+  domain, `422` not base64 / not a PDF / over ~10 pages / refused
+  by the model / too much content, `413` over 4 MB, `429` (`Retry-After`) over
+  a quota or the day's attempts, `503` Claude unavailable or refusing the key
+  (given back), or the call cut off after it was sent (counted). See "Résumé
+  import" in `docs/DEPLOYMENT.md`.
 - `POST /appointments/book` (public) is limited per IP address (IPv6: per
   /64) and, once the slot is known to be free, per visitor email; an email
   can hold a few upcoming bookings per schedule (`429`, with `Retry-After`
@@ -88,9 +107,12 @@ with a message listing every problem.
 
 `bun test` loads `server/.env`, then `tests/setup.ts` (preloaded by
 `bunfig.toml`) clears every `OTEL_*` variable, so tests never export
-telemetry, and replaces `MONGO_URL` with `TEST_MONGO_URL` when that is set.
+telemetry, removes `ANTHROPIC_API_KEY`, so no test can call (and bill) the
+real Claude API (the résumé import tests answer for `api.anthropic.com`
+themselves), and replaces `MONGO_URL` with `TEST_MONGO_URL` when that is set.
 
-The integration, appointments and Eden suites write to MongoDB: each test
+The integration, appointments, résumé import, rate limit and Eden suites
+write to MongoDB: each test
 (the Eden suite, for its server) creates the documents it needs, named with a unique
 suffix, then deletes them, so the tests pass in any order
 (`bun test --randomize tests/`). They
