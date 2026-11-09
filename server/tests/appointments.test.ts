@@ -958,13 +958,21 @@ describe('public booking', () => {
 // exactly the dates available-slots has slots for
 describe('hiring journey gate', () => {
   let scheduleId: string;
-  const WEB_ORIGIN = 'http://localhost:5173';
+  // The web app the bookings come from: an allowed origin whatever ALLOWED_DOMAINS this run has
+  // (the invitation only links a job page of an allowed origin)
+  const WEB_ORIGIN = 'https://web.journey-test.example';
+  const savedOrigins = env.ALLOWED_DOMAINS;
 
   // After the top-level beforeEach: the owner connects, with one enabled schedule
   beforeEach(async () => {
+    env.ALLOWED_DOMAINS = [...savedOrigins, WEB_ORIGIN];
     await connectOwner();
     scheduleId = (await AppointmentSchedule.create({ ...scheduleBody(), user: owner.userId }))._id.toString();
     google.state.busy = [];
+  });
+
+  afterEach(() => {
+    env.ALLOWED_DOMAINS = savedOrigins;
   });
 
   const setJourney = async (...types: string[]) =>
