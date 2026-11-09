@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { Check, Eye, LockClosed } from 'svelte-heros-v2';
@@ -37,9 +37,10 @@
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 	const JOURNEY_FAILED = 'Could not load this hiring journey. Try again in a moment.';
 
-	// Read once: back from writing a job description (/recruiter/jobs/new?journey=), the job to
-	// select in the job step
-	const requestedJob = untrack(() => requestedJobId(page.url.searchParams.get(JOB_PARAM)));
+	// The job asked for in the address (?job=, back from writing it on /recruiter/jobs/new?journey=):
+	// the job step opens on it until a job is picked. Also followed when the page is already shown
+	// (the editor's toast can lead back here)
+	let requestedJob = $state(untrack(() => requestedJobId(page.url.searchParams.get(JOB_PARAM))));
 
 	let user = $derived(
 		$sessionCheckedStore && isSessionValid($authenticationStore)
@@ -67,10 +68,26 @@
 	let request = 0;
 	const stepHeadings: HTMLElement[] = $state([]);
 
+	/** The job step, when the address asks for a job other than the one picked; else -1 */
+	const requestedJobStep = (next: Journey) => {
+		if (!requestedJob || next.own || next.job?._id === requestedJob) return -1;
+		const index = next.steps.findIndex((step) => step.type === 'job');
+		return index !== -1 && stepStates(next)[index] !== 'locked' ? index : -1;
+	};
+
 	function showJourney(next: Journey) {
 		loaded = { state: 'ready', journey: next };
-		expanded = activeStepIndex(next);
+		const requested = requestedJobStep(next);
+		expanded = requested === -1 ? activeStepIndex(next) : requested;
 	}
+
+	afterNavigate((navigation) => {
+		if (navigation.type === 'enter') return;
+		const id = requestedJobId(page.url.searchParams.get(JOB_PARAM));
+		if (!id || id === requestedJob) return;
+		requestedJob = id;
+		if (journey) showJourney(journey);
+	});
 
 	async function loadJourney() {
 		const current = ++request;
@@ -113,10 +130,11 @@
 	}
 
 	async function onJobPicked(next: Journey) {
+		// The pick settles what the address asked for: it selects nothing any more
+		requestedJob = null;
 		showJourney(next);
 		toaster.success({ title: 'Job picked', description: 'Next: pick a time slot.' });
-		// Back from writing the job: the address no longer selects it
-		if (requestedJob) {
+		if (page.url.searchParams.has(JOB_PARAM)) {
 			await goto(resolve('/[domain]/hire', { domain: data.domainName }), {
 				replace: true,
 				shallow: true
@@ -139,13 +157,16 @@
 	}
 
 	async function onMeetingLocked(reason: 'signed-out' | 'locked') {
-		if (reason === 'signed-out') {
+		if (reason === 'signed-out' && user) {
+			// Reloaded below: the account change must not start a second load
+			journeyViewer = '';
 			clearAuthentication();
 			toaster.error({ title: SESSION_EXPIRED_MESSAGE });
 		} else {
+			// The owner added steps since the page was opened
 			toaster.warning({
-				title: 'Complete the steps above first',
-				description: 'Your hiring journey changed since you opened this page.'
+				title: reason === 'signed-out' ? 'Sign in to continue' : 'Complete the steps first',
+				description: `${ownerName} asks recruiters to complete a step before booking.`
 			});
 		}
 		await loadJourney();
@@ -182,7 +203,13 @@
 			</p>
 		</section>
 	{:else if journey && isBookingOnly(journey)}
-		<MeetingBooking domainName={data.domainName} {ownerName} {prefill} />
+		<MeetingBooking
+			domainName={data.domainName}
+			{ownerName}
+			{prefill}
+			onBooked={onMeetingBooked}
+			onLocked={onMeetingLocked}
+		/>
 	{:else if journey}
 		{#if journey.own}
 			<div class="card preset-tonal flex items-start gap-3 p-4 text-sm" role="note">
@@ -246,7 +273,10 @@
 							<button
 								type="button"
 								class="btn btn-sm preset-tonal shrink-0"
-								onclick={() => (expanded = index)}
+								onclick={() => {
+									expanded = index;
+									void focusStep(index);
+								}}
 							>
 								{step.type === 'job' && state === 'done' ? 'Change' : 'Open'}
 								<span class="sr-only">{WORKFLOW_STEPS[step.type].label}</span>
@@ -255,14 +285,17 @@
 					</div>
 					{#if unfolded}
 						{#if step.type === 'job'}
-							<JobStep
-								domainName={data.domainName}
-								{ownerName}
-								{journey}
-								{requestedJob}
-								onPicked={onJobPicked}
-								onReloadJourney={() => loadJourney()}
-							/>
+							<!-- Again for each job the address asks for: its list then has the new posting -->
+							{#key requestedJob}
+								<JobStep
+									domainName={data.domainName}
+									{ownerName}
+									{journey}
+									{requestedJob}
+									onPicked={onJobPicked}
+									onReloadJourney={() => loadJourney()}
+								/>
+							{/key}
 						{:else if step.type === 'meeting'}
 							<MeetingBooking
 								domainName={data.domainName}

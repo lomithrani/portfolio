@@ -1,8 +1,9 @@
 <!--
 @component
-A "Sign in with Google" button that signs in to one space (`mode`: login(credential, mode), no
-space chooser): the apply panel's, to the candidate space (the visitor stays on the job page to
-apply), and the hiring journey's job step, to the recruiter space (created on first sign-in).
+A "Sign in with Google" button, with no space chooser: the apply panel's signs in to the candidate
+space (`mode`, the default: the visitor stays on the job page to apply); the hiring journey's job
+step passes null, so the account keeps the space it last chose (it creates its recruiter space next,
+if it has none).
 `onSignedIn` runs once the session is stored.
 Google Identity has one credential callback for the whole page. The header's sign-in (shown
 whenever this one is: both are for signed-out visitors) keeps it, with its space chooser and its
@@ -15,7 +16,14 @@ own errors; this button takes it only when it is clicked.
 	import { loadGoogleIdentity, setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
 
-	let { onSignedIn, mode = 'candidate' }: { onSignedIn?: () => void; mode?: UserMode } = $props();
+	let {
+		onSignedIn,
+		mode = 'candidate'
+	}: {
+		onSignedIn?: () => void;
+		/** The space to sign in to; null keeps the one the account last chose */
+		mode?: UserMode | null;
+	} = $props();
 
 	let buttonContainer: HTMLDivElement | undefined = $state();
 	let status = $state<'loading' | 'ready' | 'unavailable' | 'signing-in'>('loading');
@@ -45,7 +53,7 @@ own errors; this button takes it only when it is clicked.
 			// Read before signing in: once the session is stored, the panel replaces this component
 			// (destroyed by the time login() returns), and still has to hear about it
 			const notify = onSignedIn;
-			const signedIn = await login(credential, mode);
+			const signedIn = await login(credential, mode ?? undefined);
 			if (!destroyed) {
 				status = 'ready';
 				if (!signedIn) errorMessage = FAILED_MESSAGE;

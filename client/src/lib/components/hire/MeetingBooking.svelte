@@ -116,8 +116,19 @@ hiring journey; requests carry the session, which the API checks against the ste
 	let slotsRequest = 0;
 	let selectedSlot = $state<Slot | null>(null);
 
-	let name = $state(untrack(() => prefill.name ?? ''));
-	let email = $state(untrack(() => prefill.email ?? ''));
+	// The signed-in account's name and email, followed while the visitor has not changed them: a
+	// sign-out or another account never leaves the previous one's in the form
+	let prefilled = untrack(() => ({ name: prefill.name ?? '', email: prefill.email ?? '' }));
+	let name = $state(prefilled.name);
+	let email = $state(prefilled.email);
+	$effect(() => {
+		const next = { name: prefill.name ?? '', email: prefill.email ?? '' };
+		untrack(() => {
+			if (name === prefilled.name) name = next.name;
+			if (email === prefilled.email) email = next.email;
+			prefilled = next;
+		});
+	});
 	let notes = $state('');
 	let booking = $state(false);
 	let bookingError = $state('');

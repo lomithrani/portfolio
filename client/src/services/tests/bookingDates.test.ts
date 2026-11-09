@@ -169,7 +169,7 @@ describe('availabilityFailure', () => {
 				DATES_FAILED
 			)
 		).toEqual({
-			message: 'Your session expired. Sign in again to continue.',
+			message: 'Sign in to continue the hiring journey.',
 			reloadSchedules: false,
 			retry: false,
 			reloadJourney: true

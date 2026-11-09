@@ -142,6 +142,7 @@ off; a journey the API would refuse (a step that opens nothing) says why and can
 					<Switch
 						class="shrink-0"
 						checked={on}
+						disabled={saving}
 						onCheckedChange={(details) => (steps = withStep(steps, type, details.checked))}
 					>
 						<Switch.Control>
@@ -173,7 +174,12 @@ off; a journey the API would refuse (a step that opens nothing) says why and can
 				{saving ? 'Saving...' : 'Save journey'}
 			</button>
 			{#if changed}
-				<button type="button" class="btn preset-tonal" onclick={() => (steps = [...saved])}>
+				<button
+					type="button"
+					class="btn preset-tonal"
+					disabled={saving}
+					onclick={() => (steps = [...saved])}
+				>
 					Undo changes
 				</button>
 			{/if}

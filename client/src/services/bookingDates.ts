@@ -130,7 +130,7 @@ export function availabilityFailure(error: ApiError, fallback: string): Availabi
 		return {
 			message:
 				status === 401
-					? 'Your session expired. Sign in again to continue.'
+					? 'Sign in to continue the hiring journey.'
 					: 'Complete the steps above first.',
 			reloadSchedules: false,
 			retry: false,

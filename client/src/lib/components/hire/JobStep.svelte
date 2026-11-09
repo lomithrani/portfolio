@@ -3,7 +3,8 @@
 The job step of a portfolio's hiring journey: the recruiter picks one of their open job
 descriptions (GET /recruiter/jobs), or writes a new one and comes back here to pick it
 (/recruiter/jobs/new?journey=<portfolio>, back on the Hire page with ?job=<id>). Before that, a
-visitor signs in (to the recruiter space) and an account without a recruiter space creates it.
+visitor signs in (keeping the space the account had) and an account without a recruiter space
+creates it here.
 The pick is sent with PUT /workflow/domains/:domainName/job; `onPicked` gets the journey after
 it. Not for the portfolio's owner (the API refuses their pick): the page shows them the step's
 note instead.
@@ -79,6 +80,16 @@ note instead.
 	let pickError = $state('');
 	let creatingSpace = $state(false);
 	let spaceError = $state('');
+
+	// Messages about an account go with it: a sign-in after an expired session starts clean
+	let account = $derived(user?._id ?? null);
+	$effect(() => {
+		void account;
+		untrack(() => {
+			pickError = '';
+			spaceError = '';
+		});
+	});
 
 	// The job editor, which brings the recruiter back here once the job is created
 	let newJobHref = $derived(
@@ -184,9 +195,11 @@ note instead.
 	<div class="space-y-3">
 		<p class="text-sm">
 			Sign in to pick the job you are hiring for. Your job descriptions are kept in a free recruiter
-			space, created when you first sign in here.
+			space: you create it next if your account has none.
 		</p>
-		<ApplySignIn mode="recruiter" />
+		<!-- No space chosen: an account keeps the one it had (the portfolio's owner, checking their
+		     page signed out, must not end up in a recruiter space) -->
+		<ApplySignIn mode={null} />
 	</div>
 {:else if !user.recruiter || shown?.state === 'no-space'}
 	<div class="space-y-3">

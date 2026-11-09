@@ -194,17 +194,36 @@ test.describe('the hiring journey', () => {
 			`/${DOMAIN}/hire`
 		);
 
-		// What the editor does once the posting is created: back with it selected
+		// What the editor does once the posting is created: back with it selected, the job step
+		// open on it even when another job was picked before
+		const picked = await createJob(recruiterApi, {
+			title: `Staff engineer ${tag}`,
+			status: 'open'
+		});
+		const pick = await recruiterApi.put(`${API_URL}/workflow/domains/${DOMAIN}/job`, {
+			data: { jobId: picked._id }
+		});
+		expect(pick.ok(), await pick.text()).toBe(true);
 		const created = await createJob(recruiterApi, {
 			title: `Platform lead ${tag}`,
 			status: 'open'
 		});
 		await gotoHydrated(page, `/${DOMAIN}/hire?job=${created._id}`);
+		const jobStep = step(page, 'Step 1: Select or create a job');
 		await expect(
-			step(page, 'Step 1: Select or create a job').getByRole('radio', {
-				name: new RegExp(`Platform lead ${tag}`)
-			})
+			jobStep.getByRole('radio', { name: new RegExp(`Platform lead ${tag}`) })
 		).toBeChecked();
+		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
+		await expect(jobStep).toContainText(`Platform lead ${tag} · E2E Corp`);
+		// The address no longer selects it
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire$`));
+		await jobStep.getByRole('button', { name: /Change/ }).click();
+		await expect(
+			jobStep.getByRole('radio', { name: new RegExp(`Platform lead ${tag}`) })
+		).toBeChecked();
+		await expect(
+			page.getByRole('heading', { name: 'Step 1: Select or create a job' })
+		).toBeFocused();
 	});
 
 	test('a portfolio with the meeting step only is the booking page, as before', async ({

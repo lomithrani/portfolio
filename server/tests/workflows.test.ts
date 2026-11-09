@@ -7,6 +7,7 @@
 // need its fake Google).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
+import { SignJWT } from 'jose';
 import { env } from '../env';
 import { createApp } from '../app';
 import { Domain, JobPosting, User, Workflow, WorkflowInstance } from '../models/database';
@@ -179,9 +180,15 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
       steps: [{ type: 'meeting', done: false }],
       own: true
     });
-    const forged = await call('GET', `/workflow/domains/${owner.domain}`, { cookie: 'auth=not-a-jwt' });
-    expect(forged.status).toBe(200);
-    expect(forged.json().own).toBeUndefined();
+    // Only a session signed with JWT_SECRET counts: not the owner's id, nor a JWT naming them
+    // signed with another key
+    const otherKey = new TextEncoder().encode('another-secret');
+    const foreignJwt = await new SignJWT({}).setProtectedHeader({ alg: 'HS256' }).setSubject(owner.id).setExpirationTime('1h').sign(otherKey);
+    const unsigned = `${Buffer.from('{"alg":"none"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: owner.id, exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.`;
+    for (const cookie of ['auth=not-a-jwt', `auth=${owner.id}`, `auth=${foreignJwt}`, `auth=${unsigned}`]) {
+      const forged = await call('GET', `/workflow/domains/${owner.domain}`, { cookie });
+      expect({ cookie, status: forged.status, own: forged.json().own }).toEqual({ cookie, status: 200, own: undefined });
+    }
   });
 
   it("follows the visitor's job: done while it is theirs and open", async () => {
