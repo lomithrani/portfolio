@@ -81,9 +81,11 @@
 		expanded = requested === -1 ? activeStepIndex(next) : requested;
 	}
 
+	// The address the navigation went to: page.url keeps the last real navigation's (a shallow goto,
+	// as onJobPicked's, does not change it, but still runs afterNavigate)
 	afterNavigate((navigation) => {
 		if (navigation.type === 'enter') return;
-		const id = requestedJobId(page.url.searchParams.get(JOB_PARAM));
+		const id = requestedJobId(navigation.to?.url.searchParams.get(JOB_PARAM));
 		if (!id || id === requestedJob) return;
 		requestedJob = id;
 		if (journey) showJourney(journey);
@@ -134,7 +136,8 @@
 		requestedJob = null;
 		showJourney(next);
 		toaster.success({ title: 'Job picked', description: 'Next: pick a time slot.' });
-		if (page.url.searchParams.has(JOB_PARAM)) {
+		// The browser's address: page.url still has ?job= after an earlier shallow goto
+		if (new URLSearchParams(location.search).has(JOB_PARAM)) {
 			await goto(resolve('/[domain]/hire', { domain: data.domainName }), {
 				replace: true,
 				shallow: true

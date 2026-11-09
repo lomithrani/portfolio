@@ -210,20 +210,31 @@ test.describe('the hiring journey', () => {
 		});
 		await gotoHydrated(page, `/${DOMAIN}/hire?job=${created._id}`);
 		const jobStep = step(page, 'Step 1: Select or create a job');
-		await expect(
-			jobStep.getByRole('radio', { name: new RegExp(`Platform lead ${tag}`) })
-		).toBeChecked();
+		const meetingStep = step(page, 'Step 2: Book a meeting');
+		const radio = (title: string) => jobStep.getByRole('radio', { name: new RegExp(title) });
+		await expect(radio(`Platform lead ${tag}`)).toBeChecked();
+
+		// Another job picked than the one the address asked for: on to the meeting step, and the
+		// address selects nothing any more
+		await radio(`Staff engineer ${tag}`).check();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
-		await expect(jobStep).toContainText(`Platform lead ${tag} · E2E Corp`);
-		// The address no longer selects it
+		await expect(jobStep).toContainText(`Staff engineer ${tag} · E2E Corp`);
+		await expect(meetingStep).toContainText('Online booking is not available right now.');
+		await expect(radio(`Platform lead ${tag}`)).toHaveCount(0);
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire$`));
+
+		// Change opens the job step on the job picked, and moves the focus there
 		await jobStep.getByRole('button', { name: /Change/ }).click();
-		await expect(
-			jobStep.getByRole('radio', { name: new RegExp(`Platform lead ${tag}`) })
-		).toBeChecked();
+		await expect(radio(`Staff engineer ${tag}`)).toBeChecked();
 		await expect(
 			page.getByRole('heading', { name: 'Step 1: Select or create a job' })
 		).toBeFocused();
+
+		// Picking the new job then works the same
+		await radio(`Platform lead ${tag}`).check();
+		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
+		await expect(jobStep).toContainText(`Platform lead ${tag} · E2E Corp`);
+		await expect(meetingStep).toContainText('Online booking is not available right now.');
 	});
 
 	test('a portfolio with the meeting step only is the booking page, as before', async ({
