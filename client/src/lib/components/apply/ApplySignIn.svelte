@@ -1,7 +1,8 @@
 <!--
 @component
-The apply panel's sign-in: a "Sign in with Google" button that signs in to the candidate space
-(login(credential, 'candidate'): no space chooser, the visitor stays on the job page to apply).
+A "Sign in with Google" button that signs in to one space (`mode`: login(credential, mode), no
+space chooser): the apply panel's, to the candidate space (the visitor stays on the job page to
+apply), and the hiring journey's job step, to the recruiter space (created on first sign-in).
 `onSignedIn` runs once the session is stored.
 Google Identity has one credential callback for the whole page. The header's sign-in (shown
 whenever this one is: both are for signed-out visitors) keeps it, with its space chooser and its
@@ -9,11 +10,12 @@ own errors; this button takes it only when it is clicked.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import type { UserMode } from 'portfolio-common';
 	import { login } from '#services/authentication.ts';
 	import { loadGoogleIdentity, setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
 
-	let { onSignedIn }: { onSignedIn?: () => void } = $props();
+	let { onSignedIn, mode = 'candidate' }: { onSignedIn?: () => void; mode?: UserMode } = $props();
 
 	let buttonContainer: HTMLDivElement | undefined = $state();
 	let status = $state<'loading' | 'ready' | 'unavailable' | 'signing-in'>('loading');
@@ -43,7 +45,7 @@ own errors; this button takes it only when it is clicked.
 			// Read before signing in: once the session is stored, the panel replaces this component
 			// (destroyed by the time login() returns), and still has to hear about it
 			const notify = onSignedIn;
-			const signedIn = await login(credential, 'candidate');
+			const signedIn = await login(credential, mode);
 			if (!destroyed) {
 				status = 'ready';
 				if (!signedIn) errorMessage = FAILED_MESSAGE;

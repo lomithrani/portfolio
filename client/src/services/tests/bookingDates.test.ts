@@ -162,6 +162,31 @@ describe('firstShownDate', () => {
 });
 
 describe('availabilityFailure', () => {
+	it('sends the visitor back to the hiring journey when it stops them', () => {
+		expect(
+			availabilityFailure(
+				{ status: 401, value: 'Sign in to continue the hiring journey' },
+				DATES_FAILED
+			)
+		).toEqual({
+			message: 'Your session expired. Sign in again to continue.',
+			reloadSchedules: false,
+			retry: false,
+			reloadJourney: true
+		});
+		expect(
+			availabilityFailure(
+				{ status: 403, value: 'Complete the earlier steps of the hiring journey first' },
+				SLOTS_FAILED
+			)
+		).toEqual({
+			message: 'Complete the steps above first.',
+			reloadSchedules: false,
+			retry: false,
+			reloadJourney: true
+		});
+	});
+
 	it('tells the visitor booking is off when the owner calendar cannot take bookings', () => {
 		expect(
 			availabilityFailure({ status: 409, value: 'Google Calendar not connected' }, DATES_FAILED)

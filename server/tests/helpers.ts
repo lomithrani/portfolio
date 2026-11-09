@@ -3,7 +3,7 @@ import { Types } from 'mongoose';
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from 'jose';
 import type { JWTPayload } from 'jose';
 import { env } from '../env';
-import { Domain, Experience, User, Workflow } from '../models/database';
+import { Domain, Experience, User } from '../models/database';
 import { createGoogleIdTokenVerifier, google } from '../services/google';
 
 // Tests replace model methods with spyOn(...) and every test file restores
@@ -28,7 +28,6 @@ export const parseCookie = (str: string) =>
 export const TEST_USER_ID = new Types.ObjectId().toString();
 export const TEST_GOOGLE_SUB = '109876543210987654321';
 export const TEST_DOMAIN_NAME = 'test.domain';
-export const TEST_WORKFLOW_ID = new Types.ObjectId().toString();
 export const TEST_EXPERIENCE_ID = new Types.ObjectId().toString();
 
 // ── Fixtures: real (unsaved) Mongoose documents ─────────────
@@ -61,17 +60,6 @@ export const makeExperience = (overrides: Record<string, unknown> = {}) =>
     ...overrides
   });
 
-export const makeWorkflow = (overrides: Record<string, unknown> = {}) =>
-  new Workflow({
-    _id: TEST_WORKFLOW_ID,
-    user: new Types.ObjectId(TEST_USER_ID),
-    name: 'Test Workflow',
-    enabled: true,
-    description: 'A test workflow',
-    steps: [],
-    ...overrides
-  });
-
 // An experience as clients send it; the blank company ({ name: '' }, what older clients sent
 // without a company name) is dropped by the API
 export const experienceRequestBody = {
@@ -89,10 +77,9 @@ export const experienceRequestBody = {
   ],
 };
 
+// A hiring journey as the admin tab saves it: pick a job, then book a meeting
 export const workflowRequestBody = {
-  name: 'Hiring Workflow',
-  enabled: true,
-  description: 'A hiring workflow',
+  steps: [{ type: 'job' }, { type: 'meeting' }],
 };
 
 // ── Google ID tokens ────────────────────────────────────────

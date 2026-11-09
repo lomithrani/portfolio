@@ -72,3 +72,16 @@ export {
 	DEFAULT_RECRUITER_PLAN
 } from './account';
 export type { UserMode, RecruiterPlan } from './account';
+export {
+	WORKFLOW_STEP_TYPES,
+	WORKFLOW_STEPS,
+	DEFAULT_WORKFLOW_STEPS,
+	isWorkflowStepType,
+	workflowStepsProblem
+} from './workflow';
+export type {
+	WorkflowStepType,
+	WorkflowStepKind,
+	WorkflowStepInfo,
+	WorkflowStepInput
+} from './workflow';

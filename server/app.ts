@@ -1,5 +1,4 @@
 import { Elysia } from 'elysia'
-import { jwtVerify } from 'jose'
 import mongoose from 'mongoose'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
@@ -19,6 +18,7 @@ import { errors, MissingAuthCookieError, PayloadTooLargeError, UnsupportedMediaT
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
 import { logger } from './services/logger'
 import { resolveError } from './services/errorHandler'
+import { sessionUserId } from './services/session'
 
 // Hard cap on request bodies, enforced by Bun itself (it answers 413, without
 // CORS headers, before the app runs). Sized for the large routes: a 4 MB PDF
@@ -76,29 +76,11 @@ const parseBoundedJson = async ({ request }: { request: Request }, contentType: 
   return JSON.parse(await readBodyText(request.body, MAX_JSON_BODY_SIZE)) as unknown
 }
 
-/** The value of the request's session cookie ('auth'), if any */
-const sessionCookie = (request: Request) => {
-  for (const pair of (request.headers.get('cookie') ?? '').split(';')) {
-    const [name, ...value] = pair.split('=')
-    if (name.trim() === 'auth') return value.join('=').trim()
-  }
-  return undefined
-}
-
 // The PDF imports take a ~6 MB body and need a session: a request without
-// a valid session JWT (signed with JWT_SECRET, unexpired, with a subject:
-// what userLogged accepts) is refused before its body is read, parsed and
-// copied into the request span. Any cookie named auth is not enough
-const lacksValidSession = async (request: Request) => {
-  const token = sessionCookie(request)
-  if (!token) return true
-  try {
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET))
-    return !payload.sub || !payload.exp
-  } catch {
-    return true
-  }
-}
+// a valid session JWT (what userLogged accepts) is refused before its body is
+// read, parsed and copied into the request span. Any cookie named auth is not
+// enough
+const lacksValidSession = async (request: Request) => (await sessionUserId(request)) === undefined
 
 // Bodies of requests that change data must be JSON (the only type the client
 // sends). An HTML form on another site can only send urlencoded, multipart or

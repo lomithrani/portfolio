@@ -11,12 +11,19 @@
 	import { isSessionValid } from '#services/authentication.ts';
 	import { loadImportedDraft, type ImportedJobDraft } from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { JOB_PARAM, JOURNEY_PARAM, journeyReturnDomain } from '#services/workflow.ts';
 
 	// A new job posting, blank or (?import=1) from the job description import the import dialog
-	// kept in this browser. Rendered in the browser only (recruiter/+layout.ts).
+	// kept in this browser. Rendered in the browser only (recruiter/+layout.ts). Opened from a
+	// portfolio's hiring journey (?journey=<portfolio>), it goes back there once the posting is
+	// created, to pick it.
 
 	// Read once: the import is taken when the editor opens, and the parameter goes once discarded
 	const importRequested = untrack(() => page.url.searchParams.get('import') === '1');
+	const journeyDomain = untrack(() =>
+		journeyReturnDomain(page.url.searchParams.get(JOURNEY_PARAM))
+	);
+	const journeyHref = journeyDomain ? resolve('/[domain]/hire', { domain: journeyDomain }) : null;
 
 	// The signed-in account, once the session has been checked with the API
 	let user = $derived(
@@ -58,6 +65,7 @@
 		_mode: string,
 		{ left }: { left: boolean }
 	) => {
+		if (journeyHref) return backToJourney(saved, left);
 		const open = () => goto(resolve('/(app)/recruiter/jobs/[id]', { id: saved._id }));
 		toaster.success({
 			title: 'Job description created',
@@ -69,6 +77,22 @@
 			action: left ? { label: 'Open it', onClick: open } : undefined
 		});
 		if (!left) await open();
+	};
+
+	/** Created from a hiring journey: back to it, with the posting selected */
+	const backToJourney = async (saved: { _id: string; status: string }, left: boolean) => {
+		const back = () =>
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d, with a query
+			goto(`${journeyHref}?${JOB_PARAM}=${encodeURIComponent(saved._id)}`);
+		toaster.success({
+			title: 'Job description created',
+			description:
+				saved.status === 'open'
+					? 'Pick it to continue the hiring journey.'
+					: 'It is not open yet: set its status to Open to pick it in the hiring journey.',
+			action: left ? { label: 'Back to the journey', onClick: back } : undefined
+		});
+		if (!left) await back();
 	};
 
 	let heading: HTMLElement | undefined = $state();
@@ -93,10 +117,15 @@
 
 <div class="p-4 md:p-6">
 	<div class="mx-auto w-full max-w-3xl space-y-6">
-		<a href={recruiterHref} class="btn btn-sm -ms-2 px-2 text-surface-700-300 hover:preset-tonal">
+		<!-- eslint-disable svelte/no-navigation-without-resolve -- both resolve()d above -->
+		<a
+			href={journeyHref ?? recruiterHref}
+			class="btn btn-sm -ms-2 px-2 text-surface-700-300 hover:preset-tonal"
+		>
 			<ArrowLeft size="16" aria-hidden="true" />
-			Job descriptions
+			{journeyHref ? 'Back to the hiring journey' : 'Job descriptions'}
 		</a>
+		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 		{#if showEditor && editorUser}
 			<div class="space-y-1">
@@ -109,6 +138,19 @@
 						: 'Describe the job: candidates see it once its status is Open.'}
 				</p>
 			</div>
+			{#if journeyDomain}
+				<div
+					class="flex items-start gap-2 rounded-container preset-tonal-primary px-4 py-3 text-sm"
+					role="note"
+				>
+					<InformationCircle size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
+					<p>
+						Once it is created, you go back to the hiring journey of
+						<strong>{journeyDomain}</strong> to pick it. Set its status to
+						<strong>Open</strong>: only an open job description can be picked.
+					</p>
+				</div>
+			{/if}
 			{#if importMissing}
 				<div
 					class="flex items-start gap-2 rounded-container preset-tonal px-4 py-3 text-sm"
@@ -126,7 +168,7 @@
 				<JobEditor
 					userId={editorUser}
 					{imported}
-					cancelHref={recruiterHref}
+					cancelHref={journeyHref ?? recruiterHref}
 					{recruiterHref}
 					{onSaved}
 					{onImportDiscarded}

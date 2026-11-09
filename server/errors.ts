@@ -173,6 +173,16 @@ export class JobImportDisabledError extends HttpError {
   status = 404
 }
 
+// Hiring journey (workflows)
+
+/**
+ * A step of a portfolio's hiring journey asked for before the steps that come
+ * before it are done (e.g. booking before picking a job)
+ */
+export class JourneyStepLockedError extends HttpError {
+  status = 403
+}
+
 export const errors = {
   BadRequestError,
   InvalidDomainNameError,
@@ -202,5 +212,6 @@ export const errors = {
   ResumeImportDisabledError,
   RecruiterSpaceRequiredError,
   PlanLimitReachedError,
-  JobImportDisabledError
+  JobImportDisabledError,
+  JourneyStepLockedError
 }

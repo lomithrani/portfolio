@@ -21,7 +21,8 @@ import {
   RateLimitCounter,
   Skill,
   User,
-  Workflow
+  Workflow,
+  WorkflowInstance
 } from '../models/database';
 import {
   AVAILABILITY_REQUESTS_PER_IP,
@@ -383,6 +384,7 @@ const removeTestData = async (suffix: string) => {
     await RateLimitCounter.deleteMany({ _id: { $regex: `^(${[...rateLimitKeys].join('|')}):` } });
   }
   await Workflow.deleteMany({ user: { $in: userIds } });
+  await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: userIds } }, { visitor: { $in: userIds } }] });
   const jobIds = (await JobPosting.find({ recruiter: { $in: userIds } }, '_id')).map((job) => job._id);
   await JobApplication.deleteMany({ $or: [{ job: { $in: jobIds } }, { candidate: { $in: userIds } }] });
   await JobPosting.deleteMany({ _id: { $in: jobIds } });
@@ -954,6 +956,141 @@ describe('public booking', () => {
 
 // The booking page greys out every date this route leaves out: it must list
 // exactly the dates available-slots has slots for
+describe('hiring journey gate', () => {
+  let scheduleId: string;
+  const WEB_ORIGIN = 'http://localhost:5173';
+
+  // After the top-level beforeEach: the owner connects, with one enabled schedule
+  beforeEach(async () => {
+    await connectOwner();
+    scheduleId = (await AppointmentSchedule.create({ ...scheduleBody(), user: owner.userId }))._id.toString();
+    google.state.busy = [];
+  });
+
+  const setJourney = async (...types: string[]) =>
+    expect(
+      (await call('PUT', '/workflow', { body: { steps: types.map((type) => ({ type })) }, cookie: owner.cookie })).status
+    ).toBe(200);
+
+  /** The three gated routes, as `cookie` (none: anonymous) calls them */
+  const meetingRoutes = (cookie?: string) => ({
+    dates: () => call('GET', `/appointments/available-dates?scheduleId=${scheduleId}`, { cookie }),
+    slots: () => call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`, { cookie }),
+    book: (startTime = at('09:00')) =>
+      call('POST', '/appointments/book', {
+        cookie,
+        headers: { Origin: WEB_ORIGIN },
+        body: { scheduleId, startTime, name: 'Jane Recruiter', email: t.email('jane') }
+      })
+  });
+
+  /** `other` as a recruiter with one job posting of `status` */
+  const recruiterJob = async (status: string) => {
+    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter' }, cookie: other.cookie })).status).toBe(200);
+    const job = await call('POST', '/jobs', {
+      cookie: other.cookie,
+      body: {
+        title: 'Staff Engineer',
+        description: 'Build things.',
+        company: 'Acme',
+        status,
+        location: { country: 'FR', city: 'Lyon', workMode: 'hybrid', remoteDaysPerWeek: 2 },
+        contract: { type: 'cdi' },
+        workingTime: { arrangement: 'weekly_hours', hoursPerWeek: 35 },
+        pay: { min: 50000, max: 60000, currency: 'EUR', period: 'year' }
+      }
+    });
+    expect(job.status).toBe(200);
+    return job.json()._id as string;
+  };
+
+  it('offers no meeting type, and no availability, when the journey has no meeting step', async () => {
+    await setJourney();
+    const listed = await call('GET', `/appointments/domains/${t.id('domain')}/schedules`);
+    expect(listed.json()).toEqual([]);
+    const routes = meetingRoutes(other.cookie);
+    for (const request of [routes.dates, routes.slots, () => routes.book()]) {
+      const answer = await request();
+      expect(answer.status).toBe(404);
+      expect(answer.text).toBe('Schedule not found');
+    }
+    expect(google.state.requests.filter((request) => request.url.pathname !== '/token')).toEqual([]);
+  });
+
+  it('keeps booking open to anyone with the default journey', async () => {
+    const routes = meetingRoutes();
+    expect((await routes.slots()).status).toBe(200);
+    expect((await routes.book()).status).toBe(200);
+    // Nobody went through a journey: nothing recorded
+    expect(await WorkflowInstance.countDocuments({ owner: owner.userId })).toBe(0);
+  });
+
+  it('opens the meeting step once the visitor picked an open job, and puts the job in the invitation', async () => {
+    await setJourney('job', 'meeting');
+    const before = google.state.requests.length;
+
+    // Still listed: the page shows what the journey leads to
+    expect((await call('GET', `/appointments/domains/${t.id('domain')}/schedules`)).json()).toHaveLength(1);
+
+    const anonymous = meetingRoutes();
+    for (const request of [anonymous.dates, anonymous.slots, () => anonymous.book()]) {
+      const answer = await request();
+      expect(answer.status).toBe(401);
+      expect(answer.text).toBe('Sign in to continue the hiring journey');
+    }
+    const visitor = meetingRoutes(other.cookie);
+    for (const request of [visitor.dates, visitor.slots, () => visitor.book()]) {
+      const answer = await request();
+      expect(answer.status).toBe(403);
+      expect(answer.text).toBe('Complete the earlier steps of the hiring journey first');
+    }
+    // Refused before Google was asked anything
+    expect(google.state.requests.length).toBe(before);
+
+    const jobId = await recruiterJob('open');
+    const picked = await call('PUT', `/workflow/domains/${t.id('domain')}/job`, { body: { jobId }, cookie: other.cookie });
+    expect(picked.status).toBe(200);
+
+    expect((await visitor.dates()).status).toBe(200);
+    expect((await visitor.slots()).status).toBe(200);
+    const booked = await visitor.book();
+    expect(booked.status).toBe(200);
+    const [event] = [...google.state.events.values()];
+    expect(event.description).toBe(
+      `Booked via portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
+    );
+    const instance = await WorkflowInstance.findOne({ owner: owner.userId, visitor: other.userId }).lean();
+    expect(instance?.meetingBookedAt).toBeInstanceOf(Date);
+
+    // The job is closed since: pick another open one first
+    expect((await call('PUT', `/jobs/${jobId}/status`, { body: { status: 'closed' }, cookie: other.cookie })).status).toBe(200);
+    expect((await visitor.slots()).status).toBe(403);
+  });
+
+  it('never links the job page of an origin the API does not allow', async () => {
+    await setJourney('job', 'meeting');
+    const jobId = await recruiterJob('open');
+    expect((await call('PUT', `/workflow/domains/${t.id('domain')}/job`, { body: { jobId }, cookie: other.cookie })).status).toBe(200);
+
+    const booked = await call('POST', '/appointments/book', {
+      cookie: other.cookie,
+      headers: { Origin: 'https://evil.example.com' },
+      body: { scheduleId, startTime: at('09:00'), name: 'Jane Recruiter', email: t.email('jane') }
+    });
+    expect(booked.status).toBe(200);
+    const [event] = [...google.state.events.values()];
+    expect(event.description).toBe(`Booked via portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme`);
+  });
+
+  it('never stops the owner on their own journey', async () => {
+    await setJourney('job', 'meeting');
+    const routes = meetingRoutes(owner.cookie);
+    expect((await routes.slots()).status).toBe(200);
+    expect((await routes.book()).status).toBe(200);
+    expect(await WorkflowInstance.countDocuments({ owner: owner.userId })).toBe(0);
+  });
+});
+
 describe('bookable dates', () => {
   let scheduleId: string;
   /** A Monday off, a Wednesday with hours of its own, a Sunday busy all day: all past the minimum notice */
@@ -1471,9 +1608,10 @@ describe('no Google token in any API response', () => {
     ).toBe(200);
     expect((await call('DELETE', `/experiences/${experience.json()._id}`, auth)).status).toBe(200);
 
-    const workflow = await call('POST', '/workflows', { ...auth, body: workflowRequestBody });
-    expect(workflow.status).toBe(200);
-    expect((await call('PUT', `/workflows/${workflow.json()._id}`, { ...auth, body: workflowRequestBody })).status).toBe(200);
+    // Meeting only: the anonymous availability and booking calls below stay open
+    expect((await call('PUT', '/workflow', { ...auth, body: { steps: [{ type: 'meeting' }] } })).status).toBe(200);
+    expect((await call('GET', '/workflow', auth)).status).toBe(200);
+    expect((await call('GET', `/workflow/domains/${sweepDomain}`, auth)).status).toBe(200);
 
     // Résumé import (tests/resumeImport.test.ts covers it): its two requests,
     // to api.anthropic.com, are answered here instead of by the fake Google
@@ -1564,6 +1702,9 @@ describe('no Google token in any API response', () => {
     const added = await call('POST', `/jobs/${jobId}/applicants`, { ...auth, body: { domain: t.id('domain') } });
     expect(added.status).toBe(200);
     expect((await call('DELETE', `/jobs/${jobId}/applicants/${added.json()._id}`, auth)).status).toBe(200);
+    // The job step of the owner's hiring journey (tests/workflows.test.ts covers it)
+    expect((await call('PUT', '/workflow', { cookie: owner.cookie, body: workflowRequestBody })).status).toBe(200);
+    expect((await call('PUT', `/workflow/domains/${t.id('domain')}/job`, { ...auth, body: { jobId } })).status).toBe(200);
     const candidate = { cookie: owner.cookie };
     expect((await call('GET', `/jobs/${jobId}/application`, candidate)).status).toBe(200);
     expect((await call('POST', `/jobs/${jobId}/application`, { ...candidate, body: {} })).status).toBe(200);
