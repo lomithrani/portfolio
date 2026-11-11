@@ -9,6 +9,7 @@
 		experienceTypeLabels
 	} from '#components/experience-list/experienceList.ts';
 	import { experiencePeriod } from '#services/experienceDates.ts';
+	import { projectMatchesFilters } from '#services/filters.ts';
 
 	const typeIcons: Record<ExperienceType, typeof Briefcase> = {
 		[ExperienceType.Professional]: Briefcase,
@@ -23,7 +24,9 @@
 		onEdit,
 		highlightSkill = () => false,
 		highlighted = false,
-		revealedProject = null
+		revealedProject = null,
+		previewSkill = null,
+		muted = false
 	}: {
 		experience: ExperienceModel;
 		/** Shows the owner's Edit button */
@@ -35,6 +38,10 @@
 		highlighted?: boolean;
 		/** Position of the project to outline briefly: the one picked on the timeline */
 		revealedProject?: number | null;
+		/** Key of the skill whose tag is hovered or focused: its projects are outlined */
+		previewSkill?: string | null;
+		/** Stepped back while that skill is previewed: none of its projects uses it */
+		muted?: boolean;
 	} = $props();
 
 	let id = $derived(String(experience._id));
@@ -44,6 +51,7 @@
 	let subtitle = $derived(experienceSubtitle(experience));
 	// Its projects' dates are read inside it: one without an end stopped with it when it ended
 	let period = $derived(experiencePeriod(experience));
+	let previewFilters = $derived({ skills: previewSkill ? [previewSkill] : [] });
 	let summary = $derived(experience.summary?.trim() ?? '');
 
 	// The summary is clamped to ~4 lines; "Show more" appears only when it overflows, which
@@ -76,10 +84,11 @@
 <article
 	id="experience-{id}"
 	aria-labelledby="experience-{id}-title"
-	class="card preset-outlined-surface-200-800 bg-surface-50-950 scroll-mt-4 space-y-4 rounded-lg p-4 shadow-sm motion-safe:transition-shadow motion-safe:duration-700 md:p-5 {highlighted
+	class="card preset-outlined-surface-200-800 bg-surface-50-950 scroll-mt-4 space-y-4 rounded-lg p-4 shadow-sm motion-safe:[transition:box-shadow_700ms_ease,opacity_150ms_ease] md:p-5 {highlighted
 		? 'ring-2 ring-primary-500'
-		: 'ring-0 ring-transparent'}"
+		: 'ring-0 ring-transparent'} {muted ? 'opacity-50' : ''}"
 	data-highlighted={highlighted || undefined}
+	data-muted={muted || undefined}
 >
 	<div class="flex items-start gap-3">
 		<div
@@ -169,6 +178,7 @@
 						within={period}
 						{highlightSkill}
 						revealed={revealedProject === index}
+						previewed={projectMatchesFilters(project, previewFilters)}
 					/>
 				</div>
 			{/each}

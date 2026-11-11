@@ -127,22 +127,41 @@ const byStartThenLength = (intervals: Placed[]) => (a: number, b: number) =>
 	intervals[a].start - intervals[b].start || intervals[b].last - intervals[a].last || a - b;
 
 /**
- * Years to label so the labels keep some room: every year up to 12, then every 2 or 5, then the
- * round step (10, 20, 50, 100…) that leaves at most 12 labels
+ * Years to label so the labels keep some room: the round step (1, 2, 5, 10, 20, 50…) that leaves
+ * at most `maxLabels` of them (12: every year up to 12 years, every 2 up to 24, every 5 up to 60)
  */
-function yearStep(years: number): number {
-	if (years <= 12) return 1;
-	if (years <= 24) return 2;
-	if (years <= 60) return 5;
-	for (let magnitude = 10; ; magnitude *= 10) {
+function yearStep(years: number, maxLabels: number): number {
+	for (let magnitude = 1; ; magnitude *= 10) {
 		for (const factor of [1, 2, 5]) {
-			if (years <= 12 * factor * magnitude) return factor * magnitude;
+			if (years <= maxLabels * factor * magnitude) return factor * magnitude;
 		}
 	}
 }
 
 /** Up to this many years, each has a line; a longer axis only has the labelled ones */
 const YEARLY_LINES = 60;
+
+/**
+ * The time axis around spans: whole years, and its year lines (every year, or only the labelled
+ * ones on a very long axis: however far apart the dates are, their number is bounded). At most
+ * `maxLabels` years are labelled: 12 fit the page's timeline, a small one takes fewer.
+ */
+export function timelineAxis(
+	spans: MonthSpan[],
+	maxLabels = 12
+): MonthSpan & { years: TimelineYear[] } {
+	if (spans.length === 0) return { start: 0, end: 0, years: [] };
+	const start = Math.floor(Math.min(...spans.map((span) => span.start)) / 12) * 12;
+	const end = Math.ceil(Math.max(...spans.map((span) => span.end)) / 12) * 12;
+	const length = (end - start) / 12;
+	const step = yearStep(length, Math.max(1, maxLabels));
+	const every = length <= YEARLY_LINES ? 1 : step;
+	const years: TimelineYear[] = [];
+	for (let year = Math.ceil(start / 12 / every) * every; year * 12 < end; year += every) {
+		years.push({ year, month: year * 12, labelled: year % step === 0 });
+	}
+	return { start, end, years };
+}
 
 /**
  * Lays the experiences out over time.
@@ -274,16 +293,7 @@ export function buildTimeline<E extends SourceExperience>(
 		return { start: 0, end: 0, years: [], lanes: 0, items, undated };
 	}
 
-	const start = Math.floor(Math.min(...items.map((item) => item.extent.start)) / 12) * 12;
-	const end = Math.ceil(Math.max(...items.map((item) => item.extent.end)) / 12) * 12;
-	const span = (end - start) / 12;
-	const step = yearStep(span);
-	// However far apart the dates are, the axis has a bounded number of lines
-	const every = span <= YEARLY_LINES ? 1 : step;
-	const years: TimelineYear[] = [];
-	for (let year = Math.ceil(start / 12 / every) * every; year * 12 < end; year += every) {
-		years.push({ year, month: year * 12, labelled: year % step === 0 });
-	}
+	const { start, end, years } = timelineAxis(items.map((item) => item.extent));
 	const anyOngoing = items.some(
 		(item) => item.ongoing || item.projects.some((project) => project.ongoing)
 	);

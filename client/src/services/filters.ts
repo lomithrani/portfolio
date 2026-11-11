@@ -104,6 +104,11 @@ export function projectMatchesFilters(
 	});
 }
 
+/** Whether a project of the experience uses the skill (by key, see normalizeSkill) */
+export function experienceUsesSkill(experience: FilterableExperience, key: string): boolean {
+	return experienceSkillKeys(experience).has(normalizeSkill(key));
+}
+
 /**
  * The skills to filter by, grouped ignoring case. Each is labelled with its most used spelling
  * (ties: the first seen) and listed once, as technical or soft depending on how it is used most

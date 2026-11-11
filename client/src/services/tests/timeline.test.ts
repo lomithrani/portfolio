@@ -3,6 +3,7 @@ import { ExperienceType } from 'portfolio-common';
 import {
 	buildTimeline,
 	placeSpan,
+	timelineAxis,
 	timelineMinWidth,
 	viewFromSearchParams,
 	viewToSearchParams
@@ -327,6 +328,37 @@ describe('buildTimeline', () => {
 
 	it('is empty without dated experiences', () => {
 		expect(build()).toEqual({ start: 0, end: 0, years: [], lanes: 0, items: [], undated: [] });
+	});
+});
+
+describe('timelineAxis', () => {
+	it('spans the whole years around the spans it is given', () => {
+		expect(
+			timelineAxis([
+				{ start: m('2019-06'), end: m('2020-12') },
+				{ start: m('2018-03'), end: m('2019-02') }
+			])
+		).toEqual({
+			start: m('2018-01'),
+			end: m('2021-01'),
+			years: [
+				{ year: 2018, month: m('2018-01'), labelled: true },
+				{ year: 2019, month: m('2019-01'), labelled: true },
+				{ year: 2020, month: m('2020-01'), labelled: true }
+			]
+		});
+	});
+
+	it('labels fewer years when asked to: a small timeline has room for a few', () => {
+		const axis = timelineAxis([{ start: m('2016-01'), end: m('2025-01') }], 5);
+		expect(axis.years).toHaveLength(9);
+		expect(axis.years.filter((year) => year.labelled).map((year) => year.year)).toEqual([
+			2016, 2018, 2020, 2022, 2024
+		]);
+	});
+
+	it('is empty without spans', () => {
+		expect(timelineAxis([])).toEqual({ start: 0, end: 0, years: [] });
 	});
 });
 

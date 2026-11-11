@@ -1,21 +1,26 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { previewedSkill, resolvePreview } from '#services/projectPreview.ts';
+	import { previewedSkill, resolvePreview, skillTimeline } from '#services/projectPreview.ts';
+	import { placeSpan, type ExperienceView } from '#services/timeline.ts';
 
 	// The short card shown next to a skill tag, or a bar of the timeline, while it is hovered or
 	// focused with the keyboard: only the projects concerned (see projectPreview.ts). One for the
 	// page: it follows every element with a `data-preview` attribute (see previewTarget), so tags
 	// and bars only name what they preview. A tag that does nothing else (a card's skill chip)
-	// also shows it when tapped, for touch screens.
+	// also shows it when tapped, for touch screens. On the timeline view a skill's projects are
+	// drawn as a small timeline of their own instead of a list: only them, over the years.
 
 	type Experiences = Parameters<typeof resolvePreview>[0];
 
 	let {
 		experiences,
+		view = 'list',
 		onSkill
 	}: {
 		/** Every experience of the page: what the previews are made from */
 		experiences: Experiences;
+		/** The view of the page: a skill's projects are a list on the list, bars on the timeline */
+		view?: ExperienceView;
 		/** The skill being previewed (its key), null when none: the page can point at its projects */
 		onSkill?: (key: string | null) => void;
 	} = $props();
@@ -33,6 +38,19 @@
 	let popover: HTMLElement | undefined = $state();
 	let position: { left: number; top: number } | null = $state(null);
 	let preview = $derived(target ? (resolvePreview(experiences, target) ?? null) : null);
+	// A skill's projects over time (timeline view); none when they have no dates to place them
+	let chart = $derived.by(() => {
+		const skill = view === 'timeline' && preview ? previewedSkill(target) : null;
+		return skill ? (skillTimeline(experiences, skill) ?? null) : null;
+	});
+
+	// Plain spaces around the dot (a text expression: the template would trim them)
+	const SEPARATOR = ' · ';
+	type Axis = { start: number; end: number };
+	const at = (month: number, axis: Axis) => placeSpan({ start: month, end: month }, axis).left;
+	/** A year's label fits when its line is not at the very end of the axis */
+	const labelFits = (month: number, axis: Axis) =>
+		(axis.end - month) / Math.max(1, axis.end - axis.start) >= 0.09;
 
 	/** Where the pointer entered the anchor: a wide bar shows its preview there */
 	let pointerX: number | undefined;
@@ -219,7 +237,9 @@
 		bind:this={popover}
 		id="{uid}-preview"
 		role="tooltip"
-		class="card fixed z-30 w-80 max-w-[calc(100vw-1rem)] space-y-2 border border-surface-300-700 bg-surface-50-950 p-3 text-sm shadow-xl"
+		class="card fixed z-30 {chart
+			? 'w-96'
+			: 'w-80'} max-w-[calc(100vw-1rem)] space-y-2 border border-surface-300-700 bg-surface-50-950 p-3 text-sm shadow-xl"
 		style:left="{position?.left ?? 0}px"
 		style:top="{position?.top ?? 0}px"
 		style:visibility={position ? 'visible' : 'hidden'}
@@ -248,7 +268,73 @@
 				{/each}
 			</ul>
 		{/if}
-		{#if preview.entries.length > 0}
+		{#if chart}
+			<!-- The skill's projects alone, over the years: a line of text and a bar each -->
+			<div
+				class="max-h-64 overflow-x-hidden overflow-y-auto border-t border-surface-200-800 pt-2"
+				data-preview-timeline
+			>
+				<div class="relative">
+					<div class="pointer-events-none absolute inset-0" aria-hidden="true">
+						{#each chart.years as year (year.year)}
+							{#if year.labelled}
+								<div
+									class="absolute inset-y-0 border-l border-surface-200-800"
+									style:left={at(year.month, chart)}
+								></div>
+							{/if}
+						{/each}
+						{#if chart.today !== undefined}
+							<div
+								class="absolute inset-y-0 border-l border-dotted border-primary-500"
+								style:left={at(chart.today, chart)}
+							></div>
+						{/if}
+					</div>
+					<div
+						class="relative h-4 text-[0.6875rem] leading-4 text-surface-700-300"
+						aria-hidden="true"
+					>
+						{#each chart.years as year (year.year)}
+							{#if year.labelled && labelFits(year.month, chart)}
+								<span class="absolute pl-1" style:left={at(year.month, chart)}>{year.year}</span>
+							{/if}
+						{/each}
+					</div>
+					<ul class="relative space-y-2 pt-1 pb-0.5" aria-label="Projects">
+						{#each chart.bars as bar, index (index)}
+							{@const place = placeSpan(bar.span, chart)}
+							<li>
+								<!-- Its own background: the year lines run between the lines of text, behind the bars -->
+								<div class="flex items-baseline justify-between gap-x-3 bg-surface-50-950">
+									<p class="min-w-0 truncate">
+										<span class="font-medium">{bar.name}</span>{#if bar.context}<span
+												class="text-xs text-surface-700-300">{SEPARATOR}{bar.context}</span
+											>{/if}
+									</p>
+									{#if bar.period}
+										<p class="text-xs whitespace-nowrap text-surface-700-300">{bar.period}</p>
+									{/if}
+								</div>
+								<div
+									class="mt-0.5 h-1.5 min-w-1 rounded-full {bar.undated
+										? 'border border-dashed border-primary-500'
+										: 'bg-primary-500'} {bar.ongoing ? 'rounded-r-none' : ''}"
+									style:margin-left={place.left}
+									style:width={place.width}
+									data-preview-bar
+								></div>
+							</li>
+						{/each}
+					</ul>
+				</div>
+				{#if chart.undated.length > 0}
+					<p class="pt-2 text-xs text-surface-700-300">
+						Without dates: {chart.undated.map((entry) => entry.name).join(', ')}
+					</p>
+				{/if}
+			</div>
+		{:else if preview.entries.length > 0}
 			<ul
 				class="max-h-60 space-y-1.5 overflow-y-auto border-t border-surface-200-800 pt-2"
 				aria-label="Projects"

@@ -9,7 +9,8 @@
 		experienceId,
 		within = { ongoing: true },
 		highlightSkill = () => false,
-		revealed = false
+		revealed = false,
+		previewed = false
 	}: {
 		project: Project;
 		experienceId: string;
@@ -19,6 +20,8 @@
 		highlightSkill?: (displayName: string) => boolean;
 		/** Briefly outlined: it was picked on the timeline */
 		revealed?: boolean;
+		/** Outlined: it uses the skill whose tag is hovered or focused (see ProjectPreview) */
+		previewed?: boolean;
 	} = $props();
 
 	// The API populates the skills (GET /domain/:name)
@@ -42,10 +45,15 @@
 <article
 	class="-mx-2 scroll-mt-4 space-y-1.5 rounded-md px-2 py-1.5 motion-safe:transition-colors {matches
 		? 'bg-[color-mix(in_oklab,var(--color-primary-500)_12%,transparent)] shadow-[inset_3px_0_0_var(--color-primary-500)]'
-		: ''} {revealed ? 'ring-2 ring-primary-500' : ''}"
+		: ''} {revealed
+		? 'ring-2 ring-primary-500'
+		: previewed
+			? 'ring-2 ring-primary-500 ring-inset'
+			: ''}"
 	aria-labelledby={headingId}
 	data-matched={matches || undefined}
 	data-revealed={revealed || undefined}
+	data-previewed={previewed || undefined}
 >
 	<div class="flex flex-wrap items-baseline justify-between gap-x-3">
 		<h3 class="font-semibold" id={headingId}>

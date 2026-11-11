@@ -9,6 +9,7 @@ import {
 	hasActiveFilters,
 	isSkillHighlighted,
 	normalizeSkill,
+	experienceUsesSkill,
 	projectMatchesFilters,
 	skillOptions,
 	toggleSkill,
@@ -136,6 +137,22 @@ describe('projectMatchesFilters', () => {
 		expect(
 			projectMatchesFilters({ hardSkills: null, softSkills: null }, filters(['typescript']))
 		).toBe(false);
+	});
+});
+
+describe('experienceUsesSkill', () => {
+	const experience = {
+		projects: [
+			{ hardSkills: [{ skill: { displayName: 'Kafka' } }], softSkills: [] },
+			{ hardSkills: [], softSkills: [{ skill: { displayName: 'Leadership' } }] }
+		]
+	};
+
+	it('tells whether a project of the experience uses the skill, technical or soft', () => {
+		expect(experienceUsesSkill(experience, 'kafka')).toBe(true);
+		expect(experienceUsesSkill(experience, ' LEADERSHIP ')).toBe(true);
+		expect(experienceUsesSkill(experience, 'go')).toBe(false);
+		expect(experienceUsesSkill({ projects: null }, 'kafka')).toBe(false);
 	});
 });
 

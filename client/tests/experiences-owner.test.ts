@@ -629,7 +629,22 @@ test.describe('hovering a skill tag', () => {
 		await expect(preview).toHaveCount(0);
 		await page.keyboard.press('Enter');
 
-		// The timeline: the same preview, and the projects are outlined on it
+		// A tag also points at its projects in the cards, and the other cards step back
+		await filters.getByRole('button', { name: 'Leadership', exact: true }).hover();
+		await expect(preview).toContainText('Used in 1 project');
+		await expect(preview.locator('[data-preview-timeline]')).toHaveCount(0);
+		await expect(page.locator('article[data-previewed]')).toHaveText([/Platform/]);
+		await expect(card(page, first)).toHaveAttribute('data-muted');
+		await expect(card(page, second)).not.toHaveAttribute('data-muted');
+		await expect
+			.poll(() => card(page, first).evaluate((element) => getComputedStyle(element).opacity))
+			.toBe('0.5');
+		await page.keyboard.press('Escape');
+		await expect(preview).toHaveCount(0);
+		await expect(page.locator('[data-muted], [data-previewed]')).toHaveCount(0);
+
+		// The timeline: the preview is a small timeline of the skill's projects alone, and they
+		// are outlined on the page's
 		await page
 			.getByRole('group', { name: 'View' })
 			.getByRole('button', { name: 'Timeline' })
@@ -640,6 +655,16 @@ test.describe('hovering a skill tag', () => {
 		await expect(preview).toContainText('Used in 1 project');
 		await expect(preview.getByRole('listitem')).toHaveText([/Platform/]);
 		await expect(bars.and(page.locator('[data-previewed]'))).toHaveText([/Platform/]);
+		const miniBars = preview.locator('[data-preview-timeline] [data-preview-bar]');
+		await expect(miniBars).toHaveCount(1);
+		// One bar a project, the earliest first and further left
+		await kafka.hover();
+		await expect(preview.getByRole('listitem')).toHaveText([/Streams/, /Platform/]);
+		await expect(miniBars).toHaveCount(2);
+		const earlier = await miniBars.nth(0).boundingBox();
+		const later = await miniBars.nth(1).boundingBox();
+		expect(earlier!.x + earlier!.width).toBeLessThanOrEqual(later!.x + 1);
+		await expect(bars.and(page.locator('[data-previewed]'))).toHaveText([/Streams/, /Platform/]);
 
 		await page.keyboard.press('Escape');
 		await expect(preview).toHaveCount(0);

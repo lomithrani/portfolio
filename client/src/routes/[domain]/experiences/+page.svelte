@@ -22,6 +22,7 @@
 		activeFilters,
 		applyFilters,
 		emptyFilters,
+		experienceUsesSkill,
 		filtersFromSearchParams,
 		isSkillHighlighted,
 		type ExperienceFilters
@@ -82,10 +83,11 @@
 	let highlightSkill = $derived((displayName: string) => isSkillHighlighted(active, displayName));
 	let knownSkills = $derived(collectKnownSkills(allExperiences));
 
-	// --- Timeline view ------------------------------------------------------------------------
-	// Key of the skill whose tag is hovered or focused (ProjectPreview): the timeline outlines
-	// its projects
+	// Key of the skill whose tag is hovered or focused (ProjectPreview): its projects are outlined,
+	// in the cards and on the timeline, and the list's other cards step back
 	let previewSkill: string | null = $state(null);
+
+	// --- Timeline view ------------------------------------------------------------------------
 	// The experience picked on the timeline: its card shows under it
 	let selectedId: string | null = $state(null);
 	let selectedExperience = $derived(
@@ -454,6 +456,8 @@
 						onEdit={() => openEditor(experience)}
 						{highlightSkill}
 						highlighted={highlightedId === String(experience._id)}
+						{previewSkill}
+						muted={previewSkill !== null && !experienceUsesSkill(experience, previewSkill)}
 					/>
 				{:else}
 					<div class="card preset-outlined-surface-200-800 space-y-3 p-6 text-center">
@@ -493,6 +497,7 @@
 						{highlightSkill}
 						highlighted={highlightedId === selectedId}
 						{revealedProject}
+						{previewSkill}
 					/>
 				{/key}
 			{/if}
@@ -502,7 +507,7 @@
 
 <!-- The projects behind a skill tag (or a bar of the timeline) while it is hovered or focused -->
 {#if allExperiences.length > 0}
-	<ProjectPreview experiences={allExperiences} onSkill={(key) => (previewSkill = key)} />
+	<ProjectPreview experiences={allExperiences} {view} onSkill={(key) => (previewSkill = key)} />
 {/if}
 
 {#if isAdmin && allExperiences.length > 0 && !toolbarVisible}

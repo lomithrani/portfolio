@@ -6,9 +6,16 @@ import {
 	projectEnd
 } from '#services/experienceDates.ts';
 import { normalizeSkill, projectMatchesFilters, skillOptions } from '#services/filters.ts';
+import {
+	buildTimeline,
+	timelineAxis,
+	type MonthSpan,
+	type TimelineYear
+} from '#services/timeline.ts';
 
 // The preview shown while a skill tag (or a bar of the timeline) is hovered or focused: a short
-// card with only the projects concerned, without their descriptions.
+// card with only the projects concerned, without their descriptions. On the timeline view a
+// skill's projects are drawn as a small timeline of their own (skillTimeline).
 
 type Dated = { start?: Date | string | null; end?: Date | string | null };
 type SkillEntry = { skill?: unknown };
@@ -44,6 +51,25 @@ export type Preview = {
 	entries: PreviewEntry[];
 	/** A project's own skills, by display name */
 	skills: { hard: string[]; soft: string[] };
+};
+
+/** A project of a skill's small timeline: its line of text, and where its bar goes */
+export type PreviewBar = PreviewEntry & {
+	span: MonthSpan;
+	ongoing: boolean;
+	/** No start of its own: drawn from its experience's start (dashed) */
+	undated: boolean;
+};
+
+/** A skill's projects over time: an axis of whole years around them, and a bar for each */
+export type PreviewTimeline = MonthSpan & {
+	years: TimelineYear[];
+	/** Where ongoing bars end, when one is ongoing */
+	today?: number;
+	/** The earliest first */
+	bars: PreviewBar[];
+	/** The projects that cannot be placed: their experience has no dates */
+	undated: PreviewEntry[];
 };
 
 /** What an element's `data-preview` attribute names */
@@ -107,6 +133,55 @@ export function skillPreview(experiences: PreviewedExperience[], key: string): P
 		period: '',
 		entries,
 		skills: noSkills()
+	};
+}
+
+/** Years labelled on a skill's small timeline: it is a few hundred pixels wide */
+const PREVIEW_YEAR_LABELS = 5;
+
+/**
+ * The projects using a skill (by key) as a small timeline, for the timeline view: placed as the
+ * page's timeline places them (see buildTimeline), each on a line of its own. Undefined when none
+ * of them can be placed (the list of skillPreview is all there is to show).
+ */
+export function skillTimeline(
+	experiences: PreviewedExperience[],
+	key: string,
+	now: Date = new Date()
+): PreviewTimeline | undefined {
+	const filters = { skills: [normalizeSkill(key)] };
+	const timeline = buildTimeline(experiences, now);
+	const bars: PreviewBar[] = timeline.items.flatMap((item) =>
+		item.projects
+			.filter((entry) => projectMatchesFilters(entry.project, filters))
+			.map((entry) => ({
+				name: entry.project.name?.trim() ?? '',
+				context: experienceContext(item.experience),
+				period: projectMonths(entry.project, item.experience),
+				span: entry.span,
+				ongoing: entry.ongoing,
+				undated: entry.undated
+			}))
+	);
+	if (bars.length === 0) return undefined;
+	bars.sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end);
+	const undated: PreviewEntry[] = timeline.undated.flatMap((experience) =>
+		(experience.projects ?? [])
+			.filter((project) => projectMatchesFilters(project, filters))
+			.map((project) => ({
+				name: project.name?.trim() ?? '',
+				context: experienceContext(experience),
+				period: ''
+			}))
+	);
+	return {
+		...timelineAxis(
+			bars.map((bar) => bar.span),
+			PREVIEW_YEAR_LABELS
+		),
+		today: bars.some((bar) => bar.ongoing) ? timeline.today : undefined,
+		bars,
+		undated
 	};
 }
 
