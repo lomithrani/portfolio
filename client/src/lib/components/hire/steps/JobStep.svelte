@@ -10,15 +10,22 @@ Not for the portfolio's owner (the API refuses their pick): the page shows them 
 description instead.
 -->
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { tick, untrack } from 'svelte';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { Briefcase, PlusCircle } from 'svelte-heros-v2';
+	import { Briefcase, DocumentArrowUp, PlusCircle } from 'svelte-heros-v2';
 	import type { JobStatus } from 'portfolio-common';
 	import { portfolioApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { switchMode } from '#services/account.ts';
 	import { isSessionValid } from '#services/authentication.ts';
+	import { loadImportedDraft, type ImportedJobDraft } from '#services/jobDrafts.ts';
+	import {
+		importedToastText,
+		jobImportAvailability,
+		jobImportQuotaText,
+		type JobImportStatus
+	} from '#services/jobImport.ts';
 	import { NETWORK_ERROR, failureText } from '#services/recruiter.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
@@ -33,6 +40,7 @@ description instead.
 		sortJobChoices
 	} from '#services/workflow.ts';
 	import ApplySignIn from '#components/apply/ApplySignIn.svelte';
+	import JobImport from '#components/job-import/JobImport.svelte';
 	import JobStatusBadge from '#components/jobs/JobStatusBadge.svelte';
 	import type { StepProps } from './types';
 
@@ -85,6 +93,69 @@ description instead.
 	let newJobHref = $derived(
 		`${resolve('/(app)/recruiter/jobs/new')}?${JOURNEY_PARAM}=${encodeURIComponent(domainName)}`
 	);
+
+	// --- Import from a PDF (when the API has it on, and the plan has imports left) -------------
+	// The dialog of the recruiter's dashboard: the draft it reads opens in the same editor, which
+	// brings the recruiter back here like a job written by hand
+	let importHref = $derived(`${newJobHref}&import=1`);
+	let importStatus = $state.raw<JobImportStatus | null>(null);
+	let importStatusFor: string | null = null;
+	let importOpen = $state(false);
+	let importTrigger: HTMLButtonElement | undefined = $state();
+	let importDialog: ReturnType<typeof JobImport> | undefined = $state();
+	// An import read earlier and not saved as a posting yet: a new one replaces it (the dialog says so)
+	let pendingImport = $state.raw<ImportedJobDraft | null>(null);
+	let canImport = $derived(
+		!!importStatus?.enabled && jobImportAvailability(importStatus) === 'available'
+	);
+
+	async function refreshImportStatus() {
+		const key = jobsKey;
+		try {
+			const { data } = await portfolioApi.jobs.import.get(withCredentials);
+			if (data && key === jobsKey) importStatus = data;
+		} catch {
+			// Unknown: the import is not offered, writing the job still is
+		}
+	}
+
+	$effect(() => {
+		const key = jobsKey;
+		if (key === importStatusFor) return;
+		importStatusFor = key;
+		untrack(() => {
+			importStatus = null;
+			importOpen = false;
+			if (key) void refreshImportStatus();
+		});
+	});
+
+	beforeNavigate((navigation) => {
+		// A PDF being read: leaving now would lose an import that counts. The navigation the import
+		// itself ends with comes after (the dialog is not busy any more)
+		if (importDialog?.isBusy()) {
+			navigation.cancel();
+			return;
+		}
+		// Closed before the page unmounts (its focus trap would read a destroyed page)
+		importOpen = false;
+	});
+
+	function openImport() {
+		if (user) pendingImport = loadImportedDraft(user._id) ?? null;
+		importOpen = true;
+	}
+
+	async function onImported({ fileName, warnings }: { fileName: string; warnings: string[] }) {
+		importOpen = false;
+		toaster.success({
+			title: 'Job description imported',
+			description: importedToastText(fileName, warnings)
+		});
+		await tick();
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d, with a query
+		await goto(importHref);
+	}
 
 	async function loadJobs(key: string) {
 		requested = key;
@@ -295,9 +366,46 @@ description instead.
 				<PlusCircle size="18" aria-hidden="true" />
 				Write a new job description
 			</a>
+			{#if canImport && importStatus}
+				<button
+					type="button"
+					class="btn preset-tonal min-h-11"
+					bind:this={importTrigger}
+					aria-describedby="{uid}-import-quota"
+					onclick={openImport}
+				>
+					<DocumentArrowUp size="18" aria-hidden="true" />
+					Import from PDF
+				</button>
+			{/if}
 		</div>
+		{#if canImport && importStatus}
+			<p class="text-xs text-surface-700-300" id="{uid}-import-quota">
+				Import from PDF: Claude reads your job description into the form. {jobImportQuotaText(
+					importStatus
+				)}.
+			</p>
+		{/if}
 		{#if pickError}
 			<p class="text-sm text-error-700-300" role="alert">{pickError}</p>
 		{/if}
 	</form>
+{/if}
+
+{#if user && importStatus?.enabled}
+	<JobImport
+		bind:this={importDialog}
+		open={importOpen}
+		status={importStatus}
+		userId={user._id}
+		onClose={() => (importOpen = false)}
+		{onImported}
+		onQuota={(quota) => {
+			if (importStatus) importStatus = { ...importStatus, ...quota };
+		}}
+		refreshStatus={refreshImportStatus}
+		{pendingImport}
+		editorHref={importHref}
+		finalFocusEl={() => importTrigger ?? null}
+	/>
 {/if}

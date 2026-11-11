@@ -509,6 +509,92 @@ test.describe('the hiring journey', () => {
 		await expect(meetingStep).toContainText('Online booking is not available right now.');
 	});
 
+	test('a recruiter imports the job from a PDF in the journey and comes back to pick it', async ({
+		page
+	}) => {
+		await setJourney('job', 'meeting');
+		// GET and POST /jobs/import answered in the browser: Claude is never called
+		const cors = (origin: string | undefined) => ({
+			'access-control-allow-origin': origin ?? '*',
+			'access-control-allow-credentials': 'true'
+		});
+		let imports = 0;
+		await page.route(`${API_URL}/jobs/import`, async (route) => {
+			const request = route.request();
+			const headers = cors(request.headers()['origin']);
+			if (request.method() === 'OPTIONS') {
+				return route.fulfill({
+					status: 204,
+					headers: {
+						...headers,
+						'access-control-allow-methods': 'GET, POST',
+						'access-control-allow-headers':
+							request.headers()['access-control-request-headers'] ?? ''
+					}
+				});
+			}
+			const quota = {
+				plan: 'free',
+				limit: 3,
+				used: imports,
+				remaining: 3 - imports,
+				resetsAt: null
+			};
+			if (request.method() === 'GET') {
+				return route.fulfill({ json: { enabled: true, ...quota }, headers });
+			}
+			imports += 1;
+			return route.fulfill({
+				json: {
+					draft: {
+						title: `Product designer ${tag}`,
+						description: '## The job\n\nDesign the booking flow.',
+						company: 'Initech',
+						status: 'draft',
+						location: { country: 'FR', city: 'Nantes', workMode: 'on_site' },
+						contract: { type: 'cdi' },
+						workingTime: { arrangement: 'weekly_hours', hoursPerWeek: 35 },
+						pay: { min: 50000, max: 60000, currency: 'EUR', period: 'year' }
+					},
+					warnings: [],
+					quota: { ...quota, used: imports, remaining: 3 - imports }
+				},
+				headers
+			});
+		});
+
+		await signIn(page, recruiter);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		const jobStep = step(page, 'Step 1: Select or create a job');
+		await expect(jobStep.getByText('3 of 3 free imports left.')).toBeVisible();
+		await jobStep.getByRole('button', { name: 'Import from PDF' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Import a job description' });
+		await dialog.locator('input[type="file"]').setInputFiles({
+			name: 'offer.pdf',
+			mimeType: 'application/pdf',
+			buffer: Buffer.from('%PDF-1.4\n%e2e\n')
+		});
+		await dialog.getByRole('button', { name: 'Import', exact: true }).click();
+
+		// The editor opens on the draft, and still knows the journey it came from
+		await expect(page).toHaveURL(new RegExp(`/recruiter/jobs/new\\?journey=${DOMAIN}&import=1$`));
+		await expect(page.getByRole('textbox', { name: 'Job title' })).toHaveValue(
+			`Product designer ${tag}`
+		);
+		await expect(
+			page.getByText(`you go back to the hiring journey of ${DOMAIN} to pick it`)
+		).toBeVisible();
+		await page.getByLabel('Status', { exact: true }).selectOption('open');
+		await page.getByRole('button', { name: 'Create job description' }).click();
+
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire\\?job=[0-9a-f]{24}$`));
+		await expect(
+			jobStep.getByRole('radio', { name: new RegExp(`Product designer ${tag}`) })
+		).toBeChecked();
+		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
+		await expect(jobStep).toContainText(`Product designer ${tag} · Initech`);
+	});
+
 	test('a portfolio with the meeting step only is the booking page, as before', async ({
 		page
 	}) => {

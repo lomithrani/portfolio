@@ -99,8 +99,13 @@
 
 	const onImportDiscarded = async () => {
 		// The URL loses ?import=1 first (a reload starts from a blank form too), with the import's
-		// editor still there, finished: then the blank form's
-		await goto(resolve('/(app)/recruiter/jobs/new'), { shallow: true, replace: true });
+		// editor still there, finished: then the blank form's. It keeps its way back to a journey
+		const blank = resolve('/(app)/recruiter/jobs/new');
+		const withoutImport = journeyDomain
+			? `${blank}?${JOURNEY_PARAM}=${encodeURIComponent(journeyDomain)}`
+			: blank;
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d, with a query
+		await goto(withoutImport, { shallow: true, replace: true });
 		imported = null;
 		importMissing = false;
 		editorRun += 1;
