@@ -2,6 +2,7 @@ import {
 	experiencePeriod,
 	formatDuration,
 	formatMonthRange,
+	formatProjectMonths,
 	projectEnd
 } from '#services/experienceDates.ts';
 import { normalizeSkill, projectMatchesFilters, skillOptions } from '#services/filters.ts';
@@ -78,7 +79,7 @@ const periodWithDuration = (start: Dated['start'], end: Dated['end'], now: Date)
  * experience when that one ended (see projectEnd), it is not "Present"
  */
 const projectMonths = (project: PreviewedProject, experience: PreviewedExperience) =>
-	formatMonthRange(project.start, projectEnd(project, experiencePeriod(experience)));
+	formatProjectMonths(project, experiencePeriod(experience));
 
 const noSkills = () => ({ hard: [], soft: [] });
 

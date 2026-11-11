@@ -8,6 +8,7 @@
 		experienceSubtitle,
 		experienceTypeLabels
 	} from '#components/experience-list/experienceList.ts';
+	import { experiencePeriod } from '#services/experienceDates.ts';
 
 	const typeIcons: Record<ExperienceType, typeof Briefcase> = {
 		[ExperienceType.Professional]: Briefcase,
@@ -41,6 +42,8 @@
 	// Plain spaces around the dot: lines may break after it
 	const SEPARATOR = ' · ';
 	let subtitle = $derived(experienceSubtitle(experience));
+	// Its projects' dates are read inside it: one without an end stopped with it when it ended
+	let period = $derived(experiencePeriod(experience));
 	let summary = $derived(experience.summary?.trim() ?? '');
 
 	// The summary is clamped to ~4 lines; "Show more" appears only when it overflows, which
@@ -163,6 +166,7 @@
 					<Project
 						{project}
 						experienceId={id}
+						within={period}
 						{highlightSkill}
 						revealed={revealedProject === index}
 					/>

@@ -3,7 +3,11 @@
 	import { ExperienceType } from 'portfolio-common';
 	import { AcademicCap, Briefcase, Heart, User } from 'svelte-heros-v2';
 	import { buildTimeline, placeSpan, timelineMinWidth } from '#services/timeline.ts';
-	import { experiencePeriod, formatMonthRange, projectEnd } from '#services/experienceDates.ts';
+	import {
+		experiencePeriod,
+		formatMonthRange,
+		formatProjectMonths
+	} from '#services/experienceDates.ts';
 	import { projectMatchesFilters, type ExperienceFilters } from '#services/filters.ts';
 	import { previewTarget } from '#services/projectPreview.ts';
 	import { experienceTypeLabels } from '#components/experience-list/experienceList.ts';
@@ -181,10 +185,8 @@
 											>
 												<span class="bar-label">{entry.project.name}</span>
 												<span class="sr-only">
-													, {formatMonthRange(
-														entry.project.start,
-														projectEnd(entry.project, experiencePeriod(experience))
-													) || 'no dates'}{#if matched}, uses the selected skills{/if}
+													, {formatProjectMonths(entry.project, experiencePeriod(experience)) ||
+														'no dates'}{#if matched}, uses the selected skills{/if}
 												</span>
 											</button>
 										</li>

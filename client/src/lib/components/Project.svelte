@@ -2,16 +2,19 @@
 	import type { Project, Skill as SkillModel } from 'portfolio-api/models/database';
 	import Skill from './Skill.svelte';
 	import Markdown from './Markdown.svelte';
-	import { formatMonthRange } from '#services/experienceDates.ts';
+	import { formatProjectMonths, type ExperiencePeriod } from '#services/experienceDates.ts';
 
 	let {
 		project,
 		experienceId,
+		within = { ongoing: true },
 		highlightSkill = () => false,
 		revealed = false
 	}: {
 		project: Project;
 		experienceId: string;
+		/** The period of its experience: a project without an end stopped with it when it ended */
+		within?: ExperiencePeriod;
 		/** Whether a skill (by display name) matches the active filters */
 		highlightSkill?: (displayName: string) => boolean;
 		/** Briefly outlined: it was picked on the timeline */
@@ -25,7 +28,7 @@
 			.filter((skill) => typeof skill?.displayName === 'string');
 
 	let headingId = $derived(`project-${experienceId}-${String(project._id ?? '')}`);
-	let period = $derived(formatMonthRange(project.start, project.end));
+	let period = $derived(formatProjectMonths(project, within));
 	let hardSkills = $derived(skillsOf(project.hardSkills));
 	let softSkills = $derived(skillsOf(project.softSkills));
 	// Uses a skill the list is filtered by: the project stands out in its card

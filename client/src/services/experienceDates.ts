@@ -115,6 +115,13 @@ export function projectEnd(project: Dated, period: ExperiencePeriod): Date | und
 	return start && start > period.end ? start : period.end;
 }
 
+/**
+ * 'Jun 2019 – Dec 2020' of a project of an experience (of this period), as its card, its previews
+ * and the timeline show it: "Present" only while both are ongoing (see projectEnd); '' when no start
+ */
+export const formatProjectMonths = (project: Dated, period: ExperiencePeriod): string =>
+	formatMonthRange(project.start, projectEnd(project, period));
+
 /** Sort for display: ongoing first, then by end desc, then start desc; undated last; stable */
 export function sortExperiences<T extends Parameters<typeof experiencePeriod>[0]>(
 	experiences: T[]

@@ -65,12 +65,13 @@ const project = (
 	name: string,
 	hard: SkillName[] = [],
 	soft: SkillName[] = [],
-	[start, end]: [string, string] = ['2023-01', '2023-06']
+	// Without an end: a project left open
+	[start, end]: [string, string?] = ['2023-01', '2023-06']
 ) => ({
 	name,
 	summary: '',
 	start: month(start),
-	end: month(end),
+	end: end ? month(end) : undefined,
 	hardSkills: hard.map((skill) => ({ name: skill, level: -1 })),
 	softSkills: soft.map((skill) => ({ name: skill, level: -1 }))
 });
@@ -504,6 +505,37 @@ test.describe('timeline view', () => {
 		await viewButton(page, 'List').click();
 		await expect(page.getByRole('heading', { level: 2 })).toHaveText([first]);
 		await expect.poll(() => new URL(page.url()).search).toBe('?skills=go');
+	});
+
+	test('a project left without an end stops with its experience, wherever it is shown', async ({
+		page
+	}) => {
+		const title = `Backend Engineer ${tag}`;
+		await createExperience({
+			title,
+			start: month('2018-01'),
+			end: month('2020-12'),
+			projects: [project('Left open', ['Kafka'], [], ['2019-06'])]
+		});
+		const preview = page.getByRole('tooltip');
+
+		// Its card: not "Present", its experience ended
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		const shown = card(page, title).locator('article');
+		await expect(shown).toContainText('Jun 2019 – Dec 2020');
+		await expect(shown).not.toContainText('Present');
+		// The preview of its skill
+		await shown.getByText('Kafka', { exact: true }).hover();
+		await expect(preview).toContainText('Jun 2019 – Dec 2020');
+		await page.keyboard.press('Escape');
+		await expect(preview).toHaveCount(0);
+
+		// The timeline: its bar ends with its experience's, and is named with the same months
+		await viewButton(page, 'Timeline').click();
+		await expect(projectBar(page, 'Left open')).toContainText('Jun 2019 – Dec 2020');
+		const bar = await boxOf(page, 'Left open');
+		const whole = await experienceBar(page, title).boundingBox();
+		expect(Math.abs(bar.x + bar.width - (whole!.x + whole!.width))).toBeLessThanOrEqual(1);
 	});
 
 	test('the owner edits and adds from the timeline, whose card follows what was saved', async ({
