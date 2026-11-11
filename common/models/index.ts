@@ -73,15 +73,24 @@ export {
 } from './account';
 export type { UserMode, RecruiterPlan } from './account';
 export {
-	WORKFLOW_STEP_TYPES,
-	WORKFLOW_STEPS,
+	WORKFLOW_STEP_STATUSES,
+	WORKFLOW_LIMITS,
 	DEFAULT_WORKFLOW_STEPS,
-	isWorkflowStepType,
-	workflowStepsProblem
+	stepManifest,
+	stepManifests,
+	newWorkflowStep,
+	parseWorkflow,
+	openWorkflowSteps
 } from './workflow';
 export type {
-	WorkflowStepType,
 	WorkflowStepKind,
-	WorkflowStepInfo,
-	WorkflowStepInput
+	WorkflowStepStatus,
+	StepConfigResult,
+	WorkflowStepManifest,
+	WorkflowStepInput,
+	WorkflowStep,
+	WorkflowProblem,
+	WorkflowResult
 } from './workflow';
+export { NOTE_STEP_LIMITS } from './workflowSteps';
+export type { NoteStepConfig } from './workflowSteps';
