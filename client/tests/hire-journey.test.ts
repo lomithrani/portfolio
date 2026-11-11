@@ -14,12 +14,12 @@ import {
 import { createJob, deleteJobs } from './support/jobs';
 
 // The hiring journey of 'e2e-journey' (seeded by `bun run --cwd server seed:e2e`, changed by this
-// file alone): its owner chooses the steps in the admin tab, and the e2e recruiter goes through
-// them on the Hire page, picking one of their open job descriptions before the meeting step
-// opens. No Google Calendar is connected: the meeting step says online booking is unavailable
-// (the booking itself is covered by the API's tests). The recruiter is shared with the other
-// recruiter files, which run in parallel: each test names its postings with its own tag and
-// removes them afterwards.
+// file alone): its owner adds, sets and orders the steps in the admin tab, and the e2e recruiter
+// goes through them on the Hire page (a note to read and confirm, one of their open job
+// descriptions to pick) before the meeting step opens. No Google Calendar is connected: the
+// meeting step says online booking is unavailable (the booking itself is covered by the API's
+// tests). The recruiter is shared with the other recruiter files, which run in parallel: each
+// test names its postings with its own tag and removes them afterwards.
 
 test.skip(
 	!JWT_SECRET,
@@ -34,10 +34,23 @@ let recruiter: OwnerSession;
 let ownerApi: APIRequestContext;
 let recruiterApi: APIRequestContext;
 
+/**
+ * Replaces the journey with one step per type, each under its type's name. What the recruiter
+ * did on a step that is not in it goes with the step: every test starts from a journey of its own
+ */
 const setJourney = async (...types: string[]) => {
 	const response = await ownerApi.put(`${API_URL}/workflow`, {
-		data: { steps: types.map((type) => ({ type })) }
+		data: { steps: types.map((type) => ({ id: type, type })) }
 	});
+	expect(response.ok(), await response.text()).toBe(true);
+};
+
+/** The recruiter's submit on a step of the journey, as the Hire page sends it */
+const submitStep = async (stepId: string, input: unknown) => {
+	const response = await recruiterApi.post(
+		`${API_URL}/workflow/domains/${DOMAIN}/steps/${stepId}`,
+		{ data: { input } }
+	);
 	expect(response.ok(), await response.text()).toBe(true);
 };
 
@@ -66,13 +79,6 @@ test.afterEach(async () => {
 	await deleteJobs(recruiterApi, tag);
 });
 
-/** A step's switch in the admin tab, clicked as a pointer does: its control covers its input */
-const toggleStep = (page: Page, name: string) =>
-	page
-		.locator('[data-scope="switch"][data-part="root"]')
-		.filter({ has: page.getByRole('checkbox', { name }) })
-		.click();
-
 /** The steps of the Hire page */
 const journeySteps = (page: Page) => page.getByRole('list', { name: 'Hiring journey' });
 const step = (page: Page, name: string) =>
@@ -80,33 +86,65 @@ const step = (page: Page, name: string) =>
 		.getByRole('listitem')
 		.filter({ has: page.getByRole('heading', { name }) });
 
+/** The steps of the admin tab's editor */
+const editorSteps = (page: Page) => page.getByRole('list', { name: 'Steps' }).getByRole('listitem');
+const editorStep = (page: Page, name: string) =>
+	editorSteps(page).filter({ has: page.getByRole('heading', { name }) });
+const addStep = (page: Page, label: string) =>
+	page.getByRole('button', { name: `Add step: ${label}` });
+
+const openEditor = async (page: Page) => {
+	await signIn(page, owner);
+	await gotoHydrated(page, `/${DOMAIN}/admin`);
+	await page.getByRole('tab', { name: 'Hiring journey' }).click();
+	await expect(editorSteps(page).first()).toBeVisible();
+};
+
 test.describe('the hiring journey', () => {
 	test('the owner asks recruiters to pick a job before booking', async ({ page }) => {
 		await setJourney('meeting');
-		await signIn(page, owner);
-		await gotoHydrated(page, `/${DOMAIN}/admin`);
-		await page.getByRole('tab', { name: 'Hiring journey' }).click();
+		await openEditor(page);
 
-		const jobStep = page.getByRole('checkbox', { name: 'Select or create a job' });
-		const meetingStep = page.getByRole('checkbox', { name: 'Book a meeting' });
-		await expect(jobStep).not.toBeChecked();
-		await expect(meetingStep).toBeChecked();
+		await expect(editorSteps(page)).toHaveCount(1);
+		await expect(editorStep(page, 'Step 1: Book a meeting')).toBeVisible();
 		await expect(page.getByText('Recruiters can book a meeting right away.')).toBeVisible();
 		const save = page.getByRole('button', { name: 'Save journey' });
 		await expect(save).toBeDisabled();
+		// One meeting step per journey: no second one can be added, and the page says why
+		await expect(addStep(page, 'Book a meeting')).toBeDisabled();
+		await expect(addStep(page, 'Book a meeting')).toHaveAccessibleDescription(
+			'Already in your journey: it can be used only once.'
+		);
 
-		// A job step with nothing after it opens nothing: it cannot be saved
-		await toggleStep(page, 'Select or create a job');
-		await expect(jobStep).toBeChecked();
-		await toggleStep(page, 'Book a meeting');
-		await expect(meetingStep).not.toBeChecked();
-		await expect(page.getByRole('alert')).toContainText(
+		// A step that only opens others is added before the step the journey leads to
+		await addStep(page, 'Select or create a job').click();
+		await expect(editorSteps(page)).toHaveCount(2);
+		await expect(
+			page.getByRole('heading', { name: 'Step 1: Select or create a job' })
+		).toBeFocused();
+		await expect(editorStep(page, 'Step 2: Book a meeting')).toBeVisible();
+		await expect(
+			page.getByText('Recruiters select or create a job, then book a meeting.')
+		).toBeVisible();
+
+		// Moved after it, the job step opens nothing: the journey cannot be saved, and says why at
+		// the step. The focus follows the step moved
+		const jobStep = editorStep(page, 'Select or create a job');
+		await jobStep.getByRole('button', { name: /^Move down/ }).click();
+		await expect(editorStep(page, 'Step 2: Select or create a job')).toBeVisible();
+		await expect(jobStep.getByRole('button', { name: /^Move down/ })).toBeDisabled();
+		await expect(jobStep.getByRole('button', { name: /^Move up/ })).toBeFocused();
+		await expect(jobStep).toContainText(
 			'“Select or create a job” must come before a step it opens'
 		);
+		await expect(
+			page.getByText('Step 2 (Select or create a job): “Select or create a job” must come before')
+		).toBeVisible();
 		await expect(save).toBeDisabled();
 
-		await toggleStep(page, 'Book a meeting');
-		await expect(meetingStep).toBeChecked();
+		await page.keyboard.press('Enter');
+		await expect(editorStep(page, 'Step 1: Select or create a job')).toBeVisible();
+		await expect(jobStep.getByRole('button', { name: /^Move down/ })).toBeFocused();
 		await expect(
 			page.getByText('Recruiters select or create a job, then book a meeting.')
 		).toBeVisible();
@@ -115,16 +153,213 @@ test.describe('the hiring journey', () => {
 		await expect(save).toBeDisabled();
 
 		const saved = await ownerApi.get(`${API_URL}/workflow`);
-		expect(await saved.json()).toEqual({ steps: [{ type: 'job' }, { type: 'meeting' }] });
+		expect(await saved.json()).toEqual({
+			steps: [
+				{ id: 'job', type: 'job', config: {} },
+				{ id: 'meeting', type: 'meeting', config: {} }
+			]
+		});
 
-		// Their own Hire page is a preview: nothing is locked for them
+		// Their own Hire page is a preview: nothing is locked for them, and the job step, which
+		// asks nothing of them, says what it asks of recruiters
 		await page.getByRole('link', { name: 'See your Hire page' }).click();
 		await expect(
 			page.getByText('This is your hiring journey, as recruiters see it.')
 		).toBeVisible();
+		await expect(step(page, 'Step 1: Select or create a job')).toContainText(
+			'Recruiters pick one of their open job descriptions'
+		);
+		await expect(step(page, 'Step 1: Select or create a job').getByRole('button')).toHaveCount(0);
 		await expect(step(page, 'Step 2: Book a meeting')).not.toContainText(
 			'Complete the step above first.'
 		);
+		await expect(step(page, 'Step 2: Book a meeting')).toContainText(
+			'Online booking is not available right now.'
+		);
+	});
+
+	test('the owner writes a note recruiters confirm before they pick a job and book', async ({
+		page,
+		browser
+	}) => {
+		await setJourney('job', 'meeting');
+		await createJob(recruiterApi, { title: `Staff engineer ${tag}`, status: 'open' });
+		await openEditor(page);
+
+		// A new note has nothing to read yet: the editor says what is missing, at the note
+		await addStep(page, 'Read a note').click();
+		await expect(page.getByRole('heading', { name: 'Step 2: Read a note' })).toBeFocused();
+		const note = editorStep(page, 'Read a note');
+		const save = page.getByRole('button', { name: 'Save journey' });
+		await expect(note).toContainText('Give the note a title.');
+		await expect(page.getByText('Step 2 (Read a note): Give the note a title.')).toBeVisible();
+		await expect(save).toBeDisabled();
+
+		await note.getByLabel('Title').fill('Before you book');
+		await expect(note).toContainText('Write the note recruiters will read.');
+		await expect(note.getByLabel('Note', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+		await note
+			.getByLabel('Note', { exact: true })
+			.fill('I only take **remote** roles.\n\n<script>alert(1)</script>');
+		await expect(note.getByLabel('Note', { exact: true })).not.toHaveAttribute('aria-invalid');
+
+		// Above the job step: the button it was moved with is at its end, the focus stays on the note
+		await note.getByRole('button', { name: 'Move up Read a note: Before you book' }).click();
+		await expect(editorStep(page, 'Step 1: Read a note')).toBeVisible();
+		await expect(
+			note.getByRole('button', { name: 'Move down Read a note: Before you book' })
+		).toBeFocused();
+		await expect(
+			page.getByText(
+				'Recruiters read a note (“Before you book”), select or create a job, then book a meeting.'
+			)
+		).toBeVisible();
+		await save.click();
+		await expect(toasts(page).getByText('Hiring journey saved')).toBeVisible();
+
+		const saved = await ownerApi.get(`${API_URL}/workflow`);
+		expect(await saved.json()).toEqual({
+			steps: [
+				{
+					id: 'note',
+					type: 'note',
+					config: {
+						title: 'Before you book',
+						text: 'I only take **remote** roles.\n\n<script>alert(1)</script>'
+					}
+				},
+				{ id: 'job', type: 'job', config: {} },
+				{ id: 'meeting', type: 'meeting', config: {} }
+			]
+		});
+
+		// The recruiter, in a browser of their own
+		const context = await browser.newContext();
+		const visitor = await context.newPage();
+		await blockGoogle(visitor);
+		await signIn(visitor, recruiter);
+		await gotoHydrated(visitor, `/${DOMAIN}/hire`);
+		await expect(
+			visitor.getByText(`${DOMAIN} asks recruiters to complete 2 steps first.`)
+		).toBeVisible();
+		const noteStep = step(visitor, 'Step 1: Before you book');
+		const jobStep = step(visitor, 'Step 2: Select or create a job');
+		const meetingStep = step(visitor, 'Step 3: Book a meeting');
+		await expect(jobStep).toContainText('Complete the step above first.');
+		await expect(meetingStep).toContainText('Complete the steps above first.');
+
+		// The note is Markdown, and its HTML is text
+		await expect(noteStep.locator('strong')).toHaveText('remote');
+		await expect(noteStep).toContainText('<script>alert(1)</script>');
+		await noteStep.getByRole('button', { name: 'I have read this' }).click();
+		await expect(noteStep).toContainText('You have read this note.');
+		await expect(
+			visitor.getByRole('heading', { name: 'Step 2: Select or create a job' })
+		).toBeFocused();
+		await expect(meetingStep).toContainText('Complete the steps above first.');
+
+		await jobStep.getByRole('radio', { name: new RegExp(`Staff engineer ${tag}`) }).check();
+		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
+		await expect(toasts(visitor).getByText('Job picked')).toBeVisible();
+		await expect(visitor.getByRole('heading', { name: 'Step 3: Book a meeting' })).toBeFocused();
+		await expect(meetingStep).toContainText('Online booking is not available right now.');
+
+		// Once confirmed, the note stays readable
+		await noteStep.getByRole('button', { name: 'Open Before you book' }).click();
+		await expect(noteStep.locator('strong')).toHaveText('remote');
+		await expect(noteStep.getByRole('button', { name: 'I have read this' })).toHaveCount(0);
+
+		const journey = await recruiterApi.get(`${API_URL}/workflow/domains/${DOMAIN}`);
+		expect(await journey.json()).toMatchObject({
+			steps: [
+				{ id: 'note', status: 'succeeded', config: { title: 'Before you book' } },
+				{ id: 'job', status: 'succeeded' },
+				{ id: 'meeting', status: 'pending' }
+			]
+		});
+		await context.close();
+	});
+
+	test('what the API refuses is said at the step; a journey without steps closes the page', async ({
+		page
+	}) => {
+		await setJourney('job', 'meeting');
+		await openEditor(page);
+		const save = page.getByRole('button', { name: 'Save journey' });
+
+		await addStep(page, 'Read a note').click();
+		const note = editorStep(page, 'Read a note');
+		await note.getByLabel('Title').fill('Before you book');
+		await note.getByLabel('Note', { exact: true }).fill('Remote only.');
+
+		// A rule this page does not know yet: the API's answer is shown like the page's own checks
+		await page.route(`${API_URL}/workflow`, (route) => {
+			const request = route.request();
+			if (request.method() !== 'PUT') return route.fallback();
+			return route.fulfill({
+				status: 422,
+				json: {
+					type: 'validation',
+					on: 'body',
+					property: 'steps.1.config.title',
+					message: 'This title cannot be used.'
+				},
+				headers: {
+					'access-control-allow-origin': request.headers()['origin'] ?? '*',
+					'access-control-allow-credentials': 'true'
+				}
+			});
+		});
+		await save.click();
+		await expect(note).toContainText('This title cannot be used.');
+		await expect(note.getByLabel('Title')).toHaveAttribute('aria-invalid', 'true');
+		await expect(page.getByText('Step 2 (Read a note): This title cannot be used.')).toBeVisible();
+		await expect(save).toBeDisabled();
+		await page.unroute(`${API_URL}/workflow`);
+		// Until the journey is changed
+		await note.getByLabel('Title').fill('Before you book a slot');
+		await expect(note.getByLabel('Title')).not.toHaveAttribute('aria-invalid');
+		await expect(save).toBeEnabled();
+
+		// Removing a step moves the focus to the one that took its place, else the one before
+		await note.getByRole('button', { name: 'Remove Read a note: Before you book a slot' }).click();
+		await expect(page.getByRole('heading', { name: 'Step 2: Book a meeting' })).toBeFocused();
+		await editorStep(page, 'Book a meeting')
+			.getByRole('button', { name: /^Remove/ })
+			.click();
+		await expect(
+			page.getByRole('heading', { name: 'Step 1: Select or create a job' })
+		).toBeFocused();
+		await expect(save).toBeDisabled();
+		await editorStep(page, 'Select or create a job')
+			.getByRole('button', { name: /^Remove/ })
+			.click();
+		await expect(page.getByRole('heading', { name: 'Add a step' })).toBeFocused();
+		await expect(page.getByText('Your journey has no step.')).toBeVisible();
+		await expect(
+			page.getByText('Your Hire page offers nothing: recruiters are asked to reach out directly.')
+		).toBeVisible();
+
+		// Undo brings the saved journey back; removed again, the empty journey can be saved
+		await page.getByRole('button', { name: 'Undo changes' }).click();
+		await expect(editorSteps(page)).toHaveCount(2);
+		await expect(save).toBeDisabled();
+		for (const name of ['Book a meeting', 'Select or create a job']) {
+			await editorStep(page, name)
+				.getByRole('button', { name: /^Remove/ })
+				.click();
+		}
+		await save.click();
+		await expect(toasts(page).getByText('Hiring journey saved')).toBeVisible();
+		const saved = await ownerApi.get(`${API_URL}/workflow`);
+		expect(await saved.json()).toEqual({ steps: [] });
+
+		await page.getByRole('link', { name: 'See your Hire page' }).click();
+		await expect(page.getByRole('heading', { level: 1, name: `Hire ${DOMAIN}` })).toBeVisible();
+		await expect(
+			page.getByText('Online booking is not available right now. Please reach out directly.')
+		).toBeVisible();
+		await expect(journeySteps(page)).toHaveCount(0);
 	});
 
 	test('a recruiter picks one of their open jobs, which opens the meeting step', async ({
@@ -156,10 +391,14 @@ test.describe('the hiring journey', () => {
 		const journey = await recruiterApi.get(`${API_URL}/workflow/domains/${DOMAIN}`);
 		expect(await journey.json()).toMatchObject({
 			steps: [
-				{ type: 'job', done: true },
-				{ type: 'meeting', done: false }
-			],
-			job: { _id: open._id, status: 'open' }
+				{
+					id: 'job',
+					type: 'job',
+					status: 'succeeded',
+					view: { job: { _id: open._id, status: 'open' } }
+				},
+				{ id: 'meeting', type: 'meeting', status: 'pending' }
+			]
 		});
 
 		// Changing the job: the step unfolds again, on the job picked
@@ -200,10 +439,7 @@ test.describe('the hiring journey', () => {
 			title: `Staff engineer ${tag}`,
 			status: 'open'
 		});
-		const pick = await recruiterApi.put(`${API_URL}/workflow/domains/${DOMAIN}/job`, {
-			data: { jobId: picked._id }
-		});
-		expect(pick.ok(), await pick.text()).toBe(true);
+		await submitStep('job', { jobId: picked._id });
 		const created = await createJob(recruiterApi, {
 			title: `Platform lead ${tag}`,
 			status: 'open'

@@ -77,9 +77,13 @@ export const experienceRequestBody = {
   ],
 };
 
-// A hiring journey as the admin tab saves it: pick a job, then book a meeting
+// A hiring journey as the admin tab saves it (each step with its id, its type and that type's
+// settings): pick a job, then book a meeting
 export const workflowRequestBody = {
-  steps: [{ type: 'job' }, { type: 'meeting' }],
+  steps: [
+    { id: 'job', type: 'job', config: {} },
+    { id: 'meeting', type: 'meeting', config: {} },
+  ],
 };
 
 // ── Google ID tokens ────────────────────────────────────────

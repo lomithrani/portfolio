@@ -1,50 +1,45 @@
 import Elysia from 'elysia';
-import type { WorkflowStepType } from 'portfolio-common';
+import type { WorkflowStep } from 'portfolio-common';
 import { userLogged } from './userLogged';
-import { domainNameParams, workflowJobRequest, workflowRequest } from '../models/elysia';
+import { domainNameParams, workflowRequest, workflowStepParams, workflowStepRequest } from '../models/elysia';
 import { sessionUserId } from '../services/session';
-import {
-  journeyFor,
-  journeySteps,
-  pickJourneyJob,
-  portfolioOwner,
-  saveJourneySteps
-} from '../services/workflows';
+import { journeyFor, journeySteps, portfolioOwner, saveJourneySteps, submitStep } from '../services/workflows';
 import type { JourneyDto } from '../services/workflows';
 
 // The hiring journey of a portfolio (services/workflows.ts): the owner
 // chooses its steps; visitors see them, signed in with where they stand, and
-// complete them one after the other. The booking routes of the meeting step
+// go through them one after the other. What a step is (its settings, what a
+// visitor submits on it) belongs to its type (services/workflowSteps/): the
+// routes are the same for every type. The booking routes of the meeting step
 // (plugins/appointments.ts) check the steps before it.
 
+/** The owner's journey as they edit it: every step with its settings */
 interface WorkflowDto {
-  steps: { type: WorkflowStepType }[];
+  steps: WorkflowStep[];
 }
-
-const toWorkflowDto = (steps: WorkflowStepType[]): WorkflowDto => ({ steps: steps.map((type) => ({ type })) });
 
 const workflowOwner = new Elysia()
   .use(userLogged)
-  .get('/workflow', async ({ userId }): Promise<WorkflowDto> => toWorkflowDto(await journeySteps(userId)), {
+  .get('/workflow', async ({ userId }): Promise<WorkflowDto> => ({ steps: await journeySteps(userId) }), {
     detail: { summary: 'Your hiring journey: the steps visitors go through on your Hire page, in order' }
   })
   .put(
     '/workflow',
-    async ({ userId, body }): Promise<WorkflowDto> =>
-      toWorkflowDto(await saveJourneySteps(userId, body.steps.map((step) => step.type))),
+    async ({ userId, body }): Promise<WorkflowDto> => ({ steps: await saveJourneySteps(userId, body.steps) }),
     {
       body: workflowRequest,
-      detail: { summary: 'Replace the steps of your hiring journey (each step once, a step it opens after each requirement)' }
+      detail: { summary: 'Replace the steps of your hiring journey (ids, types and settings, in order)' }
     }
   )
-  .put(
-    '/workflow/domains/:domainName/job',
-    async ({ userId, params: { domainName }, body: { jobId } }): Promise<JourneyDto> =>
-      pickJourneyJob(domainName, userId, jobId),
+  .post(
+    '/workflow/domains/:domainName/steps/:stepId',
+    async ({ userId, params: { domainName, stepId }, body: { input } }): Promise<JourneyDto> =>
+      submitStep(domainName, userId, stepId, input),
     {
-      params: domainNameParams,
-      body: workflowJobRequest,
-      detail: { summary: "Job step: pick one of your open job postings for a portfolio's hiring journey" }
+      params: workflowStepParams,
+      // A JSON body, whatever the step takes: the request is never a "simple" cross-origin one
+      body: workflowStepRequest,
+      detail: { summary: "Submit a step of a portfolio's hiring journey (what `input` is depends on the step's type)" }
     }
   );
 

@@ -509,10 +509,11 @@ describe('hiring journey (real collection)', () => {
     expect(saved.status).toBe(200);
     expect(await readJson(saved)).toEqual(workflowRequestBody);
     const stored = await Workflow.findOne({ user: owner.body.user._id }).lean();
-    expect(stored?.steps.map((step) => step.type)).toEqual(['job', 'meeting']);
+    expect(stored?.steps.map(({ id, type, config }) => ({ id, type, config }))).toEqual(workflowRequestBody.steps);
 
-    const dangling = await putWithCookie(app, '/workflow', { steps: [{ type: 'job' }] }, owner.cookie);
+    const dangling = await putWithCookie(app, '/workflow', { steps: [workflowRequestBody.steps[0]] }, owner.cookie);
     expect(dangling.status).toBe(422);
+    expect((await readJson(dangling)).property).toBe('steps.0');
 
     const isLogged = await getWithCookie(app, '/isLogged', owner.cookie);
     expect((await readJson(isLogged)).user.email).toBe(t.email('owner'));

@@ -1,25 +1,34 @@
 import { t } from "elysia";
-import { WORKFLOW_STEP_TYPES } from "portfolio-common";
+import { WORKFLOW_LIMITS } from "portfolio-common";
 
-const objectId = t.String({ pattern: '^[0-9a-fA-F]{24}$' });
+// A step id is also a key of the progress stored per visitor: its pattern
+// (no dot, no dollar, no underscore) is checked before any route uses one
+const stepId = t.String({ pattern: WORKFLOW_LIMITS.stepId.source });
 
-// t.UnionEnum defaults to its first value, which Elysia fills in for a
-// missing field: a step without a type must be refused, not become a job step
-const workflowStepType = t.UnionEnum(WORKFLOW_STEP_TYPES, { default: undefined });
-
-// PUT /workflow: the owner's whole journey, in order. Each type at most once,
-// and the other rules of portfolio-common's workflowStepsProblem, checked by
-// the route
+// PUT /workflow: the owner's whole journey, in order. The step types, their
+// settings and the other rules are portfolio-common's parseWorkflow, checked
+// by the route. `config` is whatever the step's type takes: its manifest
+// keeps what it knows and drops the rest
 export const workflowRequest = t.Object({
-  steps: t.Array(t.Object({ type: workflowStepType }), { maxItems: WORKFLOW_STEP_TYPES.length })
+  steps: t.Array(
+    t.Object({
+      id: stepId,
+      type: t.String({ pattern: WORKFLOW_LIMITS.stepType.source }),
+      config: t.Optional(t.Object({}, { additionalProperties: true }))
+    }),
+    { maxItems: WORKFLOW_LIMITS.steps }
+  )
 });
 
-// PUT /workflow/domains/:domainName/job: one of the caller's job postings
-export const workflowJobRequest = t.Object({
-  jobId: objectId
+// POST /workflow/domains/:domainName/steps/:stepId: what the visitor submits
+// on a step, checked by the step's type (services/workflowSteps/)
+export const workflowStepRequest = t.Object({
+  input: t.Unknown()
 });
 
 // A portfolio's name, as the visitor's page has it (normalised by the route)
-export const domainNameParams = t.Object({
-  domainName: t.String({ minLength: 1, maxLength: 253 })
-});
+const domainName = t.String({ minLength: 1, maxLength: 253 });
+
+export const domainNameParams = t.Object({ domainName });
+
+export const workflowStepParams = t.Object({ domainName, stepId });

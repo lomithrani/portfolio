@@ -2,54 +2,41 @@
 @component
 The job step of a portfolio's hiring journey: the recruiter picks one of their open job
 descriptions (GET /recruiter/jobs), or writes a new one and comes back here to pick it
-(/recruiter/jobs/new?journey=<portfolio>, back on the Hire page with ?job=<id>). Before that, a
-visitor signs in (keeping the space the account had) and an account without a recruiter space
-creates it here.
-The pick is sent with PUT /workflow/domains/:domainName/job; `onPicked` gets the journey after
-it. Not for the portfolio's owner (the API refuses their pick): the page shows them the step's
-note instead.
+(/recruiter/jobs/new?journey=<portfolio>, back on the Hire page with ?job=<id>: the job the
+address asks for is the one selected). Before that, a visitor signs in (keeping the space the
+account had) and an account without a recruiter space creates it here.
+The pick is submitted to the step (`{ jobId }`); the job picked comes back as the step's view.
+Not for the portfolio's owner (the API refuses their pick): the page shows them the step's
+description instead.
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { Briefcase, PlusCircle } from 'svelte-heros-v2';
 	import type { JobStatus } from 'portfolio-common';
 	import { portfolioApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
-	import { switchMode, SESSION_EXPIRED_MESSAGE } from '#services/account.ts';
-	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
+	import { switchMode } from '#services/account.ts';
+	import { isSessionValid } from '#services/authentication.ts';
 	import { NETWORK_ERROR, failureText } from '#services/recruiter.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
+		JOB_PARAM,
 		JOURNEY_PARAM,
 		initialJobChoice,
 		isPickable,
 		pickJobFailure,
-		sortJobChoices,
-		type Journey
+		pickedJob,
+		requestedJob,
+		sortJobChoices
 	} from '#services/workflow.ts';
 	import ApplySignIn from '#components/apply/ApplySignIn.svelte';
 	import JobStatusBadge from '#components/jobs/JobStatusBadge.svelte';
+	import type { StepProps } from './types';
 
-	let {
-		domainName,
-		ownerName,
-		journey,
-		requestedJob = null,
-		onPicked,
-		onReloadJourney
-	}: {
-		domainName: string;
-		ownerName: string;
-		/** The journey as the visitor stands in it (the job picked before) */
-		journey: Journey;
-		/** A job to select first (?job=, back from writing it) */
-		requestedJob?: string | null;
-		onPicked: (journey: Journey) => void;
-		/** The journey changed under the step (it no longer asks for a job...): load it again */
-		onReloadJourney: () => void;
-	} = $props();
+	let { step, domainName, ownerName, address, submit, reload, locked }: StepProps = $props();
 
 	const uid = $props.id();
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -74,6 +61,9 @@ note instead.
 	// The jobs of the current account only
 	let shown = $derived(jobs && jobs.key === jobsKey ? jobs : null);
 	let requested: string | null = null;
+	// The job to select first (?job=, back from writing it), and the one the list was loaded for
+	let asked = $derived(requestedJob(address));
+	let listedFor: string | null = null;
 
 	let selected = $state<string | null>(null);
 	let picking = $state(false);
@@ -96,13 +86,9 @@ note instead.
 		`${resolve('/(app)/recruiter/jobs/new')}?${JOURNEY_PARAM}=${encodeURIComponent(domainName)}`
 	);
 
-	const expireSession = () => {
-		clearAuthentication();
-		toaster.error({ title: SESSION_EXPIRED_MESSAGE });
-	};
-
 	async function loadJobs(key: string) {
 		requested = key;
+		listedFor = asked;
 		jobs = { key, state: 'loading' };
 		try {
 			const { data, error } = await portfolioApi.recruiter.jobs.get(withCredentials);
@@ -111,7 +97,7 @@ note instead.
 				const status = errorStatus(error);
 				if (status === 401) {
 					requested = null;
-					expireSession();
+					locked('signed-out');
 					return;
 				}
 				// The session said it had a recruiter space: it has none (yet)
@@ -131,19 +117,22 @@ note instead.
 				}))
 			);
 			jobs = { key, state: 'loaded', jobs: list };
-			selected = initialJobChoice(list, requestedJob, journey.job?._id);
+			selected = initialJobChoice(list, listedFor, pickedJob(step.view)?._id);
 		} catch {
 			if (requested === key) jobs = { key, state: 'error', message: NETWORK_ERROR };
 		}
 	}
 
+	// Loaded for the account, and again for each job the address then asks for: the list has the
+	// posting just written, which is selected
 	$effect(() => {
 		const key = jobsKey;
+		const job = asked;
 		if (!key) {
 			requested = null;
 			return;
 		}
-		if (requested === key) return;
+		if (requested === key && (!job || job === listedFor)) return;
 		untrack(() => loadJobs(key));
 	});
 
@@ -165,23 +154,24 @@ note instead.
 		if (!selected || picking) return;
 		picking = true;
 		pickError = '';
-		try {
-			const { data, error } = await portfolioApi.workflow
-				.domains({ domainName: encodeURIComponent(domainName) })
-				.job.put({ jobId: selected }, withCredentials);
-			if (error || !data) {
-				const failure = pickJobFailure(errorStatus(error), error?.value);
-				pickError = failure.message;
-				if (failure.kind === 'session-expired') expireSession();
-				if (failure.kind === 'reload-journey') onReloadJourney();
-				if (failure.kind === 'reload-jobs' && jobsKey) await loadJobs(jobsKey);
-				return;
-			}
-			onPicked(data);
-		} catch {
-			pickError = NETWORK_ERROR;
-		} finally {
-			picking = false;
+		const result = await submit({ jobId: selected });
+		picking = false;
+		if (!result.ok) {
+			const failure = pickJobFailure(result.status, result.value);
+			pickError = failure.message;
+			if (failure.kind === 'signed-out' || failure.kind === 'locked') locked(failure.kind);
+			if (failure.kind === 'changed') reload();
+			if (failure.kind === 'reload-jobs' && jobsKey) await loadJobs(jobsKey);
+			return;
+		}
+		toaster.success({ title: 'Job picked' });
+		// The pick settles what the address asked for: it selects nothing any more. The browser's
+		// address: page.url still has ?job= after an earlier shallow goto
+		if (new URLSearchParams(location.search).has(JOB_PARAM)) {
+			await goto(resolve('/[domain]/hire', { domain: domainName }), {
+				replace: true,
+				shallow: true
+			});
 		}
 	}
 </script>
