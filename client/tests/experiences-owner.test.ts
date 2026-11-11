@@ -642,6 +642,14 @@ test.describe('hovering a skill tag', () => {
 		await page.keyboard.press('Escape');
 		await expect(preview).toHaveCount(0);
 		await expect(page.locator('[data-muted], [data-previewed]')).toHaveCount(0);
+		// Nothing steps back when the filters hide every card that has the skill
+		await filters.getByRole('button', { name: 'Go', exact: true }).click();
+		await expect(page.getByRole('heading', { level: 2 })).toHaveText([first]);
+		await filters.getByRole('button', { name: 'Leadership', exact: true }).hover();
+		await expect(preview).toContainText('Used in 1 project');
+		await expect(page.locator('[data-muted], article[data-previewed]')).toHaveCount(0);
+		await filters.getByRole('button', { name: 'Clear filters' }).click();
+		await expect(page.getByRole('heading', { level: 2 })).toHaveCount(2);
 
 		// The timeline: the preview is a small timeline of the skill's projects alone, and they
 		// are outlined on the page's
@@ -664,6 +672,16 @@ test.describe('hovering a skill tag', () => {
 		const earlier = await miniBars.nth(0).boundingBox();
 		const later = await miniBars.nth(1).boundingBox();
 		expect(earlier!.x + earlier!.width).toBeLessThanOrEqual(later!.x + 1);
+		await expect(bars.and(page.locator('[data-previewed]'))).toHaveText([/Streams/, /Platform/]);
+		await page.keyboard.press('Escape');
+		await expect(preview).toHaveCount(0);
+
+		// A tag inside the card under the timeline keeps the list: the small timeline is the
+		// filters' tags'
+		await bars.filter({ hasText: 'Streams' }).click();
+		await card(page, first).getByText('Kafka', { exact: true }).hover();
+		await expect(preview.getByRole('listitem')).toHaveText([/Platform/, /Streams/]);
+		await expect(preview.locator('[data-preview-timeline]')).toHaveCount(0);
 		await expect(bars.and(page.locator('[data-previewed]'))).toHaveText([/Streams/, /Platform/]);
 
 		await page.keyboard.press('Escape');

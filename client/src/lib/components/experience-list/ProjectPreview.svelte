@@ -7,8 +7,8 @@
 	// focused with the keyboard: only the projects concerned (see projectPreview.ts). One for the
 	// page: it follows every element with a `data-preview` attribute (see previewTarget), so tags
 	// and bars only name what they preview. A tag that does nothing else (a card's skill chip)
-	// also shows it when tapped, for touch screens. On the timeline view a skill's projects are
-	// drawn as a small timeline of their own instead of a list: only them, over the years.
+	// also shows it when tapped, for touch screens. On the timeline view, the filters' tags draw
+	// their projects as a small timeline of their own instead of a list: only them, over the years.
 
 	type Experiences = Parameters<typeof resolvePreview>[0];
 
@@ -19,7 +19,10 @@
 	}: {
 		/** Every experience of the page: what the previews are made from */
 		experiences: Experiences;
-		/** The view of the page: a skill's projects are a list on the list, bars on the timeline */
+		/**
+		 * The view of the page: a skill's projects are a list on the list; on the timeline, a small
+		 * timeline for the filters' tags (a card's tags keep the list)
+		 */
 		view?: ExperienceView;
 		/** The skill being previewed (its key), null when none: the page can point at its projects */
 		onSkill?: (key: string | null) => void;
@@ -38,9 +41,13 @@
 	let popover: HTMLElement | undefined = $state();
 	let position: { left: number; top: number } | null = $state(null);
 	let preview = $derived(target ? (resolvePreview(experiences, target) ?? null) : null);
-	// A skill's projects over time (timeline view); none when they have no dates to place them
+	// A skill's projects over time: for the filters' tags on the timeline view only. A tag inside
+	// an experience's card keeps the list, on the timeline view too (the card under the chart is
+	// the list's card). None either when none of the projects can be placed: their experiences
+	// have no dates.
 	let chart = $derived.by(() => {
-		const skill = view === 'timeline' && preview ? previewedSkill(target) : null;
+		if (view !== 'timeline' || !preview || !anchor || anchor.closest('article')) return null;
+		const skill = previewedSkill(target);
 		return skill ? (skillTimeline(experiences, skill) ?? null) : null;
 	});
 
@@ -287,7 +294,7 @@
 						{#if chart.today !== undefined}
 							<div
 								class="absolute inset-y-0 border-l border-dotted border-primary-500"
-								style:left={at(chart.today, chart)}
+								style:left={chart.today === chart.end ? 'calc(100% - 1px)' : at(chart.today, chart)}
 							></div>
 						{/if}
 					</div>

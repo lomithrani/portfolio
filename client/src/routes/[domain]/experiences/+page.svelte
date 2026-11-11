@@ -86,6 +86,12 @@
 	// Key of the skill whose tag is hovered or focused (ProjectPreview): its projects are outlined,
 	// in the cards and on the timeline, and the list's other cards step back
 	let previewSkill: string | null = $state(null);
+	// The list's other cards only step back when a listed card has that skill: the filters' tags
+	// name every skill, those of the experiences the current filters hide too
+	let previewListed = $derived.by(() => {
+		const key = previewSkill;
+		return key !== null && experiences.some((experience) => experienceUsesSkill(experience, key));
+	});
 
 	// --- Timeline view ------------------------------------------------------------------------
 	// The experience picked on the timeline: its card shows under it
@@ -457,7 +463,9 @@
 						{highlightSkill}
 						highlighted={highlightedId === String(experience._id)}
 						{previewSkill}
-						muted={previewSkill !== null && !experienceUsesSkill(experience, previewSkill)}
+						muted={previewListed &&
+							previewSkill !== null &&
+							!experienceUsesSkill(experience, previewSkill)}
 					/>
 				{:else}
 					<div class="card preset-outlined-surface-200-800 space-y-3 p-6 text-center">

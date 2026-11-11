@@ -171,6 +171,11 @@ describe('skillTimeline', () => {
 			{ name: 'Assistant', ongoing: true, span: { start: m('2025-01'), end: m('2026-12') } }
 		]);
 		expect(timeline?.today).toBe(m('2026-12'));
+
+		// In December the current month ends the axis: the mark is on its last line
+		const december = skillTimeline(all, 'typescript', new Date('2026-12-15T10:00:00.000Z'));
+		expect(december?.today).toBe(m('2027-01'));
+		expect(december?.end).toBe(m('2027-01'));
 	});
 
 	it('lists the earliest first, whatever the order of the experiences', () => {
