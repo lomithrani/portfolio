@@ -4,12 +4,51 @@ import {
 	formatDuration,
 	formatMonth,
 	formatMonthRange,
+	formatProjectMonths,
 	fromMonthKey,
+	projectEnd,
 	sortExperiences,
 	toMonthKey
 } from '../experienceDates';
 
 const utc = (month: string) => new Date(`${month}-01T00:00:00.000Z`);
+
+describe('projectEnd and formatProjectMonths', () => {
+	const ended = { start: utc('2018-01'), end: utc('2020-12'), ongoing: false };
+	const ongoing = { start: utc('2018-01'), ongoing: true };
+
+	it('keeps a project’s own end', () => {
+		const project = { start: utc('2019-06'), end: utc('2019-09') };
+		expect(projectEnd(project, ended)).toEqual(utc('2019-09'));
+		expect(projectEnd(project, ongoing)).toEqual(utc('2019-09'));
+		expect(formatProjectMonths(project, ended)).toBe('Jun 2019 – Sep 2019');
+	});
+
+	it('is ongoing without an end while its experience is', () => {
+		expect(projectEnd({ start: utc('2019-06') }, ongoing)).toBeUndefined();
+		expect(formatProjectMonths({ start: '2019-06-01T00:00:00.000Z' }, ongoing)).toBe(
+			'Jun 2019 – Present'
+		);
+	});
+
+	it('stops without an end with its experience, when that one ended', () => {
+		expect(projectEnd({ start: utc('2019-06') }, ended)).toEqual(utc('2020-12'));
+		expect(formatProjectMonths({ start: utc('2019-06'), end: null }, ended)).toBe(
+			'Jun 2019 – Dec 2020'
+		);
+	});
+
+	it('never ends before it began: one month when it starts after its experience ended', () => {
+		expect(projectEnd({ start: utc('2021-03') }, ended)).toEqual(utc('2021-03'));
+		expect(formatProjectMonths({ start: utc('2021-03') }, ended)).toBe('Mar 2021');
+	});
+
+	it('has no months without a start, and no end of its own in an experience without dates', () => {
+		expect(formatProjectMonths({ end: utc('2019-09') }, ended)).toBe('');
+		expect(formatProjectMonths({}, ongoing)).toBe('');
+		expect(projectEnd({ start: utc('2019-06') }, { ongoing: false })).toBeUndefined();
+	});
+});
 
 describe('toMonthKey and fromMonthKey', () => {
 	it('reads stored dates in UTC', () => {

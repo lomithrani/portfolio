@@ -9,6 +9,8 @@ import {
 	hasActiveFilters,
 	isSkillHighlighted,
 	normalizeSkill,
+	experienceUsesSkill,
+	projectMatchesFilters,
 	skillOptions,
 	toggleSkill,
 	type ExperienceFilters
@@ -117,6 +119,40 @@ describe('isSkillHighlighted', () => {
 		expect(isSkillHighlighted(selected, ' typescript')).toBe(true);
 		expect(isSkillHighlighted(selected, 'JavaScript')).toBe(false);
 		expect(isSkillHighlighted(emptyFilters(), 'TypeScript')).toBe(false);
+	});
+});
+
+describe('projectMatchesFilters', () => {
+	const [first, second] = msc.projects as Parameters<typeof projectMatchesFilters>[0][];
+
+	it('tells the projects using any of the selected skills, technical or soft', () => {
+		expect(projectMatchesFilters(first, filters(['typescript']))).toBe(true);
+		expect(projectMatchesFilters(second, filters(['typescript']))).toBe(false);
+		expect(projectMatchesFilters(second, filters(['typescript', 'leadership']))).toBe(true);
+	});
+
+	it('matches nothing without a selection, or without skills', () => {
+		expect(projectMatchesFilters(first, emptyFilters())).toBe(false);
+		expect(projectMatchesFilters({}, filters(['typescript']))).toBe(false);
+		expect(
+			projectMatchesFilters({ hardSkills: null, softSkills: null }, filters(['typescript']))
+		).toBe(false);
+	});
+});
+
+describe('experienceUsesSkill', () => {
+	const experience = {
+		projects: [
+			{ hardSkills: [{ skill: { displayName: 'Kafka' } }], softSkills: [] },
+			{ hardSkills: [], softSkills: [{ skill: { displayName: 'Leadership' } }] }
+		]
+	};
+
+	it('tells whether a project of the experience uses the skill, technical or soft', () => {
+		expect(experienceUsesSkill(experience, 'kafka')).toBe(true);
+		expect(experienceUsesSkill(experience, ' LEADERSHIP ')).toBe(true);
+		expect(experienceUsesSkill(experience, 'go')).toBe(false);
+		expect(experienceUsesSkill({ projects: null }, 'kafka')).toBe(false);
 	});
 });
 

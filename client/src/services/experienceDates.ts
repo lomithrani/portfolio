@@ -15,14 +15,14 @@ const monthFormat = new Intl.DateTimeFormat('en-US', {
 });
 
 /** A valid Date from a stored date, or undefined */
-function toDate(date: DateInput): Date | undefined {
+export function toDate(date: DateInput): Date | undefined {
 	if (date === undefined || date === null || date === '') return undefined;
 	const value = date instanceof Date ? date : new Date(date);
 	return Number.isNaN(value.getTime()) ? undefined : value;
 }
 
 /** Months since year 0 (UTC), to compare dates at month precision */
-const monthIndex = (date: Date) => date.getUTCFullYear() * 12 + date.getUTCMonth();
+export const monthIndex = (date: Date) => date.getUTCFullYear() * 12 + date.getUTCMonth();
 
 /** 'YYYY-MM' month key of a stored date (UTC), or undefined */
 export function toMonthKey(date: DateInput): string | undefined {
@@ -80,7 +80,9 @@ export type ExperiencePeriod = { start?: Date; end?: Date; ongoing: boolean };
  * Period of an experience: its own start/end when it has a start, else derived from its
  * projects (earliest start; end = latest end, or ongoing if a dated project has no end)
  */
-export function experiencePeriod(experience: Dated & { projects?: Dated[] }): ExperiencePeriod {
+export function experiencePeriod(
+	experience: Dated & { projects?: Dated[] | null }
+): ExperiencePeriod {
 	const start = toDate(experience.start);
 	if (start) {
 		const end = toDate(experience.end);
@@ -101,6 +103,24 @@ export function experiencePeriod(experience: Dated & { projects?: Dated[] }): Ex
 	if (!earliest) return { ongoing: false };
 	return ongoing ? { start: earliest, ongoing } : { start: earliest, end: latest, ongoing };
 }
+
+/**
+ * When a project of an experience (of this period) ended: its own end; without one it stopped
+ * with its experience when that one ended, never before it began. Undefined while it is ongoing.
+ */
+export function projectEnd(project: Dated, period: ExperiencePeriod): Date | undefined {
+	const end = toDate(project.end);
+	if (end || period.ongoing || !period.end) return end;
+	const start = toDate(project.start);
+	return start && start > period.end ? start : period.end;
+}
+
+/**
+ * 'Jun 2019 – Dec 2020' of a project of an experience (of this period), as its card, its previews
+ * and the timeline show it: "Present" only while both are ongoing (see projectEnd); '' when no start
+ */
+export const formatProjectMonths = (project: Dated, period: ExperiencePeriod): string =>
+	formatMonthRange(project.start, projectEnd(project, period));
 
 /** Sort for display: ongoing first, then by end desc, then start desc; undated last; stable */
 export function sortExperiences<T extends Parameters<typeof experiencePeriod>[0]>(

@@ -183,10 +183,13 @@
 							{#each section.options as option (option.key)}
 								{@const selected = active.skills.includes(option.key)}
 								<li>
+									<!-- data-preview: hovered or focused, the page shows the projects using
+										this skill (ProjectPreview.svelte) -->
 									<button
 										type="button"
 										class={chip(selected)}
 										aria-pressed={selected}
+										data-preview="skill:{option.key}"
 										onclick={() => selectSkill(option.key)}
 									>
 										{#if selected}<Check size="14" aria-hidden="true" />{/if}

@@ -3,6 +3,7 @@ import {
 	request as playwrightRequest,
 	test,
 	type APIRequestContext,
+	type Locator,
 	type Page
 } from '@playwright/test';
 import {
@@ -23,6 +24,10 @@ import {
 // by default: keep it that way).
 
 const DOMAIN = 'e2e-owner';
+
+/** The colour painted behind an element: a project that stands out is seen, not only marked */
+const background = (locator: Locator) =>
+	locator.evaluate((element) => getComputedStyle(element).backgroundColor);
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e owner');
 
@@ -54,11 +59,19 @@ const deleteExperience = async (id: string) => {
 };
 
 type SkillName = string;
-const project = (name: string, hard: SkillName[] = [], soft: SkillName[] = []) => ({
+/** A stored date: UTC midnight of the 1st of a 'YYYY-MM' month */
+const month = (value: string) => `${value}-01T00:00:00.000Z`;
+const project = (
+	name: string,
+	hard: SkillName[] = [],
+	soft: SkillName[] = [],
+	// Without an end: a project left open
+	[start, end]: [string, string?] = ['2023-01', '2023-06']
+) => ({
 	name,
 	summary: '',
-	start: '2023-01-01T00:00:00.000Z',
-	end: '2023-06-01T00:00:00.000Z',
+	start: month(start),
+	end: end ? month(end) : undefined,
 	hardSkills: hard.map((skill) => ({ name: skill, level: -1 })),
 	softSkills: soft.map((skill) => ({ name: skill, level: -1 }))
 });
@@ -66,6 +79,8 @@ const project = (name: string, hard: SkillName[] = [], soft: SkillName[] = []) =
 const createExperience = async (body: {
 	title: string;
 	type?: string;
+	start?: string;
+	end?: string;
 	projects?: ReturnType<typeof project>[];
 }): Promise<ListedExperience> => {
 	const response = await api.post(`${API_URL}/experiences`, {
@@ -319,5 +334,395 @@ test.describe('filters', () => {
 		await filters.getByRole('button', { name: 'Clear filters' }).click();
 		await expect(headings).toHaveCount(3);
 		await expect.poll(() => new URL(page.url()).search).toBe('');
+	});
+
+	test('make the projects using a selected skill stand out in their card', async ({ page }) => {
+		const title = `Backend Engineer ${tag}`;
+		await createExperience({
+			title,
+			projects: [project('Streams', ['Kafka']), project('Billing', ['Go'])]
+		});
+		const projectOf = (name: string) =>
+			card(page, title)
+				.locator('article')
+				.filter({ has: page.getByRole('heading', { level: 3, name }) });
+
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await expect(projectOf('Streams')).not.toHaveAttribute('data-matched');
+		expect(await background(projectOf('Streams'))).toBe(await background(projectOf('Billing')));
+
+		await page
+			.getByRole('region', { name: 'Filter experiences' })
+			.getByRole('button', { name: 'Kafka', exact: true })
+			.click();
+		await expect(projectOf('Streams')).toHaveAttribute('data-matched');
+		await expect(projectOf('Billing')).not.toHaveAttribute('data-matched');
+		// It is tinted, the other is not
+		await expect
+			.poll(
+				async () =>
+					(await background(projectOf('Streams'))) !== (await background(projectOf('Billing')))
+			)
+			.toBe(true);
+	});
+});
+
+test.describe('timeline view', () => {
+	// Two jobs that follow one another (the first ends the month the second starts), a side
+	// project during the first, and two projects of the first job that overlap
+	const career = async () => {
+		const first = `Backend Engineer ${tag}`;
+		const second = `Staff Engineer ${tag}`;
+		const side = `Side project ${tag}`;
+		await createExperience({
+			title: first,
+			start: month('2020-01'),
+			end: month('2022-03'),
+			projects: [
+				project('Streams', ['Kafka'], [], ['2020-01', '2021-06']),
+				project('Billing', ['Go'], [], ['2021-01', '2022-03'])
+			]
+		});
+		await createExperience({
+			title: second,
+			start: month('2022-03'),
+			end: month('2024-01'),
+			projects: [project('Platform', ['Kafka'], ['Leadership'], ['2022-03', '2023-06'])]
+		});
+		await createExperience({
+			title: side,
+			type: 'personal',
+			start: month('2021-01'),
+			end: month('2021-12'),
+			projects: [project('Home lab', ['Svelte'], [], ['2021-01', '2021-12'])]
+		});
+		return { first, second, side };
+	};
+
+	const timeline = (page: Page) => page.getByRole('region', { name: 'Timeline' });
+	const viewButton = (page: Page, name: 'List' | 'Timeline') =>
+		page.getByRole('group', { name: 'View' }).getByRole('button', { name, exact: true });
+	const experienceBar = (page: Page, title: string) =>
+		timeline(page).locator('[data-timeline-experience]').filter({ hasText: title });
+	const projectBar = (page: Page, name: string) =>
+		timeline(page).locator('[data-timeline-project]').filter({ hasText: name });
+	const laneOf = (page: Page, title: string) =>
+		experienceBar(page, title).locator('xpath=..').getAttribute('data-lane');
+	const boxOf = async (page: Page, name: string) => {
+		const box = await projectBar(page, name).boundingBox();
+		if (!box) throw new Error(`No bar for ${name}`);
+		return box;
+	};
+
+	test('places the experiences over time, on lanes of their own when they overlap', async ({
+		page
+	}) => {
+		const { first, second, side } = await career();
+		// A visitor's view: no session needed
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await expect(viewButton(page, 'List')).toHaveAttribute('aria-pressed', 'true');
+
+		await viewButton(page, 'Timeline').click();
+		await expect(timeline(page)).toBeVisible();
+		await expect.poll(() => new URL(page.url()).search).toBe('?view=timeline');
+		// The cards are gone: the timeline shows one once a bar is picked
+		await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
+
+		// The jobs share the top lane, the side project that ran during the first is under them
+		expect(await laneOf(page, first)).toBe('0');
+		expect(await laneOf(page, second)).toBe('0');
+		expect(await laneOf(page, side)).toBe('1');
+		// Left to right in time
+		const firstBox = await experienceBar(page, first).boundingBox();
+		const secondBox = await experienceBar(page, second).boundingBox();
+		expect(firstBox!.x + firstBox!.width).toBeLessThanOrEqual(secondBox!.x + 1);
+		// Billing started before Streams ended: it is drawn under it, further right
+		const streams = await boxOf(page, 'Streams');
+		const billing = await boxOf(page, 'Billing');
+		expect(billing.y).toBeGreaterThan(streams.y + streams.height - 1);
+		expect(billing.x).toBeGreaterThan(streams.x);
+
+		// A bar shows the card of its experience, at the project picked
+		await projectBar(page, 'Billing').click();
+		const shown = card(page, first);
+		await expect(shown).toBeVisible();
+		await expect(experienceBar(page, first)).toHaveAttribute('aria-pressed', 'true');
+		await expect(
+			shown.locator('article').filter({ has: page.getByRole('heading', { name: 'Billing' }) })
+		).toHaveAttribute('data-revealed');
+		await experienceBar(page, side).click();
+		await expect(card(page, side)).toBeVisible();
+		await expect(card(page, first)).toHaveCount(0);
+
+		// Back to the list: every card, and a URL without the view
+		await viewButton(page, 'List').click();
+		await expect(page.getByRole('heading', { level: 2 })).toHaveCount(3);
+		await expect.poll(() => new URL(page.url()).search).toBe('');
+	});
+
+	test('keeps every experience and makes the projects using a selected skill bigger', async ({
+		page
+	}) => {
+		const { first, second, side } = await career();
+		// A shared link opens on the timeline, filtered (rendered on the server, then hydrated)
+		await gotoHydrated(page, `/${DOMAIN}/experiences?view=timeline&skills=kafka`);
+		await expect(viewButton(page, 'Timeline')).toHaveAttribute('aria-pressed', 'true');
+		const filters = page.getByRole('region', { name: 'Filter experiences' });
+		await expect(filters.getByRole('status')).toHaveText('2 of 3 experiences');
+
+		// Nothing is hidden: the filter points at its projects
+		for (const title of [first, second, side])
+			await expect(experienceBar(page, title)).toBeVisible();
+		await expect(projectBar(page, 'Streams')).toHaveAttribute('data-matched');
+		await expect(projectBar(page, 'Platform')).toHaveAttribute('data-matched');
+		await expect(projectBar(page, 'Billing')).not.toHaveAttribute('data-matched');
+		await expect(projectBar(page, 'Home lab')).not.toHaveAttribute('data-matched');
+		await expect
+			.poll(
+				async () => (await boxOf(page, 'Streams')).height - (await boxOf(page, 'Billing')).height
+			)
+			.toBeGreaterThan(4);
+		// And filled, which the others are not
+		const filled = async () =>
+			(await background(projectBar(page, 'Streams'))) !==
+			(await background(projectBar(page, 'Billing')));
+		await expect.poll(filled).toBe(true);
+
+		await filters.getByRole('button', { name: 'Clear filters' }).click();
+		await expect(timeline(page).locator('[data-matched]')).toHaveCount(0);
+		await expect.poll(filled).toBe(false);
+		await expect
+			.poll(
+				async () => (await boxOf(page, 'Streams')).height - (await boxOf(page, 'Billing')).height
+			)
+			.toBe(0);
+		// The view stays in the URL when the filters leave it
+		await expect.poll(() => new URL(page.url()).search).toBe('?view=timeline');
+
+		// The selection follows from one view to the other
+		await filters.getByRole('button', { name: 'Go', exact: true }).click();
+		await expect.poll(() => new URL(page.url()).search).toBe('?view=timeline&skills=go');
+		await viewButton(page, 'List').click();
+		await expect(page.getByRole('heading', { level: 2 })).toHaveText([first]);
+		await expect.poll(() => new URL(page.url()).search).toBe('?skills=go');
+	});
+
+	test('a project left without an end stops with its experience, wherever it is shown', async ({
+		page
+	}) => {
+		const title = `Backend Engineer ${tag}`;
+		await createExperience({
+			title,
+			start: month('2018-01'),
+			end: month('2020-12'),
+			projects: [project('Left open', ['Kafka'], [], ['2019-06'])]
+		});
+		const preview = page.getByRole('tooltip');
+
+		// Its card: not "Present", its experience ended
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		const shown = card(page, title).locator('article');
+		await expect(shown).toContainText('Jun 2019 – Dec 2020');
+		await expect(shown).not.toContainText('Present');
+		// The preview of its skill
+		await shown.getByText('Kafka', { exact: true }).hover();
+		await expect(preview).toContainText('Jun 2019 – Dec 2020');
+		await page.keyboard.press('Escape');
+		await expect(preview).toHaveCount(0);
+
+		// The timeline: its bar ends with its experience's, and is named with the same months
+		await viewButton(page, 'Timeline').click();
+		await expect(projectBar(page, 'Left open')).toContainText('Jun 2019 – Dec 2020');
+		const bar = await boxOf(page, 'Left open');
+		const whole = await experienceBar(page, title).boundingBox();
+		expect(Math.abs(bar.x + bar.width - (whole!.x + whole!.width))).toBeLessThanOrEqual(1);
+	});
+
+	test('the owner edits and adds from the timeline, whose card follows what was saved', async ({
+		page
+	}) => {
+		const title = `Data Engineer ${tag}`;
+		const renamed = `Staff Data Engineer ${tag}`;
+		const added = `Volunteer ${tag}`;
+		await createExperience({ title, projects: [project(`Alpha ${tag}`, ['Python'])] });
+		await signIn(page, session);
+		await gotoHydrated(page, `/${DOMAIN}/experiences?view=timeline`);
+
+		await experienceBar(page, title).click();
+		await card(page, title)
+			.getByRole('button', { name: `Edit ${title}` })
+			.click();
+		const dialog = page.getByRole('dialog', { name: `Edit · ${title}` });
+		await dialog.getByRole('textbox', { name: 'Title', exact: true }).fill(renamed);
+		await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+
+		await expect(page.getByText('Changes saved')).toBeVisible();
+		await expect(card(page, renamed)).toBeVisible();
+		await expect(experienceBar(page, renamed)).toHaveAttribute('aria-pressed', 'true');
+
+		// Added without dates: listed under the timeline, and shown as the card
+		await page.getByRole('button', { name: 'Add experience', exact: true }).click();
+		const creation = page.getByRole('dialog', { name: 'New experience' });
+		await creation.getByRole('textbox', { name: 'Title', exact: true }).fill(added);
+		await creation.getByRole('button', { name: 'Add experience', exact: true }).click();
+
+		await expect(page.getByText('Experience added')).toBeVisible();
+		await expect(card(page, added)).toBeVisible();
+		await expect(card(page, renamed)).toHaveCount(0);
+		await expect(
+			timeline(page)
+				.getByRole('list', { name: 'Without dates' })
+				.getByRole('button', { name: added })
+		).toHaveAttribute('aria-pressed', 'true');
+	});
+});
+
+test.describe('hovering a skill tag', () => {
+	test('previews only the projects using it, in the list and on the timeline', async ({ page }) => {
+		const first = `Backend Engineer ${tag}`;
+		const second = `Staff Engineer ${tag}`;
+		await createExperience({
+			title: first,
+			start: month('2020-01'),
+			end: month('2022-02'),
+			projects: [
+				project('Streams', ['Kafka'], [], ['2020-01', '2021-06']),
+				project('Billing', ['Go'], [], ['2021-01', '2022-02'])
+			]
+		});
+		await createExperience({
+			title: second,
+			start: month('2022-03'),
+			end: month('2024-01'),
+			projects: [project('Platform', ['Kafka'], ['Leadership'], ['2022-03', '2023-06'])]
+		});
+		const preview = page.getByRole('tooltip');
+		const filters = page.getByRole('region', { name: 'Filter experiences' });
+		const kafka = filters.getByRole('button', { name: 'Kafka', exact: true });
+
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await expect(preview).toHaveCount(0);
+
+		// The list: a tag of a card
+		await card(page, first).getByText('Kafka', { exact: true }).hover();
+		await expect(preview).toBeVisible();
+		await expect(preview).toContainText('Kafka');
+		await expect(preview).toContainText('Used in 2 projects');
+		await expect(preview.getByRole('listitem')).toHaveText([/Platform/, /Streams/]);
+		await expect(preview).toContainText(`${first} · E2E Corp`);
+		await expect(preview).toContainText('Jan 2020 – Jun 2021');
+		await expect(preview).not.toContainText('Billing');
+		// Escape closes it
+		await page.keyboard.press('Escape');
+		await expect(preview).toHaveCount(0);
+
+		// The filters' tags, with the keyboard too: the tag is described by its preview
+		await filters.getByRole('button', { name: 'Go', exact: true }).focus();
+		await page.keyboard.press('Tab');
+		await expect(kafka).toBeFocused();
+		await expect(preview).toBeVisible();
+		await expect(preview).toContainText('Used in 2 projects');
+		await expect(kafka).toHaveAttribute('aria-describedby', (await preview.getAttribute('id'))!);
+		// Pressing the tag filters, and gets its preview out of the way
+		await page.keyboard.press('Enter');
+		await expect(kafka).toHaveAttribute('aria-pressed', 'true');
+		await expect(preview).toHaveCount(0);
+		await page.keyboard.press('Enter');
+
+		// A tag also points at its projects in the cards, and the other cards step back
+		await filters.getByRole('button', { name: 'Leadership', exact: true }).hover();
+		await expect(preview).toContainText('Used in 1 project');
+		await expect(preview.locator('[data-preview-timeline]')).toHaveCount(0);
+		await expect(page.locator('article[data-previewed]')).toHaveText([/Platform/]);
+		await expect(card(page, first)).toHaveAttribute('data-muted');
+		await expect(card(page, second)).not.toHaveAttribute('data-muted');
+		await expect
+			.poll(() => card(page, first).evaluate((element) => getComputedStyle(element).opacity))
+			.toBe('0.5');
+		await page.keyboard.press('Escape');
+		await expect(preview).toHaveCount(0);
+		await expect(page.locator('[data-muted], [data-previewed]')).toHaveCount(0);
+		// Nothing steps back when the filters hide every card that has the skill
+		await filters.getByRole('button', { name: 'Go', exact: true }).click();
+		await expect(page.getByRole('heading', { level: 2 })).toHaveText([first]);
+		await filters.getByRole('button', { name: 'Leadership', exact: true }).hover();
+		await expect(preview).toContainText('Used in 1 project');
+		await expect(page.locator('[data-muted], article[data-previewed]')).toHaveCount(0);
+		await filters.getByRole('button', { name: 'Clear filters' }).click();
+		await expect(page.getByRole('heading', { level: 2 })).toHaveCount(2);
+
+		// The timeline: the preview is a small timeline of the skill's projects alone, and they
+		// are outlined on the page's
+		await page
+			.getByRole('group', { name: 'View' })
+			.getByRole('button', { name: 'Timeline' })
+			.click();
+		const bars = page.getByRole('region', { name: 'Timeline' }).locator('[data-timeline-project]');
+		await expect(bars).toHaveCount(3);
+		await filters.getByRole('button', { name: 'Leadership', exact: true }).hover();
+		await expect(preview).toContainText('Used in 1 project');
+		await expect(preview.getByRole('listitem')).toHaveText([/Platform/]);
+		await expect(bars.and(page.locator('[data-previewed]'))).toHaveText([/Platform/]);
+		const miniBars = preview.locator('[data-preview-timeline] [data-preview-bar]');
+		await expect(miniBars).toHaveCount(1);
+		// One bar a project, the earliest first and further left
+		await kafka.hover();
+		await expect(preview.getByRole('listitem')).toHaveText([/Streams/, /Platform/]);
+		await expect(miniBars).toHaveCount(2);
+		const earlier = await miniBars.nth(0).boundingBox();
+		const later = await miniBars.nth(1).boundingBox();
+		expect(earlier!.x + earlier!.width).toBeLessThanOrEqual(later!.x + 1);
+		await expect(bars.and(page.locator('[data-previewed]'))).toHaveText([/Streams/, /Platform/]);
+		await page.keyboard.press('Escape');
+		await expect(preview).toHaveCount(0);
+
+		// A tag inside the card under the timeline keeps the list: the small timeline is the
+		// filters' tags'
+		await bars.filter({ hasText: 'Streams' }).click();
+		await card(page, first).getByText('Kafka', { exact: true }).hover();
+		await expect(preview.getByRole('listitem')).toHaveText([/Platform/, /Streams/]);
+		await expect(preview.locator('[data-preview-timeline]')).toHaveCount(0);
+		await expect(bars.and(page.locator('[data-previewed]'))).toHaveText([/Streams/, /Platform/]);
+
+		await page.keyboard.press('Escape');
+		await expect(preview).toHaveCount(0);
+
+		// A bar previews its own project: where, when and its skills
+		await bars.filter({ hasText: 'Billing' }).hover();
+		await expect(preview).toContainText('Billing');
+		await expect(preview).toContainText(`${first} · E2E Corp`);
+		await expect(preview).toContainText('Jan 2021 – Feb 2022 · 1 yr 2 mos');
+		await expect(preview.getByRole('list', { name: 'Skills' })).toHaveText('Go');
+		await expect(page.locator('[data-previewed]')).toHaveCount(0);
+
+		// Moving away closes it
+		await page.getByRole('heading', { level: 1 }).hover();
+		await expect(preview).toHaveCount(0);
+	});
+
+	test('a tap on a tag of a card shows the preview on a touch screen', async ({ browser }) => {
+		const title = `Backend Engineer ${tag}`;
+		await createExperience({ title, projects: [project('Streams', ['Kafka'])] });
+		const context = await browser.newContext({
+			hasTouch: true,
+			viewport: { width: 390, height: 844 }
+		});
+		const page = await context.newPage();
+		await blockGoogle(page);
+		const preview = page.getByRole('tooltip');
+
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await card(page, title).getByText('Kafka', { exact: true }).tap();
+		await expect(preview).toBeVisible();
+		await expect(preview).toContainText('Used in 1 project');
+		// It fits the screen
+		const box = await preview.boundingBox();
+		expect(box!.x).toBeGreaterThanOrEqual(0);
+		expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+
+		// A tap elsewhere closes it
+		await page.getByRole('heading', { level: 2, name: title }).tap();
+		await expect(preview).toHaveCount(0);
+		await context.close();
 	});
 });

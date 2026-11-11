@@ -5,7 +5,11 @@
 export type ExperienceFilters = { skills: string[] };
 
 type SkillEntry = { skill?: unknown };
-type FilterableProject = { hardSkills?: SkillEntry[] | null; softSkills?: SkillEntry[] | null };
+/** What the filters read of a project */
+export type FilterableProject = {
+	hardSkills?: SkillEntry[] | null;
+	softSkills?: SkillEntry[] | null;
+};
 /** What the filters read of an experience (an API experience with populated skills fits) */
 export type FilterableExperience = { projects?: FilterableProject[] | null };
 
@@ -86,6 +90,23 @@ export function applyFilters<T extends FilterableExperience>(
 /** Whether a skill chip (by display name) matches the selected skills */
 export function isSkillHighlighted(filters: ExperienceFilters, displayName: string): boolean {
 	return filters.skills.includes(normalizeSkill(displayName));
+}
+
+/** Whether a project uses any of the selected skills (never when none is selected) */
+export function projectMatchesFilters(
+	project: FilterableProject,
+	filters: ExperienceFilters
+): boolean {
+	if (filters.skills.length === 0) return false;
+	return [...(project.hardSkills ?? []), ...(project.softSkills ?? [])].some((entry) => {
+		const name = displayNameOf(entry);
+		return name !== undefined && filters.skills.includes(normalizeSkill(name));
+	});
+}
+
+/** Whether a project of the experience uses the skill (by key, see normalizeSkill) */
+export function experienceUsesSkill(experience: FilterableExperience, key: string): boolean {
+	return experienceSkillKeys(experience).has(normalizeSkill(key));
 }
 
 /**
