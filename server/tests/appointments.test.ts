@@ -36,7 +36,7 @@ import { CALENDAR_SCOPE, RECONNECT_REQUIRED_MESSAGE } from '../services/googleCa
 import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
 import { jobImportAttemptsKey, jobImportCounters } from '../services/jobImport';
-import { stepSuggestionCounters, stepSuggestionOwnerKey } from '../services/stepSuggestions';
+import { stepSuggestionAttemptsKey, stepSuggestionCounters, stepSuggestionOwnerKey } from '../services/stepSuggestions';
 import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
 import {
@@ -1665,6 +1665,7 @@ describe('no Google token in any API response', () => {
     stepSuggestionCounters.globalKey = `step-suggestion:global:${t.id('sweep')}`;
     rateLimitKeys.add(stepSuggestionCounters.globalKey);
     rateLimitKeys.add(stepSuggestionOwnerKey(sweep.userId));
+    rateLimitKeys.add(stepSuggestionAttemptsKey(sweep.userId));
     try {
       const fetchSpy = globalThis.fetch as unknown as Mock<(input: string | URL | Request) => Promise<Response>>;
       fetchSpy.mockImplementationOnce(async () => Response.json({ number: 1 }, { status: 201 }));

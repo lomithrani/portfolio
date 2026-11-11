@@ -16,6 +16,26 @@ describe('parseStepSuggestion', () => {
 		});
 	});
 
+	it('keeps nothing that would not be seen in the issue, and counts what is left', () => {
+		// Zero-width and bidi characters, a variation selector, a control, a lone surrogate
+		expect(
+			parseStepSuggestion({
+				name: 'Sal\u200Bary\u202E',
+				description: 'a\r\nb\u0007 \uD83D',
+				reason: '\u061C\uFE0F'
+			})
+		).toEqual({ ok: true, suggestion: { name: 'Salary', description: 'a\nb' } });
+		// Nothing visible is no answer
+		expect(parseStepSuggestion({ ...valid, name: '\u200B\u2060' })).toMatchObject({
+			ok: false,
+			field: 'name'
+		});
+		expect(parseStepSuggestion({ ...valid, description: ' \u200D ' })).toMatchObject({
+			ok: false,
+			field: 'description'
+		});
+	});
+
 	it('names the first field that breaks a rule', () => {
 		const long = (length: number) => 'x'.repeat(length);
 		expect(parseStepSuggestion(emptySuggestion())).toEqual({
@@ -50,16 +70,16 @@ describe('parseStepSuggestion', () => {
 describe('suggestionFailure', () => {
 	it('tells a lost connection from a refusal', () => {
 		expect(suggestionFailure(503, new TypeError('Failed to fetch'))).toEqual({
-			message: NETWORK_ERROR,
-			kind: 'error'
+			message: NETWORK_ERROR
 		});
 	});
 
 	it('says a session ended, and that the server takes no suggestion', () => {
-		expect(suggestionFailure(401, 'Unauthorized').kind).toBe('signed-out');
+		expect(suggestionFailure(401, 'Unauthorized').message).toBe(
+			'Your session expired. Copy what you wrote, then reload the page and sign in again.'
+		);
 		expect(suggestionFailure(404, 'Step suggestions are not enabled on this server')).toEqual({
-			message: 'Suggestions are not available right now.',
-			kind: 'off'
+			message: 'Suggestions are not available right now.'
 		});
 	});
 
@@ -71,12 +91,11 @@ describe('suggestionFailure', () => {
 				property: 'description',
 				message: 'This is at most 1500 characters.'
 			})
-		).toEqual({ message: 'This is at most 1500 characters.', field: 'description', kind: 'error' });
+		).toEqual({ message: 'This is at most 1500 characters.', field: 'description' });
 		// A field this form does not have, or no message
 		for (const value of [{ property: 'constructor', message: 'x' }, { property: 'name' }, 'nope']) {
 			expect(suggestionFailure(422, value)).toEqual({
-				message: 'Check your suggestion and try again.',
-				kind: 'error'
+				message: 'Check your suggestion and try again.'
 			});
 		}
 	});

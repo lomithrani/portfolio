@@ -94,7 +94,11 @@ export type {
 } from './workflow';
 export { NOTE_STEP_LIMITS } from './workflowSteps';
 export type { NoteStepConfig } from './workflowSteps';
-export { STEP_SUGGESTION_LIMITS, parseStepSuggestion } from './stepSuggestion';
+export {
+	STEP_SUGGESTION_LIMITS,
+	cleanStepSuggestionText,
+	parseStepSuggestion
+} from './stepSuggestion';
 export type {
 	StepSuggestionInput,
 	StepSuggestionField,

@@ -4,7 +4,9 @@
 a step they miss and the API files it as a feature request in the project's GitHub repository
 (GET, POST /workflow/step-suggestions; shown only when GET says `enabled`: the server needs a
 GitHub token). The form's rules are portfolio-common's parseStepSuggestion, the API's too. The
-suggestion is sent without the owner's name, and the form says where it goes.
+suggestion is sent without the owner's name, and the form says where it goes. An expired session
+is said, not acted on: signing the page out would take the journey editor around this form, and
+its unsaved steps, away.
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
@@ -16,9 +18,12 @@ suggestion is sent without the owner's name, and the form says where it goes.
 	} from 'portfolio-common';
 	import { portfolioTextApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
-	import { clearAuthentication } from '#services/authentication.ts';
 	import { NETWORK_ERROR } from '#services/recruiter.ts';
-	import { emptySuggestion, suggestionFailure } from '#services/stepSuggestion.ts';
+	import {
+		emptySuggestion,
+		suggestionFailure,
+		type SuggestionFailure
+	} from '#services/stepSuggestion.ts';
 	import { toaster } from '#services/toaster.ts';
 
 	const uid = $props.id();
@@ -34,6 +39,7 @@ suggestion is sent without the owner's name, and the form says where it goes.
 
 	let opener: HTMLButtonElement | undefined = $state();
 	let panel: HTMLFormElement | undefined = $state();
+	let alert: HTMLElement | undefined = $state();
 
 	const field = (name: StepSuggestionField) =>
 		panel?.querySelector<HTMLElement>(`[name="${name}"]`);
@@ -79,12 +85,7 @@ suggestion is sent without the owner's name, and the form says where it goes.
 				withCredentials
 			);
 			if (error) {
-				const failure = suggestionFailure(errorStatus(error), error.value);
-				if (failure.kind === 'signed-out') clearAuthentication();
-				problem = failure;
-				if (failure.kind === 'off') enabled = false;
-				await tick();
-				if (failure.field) field(failure.field)?.focus();
+				await fail(suggestionFailure(errorStatus(error), error.value));
 				return;
 			}
 			form = emptySuggestion();
@@ -94,14 +95,25 @@ suggestion is sent without the owner's name, and the form says where it goes.
 			});
 			await close();
 		} catch {
-			problem = { message: NETWORK_ERROR };
+			await fail({ message: NETWORK_ERROR });
 		} finally {
 			sending = false;
 		}
 	}
+
+	/**
+	 * Says what went wrong and puts the focus on it: the field it is about, or the message. The
+	 * button that had the focus was disabled while sending, so the focus would otherwise be lost
+	 */
+	async function fail(failure: SuggestionFailure) {
+		problem = failure;
+		sending = false;
+		await tick();
+		(failure.field ? field(failure.field) : alert)?.focus();
+	}
 </script>
 
-{#if enabled || open}
+{#if enabled}
 	<section
 		class="space-y-3 card border border-surface-200-800 p-4 sm:p-5"
 		aria-labelledby="{uid}-title"
@@ -201,7 +213,14 @@ suggestion is sent without the owner's name, and the form says where it goes.
 					which others can read: leave out anything private.
 				</p>
 				{#if problem && !problem.field}
-					<p class="text-sm text-error-700-300" role="alert">{problem.message}</p>
+					<p
+						class="text-sm text-error-700-300 outline-none"
+						role="alert"
+						tabindex="-1"
+						bind:this={alert}
+					>
+						{problem.message}
+					</p>
 				{/if}
 				<div class="flex flex-wrap gap-3">
 					<button type="submit" class="btn preset-filled-primary-700-300" disabled={sending}>

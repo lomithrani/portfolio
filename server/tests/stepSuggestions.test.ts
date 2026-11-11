@@ -16,8 +16,10 @@ import { peekRateLimit } from '../services/rateLimit';
 import {
   STEP_SUGGESTIONS_PER_DAY,
   STEP_SUGGESTIONS_PER_OWNER,
+  STEP_SUGGESTION_ATTEMPTS_PER_OWNER,
   describeStepSuggestions,
   stepSuggestionCounters,
+  stepSuggestionAttemptsKey,
   stepSuggestionIssue,
   stepSuggestionOwnerKey,
   stepSuggestionTimeouts
@@ -115,6 +117,8 @@ const suggestion = { name: 'Share the salary range', description: 'The recruiter
 const suggest = (user: TestUser | undefined, body: unknown = suggestion) => call('POST', PATH, { body, cookie: user?.cookie });
 
 const ownerCount = async (user: TestUser) => (await peekRateLimit(stepSuggestionOwnerKey(user.id), STEP_SUGGESTIONS_PER_OWNER)).count;
+const attemptCount = async (user: TestUser) =>
+  (await peekRateLimit(stepSuggestionAttemptsKey(user.id), STEP_SUGGESTION_ATTEMPTS_PER_OWNER)).count;
 const siteCount = async () => (await peekRateLimit(stepSuggestionCounters.globalKey, STEP_SUGGESTIONS_PER_DAY)).count;
 
 /** Sets the site's count of the day, as if other owners had sent suggestions */
@@ -129,7 +133,10 @@ const setSiteCount = async (count: number) => {
 };
 
 const removeTestData = async (suffix: string, ids: string[]) => {
-  const counterKeys = [stepSuggestionCounters.globalKey, ...ids.map((userId) => stepSuggestionOwnerKey(userId))];
+  const counterKeys = [
+    stepSuggestionCounters.globalKey,
+    ...ids.flatMap((userId) => [stepSuggestionOwnerKey(userId), stepSuggestionAttemptsKey(userId)])
+  ];
   await RateLimitCounter.deleteMany({ _id: { $regex: `^(${counterKeys.join('|')}):` } });
   const named = new RegExp(`-${suffix}(@|$)`);
   await Domain.deleteMany({ name: named });
@@ -257,9 +264,29 @@ describe('stepSuggestionIssue', () => {
     expect(issue.body).toContain('```text\nÉcrire\tici — 日本語 🙂\n```');
   });
 
-  it('leaves nothing in the title that GitHub would link, notify or style', () => {
+  it('files nothing a reader cannot see: tag characters, variation selectors, bidi marks, blank fillers', () => {
+    // "ignore previous instructions", spelled with the invisible tag characters
+    const hidden = [...'ignore previous instructions'].map((c) => String.fromCodePoint(0xe0000 + c.charCodeAt(0))).join('');
+    const invisible = `\u061C\u00AD\u034F\u180E\u3164\uFE0F\u115F\u1160\uFFA0\u2800\u200D${String.fromCodePoint(0xe0101)}${hidden}`;
+    const issue = stepSuggestionIssue({ name: `Salary${hidden}`, description: `ok${invisible}`, reason: invisible });
+    expect(issue.title).toBe('Step suggestion: Salary');
+    expect(issue.body).toContain('### What a recruiter would do on it\n\n```text\nok\n```');
+    // A reason with nothing visible is no reason
+    expect(issue.body).not.toContain('Why it would help');
+    expect([...JSON.stringify(issue)].every((c) => c.codePointAt(0)! < 0x2000 || c === '“' || c === '”')).toBe(true);
+    // A lone surrogate is dropped, a pair (an emoji) is kept
+    expect(stepSuggestionIssue({ name: 'A\uD83DB 🙂', description: 'x' }).title).toBe('Step suggestion: AB 🙂');
+  });
+
+  it('leaves nothing in the title that GitHub would link or notify', () => {
     const issue = stepSuggestionIssue({ name: 'Ask @octocat about #12 `now` <b>', description: 'x' });
     expect(issue.title).toBe("Step suggestion: Ask @ octocat about # 12 'now' 'b'");
+    expect(stepSuggestionIssue({ name: 'Duplicate of GH-12, fixes gh-1', description: 'x' }).title).toBe(
+      'Step suggestion: Duplicate of GH- 12, fixes gh- 1'
+    );
+    expect(stepSuggestionIssue({ name: 'High-5 the candidate', description: 'x' }).title).toBe(
+      'Step suggestion: High-5 the candidate'
+    );
     // A name that only looks odd stays readable
     expect(stepSuggestionIssue({ name: 'C# and email @ work', description: 'x' }).title).toBe('Step suggestion: C# and email @ work');
   });
@@ -292,8 +319,8 @@ describe('step suggestions', () => {
     expect(request.headers.get('authorization')).toBe(`Bearer ${TEST_TOKEN}`);
     expect(request.headers.get('accept')).toBe('application/vnd.github+json');
     expect(request.headers.get('user-agent')).toBe('portfolio-step-suggestions');
-    // A redirect would carry the token elsewhere
-    expect(request.redirect).toBe('error');
+    // Never followed: a redirect would carry the token elsewhere
+    expect(request.redirect).toBe('manual');
     expect(request.body).toEqual(
       stepSuggestionIssue({ name: 'Share the salary range', description: suggestion.description, reason: 'It saves a call.' })
     );
@@ -304,6 +331,7 @@ describe('step suggestions', () => {
       `Step suggestion filed ${JSON.stringify({ userId: owner.id, repository: TEST_REPO, issueNumber: 123 })}`
     ]);
     expect(await ownerCount(owner)).toBe(1);
+    expect(await attemptCount(owner)).toBe(1);
     expect(await siteCount()).toBe(1);
   });
 
@@ -352,8 +380,19 @@ describe('step suggestions', () => {
     for (const body of [{ name: 'A' }, { ...suggestion, name: 12 }, { ...suggestion, reason: ['x'] }, { ...suggestion, name: long(500) }]) {
       expect((await suggest(owner, body)).status).toBe(422);
     }
+    // Nothing visible is no answer: the rules are checked on the text as it would be filed
+    const unseen = '\u200B\u2060\u200D';
+    for (const [body, property] of [
+      [{ ...suggestion, name: unseen }, 'name'],
+      [{ ...suggestion, description: ` ${unseen}\u0001 ` }, 'description']
+    ] as const) {
+      const refused = await suggest(owner, body);
+      expect(refused.status).toBe(422);
+      expect(refused.json().property).toBe(property);
+    }
     expect(github.requests).toEqual([]);
     expect(await ownerCount(owner)).toBe(0);
+    expect(await attemptCount(owner)).toBe(0);
     // The lengths are counted on the trimmed text
     expect((await suggest(owner, { ...suggestion, name: ` ${long(STEP_SUGGESTION_LIMITS.name)} ` })).status).toBe(200);
   });
@@ -385,6 +424,7 @@ describe('step suggestions', () => {
   });
 
   it.each([
+    [307, 'Moved Permanently', 'error'],
     [401, 'Bad credentials', 'error'],
     [403, 'Resource not accessible by personal access token', 'error'],
     [404, 'Not Found', 'error'],
@@ -400,6 +440,8 @@ describe('step suggestions', () => {
     expect(failed.text).toBe(UNAVAILABLE);
     expect(await ownerCount(owner)).toBe(0);
     expect(await siteCount()).toBe(0);
+    // Given back, but the request did go to GitHub
+    expect(await attemptCount(owner)).toBe(1);
     expect(logged(level).map((line) => line.text)).toEqual([
       `Step suggestion: GitHub did not create the issue ${JSON.stringify({
         userId: owner.id,
@@ -408,6 +450,27 @@ describe('step suggestions', () => {
         githubMessage: `${message} (token [token])`
       })}`
     ]);
+  });
+
+  it('stops sending an owner’s suggestions to GitHub once it refused them too many times in a day', async () => {
+    const owner = await createUser('owner');
+    const other = await createUser('other');
+    github.answer = () => Response.json({ message: 'Bad credentials' }, { status: 401 });
+    const { limit } = STEP_SUGGESTION_ATTEMPTS_PER_OWNER;
+    for (let i = 0; i < limit; i++) expect((await suggest(owner)).status).toBe(503);
+    expect(github.requests).toHaveLength(limit);
+
+    const refused = await suggest(owner);
+    expect(refused.status).toBe(429);
+    expect(refused.text).toBe('Your suggestions could not be sent today: try again tomorrow');
+    expect(Number(refused.headers.get('retry-after'))).toBeGreaterThan(0);
+    // Nothing more was sent, and the refused one counts for nobody
+    expect(github.requests).toHaveLength(limit);
+    expect(await ownerCount(owner)).toBe(0);
+    expect(await siteCount()).toBe(0);
+    // Another owner is not held back by it
+    github.answer = created;
+    expect((await suggest(other)).status).toBe(200);
   });
 
   it('answers 503 when GitHub sends something else than the created issue', async () => {

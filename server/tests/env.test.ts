@@ -148,7 +148,7 @@ describe('parseEnv', () => {
       expect(problems[0]).not.toContain('topsecret');
     });
 
-    it.each(['portfolio', 'https://github.com/octo/portfolio', 'octo/portfolio/issues', 'octo/port folio', '-octo/portfolio', 'octo/../x'])(
+    it.each(['portfolio', 'https://github.com/octo/portfolio', 'octo/portfolio/issues', 'octo/port folio', '-octo/portfolio', 'octo/../x', 'octo/..', 'octo/.'])(
       'rejects a GITHUB_ISSUES_REPO that is not owner/name: %s',
       (value) => {
         expect(problemsOf({ ...base, GITHUB_ISSUES_REPO: value })).toEqual([

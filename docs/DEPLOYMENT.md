@@ -428,12 +428,16 @@ To turn it on:
 
 What an owner writes is untrusted and becomes public if the repository is: the form says so. In
 the issue, their text is only ever inside fenced code blocks (no mention notifies anyone, no
-link, image or HTML is rendered), control and invisible characters are removed, and the issue
+link, image or HTML is rendered), nothing invisible is filed (control characters, zero-width,
+bidi and "tag" characters, which could hide text from a reader of the issue), and the issue
 names nobody (no name, address or portfolio): the API's log line `Step suggestion filed` holds
 the user id and the issue number. Issues are capped at **3 per owner and 20 for the whole site
 per UTC day** (429 with `Retry-After`; constants of `server/services/stepSuggestions.ts`). A
 suggestion GitHub refused is given back to both limits; one GitHub did not answer in time is
-not (the issue may exist). The token is sent to `api.github.com` only, never follows a redirect,
+not (the issue may exist). While GitHub refuses (an expired token), an owner's suggestions stop
+being sent after 10 requests in a UTC day. If the repository is renamed or transferred, GitHub
+answers with a redirect, which is not followed: update `GITHUB_ISSUES_REPO` (the log line shows
+`"status":301` or `307`). The token is sent to `api.github.com` only, never follows a redirect,
 and never appears in a response or a log line (`tests/stepSuggestions.test.ts` fails if it does).
 
 ## Custom domains are required for login

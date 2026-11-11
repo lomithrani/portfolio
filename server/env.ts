@@ -231,7 +231,8 @@ const DEFAULT_RESUME_IMPORT_MONTHLY_LIMIT = 3;
 const DEFAULT_RESUME_IMPORT_DAILY_LIMIT = 30;
 /** Where the steps owners suggest are filed, unless GITHUB_ISSUES_REPO says otherwise */
 const DEFAULT_GITHUB_ISSUES_REPO = 'lomithrani/portfolio';
-const GITHUB_REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+// The name is not `.` or `..`: the URL it is put in would then name another path
+const GITHUB_REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 const DEFAULT_RESUME_IMPORT_ATTEMPTS_PER_DAY = 10;
 const DEFAULT_JOB_IMPORT_DAILY_LIMIT = 30;
 const DEFAULT_JOB_IMPORT_ATTEMPTS_PER_DAY = 10;

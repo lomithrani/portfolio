@@ -1,4 +1,4 @@
-import { parseStepSuggestion } from 'portfolio-common'
+import { cleanStepSuggestionText, parseStepSuggestion } from 'portfolio-common'
 import type { StepSuggestionInput } from 'portfolio-common'
 import { env } from '../env'
 import type { ServerEnv } from '../env'
@@ -15,14 +15,23 @@ import type { RateLimit } from './rateLimit'
 // The feature is off without the token. Everything an owner writes is
 // untrusted and ends up on GitHub, where Markdown notifies people (@name),
 // links issues (#12) and loads images: their text only ever goes inside
-// fenced code blocks, and the issue names nobody (no name, no address, no
-// portfolio). Issues are free but each one notifies the maintainers, so they
-// are capped per owner and for the whole site.
+// fenced code blocks, nothing invisible is filed (portfolio-common's
+// cleanStepSuggestionText), and the issue names nobody (no name, no address,
+// no portfolio). Issues are free but each one notifies the maintainers, so
+// they are capped per owner and for the whole site; a suggestion GitHub
+// refused is given back, so the requests sent to GitHub are capped too
+// (attempts, never given back): an expired token cannot be hammered.
 
 /** Suggestions an owner can send per UTC day */
 export const STEP_SUGGESTIONS_PER_OWNER: RateLimit = { limit: 3, windowMs: 24 * 60 * 60_000 }
 /** Suggestions the whole site files per UTC day */
 export const STEP_SUGGESTIONS_PER_DAY: RateLimit = { limit: 20, windowMs: 24 * 60 * 60_000 }
+
+/** Requests an owner can have sent to GitHub per UTC day, whatever their outcome: never given back */
+export const STEP_SUGGESTION_ATTEMPTS_PER_OWNER: RateLimit = { limit: 10, windowMs: 24 * 60 * 60_000 }
+
+/** Counter key of an owner's attempts of the day (an HMAC of the user id) */
+export const stepSuggestionAttemptsKey = (userId: string) => rateLimitKey('step-suggestion:attempts', userId)
 
 /** Counter key of an owner's suggestions of the day (an HMAC of the user id) */
 export const stepSuggestionOwnerKey = (userId: string) => rateLimitKey('step-suggestion:owner', userId)
@@ -49,12 +58,6 @@ export const stepSuggestionsEnabled = () => Boolean(env.GITHUB_ISSUES_TOKEN)
 
 // ── The issue ───────────────────────────────────────────────
 
-// C0 and C1 controls but tab and line feed, the Unicode line separators, and
-// the characters that reorder or hide text (bidi controls, zero-width, BOM)
-const UNSAFE_CHARACTERS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g
-
-const cleanText = (text: string) => text.replace(/\r\n?/g, '\n').replace(UNSAFE_CHARACTERS, '')
-
 /**
  * Text as a fenced code block: GitHub renders nothing inside one (no mention,
  * no link, no image, no HTML). The fence is longer than any run of backticks
@@ -68,10 +71,14 @@ const fenced = (text: string) => {
 
 /**
  * The name in the issue's title, where a code block is not possible: a
- * mention or an issue number must not read as one there (`@ name`, `# 12`),
- * and nothing is left to style or tag it
+ * mention or an issue number must not read as one there (`@ name`, `# 12`,
+ * `GH- 12`), and no backtick or tag is left
  */
-const titleText = (name: string) => name.replace(/[`<>]/g, "'").replace(/([@#])(?=\S)/g, '$1 ')
+const titleText = (name: string) =>
+  name
+    .replace(/[`<>]/g, "'")
+    .replace(/([@#])(?=\S)/g, '$1 ')
+    .replace(/\b(gh-)(?=\d)/gi, '$1 ')
 
 export interface StepSuggestionIssue {
   title: string
@@ -81,13 +88,15 @@ export interface StepSuggestionIssue {
 
 /** The GitHub issue of a suggestion (already through parseStepSuggestion) */
 export function stepSuggestionIssue(suggestion: StepSuggestionInput): StepSuggestionIssue {
-  const name = cleanText(suggestion.name).replace(/\s+/g, ' ').trim()
+  // Cleaned again here: the rule holds whatever the caller parsed
+  const name = cleanStepSuggestionText(suggestion.name).replace(/\s+/g, ' ')
   const sections = [
     'A portfolio owner suggested this step from the hiring journey editor (“Suggest a step”). The text below is theirs, shown as plain text.',
     `### Step\n\n${fenced(name)}`,
-    `### What a recruiter would do on it\n\n${fenced(cleanText(suggestion.description))}`
+    `### What a recruiter would do on it\n\n${fenced(cleanStepSuggestionText(suggestion.description))}`
   ]
-  if (suggestion.reason) sections.push(`### Why it would help\n\n${fenced(cleanText(suggestion.reason))}`)
+  const reason = cleanStepSuggestionText(suggestion.reason ?? '')
+  if (reason) sections.push(`### Why it would help\n\n${fenced(reason)}`)
   sections.push('Adding a step type: `docs/WORKFLOW_STEPS.md`.')
   return { title: `Step suggestion: ${titleText(name)}`, body: sections.join('\n\n'), labels: ISSUE_LABELS }
 }
@@ -112,8 +121,8 @@ const githubRefusal = async (response: Response, token: string) => {
  * Files a suggestion as an issue. 404 while the feature is off, 403 for an
  * account without a portfolio, 422 naming the field that breaks a rule, 429
  * over a daily limit, 503 when GitHub did not take it (the suggestion is then
- * given back to both limits, unless GitHub may have filed it: no answer in
- * time)
+ * given back to the owner's and the site's limits, unless GitHub may have
+ * filed it: no answer in time; the attempt always counts)
  */
 export async function suggestStep(userId: string, input: { name?: unknown; description?: unknown; reason?: unknown }) {
   const { GITHUB_ISSUES_TOKEN: token, GITHUB_ISSUES_REPO: repository } = env
@@ -140,6 +149,12 @@ export async function suggestStep(userId: string, input: { name?: unknown; descr
     throw new TooManyRequestsError('Too many suggestions were sent today: try again tomorrow', site.retryAfterSeconds)
   }
   const giveBack = () => Promise.all([refundRateLimit(own.counterId), refundRateLimit(site.counterId)])
+  // Last, and kept whatever happens next: only requests that reach GitHub count
+  const attempts = await takeRateLimit(stepSuggestionAttemptsKey(userId), STEP_SUGGESTION_ATTEMPTS_PER_OWNER)
+  if (attempts.retryAfterSeconds !== null) {
+    await giveBack()
+    throw new TooManyRequestsError('Your suggestions could not be sent today: try again tomorrow', attempts.retryAfterSeconds)
+  }
 
   let response: Response
   try {
@@ -153,8 +168,9 @@ export async function suggestStep(userId: string, input: { name?: unknown; descr
         'x-github-api-version': '2022-11-28'
       },
       body: JSON.stringify(stepSuggestionIssue(parsed.suggestion)),
-      // A redirect would carry the token to wherever GitHub points
-      redirect: 'error',
+      // Never followed: a redirect would carry the token to wherever it
+      // points. GitHub sends one for a renamed or transferred repository
+      redirect: 'manual',
       signal: AbortSignal.timeout(stepSuggestionTimeouts.githubMs)
     })
   } catch (error) {
@@ -168,8 +184,9 @@ export async function suggestStep(userId: string, input: { name?: unknown; descr
 
   if (response.status !== 201) {
     await giveBack()
-    // 401/403/404 are the operator's to fix (token expired, without access to the repository's issues)
-    const operator = [401, 403, 404, 410, 422].includes(response.status)
+    // The operator's to fix: the token (expired, without access to the
+    // repository's issues) or the repository (renamed, issues disabled)
+    const operator = [301, 302, 307, 308, 401, 403, 404, 410, 422].includes(response.status)
     logger[operator ? 'error' : 'warn']('Step suggestion: GitHub did not create the issue', {
       userId,
       repository,

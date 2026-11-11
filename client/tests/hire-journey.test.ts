@@ -466,6 +466,8 @@ test.describe('the hiring journey', () => {
 		await expect(section.getByRole('alert')).toHaveText(
 			'You can send 3 suggestions a day: try again tomorrow'
 		);
+		// The focus goes to what went wrong: the button it was on was disabled while sending
+		await expect(section.getByRole('alert')).toBeFocused();
 		await expect(description).toHaveValue('They give the range of the job before they can book.');
 
 		await section.getByLabel('Why would it help you?').fill('It saves a call.');

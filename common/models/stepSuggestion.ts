@@ -19,9 +19,24 @@ export type StepSuggestionResult =
 	| { ok: true; suggestion: StepSuggestionInput }
 	| { ok: false; field: StepSuggestionField; message: string };
 
-const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+// What never reaches the issue: C0 and C1 controls but tab and line feed, the Unicode line
+// separators, every character Unicode says is not displayed (Default_Ignorable_Code_Point: bidi
+// controls, zero-width characters, variation selectors, the "tag" characters that can spell a
+// hidden sentence, blank fillers), the braille blank and lone surrogates. A joined emoji comes
+// apart; in exchange nothing is filed that a reader of the issue cannot see
+const NOT_FILED =
+	/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u2028\u2029\u2800]|\p{Default_Ignorable_Code_Point}|[\uD800-\uDFFF]/gu;
 
-/** The suggestion as it is sent (trimmed, the name on one line), or the first rule it breaks */
+/** A suggestion's text as it is filed: one kind of line break, nothing invisible, trimmed */
+export const cleanStepSuggestionText = (value: string) =>
+	value.replace(/\r\n?/g, '\n').replace(NOT_FILED, '').trim();
+
+const text = (value: unknown) => (typeof value === 'string' ? cleanStepSuggestionText(value) : '');
+
+/**
+ * The suggestion as it is filed (cleaned, the name on one line), or the first rule it breaks: the
+ * rules are checked on the text that would reach the issue, so nothing invisible counts as an answer
+ */
 export function parseStepSuggestion(input: {
 	name?: unknown;
 	description?: unknown;
