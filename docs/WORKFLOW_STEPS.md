@@ -41,8 +41,14 @@ stand on me, and what may they submit?
 
 Because progress is kept per step id, reordering a journey keeps it. Progress on a step is dropped
 when the owner saves a journey that no longer has that id, or where that id now names another type
-(`saveJourneySteps`). It is **not** dropped when the owner only changes the step's settings: a
-visitor who confirmed a note keeps their confirmation when the note is reworded.
+(`saveJourneySteps`); anything left under the id of a step that enters the journey is dropped too,
+so a step added under an id used before always starts from nothing. It is **not** dropped when the
+owner only changes the step's settings: a visitor who confirmed a note keeps their confirmation
+when the note is reworded.
+
+A stored step that is not one (no valid id, no type: written by hand, never by `PUT /workflow`) is
+kept under an id and a type nothing has, so it blocks the journey like a step of a removed type
+until the owner saves the journey again.
 
 ### The routes
 
@@ -245,6 +251,13 @@ The registry `client/src/lib/components/hire/steps/index.ts` maps a type name to
 | `note(step, state)` | yes | The line under the step's name: what it asks, or what the visitor did there. |
 | `title(step)` | no | The step's name when it is not the manifest's label. The note returns its `config.title`. |
 | `wantsOpen(step, address)` | no | Whether the address asks for this step to be shown unfolded. The job step uses it when the address carries a `?job=` other than the job picked. |
+| `reopenLabel` | no | What the button that unfolds the step says once it is done ("Change" for the job step); "Open" when unset. |
+| `ownerPreview` | no | Set it to `true` when the owner's preview should show the step itself (the note, without its button) instead of the manifest's description. The `Visitor` then gets `journey.own` and must offer the owner nothing to submit: the API refuses the owner on their own journey. |
+| `goal` | for an `access` type | How the Hire page presents itself when the journey leads to this step: `heading(ownerName)` (the page's title), `alone` (the line under it when the step is the whole journey) and `after` (the same line when steps come before it). `registry.test.ts` fails when an `access` type has none. |
+
+The entry's type is `ClientStep` in `types.ts` of that folder, with the props below. Today's
+components there are `NoteStep.svelte`, `NoteSettings.svelte`, `JobStep.svelte` and
+`MeetingStep.svelte` (a thin wrapper around `hire/MeetingBooking.svelte`).
 
 The `Visitor` component receives these props:
 
@@ -253,7 +266,7 @@ The `Visitor` component receives these props:
 | `step` | `{ id, type, status, config?, view? }`, as `GET /workflow/domains/:domainName` returned it. |
 | `journey`, `domainName`, `ownerName` | The whole journey, the portfolio's name and its owner's name. |
 | `address` | The address last navigated to. Read query parameters from it, not from `page.url`, which is out of date after a shallow navigation. |
-| `submit(input)` | Sends `{ input }` to `POST .../steps/:stepId`. Resolves to `{ ok: true }`, or `{ ok: false, status, value }` with the API's answer. On success the page shows the journey the API returned and moves on to the next step. |
+| `submit(input)` | Sends `{ input }` to `POST .../steps/:stepId`. Resolves to `{ ok: true }`, or `{ ok: false, status, value }` with the API's answer. On success the page shows the journey the API returned and moves on to the next step. Turn a failure into a message with `submitFailure(status, value)` of `client/src/services/workflow.ts`: it recognises the journey's own refusals (session ended, step locked, journey changed) and shows anything your step's `submit` refused as the API worded it, so write those messages for the visitor. |
 | `reload()` | Loads the journey again, when it may be out of date (the owner changed it, the session ended). |
 | `locked(reason)` | Tells the page that the API refused a request of this step with 401 (`'signed-out'`) or 403 (`'locked'`). |
 | `succeeded()` | Tells the page that the step succeeded without a submit (the meeting was booked). |
@@ -277,7 +290,8 @@ they only go through this registry and the manifests. A new step type does not n
 either. Three things the page does for every step:
 
 - The owner previews their journey with no step locked. A `requirement` step shows its description
-  to the owner instead of its controls; only `access` steps are live for them.
+  to the owner instead of its controls, unless its entry sets `ownerPreview`; `access` steps are
+  live for them.
 - A journey of a single step is shown bare, without the list of steps (this is the booking page of
   a default journey).
 - A step whose status is `failed` is shown as "Not passed".

@@ -341,7 +341,25 @@ describe("the visitor's journey", () => {
 		expect(submitFailure(404, 'Domain not found').kind).toBe('error');
 		expect(submitFailure(409, 'This hiring journey changed: reload the page').kind).toBe('changed');
 		expect(submitFailure(409, 'Nothing can be submitted on this step').kind).toBe('changed');
-		expect(submitFailure(500, 'Internal Server Error').kind).toBe('error');
+		expect(submitFailure(500, 'Internal Server Error')).toEqual({
+			message: 'Could not save this step. Try again in a moment.',
+			kind: 'error'
+		});
+		// What a step's type refused is not the journey's refusal: shown as the API says it
+		expect(submitFailure(409, 'Already answered')).toEqual({
+			message: 'Already answered',
+			kind: 'error'
+		});
+		expect(submitFailure(403, 'Create your recruiter space first').kind).toBe('error');
+		expect(submitFailure(404, 'Job posting not found').message).toBe('Job posting not found');
+		expect(
+			submitFailure(422, {
+				type: 'validation',
+				on: 'body',
+				property: 'input.acknowledged',
+				message: 'Confirm that you have read the note'
+			})
+		).toEqual({ message: 'Confirm that you have read the note', kind: 'error' });
 		expect(submitFailure(503, new TypeError('Failed to fetch'))).toEqual({
 			message: NETWORK_ERROR,
 			kind: 'error'

@@ -70,5 +70,12 @@ export interface ClientStep {
 	wantsOpen?(step: JourneyStep, address: URL): boolean;
 	/** What the button unfolding the step says once it is done; "Open" when unset */
 	reopenLabel?: string;
+	/**
+	 * The owner's preview shows the step itself (its Visitor, with `journey.own` set) instead of
+	 * what it asks of recruiters. Only for a step that then offers the owner nothing to submit:
+	 * the API refuses the owner on their own journey
+	 */
+	ownerPreview?: true;
+	/** Required for an `access` type (registry.test.ts): the Hire page is titled after it */
 	goal?: StepGoal;
 }

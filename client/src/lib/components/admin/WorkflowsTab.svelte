@@ -9,6 +9,7 @@ cannot be saved until it is fixed.
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { ChevronDown, ChevronUp, Eye, PlusCircle, Trash } from 'svelte-heros-v2';
 	import {
@@ -18,7 +19,7 @@ cannot be saved until it is fixed.
 		type WorkflowProblem,
 		type WorkflowStep
 	} from 'portfolio-common';
-	import { portfolioApi } from '#services';
+	import { portfolioTextApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { clearAuthentication } from '#services/authentication.ts';
 	import { SESSION_EXPIRED_MESSAGE } from '#services/account.ts';
@@ -67,6 +68,18 @@ cannot be saved until it is fixed.
 	);
 	let changed = $derived(!sameSteps(steps, saved));
 
+	// Unsaved steps hold text the owner wrote (a note): leaving the page asks first. A reload or
+	// a closed tab gets the browser's own prompt; a link ("See your Hire page"...), this one
+	beforeNavigate((navigation) => {
+		if (!changed || navigation.willUnload) {
+			if (changed) navigation.cancel();
+			return;
+		}
+		if (!confirm('Leave without saving your hiring journey? Your changes will be lost.')) {
+			navigation.cancel();
+		}
+	});
+
 	/** The name of its own a step has (a note's title), when it has one */
 	const ownTitle = (step: WorkflowStep) => clientStep(step.type)?.title?.(step);
 	/** A step as the buttons name it: its type's label, and its own name to tell two of a type apart */
@@ -86,7 +99,7 @@ cannot be saved until it is fixed.
 	async function load() {
 		status = 'loading';
 		try {
-			const { data, error } = await portfolioApi.workflow.get(withCredentials);
+			const { data, error } = await portfolioTextApi.workflow.get(withCredentials);
 			if (error || !data) {
 				loadError = error ? failure(error, LOAD_FAILED) : LOAD_FAILED;
 				status = 'error';
@@ -150,7 +163,7 @@ cannot be saved until it is fixed.
 		saveError = '';
 		const sent = steps;
 		try {
-			const { data, error } = await portfolioApi.workflow.put(
+			const { data, error } = await portfolioTextApi.workflow.put(
 				{ steps: sent.map(({ id, type, config }) => ({ id, type, config })) },
 				withCredentials
 			);
@@ -314,7 +327,8 @@ cannot be saved until it is fixed.
 
 		<p class="sr-only" aria-live="polite">{announcement}</p>
 
-		<!-- What recruiters will go through, or why it cannot be saved -->
+		<!-- Why it cannot be saved (read out when it changes), or what recruiters will go through
+		     (not read out: it follows every key typed in a note's title) -->
 		<div aria-live="polite">
 			{#if problem}
 				<p class="card preset-tonal-warning p-3 text-sm">
@@ -323,10 +337,11 @@ cannot be saved until it is fixed.
 					{/if}
 					{problem.message}
 				</p>
-			{:else}
-				<p class="text-sm">{journeySummary(steps, ownTitle)}</p>
 			{/if}
 		</div>
+		{#if !problem}
+			<p class="text-sm">{journeySummary(steps, ownTitle)}</p>
+		{/if}
 
 		<div class="flex flex-wrap items-center gap-3">
 			<button

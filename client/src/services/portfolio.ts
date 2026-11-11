@@ -19,4 +19,14 @@ const api = treaty<Portfolio>(PUBLIC_PORTFOLIO_API_URL, {
 	fetcher: tracedFetch as typeof fetch
 });
 
-export { api };
+/**
+ * The same API, with every string left as it is. Eden Treaty turns each JSON string that looks
+ * like a date into a Date: for routes whose answers hold text people wrote (a note titled
+ * "2027-01-01" in a hiring journey), which must come back as written
+ */
+const textApi = treaty<Portfolio>(PUBLIC_PORTFOLIO_API_URL, {
+	fetcher: tracedFetch as typeof fetch,
+	parseDate: false
+});
+
+export { api, textApi };

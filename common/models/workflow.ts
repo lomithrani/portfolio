@@ -149,7 +149,11 @@ export function parseWorkflow(input: readonly WorkflowStepInput[]): WorkflowResu
 				stepId: step.id
 			});
 		}
-		const parsed = manifest.parseConfig(step.config ?? {});
+		const settings = step.config ?? {};
+		if (typeof settings !== 'object' || Array.isArray(settings)) {
+			return fail({ message: 'The settings of a step must be an object.', stepId: step.id });
+		}
+		const parsed = manifest.parseConfig(settings);
 		if (!parsed.ok) {
 			return fail({ message: parsed.message, stepId: step.id, field: parsed.field });
 		}
@@ -160,12 +164,17 @@ export function parseWorkflow(input: readonly WorkflowStepInput[]): WorkflowResu
 		(step, index) => stepManifest(step.type)?.kind === 'requirement' && index > lastAccess
 	);
 	if (dangling) {
+		const label = `“${stepManifest(dangling.type)?.label}”`;
+		// The journey has a step it could open, above it: the fix is to move, not to add
+		const above = lastAccess === -1 ? undefined : stepManifest(steps[lastAccess].type)?.label;
 		const access = stepManifests()
 			.filter((manifest) => manifest.kind === 'access')
 			.map((manifest) => `“${manifest.label}”`)
 			.join(' or ');
 		return fail({
-			message: `“${stepManifest(dangling.type)?.label}” must come before a step it opens: add ${access} after it.`,
+			message: above
+				? `${label} must come before a step it opens: move it above “${above}”.`
+				: `${label} must come before a step it opens: add ${access} after it.`,
 			stepId: dangling.id
 		});
 	}

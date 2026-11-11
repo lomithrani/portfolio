@@ -265,6 +265,18 @@ describe("the owner's journey (GET, PUT /workflow)", () => {
       cookie: owner.cookie
     });
     expect(notAnObject.status).toBe(422);
+    // Whatever the type: a step without settings does not take a string or a list for them
+    for (const config of ['Before you book', ['a'], 5, true]) {
+      const answer = await call('PUT', '/workflow', {
+        body: { steps: [{ id: 'meeting', type: 'meeting', config }] },
+        cookie: owner.cookie
+      });
+      expect({ config, status: answer.status, body: answer.json() }).toEqual({
+        config,
+        status: 422,
+        body: { type: 'validation', on: 'body', property: 'steps.0', message: 'The settings of a step must be an object.' }
+      });
+    }
     expect(await Workflow.countDocuments({ user: owner.id })).toBe(0);
   });
 
@@ -280,7 +292,13 @@ describe("the owner's journey (GET, PUT /workflow)", () => {
       property: 'steps.0',
       message: expect.stringContaining('Book a meeting')
     });
-    expect(await refused(journey(meeting(), job()))).toMatchObject({ property: 'steps.1' });
+    // With a step it could open above it, the way out is to move it
+    expect(await refused(journey(meeting(), job()))).toEqual({
+      type: 'validation',
+      on: 'body',
+      property: 'steps.1',
+      message: '“Select or create a job” must come before a step it opens: move it above “Book a meeting”.'
+    });
     expect(await refused(journey(note(), meeting(), note('after')))).toMatchObject({ property: 'steps.2' });
 
     // A type this version does not have
@@ -496,6 +514,37 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
     // Removed by the owner: the journey goes on
     await setJourney(owner, note(), meeting());
     await assertStepOpen(owner.id, recruiter.id, 'meeting');
+  });
+
+  it('stops at a stored step that is not one (no id, no type), and answers for a journey without steps', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    // Written by hand, or by a version that stored steps without ids: never through PUT /workflow
+    await Workflow.collection.insertOne({
+      user: new Types.ObjectId(owner.id),
+      steps: [{ type: 'note', config: note().config }, null, { id: 'a.b', type: 'note' }, { id: 'meeting', type: 'meeting' }]
+    });
+
+    // Each one blocks under an id of its own: none is shown as a step a visitor could complete
+    expect(await journeyOf(owner.domain, recruiter)).toEqual({
+      steps: [
+        { id: 'invalid-0', type: '', status: 'pending' },
+        { id: 'invalid-1', type: '', status: 'pending' },
+        { id: 'invalid-2', type: '', status: 'pending' },
+        { id: 'meeting', type: 'meeting', status: 'pending' }
+      ]
+    });
+    expect((await submit(owner.domain, 'invalid-0', { acknowledged: true }, recruiter)).status).toBe(409);
+    expect((await submit(owner.domain, 'undefined', { acknowledged: true }, recruiter)).status).toBe(409);
+    await expect(assertStepOpen(owner.id, recruiter.id, 'meeting')).rejects.toBeInstanceOf(JourneyStepLockedError);
+    // The owner can replace it
+    await setJourney(owner, meeting());
+    await assertStepOpen(owner.id, recruiter.id, 'meeting');
+
+    await Workflow.collection.updateOne({ user: new Types.ObjectId(owner.id) }, { $unset: { steps: '' } });
+    expect(await journeyOf(owner.domain, recruiter)).toEqual({ steps: [] });
+    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual({ steps: [] });
+    await setJourney(owner, meeting());
   });
 });
 
@@ -743,6 +792,24 @@ describe('submitting a step (POST /workflow/domains/:domainName/steps/:stepId)',
     expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['terms:pending', 'meeting:pending']);
     const after = await WorkflowInstance.findOne({ owner: owner.id, visitor: recruiter.id }).lean();
     expect(Object.keys(after?.steps ?? {})).toEqual([]);
+  });
+
+  it('starts a step from nothing even when progress was left under its id', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, note('terms'), meeting());
+    expect((await submit(owner.domain, 'terms', { acknowledged: true }, recruiter)).status).toBe(200);
+
+    // What a submit that raced the removal of `why` leaves behind (or a save whose clean-up
+    // failed): progress under an id the journey does not have
+    await WorkflowInstance.collection.updateOne(
+      { owner: new Types.ObjectId(owner.id), visitor: new Types.ObjectId(recruiter.id) },
+      { $set: { 'steps.why': { data: { acknowledgedAt: new Date() }, updatedAt: new Date() } } }
+    );
+
+    await setJourney(owner, note('why', 'New', 'Not read yet.'), note('terms'), meeting());
+    expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['why:pending', 'terms:succeeded', 'meeting:pending']);
+    await expect(assertStepOpen(owner.id, recruiter.id, 'meeting')).rejects.toBeInstanceOf(JourneyStepLockedError);
   });
 });
 

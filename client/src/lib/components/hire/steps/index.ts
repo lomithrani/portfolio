@@ -14,6 +14,7 @@ const CLIENT_STEPS: Record<string, ClientStep> = {
 		Visitor: NoteStep,
 		Settings: NoteSettings,
 		title: (step) => noteContent(step.config).title.trim() || undefined,
+		ownerPreview: true,
 		note: (_step, state) =>
 			state === 'done' ? 'You have read this note.' : 'Read the note, then confirm it.'
 	},

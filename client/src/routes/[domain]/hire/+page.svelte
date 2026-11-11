@@ -5,7 +5,7 @@
 	import { resolve } from '$app/paths';
 	import { Check, Eye, LockClosed, XMark } from 'svelte-heros-v2';
 	import { DEFAULT_WORKFLOW_STEPS, stepManifest } from 'portfolio-common';
-	import { portfolioApi } from '#services';
+	import { portfolioTextApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
 	import { SESSION_EXPIRED_MESSAGE } from '#services/account.ts';
@@ -82,12 +82,13 @@
 	/**
 	 * A step shows its controls when its type is known and the caller can use it. The owner
 	 * previews: a step that asks something of visitors asks nothing of them (they read what it
-	 * asks instead), only what the journey leads to is theirs to use
+	 * asks instead, unless its type shows itself to them), only what the journey leads to is
+	 * theirs to use
 	 */
 	const isLive = (own: boolean, step: JourneyStep, state: StepState) =>
 		clientStep(step.type) !== undefined &&
 		isUsable(state) &&
-		(!own || stepManifest(step.type)?.kind === 'access');
+		(!own || stepManifest(step.type)?.kind === 'access' || !!clientStep(step.type)?.ownerPreview);
 
 	/** The step the address asks for (a done step to come back to), when it can be used; else -1 */
 	const stepAskedFor = (next: Journey) => {
@@ -118,7 +119,7 @@
 		const current = ++request;
 		if (loaded.state !== 'ready') loaded = { state: 'loading' };
 		try {
-			const { data: answer, error } = await portfolioApi.workflow
+			const { data: answer, error } = await portfolioTextApi.workflow
 				.domains({ domainName: encodeURIComponent(data.domainName) })
 				.get(withCredentials);
 			if (current !== request) return;
@@ -157,7 +158,7 @@
 	/** What the visitor submits on a step: the API answers with the journey as they now stand in it */
 	async function submitStep(stepId: string, input: unknown): Promise<SubmitResult> {
 		try {
-			const { data: next, error } = await portfolioApi.workflow
+			const { data: next, error } = await portfolioTextApi.workflow
 				.domains({ domainName: encodeURIComponent(data.domainName) })
 				.steps({ stepId })
 				.post({ input }, withCredentials);

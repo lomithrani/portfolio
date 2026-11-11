@@ -54,6 +54,11 @@ export interface JourneyDto {
 
 // ── The owner's journey ─────────────────────────────────────
 
+const isStepId = (stepId: string) => WORKFLOW_LIMITS.stepId.test(stepId);
+
+/** What a step's type does; undefined for a type this version does not have (in either registry) */
+const stepBehaviour = (type: string): ServerStep | undefined => (stepManifest(type) ? serverStep(type) : undefined);
+
 const settings = (value: unknown): object =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {};
 
@@ -66,17 +71,15 @@ const settings = (value: unknown): object =>
 export async function journeySteps(ownerId: Id): Promise<WorkflowStep[]> {
   const workflow = await Workflow.findOne({ user: ownerId }, { steps: 1 }).lean();
   if (!workflow) return DEFAULT_WORKFLOW_STEPS.map((step) => ({ ...step, config: { ...step.config } }));
-  return workflow.steps.map((step) => ({
-    id: String(step.id),
-    type: String(step.type),
-    config: settings(step.config)
-  }));
+  return (workflow.steps ?? []).map((step, index) => {
+    const id = typeof step?.id === 'string' && isStepId(step.id) ? step.id : undefined;
+    // Not a step as PUT /workflow stores them (written by hand, or by an older version): kept
+    // under an id and a type nothing has, so it blocks the journey like a step of a removed type
+    if (!id || typeof step.type !== 'string') return { id: `invalid-${index}`, type: '', config: {} };
+    return { id, type: step.type, config: settings(step.config) };
+  });
 }
 
-/** What a step's type does; undefined for a type this version does not have (in either registry) */
-const stepBehaviour = (type: string): ServerStep | undefined => (stepManifest(type) ? serverStep(type) : undefined);
-
-const isStepId = (stepId: string) => WORKFLOW_LIMITS.stepId.test(stepId);
 
 /**
  * Where a visitor's progress on a step is stored. The id becomes part of a
@@ -94,8 +97,9 @@ const progressPath = (stepId: string) => {
  * saves race, so the account keeps one journey.
  *
  * Progress is kept per step id: what visitors did on a step that is removed
- * (or whose id now names another type) is dropped, so a step added later
- * under the same id starts from nothing
+ * (or whose id now names another type) is dropped, and so is anything stored
+ * under the id of a step that enters the journey: a step added under an id
+ * used before starts from nothing
  */
 export async function saveJourneySteps(ownerId: string, input: readonly WorkflowStepInput[]): Promise<WorkflowStep[]> {
   const parsed = parseWorkflow(input);
@@ -112,10 +116,14 @@ export async function saveJourneySteps(ownerId: string, input: readonly Workflow
     { $set: { steps } },
     { upsert: true, runValidators: true, returnDocument: 'before', projection: { steps: 1 } }
   ).lean();
-  const types = new Map(steps.map((step) => [step.id, step.type]));
-  const dropped = (previous?.steps ?? [])
-    .filter((step) => types.get(step.id) !== step.type)
-    .map((step) => String(step.id))
+  // Dropped: the ids that left the journey or changed type, and the ids that enter it. The
+  // second half is what makes "starts from nothing" hold whatever happened before: a submit
+  // that raced an earlier save, or an earlier save whose own clean-up failed, can leave
+  // progress under an id no journey has, which a step added under that id would inherit
+  const before = new Map((previous?.steps ?? []).map((step) => [String(step?.id), String(step?.type)]));
+  const after = new Map(steps.map((step) => [step.id, step.type]));
+  const dropped = [...new Set([...before.keys(), ...after.keys()])]
+    .filter((stepId) => before.get(stepId) !== after.get(stepId))
     .filter(isStepId);
   if (dropped.length > 0) {
     await WorkflowInstance.updateMany(

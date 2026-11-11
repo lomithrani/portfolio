@@ -40,5 +40,9 @@ describe("the client's step types", () => {
 	it('presents the Hire page for the step a journey leads to', () => {
 		expect(clientStep('meeting')?.goal?.heading('Louis')).toBe('Book a meeting with Louis');
 		expect(clientStep('job')?.goal).toBeUndefined();
+		// The page is titled after the last access step: each access type says how
+		for (const manifest of stepManifests().filter((manifest) => manifest.kind === 'access')) {
+			expect(clientStep(manifest.type)?.goal, manifest.type).toBeDefined();
+		}
 	});
 });

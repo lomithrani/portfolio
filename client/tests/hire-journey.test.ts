@@ -280,6 +280,37 @@ test.describe('the hiring journey', () => {
 		await context.close();
 	});
 
+	test('unsaved steps are kept when leaving is declined; a title that looks like a date stays text', async ({
+		page
+	}) => {
+		await setJourney('meeting');
+		await openEditor(page);
+		await addStep(page, 'Read a note').click();
+		const note = editorStep(page, 'Read a note');
+		// Eden Treaty would read this title back as a Date
+		await note.getByLabel('Title').fill('2027-01-01');
+		await note.getByLabel('Note', { exact: true }).fill('Start date.');
+
+		// The link next to Save leaves the page: asked first, and declined
+		page.once('dialog', (dialog) => {
+			expect(dialog.message()).toContain('Leave without saving your hiring journey?');
+			void dialog.dismiss();
+		});
+		await page.getByRole('link', { name: 'See your Hire page' }).click();
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin$`));
+		await expect(note.getByLabel('Title')).toHaveValue('2027-01-01');
+
+		await page.getByRole('button', { name: 'Save journey' }).click();
+		await expect(toasts(page).getByText('Hiring journey saved')).toBeVisible();
+		await expect(note.getByLabel('Title')).toHaveValue('2027-01-01');
+		await expect(page.getByRole('button', { name: 'Save journey' })).toBeDisabled();
+
+		// Saved: nothing to ask. Visitors read the title as written
+		await page.getByRole('link', { name: 'See your Hire page' }).click();
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire$`));
+		await expect(page.getByRole('heading', { name: 'Step 1: 2027-01-01' })).toBeVisible();
+	});
+
 	test('what the API refuses is said at the step; a journey without steps closes the page', async ({
 		page
 	}) => {
@@ -419,11 +450,19 @@ test.describe('the hiring journey', () => {
 			'Sign in to pick the job you are hiring for.'
 		);
 
+		// A job is already picked: the step is done, and still leads to the editor
+		const picked = await createJob(recruiterApi, {
+			title: `Staff engineer ${tag}`,
+			status: 'open'
+		});
+		await submitStep('job', { jobId: picked._id });
 		await signIn(page, recruiter);
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
-		await step(page, 'Step 1: Select or create a job')
-			.getByRole('link', { name: 'Write a new job description' })
-			.click();
+		const jobStep = step(page, 'Step 1: Select or create a job');
+		const meetingStep = step(page, 'Step 2: Book a meeting');
+		const radio = (title: string) => jobStep.getByRole('radio', { name: new RegExp(title) });
+		await jobStep.getByRole('button', { name: /Change/ }).click();
+		await jobStep.getByRole('link', { name: 'Write a new job description' }).click();
 		await expect(page).toHaveURL(new RegExp(`/recruiter/jobs/new\\?journey=${DOMAIN}$`));
 		await expect(page.getByRole('note')).toContainText(
 			`you go back to the hiring journey of ${DOMAIN} to pick it`
@@ -433,21 +472,18 @@ test.describe('the hiring journey', () => {
 			`/${DOMAIN}/hire`
 		);
 
-		// What the editor does once the posting is created: back with it selected, the job step
-		// open on it even when another job was picked before
-		const picked = await createJob(recruiterApi, {
-			title: `Staff engineer ${tag}`,
-			status: 'open'
-		});
-		await submitStep('job', { jobId: picked._id });
-		const created = await createJob(recruiterApi, {
-			title: `Platform lead ${tag}`,
-			status: 'open'
-		});
-		await gotoHydrated(page, `/${DOMAIN}/hire?job=${created._id}`);
-		const jobStep = step(page, 'Step 1: Select or create a job');
-		const meetingStep = step(page, 'Step 2: Book a meeting');
-		const radio = (title: string) => jobStep.getByRole('radio', { name: new RegExp(title) });
+		// Written in the editor, open: once created, the editor goes back to the journey with it
+		// selected, the job step open on it although another job was picked before
+		await page.getByRole('textbox', { name: 'Job title' }).fill(`Platform lead ${tag}`);
+		await page.getByRole('textbox', { name: 'Company' }).fill('E2E Corp');
+		await page.getByLabel('Status', { exact: true }).selectOption('open');
+		await page.getByRole('textbox', { name: 'Job description' }).fill('## The job\n\nLead it.');
+		await page.getByRole('textbox', { name: 'City', exact: true }).fill('Paris');
+		await page.getByRole('textbox', { name: 'Minimum pay' }).fill('60 000');
+		await page.getByRole('textbox', { name: 'Maximum pay' }).fill('70 000');
+		await page.getByRole('button', { name: 'Create job description' }).click();
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire\\?job=[0-9a-f]{24}$`));
+		await expect(toasts(page).getByText('Job description created', { exact: true })).toBeVisible();
 		await expect(radio(`Platform lead ${tag}`)).toBeChecked();
 
 		// Another job picked than the one the address asked for: on to the meeting step, and the

@@ -8,13 +8,15 @@ const stepId = t.String({ pattern: WORKFLOW_LIMITS.stepId.source });
 // PUT /workflow: the owner's whole journey, in order. The step types, their
 // settings and the other rules are portfolio-common's parseWorkflow, checked
 // by the route. `config` is whatever the step's type takes: its manifest
-// keeps what it knows and drops the rest
+// keeps what it knows and drops the rest. Unknown, not an object schema:
+// Elysia would turn a string or an array into an object before checking it
+// (a 1 MB string into a million keys); parseWorkflow refuses anything else
 export const workflowRequest = t.Object({
   steps: t.Array(
     t.Object({
       id: stepId,
       type: t.String({ pattern: WORKFLOW_LIMITS.stepType.source }),
-      config: t.Optional(t.Object({}, { additionalProperties: true }))
+      config: t.Optional(t.Unknown())
     }),
     { maxItems: WORKFLOW_LIMITS.steps }
   )

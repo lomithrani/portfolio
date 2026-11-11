@@ -270,21 +270,45 @@ export interface StepFailure<Kind extends string = never> {
 	kind: 'signed-out' | 'locked' | 'changed' | 'error' | Kind;
 }
 
+const SUBMIT_FAILED = 'Could not save this step. Try again in a moment.';
+
+/**
+ * The journey's own refusals are told from their text (the API's messages, whose status a step's
+ * refusal can share): anything else a step's type refused is shown as the API says it (its 4xx
+ * messages are written for the visitor; a 422 names what is wrong with the input)
+ */
 export const submitFailure = (status: number | undefined, value: unknown): StepFailure => {
 	if (isNetworkFailure(value)) return { message: NETWORK_ERROR, kind: 'error' };
+	const text =
+		bodyText(value) ||
+		(value && typeof value === 'object' && 'message' in value ? bodyText(value.message) : '');
+	const asTold: StepFailure = { message: text || SUBMIT_FAILED, kind: 'error' };
 	switch (status) {
 		case 401:
 			return { message: 'Your session expired. Sign in again to continue.', kind: 'signed-out' };
 		case 403:
-			return /your own/i.test(bodyText(value))
-				? { message: 'This is your own portfolio: its journey is for recruiters.', kind: 'error' }
-				: { message: 'Complete the steps above first.', kind: 'locked' };
+			if (/your own hiring journey/i.test(text)) {
+				return {
+					message: 'This is your own portfolio: its journey is for recruiters.',
+					kind: 'error'
+				};
+			}
+			return /earlier steps/i.test(text)
+				? { message: 'Complete the steps above first.', kind: 'locked' }
+				: asTold;
 		case 404:
-			return { message: 'This portfolio no longer exists.', kind: 'error' };
+			return /^domain not found$/i.test(text)
+				? { message: 'This portfolio no longer exists.', kind: 'error' }
+				: asTold;
 		case 409:
-			return { message: 'This hiring journey changed.', kind: 'changed' };
+			return /journey changed|nothing can be submitted/i.test(text)
+				? { message: 'This hiring journey changed.', kind: 'changed' }
+				: asTold;
+		case 400:
+		case 422:
+			return asTold;
 		default:
-			return { message: 'Could not save this step. Try again in a moment.', kind: 'error' };
+			return { message: SUBMIT_FAILED, kind: 'error' };
 	}
 };
 
