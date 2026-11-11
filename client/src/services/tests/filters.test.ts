@@ -9,6 +9,7 @@ import {
 	hasActiveFilters,
 	isSkillHighlighted,
 	normalizeSkill,
+	projectMatchesFilters,
 	skillOptions,
 	toggleSkill,
 	type ExperienceFilters
@@ -117,6 +118,24 @@ describe('isSkillHighlighted', () => {
 		expect(isSkillHighlighted(selected, ' typescript')).toBe(true);
 		expect(isSkillHighlighted(selected, 'JavaScript')).toBe(false);
 		expect(isSkillHighlighted(emptyFilters(), 'TypeScript')).toBe(false);
+	});
+});
+
+describe('projectMatchesFilters', () => {
+	const [first, second] = msc.projects as Parameters<typeof projectMatchesFilters>[0][];
+
+	it('tells the projects using any of the selected skills, technical or soft', () => {
+		expect(projectMatchesFilters(first, filters(['typescript']))).toBe(true);
+		expect(projectMatchesFilters(second, filters(['typescript']))).toBe(false);
+		expect(projectMatchesFilters(second, filters(['typescript', 'leadership']))).toBe(true);
+	});
+
+	it('matches nothing without a selection, or without skills', () => {
+		expect(projectMatchesFilters(first, emptyFilters())).toBe(false);
+		expect(projectMatchesFilters({}, filters(['typescript']))).toBe(false);
+		expect(
+			projectMatchesFilters({ hardSkills: null, softSkills: null }, filters(['typescript']))
+		).toBe(false);
 	});
 });
 

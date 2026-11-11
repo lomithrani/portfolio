@@ -1,21 +1,25 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import type { PageData } from './$types';
-	import { afterNavigate, beforeNavigate, invalidateAll } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, invalidateAll, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { tick, untrack } from 'svelte';
 	import { Briefcase, DocumentArrowUp, Plus } from 'svelte-heros-v2';
 	import Experience from '#components/Experience.svelte';
 	import ExperienceEditor from '#components/experience-editor/ExperienceEditor.svelte';
+	import ProjectPreview from '#components/experience-list/ProjectPreview.svelte';
+	import Timeline from '#components/experience-timeline/Timeline.svelte';
 	import ResumeImport from '#components/resume-import/ResumeImport.svelte';
 	import Filters from './Filters.svelte';
+	import ViewSwitch from './ViewSwitch.svelte';
 	import { portfolioApi } from '#services';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { isDomainAdmin } from '#services/authentication.ts';
 	import type { FormData } from '#services/experienceForm.ts';
 	import { importStorageKey, type ImportStatus } from '#services/resumeImport.ts';
 	import {
+		activeFilters,
 		applyFilters,
 		emptyFilters,
 		filtersFromSearchParams,
@@ -23,6 +27,11 @@
 		type ExperienceFilters
 	} from '#services/filters.ts';
 	import { sortExperiences } from '#services/experienceDates.ts';
+	import {
+		viewFromSearchParams,
+		viewToSearchParams,
+		type ExperienceView
+	} from '#services/timeline.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { collectKnownSkills } from '#components/experience-list/experienceList.ts';
 
@@ -34,16 +43,81 @@
 
 	// A shared filtered link renders filtered on the server too (Filters keeps the URL in sync)
 	let filters: ExperienceFilters = $state(filtersFromSearchParams(page.url.searchParams));
+	// The list, or the timeline (`?view=timeline`: a shared link opens on it, on the server too)
+	let view: ExperienceView = $state(viewFromSearchParams(page.url.searchParams));
 	// A link to this same page (e.g. the rail's "Experiences") keeps the component: follow its URL
 	afterNavigate(({ type }) => {
-		if (type !== 'enter') filters = filtersFromSearchParams(page.url.searchParams);
+		if (type === 'enter') return;
+		filters = filtersFromSearchParams(page.url.searchParams);
+		view = viewFromSearchParams(page.url.searchParams);
+	});
+
+	// The URL follows the view, as it follows the filters (see Filters.svelte for why replaceState,
+	// why the browser's URL is the one to compare with, and why the first run is skipped)
+	let viewUrlReady = false;
+	$effect(() => {
+		const next = view;
+		if (!viewUrlReady) {
+			viewUrlReady = true;
+			return;
+		}
+		const current = new URLSearchParams(location.search);
+		const search = viewToSearchParams(next, current).toString();
+		if (search === current.toString()) return;
+		untrack(() => {
+			const domain = page.params.domain;
+			if (!domain) return;
+			const target = search
+				? resolve(`/[domain]/experiences?${search}`, { domain })
+				: resolve('/[domain]/experiences', { domain });
+			replaceState(target, page.state).catch(() => {});
+		});
 	});
 
 	// `data` is replaced (not mutated) by invalidateAll(), which keeps these derivations fresh
 	let allExperiences: ExperienceModel[] = $derived(sortExperiences(data.domain.experiences ?? []));
 	let experiences: ExperienceModel[] = $derived(applyFilters(allExperiences, filters));
-	let highlightSkill = $derived((displayName: string) => isSkillHighlighted(filters, displayName));
+	// Without the selections no experience has any more (see activeFilters)
+	let active = $derived(activeFilters(allExperiences, filters));
+	let highlightSkill = $derived((displayName: string) => isSkillHighlighted(active, displayName));
 	let knownSkills = $derived(collectKnownSkills(allExperiences));
+
+	// --- Timeline view ------------------------------------------------------------------------
+	// Key of the skill whose tag is hovered or focused (ProjectPreview): the timeline outlines
+	// its projects
+	let previewSkill: string | null = $state(null);
+	// The experience picked on the timeline: its card shows under it
+	let selectedId: string | null = $state(null);
+	let selectedExperience = $derived(
+		allExperiences.find((experience) => String(experience._id) === selectedId) ?? null
+	);
+	// The project picked on the timeline (its position in the selected experience), outlined briefly
+	let revealedProject: number | null = $state(null);
+	let revealedProjectTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => () => clearTimeout(revealedProjectTimer));
+
+	const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+	/** A bar of the timeline was pressed: shows the experience's card, at the project if one was */
+	const selectOnTimeline = async (experienceId: string, projectIndex?: number) => {
+		selectedId = experienceId;
+		clearTimeout(revealedProjectTimer);
+		revealedProject = projectIndex ?? null;
+		if (projectIndex !== undefined) {
+			revealedProjectTimer = setTimeout(() => (revealedProject = null), 2500);
+		}
+		await tick();
+		const card = document.getElementById(`experience-${experienceId}`);
+		const project =
+			projectIndex === undefined
+				? null
+				: card?.querySelector(`[data-project-index="${projectIndex}"]`);
+		// Only as far as needed: a card already in sight stays where it is
+		(project ?? card)?.scrollIntoView({
+			behavior: prefersReducedMotion() ? 'instant' : 'smooth',
+			block: 'nearest'
+		});
+	};
 
 	let ownerName = $derived(
 		data.domain.headerTitle ||
@@ -156,8 +230,10 @@
 	const reveal = (id: string): boolean => {
 		const card = document.getElementById(`experience-${id}`);
 		if (!card) return false;
-		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-		card.scrollIntoView({ behavior: reduceMotion ? 'instant' : 'smooth', block: 'start' });
+		card.scrollIntoView({
+			behavior: prefersReducedMotion() ? 'instant' : 'smooth',
+			block: 'start'
+		});
 		highlightedId = id;
 		clearTimeout(highlightTimer);
 		highlightTimer = setTimeout(() => (highlightedId = null), 2500);
@@ -185,7 +261,13 @@
 	};
 
 	/** Toasts what was saved, after scrolling to it (or offering to clear the filters hiding it) */
-	const announceSaved = (id: string, title: string, hidden: string) => {
+	const announceSaved = async (id: string, title: string, hidden: string) => {
+		// The timeline shows one card, the selected experience's: what was saved becomes it
+		if (view === 'timeline') {
+			selectedId = id;
+			revealedProject = null;
+			await tick();
+		}
 		if (reveal(id)) {
 			toaster.success({ title });
 		} else {
@@ -213,7 +295,7 @@
 			await invalidateAll();
 			await tick();
 		}
-		announceSaved(
+		await announceSaved(
 			id,
 			mode === 'created' ? 'Experience added' : 'Changes saved',
 			'The current filters hide it.'
@@ -229,7 +311,7 @@
 		const title = ids.length === 1 ? 'Experience added' : `${ids.length} experiences added`;
 		// Still open: the review lists what failed, and the toast would sit under it
 		if (!done) return;
-		announceSaved(
+		await announceSaved(
 			ids[0],
 			title,
 			ids.length === 1 ? 'The current filters hide it.' : 'The current filters hide them.'
@@ -335,11 +417,17 @@
 				</section>
 			{/if}
 		{:else}
-			{#if isAdmin}
-				<div class="flex flex-wrap items-center justify-between gap-3" bind:this={toolbar}>
+			<!-- The view switch is on the heading's line; phones: the owner's buttons share a row
+				under it -->
+			<div class="flex flex-wrap items-center gap-3">
+				{#if isAdmin}
 					<h2 class="text-xl font-bold md:text-2xl">Experience</h2>
-					<!-- Phones: both buttons share a row under the heading -->
-					<div class="flex flex-wrap gap-2 max-sm:w-full">
+				{/if}
+				<div class="ml-auto">
+					<ViewSwitch bind:view />
+				</div>
+				{#if isAdmin}
+					<div class="flex flex-wrap gap-2 max-sm:w-full" bind:this={toolbar}>
 						{#if importAvailable}
 							{@render importButton('min-h-10 max-sm:flex-1')}
 						{/if}
@@ -353,34 +441,69 @@
 							Add experience
 						</button>
 					</div>
-				</div>
-			{/if}
+				{/if}
+			</div>
 
 			<Filters experiences={allExperiences} bind:filters resultCount={experiences.length} />
 
-			{#each experiences as experience (String(experience._id))}
-				<Experience
-					{experience}
-					canEdit={isAdmin}
-					onEdit={() => openEditor(experience)}
-					{highlightSkill}
-					highlighted={highlightedId === String(experience._id)}
-				/>
-			{:else}
-				<div class="card preset-outlined-surface-200-800 space-y-3 p-6 text-center">
-					<p class="text-surface-700-300">No experience matches these filters.</p>
-					<button
-						type="button"
-						class="btn preset-tonal min-h-10"
-						onclick={() => (filters = emptyFilters())}
-					>
-						Clear filters
-					</button>
-				</div>
-			{/each}
+			{#if view === 'list'}
+				{#each experiences as experience (String(experience._id))}
+					<Experience
+						{experience}
+						canEdit={isAdmin}
+						onEdit={() => openEditor(experience)}
+						{highlightSkill}
+						highlighted={highlightedId === String(experience._id)}
+					/>
+				{:else}
+					<div class="card preset-outlined-surface-200-800 space-y-3 p-6 text-center">
+						<p class="text-surface-700-300">No experience matches these filters.</p>
+						<button
+							type="button"
+							class="btn preset-tonal min-h-10"
+							onclick={() => (filters = emptyFilters())}
+						>
+							Clear filters
+						</button>
+					</div>
+				{/each}
+			{/if}
 		{/if}
 	</div>
+
+	{#if view === 'timeline' && allExperiences.length > 0}
+		<!-- Wider than the list: the years need the room. Every experience is on it: the filters
+			make their projects stand out instead of hiding the others -->
+		<div class="mx-auto mt-4 w-full max-w-7xl">
+			<Timeline
+				experiences={allExperiences}
+				filters={active}
+				{previewSkill}
+				{selectedId}
+				onSelect={selectOnTimeline}
+			/>
+		</div>
+		<div class="mx-auto mt-4 w-full max-w-4xl">
+			{#if selectedExperience}
+				{#key selectedId}
+					<Experience
+						experience={selectedExperience}
+						canEdit={isAdmin}
+						onEdit={() => openEditor(selectedExperience)}
+						{highlightSkill}
+						highlighted={highlightedId === selectedId}
+						{revealedProject}
+					/>
+				{/key}
+			{/if}
+		</div>
+	{/if}
 </div>
+
+<!-- The projects behind a skill tag (or a bar of the timeline) while it is hovered or focused -->
+{#if allExperiences.length > 0}
+	<ProjectPreview experiences={allExperiences} onSkill={(key) => (previewSkill = key)} />
+{/if}
 
 {#if isAdmin && allExperiences.length > 0 && !toolbarVisible}
 	<button

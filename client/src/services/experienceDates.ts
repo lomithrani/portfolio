@@ -15,14 +15,14 @@ const monthFormat = new Intl.DateTimeFormat('en-US', {
 });
 
 /** A valid Date from a stored date, or undefined */
-function toDate(date: DateInput): Date | undefined {
+export function toDate(date: DateInput): Date | undefined {
 	if (date === undefined || date === null || date === '') return undefined;
 	const value = date instanceof Date ? date : new Date(date);
 	return Number.isNaN(value.getTime()) ? undefined : value;
 }
 
 /** Months since year 0 (UTC), to compare dates at month precision */
-const monthIndex = (date: Date) => date.getUTCFullYear() * 12 + date.getUTCMonth();
+export const monthIndex = (date: Date) => date.getUTCFullYear() * 12 + date.getUTCMonth();
 
 /** 'YYYY-MM' month key of a stored date (UTC), or undefined */
 export function toMonthKey(date: DateInput): string | undefined {
@@ -80,7 +80,9 @@ export type ExperiencePeriod = { start?: Date; end?: Date; ongoing: boolean };
  * Period of an experience: its own start/end when it has a start, else derived from its
  * projects (earliest start; end = latest end, or ongoing if a dated project has no end)
  */
-export function experiencePeriod(experience: Dated & { projects?: Dated[] }): ExperiencePeriod {
+export function experiencePeriod(
+	experience: Dated & { projects?: Dated[] | null }
+): ExperiencePeriod {
 	const start = toDate(experience.start);
 	if (start) {
 		const end = toDate(experience.end);

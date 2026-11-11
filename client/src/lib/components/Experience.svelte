@@ -21,7 +21,8 @@
 		canEdit = false,
 		onEdit,
 		highlightSkill = () => false,
-		highlighted = false
+		highlighted = false,
+		revealedProject = null
 	}: {
 		experience: ExperienceModel;
 		/** Shows the owner's Edit button */
@@ -31,6 +32,8 @@
 		highlightSkill?: (displayName: string) => boolean;
 		/** Briefly outlined after it was saved */
 		highlighted?: boolean;
+		/** Position of the project to outline briefly: the one picked on the timeline */
+		revealedProject?: number | null;
 	} = $props();
 
 	let id = $derived(String(experience._id));
@@ -153,9 +156,17 @@
 	{/if}
 
 	{#if experience.projects.length > 0}
-		<div class="ml-1 space-y-4 border-l-2 border-surface-200-800 pl-4">
+		<!-- Each project has its own vertical padding (see Project.svelte): 1rem between two -->
+		<div class="ml-1 space-y-1 border-l-2 border-surface-200-800 pl-4">
 			{#each experience.projects as project, index (String(project._id ?? index))}
-				<Project {project} experienceId={id} {highlightSkill} />
+				<div class="scroll-my-4" data-project-index={index}>
+					<Project
+						{project}
+						experienceId={id}
+						{highlightSkill}
+						revealed={revealedProject === index}
+					/>
+				</div>
 			{/each}
 		</div>
 	{/if}
