@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test';
 import {
 	API_URL,
 	JWT_SECRET,
@@ -99,6 +99,21 @@ const openEditor = async (page: Page) => {
 	await page.getByRole('tab', { name: 'Hiring journey' }).click();
 	await expect(editorSteps(page).first()).toBeVisible();
 };
+
+// A route of the API answered in the browser (page.route) is another origin's: the answer needs
+// the CORS headers the API would send, and its preflight an answer too
+const cors = (request: Request) => ({
+	'access-control-allow-origin': request.headers()['origin'] ?? '*',
+	'access-control-allow-credentials': 'true'
+});
+const preflight = (request: Request) => ({
+	status: 204,
+	headers: {
+		...cors(request),
+		'access-control-allow-methods': 'GET, POST',
+		'access-control-allow-headers': request.headers()['access-control-request-headers'] ?? ''
+	}
+});
 
 test.describe('the hiring journey', () => {
 	test('the owner asks recruiters to pick a job before booking', async ({ page }) => {
@@ -393,6 +408,83 @@ test.describe('the hiring journey', () => {
 		await expect(journeySteps(page)).toHaveCount(0);
 	});
 
+	test('the owner suggests a step they miss, sent to the project as a feature request', async ({
+		page
+	}) => {
+		await setJourney('meeting');
+		const SUGGESTIONS = `${API_URL}/workflow/step-suggestions`;
+		const section = page.getByRole('region', { name: 'Missing a step?' });
+
+		// This API has no GitHub token: it takes no suggestion, and the editor does not offer any
+		const answered = page.waitForResponse(
+			(response) => response.url() === SUGGESTIONS && response.request().method() === 'GET'
+		);
+		await openEditor(page);
+		expect(await (await answered).json()).toEqual({ enabled: false });
+		await expect(section).toHaveCount(0);
+
+		// With one (answered in the browser: no issue is ever filed on GitHub)
+		const sent: unknown[] = [];
+		await page.route(SUGGESTIONS, async (route) => {
+			const request = route.request();
+			const headers = cors(request);
+			if (request.method() === 'OPTIONS') return route.fulfill(preflight(request));
+			if (request.method() === 'GET') return route.fulfill({ json: { enabled: true }, headers });
+			sent.push(request.postDataJSON());
+			return sent.length === 1
+				? route.fulfill({
+						status: 429,
+						contentType: 'text/plain',
+						body: 'You can send 3 suggestions a day: try again tomorrow',
+						headers
+					})
+				: route.fulfill({ json: { created: true }, headers });
+		});
+		await openEditor(page);
+		await expect(section).toBeVisible();
+		const open = section.getByRole('button', { name: 'Suggest a step' });
+		await open.click();
+		const name = section.getByLabel('Name of the step');
+		await expect(name).toBeFocused();
+		await expect(section.getByText('on GitHub, which others can read')).toBeVisible();
+
+		// The rules are checked before anything is sent, and said at the field
+		const send = section.getByRole('button', { name: 'Send suggestion' });
+		await send.click();
+		await expect(name).toBeFocused();
+		await expect(name).toHaveAccessibleDescription('Give the step a name.');
+		await name.fill('  Share the salary range ');
+		await send.click();
+		const description = section.getByLabel('What would a recruiter do on it?');
+		await expect(description).toBeFocused();
+		await expect(section.getByText('Say what a recruiter would do on this step.')).toBeVisible();
+		expect(sent).toEqual([]);
+
+		// What the API refuses is said as it words it, and the text is kept
+		await description.fill('They give the range of the job before they can book.');
+		await send.click();
+		await expect(section.getByRole('alert')).toHaveText(
+			'You can send 3 suggestions a day: try again tomorrow'
+		);
+		await expect(description).toHaveValue('They give the range of the job before they can book.');
+
+		await section.getByLabel('Why would it help you?').fill('It saves a call.');
+		await send.click();
+		await expect(toasts(page).getByText('Suggestion sent')).toBeVisible();
+		const suggestion = {
+			name: 'Share the salary range',
+			description: 'They give the range of the job before they can book.'
+		};
+		expect(sent).toEqual([suggestion, { ...suggestion, reason: 'It saves a call.' }]);
+		// The form closes, empty for the next one, and the journey itself did not change
+		await expect(open).toBeFocused();
+		await open.click();
+		await expect(name).toHaveValue('');
+		await section.getByRole('button', { name: 'Cancel' }).click();
+		await expect(name).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Save journey' })).toBeDisabled();
+	});
+
 	test('a recruiter picks one of their open jobs, which opens the meeting step', async ({
 		page
 	}) => {
@@ -514,25 +606,11 @@ test.describe('the hiring journey', () => {
 	}) => {
 		await setJourney('job', 'meeting');
 		// GET and POST /jobs/import answered in the browser: Claude is never called
-		const cors = (origin: string | undefined) => ({
-			'access-control-allow-origin': origin ?? '*',
-			'access-control-allow-credentials': 'true'
-		});
 		let imports = 0;
 		await page.route(`${API_URL}/jobs/import`, async (route) => {
 			const request = route.request();
-			const headers = cors(request.headers()['origin']);
-			if (request.method() === 'OPTIONS') {
-				return route.fulfill({
-					status: 204,
-					headers: {
-						...headers,
-						'access-control-allow-methods': 'GET, POST',
-						'access-control-allow-headers':
-							request.headers()['access-control-request-headers'] ?? ''
-					}
-				});
-			}
+			const headers = cors(request);
+			if (request.method() === 'OPTIONS') return route.fulfill(preflight(request));
 			const quota = {
 				plan: 'free',
 				limit: 3,

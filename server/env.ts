@@ -67,6 +67,14 @@ export interface ServerEnv {
    * included and never given back (0 turns the feature off)
    */
   JOB_IMPORT_ATTEMPTS_PER_DAY: number;
+  /**
+   * GitHub token that files the steps portfolio owners suggest as issues
+   * (services/stepSuggestions.ts: issues write on GITHUB_ISSUES_REPO only);
+   * the feature is off without it. Secret: never logged, returned or traced
+   */
+  GITHUB_ISSUES_TOKEN?: string;
+  /** The repository those issues are filed in, as `owner/name` */
+  GITHUB_ISSUES_REPO: string;
   /** Serve OpenAPI docs (always outside production, opt-in with API_DOCS=true) */
   apiDocsEnabled: boolean;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
@@ -221,6 +229,9 @@ const parseMemoryLogInterval = (raw: string | undefined, problems: string[]): nu
 
 const DEFAULT_RESUME_IMPORT_MONTHLY_LIMIT = 3;
 const DEFAULT_RESUME_IMPORT_DAILY_LIMIT = 30;
+/** Where the steps owners suggest are filed, unless GITHUB_ISSUES_REPO says otherwise */
+const DEFAULT_GITHUB_ISSUES_REPO = 'lomithrani/portfolio';
+const GITHUB_REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 const DEFAULT_RESUME_IMPORT_ATTEMPTS_PER_DAY = 10;
 const DEFAULT_JOB_IMPORT_DAILY_LIMIT = 30;
 const DEFAULT_JOB_IMPORT_ATTEMPTS_PER_DAY = 10;
@@ -352,6 +363,19 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     'job description import'
   );
 
+  // Like the other secrets: a pasted value with quotes or spaces would only
+  // fail at the first suggestion, and the message never repeats it
+  const GITHUB_ISSUES_TOKEN = optional(source.GITHUB_ISSUES_TOKEN);
+  if (GITHUB_ISSUES_TOKEN && /[\s"']/.test(GITHUB_ISSUES_TOKEN)) {
+    problems.push('GITHUB_ISSUES_TOKEN must be the bare GitHub token (no quotes or spaces)');
+  }
+  const GITHUB_ISSUES_REPO = optional(source.GITHUB_ISSUES_REPO) ?? DEFAULT_GITHUB_ISSUES_REPO;
+  if (!GITHUB_REPOSITORY.test(GITHUB_ISSUES_REPO)) {
+    problems.push(
+      `GITHUB_ISSUES_REPO must be a GitHub repository as owner/name (got ${JSON.stringify(GITHUB_ISSUES_REPO)})`
+    );
+  }
+
   const OTEL_SDK_DISABLED = parseOtelBoolean('OTEL_SDK_DISABLED', source.OTEL_SDK_DISABLED, problems);
   const OTEL_TRACES_EXPORTER = parseOtelExporter('OTEL_TRACES_EXPORTER', source.OTEL_TRACES_EXPORTER, problems);
   const OTEL_METRICS_EXPORTER = parseOtelExporter('OTEL_METRICS_EXPORTER', source.OTEL_METRICS_EXPORTER, problems);
@@ -391,6 +415,8 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     RESUME_IMPORT_ATTEMPTS_PER_DAY,
     JOB_IMPORT_DAILY_LIMIT,
     JOB_IMPORT_ATTEMPTS_PER_DAY,
+    GITHUB_ISSUES_TOKEN,
+    GITHUB_ISSUES_REPO,
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',

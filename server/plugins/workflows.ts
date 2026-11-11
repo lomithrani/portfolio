@@ -1,8 +1,15 @@
 import Elysia from 'elysia';
 import type { WorkflowStep } from 'portfolio-common';
 import { userLogged } from './userLogged';
-import { domainNameParams, workflowRequest, workflowStepParams, workflowStepRequest } from '../models/elysia';
+import {
+  domainNameParams,
+  stepSuggestionRequest,
+  workflowRequest,
+  workflowStepParams,
+  workflowStepRequest
+} from '../models/elysia';
 import { sessionUserId } from '../services/session';
+import { stepSuggestionsEnabled, suggestStep } from '../services/stepSuggestions';
 import { journeyFor, journeySteps, portfolioOwner, saveJourneySteps, submitStep } from '../services/workflows';
 import type { JourneyDto } from '../services/workflows';
 
@@ -31,6 +38,15 @@ const workflowOwner = new Elysia()
       detail: { summary: 'Replace the steps of your hiring journey (ids, types and settings, in order)' }
     }
   )
+  // A step the owner misses, filed as a feature request in the project's
+  // GitHub repository (services/stepSuggestions.ts); off without a token
+  .get('/workflow/step-suggestions', () => ({ enabled: stepSuggestionsEnabled() }), {
+    detail: { summary: 'Whether this server takes step suggestions' }
+  })
+  .post('/workflow/step-suggestions', ({ userId, body }) => suggestStep(userId, body), {
+    body: stepSuggestionRequest,
+    detail: { summary: "Suggest a step for the hiring journey: filed as an issue in the project's GitHub repository" }
+  })
   .post(
     '/workflow/domains/:domainName/steps/:stepId',
     async ({ userId, params: { domainName, stepId }, body: { input } }): Promise<JourneyDto> =>

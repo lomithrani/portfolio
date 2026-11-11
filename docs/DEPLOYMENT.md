@@ -167,6 +167,8 @@ local development.
 | `AUTH_COOKIE_SAMESITE`         | no       | Leave unset (`strict`); see [Custom domains](#custom-domains-are-required-for-login)               |
 | `CLIENT_IP_HEADER`             | no       | Leave unset: on Railway it defaults to `X-Real-IP`. Set it only behind another proxy (see [Booking protection](#booking-protection)) |
 | `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé import (see [Résumé import](#résumé-import)) |
+| `GITHUB_ISSUES_TOKEN`          | for step suggestions | Fine-grained GitHub token with Issues write on one repository; sealed. Enables step suggestions (see [Step suggestions](#step-suggestions)) |
+| `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions are filed in, `owner/name`; leave unset (`lomithrani/portfolio`)         |
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
 | `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
 | `RESUME_IMPORT_ATTEMPTS_PER_DAY` | no     | Import attempts per user per UTC day, failed ones included; leave unset (`10`); `0` turns résumé import off |
@@ -400,6 +402,39 @@ portfolio-common), not by a variable: every recruiter is on the free plan, which
 imports for the lifetime of the account** (`users.recruiter.jobImportsUsed` counts them). Past them
 the API answers `402` ("Paid plans are coming soon"), without calling Claude. At the defaults the
 site spends at most 30 job imports a day (about $0.45), on top of the résumé imports.
+
+## Step suggestions
+
+In the admin tab "Hiring journey", a portfolio owner can suggest a step that does not exist yet
+("Missing a step? Suggest a step"): the API (`POST /workflow/step-suggestions`) files it as an
+issue labelled `enhancement` in the project's GitHub repository, with the operator's token, so
+owners need no GitHub account. The feature is **off until `GITHUB_ISSUES_TOKEN` is set**
+(`GET /workflow/step-suggestions` answers `enabled: false`, `POST` answers 404, and the editor
+does not show the form). The startup line `Running at ...` says `"stepSuggestions":"on (...)"` or
+why it is off.
+
+To turn it on:
+
+1. On GitHub, create a **fine-grained personal access token** (Settings → Developer settings →
+   Fine-grained tokens): resource owner = the repository's owner, repository access = **only**
+   the repository the issues go to, repository permissions = **Issues: Read and write** (GitHub
+   adds Metadata: Read-only), nothing else. Give it an expiration and note the date: once it
+   expires, suggestions answer 503 and the API logs `Step suggestion: GitHub did not create the
+   issue` at error level with `"status":401`.
+2. On the API service, add `GITHUB_ISSUES_TOKEN` (sealed) and deploy. A value with quotes or
+   spaces stops the deployment with `GITHUB_ISSUES_TOKEN must be the bare GitHub token ...`.
+3. Set `GITHUB_ISSUES_REPO` (`owner/name`) only to file the issues somewhere else than
+   `lomithrani/portfolio`.
+
+What an owner writes is untrusted and becomes public if the repository is: the form says so. In
+the issue, their text is only ever inside fenced code blocks (no mention notifies anyone, no
+link, image or HTML is rendered), control and invisible characters are removed, and the issue
+names nobody (no name, address or portfolio): the API's log line `Step suggestion filed` holds
+the user id and the issue number. Issues are capped at **3 per owner and 20 for the whole site
+per UTC day** (429 with `Retry-After`; constants of `server/services/stepSuggestions.ts`). A
+suggestion GitHub refused is given back to both limits; one GitHub did not answer in time is
+not (the issue may exist). The token is sent to `api.github.com` only, never follows a redirect,
+and never appears in a response or a log line (`tests/stepSuggestions.test.ts` fails if it does).
 
 ## Custom domains are required for login
 

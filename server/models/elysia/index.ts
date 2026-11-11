@@ -1,5 +1,11 @@
 export { experienceRequest } from "./experienceRequest.models";
-export { workflowRequest, workflowStepRequest, domainNameParams, workflowStepParams } from "./workflowRequest.models";
+export {
+  workflowRequest,
+  workflowStepRequest,
+  stepSuggestionRequest,
+  domainNameParams,
+  workflowStepParams
+} from "./workflowRequest.models";
 export { objectIdParams } from "./params.models";
 export { resumeImportRequest } from "./resumeImportRequest.models";
 export {

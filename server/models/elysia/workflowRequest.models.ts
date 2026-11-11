@@ -1,5 +1,5 @@
 import { t } from "elysia";
-import { WORKFLOW_LIMITS } from "portfolio-common";
+import { STEP_SUGGESTION_LIMITS, WORKFLOW_LIMITS } from "portfolio-common";
 
 // A step id is also a key of the progress stored per visitor: its pattern
 // (no dot, no dollar, no underscore) is checked before any route uses one
@@ -34,3 +34,14 @@ const domainName = t.String({ minLength: 1, maxLength: 253 });
 export const domainNameParams = t.Object({ domainName });
 
 export const workflowStepParams = t.Object({ domainName, stepId });
+
+// POST /workflow/step-suggestions: a step the owner would like to exist. The
+// rules are portfolio-common's parseStepSuggestion, checked by the route on
+// the trimmed text; the lengths here only leave room for the spaces around it
+const suggestionText = (max: number) => t.String({ maxLength: max * 2 });
+
+export const stepSuggestionRequest = t.Object({
+  name: suggestionText(STEP_SUGGESTION_LIMITS.name),
+  description: suggestionText(STEP_SUGGESTION_LIMITS.description),
+  reason: t.Optional(suggestionText(STEP_SUGGESTION_LIMITS.reason))
+});

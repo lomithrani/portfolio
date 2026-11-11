@@ -3,7 +3,7 @@
 The owner's hiring journey (GET, PUT /workflow): the steps recruiters go through on the Hire
 page, in the order chosen here. Steps are added from the step types of portfolio-common
 (stepManifests), moved, removed, and set with their type's settings form (the client's registry,
-components/hire/steps/). The journey is checked on every change with the rules the API enforces
+components/hire/steps/). A step that does not exist yet can be suggested (StepSuggestion.svelte). The journey is checked on every change with the rules the API enforces
 (parseWorkflow): what is wrong is said at the step and the setting it is about, and the journey
 cannot be saved until it is fixed.
 -->
@@ -37,6 +37,7 @@ cannot be saved until it is fixed.
 		withStepConfig
 	} from '#services/workflow.ts';
 	import { clientStep } from '#components/hire/steps/index.ts';
+	import StepSuggestion from './StepSuggestion.svelte';
 
 	let { domainName }: { domainName: string } = $props();
 
@@ -324,6 +325,8 @@ cannot be saved until it is fixed.
 				{/each}
 			</ul>
 		</section>
+
+		<StepSuggestion />
 
 		<p class="sr-only" aria-live="polite">{announcement}</p>
 

@@ -36,6 +36,7 @@ import { CALENDAR_SCOPE, RECONNECT_REQUIRED_MESSAGE } from '../services/googleCa
 import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
 import { jobImportAttemptsKey, jobImportCounters } from '../services/jobImport';
+import { stepSuggestionCounters, stepSuggestionOwnerKey } from '../services/stepSuggestions';
 import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
 import {
@@ -1655,6 +1656,29 @@ describe('no Google token in any API response', () => {
     ).toBe(200);
     expect((await call('GET', '/workflow', auth)).status).toBe(200);
     expect((await call('GET', `/workflow/domains/${sweepDomain}`, auth)).status).toBe(200);
+
+    // A step suggestion (tests/stepSuggestions.test.ts covers it): its request,
+    // to api.github.com, is answered here instead of by the fake Google
+    const savedIssuesToken = env.GITHUB_ISSUES_TOKEN;
+    const savedSuggestionKey = stepSuggestionCounters.globalKey;
+    env.GITHUB_ISSUES_TOKEN = 'github_pat_sweep_test_token';
+    stepSuggestionCounters.globalKey = `step-suggestion:global:${t.id('sweep')}`;
+    rateLimitKeys.add(stepSuggestionCounters.globalKey);
+    rateLimitKeys.add(stepSuggestionOwnerKey(sweep.userId));
+    try {
+      const fetchSpy = globalThis.fetch as unknown as Mock<(input: string | URL | Request) => Promise<Response>>;
+      fetchSpy.mockImplementationOnce(async () => Response.json({ number: 1 }, { status: 201 }));
+      expect((await call('GET', '/workflow/step-suggestions', auth)).status).toBe(200);
+      expect(
+        (await call('POST', '/workflow/step-suggestions', {
+          ...auth,
+          body: { name: 'Share the salary range', description: 'The recruiter gives the range.' }
+        })).status
+      ).toBe(200);
+    } finally {
+      env.GITHUB_ISSUES_TOKEN = savedIssuesToken;
+      stepSuggestionCounters.globalKey = savedSuggestionKey;
+    }
 
     // Résumé import (tests/resumeImport.test.ts covers it): its two requests,
     // to api.anthropic.com, are answered here instead of by the fake Google

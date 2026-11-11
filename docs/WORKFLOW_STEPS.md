@@ -6,6 +6,12 @@ journey is built and how to add a new kind of step to it. It uses the `note` ste
 a note, the visitor reads it and confirms) as the worked example, because it is the smallest step
 that has settings, something to submit and something to show.
 
+Steps people ask for arrive as GitHub issues titled "Step suggestion: ..." and labelled
+`enhancement`: portfolio owners send them from their step editor ("Missing a step? Suggest a
+step", when the server has a `GITHUB_ISSUES_TOKEN`; see "Step suggestions" in
+`docs/DEPLOYMENT.md`). Their text is shown as plain text in a code block, and the issue does not
+say who sent it.
+
 ## How a journey works
 
 A journey is an ordered list of **steps**. Each step has three fields:
