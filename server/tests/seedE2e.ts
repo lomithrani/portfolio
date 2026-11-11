@@ -4,7 +4,8 @@
 // for client/tests/resume-import.test.ts. client/tests/recruiter.test.ts and
 // client/tests/jobs-apply.test.ts sign in as the recruiter 'e2e.recruiter@example.com' (a
 // recruiter space, no domain) and as the owner of 'e2e-applicant', who applies or is added to the
-// applicants. Idempotent: safe to run against a seeded database.
+// applicants. client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
+// and goes through it as the e2e recruiter. Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose, { Types } from "mongoose";
 import { Domain, User } from "../models/database";
@@ -25,7 +26,8 @@ await mongoose.connect(mongoUrl);
 const owners = [
   { email: 'e2e.owner@example.com', name: 'Eve', surname: 'Owner', domain: 'e2e-owner' },
   { email: 'e2e.import@example.com', name: 'Ivy', surname: 'Importer', domain: 'e2e-import' },
-  { email: 'e2e.applicant@example.com', name: 'Ada', surname: 'Applicant', domain: 'e2e-applicant' }
+  { email: 'e2e.applicant@example.com', name: 'Ada', surname: 'Applicant', domain: 'e2e-applicant' },
+  { email: 'e2e.journey@example.com', name: 'Jay', surname: 'Journey', domain: 'e2e-journey' }
 ];
 
 for (const owner of owners) {

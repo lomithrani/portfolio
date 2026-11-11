@@ -45,7 +45,9 @@ describe('parseEnv', () => {
       RESUME_IMPORT_DAILY_LIMIT: 30,
       RESUME_IMPORT_ATTEMPTS_PER_DAY: 10,
       JOB_IMPORT_DAILY_LIMIT: 30,
-      JOB_IMPORT_ATTEMPTS_PER_DAY: 10
+      JOB_IMPORT_ATTEMPTS_PER_DAY: 10,
+      GITHUB_ISSUES_TOKEN: undefined,
+      GITHUB_ISSUES_REPO: 'lomithrani/portfolio'
     });
   });
 
@@ -127,6 +129,33 @@ describe('parseEnv', () => {
     expect(problems[0]).toContain('GOOGLE_CLIENT_SECRET');
     // The secret itself is never echoed into logs
     expect(problems[0]).not.toContain('abc');
+  });
+
+  describe('step suggestions', () => {
+    it('reads GITHUB_ISSUES_TOKEN trimmed, an empty one as unset, and the repository', () => {
+      expect(parseEnv({ ...base, GITHUB_ISSUES_TOKEN: '  ' }).GITHUB_ISSUES_TOKEN).toBeUndefined();
+      const parsed = parseEnv({ ...base, GITHUB_ISSUES_TOKEN: ' github_pat_11ABC_def ', GITHUB_ISSUES_REPO: ' octo-org/some.repo_1 ' });
+      expect(parsed.GITHUB_ISSUES_TOKEN).toBe('github_pat_11ABC_def');
+      expect(parsed.GITHUB_ISSUES_REPO).toBe('octo-org/some.repo_1');
+    });
+
+    it.each([
+      ['quoted', '"github_pat_topsecret"'],
+      ['with a space inside', 'github_pat topsecret']
+    ])('rejects a GITHUB_ISSUES_TOKEN %s, without repeating it', (_label, value) => {
+      const problems = problemsOf({ ...base, GITHUB_ISSUES_TOKEN: value });
+      expect(problems).toEqual(['GITHUB_ISSUES_TOKEN must be the bare GitHub token (no quotes or spaces)']);
+      expect(problems[0]).not.toContain('topsecret');
+    });
+
+    it.each(['portfolio', 'https://github.com/octo/portfolio', 'octo/portfolio/issues', 'octo/port folio', '-octo/portfolio', 'octo/../x', 'octo/..', 'octo/.'])(
+      'rejects a GITHUB_ISSUES_REPO that is not owner/name: %s',
+      (value) => {
+        expect(problemsOf({ ...base, GITHUB_ISSUES_REPO: value })).toEqual([
+          `GITHUB_ISSUES_REPO must be a GitHub repository as owner/name (got ${JSON.stringify(value)})`
+        ]);
+      }
+    );
   });
 
   describe('résumé import', () => {

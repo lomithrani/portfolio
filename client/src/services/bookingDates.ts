@@ -97,6 +97,11 @@ export interface AvailabilityFailure {
 	reloadSchedules: boolean;
 	/** Asking again may work */
 	retry: boolean;
+	/**
+	 * The hiring journey stopped the visitor: signed out (401), or a step before the meeting is
+	 * not done anymore (403, e.g. the job they picked was closed): the journey is out of date
+	 */
+	reloadJourney?: true;
 }
 
 /**
@@ -119,6 +124,17 @@ export function availabilityFailure(error: ApiError, fallback: string): Availabi
 			message: 'This meeting type is not available anymore.',
 			reloadSchedules: true,
 			retry: false
+		};
+	}
+	if (status === 401 || status === 403) {
+		return {
+			message:
+				status === 401
+					? 'Sign in to continue the hiring journey.'
+					: 'Complete the steps above first.',
+			reloadSchedules: false,
+			retry: false,
+			reloadJourney: true
 		};
 	}
 	// Rate limit: the API's message says how long to wait

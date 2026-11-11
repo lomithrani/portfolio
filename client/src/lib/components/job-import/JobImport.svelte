@@ -59,6 +59,7 @@ says so, with a link back to it.
 		onQuota,
 		refreshStatus,
 		pendingImport = null,
+		editorHref = resolve('/(app)/recruiter/jobs/new?import=1'),
 		finalFocusEl
 	}: {
 		/** Controlled by the page */
@@ -77,6 +78,11 @@ says so, with a link back to it.
 		refreshStatus: () => void;
 		/** The import kept in this browser, not saved as a posting yet: a new import replaces it */
 		pendingImport?: { fileName: string } | null;
+		/**
+		 * The job editor on the import kept in this browser, already resolve()d (the link back to
+		 * an unsaved import). Another page gives its own, e.g. with the way back to a hiring journey
+		 */
+		editorHref?: string;
 		/** Where the focus goes once the dialog closes (by default, what had it when it opened) */
 		finalFocusEl?: () => HTMLElement | null;
 	} = $props();
@@ -426,10 +432,8 @@ says so, with a link back to it.
 													>{replacing.fileName || 'a job description'}</span
 												>, and any changes you made to it.
 											</p>
-											<a
-												href={resolve('/(app)/recruiter/jobs/new?import=1')}
-												class="btn btn-sm preset-tonal min-h-9"
-											>
+											<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d by its page -->
+											<a href={editorHref} class="btn btn-sm preset-tonal min-h-9">
 												<PencilSquare size="16" aria-hidden="true" />
 												Continue editing it instead
 											</a>

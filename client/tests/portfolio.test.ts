@@ -204,7 +204,12 @@ test.describe('hire page calendar (appointment API stubbed in the browser)', () 
 		const slotRequests: string[] = [];
 		await page.route(`${API_URL}/appointments/**`, async (route) => {
 			const url = new URL(route.request().url());
-			const cors = { 'access-control-allow-origin': '*' };
+			// As the API answers: the page's origin, with credentials (the booking calls send the
+			// session, which the hiring journey checks)
+			const cors = {
+				'access-control-allow-origin': route.request().headers()['origin'] ?? '*',
+				'access-control-allow-credentials': 'true'
+			};
 			const json = (body: unknown) => route.fulfill({ json: body, headers: cors });
 			if (url.pathname === `/appointments/domains/${DOMAIN}/schedules`) return json(schedules);
 			const scheduleId = url.searchParams.get('scheduleId');

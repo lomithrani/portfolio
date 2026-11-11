@@ -500,17 +500,20 @@ describe('cross-site form bodies (real collections)', () => {
   });
 });
 
-describe('workflows (real collection)', () => {
-  it('persists a workflow and rejects an empty name', async () => {
+describe('hiring journey (real collection)', () => {
+  it('persists the journey and refuses a step that opens nothing', async () => {
     const owner = await login('owner');
+    expect(owner.result.status).toBe(200);
 
-    const created = await postWithCookie(app, '/workflows', workflowRequestBody, owner.cookie);
-    expect(created.status).toBe(200);
-    const workflow = await readJson(created);
-    expect(await Workflow.exists({ _id: workflow._id })).toBeTruthy();
+    const saved = await putWithCookie(app, '/workflow', workflowRequestBody, owner.cookie);
+    expect(saved.status).toBe(200);
+    expect(await readJson(saved)).toEqual(workflowRequestBody);
+    const stored = await Workflow.findOne({ user: owner.body.user._id }).lean();
+    expect(stored?.steps.map(({ id, type, config }) => ({ id, type, config }))).toEqual(workflowRequestBody.steps);
 
-    const empty = await postWithCookie(app, '/workflows', { name: '', enabled: true }, owner.cookie);
-    expect(empty.status).toBe(422);
+    const dangling = await putWithCookie(app, '/workflow', { steps: [workflowRequestBody.steps[0]] }, owner.cookie);
+    expect(dangling.status).toBe(422);
+    expect((await readJson(dangling)).property).toBe('steps.0');
 
     const isLogged = await getWithCookie(app, '/isLogged', owner.cookie);
     expect((await readJson(isLogged)).user.email).toBe(t.email('owner'));

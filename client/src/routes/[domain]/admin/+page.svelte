@@ -26,7 +26,7 @@
 			<div class="sticky top-0 z-10 bg-surface-50-950">
 				<Tabs.List>
 					<Tabs.Trigger value="appearance">Appearance</Tabs.Trigger>
-					<Tabs.Trigger value="workflows">Workflows</Tabs.Trigger>
+					<Tabs.Trigger value="workflows">Hiring journey</Tabs.Trigger>
 					<Tabs.Trigger value="appointments">Appointments</Tabs.Trigger>
 					<Tabs.Indicator />
 				</Tabs.List>
@@ -36,7 +36,7 @@
 					<CosmeticSettings />
 				</Tabs.Content>
 				<Tabs.Content value="workflows">
-					<WorkflowsTab />
+					<WorkflowsTab domainName={data.domainName} />
 				</Tabs.Content>
 				<Tabs.Content value="appointments">
 					<AppointmentsTab />

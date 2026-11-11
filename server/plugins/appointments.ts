@@ -54,6 +54,9 @@ import {
   reserveSlot
 } from '../services/appointmentBookings'
 import { clientAddress } from '../services/clientAddress'
+import { logger } from '../services/logger'
+import { sessionUserId } from '../services/session'
+import { journeySteps, openStepOfType, recordStepData } from '../services/workflows'
 import {
   computeAvailableSlotsByDate,
   isValidTimeZone,
@@ -211,12 +214,34 @@ const publicScheduleFields = (schedule: ScheduleDocument) => ({
   }))
 })
 
+const scheduleNotFound = () => new AppointmentScheduleNotFoundError('Schedule not found')
+
 const findEnabledSchedule = async (id: string) => {
   const schedule = await AppointmentSchedule.findById(id)
-  if (!schedule || !schedule.enabled) {
-    throw new AppointmentScheduleNotFoundError('Schedule not found')
-  }
+  if (!schedule || !schedule.enabled) throw scheduleNotFound()
   return schedule
+}
+
+/** The step type of the hiring journey these routes are behind (portfolio-common's meeting manifest) */
+const MEETING_STEP = 'meeting'
+
+/**
+ * The meeting step of the owner's hiring journey (services/workflows.ts),
+ * for the caller of an availability or booking route: 404 like a paused
+ * schedule when the journey has no meeting step, 401/403 while the steps
+ * before it did not succeed. Returns the step, with what the steps before
+ * it say for the invitation
+ */
+const openMeetingStep = async (schedule: ScheduleDocument, request: Request) => {
+  const visitorId = await sessionUserId(request)
+  const step = await openStepOfType(schedule.user, visitorId, MEETING_STEP, scheduleNotFound)
+  return { visitorId, step }
+}
+
+/** The web app the booking came from, when it is an allowed CORS origin: the only one the invitation links */
+const webOrigin = (request: Request) => {
+  const origin = request.headers.get('origin')
+  return origin && env.ALLOWED_DOMAINS.includes(origin) ? origin : undefined
 }
 
 // The YYYY-MM-DD pattern lets 2026-02-30 through
@@ -274,6 +299,9 @@ const appointmentsPublic = new Elysia()
       return []
     }
 
+    // Nor when the owner's hiring journey has no meeting step
+    if (!(await journeySteps(ownerId)).some((step) => step.type === MEETING_STEP)) return []
+
     const schedules = await AppointmentSchedule.find({ user: ownerId, enabled: true })
     return schedules.map(publicScheduleFields)
   })
@@ -291,6 +319,7 @@ const appointmentsPublic = new Elysia()
       await limitAvailabilityRequestsFromIp(clientAddress(request, server))
       assertCalendarDates(date)
       const schedule = await findEnabledSchedule(scheduleId)
+      await openMeetingStep(schedule, request)
       // Throws GoogleCalendarNotConnectedError (409) when the owner disconnected
       const calendar = await getCalendarClient(schedule.user)
       return await getAvailableSlotsForDate(calendar, schedule, date)
@@ -309,6 +338,7 @@ const appointmentsPublic = new Elysia()
       await limitAvailabilityRequestsFromIp(clientAddress(request, server))
       assertCalendarDates(from, to)
       const schedule = await findEnabledSchedule(scheduleId)
+      await openMeetingStep(schedule, request)
 
       const horizon = bookingHorizon(schedule)
       const first = from ?? horizon.first
@@ -340,6 +370,8 @@ const appointmentsPublic = new Elysia()
       await limitBookingRequestsFromIp(clientAddress(request, server))
 
       const schedule = await findEnabledSchedule(scheduleId)
+      // Before Google is asked anything: the steps before the meeting succeeded
+      const { visitorId, step } = await openMeetingStep(schedule, request)
 
       const slotStart = new Date(startTime)
       if (isNaN(slotStart.getTime())) {
@@ -356,6 +388,11 @@ const appointmentsPublic = new Elysia()
         throw new SlotUnavailableError('This slot is no longer available')
       }
 
+      // What the visitor did on the steps before the meeting (the job they
+      // picked): what the meeting is about. Before the slot is held, so a
+      // failure here leaves nothing behind
+      const journeyLines = await step.invitationLines(webOrigin(request))
+
       // Only now: a request for a taken slot or an unknown schedule must not
       // use up the quota of the address it names
       await limitBookingRequestsForEmail(email)
@@ -371,6 +408,7 @@ const appointmentsPublic = new Elysia()
 
       const description = [
         `Booked via portfolio by ${name} (${email})`,
+        ...journeyLines.map((line) => `\n${line}`),
         notes ? `\nNotes:\n${notes}` : ''
       ].join('')
       let event: calendar_v3.Schema$Event
@@ -393,6 +431,12 @@ const appointmentsPublic = new Elysia()
         throw error
       }
       await confirmBooking(bookingId, event.id)
+      // The meeting is booked whatever happens to this record: never answered as a failure
+      await recordStepData(schedule.user, visitorId, step.stepId, { bookedAt: new Date() }).catch((error: unknown) => {
+        logger.error('Could not record a booking in the hiring journey', {
+          errorName: error instanceof Error ? error.name : typeof error
+        })
+      })
 
       return {
         booked: true,
