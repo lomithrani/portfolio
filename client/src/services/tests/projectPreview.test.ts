@@ -112,6 +112,22 @@ describe('projectPreview', () => {
 		expect(projectPreview(maintainer, 0, NOW)?.period).toBe('');
 	});
 
+	it('stops a project without an end with its experience, when that one ended', () => {
+		const ended = {
+			_id: 'ccc',
+			title: 'Backend Engineer',
+			start: utc('2018-01'),
+			end: utc('2020-12'),
+			projects: [
+				{ name: 'Left open', start: utc('2019-06'), hardSkills: skills(['Go']), softSkills: [] }
+			]
+		};
+
+		expect(projectPreview(ended, 0, NOW)?.period).toBe('Jun 2019 – Dec 2020 · 1 yr 7 mos');
+		expect(experiencePreview(ended, NOW).entries[0].period).toBe('Jun 2019 – Dec 2020');
+		expect(skillPreview([ended], 'go')?.entries[0].period).toBe('Jun 2019 – Dec 2020');
+	});
+
 	it('is nothing for a position without a project', () => {
 		expect(projectPreview(staff, 5, NOW)).toBeUndefined();
 	});

@@ -104,6 +104,17 @@ export function experiencePeriod(
 	return ongoing ? { start: earliest, ongoing } : { start: earliest, end: latest, ongoing };
 }
 
+/**
+ * When a project of an experience (of this period) ended: its own end; without one it stopped
+ * with its experience when that one ended, never before it began. Undefined while it is ongoing.
+ */
+export function projectEnd(project: Dated, period: ExperiencePeriod): Date | undefined {
+	const end = toDate(project.end);
+	if (end || period.ongoing || !period.end) return end;
+	const start = toDate(project.start);
+	return start && start > period.end ? start : period.end;
+}
+
 /** Sort for display: ongoing first, then by end desc, then start desc; undated last; stable */
 export function sortExperiences<T extends Parameters<typeof experiencePeriod>[0]>(
 	experiences: T[]

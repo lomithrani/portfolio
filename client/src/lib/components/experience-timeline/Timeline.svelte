@@ -3,7 +3,7 @@
 	import { ExperienceType } from 'portfolio-common';
 	import { AcademicCap, Briefcase, Heart, User } from 'svelte-heros-v2';
 	import { buildTimeline, placeSpan, timelineMinWidth } from '#services/timeline.ts';
-	import { experiencePeriod, formatMonthRange } from '#services/experienceDates.ts';
+	import { experiencePeriod, formatMonthRange, projectEnd } from '#services/experienceDates.ts';
 	import { projectMatchesFilters, type ExperienceFilters } from '#services/filters.ts';
 	import { previewTarget } from '#services/projectPreview.ts';
 	import { experienceTypeLabels } from '#components/experience-list/experienceList.ts';
@@ -181,8 +181,10 @@
 											>
 												<span class="bar-label">{entry.project.name}</span>
 												<span class="sr-only">
-													, {formatMonthRange(entry.project.start, entry.project.end) ||
-														'no dates'}{#if matched}, uses the selected skills{/if}
+													, {formatMonthRange(
+														entry.project.start,
+														projectEnd(entry.project, experiencePeriod(experience))
+													) || 'no dates'}{#if matched}, uses the selected skills{/if}
 												</span>
 											</button>
 										</li>
@@ -263,7 +265,9 @@
 	.bar {
 		display: flex;
 		align-items: center;
-		min-width: 0.75rem;
+		/* A bar keeps to its months, however few: its label is cut at its edge (clip, not hidden:
+			the label stays sticky to the timeline's scroll), so a short bar never covers the next */
+		overflow: clip;
 		border-radius: var(--radius-base, 0.375rem);
 		cursor: pointer;
 		text-align: left;

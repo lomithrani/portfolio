@@ -3,6 +3,7 @@ import {
 	request as playwrightRequest,
 	test,
 	type APIRequestContext,
+	type Locator,
 	type Page
 } from '@playwright/test';
 import {
@@ -23,6 +24,10 @@ import {
 // by default: keep it that way).
 
 const DOMAIN = 'e2e-owner';
+
+/** The colour painted behind an element: a project that stands out is seen, not only marked */
+const background = (locator: Locator) =>
+	locator.evaluate((element) => getComputedStyle(element).backgroundColor);
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e owner');
 
@@ -343,6 +348,7 @@ test.describe('filters', () => {
 
 		await gotoHydrated(page, `/${DOMAIN}/experiences`);
 		await expect(projectOf('Streams')).not.toHaveAttribute('data-matched');
+		expect(await background(projectOf('Streams'))).toBe(await background(projectOf('Billing')));
 
 		await page
 			.getByRole('region', { name: 'Filter experiences' })
@@ -350,6 +356,13 @@ test.describe('filters', () => {
 			.click();
 		await expect(projectOf('Streams')).toHaveAttribute('data-matched');
 		await expect(projectOf('Billing')).not.toHaveAttribute('data-matched');
+		// It is tinted, the other is not
+		await expect
+			.poll(
+				async () =>
+					(await background(projectOf('Streams'))) !== (await background(projectOf('Billing')))
+			)
+			.toBe(true);
 	});
 });
 
@@ -468,9 +481,15 @@ test.describe('timeline view', () => {
 				async () => (await boxOf(page, 'Streams')).height - (await boxOf(page, 'Billing')).height
 			)
 			.toBeGreaterThan(4);
+		// And filled, which the others are not
+		const filled = async () =>
+			(await background(projectBar(page, 'Streams'))) !==
+			(await background(projectBar(page, 'Billing')));
+		await expect.poll(filled).toBe(true);
 
 		await filters.getByRole('button', { name: 'Clear filters' }).click();
 		await expect(timeline(page).locator('[data-matched]')).toHaveCount(0);
+		await expect.poll(filled).toBe(false);
 		await expect
 			.poll(
 				async () => (await boxOf(page, 'Streams')).height - (await boxOf(page, 'Billing')).height
@@ -569,6 +588,7 @@ test.describe('hovering a skill tag', () => {
 		await filters.getByRole('button', { name: 'Go', exact: true }).focus();
 		await page.keyboard.press('Tab');
 		await expect(kafka).toBeFocused();
+		await expect(preview).toBeVisible();
 		await expect(preview).toContainText('Used in 2 projects');
 		await expect(kafka).toHaveAttribute('aria-describedby', (await preview.getAttribute('id'))!);
 		// Pressing the tag filters, and gets its preview out of the way
@@ -618,6 +638,7 @@ test.describe('hovering a skill tag', () => {
 
 		await gotoHydrated(page, `/${DOMAIN}/experiences`);
 		await card(page, title).getByText('Kafka', { exact: true }).tap();
+		await expect(preview).toBeVisible();
 		await expect(preview).toContainText('Used in 1 project');
 		// It fits the screen
 		const box = await preview.boundingBox();

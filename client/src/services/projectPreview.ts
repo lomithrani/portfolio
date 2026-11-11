@@ -1,4 +1,9 @@
-import { experiencePeriod, formatDuration, formatMonthRange } from '#services/experienceDates.ts';
+import {
+	experiencePeriod,
+	formatDuration,
+	formatMonthRange,
+	projectEnd
+} from '#services/experienceDates.ts';
 import { normalizeSkill, projectMatchesFilters, skillOptions } from '#services/filters.ts';
 
 // The preview shown while a skill tag (or a bar of the timeline) is hovered or focused: a short
@@ -68,6 +73,13 @@ const experienceContext = (experience: PreviewedExperience) =>
 const periodWithDuration = (start: Dated['start'], end: Dated['end'], now: Date) =>
 	joined(formatMonthRange(start, end), formatDuration(start, end, now));
 
+/**
+ * The months of a project, as the timeline draws it: one without an end stopped with its
+ * experience when that one ended (see projectEnd), it is not "Present"
+ */
+const projectMonths = (project: PreviewedProject, experience: PreviewedExperience) =>
+	formatMonthRange(project.start, projectEnd(project, experiencePeriod(experience)));
+
 const noSkills = () => ({ hard: [], soft: [] });
 
 /** The projects using a skill (by key, see normalizeSkill), in the experiences' order */
@@ -80,7 +92,7 @@ export function skillPreview(experiences: PreviewedExperience[], key: string): P
 			entries.push({
 				name: project.name?.trim() ?? '',
 				context: experienceContext(experience),
-				period: formatMonthRange(project.start, project.end)
+				period: projectMonths(project, experience)
 			});
 		}
 	}
@@ -109,7 +121,11 @@ export function projectPreview(
 		kind: 'project',
 		title: project.name?.trim() ?? '',
 		caption: experienceContext(experience),
-		period: periodWithDuration(project.start, project.end, now),
+		period: periodWithDuration(
+			project.start,
+			projectEnd(project, experiencePeriod(experience)),
+			now
+		),
 		entries: [],
 		skills: { hard: skillNames(project.hardSkills), soft: skillNames(project.softSkills) }
 	};
@@ -129,7 +145,7 @@ export function experiencePreview(
 		entries: (experience.projects ?? []).map((project) => ({
 			name: project.name?.trim() ?? '',
 			context: '',
-			period: formatMonthRange(project.start, project.end)
+			period: projectMonths(project, experience)
 		})),
 		skills: noSkills()
 	};

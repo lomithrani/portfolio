@@ -216,6 +216,48 @@ describe('buildTimeline', () => {
 		});
 	});
 
+	it('gives one month to a project without an end that starts after its experience ended', () => {
+		const job = itemOf(
+			build(experience('Job', '2018-01', '2020-12', [project('Afterthought', '2021-03')])),
+			'Job'
+		);
+
+		expect(job.projects[0]).toMatchObject({
+			ongoing: false,
+			span: { start: m('2021-03'), end: m('2021-04') }
+		});
+		expect(
+			build(experience('Job', '2018-01', '2020-12', [project('Afterthought', '2021-03')])).today
+		).toBeUndefined();
+	});
+
+	it('starts a project that only has an end with its experience', () => {
+		const job = itemOf(
+			build(experience('Job', '2020-09', undefined, [project('Handover', undefined, '2021-02')])),
+			'Job'
+		);
+
+		expect(job.projects[0]).toMatchObject({
+			undated: true,
+			ongoing: false,
+			span: { start: m('2020-09'), end: m('2021-03') }
+		});
+	});
+
+	it('gives its first month to what is ongoing but starts later', () => {
+		const later = experience('Next job', '2027-03');
+		const alone = build(later);
+		expect(itemOf(alone, 'Next job').span).toEqual({ start: m('2027-03'), end: m('2027-04') });
+		// The current month is before the axis: no line for it
+		expect([alone.start, alone.end]).toEqual([m('2027-01'), m('2028-01')]);
+		expect(alone.today).toBeUndefined();
+
+		// With something running now, the line is on the axis and the later job after it
+		const both = build(experience('Job', '2024-01'), later);
+		expect(both.today).toBe(m('2026-12'));
+		expect(itemOf(both, 'Next job').span.start).toBeGreaterThan(both.today!);
+	});
+
 	it('widens an experience to the projects that run past its own dates', () => {
 		const job = itemOf(
 			build(experience('Job', '2019-01', '2020-12', [project('Early', '2018-10', '2019-03')])),
@@ -269,6 +311,18 @@ describe('buildTimeline', () => {
 		expect(long.years.filter((year) => year.labelled).map((year) => year.year)).toEqual([
 			2002, 2004, 2006, 2008, 2010, 2012, 2014, 2016, 2018, 2020
 		]);
+	});
+
+	it('keeps the year lines few, however far apart the dates are', () => {
+		const century = build(experience('Job', '1901-03', '2020-11'));
+		expect(century.years.map((year) => year.year)).toEqual([
+			1910, 1920, 1930, 1940, 1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020
+		]);
+		expect(century.years.every((year) => year.labelled)).toBe(true);
+
+		const absurd = build(experience('Typo', '0100-01', '9999-12'));
+		expect(absurd.years.length).toBeLessThanOrEqual(13);
+		expect(absurd.years[0]).toEqual({ year: 1000, month: 12000, labelled: true });
 	});
 
 	it('is empty without dated experiences', () => {

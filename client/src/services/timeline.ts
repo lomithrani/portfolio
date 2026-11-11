@@ -1,5 +1,5 @@
 import { ExperienceType } from 'portfolio-common';
-import { experiencePeriod, monthIndex, toDate } from '#services/experienceDates.ts';
+import { experiencePeriod, monthIndex, projectEnd, toDate } from '#services/experienceDates.ts';
 
 // The timeline view of the experiences page: experiences and their projects as bars over a
 // time axis. Everything has month precision (see experienceDates.ts) and is counted in months
@@ -40,7 +40,7 @@ export type TimelineProject<P> = {
 	index: number;
 	span: MonthSpan;
 	ongoing: boolean;
-	/** No start of its own: drawn over its experience's whole period */
+	/** No start of its own: drawn from its experience's start (over all of it without an end) */
 	undated: boolean;
 	/** Row inside its experience: projects that overlap get rows of their own */
 	row: number;
@@ -59,6 +59,7 @@ export type TimelineExperience<E, P> = {
 	projectRows: number;
 };
 
+/** A year line of the axis: every year, or only the labelled ones on a very long axis */
 export type TimelineYear = { year: number; month: number; labelled: boolean };
 
 export type Timeline<E, P> = {
@@ -125,16 +126,33 @@ function drawnEnds(intervals: Placed[], rows: number[]): number[] {
 const byStartThenLength = (intervals: Placed[]) => (a: number, b: number) =>
 	intervals[a].start - intervals[b].start || intervals[b].last - intervals[a].last || a - b;
 
-/** Years to label so the labels keep some room: every year up to 12, then every 2, 5 or 10 */
-const yearStep = (years: number) => (years <= 12 ? 1 : years <= 24 ? 2 : years <= 60 ? 5 : 10);
+/**
+ * Years to label so the labels keep some room: every year up to 12, then every 2 or 5, then the
+ * round step (10, 20, 50, 100…) that leaves at most 12 labels
+ */
+function yearStep(years: number): number {
+	if (years <= 12) return 1;
+	if (years <= 24) return 2;
+	if (years <= 60) return 5;
+	for (let magnitude = 10; ; magnitude *= 10) {
+		for (const factor of [1, 2, 5]) {
+			if (years <= 12 * factor * magnitude) return factor * magnitude;
+		}
+	}
+}
+
+/** Up to this many years, each has a line; a longer axis only has the labelled ones */
+const YEARLY_LINES = 60;
 
 /**
  * Lays the experiences out over time.
  *
- * - An experience without a start takes its period from its projects; without any date it is
- *   listed apart (`undated`).
- * - An ongoing experience or project runs to the current month. A project without an end stops
- *   with its experience when that one ended; a project without a start covers its experience.
+ * - An experience without a start takes its period from its projects' starts; when they have
+ *   none either it cannot be placed and is listed apart (`undated`), even with an end.
+ * - An ongoing experience or project runs to the current month (one starting later takes its
+ *   first month). A project without an end stops with its experience when that one ended (see
+ *   projectEnd); a project without a start begins with its experience, and covers it unless it
+ *   has an end.
  * - Experiences that overlap get lanes of their own (jobs first, so a career stays on the top
  *   lane), and so do overlapping projects inside an experience. Ending the month the next one
  *   starts is not an overlap.
@@ -169,24 +187,32 @@ export function buildTimeline<E extends SourceExperience>(
 		const projects = (experience.projects ?? []).map((project: P, index) => {
 			const projectStart = toDate(project.start);
 			if (!projectStart) {
+				// No start: it began with its experience, and lasted as long unless it has an end
+				const ownEnd = toDate(project.end);
 				return {
 					project,
 					index,
-					placed: { start, last, floor: start },
-					ongoing: period.ongoing,
+					placed: {
+						start,
+						last: ownEnd ? Math.max(start, monthIndex(ownEnd)) : last,
+						floor: start
+					},
+					ongoing: !ownEnd && period.ongoing,
 					undated: true
 				};
 			}
 			const from = monthIndex(projectStart);
-			const projectEnd = toDate(project.end);
 			// No end: ongoing, unless its experience ended (then it stopped with it)
-			const ongoing = !projectEnd && (period.ongoing || last < from);
-			const to = projectEnd ? monthIndex(projectEnd) : ongoing ? nowMonth : last;
+			const end = projectEnd(project, period);
 			return {
 				project,
 				index,
-				placed: { start: from, last: Math.max(from, to), floor: from },
-				ongoing,
+				placed: {
+					start: from,
+					last: Math.max(from, end ? monthIndex(end) : nowMonth),
+					floor: from
+				},
+				ongoing: !end,
 				undated: false
 			};
 		});
@@ -250,16 +276,20 @@ export function buildTimeline<E extends SourceExperience>(
 
 	const start = Math.floor(Math.min(...items.map((item) => item.extent.start)) / 12) * 12;
 	const end = Math.ceil(Math.max(...items.map((item) => item.extent.end)) / 12) * 12;
-	const step = yearStep((end - start) / 12);
+	const span = (end - start) / 12;
+	const step = yearStep(span);
+	// However far apart the dates are, the axis has a bounded number of lines
+	const every = span <= YEARLY_LINES ? 1 : step;
 	const years: TimelineYear[] = [];
-	for (let month = start; month < end; month += 12) {
-		const year = month / 12;
-		years.push({ year, month, labelled: year % step === 0 });
+	for (let year = Math.ceil(start / 12 / every) * every; year * 12 < end; year += every) {
+		years.push({ year, month: year * 12, labelled: year % step === 0 });
 	}
 	const anyOngoing = items.some(
 		(item) => item.ongoing || item.projects.some((project) => project.ongoing)
 	);
-	const today = anyOngoing && nowMonth + 1 <= end ? nowMonth + 1 : undefined;
+	// The current month is marked when something runs to it; not when everything starts later
+	const today =
+		anyOngoing && nowMonth + 1 > start && nowMonth + 1 <= end ? nowMonth + 1 : undefined;
 
 	return { start, end, years, today, lanes: lanes.count, items, undated };
 }
