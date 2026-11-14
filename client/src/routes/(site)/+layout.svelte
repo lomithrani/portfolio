@@ -42,7 +42,10 @@
 		if (isCurrentSection(pathname, '/account')) {
 			return { title: 'Your account', subtitle: 'Your data, the terms you accepted, deletion' };
 		}
-		return { title: 'Portfolio', subtitle: 'Your career on one page, at an address that is yours' };
+		return {
+			title: 'Portfolio',
+			subtitle: 'Your portfolio, your way. Hiring without the back-and-forth.'
+		};
 	});
 
 	const linkClass = (current: boolean) =>

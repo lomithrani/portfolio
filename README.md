@@ -3,12 +3,14 @@
 Personal portfolio: a SvelteKit web app backed by an Elysia API and MongoDB, in one Bun workspace,
 deployed on [Railway](https://railway.com).
 
-Candidates get a public portfolio of their experiences and projects at an address of their own
-(`/<name>/experiences`, with a timeline and skill filters) and a hiring journey recruiters go
-through before booking a meeting; recruiters publish job descriptions candidates apply to. The
-home page (`/`) is the candidate landing page: it previews the address and checks it is free as
-you type, then walks through three steps (sign in with Google after confirming your age and
-accepting the terms, claim the address, import a PDF résumé). Legal notice, privacy policy, terms
+Candidates get a public portfolio of their experiences and projects that they make their own
+(`/<name>/experiences`: a theme, a list or a timeline, skill filters) and a hiring journey
+recruiters go through before booking a meeting (a note to read, the job to share, its score
+against what the candidate is looking for); recruiters publish job descriptions candidates apply
+to. The home page (`/`) is the candidate landing page: it shows both with two short recordings of
+the app, previews the portfolio's address and checks it is free as you type, then walks through
+three steps (sign in with Google after confirming your age and accepting the terms, claim the
+address, import a PDF résumé). Legal notice, privacy policy, terms
 and cookies are at `/legal` (French with `?lang=fr`); each account can delete itself at `/account`.
 
 ```
