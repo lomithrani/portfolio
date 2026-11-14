@@ -24,6 +24,10 @@ by itself: the button plays it. Without JavaScript it is its first frame.
 		caption: string;
 	} = $props();
 
+	/** The share of the recording in sight from which it plays: its button, under it, can be in
+	 * sight with little of the recording */
+	const ON_SCREEN = 0.25;
+
 	let video: HTMLVideoElement | undefined = $state();
 	/** Whether the recording should play when it is on screen: the visitor's choice */
 	let wanted = $state(true);
@@ -36,11 +40,11 @@ by itself: the button plays it. Without JavaScript it is its first frame.
 		ready = true;
 		wanted = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 		const observer = new IntersectionObserver(
+			// The ratio, not `isIntersecting`: some browsers set that one for any overlap
 			([entry]) => {
-				visible = entry.isIntersecting;
+				visible = entry.intersectionRatio >= ON_SCREEN;
 			},
-			// A quarter of it: its button, under it, can be in sight with little of the recording
-			{ threshold: 0.25 }
+			{ threshold: ON_SCREEN }
 		);
 		observer.observe(video);
 		return () => observer.disconnect();
@@ -49,10 +53,11 @@ by itself: the button plays it. Without JavaScript it is its first frame.
 	$effect(() => {
 		if (!video) return;
 		if (wanted && visible) {
-			// Refused by a browser that blocks autoplay: the button still plays it. Interrupted by
-			// leaving the screen while it loads (AbortError): it starts again when it comes back
+			// Interrupted by leaving the screen while it loads (AbortError): it starts again when it
+			// comes back. Anything else (autoplay blocked, a recording that could not be loaded or
+			// read): it stays on its first frame, and the button offers to play it again
 			video.play().catch((error: unknown) => {
-				if (error instanceof DOMException && error.name === 'NotAllowedError') wanted = false;
+				if (!(error instanceof DOMException && error.name === 'AbortError')) wanted = false;
 			});
 		} else {
 			video.pause();

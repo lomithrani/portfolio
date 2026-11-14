@@ -420,8 +420,14 @@
 {#snippet whatRecruitersSee()}
 	<p>
 		The score of their job and the minimum you set. If you allow it, they also see how the job does
-		on each criterion (it matches, partly, or not), never what you asked for or how much it matters
-		to you. The address you give for your commute is never shown to anyone.
+		on each criterion (it matches, partly, or not) and which of your deal-breakers it misses, never
+		what you asked for or how much the other criteria matter to you.
+	</p>
+	<p>
+		Recruiters never see the address you give for your commute. To find it and compute travel times,
+		it is sent to the Géoplateforme of IGN, the French state's map service, without your name or
+		your account. Details in the
+		<a href={resolve('/(site)/legal/privacy')} class={linkClass}>privacy policy</a>.
 	</p>
 {/snippet}
 

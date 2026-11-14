@@ -9,6 +9,8 @@
 //   bun scripts/landing-demos/seed.mjs           # from client/: the fictional candidate and recruiter
 //   bun scripts/landing-demos/record.mjs         # needs ffmpeg with libvpx-vp9 and libx264
 //
+// With an API whose JWT_SECRET is not server/.env.example's, pass it to both scripts
+// (JWT_SECRET=... bun scripts/...): they sign the sessions of the two fictional accounts with it.
 // DEMO_CHROMIUM is the browser to launch when Playwright's own is not installed. Google is never
 // reached; the travel times are the API's (Géoplateforme), cached after the first run.
 import os from 'node:os';
@@ -88,7 +90,9 @@ const style = async () => {
 /** A recruiter goes through the journey with a job too far away: the commute is a deal-breaker */
 const journey = async () => {
 	// The recruiter starts the journey again
-	mongo(`db.workflowinstances.deleteMany({ owner: ObjectId('${JANE}') })`);
+	mongo(
+		`db.workflowinstances.deleteMany({ owner: ObjectId('${JANE}'), visitor: ObjectId('${SAM}') })`
+	);
 	const page = await phone(SAM);
 	await page.goto(`${WEB}/jane.doe/hire`, { waitUntil: 'networkidle' });
 	await page.waitForTimeout(600);
