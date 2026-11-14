@@ -110,7 +110,7 @@ test.describe('landing page, signed out', () => {
 		const response = await gotoHydrated(page, '/');
 
 		expect(response?.status()).toBe(200);
-		await expect(page).toHaveTitle('Your career on one page | Portfolio');
+		await expect(page).toHaveTitle('Your portfolio, your way | Portfolio');
 		await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
 			'content',
 			/\/og-image\.png$/
@@ -121,7 +121,7 @@ test.describe('landing page, signed out', () => {
 		);
 		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/$/);
 		await expect(
-			page.getByRole('heading', { level: 2, name: /Your career on one page/ })
+			page.getByRole('heading', { level: 2, name: /Your portfolio, your way/ })
 		).toBeVisible();
 		await expect(page.getByRole('link', { name: 'See an example' })).toHaveAttribute(
 			'href',
@@ -200,6 +200,57 @@ test.describe('landing page, signed out', () => {
 
 		await page.getByRole('link', { name: 'Create your portfolio' }).first().click();
 		await expect(addressField(page)).toBeFocused();
+	});
+
+	test('a demo loads and plays once it is on screen, and its button pauses it', async ({
+		page
+	}) => {
+		await stubGoogle(page);
+		const recordings: string[] = [];
+		page.on('request', (request) => {
+			if (/\/landing\/[^/]+\.(webm|mp4)$/.test(request.url())) recordings.push(request.url());
+		});
+		await gotoHydrated(page, '/');
+
+		const demo = page.getByLabel(/^Recording: a recruiter/);
+		const figure = page.locator('[data-demo]', { has: demo });
+		await expect(demo).toHaveAttribute('poster', /\/landing\/demo-journey\.jpg$/);
+		expect((await page.request.get('/landing/demo-journey.jpg')).ok()).toBe(true);
+		// Under the hero: nothing is downloaded for it yet
+		expect(recordings).toEqual([]);
+
+		await demo.scrollIntoViewIfNeeded();
+		await expect
+			.poll(() =>
+				demo.evaluate((video: HTMLVideoElement) => !video.paused && video.currentTime > 0)
+			)
+			.toBe(true);
+		expect(recordings.some((url) => url.includes('/landing/demo-journey.'))).toBe(true);
+
+		await figure.getByRole('button', { name: 'Pause the demo' }).click();
+		await expect.poll(() => demo.evaluate((video: HTMLVideoElement) => video.paused)).toBe(true);
+		await expect(figure.getByRole('button', { name: 'Play the demo' })).toBeVisible();
+	});
+
+	test('with reduced motion a demo does not start by itself', async ({ page }) => {
+		await stubGoogle(page);
+		await page.emulateMedia({ reducedMotion: 'reduce' });
+		await gotoHydrated(page, '/');
+
+		const demo = page.getByLabel(/^Recording: the experiences page/);
+		const figure = page.locator('[data-demo]', { has: demo });
+		await demo.scrollIntoViewIfNeeded();
+		await expect(figure.getByRole('button', { name: 'Play the demo' })).toBeVisible();
+		expect(await demo.evaluate((video: HTMLVideoElement) => video.paused)).toBe(true);
+
+		await figure.getByRole('button', { name: 'Play the demo' }).click();
+		// Clicking scrolled to the button: the recording plays while enough of it is on screen
+		await demo.scrollIntoViewIfNeeded();
+		await expect
+			.poll(() =>
+				demo.evaluate((video: HTMLVideoElement) => !video.paused && video.currentTime > 0)
+			)
+			.toBe(true);
 	});
 });
 

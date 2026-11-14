@@ -622,7 +622,7 @@ with a free name) and tell its owner before deploying.
    curl -i https://api.example.com/health      # 200 OK
    curl -i https://example.com/healthz         # 200 ok
    curl -s -o /dev/null -w '%{http_code}\n' https://example.com/   # 200 (the landing page, no redirect)
-   curl -s https://example.com/ | grep -o '<title>[^<]*</title>'    # <title>Your career on one page | Portfolio</title>
+   curl -s https://example.com/ | grep -o '<title>[^<]*</title>'    # <title>Your portfolio, your way | Portfolio</title>
    curl -s https://example.com/legal | grep -c 'Publisher details are not configured yet'   # 0 once LEGAL_* are set
    curl -s https://api.example.com/domain/louis.gentil/availability   # {"name":"louis.gentil","available":false,"reason":"taken"}
    curl -si -H 'Origin: https://example.com' https://api.example.com/domain/louis.gentil \
