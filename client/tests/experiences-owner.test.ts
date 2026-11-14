@@ -635,6 +635,100 @@ test.describe("the timeline's zoom", () => {
 		await expect(zoomOut).toBeEnabled();
 	});
 
+	test('opens on its last bar, however long the axis runs after it', async ({ page }) => {
+		const title = `Backend Engineer ${tag}`;
+		// Ended in February: the axis goes on to the end of that year, ten months at 120 px each
+		await createExperience({
+			title,
+			start: month('2019-01'),
+			end: month('2023-02'),
+			projects: [
+				project('Platform', ['Go'], [], ['2019-01', '2022-12']),
+				project('Handover', ['Go'], [], ['2023-02', '2023-02'])
+			]
+		});
+		const handover = page.locator('[data-timeline-project]').filter({ hasText: 'Handover' });
+
+		await page.setViewportSize({ width: 390, height: 844 });
+		await gotoHydrated(page, `/${DOMAIN}/experiences?view=timeline`);
+		await expect.poll(() => widthOf(handover)).toBeGreaterThan(117);
+		await expect(handover).toBeInViewport({ ratio: 1 });
+		expect(await fits(page)).toBe(false);
+	});
+
+	test('opens on a bar planned after the current month, not on the current month', async ({
+		page
+	}) => {
+		const upcoming = `Staff Engineer ${tag}`;
+		/** 'YYYY-MM' of the month `offset` months from now (UTC) */
+		const monthFromNow = (offset: number) => {
+			const now = new Date();
+			return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1))
+				.toISOString()
+				.slice(0, 7);
+		};
+		// A job that ended, and the next one, signed, starting in two months: drawn as its
+		// first month, after the current one
+		await createExperience({ title: `Backend Engineer ${tag}` });
+		await createExperience({
+			title: upcoming,
+			start: month(monthFromNow(2)),
+			end: undefined,
+			projects: [project('Onboarding', ['Go'], [], [monthFromNow(2)])]
+		});
+		const onboarding = page.locator('[data-timeline-project]').filter({ hasText: 'Onboarding' });
+
+		await page.setViewportSize({ width: 390, height: 844 });
+		await gotoHydrated(page, `/${DOMAIN}/experiences?view=timeline`);
+		await expect.poll(() => widthOf(onboarding)).toBeGreaterThan(117);
+		await expect(onboarding).toBeInViewport({ ratio: 1 });
+	});
+
+	test('keeps the month at the left edge when a save changes the zoom it opens with', async ({
+		page
+	}) => {
+		const title = `Backend Engineer ${tag}`;
+		// The one-month Spike makes a month 120 px wide; without it, the two-month Sprint: 60 px
+		await createExperience({
+			title,
+			start: month('2019-01'),
+			end: month('2023-12'),
+			projects: [
+				project('Platform', ['Go'], [], ['2019-01', '2023-06']),
+				project(`Spike ${tag}`, ['Go'], [], ['2021-03', '2021-03']),
+				project('Sprint', ['Kafka'], [], ['2023-11', '2023-12'])
+			]
+		});
+		const sprint = page.locator('[data-timeline-project]').filter({ hasText: 'Sprint' });
+		/** Months between the axis' start and the scroller's left edge */
+		const monthAtLeft = () =>
+			scroller(page).evaluate((element) => {
+				const track = element.querySelector('[data-timeline-track]')!.getBoundingClientRect();
+				return ((element.getBoundingClientRect().left - track.left) / track.width) * 60;
+			});
+
+		await signIn(page, session);
+		await gotoHydrated(page, `/${DOMAIN}/experiences?view=timeline`);
+		await expect.poll(() => widthOf(sprint)).toBeGreaterThan(237);
+		await scroller(page).evaluate((element) => (element.scrollLeft = 2400));
+
+		await page.locator('[data-timeline-experience]').filter({ hasText: title }).click();
+		await card(page, title)
+			.getByRole('button', { name: `Edit ${title}` })
+			.click();
+		const dialog = page.getByRole('dialog', { name: `Edit · ${title}` });
+		await dialog.getByRole('button', { name: `Remove “Spike ${tag}”` }).click();
+		// Read here: pressing the bar may have scrolled the timeline to it
+		const before = await monthAtLeft();
+		expect(before).toBeGreaterThan(6);
+		await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+		await expect(page.getByText('Changes saved')).toBeVisible();
+
+		// Every month is half as wide, and the same one is at the left edge
+		await expect.poll(() => widthOf(sprint)).toBeLessThan(123);
+		expect(Math.abs((await monthAtLeft()) - before)).toBeLessThan(0.5);
+	});
+
 	test('follows a pinch on a touch screen', async ({ browser }) => {
 		const title = `Backend Engineer ${tag}`;
 		await createExperience({
@@ -865,6 +959,43 @@ test.describe('hovering a skill tag', () => {
 		// Moving away closes it
 		await page.getByRole('heading', { level: 1 }).hover();
 		await expect(preview).toHaveCount(0);
+	});
+
+	test('a preview opened with the keyboard closes once its tag is scrolled away', async ({
+		page
+	}) => {
+		const first = `Backend Engineer ${tag}`;
+		const second = `Designer ${tag}`;
+		// Cards taller than a short screen: the page scrolls
+		await createExperience({
+			title: first,
+			projects: ['Streams', 'Billing', 'Platform', 'Tooling'].map((name) =>
+				project(name, ['Kafka'])
+			)
+		});
+		await createExperience({
+			title: second,
+			start: month('2020-01'),
+			end: month('2021-12'),
+			projects: [project('Brand', ['Figma'])]
+		});
+		const preview = page.getByRole('tooltip');
+		const filters = page.getByRole('region', { name: 'Filter experiences' });
+
+		await page.setViewportSize({ width: 1280, height: 500 });
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await filters.getByRole('button', { name: 'Figma', exact: true }).focus();
+		await page.keyboard.press('Tab');
+		await expect(filters.getByRole('button', { name: 'Kafka', exact: true })).toBeFocused();
+		await expect(preview).toBeVisible();
+		await expect(card(page, second)).toHaveAttribute('data-muted');
+
+		// The tag keeps the focus and leaves the screen: no preview, and nothing stays dimmed
+		await page
+			.locator('#page')
+			.evaluate((main) => main.scrollTo({ top: main.scrollHeight, behavior: 'instant' }));
+		await expect(preview).toHaveCount(0);
+		await expect(page.locator('[data-muted]')).toHaveCount(0);
 	});
 
 	test('a tap on a tag of a card shows the preview on a touch screen', async ({ browser }) => {

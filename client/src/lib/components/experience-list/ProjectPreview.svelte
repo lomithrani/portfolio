@@ -98,9 +98,15 @@
 		const outOfSight =
 			rect.bottom < 0 || rect.top > viewHeight || rect.right < 0 || rect.left > viewWidth;
 		// Focused with the keyboard while the page is still bringing it into view (it scrolls
-		// smoothly): the preview waits for it, and is placed as the scroll goes (see onMove)
-		if (anchor.isConnected && outOfSight && pinned && anchor.contains(document.activeElement)) {
-			position = null;
+		// smoothly): the preview waits for it, and is placed as the scroll goes (see onMove).
+		// Only until it was placed once: scrolled away afterwards, it closes like any other
+		if (
+			anchor.isConnected &&
+			outOfSight &&
+			pinned &&
+			!position &&
+			anchor.contains(document.activeElement)
+		) {
 			return;
 		}
 		// Gone (removed, or scrolled out of sight): nothing to point at
