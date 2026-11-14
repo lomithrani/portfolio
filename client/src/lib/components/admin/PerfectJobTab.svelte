@@ -13,6 +13,8 @@ see the criteria.
 	import { beforeNavigate } from '$app/navigation';
 	import { Scale } from 'svelte-heros-v2';
 	import {
+		COMMUTE_MODES,
+		COMMUTE_MODE_LABELS,
 		CONTRACT_TYPE_LABELS,
 		FR_CONTRACT_TYPES,
 		FR_FORFAIT_JOURS_STANDARD_DAYS,
@@ -29,6 +31,7 @@ see the criteria.
 		WORKING_TIME_LABELS,
 		WORK_MODES,
 		WORK_MODE_LABELS,
+		type PerfectJob,
 		type PerfectJobProblem,
 		type TravelFrequency
 	} from 'portfolio-common';
@@ -38,6 +41,8 @@ see the criteria.
 	import { SESSION_EXPIRED_MESSAGE } from '#services/account.ts';
 	import {
 		checkPerfectJob,
+		commuteBudgetHint,
+		commutePlace,
 		criterionShares,
 		perfectJobCriteria,
 		perfectJobForm,
@@ -47,6 +52,7 @@ see the criteria.
 		sameCriteria,
 		savedForm,
 		savedPerfectJobProblem,
+		type CommuteAvailability,
 		type PerfectJobForm
 	} from '#services/perfectJob.ts';
 	import { NETWORK_ERROR, failureText } from '#services/recruiter.ts';
@@ -79,8 +85,14 @@ see the criteria.
 	let loadError = $state('');
 	/** The criteria as saved */
 	let saved = $state.raw<PerfectJobForm>(perfectJobForm());
+	/** The criteria as the API stored them: the place it found for the commute's address */
+	let stored = $state.raw<PerfectJob>({});
+	/** Whether this site computes travel times, and by which modes */
+	let travelTimes = $state.raw<CommuteAvailability>({ enabled: false, modes: [] });
 	/** The criteria as edited */
 	let form = $state<PerfectJobForm>(perfectJobForm());
+	/** Where the API found the commute's address, while it is the one saved */
+	let place = $derived(commutePlace(form, stored));
 	let saving = $state(false);
 	let saveError = $state('');
 	/** What the API refused, and the criteria it refused it in: said until they are changed */
@@ -126,6 +138,8 @@ see the criteria.
 			}
 			saved = perfectJobForm(data.criteria);
 			form = perfectJobForm(data.criteria);
+			stored = data.criteria;
+			travelTimes = data.commute;
 			refused = null;
 			saveError = '';
 			status = 'ready';
@@ -154,6 +168,8 @@ see the criteria.
 			}
 			const next = savedForm($state.snapshot(form), data.criteria);
 			saved = next;
+			stored = data.criteria;
+			travelTimes = data.commute;
 			form = structuredClone(next);
 			toaster.success({ title: 'Perfect job saved', description: perfectJobSummary(next) });
 		} catch {
@@ -347,6 +363,116 @@ see the criteria.
 						disabled={saving}
 						id="{uid}-cities-places"
 					/>
+				</Criterion>
+				<Criterion
+					criterion="commute"
+					description={travelTimes.enabled || form.commute.enabled
+						? 'The time you accept on the way to work and back, over a week. A job you go to once a week can be further away than one you go to every day; a fully remote job has no commute.'
+						: 'The time you accept on the way to work and back, over a week. This site does not compute travel times: the criterion cannot be used here.'}
+					bind:rating={form.commute}
+					share={shares.commute}
+					disabled={saving || (!travelTimes.enabled && !form.commute.enabled)}
+					idPrefix={uid}
+				>
+					{#if !travelTimes.enabled}
+						<p class="card preset-tonal-warning p-3 text-sm">
+							This site does not compute travel times right now: the commute does not count in a
+							job's score, and its address cannot be changed.
+						</p>
+					{/if}
+					<div class="space-y-1">
+						<label class="label-text text-sm" for="{uid}-commute-from">Where you travel from</label>
+						<input
+							class="input"
+							id="{uid}-commute-from"
+							type="text"
+							autocomplete="off"
+							maxlength={PERFECT_JOB_LIMITS.address}
+							placeholder="e.g. 10 rue de la République, 69001 Lyon"
+							bind:value={form.commute.from}
+							aria-invalid={at('commute.from') ? true : undefined}
+							aria-describedby="{uid}-commute-from-help"
+						/>
+						<p class="text-xs" id="{uid}-commute-from-help">
+							{#if at('commute.from')}
+								<span class="text-error-700-300">{at('commute.from')}</span>
+							{:else if place}
+								<span class="text-surface-700-300" data-place>Found: {place.label}.</span>
+							{:else}
+								<span class="text-surface-700-300">
+									Your address, or a place nearby if you prefer (a station, a square). It is looked
+									up on a map when you save.
+								</span>
+							{/if}
+						</p>
+					</div>
+					<Choices
+						legend="How you would travel"
+						options={COMMUTE_MODES}
+						labels={COMMUTE_MODE_LABELS}
+						unavailable={COMMUTE_MODES.filter((mode) => !travelTimes.modes.includes(mode))}
+						bind:value={form.commute.modes}
+						error={at('commute.modes')}
+						id="{uid}-commute-modes"
+					/>
+					<p class="text-xs text-surface-700-300">
+						The fastest of them counts. By bike, the time is estimated at 15 km/h.
+					</p>
+					<fieldset class="space-y-1" aria-describedby="{uid}-commute-time-help">
+						<legend class="label-text text-sm">Travel time you accept a week, there and back</legend
+						>
+						<div class="flex flex-wrap items-center gap-2">
+							<input
+								class="input w-20"
+								type="text"
+								inputmode="numeric"
+								autocomplete="off"
+								placeholder="5"
+								aria-label="Hours a week"
+								bind:value={form.commute.hours}
+								aria-invalid={at('commute.maxMinutesPerWeek') ? true : undefined}
+							/>
+							<span class="text-sm text-surface-700-300" aria-hidden="true">h</span>
+							<input
+								class="input w-20"
+								type="text"
+								inputmode="numeric"
+								autocomplete="off"
+								placeholder="0"
+								aria-label="Minutes a week"
+								bind:value={form.commute.minutes}
+								aria-invalid={at('commute.maxMinutesPerWeek') ? true : undefined}
+							/>
+							<span class="text-sm text-surface-700-300" aria-hidden="true">min</span>
+						</div>
+						<p class="text-xs" id="{uid}-commute-time-help">
+							{#if at('commute.maxMinutesPerWeek')}
+								<span class="text-error-700-300">{at('commute.maxMinutesPerWeek')}</span>
+							{:else}
+								<span class="text-surface-700-300" data-budget>
+									{commuteBudgetHint(form.commute.hours, form.commute.minutes) ||
+										'Each day at the office counts the way there and back.'}
+									A job over it matches less, and not at all 50% over.
+								</span>
+							{/if}
+						</p>
+					</fieldset>
+					<p class="text-xs text-surface-700-300">
+						Only you see this address. To compute travel times, it is sent, without your name, to
+						the map service of the French state (<a
+							class="underline underline-offset-2"
+							href="https://geoservices.ign.fr/"
+							target="_blank"
+							rel="noreferrer">Géoplateforme, IGN</a
+						>){#if travelTimes.modes.includes('transit')}, and its position to
+							<a
+								class="underline underline-offset-2"
+								href="https://transitous.org/sources/"
+								target="_blank"
+								rel="noreferrer">Transitous</a
+							>, a community journey planner{/if}. Recruiters learn whether their job matches, never
+						where you are.
+					</p>
 				</Criterion>
 			</section>
 

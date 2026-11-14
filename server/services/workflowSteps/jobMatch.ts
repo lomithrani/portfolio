@@ -1,5 +1,6 @@
 import { JOB_MATCH_STEP_LIMITS, scorePerfectJob } from 'portfolio-common';
 import type { CriterionScore, JobMatchStepConfig, PerfectJobCriterion } from 'portfolio-common';
+import { commuteContext } from '../commute';
 import { perfectJobOf } from '../perfectJobs';
 import { pickedPosting } from './job';
 import type { ServerStep, StepContext } from './types';
@@ -17,7 +18,8 @@ import type { ServerStep, StepContext } from './types';
 // their job does on it, never what the owner asks for or how much it matters.
 
 /** How a job does on a criterion, as the visitor is told */
-export type JobMatchOutcome = 'match' | 'partial' | 'miss';
+/** `unknown`: the criterion could not be computed, and does not count in the score */
+export type JobMatchOutcome = 'match' | 'partial' | 'miss' | 'unknown';
 
 export interface JobMatchCriterionView {
   criterion: PerfectJobCriterion;
@@ -46,12 +48,15 @@ const minScoreOf = (config: Partial<JobMatchStepConfig>): number => {
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : max;
 };
 
-const criterionView = ({ criterion, match, stated, dealBreaker }: CriterionScore): JobMatchCriterionView => ({
-  criterion,
-  outcome: match >= 1 ? 'match' : match > 0 ? 'partial' : 'miss',
-  ...(stated ? {} : { notStated: true as const }),
-  ...(dealBreaker && match === 0 ? { dealBreaker: true as const } : {})
-});
+const criterionView = ({ criterion, match, stated, dealBreaker, unavailable }: CriterionScore): JobMatchCriterionView => {
+  if (unavailable) return { criterion, outcome: 'unknown' };
+  return {
+    criterion,
+    outcome: match >= 1 ? 'match' : match > 0 ? 'partial' : 'miss',
+    ...(stated ? {} : { notStated: true as const }),
+    ...(dealBreaker && match === 0 ? { dealBreaker: true as const } : {})
+  };
+};
 
 type JobMatchContext = StepContext<JobMatchStepConfig, undefined>;
 
@@ -60,7 +65,10 @@ const scored = async ({ ownerId, visitorId, config, earlier }: JobMatchContext):
   const picked = earlier.findLast((step) => step.type === 'job');
   const job = picked && (await pickedPosting(visitorId, picked.data));
   if (!job) return undefined;
-  const { score, criteria } = scorePerfectJob(await perfectJobOf(ownerId), job);
+  const perfectJob = await perfectJobOf(ownerId);
+  // The one criterion a posting and the criteria do not settle alone: a travel time, asked for once and kept
+  const context = await commuteContext(perfectJob.commute, job.location);
+  const { score, criteria } = scorePerfectJob(perfectJob, job, context);
   return {
     score,
     minScore: minScoreOf(config),

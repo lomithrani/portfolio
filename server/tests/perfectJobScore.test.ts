@@ -6,13 +6,21 @@ import {
   IMPORTANCE_LEVELS,
   PERFECT_JOB_CRITERIA,
   PERFECT_JOB_CRITERION_LABELS,
+  JOB_FIELD_CRITERIA,
+  JOB_FIELD_PATHS,
   PERFECT_JOB_LIMITS,
+  criterionJobFields,
+  normalizeJobPosting,
+  officeAddress,
+  officeDaysPerWeek,
+  validateJobPosting,
   parsePerfectJob,
   ratedCriteria,
   scorePerfectJob,
   storedPerfectJob
 } from 'portfolio-common';
-import type { PerfectJob, ScoredJob } from 'portfolio-common';
+import type { JobFieldPath, JobPostingInput, PerfectJob, PerfectJobCriterion, ScoredJob } from 'portfolio-common';
+import { COMPLETE_POSTINGS, fieldPaths } from './completePostings';
 
 /** A posting with only what a posting must say */
 const posting = (fields: Partial<ScoredJob> = {}): ScoredJob => ({
@@ -107,6 +115,30 @@ describe('parsePerfectJob', () => {
     expect(fields({ travel: { importance: 3, max: 'always' } })).toEqual(['travel.max']);
     // In the editor's order, whatever the order they were sent in
     expect(fields({ travel: { importance: 3 }, titles: { importance: 3 } })).toEqual(['titles.keywords', 'travel.max']);
+  });
+
+  it('keeps the place of a commute only when it is one', () => {
+    const commute = { importance: 4, from: '  1 rue   du Test, Lyon ', modes: ['car', 'transit'], maxMinutesPerWeek: 300 };
+    const stored: NonNullable<PerfectJob['commute']> = {
+      importance: 4,
+      from: '1 rue du Test, Lyon',
+      modes: ['transit', 'car'],
+      maxMinutesPerWeek: 300
+    };
+    expect(parsePerfectJob({ commute }).criteria).toEqual({ commute: stored });
+    const place = { label: '1 Rue du Test 69001 Lyon', lat: 45.767, lon: 4.834 };
+    expect(parsePerfectJob({ commute: { ...commute, place: { ...place, other: 1 } } }).criteria).toEqual({
+      commute: { ...stored, place }
+    });
+    for (const bad of ['Lyon', { label: 'Lyon' }, { ...place, lat: 91 }, { ...place, lon: '4.8' }, { ...place, lat: Number.NaN }]) {
+      expect(parsePerfectJob({ commute: { ...commute, place: bad } })).toEqual({ criteria: { commute: stored }, problems: [] });
+    }
+    const fields = (raw: unknown) => parsePerfectJob({ commute: raw }).problems.map((problem) => problem.field);
+    expect(fields({ importance: 3 })).toEqual(['commute.from', 'commute.modes', 'commute.maxMinutesPerWeek']);
+    expect(fields({ ...commute, from: 'x'.repeat(PERFECT_JOB_LIMITS.address + 1) })).toEqual(['commute.from']);
+    expect(fields({ ...commute, modes: ['teleport'] })).toEqual(['commute.modes']);
+    expect(fields({ ...commute, maxMinutesPerWeek: 9 })).toEqual(['commute.maxMinutesPerWeek']);
+    expect(fields({ ...commute, maxMinutesPerWeek: 300.5 })).toEqual(['commute.maxMinutesPerWeek']);
   });
 
   it('reads stored criteria one by one: what is not a criterion anymore is left out', () => {
@@ -292,6 +324,51 @@ describe('scorePerfectJob', () => {
     expect(match(perDay, pay(60000, 60000))).toBe(0);
   });
 
+  it('weighs the commute over a week: the way there and back, for each day at the office', () => {
+    const commute: PerfectJob = { commute: { importance: 3, from: 'Lyon', modes: ['bike'], maxMinutesPerWeek: 300 } };
+    const at = (location: Partial<ScoredJob['location']>, minutes?: number) => {
+      const job = posting({ location: { country: 'FR', city: 'Lyon', workMode: 'on_site', ...location } });
+      const { criteria, score } = scorePerfectJob(commute, job, minutes === undefined ? {} : { commute: { minutes } });
+      return criteria[0].unavailable ? `unavailable (${score})` : criteria[0].stated ? criteria[0].match : 'not stated';
+    };
+    // On site, 5 days: 30 minutes each way is the 300 accepted
+    expect(at({}, 30)).toBe(1);
+    expect(at({}, 20)).toBe(1);
+    // 450 a week (50% over) or more does not match at all; in between, in proportion
+    expect(at({}, 45)).toBe(0);
+    expect(at({}, 36)).toBeCloseTo(0.6);
+    expect(at({}, Number.POSITIVE_INFINITY)).toBe(0);
+    // Fewer days at the office, a longer way: once a week, 150 minutes each way
+    expect(at({ workMode: 'hybrid', remoteDaysPerWeek: 4 }, 150)).toBe(1);
+    expect(at({ workMode: 'hybrid', remoteDaysPerWeek: 2 }, 50)).toBe(1);
+    expect(at({ workMode: 'hybrid', remoteDaysPerWeek: 2 }, 60)).toBeCloseTo(0.6);
+    // A hybrid job that does not say: one remote day, the fewest
+    expect(at({ workMode: 'hybrid' }, 37.5)).toBe(1);
+    expect(officeDaysPerWeek({ country: 'FR', workMode: 'hybrid' })).toBe(4);
+    expect(officeDaysPerWeek({ country: 'FR', workMode: 'on_site' })).toBe(5);
+    expect(officeDaysPerWeek({ country: 'FR', workMode: 'remote' })).toBe(0);
+    // No office to go to: it matches, whatever is known of the way
+    expect(at({ workMode: 'remote' })).toBe(1);
+    expect(at({ workMode: 'remote' }, 600)).toBe(1);
+    // No travel time: left out of the score, which then asks nothing
+    expect(at({})).toBe('unavailable (100)');
+    // The job's address is nowhere to be found: like a posting that does not say
+    const lost = scorePerfectJob(commute, posting(), { commute: { located: false } });
+    expect(lost.criteria[0]).toMatchObject({ match: 0, stated: false });
+    expect(lost.score).toBe(0);
+  });
+
+  it('leaves a commute that could not be computed out of the weights and of the deal-breakers', () => {
+    const perfectJob: PerfectJob = {
+      commute: { importance: 5, dealBreaker: true, from: 'Lyon', modes: ['car'], maxMinutesPerWeek: 100 },
+      contractTypes: { importance: 1, types: ['cdi'] },
+      workMode: { importance: 1, modes: ['remote'] }
+    };
+    expect(scorePerfectJob(perfectJob, posting())).toMatchObject({ score: 50, broken: false });
+    expect(scorePerfectJob(perfectJob, posting(), { commute: { minutes: 5 } })).toMatchObject({ score: 86, broken: false });
+    expect(scorePerfectJob(perfectJob, posting(), { commute: { minutes: 60 } })).toMatchObject({ score: 0, broken: true });
+  });
+
   it('scores the skills of the posting: the share that is wanted, and none that is avoided', () => {
     const skills = (...names: string[]) => posting({ requirements: { skills: names } });
     const wanted: PerfectJob = { skills: { importance: 3, names: ['TypeScript', 'Node.js', 'C++', 'PostgreSQL'] } };
@@ -305,5 +382,105 @@ describe('scorePerfectJob', () => {
     expect(match(avoided)).toBe('not stated');
     expect(match(avoided, skills('TypeScript', 'Go'))).toBe(1);
     expect(match(avoided, skills('TypeScript', 'php'))).toBe(0);
+  });
+});
+
+// A candidate can only ask for what a recruiter can say: every criterion is read from fields of
+// the job posting, and JOB_FIELD_CRITERIA says which. These tests keep the two sides together:
+// a criterion that reads a field it does not declare, a criterion read from nothing, or a
+// posting field the table forgot (that one does not compile) fails here. tests/perfectJob.test.ts
+// checks that the API stores every field, the client's tests that the job editor has them.
+describe('what the criteria read of a job posting (JOB_FIELD_CRITERIA)', () => {
+  /** Every criterion, with every setting it can have */
+  const everything: Required<PerfectJob> = {
+    titles: { importance: 3, keywords: ['Engineer'] },
+    seniority: { importance: 3, levels: ['senior'] },
+    management: { importance: 3, role: 'manager' },
+    workMode: { importance: 3, modes: ['on_site', 'hybrid'], minRemoteDays: 3 },
+    cities: { importance: 3, places: ['Lyon', '75'] },
+    commute: { importance: 3, from: 'Lyon', modes: ['bike'], maxMinutesPerWeek: 300 },
+    contractTypes: { importance: 3, types: ['cdi'] },
+    workingTime: { importance: 3, arrangements: ['weekly_hours', 'annual_days'], maxHoursPerWeek: 35 },
+    rttDays: { importance: 3, min: 12 },
+    pay: { importance: 3, perYear: 70000, perDay: 600 },
+    skills: { importance: 3, names: ['Go'] },
+    avoidedSkills: { importance: 3, names: ['PHP'] },
+    travel: { importance: 3, max: 'none' }
+  };
+
+  /** `value`, noting in `reads` the path of every value read from it */
+  const recording = <T extends object>(value: T, reads: Set<string>, prefix = ''): T =>
+    new Proxy(value, {
+      get(target, key, receiver) {
+        const item: unknown = Reflect.get(target, key, receiver);
+        if (typeof key !== 'string') return item;
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (item !== null && typeof item === 'object' && !Array.isArray(item)) return recording(item, reads, path);
+        reads.add(path);
+        return item;
+      }
+    });
+
+  /** The fields of `job` that scoring `criterion` alone reads */
+  const readBy = (criterion: PerfectJobCriterion, job: JobPostingInput): string[] => {
+    const reads = new Set<string>();
+    const watched = recording(job, reads);
+    scorePerfectJob({ [criterion]: everything[criterion] }, watched, { commute: { minutes: 30 } });
+    // The commute's travel time is computed by the API, from where the posting says the office is
+    if (criterion === 'commute') officeAddress(watched.location);
+    return [...reads];
+  };
+
+  it('has every criterion, with every setting, in these tests', () => {
+    expect(Object.keys(everything).sort()).toEqual([...PERFECT_JOB_CRITERIA].sort());
+    expect(parsePerfectJob(everything)).toEqual({ criteria: everything, problems: [] });
+  });
+
+  it('reads every criterion from at least one field of the posting', () => {
+    for (const criterion of PERFECT_JOB_CRITERIA) {
+      expect({ criterion, fields: criterionJobFields(criterion).length > 0 }).toEqual({ criterion, fields: true });
+    }
+    // And names no criterion that is not one
+    const named = new Set(Object.values(JOB_FIELD_CRITERIA).flat());
+    expect([...named].sort()).toEqual([...PERFECT_JOB_CRITERIA].sort());
+  });
+
+  it('scores each criterion from the fields declared for it, all of them and no other', () => {
+    for (const criterion of PERFECT_JOB_CRITERIA) {
+      const read = new Set(COMPLETE_POSTINGS.flatMap((job) => readBy(criterion, job)));
+      expect({ criterion, read: [...read].sort() }).toEqual({
+        criterion,
+        read: [...criterionJobFields(criterion)].sort()
+      });
+    }
+  });
+
+  it('can be told everything by a posting: its complete postings are valid, and state every field', () => {
+    const stated = new Set<string>();
+    for (const job of COMPLETE_POSTINGS) {
+      const normalised = normalizeJobPosting(job);
+      expect(validateJobPosting(normalised)).toEqual([]);
+      for (const path of fieldPaths(normalised)) stated.add(path);
+    }
+    expect([...stated].sort()).toEqual([...JOB_FIELD_PATHS].sort());
+  });
+
+  it('matches every criterion with a posting that states what it asks for', () => {
+    const perfectJob: PerfectJob = {
+      ...everything,
+      workMode: { importance: 3, modes: ['hybrid'], minRemoteDays: 2 },
+      contractTypes: { importance: 3, types: ['cdd'] },
+      workingTime: { importance: 3, arrangements: ['weekly_hours'], maxHoursPerWeek: 37 },
+      rttDays: { importance: 3, min: 10 },
+      pay: { importance: 3, perYear: 60000 },
+      skills: { importance: 3, names: ['Go', 'TypeScript'] },
+      travel: { importance: 3, max: 'occasional' }
+    };
+    const { score, criteria } = scorePerfectJob(perfectJob, COMPLETE_POSTINGS[0], { commute: { minutes: 20 } });
+    expect(criteria.filter((entry) => entry.match < 1 || !entry.stated).map((entry) => entry.criterion)).toEqual([]);
+    expect(score).toBe(100);
+    // The paths are the posting's own: a typo in the table would not compile
+    const path: JobFieldPath = 'location.address';
+    expect(JOB_FIELD_CRITERIA[path]).toEqual(['commute']);
   });
 });

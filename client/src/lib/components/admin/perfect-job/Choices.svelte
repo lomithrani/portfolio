@@ -10,6 +10,7 @@ they were ticked in.
 		options,
 		labels,
 		value = $bindable([]),
+		unavailable = [],
 		error = '',
 		disabled = false,
 		id
@@ -18,6 +19,8 @@ they were ticked in.
 		options: readonly T[];
 		labels: Record<T, string>;
 		value?: T[];
+		/** Options that cannot be picked here (a ticked one can still be unticked), and are said so */
+		unavailable?: readonly T[];
 		/** What is wrong with the choice, shown under it */
 		error?: string;
 		disabled?: boolean;
@@ -39,9 +42,13 @@ they were ticked in.
 					class="checkbox"
 					type="checkbox"
 					checked={value.includes(option)}
+					disabled={unavailable.includes(option) && !value.includes(option)}
 					onchange={(event) => toggle(option, event.currentTarget.checked)}
 				/>
 				{labels[option]}
+				{#if unavailable.includes(option)}
+					<span class="text-xs text-surface-700-300">(not available on this site)</span>
+				{/if}
 			</label>
 		{/each}
 	</div>

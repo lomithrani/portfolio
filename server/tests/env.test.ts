@@ -131,6 +131,49 @@ describe('parseEnv', () => {
     expect(problems[0]).not.toContain('abc');
   });
 
+  describe('travel times', () => {
+    it('are off unless COMMUTE_TIMES=true, with a daily cap on what is asked', () => {
+      expect(parseEnv(base)).toMatchObject({
+        commuteTimesEnabled: false,
+        COMMUTE_TRANSIT: undefined,
+        COMMUTE_CONTACT: undefined,
+        COMMUTE_DAILY_LIMIT: 500
+      });
+      expect(parseEnv({ ...base, COMMUTE_TIMES: ' true ', COMMUTE_DAILY_LIMIT: '200' })).toMatchObject({
+        commuteTimesEnabled: true,
+        COMMUTE_DAILY_LIMIT: 200
+      });
+      expect(parseEnv({ ...base, COMMUTE_TIMES: 'false' }).commuteTimesEnabled).toBe(false);
+      // A cap of 0 turns them off, like the other features
+      expect(parseEnv({ ...base, COMMUTE_TIMES: 'true', COMMUTE_DAILY_LIMIT: '0' }).commuteTimesEnabled).toBe(false);
+      expect(problemsOf({ ...base, COMMUTE_TIMES: 'yes' })).toEqual(['COMMUTE_TIMES must be true or false (got "yes")']);
+      expect(problemsOf({ ...base, COMMUTE_DAILY_LIMIT: '1e3' })[0]).toContain('COMMUTE_DAILY_LIMIT');
+    });
+
+    it('takes public transport from Transitous only with a contact to send it', () => {
+      const transit = { ...base, COMMUTE_TIMES: 'true', COMMUTE_TRANSIT: 'transitous' };
+      expect(problemsOf(transit)).toEqual(['COMMUTE_TRANSIT needs COMMUTE_CONTACT: Transitous asks who sends the requests']);
+      expect(parseEnv({ ...transit, COMMUTE_CONTACT: ' https://portfolio.example/contact ' })).toMatchObject({
+        commuteTimesEnabled: true,
+        COMMUTE_TRANSIT: 'transitous',
+        COMMUTE_CONTACT: 'https://portfolio.example/contact'
+      });
+      expect(problemsOf({ ...transit, COMMUTE_TRANSIT: 'google', COMMUTE_CONTACT: 'ops@example.com' })).toEqual([
+        'COMMUTE_TRANSIT must be transitous, or unset (got "google")'
+      ]);
+      // Sent in a header: one line, nothing that could add another
+      for (const contact of ['ops@example.com\r\nx-injected: 1', 'two words', 'é@example.com', 'ab']) {
+        expect(problemsOf({ ...transit, COMMUTE_CONTACT: contact })).toEqual([
+          'COMMUTE_CONTACT must be an email address or a URL, without spaces'
+        ]);
+      }
+      // Set without the switch: said, and travel times stay off
+      const withoutSwitch = parseEnv({ ...base, COMMUTE_TRANSIT: 'transitous', COMMUTE_CONTACT: 'ops@example.com' });
+      expect(withoutSwitch.commuteTimesEnabled).toBe(false);
+      expect(withoutSwitch.warnings).toEqual(['COMMUTE_TRANSIT is set without COMMUTE_TIMES=true: travel times stay off']);
+    });
+  });
+
   describe('step suggestions', () => {
     it('reads GITHUB_ISSUES_TOKEN trimmed, an empty one as unset, and the repository', () => {
       expect(parseEnv({ ...base, GITHUB_ISSUES_TOKEN: '  ' }).GITHUB_ISSUES_TOKEN).toBeUndefined();

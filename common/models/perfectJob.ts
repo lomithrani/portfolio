@@ -19,6 +19,7 @@ import {
 } from './jobPosting';
 import type {
 	ContractType,
+	JobFieldPath,
 	JobPostingInput,
 	NumberRange,
 	SeniorityLevel,
@@ -36,6 +37,7 @@ export const PERFECT_JOB_CRITERIA = [
 	'management',
 	'workMode',
 	'cities',
+	'commute',
 	'contractTypes',
 	'workingTime',
 	'rttDays',
@@ -63,6 +65,25 @@ export type ManagementRole = (typeof MANAGEMENT_ROLES)[number];
  */
 export const PAY_TOLERANCE = 0.2;
 
+/**
+ * How a candidate travels to the office. transit: public transport, door to door; the travel
+ * time by bike is estimated from the distance on foot (BIKE_METERS_PER_MINUTE)
+ */
+export const COMMUTE_MODES = ['transit', 'bike', 'car', 'walk'] as const;
+export type CommuteMode = (typeof COMMUTE_MODES)[number];
+
+/** Days a week a full-time job is worked: a job on site is a commute on each of them */
+export const WORK_DAYS_PER_WEEK = 5;
+
+/**
+ * How far over the weekly travel time accepted a job stops matching at all: at 50% over or
+ * more the commute scores nothing, in between it scores in proportion
+ */
+export const COMMUTE_TOLERANCE = 0.5;
+
+/** The speed a bike ride is estimated at: 15 km/h */
+export const BIKE_METERS_PER_MINUTE = 250;
+
 /** How many hours over the weekly maximum a job stops matching at all (35 asked: 39 is half, 43 nothing) */
 export const HOURS_TOLERANCE = 8;
 
@@ -77,10 +98,23 @@ export const PERFECT_JOB_LIMITS = {
 	maxHoursPerWeek: JOB_LIMITS.hoursPerWeek,
 	rttDays: { min: 1, max: JOB_LIMITS.rttDaysPerYear.max },
 	/** Gross pay asked, in whole euros */
-	pay: { min: 1, max: JOB_LIMITS.pay.max }
+	pay: { min: 1, max: JOB_LIMITS.pay.max },
+	/** The address travelled from */
+	address: 200,
+	/** The name the address was found under */
+	placeLabel: 300,
+	/** Travel time accepted a week, there and back, in minutes (up to 50 hours) */
+	commuteMinutesPerWeek: { min: 10, max: 3000 }
 } as const;
 
 // ── Shape ───────────────────────────────────────────────────
+
+/** Where an address was found (WGS 84), and the name it was found under */
+export interface GeoPlace {
+	label: string;
+	lat: number;
+	lon: number;
+}
 
 /** What every criterion carries next to what it asks */
 export interface CriterionRating {
@@ -109,6 +143,20 @@ export interface PerfectJob {
 	 * remote job has no office and matches
 	 */
 	cities?: CriterionRating & { places: string[] };
+	/**
+	 * The time accepted on the way to the office and back, over a week: a job that asks to come
+	 * once a week can be further away than one on site every day. The travel time is computed by
+	 * the API from `from` to the job's address (one way, by the fastest of `modes`), and counted
+	 * twice for each day at the office (officeDaysPerWeek). A fully remote job has no commute
+	 */
+	commute?: CriterionRating & {
+		/** The address travelled from, as typed (a nearby place does as well as a home address) */
+		from: string;
+		/** Where the API found `from`: set by the API when it saves, whatever the client sends */
+		place?: GeoPlace;
+		modes: CommuteMode[];
+		maxMinutesPerWeek: number;
+	};
 	contractTypes?: CriterionRating & { types: ContractType[] };
 	workingTime?: CriterionRating & {
 		arrangements: WorkingTimeArrangement[];
@@ -130,6 +178,63 @@ export interface PerfectJob {
 	travel?: CriterionRating & { max: TravelFrequency };
 }
 
+// ── What the criteria read ──────────────────────────────────
+
+/**
+ * For every field of a job posting, the criteria that read it: none for a field no criterion
+ * looks at. The one place that ties the two sides together, so that neither changes without the
+ * other:
+ *   - a field added to JobPostingInput does not compile until it is listed here, with the
+ *     criteria that read it or with none on purpose;
+ *   - a criterion must be read from at least one field, and its scorer may read these fields
+ *     only (server/tests/perfectJobScore.test.ts checks both, and that the API and the job
+ *     editor carry every field: a recruiter can state everything a candidate can ask for).
+ */
+export const JOB_FIELD_CRITERIA: Record<JobFieldPath, readonly PerfectJobCriterion[]> = {
+	title: ['titles'],
+	description: [],
+	company: [],
+	status: [],
+	openings: [],
+	'location.country': [],
+	'location.city': ['cities', 'commute'],
+	'location.postalCode': ['cities', 'commute'],
+	'location.address': ['commute'],
+	'location.workMode': ['workMode', 'cities', 'commute'],
+	'location.remoteDaysPerWeek': ['workMode', 'commute'],
+	'contract.type': ['contractTypes'],
+	'contract.durationMonths': [],
+	'contract.startDate': [],
+	'contract.trialPeriodMonths': [],
+	'contract.collectiveAgreement': [],
+	'workingTime.arrangement': ['workingTime'],
+	// The pay of a job paid by the hour or by the day is brought to a year with them
+	'workingTime.hoursPerWeek': ['workingTime', 'pay'],
+	'workingTime.daysPerYear': ['pay'],
+	'workingTime.rttDaysPerYear': ['rttDays'],
+	'pay.min': ['pay'],
+	'pay.max': ['pay'],
+	'pay.currency': [],
+	'pay.period': ['pay'],
+	'pay.variable': [],
+	'organization.directReports': ['management'],
+	'organization.peers': [],
+	'organization.levelsToCeo': [],
+	'requirements.seniority': ['seniority'],
+	'requirements.education': [],
+	'requirements.skills': ['skills', 'avoidedSkills'],
+	'requirements.languages': [],
+	benefits: [],
+	travel: ['travel']
+};
+
+/** Every field of a job posting, in the order of the posting */
+export const JOB_FIELD_PATHS = Object.keys(JOB_FIELD_CRITERIA) as JobFieldPath[];
+
+/** The fields of a job posting a criterion is read from */
+export const criterionJobFields = (criterion: PerfectJobCriterion): JobFieldPath[] =>
+	JOB_FIELD_PATHS.filter((field) => JOB_FIELD_CRITERIA[field].includes(criterion));
+
 // ── Display ─────────────────────────────────────────────────
 
 export const IMPORTANCE_LABELS: Record<Importance, string> = {
@@ -147,6 +252,7 @@ export const PERFECT_JOB_CRITERION_LABELS: Record<PerfectJobCriterion, string> =
 	management: 'Management',
 	workMode: 'Work mode',
 	cities: 'Location',
+	commute: 'Commute',
 	contractTypes: 'Contract',
 	workingTime: 'Working time',
 	rttDays: 'RTT days',
@@ -154,6 +260,13 @@ export const PERFECT_JOB_CRITERION_LABELS: Record<PerfectJobCriterion, string> =
 	skills: 'Skills',
 	avoidedSkills: 'Skills to avoid',
 	travel: 'Travel'
+};
+
+export const COMMUTE_MODE_LABELS: Record<CommuteMode, string> = {
+	transit: 'Public transport',
+	bike: 'Bike',
+	car: 'Car',
+	walk: 'On foot'
 };
 
 export const MANAGEMENT_ROLE_LABELS: Record<ManagementRole, string> = {
@@ -240,6 +353,16 @@ const optionalNumber = (
 	return undefined;
 };
 
+/** A place as the API stored it; undefined for anything else */
+const geoPlace = (raw: unknown): GeoPlace | undefined => {
+	if (!isObject(raw)) return undefined;
+	const { label, lat, lon } = raw;
+	const coordinate = (value: unknown, max: number): value is number =>
+		typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= max;
+	if (typeof label !== 'string' || label.length > PERFECT_JOB_LIMITS.placeLabel) return undefined;
+	return coordinate(lat, 90) && coordinate(lon, 180) ? { label, lat, lon } : undefined;
+};
+
 type CriterionValue<K extends PerfectJobCriterion> = Omit<
 	NonNullable<PerfectJob[K]>,
 	keyof CriterionRating
@@ -270,6 +393,26 @@ const PARSERS: { [K in PerfectJobCriterion]: CriterionParser<CriterionValue<K>> 
 			: picked;
 	},
 	cities: textList('places', PERFECT_JOB_LIMITS.cities, 'place'),
+	commute: (source, problem) => {
+		const from = typeof source.from === 'string' ? source.from.replace(/\s+/g, ' ').trim() : '';
+		if (!from) problem('from', 'Give the address you would travel from.');
+		else if (from.length > PERFECT_JOB_LIMITS.address) {
+			problem('from', `The address is at most ${PERFECT_JOB_LIMITS.address} characters.`);
+		}
+		const picked = choices(
+			'modes',
+			COMMUTE_MODES,
+			'Pick at least one way of travelling.'
+		)(source, problem);
+		const minutes = source.maxMinutesPerWeek;
+		if (!inRange(minutes, PERFECT_JOB_LIMITS.commuteMinutesPerWeek)) {
+			problem('maxMinutesPerWeek', 'Give the travel time you accept a week, from 10 minutes to 50 hours.');
+			return undefined;
+		}
+		if (!picked || !from || from.length > PERFECT_JOB_LIMITS.address) return undefined;
+		const place = geoPlace(source.place);
+		return { from, ...(place ? { place } : {}), ...picked, maxMinutesPerWeek: minutes };
+	},
 	contractTypes: choices('types', FR_CONTRACT_TYPES, 'Pick at least one contract.'),
 	workingTime: (source, problem) => {
 		const picked = choices(
@@ -414,6 +557,11 @@ export interface CriterionScore {
 	 * it then counts as not matching
 	 */
 	stated: boolean;
+	/**
+	 * The criterion could not be computed (the commute, when no travel time is known): it is
+	 * left out of the score
+	 */
+	unavailable?: true;
 }
 
 export interface PerfectJobScore {
@@ -429,7 +577,7 @@ export interface PerfectJobScore {
 const words = (text: string): string[] =>
 	text
 		.normalize('NFD')
-		.replace(/[̀-ͯ]/g, '')
+		.replace(/[\u0300-\u036f]/g, '')
 		.toLowerCase()
 		.split(/[^\p{L}\p{N}+#]+/u)
 		.filter(Boolean);
@@ -448,8 +596,41 @@ const skillKey = (name: string): string => words(name).join('');
 
 const clamp = (value: number): number => Math.min(1, Math.max(0, value));
 
-type Outcome = number | { match: number; stated: boolean };
+type Outcome = number | { match: number; stated: boolean } | 'unavailable';
 const NOT_STATED: Outcome = { match: 0, stated: false };
+
+/** What scoring a job needs that is not in the posting or the criteria: computed by the API */
+export interface ScoreContext {
+	/**
+	 * The way from the candidate's address to the job's. `minutes`: one way, by the fastest of
+	 * the modes the candidate accepts (Infinity when none of them leads there). `located: false`:
+	 * the job's address could not be found on a map, which counts like a posting that does not
+	 * say where it is. Undefined when the travel time was not computed (travel times are off, or
+	 * the service did not answer): the commute then does not count
+	 */
+	commute?: { minutes: number } | { located: false };
+}
+
+/**
+ * Where a job's office is, as the posting says it: what the API looks up on a map to compute
+ * the commute. The street when the posting gives one, the town otherwise
+ */
+export const officeAddress = (
+	location: ScoredJob['location']
+): { address?: string; postalCode?: string; city?: string } => ({
+	...(location.address ? { address: location.address } : {}),
+	...(location.postalCode ? { postalCode: location.postalCode } : {}),
+	...(location.city ? { city: location.city } : {})
+});
+
+/** The days a week a job is worked at the office: none when fully remote, all of them on site */
+export const officeDaysPerWeek = (location: ScoredJob['location']): number => {
+	if (location.workMode === 'remote') return 0;
+	if (location.workMode === 'on_site') return WORK_DAYS_PER_WEEK;
+	// A hybrid job that does not say: the fewest remote days a hybrid job can have
+	const remote = location.remoteDaysPerWeek ?? PERFECT_JOB_LIMITS.minRemoteDays.min;
+	return Math.max(0, WORK_DAYS_PER_WEEK - remote);
+};
 
 /** What the job pays in the middle of its range, converted to a year or a day */
 const jobPay = (job: ScoredJob, per: 'year' | 'day'): number => {
@@ -472,7 +653,11 @@ const jobPay = (job: ScoredJob, per: 'year' | 'day'): number => {
 const TRAVEL_RANK: Record<TravelFrequency, number> = { none: 0, occasional: 1, frequent: 2 };
 
 const SCORERS: {
-	[K in PerfectJobCriterion]: (wanted: NonNullable<PerfectJob[K]>, job: ScoredJob) => Outcome;
+	[K in PerfectJobCriterion]: (
+		wanted: NonNullable<PerfectJob[K]>,
+		job: ScoredJob,
+		context: ScoreContext
+	) => Outcome;
 } = {
 	titles: ({ keywords }, job) => {
 		const title = words(job.title);
@@ -506,6 +691,16 @@ const SCORERS: {
 		)
 			? 1
 			: 0;
+	},
+	commute: ({ maxMinutesPerWeek }, job, { commute }) => {
+		const days = officeDaysPerWeek(job.location);
+		// Nowhere to go
+		if (days === 0) return 1;
+		if (commute === undefined) return 'unavailable';
+		if (!('minutes' in commute)) return NOT_STATED;
+		const perWeek = commute.minutes * 2 * days;
+		if (perWeek <= maxMinutesPerWeek) return 1;
+		return clamp(1 - (perWeek - maxMinutesPerWeek) / (maxMinutesPerWeek * COMMUTE_TOLERANCE));
 	},
 	contractTypes: ({ types }, job) => (types.includes(job.contract.type) ? 1 : 0),
 	workingTime: ({ arrangements, maxHoursPerWeek }, job) => {
@@ -550,32 +745,40 @@ const SCORERS: {
 const scoreCriterion = <K extends PerfectJobCriterion>(
 	criterion: K,
 	wanted: NonNullable<PerfectJob[K]>,
-	job: ScoredJob
+	job: ScoredJob,
+	context: ScoreContext
 ): CriterionScore => {
-	const outcome = SCORERS[criterion](wanted, job);
-	const { match, stated } = typeof outcome === 'number' ? { match: outcome, stated: true } : outcome;
-	return {
+	const outcome = SCORERS[criterion](wanted, job, context);
+	const rating = {
 		criterion,
 		importance: wanted.importance,
-		dealBreaker: wanted.dealBreaker === true,
-		match: clamp(match),
-		stated
+		dealBreaker: wanted.dealBreaker === true
 	};
+	if (outcome === 'unavailable') return { ...rating, match: 0, stated: true, unavailable: true };
+	const { match, stated } = typeof outcome === 'number' ? { match: outcome, stated: true } : outcome;
+	return { ...rating, match: clamp(match), stated };
 };
 
 /**
  * A job posting scored against a perfect job, out of 100: each criterion counts for its
  * importance, by how well the job matches it, and what the posting does not say counts as not
- * matching. A deal-breaker that is not matched at all brings the score to 0. Without any
- * criterion, nothing is asked: every job scores 100.
+ * matching. A deal-breaker that is not matched at all brings the score to 0. A criterion that
+ * could not be computed (the commute, without a travel time in `context`) is left out: it
+ * neither adds to the score nor takes from it. Without any criterion that counts, nothing is
+ * asked: every job scores 100.
  */
-export function scorePerfectJob(perfectJob: PerfectJob, job: ScoredJob): PerfectJobScore {
+export function scorePerfectJob(
+	perfectJob: PerfectJob,
+	job: ScoredJob,
+	context: ScoreContext = {}
+): PerfectJobScore {
 	const criteria = ratedCriteria(perfectJob).map((criterion) =>
-		scoreCriterion(criterion, perfectJob[criterion]!, job)
+		scoreCriterion(criterion, perfectJob[criterion]!, job, context)
 	);
-	const broken = criteria.some((entry) => entry.dealBreaker && entry.match === 0);
-	const weight = criteria.reduce((sum, entry) => sum + entry.importance, 0);
-	const earned = criteria.reduce((sum, entry) => sum + entry.importance * entry.match, 0);
+	const counted = criteria.filter((entry) => !entry.unavailable);
+	const broken = counted.some((entry) => entry.dealBreaker && entry.match === 0);
+	const weight = counted.reduce((sum, entry) => sum + entry.importance, 0);
+	const earned = counted.reduce((sum, entry) => sum + entry.importance * entry.match, 0);
 	const score = broken ? 0 : weight === 0 ? 100 : Math.round((earned / weight) * 100);
 	return { score, criteria, broken };
 }

@@ -107,6 +107,7 @@ export function toJobPostingDto(job: StoredJobPosting): JobPostingDto {
     location: withoutUnset({
       country: location.country as JobCountry,
       city: location.city,
+      address: location.address,
       postalCode: location.postalCode,
       workMode: location.workMode as WorkMode,
       remoteDaysPerWeek: location.remoteDaysPerWeek

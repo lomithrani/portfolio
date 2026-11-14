@@ -11,7 +11,14 @@ Not for the portfolio's owner: the page shows them the step's description instea
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { ArrowPath, Check, Minus, PencilSquare, XMark } from 'svelte-heros-v2';
+	import {
+		ArrowPath,
+		Check,
+		Minus,
+		PencilSquare,
+		QuestionMarkCircle,
+		XMark
+	} from 'svelte-heros-v2';
 	import { PERFECT_JOB_CRITERION_LABELS } from 'portfolio-common';
 	import {
 		jobMatch,
@@ -105,7 +112,9 @@ Not for the portfolio's owner: the page shows them the step's description instea
 										? 'preset-filled-success-500'
 										: entry.outcome === 'partial'
 											? 'preset-filled-warning-500'
-											: 'preset-filled-error-500'
+											: entry.outcome === 'unknown'
+												? 'preset-tonal'
+												: 'preset-filled-error-500'
 								]}
 								aria-hidden="true"
 							>
@@ -113,6 +122,8 @@ Not for the portfolio's owner: the page shows them the step's description instea
 									<Check size="12" />
 								{:else if entry.outcome === 'partial'}
 									<Minus size="12" />
+								{:else if entry.outcome === 'unknown'}
+									<QuestionMarkCircle size="14" />
 								{:else}
 									<XMark size="12" />
 								{/if}
@@ -127,6 +138,31 @@ Not for the portfolio's owner: the page shows them the step's description instea
 						</li>
 					{/each}
 				</ul>
+				{#if match.criteria.some((entry) => entry.criterion === 'commute')}
+					<p class="text-xs text-surface-700-300">
+						The commute is {ownerName}'s travel time to your job's address, there and back, over a
+						week. Travel times:
+						<a
+							class="underline underline-offset-2"
+							href="https://geoservices.ign.fr/"
+							target="_blank"
+							rel="noreferrer">Géoplateforme (IGN)</a
+						>,
+						<a
+							class="underline underline-offset-2"
+							href="https://transitous.org/sources/"
+							target="_blank"
+							rel="noreferrer">Transitous</a
+						>
+						and
+						<a
+							class="underline underline-offset-2"
+							href="https://www.openstreetmap.org/copyright"
+							target="_blank"
+							rel="noreferrer">OpenStreetMap contributors</a
+						>.
+					</p>
+				{/if}
 				{#if dealBreaker}
 					<p class="text-sm">
 						A job that does not match a deal-breaker of {ownerName}'s scores 0, whatever the rest.

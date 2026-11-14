@@ -759,6 +759,8 @@ test.describe('the hiring journey', () => {
 		await expect(save).toBeDisabled();
 		const stored = await ownerApi.get(`${API_URL}/perfect-job`);
 		expect(await stored.json()).toEqual({
+			// This API computes no travel times (no COMMUTE_TIMES)
+			commute: { enabled: false, modes: [] },
 			criteria: {
 				workMode: {
 					importance: 5,
@@ -816,6 +818,104 @@ test.describe('the hiring journey', () => {
 			status: 'pending',
 			config: { minScore: 60 }
 		});
+	});
+
+	test('the commute is offered only where the site computes travel times, and finds the address on save', async ({
+		page
+	}) => {
+		await setPerfectJob({});
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin`);
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+
+		// This API computes none (no COMMUTE_TIMES): the criterion says so, and cannot be switched on
+		const commute = criterion(page, 'Commute');
+		await expect(commute).toContainText('This site does not compute travel times');
+		await expect(commute.getByRole('checkbox', { name: /^Commute/ })).toBeDisabled();
+
+		// A site that computes them, answered in the browser: no map service is called
+		const HOME = { label: '10 Rue de la République 69001 Lyon', lat: 45.7655, lon: 4.8358 };
+		const sent: { criteria: Record<string, unknown> }[] = [];
+		await page.route(`${API_URL}/perfect-job`, (route) => {
+			const request = route.request();
+			const headers = cors(request);
+			const travelTimes = { enabled: true, modes: ['bike', 'car', 'walk'] };
+			if (request.method() === 'OPTIONS') {
+				return route.fulfill({
+					...preflight(request),
+					headers: { ...preflight(request).headers, 'access-control-allow-methods': 'GET, PUT' }
+				});
+			}
+			if (request.method() === 'GET') {
+				return route.fulfill({ json: { criteria: {}, commute: travelTimes }, headers });
+			}
+			sent.push(request.postDataJSON());
+			const asked = sent.at(-1)!.criteria.commute as { from: string };
+			return /nowhere/i.test(asked.from)
+				? route.fulfill({
+						status: 422,
+						json: {
+							type: 'validation',
+							on: 'body',
+							property: 'criteria.commute.from',
+							message: 'This address was not found. Check it, or give a town or a place nearby.'
+						},
+						headers
+					})
+				: route.fulfill({
+						json: { criteria: { commute: { ...asked, place: HOME } }, commute: travelTimes },
+						headers
+					});
+		});
+		await page.reload();
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+		await commute.getByText('Commute', { exact: true }).click();
+		await expect(page.getByText('Commute: Give the address you would travel from.')).toBeVisible();
+
+		const from = commute.getByLabel('Where you travel from');
+		await from.fill('Nowhere at all');
+		// Public transport is not offered by this site: said, and not to pick
+		await expect(commute.getByRole('checkbox', { name: /^Public transport/ })).toBeDisabled();
+		await expect(commute).toContainText('Public transport (not available on this site)');
+		await commute.getByRole('checkbox', { name: 'Bike' }).check();
+		await commute.getByRole('checkbox', { name: 'Car' }).check();
+		await commute.getByRole('textbox', { name: 'Hours a week' }).fill('5');
+		await expect(commute.locator('[data-budget]')).toContainText(
+			'That is 30 minutes each way for a job at the office every day, or 2 h 30 each way for a job you go to once a week.'
+		);
+		await commute.getByRole('textbox', { name: 'Minutes a week' }).fill('a few');
+		await expect(commute).toContainText(
+			'Give the travel time you accept a week, from 10 minutes to 50 hours.'
+		);
+		await commute.getByRole('textbox', { name: 'Minutes a week' }).fill('');
+
+		// An address the map does not know is said at the field, and nothing is lost
+		const save = page.getByRole('button', { name: 'Save perfect job' });
+		await save.click();
+		await expect(from).toHaveAccessibleDescription(
+			'This address was not found. Check it, or give a town or a place nearby.'
+		);
+		await from.fill('10 rue de la République, Lyon');
+		await save.click();
+		await expect(toasts(page).getByText('Perfect job saved')).toBeVisible();
+		await expect(commute.locator('[data-place]')).toHaveText(
+			'Found: 10 Rue de la République 69001 Lyon.'
+		);
+		// The place is the API's to find: the page sends the address, the modes and the minutes
+		expect(sent.at(-1)).toEqual({
+			criteria: {
+				commute: {
+					importance: 3,
+					from: '10 rue de la République, Lyon',
+					modes: ['bike', 'car'],
+					maxMinutesPerWeek: 300
+				}
+			}
+		});
+		// Another address is not found yet: it is looked up on the next save
+		await from.fill('Gare Part-Dieu, Lyon');
+		await expect(commute.locator('[data-place]')).toHaveCount(0);
+		await page.getByRole('button', { name: 'Undo changes' }).click();
 	});
 
 	test('a recruiter books once their job scores enough against the perfect job', async ({

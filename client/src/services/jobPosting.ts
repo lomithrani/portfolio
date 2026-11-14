@@ -20,7 +20,8 @@ import {
 	type SeniorityLevel,
 	type TravelFrequency,
 	type WorkMode,
-	type WorkingTimeArrangement
+	type WorkingTimeArrangement,
+	type JobFieldPath
 } from 'portfolio-common';
 
 // Pure helpers of the job posting editor and of every page showing a posting (recruiter
@@ -58,6 +59,8 @@ export type JobForm = {
 	openings: string;
 	city: string;
 	postalCode: string;
+	/** The office's street and number */
+	address: string;
 	workMode: WorkMode;
 	remoteDaysPerWeek: string;
 	contractType: ContractType;
@@ -96,6 +99,7 @@ export const emptyJobForm = (): JobForm => ({
 	openings: '1',
 	city: '',
 	postalCode: '',
+	address: '',
 	workMode: 'on_site',
 	remoteDaysPerWeek: '',
 	contractType: 'cdi',
@@ -163,6 +167,7 @@ export const jobToForm = (job: JobPostingLike): JobForm => {
 		openings: job.openings === undefined ? (saved ? '' : empty.openings) : numberText(job.openings),
 		city: job.location?.city ?? '',
 		postalCode: job.location?.postalCode ?? '',
+		address: job.location?.address ?? '',
 		workMode: job.location?.workMode ?? empty.workMode,
 		remoteDaysPerWeek: numberText(job.location?.remoteDaysPerWeek),
 		contractType: job.contract?.type ?? empty.contractType,
@@ -209,6 +214,7 @@ export const formToJobInput = (form: JobForm): JobPostingInput =>
 			country: 'FR',
 			city: form.city,
 			postalCode: form.postalCode,
+			address: form.address,
 			workMode: form.workMode,
 			remoteDaysPerWeek: optionalNumber(form.remoteDaysPerWeek)
 		},
@@ -250,8 +256,19 @@ export const formToJobInput = (form: JobForm): JobPostingInput =>
 
 // --- Validation -------------------------------------------------------------------------
 
-/** The form field of a posting field path (validateJobPosting's, or a 422's `property`) */
-const FIELD_OF_PATH: Record<string, JobFormField> = {
+/**
+ * The fields of a posting the editor has no input for: jobs are in France and paid in euros
+ * (the only country and currency handled)
+ */
+type FixedJobFieldPath = 'location.country' | 'pay.currency';
+
+/**
+ * The form field of a posting field path (validateJobPosting's, or a 422's `property`). Every
+ * field of a posting has one: a field added to JobPostingInput does not compile until the
+ * editor has it, so a recruiter can state everything a candidate's perfect job reads
+ * (portfolio-common's JOB_FIELD_CRITERIA)
+ */
+const FIELD_OF_PATH: Record<Exclude<JobFieldPath, FixedJobFieldPath>, JobFormField> = {
 	title: 'title',
 	description: 'description',
 	company: 'company',
@@ -259,6 +276,7 @@ const FIELD_OF_PATH: Record<string, JobFormField> = {
 	openings: 'openings',
 	'location.city': 'city',
 	'location.postalCode': 'postalCode',
+	'location.address': 'address',
 	'location.workMode': 'workMode',
 	'location.remoteDaysPerWeek': 'remoteDaysPerWeek',
 	'contract.type': 'contractType',
@@ -292,10 +310,14 @@ const FIELD_OF_PATH: Record<string, JobFormField> = {
 export const jobFieldOfProperty = (property: string | undefined): JobFormField | undefined => {
 	if (!property) return undefined;
 	const path = property.replace(/^\//, '').replace(/\//g, '.');
-	if (FIELD_OF_PATH[path]) return FIELD_OF_PATH[path];
-	const withoutIndex = path.replace(/\.\d+$/, '');
-	return FIELD_OF_PATH[withoutIndex];
+	return jobFormFieldOf(path) ?? jobFormFieldOf(path.replace(/\.\d+$/, ''));
 };
+
+/** The form field of a posting field path (`location.city`); undefined for a path the editor has no input for */
+export const jobFormFieldOf = (path: string): JobFormField | undefined =>
+	Object.hasOwn(FIELD_OF_PATH, path)
+		? FIELD_OF_PATH[path as keyof typeof FIELD_OF_PATH]
+		: undefined;
 
 /** The number fields, with how they are named in messages */
 const NUMBER_FIELDS: [JobFormField, string][] = [
@@ -375,6 +397,7 @@ export const JOB_FORM_FIELDS: readonly JobFormField[] = [
 	'workMode',
 	'city',
 	'postalCode',
+	'address',
 	'remoteDaysPerWeek',
 	'contractType',
 	'durationMonths',
@@ -410,6 +433,7 @@ export const JOB_FIELD_LABELS: Record<JobFormField, string> = {
 	workMode: 'Work mode',
 	city: 'City',
 	postalCode: 'Postal code',
+	address: 'Address',
 	remoteDaysPerWeek: 'Remote days a week',
 	contractType: 'Contract type',
 	durationMonths: 'Duration',
@@ -497,14 +521,17 @@ export const formatWorkingTime = (workingTime: JobPostingLike['workingTime']): s
 	return parts.join(' · ');
 };
 
-/** 'Lyon (69003), France', 'France' (fully remote without a city) */
+/**
+ * 'Lyon (69003), France', '12 rue de la République, Lyon (69003), France', 'France' (fully remote
+ * without a city)
+ */
 export const formatPlace = (location: JobPostingLike['location']): string => {
 	if (!location) return '';
 	const country = location.country ? COUNTRY_LABELS[location.country] : '';
 	const city = location.city
 		? `${location.city}${location.postalCode ? ` (${location.postalCode})` : ''}`
 		: '';
-	return [city, country].filter(Boolean).join(', ');
+	return [location.address, city, country].filter(Boolean).join(', ');
 };
 
 /** 'Hybrid (2 days remote a week)', 'Full remote', 'On site' */

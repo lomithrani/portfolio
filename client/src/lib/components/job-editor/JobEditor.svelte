@@ -946,6 +946,23 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{/snippet}
 					</Field>
 				</div>
+				<Field
+					field="address"
+					label="Address"
+					hint="The office's street and number, if you can share it. A candidate's travel time is counted to it, or to the city's centre without it."
+				>
+					{#snippet control(attributes)}
+						<input
+							{...attributes}
+							class="input"
+							type="text"
+							autocomplete="street-address"
+							maxlength={JOB_LIMITS.address}
+							placeholder="e.g. 12 rue de la République"
+							bind:value={form.address}
+						/>
+					{/snippet}
+				</Field>
 				{#if form.workMode === 'hybrid'}
 					<Field field="remoteDaysPerWeek" label="Remote days a week" class="sm:max-w-xs">
 						{#snippet control(attributes)}

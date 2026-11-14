@@ -348,6 +348,12 @@ and never what the owner asks for or how much a criterion weighs. A recruiter ca
 about the criteria by trying postings: this is inherent to a gate, and the reason the details
 are the owner's choice.
 
+One criterion, the commute, needs something neither the posting nor the criteria hold: a travel
+time. The step asks `commuteContext` (`server/services/commute.ts`) for it before scoring, which
+answers from a cache or from outside services, once per posting. When it is not known (travel
+times are off, a service did not answer), the criterion is left out of the score instead of
+failing the visitor: an outage of someone else's service must not close a journey.
+
 A stored minimum that is not a score (written by hand) reads as 100: the step fails closed.
 An owner without any criterion asks nothing: every job scores 100.
 

@@ -472,7 +472,8 @@ export const noteContent = (config: unknown): { title: string; text: string } =>
 /** How a job does on one criterion of the owner's perfect job, as the visitor is told */
 export interface JobMatchCriterion {
 	criterion: PerfectJobCriterion;
-	outcome: 'match' | 'partial' | 'miss';
+	/** `unknown`: it could not be computed (a travel time), and does not count in the score */
+	outcome: 'match' | 'partial' | 'miss' | 'unknown';
 	/** The job description does not say what the criterion reads */
 	notStated: boolean;
 	/** A deal-breaker of the owner's that the job does not match: the score is 0 */
@@ -494,7 +495,7 @@ const isScore = (value: unknown): value is number => {
 	return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
 };
 
-const OUTCOMES: readonly JobMatchCriterion['outcome'][] = ['match', 'partial', 'miss'];
+const OUTCOMES: readonly JobMatchCriterion['outcome'][] = ['match', 'partial', 'miss', 'unknown'];
 
 /** The score, from a job match step's `view`; undefined when there is none (or it is not one) */
 export const jobMatch = (view: unknown): JobMatch | undefined => {
@@ -559,6 +560,7 @@ export const jobMatchNote = (step: { config?: unknown; view?: unknown }): string
 
 /** How a criterion's outcome reads in the details of a score */
 export const jobMatchOutcomeText = (entry: JobMatchCriterion): string => {
+	if (entry.outcome === 'unknown') return 'Could not be computed right now: not counted';
 	if (entry.notStated) return 'Not stated in your job description';
 	if (entry.outcome === 'match') return 'Matches';
 	return entry.outcome === 'partial' ? 'Partly matches' : 'Does not match';

@@ -8,8 +8,11 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock 
 import mongoose from 'mongoose';
 import { env } from '../env';
 import { createApp } from '../app';
+import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from 'portfolio-common';
 import type { PerfectJob as PerfectJobCriteria } from 'portfolio-common';
-import { PerfectJob, User } from '../models/database';
+import { JobPosting, PerfectJob, User } from '../models/database';
+import { enableRecruiterSpace } from '../services/recruiters';
+import { COMPLETE_POSTINGS, fieldPaths } from './completePostings';
 import { perfectJobOf } from '../services/perfectJobs';
 import { authCookie } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
@@ -63,8 +66,12 @@ afterEach(async () => {
   if (!connected) return;
   const users = (await User.find({ email: new RegExp(`-${t.suffix}@`) }, '_id').lean()).map((user) => user._id);
   await PerfectJob.deleteMany({ user: { $in: users } });
+  await JobPosting.deleteMany({ recruiter: { $in: users } });
   await User.deleteMany({ _id: { $in: users } });
 });
+
+/** Travel times are off unless a test turns them on (tests/commute.test.ts covers them) */
+const OFF = { enabled: false, modes: [] };
 
 const criteria: PerfectJobCriteria = {
   workMode: { importance: 5, dealBreaker: true, modes: ['hybrid', 'remote'], minRemoteDays: 3 },
@@ -82,20 +89,20 @@ describe('the perfect job (GET, PUT /perfect-job)', () => {
   it('starts without any criterion, then keeps the ones saved', async () => {
     const owner = await createUser('owner');
     const empty = await call('GET', '/perfect-job', { cookie: owner.cookie });
-    expect({ status: empty.status, body: empty.json() }).toEqual({ status: 200, body: { criteria: {} } });
+    expect({ status: empty.status, body: empty.json() }).toEqual({ status: 200, body: { criteria: {}, commute: OFF } });
     expect(await PerfectJob.countDocuments({ user: owner.id })).toBe(0);
 
     const saved = await call('PUT', '/perfect-job', { body: { criteria }, cookie: owner.cookie });
-    expect({ status: saved.status, body: saved.json() }).toEqual({ status: 200, body: { criteria } });
-    expect((await call('GET', '/perfect-job', { cookie: owner.cookie })).json()).toEqual({ criteria });
+    expect({ status: saved.status, body: saved.json() }).toEqual({ status: 200, body: { criteria, commute: OFF } });
+    expect((await call('GET', '/perfect-job', { cookie: owner.cookie })).json()).toEqual({ criteria, commute: OFF });
 
     // A save replaces every criterion; none at all is a perfect job too
     const replaced = await call('PUT', '/perfect-job', {
       body: { criteria: { travel: { importance: 2, max: 'none' } } },
       cookie: owner.cookie
     });
-    expect(replaced.json()).toEqual({ criteria: { travel: { importance: 2, max: 'none' } } });
-    expect((await call('PUT', '/perfect-job', { body: { criteria: {} }, cookie: owner.cookie })).json()).toEqual({ criteria: {} });
+    expect(replaced.json()).toEqual({ criteria: { travel: { importance: 2, max: 'none' } }, commute: OFF });
+    expect((await call('PUT', '/perfect-job', { body: { criteria: {} }, cookie: owner.cookie })).json()).toEqual({ criteria: {}, commute: OFF });
     expect(await PerfectJob.countDocuments({ user: owner.id })).toBe(1);
   });
 
@@ -114,7 +121,7 @@ describe('the perfect job (GET, PUT /perfect-job)', () => {
     });
     expect(saved.status).toBe(200);
     const expected = { workMode: { importance: 2, modes: ['remote'] }, skills: { importance: 3, names: ['Go', 'Rust'] } };
-    expect(saved.json()).toEqual({ criteria: expected });
+    expect(saved.json()).toEqual({ criteria: expected, commute: OFF });
     expect((await PerfectJob.findOne({ user: owner.id }).lean())?.criteria).toEqual(expected);
   });
 
@@ -145,14 +152,14 @@ describe('the perfect job (GET, PUT /perfect-job)', () => {
       expect(await refused({ criteria: value })).toMatchObject({ property: 'criteria', message: 'Criteria must be an object.' });
     }
     await refused({});
-    expect((await call('GET', '/perfect-job', { cookie: owner.cookie })).json()).toEqual({ criteria });
+    expect((await call('GET', '/perfect-job', { cookie: owner.cookie })).json()).toEqual({ criteria, commute: OFF });
   });
 
   it("is its owner's alone", async () => {
     const owner = await createUser('owner');
     const other = await createUser('other');
     expect((await call('PUT', '/perfect-job', { body: { criteria }, cookie: owner.cookie })).status).toBe(200);
-    expect((await call('GET', '/perfect-job', { cookie: other.cookie })).json()).toEqual({ criteria: {} });
+    expect((await call('GET', '/perfect-job', { cookie: other.cookie })).json()).toEqual({ criteria: {}, commute: OFF });
     expect((await call('PUT', '/perfect-job', { body: { criteria: {} }, cookie: other.cookie })).status).toBe(200);
     expect(await perfectJobOf(owner.id)).toEqual(criteria);
   });
@@ -175,7 +182,32 @@ describe('the perfect job (GET, PUT /perfect-job)', () => {
       criteria: { pay: { importance: 4, perYear: 70000 }, travel: { importance: 3, max: 'weekly' }, old: { importance: 1 } }
     });
     expect((await call('GET', '/perfect-job', { cookie: owner.cookie })).json()).toEqual({
-      criteria: { pay: { importance: 4, perYear: 70000 } }
+      criteria: { pay: { importance: 4, perYear: 70000 } },
+      commute: OFF
     });
+  });
+});
+
+// What a candidate asks for is read from what a recruiter says (portfolio-common's
+// JOB_FIELD_CRITERIA; tests/perfectJobScore.test.ts checks the scoring side): the API must take,
+// store and give back every field a criterion reads
+describe('what a recruiter can say of a job (POST /jobs)', () => {
+  it('stores and returns every field of a posting, the ones the perfect job reads among them', async () => {
+    const recruiter = await createUser('recruiter');
+    expect(await enableRecruiterSpace(recruiter.id)).toBe(true);
+    const stored = new Set<string>();
+    for (const posting of COMPLETE_POSTINGS) {
+      const created = await call('POST', '/jobs', { body: posting, cookie: recruiter.cookie });
+      expect({ status: created.status, text: created.status === 200 ? '' : created.text }).toEqual({ status: 200, text: '' });
+      const read = await call('GET', `/recruiter/jobs/${created.json()._id}`, { cookie: recruiter.cookie });
+      expect(read.status).toBe(200);
+      const { _id, createdAt, updatedAt, publishedAt, applicants, ...fields } = read.json();
+      // As sent, field for field
+      expect(fields).toEqual(JSON.parse(JSON.stringify(posting)));
+      for (const path of fieldPaths(fields)) stored.add(path);
+    }
+    expect([...stored].sort()).toEqual([...JOB_FIELD_PATHS].sort());
+    const scored = JOB_FIELD_PATHS.filter((path) => JOB_FIELD_CRITERIA[path].length > 0);
+    expect(scored.filter((path) => !stored.has(path))).toEqual([]);
   });
 });

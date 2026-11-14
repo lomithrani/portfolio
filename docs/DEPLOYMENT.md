@@ -168,6 +168,10 @@ local development.
 | `CLIENT_IP_HEADER`             | no       | Leave unset: on Railway it defaults to `X-Real-IP`. Set it only behind another proxy (see [Booking protection](#booking-protection)) |
 | `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé import (see [Résumé import](#résumé-import)) |
 | `GITHUB_ISSUES_TOKEN`          | for step suggestions | Fine-grained GitHub token with Issues write on one repository; sealed. Enables step suggestions (see [Step suggestions](#step-suggestions)) |
+| `COMMUTE_TIMES`                | for the commute criterion | `true` turns travel times on (see [Travel times](#travel-times)); addresses then go to the Géoplateforme |
+| `COMMUTE_TRANSIT`              | no       | `transitous` adds public transport times, under Transitous' usage policy; needs `COMMUTE_CONTACT`   |
+| `COMMUTE_CONTACT`              | with `COMMUTE_TRANSIT` | An email address or a web page, sent as the User-Agent of the requests to Transitous |
+| `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off |
 | `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions are filed in, `owner/name`; leave unset (`lomithrani/portfolio`)         |
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
 | `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
@@ -439,6 +443,42 @@ being sent after 10 requests in a UTC day. If the repository is renamed or trans
 answers with a redirect, which is not followed: update `GITHUB_ISSUES_REPO` (the log line shows
 `"status":301` or `307`). The token is sent to `api.github.com` only, never follows a redirect,
 and never appears in a response or a log line (`tests/stepSuggestions.test.ts` fails if it does).
+
+## Travel times
+
+The perfect job has a "Commute" criterion: the travel time an owner accepts a week, from an
+address they give to the address of a job. Computing it needs outside services, so it is **off
+until `COMMUTE_TIMES=true`**: `GET /perfect-job` then answers `commute: { enabled: false }`, the
+admin tab does not let the criterion be switched on, and a commute already saved does not count
+in a job's score.
+
+| Service | Used for | Key | What it receives |
+| --- | --- | --- | --- |
+| Géoplateforme, IGN (`data.geopf.fr`) | Finding addresses; the way by car and on foot (the time by bike is estimated from the distance on foot, at 15 km/h) | none | The owner's address as typed, the address of a job posting, and pairs of points |
+| Transitous (`api.transitous.org`), only with `COMMUTE_TRANSIT=transitous` | Journeys by public transport | none | Pairs of points, and `COMMUTE_CONTACT` as User-Agent |
+
+Neither receives a name, an account or an IP address of the people concerned: the requests come
+from the API. Both are public services without a contract: they can change or stop.
+
+- **Géoplateforme** is the French state's map service, open to any use, limited to 50 geocoding
+  and 5 route requests a second for one IP. It covers France, like the job postings.
+- **Transitous** is run by volunteers. Its [usage policy](https://transitous.org/api/) is for
+  **open-source, non-commercial** projects with light use (it asks to be told above 720 route
+  requests a day), a User-Agent that says who asks, and a link to its sources where the times
+  are used (the Hire page has it). Set `COMMUTE_TRANSIT` only if the site fits, with
+  `COMMUTE_CONTACT`. Without it, owners can pick bike, car and on foot.
+
+What keeps the use light: an address is looked up once (the owner's on save, a posting's the
+first time it is scored) and a way is asked for once, then kept for 30 days (places: 90) in the
+`commutecaches` collection, under keys that do not show the question. Every request counts
+against `COMMUTE_DAILY_LIMIT` (500 a day for the whole site by default); over it, and while a
+service does not answer, the commute is left out of the scores (recruiters see "Could not be
+computed right now: not counted") instead of blocking anyone. The API logs `Travel times: no
+answer` at warn level with the kind of request and the reason, never the address.
+
+An owner's address is as private as the rest of their perfect job: only they read it. A
+recruiter learns whether their job's commute matches, which says something about where the
+owner is; the tab tells owners they can give a nearby place instead of their home.
 
 ## Custom domains are required for login
 

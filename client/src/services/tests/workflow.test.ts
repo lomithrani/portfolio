@@ -559,6 +559,13 @@ describe('the job match step', () => {
 		expect(jobMatchOutcomeText({ ...entry, outcome: 'miss', notStated: true })).toBe(
 			'Not stated in your job description'
 		);
+		// A travel time that could not be computed: the criterion is left out of the score
+		expect(jobMatchOutcomeText({ ...entry, criterion: 'commute', outcome: 'unknown' })).toBe(
+			'Could not be computed right now: not counted'
+		);
+		expect(
+			jobMatch({ ...view, criteria: [{ criterion: 'commute', outcome: 'unknown' }] })?.criteria
+		).toEqual([{ criterion: 'commute', outcome: 'unknown', notStated: false, dealBreaker: false }]);
 	});
 
 	it("reads the step's settings for its form, keeping what was typed", () => {
