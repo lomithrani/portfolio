@@ -215,17 +215,18 @@
 		};
 	});
 
-	// Opens on the most recent months drawn: a career scrolls back in time. The last bar's end
-	// (the current month for an ongoing one) goes near the right edge, not the axis' own end: the
-	// axis runs to the end of that year, months of nothing at this zoom. Once, when the timeline
-	// is mounted: a zoom or a save never scrolls back here
+	// Opens on the most recent months drawn: a career scrolls back in time. The latest end of a
+	// bar goes near the right edge (the current month for an ongoing one, later for one planned
+	// further: a next job, studies still to finish), not the axis' own end: the axis runs to the
+	// end of that year, months of nothing at this zoom. Once, when the timeline is mounted: a
+	// zoom or a save never scrolls back here
 	$effect(() => {
 		const element = scroller;
 		const line = track;
 		if (!element || !line) return;
 		untrack(() => {
 			if (months <= 0) return;
-			const last = timeline.today ?? Math.max(...timeline.items.map((item) => item.extent.end));
+			const last = Math.max(...timeline.items.map((item) => item.extent.end));
 			const drawn = line.getBoundingClientRect();
 			const view = element.getBoundingClientRect();
 			const end =
@@ -242,6 +243,8 @@
 	// with became (a shorter shortest bar makes every month wider). It follows the experiences
 	// only (the axis is rebuilt with them), never the zoom: zoomTo places its own scroll
 	let drawnAxis: { start: number; months: number } | undefined;
+	/** Counts the restores asked for: one overtaken by a later change is dropped */
+	let restores = 0;
 	$effect.pre(() => {
 		const next = { start: axis.start, months };
 		const previous = drawnAxis;
@@ -253,8 +256,9 @@
 		const width = line.offsetWidth;
 		if (width <= 0) return;
 		const month = previous.start + (element.scrollLeft / width) * previous.months;
+		const restore = ++restores;
 		void tick().then(() => {
-			if (!line.isConnected) return;
+			if (restore !== restores || !line.isConnected) return;
 			const same =
 				previous.start === next.start &&
 				previous.months === next.months &&

@@ -656,6 +656,34 @@ test.describe("the timeline's zoom", () => {
 		expect(await fits(page)).toBe(false);
 	});
 
+	test('opens on a bar planned after the current month, not on the current month', async ({
+		page
+	}) => {
+		const upcoming = `Staff Engineer ${tag}`;
+		/** 'YYYY-MM' of the month `offset` months from now (UTC) */
+		const monthFromNow = (offset: number) => {
+			const now = new Date();
+			return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1))
+				.toISOString()
+				.slice(0, 7);
+		};
+		// A job that ended, and the next one, signed, starting in two months: drawn as its
+		// first month, after the current one
+		await createExperience({ title: `Backend Engineer ${tag}` });
+		await createExperience({
+			title: upcoming,
+			start: month(monthFromNow(2)),
+			end: undefined,
+			projects: [project('Onboarding', ['Go'], [], [monthFromNow(2)])]
+		});
+		const onboarding = page.locator('[data-timeline-project]').filter({ hasText: 'Onboarding' });
+
+		await page.setViewportSize({ width: 390, height: 844 });
+		await gotoHydrated(page, `/${DOMAIN}/experiences?view=timeline`);
+		await expect.poll(() => widthOf(onboarding)).toBeGreaterThan(117);
+		await expect(onboarding).toBeInViewport({ ratio: 1 });
+	});
+
 	test('keeps the month at the left edge when a save changes the zoom it opens with', async ({
 		page
 	}) => {
