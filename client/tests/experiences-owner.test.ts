@@ -577,6 +577,172 @@ test.describe('timeline view', () => {
 	});
 });
 
+test.describe("the timeline's zoom", () => {
+	const scroller = (page: Page) => page.locator('[data-timeline-scroller]');
+	const widthOf = async (locator: Locator) => (await locator.boundingBox())?.width ?? 0;
+	/** Whether the whole axis is in sight: nothing to scroll sideways */
+	const fits = (page: Page) =>
+		scroller(page).evaluate((element) => element.scrollWidth <= element.clientWidth);
+
+	test('opens close enough to read the shortest project, and zooms with the wheel and the buttons', async ({
+		page
+	}) => {
+		const title = `Backend Engineer ${tag}`;
+		await createExperience({
+			title,
+			start: month('2019-01'),
+			end: month('2023-12'),
+			projects: [
+				project('Platform', ['Go'], [], ['2019-01', '2023-06']),
+				project('Sprint', ['Kafka'], [], ['2023-11', '2023-12'])
+			]
+		});
+		const region = page.getByRole('region', { name: 'Timeline' });
+		const sprint = region.locator('[data-timeline-project]').filter({ hasText: 'Sprint' });
+		const ticks = region.locator('[data-timeline-tick]');
+		const zoomOut = region.getByRole('button', { name: 'Zoom out' });
+		const zoomIn = region.getByRole('button', { name: 'Zoom in' });
+
+		await gotoHydrated(page, `/${DOMAIN}/experiences?view=timeline`);
+		// Two months, 120 px: the five years scroll sideways, opened on the most recent months
+		await expect.poll(() => widthOf(sprint)).toBeGreaterThan(117);
+		expect(await widthOf(sprint)).toBeLessThan(123);
+		expect(await fits(page)).toBe(false);
+		await expect(sprint).toBeInViewport();
+		// Months are named at this zoom
+		await expect(ticks.filter({ hasText: 'Oct 2023' })).toHaveCount(1);
+
+		// The wheel, once the pointer was moved over the timeline: out, around the pointer
+		const box = (await scroller(page).boundingBox())!;
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.wheel(0, 200);
+		await expect.poll(() => widthOf(sprint)).toBeLessThan(100);
+		const afterWheel = await widthOf(sprint);
+		// And back in
+		await page.mouse.wheel(0, -400);
+		await expect.poll(() => widthOf(sprint)).toBeGreaterThan(afterWheel + 20);
+
+		// The buttons, down to the whole axis in sight: fewer months are named, and nothing is
+		// further out
+		await expect(zoomOut).toBeEnabled();
+		while (await zoomOut.isEnabled()) await zoomOut.click();
+		expect(await fits(page)).toBe(true);
+		await expect(ticks.filter({ hasText: 'Oct 2023' })).toHaveCount(0);
+		await expect(ticks.filter({ hasText: /^2019$/ })).toHaveCount(1);
+		await expect(ticks.filter({ hasText: /^2023$/ })).toHaveCount(1);
+		await zoomIn.click();
+		expect(await fits(page)).toBe(false);
+		await expect(zoomOut).toBeEnabled();
+	});
+
+	test('follows a pinch on a touch screen', async ({ browser }) => {
+		const title = `Backend Engineer ${tag}`;
+		await createExperience({
+			title,
+			start: month('2019-01'),
+			end: month('2023-12'),
+			projects: [project('Sprint', ['Kafka'], [], ['2023-11', '2023-12'])]
+		});
+		const context = await browser.newContext({
+			viewport: { width: 390, height: 844 },
+			isMobile: true,
+			hasTouch: true
+		});
+		const page = await context.newPage();
+		await blockGoogle(page);
+		const sprint = page.locator('[data-timeline-project]').filter({ hasText: 'Sprint' });
+
+		await gotoHydrated(page, `/${DOMAIN}/experiences?view=timeline`);
+		await expect.poll(() => widthOf(sprint)).toBeGreaterThan(117);
+
+		// Two fingers closing in to a third of their spread: the timeline zooms out, not the page
+		const box = (await scroller(page).boundingBox())!;
+		const cdp = await context.newCDPSession(page);
+		const middle = box.x + box.width / 2;
+		const fingers = (type: 'touchStart' | 'touchMove', spread: number) =>
+			cdp.send('Input.dispatchTouchEvent', {
+				type,
+				touchPoints: [
+					{ x: middle - spread, y: box.y + 60, id: 1 },
+					{ x: middle + spread, y: box.y + 60, id: 2 }
+				]
+			});
+		await fingers('touchStart', 120);
+		for (const spread of [100, 80, 60, 40]) await fingers('touchMove', spread);
+		await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+		await expect.poll(() => widthOf(sprint)).toBeLessThan(45);
+		expect(await widthOf(sprint)).toBeGreaterThan(35);
+		expect(await page.evaluate(() => window.visualViewport?.scale)).toBe(1);
+		await context.close();
+	});
+});
+
+test.describe('the floating corner of the page', () => {
+	test("offers visitors to hire the owner, and the owner their own page's heading", async ({
+		page
+	}) => {
+		const title = `Backend Engineer ${tag}`;
+		// A card taller than a short screen: the page scrolls
+		await createExperience({
+			title,
+			projects: ['Streams', 'Billing', 'Platform', 'Tooling'].map((name) => project(name, ['Go']))
+		});
+		const hire = page.getByRole('link', { name: 'Hire me' });
+		const views = page.getByRole('group', { name: 'View' });
+
+		// A visitor: no heading, the view switch and "Hire me" in the corner, in both views
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await expect(card(page, title)).toBeVisible();
+		await expect(page.getByRole('heading', { level: 2, name: 'Experiences' })).toHaveCount(0);
+		await expect(hire).toBeVisible();
+		await expect(views).toBeVisible();
+		// The corner stays in sight at the end of the page, clear of the last card
+		await card(page, title).scrollIntoViewIfNeeded();
+		await expect(hire).toBeInViewport();
+		// At the end of the page it covers nothing of the last card, on a wide screen as on the
+		// narrowest phone, where it stays one row
+		const dock = page.locator('[data-page-dock]');
+		for (const size of [
+			{ width: 1280, height: 500 },
+			{ width: 320, height: 568 }
+		]) {
+			await page.setViewportSize(size);
+			await page
+				.locator('#page')
+				.evaluate((main) => main.scrollTo({ top: main.scrollHeight, behavior: 'instant' }));
+			const corner = (await dock.boundingBox())!;
+			const last = (await card(page, title).boundingBox())!;
+			expect(corner.height).toBeLessThan(60);
+			expect(last.y + last.height).toBeLessThanOrEqual(corner.y);
+			// Its buttons keep their names where the view switch shows icons alone
+			await expect(views.getByRole('button', { name: 'Timeline', exact: true })).toBeVisible();
+		}
+		await page.setViewportSize({ width: 1280, height: 720 });
+		await views.getByRole('button', { name: 'Timeline', exact: true }).click();
+		await expect(hire).toBeVisible();
+		await hire.click();
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire$`));
+
+		// The owner: their heading and buttons, the view switch, and no "Hire me"
+		await openAsOwner(page);
+		await expect(page.getByRole('heading', { level: 2, name: 'Experiences' })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Add experience', exact: true })).toBeVisible();
+		await expect(views).toBeVisible();
+		await expect(hire).toHaveCount(0);
+		// On a phone, once their buttons have scrolled away: "Add experience" joins the corner,
+		// on the view switch's row
+		await page.setViewportSize({ width: 390, height: 600 });
+		await page
+			.locator('#page')
+			.evaluate((main) => main.scrollTo({ top: main.scrollHeight, behavior: 'instant' }));
+		const add = page.locator('[data-add-fab]');
+		await expect(add).toBeVisible();
+		await expect(add).toHaveAccessibleName('Add experience');
+		expect((await dock.boundingBox())!.height).toBeLessThan(60);
+	});
+});
+
 test.describe('hovering a skill tag', () => {
 	test('previews only the projects using it, in the list and on the timeline', async ({ page }) => {
 		const first = `Backend Engineer ${tag}`;
@@ -607,7 +773,8 @@ test.describe('hovering a skill tag', () => {
 		await card(page, first).getByText('Kafka', { exact: true }).hover();
 		await expect(preview).toBeVisible();
 		await expect(preview).toContainText('Kafka');
-		await expect(preview).toContainText('Used in 2 projects');
+		// With the time they add up to: Jan 2020 to Jun 2021, then Mar 2022 to Jun 2023
+		await expect(preview).toContainText('Used in 2 projects (2 years 10 months)');
 		await expect(preview.getByRole('listitem')).toHaveText([/Platform/, /Streams/]);
 		await expect(preview).toContainText(`${first} · E2E Corp`);
 		await expect(preview).toContainText('Jan 2020 – Jun 2021');

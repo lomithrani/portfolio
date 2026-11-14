@@ -1,13 +1,16 @@
 import {
 	experiencePeriod,
 	formatDuration,
+	formatMonthCount,
 	formatMonthRange,
 	formatProjectMonths,
+	monthIndex,
 	projectEnd
 } from '#services/experienceDates.ts';
 import { normalizeSkill, projectMatchesFilters, skillOptions } from '#services/filters.ts';
 import {
 	buildTimeline,
+	projectMonthSpan,
 	timelineAxis,
 	type MonthSpan,
 	type TimelineYear
@@ -43,7 +46,10 @@ export type PreviewEntry = {
 export type Preview = {
 	kind: 'skill' | 'project' | 'experience';
 	title: string;
-	/** Under the title: how many projects (a skill), or where (a project, an experience) */
+	/**
+	 * Under the title: how many projects and for how long in all (a skill: 'Used in 3 projects
+	 * (5 years 2 months)'), or where (a project, an experience)
+	 */
 	caption: string;
 	/** 'Mar 2022 – Jun 2023 · 1 yr 4 mos' of a project or an experience; '' for a skill */
 	period: string;
@@ -109,8 +115,47 @@ const projectMonths = (project: PreviewedProject, experience: PreviewedExperienc
 
 const noSkills = () => ({ hard: [], soft: [] });
 
+/**
+ * The months a skill (by key) was used in all: the calendar months of the projects using it, as
+ * the timeline places them (see projectMonthSpan), each counted once however many of them ran
+ * that month, up to the current month (a project planned later, or to a later end, was not used
+ * yet). Projects of an experience without dates count for nothing.
+ */
+export function skillMonths(
+	experiences: PreviewedExperience[],
+	key: string,
+	now: Date = new Date()
+): number {
+	const filters = { skills: [normalizeSkill(key)] };
+	// The month after the current one: nothing is counted from there on
+	const until = monthIndex(now) + 1;
+	const spans: MonthSpan[] = [];
+	for (const experience of experiences) {
+		for (const project of experience.projects ?? []) {
+			if (!projectMatchesFilters(project, filters)) continue;
+			const span = projectMonthSpan(project, experience, now);
+			if (span && span.start < until) {
+				spans.push({ start: span.start, end: Math.min(span.end, until) });
+			}
+		}
+	}
+	spans.sort((a, b) => a.start - b.start);
+	let months = 0;
+	let counted = -Infinity;
+	for (const span of spans) {
+		const from = Math.max(span.start, counted);
+		if (span.end > from) months += span.end - from;
+		counted = Math.max(counted, span.end);
+	}
+	return months;
+}
+
 /** The projects using a skill (by key, see normalizeSkill), in the experiences' order */
-export function skillPreview(experiences: PreviewedExperience[], key: string): Preview | undefined {
+export function skillPreview(
+	experiences: PreviewedExperience[],
+	key: string,
+	now: Date = new Date()
+): Preview | undefined {
 	const skill = normalizeSkill(key);
 	const entries: PreviewEntry[] = [];
 	for (const experience of experiences) {
@@ -126,10 +171,12 @@ export function skillPreview(experiences: PreviewedExperience[], key: string): P
 	if (entries.length === 0) return undefined;
 	const options = skillOptions(experiences);
 	const label = [...options.hard, ...options.soft].find((option) => option.key === skill)?.label;
+	const used = entries.length === 1 ? 'Used in 1 project' : `Used in ${entries.length} projects`;
+	const time = formatMonthCount(skillMonths(experiences, skill, now));
 	return {
 		kind: 'skill',
 		title: label ?? key,
-		caption: entries.length === 1 ? 'Used in 1 project' : `Used in ${entries.length} projects`,
+		caption: time ? `${used} (${time})` : used,
 		period: '',
 		entries,
 		skills: noSkills()
@@ -237,7 +284,7 @@ export function resolvePreview(
 	if (separator === -1) return undefined;
 	const kind = target.slice(0, separator);
 	const rest = target.slice(separator + 1);
-	if (kind === 'skill') return skillPreview(experiences, rest);
+	if (kind === 'skill') return skillPreview(experiences, rest, now);
 	const byId = (id: string) => experiences.find((experience) => String(experience._id) === id);
 	if (kind === 'experience') {
 		const experience = byId(rest);

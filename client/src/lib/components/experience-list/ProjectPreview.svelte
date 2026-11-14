@@ -95,14 +95,16 @@
 		const rect = anchor.getBoundingClientRect();
 		const viewWidth = document.documentElement.clientWidth;
 		const viewHeight = document.documentElement.clientHeight;
+		const outOfSight =
+			rect.bottom < 0 || rect.top > viewHeight || rect.right < 0 || rect.left > viewWidth;
+		// Focused with the keyboard while the page is still bringing it into view (it scrolls
+		// smoothly): the preview waits for it, and is placed as the scroll goes (see onMove)
+		if (anchor.isConnected && outOfSight && pinned && anchor.contains(document.activeElement)) {
+			position = null;
+			return;
+		}
 		// Gone (removed, or scrolled out of sight): nothing to point at
-		if (
-			!anchor.isConnected ||
-			rect.bottom < 0 ||
-			rect.top > viewHeight ||
-			rect.right < 0 ||
-			rect.left > viewWidth
-		) {
+		if (!anchor.isConnected || outOfSight) {
 			hide();
 			return;
 		}
