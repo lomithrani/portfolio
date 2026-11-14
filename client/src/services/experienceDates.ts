@@ -72,6 +72,16 @@ export function formatDuration(start?: DateInput, end?: DateInput, now: Date = n
 		.join(' ');
 }
 
+/** '5 years 2 months', '1 year', '3 months', in full words; '' under a month */
+export function formatMonthCount(months: number): string {
+	if (!(months >= 1)) return '';
+	const years = Math.floor(months / 12);
+	const rest = Math.floor(months % 12);
+	return [years ? plural(years, 'year') : '', rest ? plural(rest, 'month') : '']
+		.filter(Boolean)
+		.join(' ');
+}
+
 type Dated = { start?: Date | string | null; end?: Date | string | null };
 
 export type ExperiencePeriod = { start?: Date; end?: Date; ongoing: boolean };

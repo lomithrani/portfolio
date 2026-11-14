@@ -2,7 +2,8 @@
 	import { Bars3BottomLeft, ListBullet } from 'svelte-heros-v2';
 	import type { ExperienceView } from '#services/timeline.ts';
 
-	let { view = $bindable() }: { view: ExperienceView } = $props();
+	let { view = $bindable(), class: classes = '' }: { view: ExperienceView; class?: string } =
+		$props();
 
 	const views = [
 		{ value: 'list', label: 'List', icon: ListBullet },
@@ -15,7 +16,7 @@
 <div
 	role="group"
 	aria-label="View"
-	class="inline-flex gap-1 rounded-base border border-surface-200-800 bg-surface-50-950 p-1"
+	class="inline-flex gap-1 rounded-base border border-surface-200-800 bg-surface-50-950 p-1 {classes}"
 >
 	{#each views as { value, label, icon: Icon } (value)}
 		<button
@@ -27,7 +28,9 @@
 			onclick={() => (view = value)}
 		>
 			<Icon size="16" aria-hidden="true" />
-			{label}
+			<!-- Icons alone under 360 px: the switch shares its row with "Hire me" (the label stays
+				the button's name) -->
+			<span class="max-[22.4rem]:sr-only">{label}</span>
 		</button>
 	{/each}
 </div>
