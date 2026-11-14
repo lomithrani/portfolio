@@ -2,9 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { ExperienceType } from 'portfolio-common';
 import {
 	buildTimeline,
+	closestMonthWidth,
+	defaultMonthWidth,
 	placeSpan,
+	projectMonthSpan,
+	shortestBarMonths,
 	timelineAxis,
-	timelineMinWidth,
+	timelineTicks,
 	viewFromSearchParams,
 	viewToSearchParams
 } from '../timeline';
@@ -384,19 +388,140 @@ describe('placeSpan', () => {
 	});
 });
 
-describe('timelineMinWidth', () => {
-	it('is 10 px a month for short careers', () => {
-		expect(timelineMinWidth(36)).toBe(360);
-		expect(timelineMinWidth(108)).toBe(1080);
+describe('projectMonthSpan', () => {
+	it('is every month of the project, its last one included', () => {
+		const job = experience('Job', '2020-01', '2022-12');
+		expect(projectMonthSpan(project('Short', '2021-03', '2021-05'), job, NOW)).toEqual({
+			start: m('2021-03'),
+			end: m('2021-06')
+		});
 	});
 
-	it('squeezes longer careers into a desktop page, never under 5 px a month', () => {
-		expect(timelineMinWidth(156)).toBe(1100);
-		expect(timelineMinWidth(220)).toBe(1100);
-		expect(timelineMinWidth(480)).toBe(2400);
+	it('keeps the months the timeline cuts off a bar at a handoff', () => {
+		const first = project('First', '2021-01', '2021-03');
+		const job = experience('Job', '2020-01', '2022-12', [first, project('Next', '2021-03')]);
+
+		expect(itemOf(build(job), 'Job').projects[0].span.end).toBe(m('2021-03'));
+		expect(projectMonthSpan(first, job, NOW)?.end).toBe(m('2021-04'));
 	});
 
-	it('is nothing without months', () => {
-		expect(timelineMinWidth(0)).toBe(0);
+	it('follows the experience for what the project does not say', () => {
+		const ended = experience('Ended', '2018-01', '2020-12');
+		const ongoing = experience('Ongoing', '2025-01');
+
+		// No end: it stopped with its experience, or runs to the current month
+		expect(projectMonthSpan(project('Open', '2019-06'), ended, NOW)?.end).toBe(m('2021-01'));
+		expect(projectMonthSpan(project('Open', '2025-06'), ongoing, NOW)?.end).toBe(m('2026-12'));
+		// No start: it began with its experience
+		expect(projectMonthSpan(project('Undated'), ended, NOW)).toEqual({
+			start: m('2018-01'),
+			end: m('2021-01')
+		});
+	});
+
+	it('is nothing in an experience without dates', () => {
+		expect(projectMonthSpan(project('Undated'), experience('Undated'), NOW)).toBeUndefined();
+	});
+});
+
+describe('the zoom the timeline opens with', () => {
+	it('makes the shortest bar 120 px wide', () => {
+		const timeline = build(
+			experience('Job', '2016-01', '2025-12', [
+				project('Long', '2016-01', '2020-12'),
+				project('Sprint', '2021-03', '2021-04')
+			])
+		);
+
+		expect(shortestBarMonths(timeline)).toBe(2);
+		expect(defaultMonthWidth(timeline)).toBe(60);
+	});
+
+	it('counts the experiences too: one without projects is a bar to read', () => {
+		const timeline = build(
+			experience('Course', '2019-05', '2019-05'),
+			experience('Job', '2020-01', '2022-12', [project('Long', '2020-01', '2022-12')])
+		);
+
+		expect(shortestBarMonths(timeline)).toBe(1);
+		expect(defaultMonthWidth(timeline)).toBe(120);
+	});
+
+	it('is far when every bar is long (the page stretches a short axis)', () => {
+		const timeline = build(experience('Job', '2010-01', '2019-12'));
+
+		expect(shortestBarMonths(timeline)).toBe(120);
+		expect(defaultMonthWidth(timeline)).toBe(1);
+	});
+
+	it('never opens wider than the widest axis allows', () => {
+		const timeline = build(
+			experience('Then', '1950-01', '1950-01'),
+			experience('Now', '2026-01', '2026-01')
+		);
+		const months = timeline.end - timeline.start;
+
+		expect(closestMonthWidth(months)).toBeCloseTo(48_000 / months);
+		expect(defaultMonthWidth(timeline)).toBeCloseTo(48_000 / months);
+	});
+
+	it('is nothing when nothing is drawn', () => {
+		expect(shortestBarMonths(build())).toBe(0);
+		expect(defaultMonthWidth(build())).toBe(0);
+		expect(closestMonthWidth(0)).toBe(0);
+	});
+
+	it('closes in up to 240 px a month', () => {
+		expect(closestMonthWidth(120)).toBe(240);
+		expect(closestMonthWidth(480)).toBe(100);
+	});
+});
+
+describe('timelineTicks', () => {
+	const axis = { start: m('2024-01'), end: m('2026-01') };
+	const labels = (monthWidth: number, over = axis) =>
+		timelineTicks(over, monthWidth)
+			.filter((tick) => tick.label)
+			.map((tick) => tick.label);
+
+	it('names every month when a month is wide enough, Januaries by their year', () => {
+		const ticks = timelineTicks(axis, 80);
+
+		expect(ticks).toHaveLength(24);
+		expect(ticks.slice(0, 3)).toEqual([
+			{ month: m('2024-01'), label: '2024', year: true },
+			{ month: m('2024-02'), label: 'Feb 2024', year: false },
+			{ month: m('2024-03'), label: 'Mar 2024', year: false }
+		]);
+	});
+
+	it('steps back to quarters, half-years and years as the zoom goes out', () => {
+		expect(labels(60)).toEqual([
+			'2024',
+			'Apr 2024',
+			'Jul 2024',
+			'Oct 2024',
+			'2025',
+			'Apr 2025',
+			'Jul 2025',
+			'Oct 2025'
+		]);
+		expect(labels(20)).toEqual(['2024', 'Jul 2024', '2025', 'Jul 2025']);
+		expect(labels(8)).toEqual(['2024', '2025']);
+	});
+
+	it('labels round years on a long axis, the others keeping a line while there is room', () => {
+		const long = { start: m('2000-01'), end: m('2026-01') };
+
+		expect(labels(2, long)).toEqual(['2000', '2005', '2010', '2015', '2020', '2025']);
+		// 24 px a year: a line each
+		expect(timelineTicks(long, 2)).toHaveLength(26);
+		// 6 px a year: only the labelled ones
+		expect(timelineTicks(long, 0.5).map((tick) => tick.label)).toEqual(['2000', '2020']);
+	});
+
+	it('is nothing without an axis or a width', () => {
+		expect(timelineTicks({ start: 0, end: 0 }, 60)).toEqual([]);
+		expect(timelineTicks(axis, 0)).toEqual([]);
 	});
 });

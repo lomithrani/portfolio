@@ -3,6 +3,7 @@ import {
 	experiencePeriod,
 	formatDuration,
 	formatMonth,
+	formatMonthCount,
 	formatMonthRange,
 	formatProjectMonths,
 	fromMonthKey,
@@ -228,5 +229,22 @@ describe('sortExperiences', () => {
 			exp('own', '2019-01', '2020-01')
 		]);
 		expect(sorted.map(({ id }) => id)).toEqual(['projects', 'own', 'no-dates']);
+	});
+});
+
+describe('formatMonthCount', () => {
+	it('writes years and months in full words', () => {
+		expect(formatMonthCount(1)).toBe('1 month');
+		expect(formatMonthCount(3)).toBe('3 months');
+		expect(formatMonthCount(12)).toBe('1 year');
+		expect(formatMonthCount(13)).toBe('1 year 1 month');
+		expect(formatMonthCount(62)).toBe('5 years 2 months');
+		expect(formatMonthCount(120)).toBe('10 years');
+	});
+
+	it('is empty under a month', () => {
+		expect(formatMonthCount(0)).toBe('');
+		expect(formatMonthCount(-4)).toBe('');
+		expect(formatMonthCount(NaN)).toBe('');
 	});
 });

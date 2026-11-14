@@ -1,5 +1,12 @@
 import { ExperienceType } from 'portfolio-common';
-import { experiencePeriod, monthIndex, projectEnd, toDate } from '#services/experienceDates.ts';
+import {
+	experiencePeriod,
+	formatMonth,
+	monthIndex,
+	projectEnd,
+	toDate,
+	type ExperiencePeriod
+} from '#services/experienceDates.ts';
 
 // The timeline view of the experiences page: experiences and their projects as bars over a
 // time axis. Everything has month precision (see experienceDates.ts) and is counted in months
@@ -126,17 +133,20 @@ function drawnEnds(intervals: Placed[], rows: number[]): number[] {
 const byStartThenLength = (intervals: Placed[]) => (a: number, b: number) =>
 	intervals[a].start - intervals[b].start || intervals[b].last - intervals[a].last || a - b;
 
+/** The smallest round number (1, 2, 5, 10, 20, 50…) that is at least `least` */
+function roundStep(least: number): number {
+	for (let magnitude = 1; ; magnitude *= 10) {
+		for (const factor of [1, 2, 5]) {
+			if (factor * magnitude >= least) return factor * magnitude;
+		}
+	}
+}
+
 /**
  * Years to label so the labels keep some room: the round step (1, 2, 5, 10, 20, 50…) that leaves
  * at most `maxLabels` of them (12: every year up to 12 years, every 2 up to 24, every 5 up to 60)
  */
-function yearStep(years: number, maxLabels: number): number {
-	for (let magnitude = 1; ; magnitude *= 10) {
-		for (const factor of [1, 2, 5]) {
-			if (years <= maxLabels * factor * magnitude) return factor * magnitude;
-		}
-	}
-}
+const yearStep = (years: number, maxLabels: number) => roundStep(years / maxLabels);
 
 /** Up to this many years, each has a line; a longer axis only has the labelled ones */
 const YEARLY_LINES = 60;
@@ -161,6 +171,69 @@ export function timelineAxis(
 		years.push({ year, month: year * 12, labelled: year % step === 0 });
 	}
 	return { start, end, years };
+}
+
+/** The months of a dated experience, both included: an ongoing one runs to the current month */
+function experienceMonths(
+	period: ExperiencePeriod,
+	nowMonth: number
+): { start: number; last: number } | undefined {
+	if (!period.start) return undefined;
+	const start = monthIndex(period.start);
+	const last = Math.max(
+		start,
+		period.ongoing ? nowMonth : period.end ? monthIndex(period.end) : start
+	);
+	return { start, last };
+}
+
+/** The months of a project inside its (dated) experience, which covers `own` */
+function placeProject(
+	project: SourceProject,
+	period: ExperiencePeriod,
+	own: { start: number; last: number },
+	nowMonth: number
+): { placed: Placed; ongoing: boolean; undated: boolean } {
+	const projectStart = toDate(project.start);
+	if (!projectStart) {
+		// No start: it began with its experience, and lasted as long unless it has an end
+		const ownEnd = toDate(project.end);
+		return {
+			placed: {
+				start: own.start,
+				last: ownEnd ? Math.max(own.start, monthIndex(ownEnd)) : own.last,
+				floor: own.start
+			},
+			ongoing: !ownEnd && period.ongoing,
+			undated: true
+		};
+	}
+	const from = monthIndex(projectStart);
+	// No end: ongoing, unless its experience ended (then it stopped with it)
+	const end = projectEnd(project, period);
+	return {
+		placed: { start: from, last: Math.max(from, end ? monthIndex(end) : nowMonth), floor: from },
+		ongoing: !end,
+		undated: false
+	};
+}
+
+/**
+ * The months a project of an experience lasted, as the timeline places it (see buildTimeline):
+ * all of them, where the timeline cuts a bar short at the next one's start. Undefined when the
+ * experience has no dates: the project cannot be placed.
+ */
+export function projectMonthSpan(
+	project: SourceProject,
+	experience: SourceExperience,
+	now: Date = new Date()
+): MonthSpan | undefined {
+	const nowMonth = monthIndex(now);
+	const period = experiencePeriod(experience);
+	const own = experienceMonths(period, nowMonth);
+	if (!own) return undefined;
+	const { placed } = placeProject(project, period, own, nowMonth);
+	return { start: placed.start, end: placed.last + 1 };
 }
 
 /**
@@ -193,48 +266,18 @@ export function buildTimeline<E extends SourceExperience>(
 
 	for (const experience of experiences) {
 		const period = experiencePeriod(experience);
-		if (!period.start) {
+		const own = experienceMonths(period, nowMonth);
+		if (!own) {
 			undated.push(experience);
 			continue;
 		}
-		const start = monthIndex(period.start);
-		const last = Math.max(
-			start,
-			period.ongoing ? nowMonth : period.end ? monthIndex(period.end) : start
-		);
+		const { start, last } = own;
 
-		const projects = (experience.projects ?? []).map((project: P, index) => {
-			const projectStart = toDate(project.start);
-			if (!projectStart) {
-				// No start: it began with its experience, and lasted as long unless it has an end
-				const ownEnd = toDate(project.end);
-				return {
-					project,
-					index,
-					placed: {
-						start,
-						last: ownEnd ? Math.max(start, monthIndex(ownEnd)) : last,
-						floor: start
-					},
-					ongoing: !ownEnd && period.ongoing,
-					undated: true
-				};
-			}
-			const from = monthIndex(projectStart);
-			// No end: ongoing, unless its experience ended (then it stopped with it)
-			const end = projectEnd(project, period);
-			return {
-				project,
-				index,
-				placed: {
-					start: from,
-					last: Math.max(from, end ? monthIndex(end) : nowMonth),
-					floor: from
-				},
-				ongoing: !end,
-				undated: false
-			};
-		});
+		const projects = (experience.projects ?? []).map((project: P, index) => ({
+			project,
+			index,
+			...placeProject(project, period, own, nowMonth)
+		}));
 
 		drafts.push({
 			experience,
@@ -315,11 +358,82 @@ export function placeSpan(span: MonthSpan, within: MonthSpan): { left: string; w
 }
 
 /**
- * The least width of the time axis, in pixels: 10 px a month (a year is 120 px) up to 1100 px,
- * which fits a desktop page without scrolling; longer careers are squeezed into that width,
- * never under 5 px a month (then the timeline scrolls). A wider page stretches it.
+ * The timeline's zoom is the width of a month, in pixels. It opens so that its shortest bar can
+ * be read, and goes from the whole axis in sight (the page's width decides) to `closest`.
  */
-export function timelineMinWidth(months: number): number {
+export const TIMELINE_ZOOM = {
+	/** The width of the shortest bar when the timeline opens */
+	shortestBar: 120,
+	/** A month's width at the closest zoom */
+	closest: 240,
+	/** The widest the axis gets, however long it is: its ticks stay a few hundred */
+	widest: 48_000
+};
+
+/** Months of the shortest bar drawn (an experience's or a project's); 0 when nothing is drawn */
+export function shortestBarMonths(timeline: Timeline<unknown, unknown>): number {
+	const lengths = timeline.items.flatMap((item) =>
+		[item.span, ...item.projects.map((project) => project.span)].map((span) =>
+			Math.max(1, span.end - span.start)
+		)
+	);
+	return lengths.length > 0 ? Math.min(...lengths) : 0;
+}
+
+/** A month's width at the closest zoom of an axis of this many months */
+export function closestMonthWidth(months: number): number {
 	if (months <= 0) return 0;
-	return Math.round(months * Math.min(10, Math.max(5, 1100 / months)));
+	return Math.min(TIMELINE_ZOOM.closest, TIMELINE_ZOOM.widest / months);
+}
+
+/**
+ * A month's width when the timeline opens: its shortest bar is `shortestBar` pixels wide (a
+ * 2-month project makes a month 60 px), so the axis scrolls sideways as soon as a career is
+ * longer than a few of them. A page wider than the axis stretches it.
+ */
+export function defaultMonthWidth(timeline: Timeline<unknown, unknown>): number {
+	const shortest = shortestBarMonths(timeline);
+	if (shortest === 0) return 0;
+	return Math.min(
+		TIMELINE_ZOOM.shortestBar / shortest,
+		closestMonthWidth(timeline.end - timeline.start)
+	);
+}
+
+/** A line of the time axis; `label` is '' for a year line too close to the next to be named */
+export type TimelineTick = { month: number; label: string; year: boolean };
+
+/**
+ * The lines of the axis at a zoom: the closest together that keeps `minGap` pixels between two
+ * labels, among every month, quarter, half-year, year and round number of years (2, 5, 10…).
+ * Months are named with their year ('Apr 2024': the year's own line may be far out of sight),
+ * Januaries by the year alone. Between labels more than a year apart, the years keep a line
+ * while those are at least `minLine` pixels apart.
+ */
+export function timelineTicks(
+	axis: MonthSpan,
+	monthWidth: number,
+	minGap = 72,
+	minLine = 12
+): TimelineTick[] {
+	if (axis.end <= axis.start || !(monthWidth > 0)) return [];
+	const step =
+		[1, 3, 6].find((months) => months * monthWidth >= minGap) ??
+		12 * roundStep(minGap / (12 * monthWidth));
+	const every = step > 12 && 12 * monthWidth >= minLine ? 12 : step;
+	const ticks: TimelineTick[] = [];
+	for (let month = Math.ceil(axis.start / every) * every; month < axis.end; month += every) {
+		const year = month % 12 === 0;
+		const labelled = month % step === 0;
+		ticks.push({
+			month,
+			label: !labelled
+				? ''
+				: year
+					? String(month / 12)
+					: formatMonth(new Date(Date.UTC(Math.floor(month / 12), month % 12, 1))),
+			year
+		});
+	}
+	return ticks;
 }

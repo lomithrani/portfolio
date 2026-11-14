@@ -5,6 +5,7 @@ import {
 	previewedSkill,
 	projectPreview,
 	resolvePreview,
+	skillMonths,
 	skillPreview,
 	skillTimeline
 } from '../projectPreview';
@@ -69,7 +70,8 @@ describe('skillPreview', () => {
 			kind: 'skill',
 			// The most used spelling
 			title: 'Kafka',
-			caption: 'Used in 2 projects',
+			// Home lab's experience has no dates: it counts as a project, for no time
+			caption: 'Used in 2 projects (1 year 6 months)',
 			period: '',
 			entries: [
 				{
@@ -86,13 +88,82 @@ describe('skillPreview', () => {
 	it('matches ignoring case, and counts one project as one', () => {
 		expect(skillPreview(all, ' LEADERSHIP ')).toMatchObject({
 			title: 'Leadership',
-			caption: 'Used in 1 project',
+			caption: 'Used in 1 project (1 year 6 months)',
 			entries: [{ name: 'Event platform' }]
 		});
 	});
 
 	it('is nothing for a skill no project uses', () => {
 		expect(skillPreview(all, 'cobol')).toBeUndefined();
+	});
+});
+
+describe('skillMonths', () => {
+	const job = (projects: object[], start = '2020-01', end: string | null = '2022-12') => ({
+		_id: 'job',
+		title: 'Job',
+		start: utc(start),
+		end: end ? utc(end) : undefined,
+		projects
+	});
+	const go = (name: string, start?: string, end?: string) => ({
+		name,
+		start: start ? utc(start) : undefined,
+		end: end ? utc(end) : undefined,
+		hardSkills: skills(['Go']),
+		softSkills: []
+	});
+
+	it('adds up the months of the projects using the skill, the last month included', () => {
+		const experiences = [job([go('One', '2020-01', '2020-03'), go('Two', '2021-06', '2021-07')])];
+
+		expect(skillMonths(experiences, 'go', NOW)).toBe(5);
+		expect(skillPreview(experiences, 'go', NOW)?.caption).toBe('Used in 2 projects (5 months)');
+	});
+
+	it('counts a month once, however many projects ran that month', () => {
+		const experiences = [
+			job([
+				go('Long', '2020-01', '2020-12'),
+				go('Inside', '2020-03', '2020-05'),
+				go('Across', '2020-11', '2021-02')
+			])
+		];
+
+		// Jan 2020 to Feb 2021
+		expect(skillMonths(experiences, 'go', NOW)).toBe(14);
+		expect(skillPreview(experiences, 'go', NOW)?.caption).toBe(
+			'Used in 3 projects (1 year 2 months)'
+		);
+	});
+
+	it('runs an ongoing project to the current month', () => {
+		const experiences = [job([go('Ongoing', '2021-10')], '2021-10', null)];
+
+		// Oct 2021 to Nov 2026
+		expect(skillPreview(experiences, 'go', NOW)?.caption).toBe(
+			'Used in 1 project (5 years 2 months)'
+		);
+	});
+
+	it("gives a project without dates its experience's", () => {
+		expect(skillMonths([job([go('Undated')])], 'go', NOW)).toBe(36);
+	});
+
+	it('counts nothing after the current month', () => {
+		// Planned to Jun 2028: Sep 2025 to Nov 2026 so far
+		const degree = [job([go('Thesis', '2025-09', '2028-06')], '2025-09', '2028-06')];
+		expect(skillPreview(degree, 'go', NOW)?.caption).toBe('Used in 1 project (1 year 3 months)');
+
+		// Not started yet: a project, no time
+		const planned = [job([go('Next', '2027-03')], '2026-01', null)];
+		expect(skillMonths(planned, 'go', NOW)).toBe(0);
+		expect(skillPreview(planned, 'go', NOW)?.caption).toBe('Used in 1 project');
+	});
+
+	it('leaves the time out when no project can be placed', () => {
+		expect(skillMonths(all, 'kubernetes', NOW)).toBe(0);
+		expect(skillPreview(all, 'kubernetes', NOW)?.caption).toBe('Used in 1 project');
 	});
 });
 
