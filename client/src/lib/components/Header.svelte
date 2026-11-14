@@ -97,7 +97,11 @@
 				{/if}
 			</h1>
 			{#if headerTitle && headerSubtitle}
-				<p class="truncate text-xs opacity-75 md:whitespace-normal md:text-sm" lang={headerLang}>
+				<!-- Small screens: up to two balanced lines rather than a cut-off sentence -->
+				<p
+					class="line-clamp-2 text-xs text-balance opacity-75 md:line-clamp-none md:text-sm"
+					lang={headerLang}
+				>
 					{headerSubtitle}
 				</p>
 			{/if}

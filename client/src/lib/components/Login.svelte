@@ -16,6 +16,7 @@ header then asks which space to use (SpaceChooser).
 	import { get } from 'svelte/store';
 	import { login } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
+	import { ArrowPath, ArrowRightOnRectangle } from 'svelte-heros-v2';
 	import { authenticationStore, type AuthUser } from '#services/stores/index.ts';
 
 	let { onLogin }: { onLogin?: (user: AuthUser) => void } = $props();
@@ -96,14 +97,21 @@ header then asks which space to use (SpaceChooser).
 	{#if gsiState === 'ready'}
 		<div bind:this={buttonContainer} class="google-btn"></div>
 	{:else}
+		<!-- Small screens: an icon the size of Google's round button, so the title keeps its room;
+		the label stays the accessible name ("Sign in") at every width -->
 		<button
 			type="button"
-			class="btn btn-sm preset-outlined-surface-300-700 min-h-9 rounded-full hover:preset-tonal"
+			class="btn btn-sm preset-outlined-surface-300-700 min-h-9 rounded-full hover:preset-tonal max-sm:size-10 max-sm:p-0"
 			aria-busy={gsiState === 'loading' ? 'true' : undefined}
 			onclick={start}
 			data-testid="header-sign-in"
 		>
-			{gsiState === 'loading' ? 'Loading…' : 'Sign in'}
+			{#if gsiState === 'loading'}
+				<ArrowPath size="18" class="animate-spin sm:hidden" aria-hidden="true" />
+			{:else}
+				<ArrowRightOnRectangle size="18" class="sm:hidden" aria-hidden="true" />
+			{/if}
+			<span class="sr-only sm:not-sr-only">{gsiState === 'loading' ? 'Loading…' : 'Sign in'}</span>
 		</button>
 	{/if}
 </div>

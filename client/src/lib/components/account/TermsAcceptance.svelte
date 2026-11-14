@@ -110,13 +110,15 @@ says so to its owner).
 						<a class="link-text" href={resolve('/(site)/legal/terms')}>Terms of use</a>
 						and the
 						<a class="link-text" href={resolve('/(site)/legal/privacy')}>Privacy policy</a>
-						of {currentDate}, the version in force, and confirmed your age.
+						of <span class="whitespace-nowrap">{currentDate}</span>, the version in force, and
+						confirmed your age.
 					</span>
 				</p>
 			{:else if acceptedVersion}
 				<p class="text-sm text-surface-700-300" data-terms-status="outdated">
-					You accepted the version of {formatLegalDate(acceptedVersion, 'en')}. The terms changed on
-					{currentDate}: read the
+					You accepted the version of
+					<span class="whitespace-nowrap">{formatLegalDate(acceptedVersion, 'en')}</span>. The terms
+					changed on <span class="whitespace-nowrap">{currentDate}</span>: read the
 					<a class="link-text" href={resolve('/(site)/legal/terms')}>Terms of use</a>
 					{#if user.domain}
 						and accept them: this records your confirmation for your portfolio.
