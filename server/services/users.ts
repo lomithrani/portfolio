@@ -4,6 +4,7 @@ import type { UserMode } from 'portfolio-common';
 import { Domain, User } from '../models/database';
 import { ConflictError, CouldntVerifyJwtError } from '../errors';
 import type { GoogleIdentity } from './google';
+import { latestTermsVersion } from './legal';
 import { isDuplicateKeyError } from './mongoErrors';
 import { enableRecruiterSpace } from './recruiters';
 
@@ -19,6 +20,11 @@ export interface UserDto {
   recruiter: boolean;
   /** Name of the domain (portfolio) the account owns, if any */
   domain?: string;
+  /**
+   * Version of the Terms of use the account last accepted (portfolio-common
+   * LEGAL_VERSION when they are the terms in force); unset until it accepts
+   */
+  termsVersion?: string;
 }
 
 const isUserMode = (value: unknown): value is UserMode =>
@@ -33,17 +39,22 @@ export const toUserDto = (
     surname?: string | null;
     activeMode?: string | null;
     recruiter?: object | null;
+    legalAcceptances?: readonly { version?: string | null }[] | null;
   },
   domain?: string | null
-): UserDto => ({
-  _id: user._id.toString(),
-  email: user.email,
-  ...(user.name ? { name: user.name } : {}),
-  ...(user.surname ? { surname: user.surname } : {}),
-  ...(isUserMode(user.activeMode) ? { activeMode: user.activeMode } : {}),
-  recruiter: !!user.recruiter,
-  ...(domain ? { domain } : {})
-});
+): UserDto => {
+  const termsVersion = latestTermsVersion(user);
+  return {
+    _id: user._id.toString(),
+    email: user.email,
+    ...(user.name ? { name: user.name } : {}),
+    ...(user.surname ? { surname: user.surname } : {}),
+    ...(isUserMode(user.activeMode) ? { activeMode: user.activeMode } : {}),
+    recruiter: !!user.recruiter,
+    ...(domain ? { domain } : {}),
+    ...(termsVersion ? { termsVersion } : {})
+  };
+};
 
 /** Name of the domain the user owns, if any (an account claims at most one: POST /domain/claim) */
 export const ownedDomainName = async (userId: Types.ObjectId | string) =>

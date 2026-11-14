@@ -1,0 +1,170 @@
+<!--
+@component
+Cookies and local storage (English): the session cookie, Google Identity Services cookies, each
+localStorage key with its purpose and lifetime, why there is no consent banner (ePrivacy art. 5(3),
+French loi Informatique et Libertés art. 82), how to clear them.
+-->
+<script module lang="ts">
+	import type { LegalSection } from '../legalDocuments.ts';
+
+	export const sections: readonly LegalSection[] = [
+		{ id: 'summary', title: 'In short' },
+		{ id: 'cookies', title: 'Cookies' },
+		{ id: 'local-storage', title: 'Local storage' },
+		{ id: 'control', title: 'How to delete them' }
+	];
+</script>
+
+<script lang="ts">
+	import LegalDocLink from '../LegalDocLink.svelte';
+	import { SITE_NAME } from '../legalDocuments.ts';
+	import { LINKS, SESSION_DAYS } from './facts.ts';
+
+	const lang = 'en';
+</script>
+
+<!-- eslint-disable svelte/no-navigation-without-resolve -- the links left are external sites, mailto: and in-page anchors (facts.ts); the site's pages go through resolve() (LegalDocLink) -->
+<h3 id="summary">In short</h3>
+<p>
+	{SITE_NAME} uses <strong>one cookie</strong>, which keeps you signed in, and your browser's
+	<strong>local storage</strong> for your theme and your unsaved drafts. There is no analytics, no advertising
+	and no social media tracker. Everything listed here is strictly necessary for a service you ask for,
+	which is why the site does not ask for your consent with a banner (article 5(3) of the ePrivacy Directive,
+	article 82 of the French loi Informatique et Libertés). Google sets its own cookies when its sign-in
+	is shown, under its own policy.
+</p>
+
+<h3 id="cookies">Cookies</h3>
+<div class="legal-table legal-table-wide">
+	<table>
+		<thead>
+			<tr>
+				<th scope="col">Name</th>
+				<th scope="col">Set by</th>
+				<th scope="col">Purpose</th>
+				<th scope="col">Duration</th>
+			</tr>
+		</thead>
+		<tbody>
+			<tr>
+				<td><code>auth</code></td>
+				<td>This site's API</td>
+				<td>
+					Keeps you signed in: a signed token with your account identifier and its expiry date. It
+					cannot be read by scripts on the page (HttpOnly), is sent over HTTPS only (Secure) and
+					only with this site's own requests (SameSite). Strictly necessary.
+				</td>
+				<td>{SESSION_DAYS} days, or until you sign out</td>
+			</tr>
+			<tr>
+				<td><code>g_state</code></td>
+				<td>Google Identity Services, on this site's domain</td>
+				<td>
+					Remembers your choices in Google's sign-in prompt, such as closing it or turning off
+					automatic sign-in after you sign out. Part of the Google sign-in.
+				</td>
+				<td>Set by Google</td>
+			</tr>
+			<tr>
+				<td>Google's cookies</td>
+				<td>Google, on its own domains (accounts.google.com)</td>
+				<td>
+					Your Google session and Google's security, read and set inside Google's sign-in button and
+					window.
+				</td>
+				<td>
+					See the <a class="anchor" href={LINKS.googlePrivacy} rel="noopener noreferrer"
+						>Google privacy policy</a
+					>
+				</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+<p>
+	<strong>When Google is involved.</strong> Google's sign-in script is loaded only on pages that show
+	a "Sign in with Google" button: in the header of portfolios and job pages when you are signed out, and
+	on the home page once you tick the age and terms box. Loading it sends your IP address and browser details
+	to Google, even if you do not sign in. The legal pages never load it.
+</p>
+
+<h3 id="local-storage">Local storage</h3>
+<p>
+	This data stays in your browser: it is not sent to us until you save. In the keys below,
+	<code>&lt;account&gt;</code> is your account identifier and <code>&lt;portfolio&gt;</code> the address
+	of the portfolio.
+</p>
+<div class="legal-table legal-table-wide">
+	<table>
+		<thead>
+			<tr>
+				<th scope="col">Key</th>
+				<th scope="col">Purpose</th>
+				<th scope="col">Lifetime</th>
+			</tr>
+		</thead>
+		<tbody>
+			<tr>
+				<td><code>authenticationStore</code></td>
+				<td>
+					A copy of your session for the pages: account identifier, email address, chosen space,
+					recruiter space, portfolio address, version of the terms you accepted and session expiry
+				</td>
+				<td>Removed when you sign out or when the session ends</td>
+			</tr>
+			<tr>
+				<td><code>portfolio-dark-mode</code></td>
+				<td>Your choice of light or dark theme</td>
+				<td>Until you clear it</td>
+			</tr>
+			<tr>
+				<td><code>experienceDraft:&lt;account&gt;:&lt;portfolio&gt;:…</code></td>
+				<td>Unsaved changes in the experience editor, so a reload does not lose them</td>
+				<td>Until you save or discard them</td>
+			</tr>
+			<tr>
+				<td><code>resumeImport:&lt;account&gt;:&lt;portfolio&gt;</code></td>
+				<td>
+					The drafts read from your résumé while you review them, so a reload does not lose an
+					import
+				</td>
+				<td>Until every draft is added or discarded</td>
+			</tr>
+			<tr>
+				<td><code>jobDraft:&lt;account&gt;:…</code></td>
+				<td>Unsaved job descriptions in the job editor</td>
+				<td>Until you save or discard them</td>
+			</tr>
+			<tr>
+				<td><code>jobImportDraft:&lt;account&gt;</code></td>
+				<td>The last draft read from a job description PDF</td>
+				<td>Until you use or discard it</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+<p>
+	Drafts stay in the browser after you sign out. On a shared computer, discard them or clear the
+	site's data. Deleting your account removes the drafts of that account from the browser you delete
+	it from.
+</p>
+
+<h3 id="control">How to delete them</h3>
+<ul>
+	<li>Signing out deletes the session cookie and the copy of your session.</li>
+	<li>
+		Your browser's settings let you delete this site's cookies and storage ("site data"), or block
+		them. Blocking the <code>auth</code> cookie prevents signing in; reading portfolios and job descriptions
+		still works.
+	</li>
+	<li>
+		Google's cookies are managed in your browser and your Google account, under the
+		<a class="anchor" href={LINKS.googlePrivacy} rel="noopener noreferrer">Google privacy policy</a
+		>.
+	</li>
+</ul>
+<p>
+	More about how your data is processed: <LegalDocLink doc="privacy" {lang}
+		>privacy policy</LegalDocLink
+	>.
+</p>

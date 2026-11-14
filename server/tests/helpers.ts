@@ -2,6 +2,7 @@ import { spyOn } from 'bun:test';
 import { Types } from 'mongoose';
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from 'jose';
 import type { JWTPayload } from 'jose';
+import { currentConsent } from 'portfolio-common';
 import { env } from '../env';
 import { Domain, Experience, User } from '../models/database';
 import { createGoogleIdTokenVerifier, google } from '../services/google';
@@ -76,6 +77,10 @@ export const experienceRequestBody = {
     },
   ],
 };
+
+// The age and terms confirmation of the terms in force, as the client sends
+// it with POST /login, PUT /me/consent and the first POST /domain/claim
+export const CONSENT = currentConsent();
 
 // A hiring journey as the admin tab saves it (each step with its id, its type and that type's
 // settings): pick a job, then book a meeting

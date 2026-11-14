@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import type { UserMode } from 'portfolio-common';
+import type { ConsentInput, UserMode } from 'portfolio-common';
 import { portfolioApi } from '#services';
 import {
 	authenticationStore,
@@ -95,12 +95,18 @@ const isLogged = async (): Promise<boolean> => {
  * Exchanges a Google ID token for the API's auth cookie. Returns false (and leaves the user
  * logged out) when the API rejects the token or when the cookie does not round-trip.
  * `mode` makes that space the account's active one (choosing 'recruiter' creates the recruiter
- * space); without it the account keeps the space it last chose.
+ * space); without it the account keeps the space it last chose. `consent` (the age and terms
+ * checkbox ticked before signing in, portfolio-common currentConsent()) is recorded by the API
+ * before the session is issued; an outdated version of the terms makes the sign-in fail.
  */
-const login = async (googleCredential: string, mode?: UserMode): Promise<boolean> => {
+const login = async (
+	googleCredential: string,
+	mode?: UserMode,
+	consent?: ConsentInput
+): Promise<boolean> => {
 	try {
 		const { data, error } = await portfolioApi.login.post(
-			{ token: googleCredential, ...(mode ? { mode } : {}) },
+			{ token: googleCredential, ...(mode ? { mode } : {}), ...(consent ? { consent } : {}) },
 			withCredentials
 		);
 		const session = { user: readUser(data), expires: readExpires(data) };

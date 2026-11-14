@@ -8,7 +8,21 @@
 	import Logo from '#images/logo.svelte';
 	import { onMount } from 'svelte';
 
-	let { headerTitle, headerSubtitle }: { headerTitle?: string; headerSubtitle?: string } = $props();
+	let {
+		headerTitle,
+		headerSubtitle,
+		showSignIn = true
+	}: {
+		headerTitle?: string;
+		headerSubtitle?: string;
+		/**
+		 * false: no Google sign-in for a signed-out visitor (neither the button nor One Tap, so
+		 * Google is not loaded): pages that sign in their own way, after a confirmation (the
+		 * landing page's age and terms checkbox). The session is still checked and the account
+		 * menu still shows once signed in.
+		 */
+		showSignIn?: boolean;
+	} = $props();
 
 	onMount(() => {
 		const stopWatchingExpiry = watchSessionExpiry();
@@ -87,7 +101,7 @@
 				></span>
 			{:else if user}
 				<AccountMenu {user} onClaimPortfolio={() => openChooser('claim')} />
-			{:else}
+			{:else if showSignIn}
 				<Login onLogin={() => openChooser('choose')} />
 			{/if}
 		</AppBar.Trail>

@@ -1,66 +1,86 @@
+<!--
+@component
+The 404 page's claim of an unclaimed portfolio name (ClaimDomain): signing in with Google claims
+`domainName` for the account (POST /login with the candidate space, then POST /domain/claim).
+The age and terms checkbox (AgeTermsConsent) comes first: Google's sign-in script is loaded, and
+its button shown, only once it is ticked (nothing reaches accounts.google.com before), and its
+confirmation (portfolio-common currentConsent()) is sent with the sign-in and with the claim.
+-->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { currentConsent } from 'portfolio-common';
+	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import { login } from '#services/authentication.ts';
-	import { portfolioApi } from '#services';
+	import { claimPortfolio } from '#services/account.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
-	import { errorStatus } from '#services/apiErrors.ts';
+	import { toaster } from '#services/toaster.ts';
 
 	let { domainName, onClose }: { domainName: string; onClose: () => void } = $props();
+
+	const uid = $props.id();
+	const consentId = `${uid}-consent`;
 
 	let buttonContainer: HTMLDivElement | undefined = $state();
 	let errorMessage = $state('');
 	let claiming = $state(false);
+	/** The age and terms checkbox: Google's button shows once it is ticked */
+	let checked = $state(false);
+	let consentProblem = $state('');
+	let consentError = $derived(checked ? '' : consentProblem);
+	/** Google's sign-in: not loaded until the box is ticked */
+	let gsiState = $state<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
 
-	const errorText = (value: unknown): string => {
-		if (typeof value === 'string') return value;
-		if (value && typeof value === 'object' && 'message' in value) {
-			return typeof value.message === 'string' ? value.message : '';
-		}
-		return '';
+	let destroyed = false;
+	let release: (() => void) | undefined;
+
+	const claimError = (result: Awaited<ReturnType<typeof claimPortfolio>>): string => {
+		if (result.ok) return '';
+		if (result.reason === 'session-expired') return 'Sign-in failed. Please try again.';
+		if (result.cause === 'owns-domain') return 'Your Google account already owns a portfolio.';
+		if (result.cause === 'name') return 'This name is no longer available.';
+		return result.message;
 	};
 
 	const claim = async ({ credential }: google.accounts.id.CredentialResponse) => {
 		errorMessage = '';
+		// Google's button may still be on screen after the box was unticked
+		if (!checked) {
+			consentProblem = 'Tick the box to confirm your age and accept the terms.';
+			document.getElementById(consentId)?.focus();
+			return;
+		}
 		claiming = true;
 
 		try {
+			const consent = currentConsent();
 			// Claiming a portfolio is choosing the candidate space: no space chooser here
-			if (!(await login(credential, 'candidate'))) {
-				errorMessage = 'Login failed. Please try again.';
+			if (!(await login(credential, 'candidate', consent))) {
+				errorMessage = 'Sign-in failed. Please try again.';
 				return;
 			}
 
-			const { error } = await portfolioApi.domain.claim.post(
-				{ name: domainName },
-				{ fetch: { credentials: 'include' } }
-			);
-
-			if (error) {
-				const message = errorText(error.value);
-				if (/already own/i.test(message)) {
-					errorMessage = 'Your Google account already owns a domain.';
-				} else if (/already exists/i.test(message)) {
-					errorMessage = 'This domain was just claimed by someone else.';
-				} else if (errorStatus(error) === 401) {
-					errorMessage = 'Login failed. Please try again.';
-				} else {
-					errorMessage = message || 'Failed to claim domain.';
-				}
+			const result = await claimPortfolio(domainName, consent);
+			if (!result.ok) {
+				errorMessage = claimError(result);
 				return;
 			}
 
-			await goto(resolve('/[domain]/experiences', { domain: domainName }), { invalidateAll: true });
+			toaster.success({
+				title: 'Portfolio claimed',
+				description: `${result.name} is yours. Add your first experience to it.`
+			});
+			await goto(resolve('/[domain]/experiences', { domain: result.name }), {
+				invalidateAll: true
+			});
 		} finally {
 			claiming = false;
 		}
 	};
 
-	onMount(() => {
-		let release: (() => void) | undefined;
-		let destroyed = false;
-
+	function loadGoogle() {
+		gsiState = 'loading';
 		setupGoogleIdentity(claim)
 			.then((gsi) => {
 				if (destroyed) {
@@ -68,8 +88,8 @@
 					return;
 				}
 				release = gsi.release;
-				// The container is never destroyed (only hidden while claiming), so the button
-				// stays available for a retry after a failed claim.
+				// The container is never destroyed (only hidden while claiming or unticked), so the
+				// button stays available for a retry after a failed claim
 				if (buttonContainer) {
 					gsi.id.renderButton(buttonContainer, {
 						theme: 'filled_black',
@@ -79,15 +99,21 @@
 						shape: 'pill'
 					});
 				}
+				gsiState = 'ready';
 			})
 			.catch(() => {
-				errorMessage = 'Google Sign-In could not be loaded. Please check your connection.';
+				if (!destroyed) gsiState = 'unavailable';
 			});
+	}
 
-		return () => {
-			destroyed = true;
-			release?.();
-		};
+	$effect(() => {
+		// Ticked for the first time (or again after Google could not load): load Google's sign-in
+		if (checked && gsiState === 'idle') untrack(loadGoogle);
+	});
+
+	onMount(() => () => {
+		destroyed = true;
+		release?.();
 	});
 
 	const cBase = 'bg-surface-100-900 p-4 max-w-md w-full shadow-xl space-y-4 rounded-lg';
@@ -103,6 +129,8 @@
 	</p>
 	<p class="text-sm text-surface-600-400">Each Google account can only own one domain.</p>
 
+	<AgeTermsConsent bind:checked error={consentError} disabled={claiming} id={consentId} />
+
 	{#if errorMessage}
 		<div class="p-3 rounded bg-error-500/10 text-error-500" role="alert">{errorMessage}</div>
 	{/if}
@@ -110,7 +138,31 @@
 	{#if claiming}
 		<p class="text-center" role="status">Claiming domain...</p>
 	{/if}
-	<div class="flex justify-center" class:hidden={claiming} bind:this={buttonContainer}></div>
+	{#if !checked}
+		<p class="text-center text-sm text-surface-600-400">
+			Tick the box to show the Google sign-in button.
+		</p>
+	{:else if gsiState === 'loading'}
+		<div class="flex justify-center" aria-hidden="true">
+			<div
+				class="placeholder h-10 w-56 animate-pulse rounded-full motion-reduce:animate-none"
+			></div>
+		</div>
+	{:else if gsiState === 'unavailable'}
+		<div class="space-y-2 text-center text-sm" role="alert">
+			<p>
+				Google sign-in could not load. Check your connection (or allow accounts.google.com) and try
+				again.
+			</p>
+			<button type="button" class="btn btn-sm preset-tonal" onclick={() => (gsiState = 'idle')}>
+				Try again
+			</button>
+		</div>
+	{/if}
+	<div
+		class={['flex justify-center', { hidden: claiming || !checked }]}
+		bind:this={buttonContainer}
+	></div>
 
 	<footer class="flex justify-end">
 		<button class="btn preset-tonal" onclick={onClose}>Cancel</button>

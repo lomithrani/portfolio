@@ -6,20 +6,30 @@ export const DOMAIN_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9.-]{0,61}[a-z0-9])?$/;
 
 // Top-level route segments and words that must never become a domain name.
 export const RESERVED_DOMAIN_NAMES: ReadonlySet<string> = new Set([
+	'about',
 	'account',
 	'admin',
 	'api',
 	'app',
+	'contact',
+	'cookies',
 	'experiences',
 	'health',
 	'healthz',
+	'help',
 	'hire',
 	'jobs',
+	'legal',
 	'login',
 	'logout',
 	'me',
+	'privacy',
 	'recruiter',
+	'report',
+	'signup',
+	'start',
 	'swagger',
+	'terms',
 	'openapi',
 	'www'
 ]);

@@ -177,6 +177,9 @@
 	// A kept review stays reachable even if the feature was turned off since
 	let importAvailable = $derived(isAdmin && (!!importStatus?.enabled || importHasReview));
 
+	// Whether the import status was asked once (answered or not), for `?import=1` below
+	let importStatusChecked = $state(false);
+
 	const refreshImportStatus = async () => {
 		try {
 			const { data: status } = await portfolioApi.experiences.import.get({
@@ -185,8 +188,47 @@
 			if (status) importStatus = status;
 		} catch {
 			// Unknown for now: the button stays as it was
+		} finally {
+			importStatusChecked = true;
 		}
 	};
+
+	// `?import=1` (the landing page's "Upload my résumé"): the import opens once the owner's tools
+	// are mounted and its status is known, if it is available (a kept review counts), then the
+	// parameter leaves the URL, so a reload or going back does not open it again. A visitor who is
+	// not the owner just loses the parameter.
+	let importRequested = $state(page.url.searchParams.get('import') === '1');
+	$effect(() => {
+		if (!importRequested || !$sessionCheckedStore) return;
+		if (isAdmin && !importStatusChecked) return;
+		untrack(() => {
+			importRequested = false;
+			if (isAdmin) {
+				const available =
+					importHasReview || (!!importStatus?.enabled && importStatus.remaining > 0);
+				if (available) {
+					importOpen = true;
+				} else {
+					// Not from inside the effect: the toaster updates its store synchronously (flushSync)
+					const description = importStatus?.enabled
+						? 'You used this month’s imports. Add your experiences by hand for now.'
+						: 'Add your experiences by hand.';
+					setTimeout(() =>
+						toaster.info({ title: 'Résumé import is not available right now', description })
+					);
+				}
+			}
+			const domain = page.params.domain;
+			if (!domain) return;
+			const search = new URLSearchParams(
+				[...new URLSearchParams(location.search)].filter(([key]) => key !== 'import')
+			).toString();
+			const target = search
+				? resolve(`/[domain]/experiences?${search}`, { domain })
+				: resolve('/[domain]/experiences', { domain });
+			replaceState(target, page.state).catch(() => {});
+		});
+	});
 
 	$effect(() => {
 		if (!isAdmin) return;

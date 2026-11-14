@@ -134,8 +134,74 @@ export async function connectGoogleCalendar(userId: UserId, code: string) {
   }
 }
 
+/** Google's token revocation endpoint (RFC 7009): revoking a token revokes its whole grant */
+export const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke'
+/** Client timeout of a revocation: it is best effort, nothing waits long for it */
+export const REVOKE_TIMEOUT_MS = 5_000
+
+/**
+ * What Google answered to a revocation: done, refused (400 invalid_token:
+ * already revoked or expired, or any other HTTP error), or no answer
+ * (network error, timeout)
+ */
+export type RevokeOutcome = 'revoked' | 'refused' | 'unreachable'
+
+/**
+ * Asks Google to revoke `token` and its whole grant, so the app no longer has
+ * access to the calendar. Best effort: never throws. The token goes in the
+ * form body, never in the URL (request URLs reach traces), and is never logged
+ */
+export async function revokeGoogleToken(token: string): Promise<RevokeOutcome> {
+  try {
+    const response = await fetch(REVOKE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }).toString(),
+      redirect: 'manual',
+      signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS)
+    })
+    // Nothing to read: release the connection
+    await response.body?.cancel().catch(() => {})
+    return response.ok ? 'revoked' : 'refused'
+  } catch {
+    return 'unreachable'
+  }
+}
+
+/** The stored grant's token to revoke: the refresh token (its whole grant), else the access token */
+const tokenToRevoke = (stored: { refreshToken?: string | null; accessToken?: string | null } | null | undefined) =>
+  stored?.refreshToken || stored?.accessToken || null
+
+/**
+ * Removes the Google Calendar connection, then revokes its grant at Google
+ * (best effort: the connection is gone from the database either way)
+ */
 export async function disconnectGoogleCalendar(userId: UserId) {
-  await User.updateOne({ _id: userId }, { $unset: { googleCalendar: 1 } })
+  // The document before the update: the tokens it held
+  const before = await User.findOneAndUpdate({ _id: userId }, { $unset: { googleCalendar: 1 } })
+    .select(TOKEN_FIELDS)
+    .lean<{ googleCalendar?: { refreshToken?: string; accessToken?: string } }>()
+  const token = tokenToRevoke(before?.googleCalendar)
+  if (!token) return
+  const outcome = await revokeGoogleToken(token)
+  if (outcome === 'unreachable') logger.warn('Could not reach Google to revoke a disconnected Google Calendar grant')
+}
+
+/**
+ * Revokes the account's Google Calendar grant at Google, if it stores one,
+ * without changing the database (account deletion removes the account after).
+ * Best effort: never throws. 'none' when no token is stored
+ */
+export async function revokeGoogleCalendarAccess(userId: UserId): Promise<RevokeOutcome | 'none'> {
+  try {
+    const user = await User.findById(userId)
+      .select(TOKEN_FIELDS)
+      .lean<{ googleCalendar?: { refreshToken?: string; accessToken?: string } }>()
+    const token = tokenToRevoke(user?.googleCalendar)
+    return token ? await revokeGoogleToken(token) : 'none'
+  } catch {
+    return 'unreachable'
+  }
 }
 
 /**
@@ -204,11 +270,8 @@ async function clearRefusedGrant(grant: CalendarGrant, reason: string) {
   // consent of a grant, and the consent popup cannot ask for another one. A
   // grant still alive at Google (a Calendar 401 for another reason) would
   // otherwise make reconnecting fail. Usually already gone: best effort
-  try {
-    await createOAuth2Client().revokeToken(grant.refreshToken)
-  } catch {
-    // Revoked or expired already (400 invalid_token), or Google unreachable
-  }
+  // Revoked or expired already (400 invalid_token), or Google unreachable: never throws
+  await revokeGoogleToken(grant.refreshToken)
 }
 
 /**

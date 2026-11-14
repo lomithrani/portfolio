@@ -31,6 +31,7 @@ import {
 	logout,
 	watchSessionExpiry
 } from '../authentication';
+import { LEGAL_VERSION, currentConsent } from 'portfolio-common';
 import { authenticationStore, sessionCheckedStore } from '../stores';
 import { disableGoogleAutoSelect } from '../googleIdentity';
 import { portfolioApi } from '#services';
@@ -207,6 +208,48 @@ describe('login', () => {
 			{ fetch: { credentials: 'include' } }
 		);
 		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('sends the age and terms confirmation with the chosen space when given', async () => {
+		const session = {
+			user: { ...user, activeMode: 'candidate', termsVersion: LEGAL_VERSION },
+			expires: nowSeconds() + 3600
+		};
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(login('google-cred-token', 'candidate', currentConsent())).resolves.toBe(true);
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{
+				token: 'google-cred-token',
+				mode: 'candidate',
+				consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true }
+			},
+			{ fetch: { credentials: 'include' } }
+		);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('sends the confirmation without a space', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await login('google-cred-token', undefined, currentConsent());
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'google-cred-token', consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } },
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it('stays signed out when the API refuses an outdated confirmation (422)', async () => {
+		mockLoginPost.mockResolvedValue(apiError(422));
+
+		await expect(
+			login('token', 'candidate', { termsVersion: '2025-01-01', ageConfirmed: true })
+		).resolves.toBe(false);
+		expect(mockIsLoggedGet).not.toHaveBeenCalled();
+		expect(get(authenticationStore)).toEqual(loggedOut);
 	});
 
 	it('returns false when the API rejects the token (401)', async () => {

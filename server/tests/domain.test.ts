@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
-import { Domain } from '../models/database';
+import { Domain, User } from '../models/database';
 import { Types } from 'mongoose';
 import { createApp } from '../app';
 import { logger } from '../services/logger';
@@ -212,6 +212,13 @@ describe('PUT /domain/:name', () => {
 });
 
 describe('POST /domain/claim', () => {
+  // The account accepted the terms in force (services/legal.ts): the gate
+  // itself is tested against MongoDB in consent.test.ts
+  let acceptedTerms: ReturnType<typeof spyOn>;
+  beforeEach(() => {
+    acceptedTerms = spyOn(User, 'exists').mockResolvedValue({ _id: new Types.ObjectId(TEST_USER_ID) } as never);
+  });
+
   it('should reject requests without auth', async () => {
     const result = await makeRequest(app, '/domain/claim', {
       method: 'POST',
@@ -252,6 +259,40 @@ describe('POST /domain/claim', () => {
     expect(result.status).toBe(400);
     expect(await result.text()).toBe('Invalid domain name');
     expect(findOne).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(acceptedTerms).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 on consent, before looking the name up, for an account that has not accepted the terms', async () => {
+    acceptedTerms.mockResolvedValue(null as never);
+    const findOne = spyOn(Domain, 'findOne');
+    const create = spyOn(Domain, 'create');
+
+    const result = await postWithCookie(app, '/domain/claim', { name: 'jane.doe' }, await authCookie());
+
+    expect(result.status).toBe(422);
+    expect(await readJson(result)).toEqual({
+      type: 'validation',
+      on: 'body',
+      property: 'consent',
+      message: 'Confirm your age and accept the terms of use to create a portfolio.'
+    });
+    expect(findOne).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an unticked age confirmation', { termsVersion: '2026-11-14', ageConfirmed: false }, /^consent\.ageConfirmed$/],
+    ['no version', { ageConfirmed: true }, /^consent\.termsVersion$/],
+    // TypeBox names the first field it expected
+    ['a confirmation that is not an object', 'yes', /^consent(\.|$)/]
+  ])('refuses a claim with %s (422) without creating anything', async (_label, consent, property) => {
+    const create = spyOn(Domain, 'create');
+
+    const result = await postWithCookie(app, '/domain/claim', { name: 'jane.doe', consent }, await authCookie());
+
+    expect(result.status).toBe(422);
+    expect((await readJson(result)).property).toMatch(property);
     expect(create).not.toHaveBeenCalled();
   });
 

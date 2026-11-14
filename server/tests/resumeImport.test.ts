@@ -28,6 +28,7 @@ import {
   resumeImportUserKey
 } from '../services/resumeImport';
 import {
+  CONSENT,
   messageStream,
   messageStreamEvents,
   parseCookie,
@@ -224,7 +225,7 @@ const login = async (name: string) => {
 /** Logs in `name` and claims a domain for them */
 const loginOwner = async (name: string) => {
   const user = await login(name);
-  const claimed = await call('POST', '/domain/claim', { body: { name: t.id(`domain-${name}`) }, cookie: user.cookie });
+  const claimed = await call('POST', '/domain/claim', { body: { name: t.id(`domain-${name}`), consent: CONSENT }, cookie: user.cookie });
   expect(claimed.status).toBe(200);
   return user;
 };
