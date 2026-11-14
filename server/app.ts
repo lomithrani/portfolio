@@ -12,7 +12,8 @@ import {
   appointments,
   corsConf,
   jobs,
-  jobImport
+  jobImport,
+  perfectJob
 } from './plugins'
 import { errors, MissingAuthCookieError, PayloadTooLargeError, UnsupportedMediaTypeError } from './errors'
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
@@ -184,6 +185,7 @@ export const createApp = () =>
     .use(experiences)
     .use(resumeImport)
     .use(workflows)
+    .use(perfectJob)
     .use(appointments)
     // Before jobs: its static /jobs/import routes, then the /jobs/:id ones
     .use(jobImport)

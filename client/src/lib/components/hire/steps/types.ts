@@ -66,6 +66,12 @@ export interface ClientStep {
 	title?(step: { config?: unknown }): string | undefined;
 	/** The line under the step's name for a visitor it is open to: what it asks, or what they did */
 	note(step: JourneyStep, state: 'open' | 'done'): string;
+	/**
+	 * The line under the step's name for a visitor who did not pass it, for a type that can fail
+	 * (the job match: the score, and the one needed); "Not passed." when unset. The step's Visitor
+	 * is shown to them, to say why
+	 */
+	failedNote?(step: JourneyStep): string;
 	/** The address asks for this step: it shows unfolded even when it is done */
 	wantsOpen?(step: JourneyStep, address: URL): boolean;
 	/** What the button unfolding the step says once it is done; "Open" when unset */

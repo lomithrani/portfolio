@@ -22,7 +22,8 @@ import {
   Skill,
   User,
   Workflow,
-  WorkflowInstance
+  WorkflowInstance,
+  PerfectJob
 } from '../models/database';
 import {
   AVAILABILITY_REQUESTS_PER_IP,
@@ -385,6 +386,7 @@ const removeTestData = async (suffix: string) => {
     await RateLimitCounter.deleteMany({ _id: { $regex: `^(${[...rateLimitKeys].join('|')}):` } });
   }
   await Workflow.deleteMany({ user: { $in: userIds } });
+  await PerfectJob.deleteMany({ user: { $in: userIds } });
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: userIds } }, { visitor: { $in: userIds } }] });
   const jobIds = (await JobPosting.find({ recruiter: { $in: userIds } }, '_id')).map((job) => job._id);
   await JobApplication.deleteMany({ $or: [{ job: { $in: jobIds } }, { candidate: { $in: userIds } }] });
@@ -1655,6 +1657,10 @@ describe('no Google token in any API response', () => {
       (await call('PUT', '/workflow', { ...auth, body: { steps: [{ id: 'meeting', type: 'meeting', config: {} }] } })).status
     ).toBe(200);
     expect((await call('GET', '/workflow', auth)).status).toBe(200);
+    expect(
+      (await call('PUT', '/perfect-job', { ...auth, body: { criteria: { travel: { importance: 3, max: 'none' } } } })).status
+    ).toBe(200);
+    expect((await call('GET', '/perfect-job', auth)).status).toBe(200);
     expect((await call('GET', `/workflow/domains/${sweepDomain}`, auth)).status).toBe(200);
 
     // A step suggestion (tests/stepSuggestions.test.ts covers it): its request,

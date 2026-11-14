@@ -16,7 +16,8 @@ import { createJob, deleteJobs } from './support/jobs';
 // The hiring journey of 'e2e-journey' (seeded by `bun run --cwd server seed:e2e`, changed by this
 // file alone): its owner adds, sets and orders the steps in the admin tab, and the e2e recruiter
 // goes through them on the Hire page (a note to read and confirm, one of their open job
-// descriptions to pick) before the meeting step opens. No Google Calendar is connected: the
+// descriptions to pick, which is scored against the owner's perfect job) before the meeting step
+// opens. No Google Calendar is connected: the
 // meeting step says online booking is unavailable (the booking itself is covered by the API's
 // tests). The recruiter is shared with the other recruiter files, which run in parallel: each
 // test names its postings with its own tag and removes them afterwards.
@@ -45,6 +46,18 @@ const setJourney = async (...types: string[]) => {
 	expect(response.ok(), await response.text()).toBe(true);
 };
 
+/** Replaces the journey with these steps, each with its settings */
+const setSteps = async (...steps: { id: string; type: string; config?: object }[]) => {
+	const response = await ownerApi.put(`${API_URL}/workflow`, { data: { steps } });
+	expect(response.ok(), await response.text()).toBe(true);
+};
+
+/** Replaces the owner's perfect job, which the job match step scores jobs against */
+const setPerfectJob = async (criteria: object) => {
+	const response = await ownerApi.put(`${API_URL}/perfect-job`, { data: { criteria } });
+	expect(response.ok(), await response.text()).toBe(true);
+};
+
 /** The recruiter's submit on a step of the journey, as the Hire page sends it */
 const submitStep = async (stepId: string, input: unknown) => {
 	const response = await recruiterApi.post(
@@ -63,8 +76,9 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-	// Back to the journey every portfolio starts with
+	// Back to the journey every portfolio starts with, and to a perfect job without criteria
 	if (ownerApi) await setJourney('meeting');
+	if (ownerApi) await setPerfectJob({});
 	await ownerApi?.dispose();
 	await recruiterApi?.dispose();
 });
@@ -92,6 +106,9 @@ const editorStep = (page: Page, name: string) =>
 	editorSteps(page).filter({ has: page.getByRole('heading', { name }) });
 const addStep = (page: Page, label: string) =>
 	page.getByRole('button', { name: `Add step: ${label}` });
+
+/** A criterion of the admin tab "Perfect job" */
+const criterion = (page: Page, name: string) => page.getByRole('group', { name, exact: true });
 
 const openEditor = async (page: Page) => {
 	await signIn(page, owner);
@@ -673,6 +690,208 @@ test.describe('the hiring journey', () => {
 		).toBeChecked();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
 		await expect(jobStep).toContainText(`Product designer ${tag} · Initech`);
+	});
+
+	test('the owner rates what they look for in a job, and asks jobs for a minimum score', async ({
+		page
+	}) => {
+		await setPerfectJob({});
+		await setJourney('job', 'meeting');
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin`);
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+
+		await expect(
+			page.getByText('No criterion yet: nothing is asked of a job, so every job scores 100.')
+		).toBeVisible();
+		const save = page.getByRole('button', { name: 'Save perfect job' });
+		await expect(save).toBeDisabled();
+
+		// A criterion switched on says what it still needs, and nothing can be saved until then
+		const workMode = criterion(page, 'Work mode');
+		await workMode.getByText('Work mode', { exact: true }).click();
+		await expect(workMode.getByText('Pick at least one work mode.')).toBeVisible();
+		await expect(page.getByText('Work mode: Pick at least one work mode.')).toBeVisible();
+		await expect(save).toBeDisabled();
+		await workMode.getByRole('checkbox', { name: 'Full remote' }).check();
+		await workMode.getByRole('checkbox', { name: 'Hybrid' }).check();
+		await workMode.getByLabel('Remote days a week in a hybrid job, at least').selectOption('3');
+		await workMode.getByRole('radio', { name: '5: Essential' }).check();
+		await workMode.getByRole('checkbox', { name: 'Deal-breaker' }).check();
+		await expect(workMode.locator('[data-importance]')).toHaveText(
+			'Essential · counts for 100% of the score'
+		);
+
+		// A list takes several items at once, each once
+		const skills = criterion(page, 'Skills');
+		await skills.getByText('Skills', { exact: true }).click();
+		const skillInput = skills.getByLabel('Skills you want to use');
+		await skillInput.fill('TypeScript, Svelte, typescript');
+		await skillInput.press('Enter');
+		await expect(
+			skills.getByRole('list', { name: 'Skills you want to use added' }).getByRole('listitem')
+		).toHaveText(['TypeScript', 'Svelte']);
+		await expect(workMode.locator('[data-importance]')).toHaveText(
+			'Essential · counts for 63% of the score'
+		);
+		await expect(skills.locator('[data-importance]')).toHaveText(
+			'Important · counts for 38% of the score'
+		);
+
+		// A number that is not one is said at its field
+		const pay = criterion(page, 'Pay');
+		await pay.getByText('Pay', { exact: true }).click();
+		await pay.getByLabel('Per year').fill('a lot');
+		await expect(
+			pay.getByText('Pay per year must be a whole number of euros, above 0.')
+		).toBeVisible();
+		await expect(save).toBeDisabled();
+		await pay.getByLabel('Per year').fill('70 000');
+		await pay.getByRole('radio', { name: '4: Very important' }).check();
+
+		await expect(
+			page.getByText(
+				'A job is scored on 3 criteria: work mode, pay and skills. One of them is a deal-breaker.'
+			)
+		).toBeVisible();
+		await save.click();
+		await expect(toasts(page).getByText('Perfect job saved')).toBeVisible();
+		await expect(save).toBeDisabled();
+		const stored = await ownerApi.get(`${API_URL}/perfect-job`);
+		expect(await stored.json()).toEqual({
+			criteria: {
+				workMode: {
+					importance: 5,
+					dealBreaker: true,
+					modes: ['hybrid', 'remote'],
+					minRemoteDays: 3
+				},
+				pay: { importance: 4, perYear: 70000 },
+				skills: { importance: 3, names: ['TypeScript', 'Svelte'] }
+			}
+		});
+
+		// The tab leads to the journey, where the step that uses the score is added and set
+		await page.getByRole('button', { name: 'hiring journey' }).click();
+		await expect(editorSteps(page).first()).toBeVisible();
+		await addStep(page, 'Match the perfect job').click();
+		const match = editorStep(page, 'Step 2: Match the perfect job');
+		await expect(match).toContainText('Scored on the 3 criteria of your perfect job');
+		const minimum = match.getByLabel('Minimum score');
+		await expect(minimum).toHaveValue('70');
+		await minimum.fill('');
+		await expect(match).toContainText('The minimum score is a whole number from 0 to 100.');
+		await expect(page.getByRole('button', { name: 'Save journey' })).toBeDisabled();
+		await minimum.fill('60');
+		await match.getByRole('checkbox', { name: /^Show recruiters/ }).check();
+		// Moved above the job it scores, it has nothing to score
+		await match.getByRole('button', { name: /^Move up/ }).click();
+		await expect(editorStep(page, 'Step 1: Match the perfect job')).toContainText(
+			'works on what recruiters did in “Select or create a job”: move it below that step.'
+		);
+		await editorStep(page, 'Match the perfect job')
+			.getByRole('button', { name: /^Move down/ })
+			.click();
+		await expect(
+			page.getByText(
+				'Recruiters select or create a job, match the perfect job, then book a meeting.'
+			)
+		).toBeVisible();
+		await page.getByRole('button', { name: 'Save journey' }).click();
+		await expect(toasts(page).getByText('Hiring journey saved')).toBeVisible();
+		const saved = await ownerApi.get(`${API_URL}/workflow`);
+		expect(await saved.json()).toEqual({
+			steps: [
+				{ id: 'job', type: 'job', config: {} },
+				{ id: 'job-match', type: 'job-match', config: { minScore: 60, showDetails: true } },
+				{ id: 'meeting', type: 'meeting', config: {} }
+			]
+		});
+
+		// Anyone is told the minimum, and nothing of the criteria
+		const journey = await (await ownerApi.get(`${API_URL}/workflow/domains/${DOMAIN}`)).json();
+		expect(journey.steps[1]).toEqual({
+			id: 'job-match',
+			type: 'job-match',
+			status: 'pending',
+			config: { minScore: 60 }
+		});
+	});
+
+	test('a recruiter books once their job scores enough against the perfect job', async ({
+		page
+	}) => {
+		await setPerfectJob({
+			seniority: { importance: 2, levels: ['senior', 'lead'] },
+			workMode: { importance: 5, modes: ['remote'] },
+			contractTypes: { importance: 3, types: ['cdi'] }
+		});
+		await setSteps(
+			{ id: 'job', type: 'job' },
+			{ id: 'job-match', type: 'job-match', config: { minScore: 60, showDetails: true } },
+			{ id: 'meeting', type: 'meeting' }
+		);
+		const onSite = await createJob(recruiterApi, {
+			title: `On site engineer ${tag}`,
+			status: 'open'
+		});
+		await createJob(recruiterApi, {
+			title: `Remote engineer ${tag}`,
+			status: 'open',
+			location: { country: 'FR', workMode: 'remote' },
+			requirements: { seniority: 'senior' }
+		});
+
+		await signIn(page, recruiter);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		const jobStep = step(page, 'Step 1: Select or create a job');
+		const matchStep = step(page, 'Step 2: Match the perfect job');
+		const meetingStep = step(page, 'Step 3: Book a meeting');
+		await expect(matchStep).toContainText('Complete the step above first.');
+
+		// A CDI on site, with no seniority stated: only the contract matches (3 of 10)
+		await jobStep.getByRole('radio', { name: new RegExp(`On site engineer ${tag}`) }).check();
+		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
+		await expect(matchStep).toContainText(
+			`On site engineer ${tag} scores 30 out of 100: at least 60 is needed.`
+		);
+		await expect(
+			page.getByRole('heading', { name: 'Step 2: Match the perfect job (not passed)' })
+		).toBeFocused();
+		const details = matchStep.getByRole('listitem');
+		await expect(details).toHaveText([
+			/Seniority · Not stated in your job description/,
+			/Work mode · Does not match/,
+			/Contract · Matches/
+		]);
+		// What the owner asks for is never told
+		await expect(matchStep).not.toContainText(/remote|lead|cdi/i);
+		await expect(
+			matchStep.getByRole('link', { name: 'Edit this job description' })
+		).toHaveAttribute('href', `/recruiter/jobs/${onSite._id}/edit`);
+		await expect(meetingStep).toContainText('Complete the steps above first.');
+		await expect(meetingStep.getByRole('button')).toHaveCount(0);
+
+		// Another job of theirs, which matches everything: the meeting step opens
+		await jobStep.getByRole('button', { name: 'Change' }).click();
+		await jobStep.getByRole('radio', { name: new RegExp(`Remote engineer ${tag}`) }).check();
+		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
+		await expect(matchStep).toContainText(`Remote engineer ${tag} scores 100 out of 100.`);
+		await expect(meetingStep).toContainText('Pick a time slot that suits you.');
+
+		// The owner asks for more: the same job is checked again, and does not pass anymore
+		await setPerfectJob({
+			workMode: { importance: 5, modes: ['remote'] },
+			contractTypes: { importance: 5, dealBreaker: true, types: ['freelance'] }
+		});
+		await matchStep.getByRole('button', { name: 'Open' }).click();
+		await expect(matchStep).toContainText('close enough');
+		await page.reload();
+		await expect(matchStep).toContainText(
+			`Remote engineer ${tag} scores 0 out of 100: at least 60 is needed.`
+		);
+		await expect(matchStep.getByText('Deal-breaker', { exact: true })).toBeVisible();
+		await expect(meetingStep).toContainText('Complete the steps above first.');
 	});
 
 	test('a portfolio with the meeting step only is the booking page, as before', async ({

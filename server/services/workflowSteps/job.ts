@@ -3,7 +3,8 @@ import { APPLICABLE_JOB_STATUS } from 'portfolio-common';
 import type { JobStatus } from 'portfolio-common';
 import { JobPosting } from '../../models/database';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../../errors';
-import { JOB_NOT_FOUND } from '../jobPostings';
+import { JOB_NOT_FOUND, toJobPostingDto } from '../jobPostings';
+import type { JobPostingDto } from '../jobPostings';
 import { requireRecruiterSpace } from '../recruiters';
 import type { ServerStep, StepContext } from './types';
 import { inputFields } from './types';
@@ -51,6 +52,18 @@ const pickedJob = async ({ visitorId, data }: JobContext): Promise<JourneyJobDto
     ...(job.company ? { company: job.company } : {}),
     status: job.status as JobStatus
   };
+};
+
+/**
+ * The whole posting a visitor picked on a job step, from what that step
+ * stored (`data`), while it is still theirs: for a later step that works on
+ * it (the job match)
+ */
+export const pickedPosting = async (visitorId: string, data: unknown): Promise<JobPostingDto | undefined> => {
+  const id = jobId((data as Partial<JobStepData> | null | undefined)?.job);
+  if (!id || !Types.ObjectId.isValid(visitorId)) return undefined;
+  const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }).lean();
+  return job ? toJobPostingDto(job) : undefined;
 };
 
 export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView> = {

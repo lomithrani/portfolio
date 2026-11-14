@@ -92,8 +92,39 @@ export type {
 	WorkflowProblem,
 	WorkflowResult
 } from './workflow';
-export { NOTE_STEP_LIMITS } from './workflowSteps';
-export type { NoteStepConfig } from './workflowSteps';
+export {
+	NOTE_STEP_LIMITS,
+	JOB_MATCH_STEP_LIMITS,
+	DEFAULT_JOB_MATCH_MIN_SCORE
+} from './workflowSteps';
+export type { NoteStepConfig, JobMatchStepConfig } from './workflowSteps';
+export {
+	PERFECT_JOB_CRITERIA,
+	IMPORTANCE_LEVELS,
+	DEFAULT_IMPORTANCE,
+	MANAGEMENT_ROLES,
+	PAY_TOLERANCE,
+	HOURS_TOLERANCE,
+	PERFECT_JOB_LIMITS,
+	IMPORTANCE_LABELS,
+	PERFECT_JOB_CRITERION_LABELS,
+	MANAGEMENT_ROLE_LABELS,
+	parsePerfectJob,
+	storedPerfectJob,
+	ratedCriteria,
+	scorePerfectJob
+} from './perfectJob';
+export type {
+	PerfectJobCriterion,
+	Importance,
+	ManagementRole,
+	CriterionRating,
+	PerfectJob,
+	PerfectJobProblem,
+	ScoredJob,
+	CriterionScore,
+	PerfectJobScore
+} from './perfectJob';
 export {
 	STEP_SUGGESTION_LIMITS,
 	cleanStepSuggestionText,

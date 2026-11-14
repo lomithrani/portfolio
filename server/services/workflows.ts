@@ -185,7 +185,10 @@ const stepContext = (journey: Journey, visitor: string, step: WorkflowStep): Ste
   ownerId: journey.ownerId,
   visitorId: visitor,
   config: step.config,
-  data: journey.progress.get(step.id)
+  data: journey.progress.get(step.id),
+  earlier: journey.steps
+    .slice(0, Math.max(0, journey.steps.indexOf(step)))
+    .map(({ id, type }) => ({ id, type, data: journey.progress.get(id) }))
 });
 
 interface StepStanding {

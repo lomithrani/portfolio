@@ -19,12 +19,18 @@ import {
 	isBareJourney,
 	isPickable,
 	jobLine,
+	jobMatch,
+	jobMatchMinScore,
+	jobMatchNote,
+	jobMatchOutcomeText,
+	jobMatchSettings,
 	jobStepNote,
 	journeyIntro,
 	journeyReturnDomain,
 	journeySummary,
 	moveStep,
 	noteContent,
+	passesJobMatch,
 	pickJobFailure,
 	pickedJob,
 	removeStep,
@@ -265,6 +271,16 @@ describe("the visitor's journey", () => {
 		expect(stepStates(stopped)).toEqual(['done', 'failed', 'locked']);
 		expect(activeStepIndex(stopped)).toBe(1);
 		expect(stepNote(stopped, 1, 'failed', () => 'unused')).toBe('Not passed.');
+		// A type that can fail says why
+		expect(
+			stepNote(
+				stopped,
+				1,
+				'failed',
+				() => 'unused',
+				(step) => `${step.id} needs more`
+			)
+		).toBe('note-1 needs more');
 	});
 
 	it('locks nothing for the owner, who lands on the step the journey leads to', () => {
@@ -444,6 +460,119 @@ describe('the job step', () => {
 			message: 'Could not pick this job. Try again in a moment.',
 			kind: 'error'
 		});
+	});
+});
+
+describe('the job match step', () => {
+	const view = { score: 54, minScore: 70, job: { _id: JOB._id, title: JOB.title } };
+
+	it('goes after the job step it scores, and cannot be saved without one before it', () => {
+		const steps = editorSteps('meeting', 'job', 'job-match');
+		expect(steps.map((step) => step.type)).toEqual(['job', 'job-match', 'meeting']);
+		expect(steps[1].config).toEqual({ minScore: 70, showDetails: false });
+		expect(parseWorkflow(steps).ok).toBe(true);
+		expect(parseWorkflow(moveStep(steps, 'job-match', -1))).toEqual({
+			ok: false,
+			problem: {
+				message:
+					'“Match the perfect job” works on what recruiters did in “Select or create a job”: move it below that step.',
+				stepId: 'job-match'
+			}
+		});
+		expect(parseWorkflow(editorSteps('meeting', 'job-match'))).toMatchObject({
+			ok: false,
+			problem: { message: expect.stringContaining('add that step before it'), stepId: 'job-match' }
+		});
+		expect(parseWorkflow(withStepConfig(steps, 'job-match', { minScore: 101 }))).toMatchObject({
+			ok: false,
+			problem: { stepId: 'job-match', field: 'minScore' }
+		});
+		expect(journeySummary(steps)).toBe(
+			'Recruiters select or create a job, match the perfect job, then book a meeting.'
+		);
+	});
+
+	it('reads the score from the view, whatever the view holds', () => {
+		expect(jobMatch(view)).toEqual(view);
+		expect(
+			jobMatch({
+				...view,
+				other: true,
+				criteria: [
+					{ criterion: 'pay', outcome: 'partial' },
+					{ criterion: 'seniority', outcome: 'miss', notStated: true },
+					{ criterion: 'contractTypes', outcome: 'miss', dealBreaker: true, importance: 5 },
+					{ criterion: 'salary', outcome: 'match' },
+					{ criterion: 'travel', outcome: 'perfect' },
+					null,
+					'pay'
+				]
+			})
+		).toEqual({
+			...view,
+			criteria: [
+				{ criterion: 'pay', outcome: 'partial', notStated: false, dealBreaker: false },
+				{ criterion: 'seniority', outcome: 'miss', notStated: true, dealBreaker: false },
+				{ criterion: 'contractTypes', outcome: 'miss', notStated: false, dealBreaker: true }
+			]
+		});
+		for (const bad of [
+			undefined,
+			null,
+			'54',
+			{},
+			{ ...view, score: '54' },
+			{ ...view, score: 101 },
+			{ ...view, score: 54.5 },
+			{ ...view, minScore: -1 },
+			{ ...view, job: undefined },
+			{ ...view, job: { _id: JOB._id } }
+		]) {
+			expect(jobMatch(bad)).toBeUndefined();
+		}
+	});
+
+	it('says the score, and the one needed when it is not reached', () => {
+		expect(passesJobMatch({ ...view, score: 70 })).toBe(true);
+		expect(passesJobMatch(view)).toBe(false);
+		expect(jobMatchNote({ view: { ...view, score: 82 } })).toBe(
+			'Staff Engineer scores 82 out of 100.'
+		);
+		expect(jobMatchNote({ view })).toBe(
+			'Staff Engineer scores 54 out of 100: at least 70 is needed.'
+		);
+		// No job scored yet: what the step asks, with the minimum visitors are told
+		expect(jobMatchNote({ config: { minScore: 60 } })).toBe(
+			'The job you picked is scored out of 100: at least 60 is needed.'
+		);
+		expect(jobMatchNote({})).toBe('The job you picked is scored out of 100.');
+		expect(jobMatchMinScore({ minScore: 0 })).toBe(0);
+		expect(jobMatchMinScore({ minScore: '70' })).toBeUndefined();
+		expect(jobMatchMinScore(undefined)).toBeUndefined();
+	});
+
+	it('words the outcome of each criterion', () => {
+		const entry = { criterion: 'pay', notStated: false, dealBreaker: false } as const;
+		expect(jobMatchOutcomeText({ ...entry, outcome: 'match' })).toBe('Matches');
+		expect(jobMatchOutcomeText({ ...entry, outcome: 'partial' })).toBe('Partly matches');
+		expect(jobMatchOutcomeText({ ...entry, outcome: 'miss' })).toBe('Does not match');
+		expect(jobMatchOutcomeText({ ...entry, outcome: 'miss', notStated: true })).toBe(
+			'Not stated in your job description'
+		);
+	});
+
+	it("reads the step's settings for its form, keeping what was typed", () => {
+		expect(jobMatchSettings({ minScore: 60, showDetails: true })).toEqual({
+			minScore: 60,
+			showDetails: true
+		});
+		// Emptied, or not a score: kept as it is, for the rules to refuse it
+		expect(jobMatchSettings({ minScore: null, showDetails: 'yes' })).toEqual({
+			minScore: null,
+			showDetails: false
+		});
+		expect(jobMatchSettings({})).toEqual({ minScore: 70, showDetails: false });
+		expect(jobMatchSettings('none')).toEqual({ minScore: 70, showDetails: false });
 	});
 });
 

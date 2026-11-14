@@ -1,4 +1,6 @@
-import { asksForAnotherJob, jobStepNote, noteContent } from '#services/workflow.ts';
+import { asksForAnotherJob, jobMatchNote, jobStepNote, noteContent } from '#services/workflow.ts';
+import JobMatchSettings from './JobMatchSettings.svelte';
+import JobMatchStep from './JobMatchStep.svelte';
 import JobStep from './JobStep.svelte';
 import MeetingStep from './MeetingStep.svelte';
 import NoteSettings from './NoteSettings.svelte';
@@ -23,6 +25,12 @@ const CLIENT_STEPS: Record<string, ClientStep> = {
 		note: (step, state) => jobStepNote(step.view, state),
 		wantsOpen: (step, address) => asksForAnotherJob(step.view, address),
 		reopenLabel: 'Change'
+	},
+	'job-match': {
+		Visitor: JobMatchStep,
+		Settings: JobMatchSettings,
+		note: (step) => jobMatchNote(step),
+		failedNote: (step) => jobMatchNote(step)
 	},
 	meeting: {
 		Visitor: MeetingStep,

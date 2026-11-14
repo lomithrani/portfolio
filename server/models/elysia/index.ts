@@ -24,3 +24,4 @@ export {
   userMode,
   jobImportRequest
 } from "./jobPostingRequest.models";
+export { perfectJobRequest } from "./perfectJobRequest.models";

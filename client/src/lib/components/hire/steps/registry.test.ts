@@ -37,6 +37,19 @@ describe("the client's step types", () => {
 		expect(note?.title?.({})).toBeUndefined();
 	});
 
+	it('says why a job match is not passed, where other steps only say it is not', () => {
+		const step = {
+			id: 'job-match',
+			type: 'job-match',
+			status: 'failed' as const,
+			view: { score: 40, minScore: 70, job: { _id: 'a'.repeat(24), title: 'Staff Engineer' } }
+		};
+		expect(clientStep('job-match')?.failedNote?.(step)).toBe(
+			'Staff Engineer scores 40 out of 100: at least 70 is needed.'
+		);
+		expect(clientStep('note')?.failedNote).toBeUndefined();
+	});
+
 	it('presents the Hire page for the step a journey leads to', () => {
 		expect(clientStep('meeting')?.goal?.heading('Louis')).toBe('Book a meeting with Louis');
 		expect(clientStep('job')?.goal).toBeUndefined();
