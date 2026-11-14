@@ -211,8 +211,8 @@
 						<p class="text-sm text-surface-700-300">
 							Deletes your account and everything tied to it, at once:
 							{user.domain ? 'your portfolio (its address becomes available to others), ' : ''}your
-							hiring journey, job descriptions, applications and meeting types. Google Calendar
-							access is revoked. This cannot be undone.
+							hiring journey, job descriptions, applications and meeting types. Google is asked to
+							revoke its Calendar access. This cannot be undone.
 						</p>
 					</div>
 				</div>

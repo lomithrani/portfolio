@@ -10,9 +10,9 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { currentConsent } from 'portfolio-common';
+	import { STALE_TERMS_MESSAGE, currentConsent } from 'portfolio-common';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
-	import { login } from '#services/authentication.ts';
+	import { signIn } from '#services/authentication.ts';
 	import { claimPortfolio } from '#services/account.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
@@ -55,9 +55,19 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 
 		try {
 			const consent = currentConsent();
-			// Claiming a portfolio is choosing the candidate space: no space chooser here
-			if (!(await login(credential, 'candidate', consent))) {
-				errorMessage = 'Sign-in failed. Please try again.';
+			// Claiming a portfolio is choosing the candidate space: no space chooser here. The box was
+			// ticked in this claim form: recorded as such
+			const signedIn = await signIn(credential, {
+				mode: 'candidate',
+				consent,
+				consentSource: 'claim'
+			});
+			if (!signedIn.ok) {
+				// Terms changed since the page loaded: retrying sends the same version, only a reload helps
+				errorMessage =
+					signedIn.reason === 'stale-terms'
+						? STALE_TERMS_MESSAGE
+						: 'Sign-in failed. Please try again.';
 				return;
 			}
 

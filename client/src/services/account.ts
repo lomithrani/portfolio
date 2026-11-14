@@ -137,14 +137,14 @@ export const suggestDomainName = (
 	return '';
 };
 
-/** What the address preview shows while no name is typed */
-export const PORTFOLIO_NAME_PLACEHOLDER = 'your-name';
+/** The example name of the claim forms: their address preview while no name is typed, and their field's placeholder */
+export const PORTFOLIO_NAME_PLACEHOLDER = 'jane.doe';
 
 /**
  * The address a portfolio would have, as text for the claim forms' live preview:
  * "portfolio.example/jane.doe". `originOrHost` is the site's origin ("https://portfolio.example")
  * or host ("portfolio.example", `page.url.host`); the scheme is left out. The name is shown as it
- * would be claimed (trimmed, lower case), "your-name" while empty.
+ * would be claimed (trimmed, lower case), the example name (PORTFOLIO_NAME_PLACEHOLDER) while empty.
  */
 export const portfolioUrlPreview = (originOrHost: string, rawName: string): string => {
 	const host = originOrHost
@@ -524,17 +524,26 @@ export const DELETE_ACCOUNT_ERROR_MESSAGE = 'Could not delete your account. Try 
 /** How long deleteAccount waits for Google's automatic sign-in to be turned off */
 export const GOOGLE_AUTO_SELECT_TIMEOUT_MS = 3000;
 
+/** The API's 401 for a session whose account no longer exists (deleted, here or elsewhere) */
+const UNKNOWN_USER = 'Unauthorized: unknown user';
+
+/** Whether a failed request was refused because the session's account no longer exists */
+const isUnknownUser = (error: { status: unknown; value?: unknown }): boolean =>
+	errorStatus(error) === 401 && bodyText(error.value).trim() === UNKNOWN_USER;
+
 /**
  * Deletes the signed-in account and everything tied to it (DELETE /me): its portfolio, hiring
- * journey, job postings, applications and schedules; the API revokes its Google Calendar access
- * and ends the session. Then this browser forgets the account: the session, its drafts
- * (clearUserBrowserData) and Google's automatic sign-in.
+ * journey, job postings, applications and schedules; the API asks Google to revoke its Google
+ * Calendar access and ends the session. Then this browser forgets the account: the session, its
+ * drafts (clearUserBrowserData) and Google's automatic sign-in. A 401 saying the account no longer
+ * exists counts as deleted: a retry after a lost answer (the first request did delete it), or a
+ * deletion from another tab. Any other 401 (the session expired) says nothing about the account.
  */
 export const deleteAccount = async (): Promise<{ ok: true } | AccountFailure> => {
 	const userId = get(authenticationStore).user?._id;
 	try {
 		const { error } = await portfolioApi.me.delete({ confirm: 'DELETE' }, withCredentials);
-		if (error) {
+		if (error && !isUnknownUser(error)) {
 			if (errorStatus(error) === 401) {
 				clearAuthentication();
 				return failure('session-expired', SESSION_EXPIRED_MESSAGE);

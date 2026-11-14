@@ -123,7 +123,7 @@ sections, the text (children) and links to the other documents. The whole articl
 			</h3>
 			<ol class="mt-3 list-decimal space-y-1.5 ps-5 text-sm marker:text-surface-600-400">
 				{#each sections as section (section.id)}
-					<li><a class="anchor" href="#{section.id}">{section.title}</a></li>
+					<li><a class="link-text" href="#{section.id}">{section.title}</a></li>
 				{/each}
 			</ol>
 		</nav>

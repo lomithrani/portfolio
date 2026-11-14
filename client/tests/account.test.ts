@@ -124,6 +124,19 @@ test.describe('account page, signed in', () => {
 		await expect(page.locator('[data-danger-zone]')).toContainText('This cannot be undone.');
 	});
 
+	test('tells an owner whose portfolio predates the terms that it stays online', async ({
+		page
+	}) => {
+		await signIn(page, await ownerSession(OWNER_DOMAIN));
+		await gotoHydrated(page, '/account');
+
+		const status = page.locator('[data-terms-status="none"]');
+		await expect(status).toHaveText(
+			'You have not accepted the current Terms of use yet. Accepting them records your confirmation for your portfolio.'
+		);
+		await expect(page.getByText('before you create a portfolio')).toHaveCount(0);
+	});
+
 	test('accepting the terms asks for the box, then records them (PUT /me/consent)', async ({
 		page
 	}) => {
@@ -200,7 +213,9 @@ test.describe('deleting the account', () => {
 		);
 		await expect(dialog.getByText('The address becomes available to others.')).toBeVisible();
 		await expect(
-			dialog.getByText('If you connected Google Calendar, its access is revoked.')
+			dialog.getByText(
+				'If you connected Google Calendar, its tokens are deleted and Google is asked to revoke its access.'
+			)
 		).toBeVisible();
 		const confirmation = dialog.getByLabel('Type DELETE to confirm');
 		await expect(confirmation).toBeFocused();
@@ -283,13 +298,53 @@ test.describe('deleting the account', () => {
 		await expect(
 			toasts(page).getByText('Your session expired. Sign in again.', { exact: true })
 		).toBeVisible();
-		await expect(toasts(page).getByText('Your account was not deleted.')).toBeVisible();
+		await expect(toasts(page).getByText('Sign in again to check your account.')).toBeVisible();
 		await expect(page.getByRole('heading', { name: 'Sign in to see your account' })).toBeVisible();
 		await expect(page).toHaveURL(/\/account$/);
 		// Nothing was deleted: the drafts stay
 		expect(
 			await page.evaluate((id) => localStorage.getItem(`jobImportDraft:${id}`), CANDIDATE_ID)
 		).toBe('{}');
+	});
+
+	test('a retry after a lost answer, refused because the account is gone, counts as deleted', async ({
+		page
+	}) => {
+		await blockGoogle(page);
+		await signIn(page, await candidateSession());
+		// The first DELETE did delete the account, but its answer never came back
+		let attempts = 0;
+		await page.route(`${API_URL}/me`, async (route) => {
+			const request = route.request();
+			if (request.method() !== 'DELETE') return route.fallback();
+			attempts += 1;
+			if (attempts === 1) return route.abort('connectionreset');
+			return route.fulfill({
+				status: 401,
+				body: 'Unauthorized: unknown user',
+				headers: {
+					'access-control-allow-origin': request.headers()['origin'] ?? '*',
+					'access-control-allow-credentials': 'true'
+				}
+			});
+		});
+		await gotoHydrated(page, '/account');
+		await page.evaluate((id) => localStorage.setItem(`jobImportDraft:${id}`, '{}'), CANDIDATE_ID);
+
+		await deleteButton(page).click();
+		const dialog = deleteDialog(page);
+		await dialog.getByLabel('Type DELETE to confirm').fill('DELETE');
+		await dialog.getByRole('button', { name: 'Delete my account' }).click();
+		await expect(dialog.getByRole('alert')).toBeVisible();
+
+		await dialog.getByRole('button', { name: 'Delete my account' }).click();
+
+		await expect(toasts(page).getByText('Your account was deleted')).toBeVisible();
+		await expect(page).toHaveURL(/\/$/);
+		expect(attempts).toBe(2);
+		expect(
+			await page.evaluate((id) => localStorage.getItem(`jobImportDraft:${id}`), CANDIDATE_ID)
+		).toBeNull();
 	});
 
 	test('leaving the page with the dialog open closes it without a Svelte warning', async ({

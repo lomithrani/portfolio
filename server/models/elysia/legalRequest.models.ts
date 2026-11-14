@@ -13,6 +13,9 @@ export const consentRequest = t.Object({
   ageConfirmed: t.Literal(true)
 });
 
+/** Where the confirmation sent with POST /login was given (a claim form signs in before it claims) */
+export const loginConsentSource = t.UnionEnum(['landing', 'claim'], { default: undefined });
+
 /** Body of PUT /me/consent: the confirmation, and where it was given */
 export const acceptTermsRequest = t.Object({
   termsVersion: t.String({ minLength: 1, maxLength: TERMS_VERSION_MAX_LENGTH }),

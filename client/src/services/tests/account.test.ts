@@ -467,8 +467,8 @@ describe('portfolioUrlPreview', () => {
 	});
 
 	it('shows a placeholder while no name is typed', () => {
-		expect(portfolioUrlPreview('portfolio.example', '')).toBe('portfolio.example/your-name');
-		expect(portfolioUrlPreview('portfolio.example', '   ')).toBe('portfolio.example/your-name');
+		expect(portfolioUrlPreview('portfolio.example', '')).toBe('portfolio.example/jane.doe');
+		expect(portfolioUrlPreview('portfolio.example', '   ')).toBe('portfolio.example/jane.doe');
 	});
 });
 
@@ -762,7 +762,19 @@ describe('deleteAccount', () => {
 		}
 	});
 
-	it('clears the session on 401, keeping the drafts (the account was not deleted)', async () => {
+	it('counts a 401 saying the account no longer exists as deleted (a retry after a lost answer)', async () => {
+		mockMeDelete.mockResolvedValue({
+			data: null,
+			error: { status: 401, value: 'Unauthorized: unknown user' }
+		});
+
+		await expect(deleteAccount()).resolves.toEqual({ ok: true });
+		expect(get(authenticationStore)).toEqual(loggedOut);
+		expect(storage.keys()).toEqual(['resumeImport:user-2:bo']);
+		expect(disableGoogleAutoSelect).toHaveBeenCalledTimes(1);
+	});
+
+	it('clears the session on another 401, keeping the drafts (the session expired)', async () => {
 		mockMeDelete.mockResolvedValue(apiError(401));
 
 		await expect(deleteAccount()).resolves.toMatchObject({ ok: false, reason: 'session-expired' });

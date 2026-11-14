@@ -2,14 +2,26 @@
 // the code enforces. Each one is checked against the code or the provider's published terms;
 // keep them in step when either changes.
 
-/** Host of the web application, the API and the database (LCEN art. 1-1: host identity) */
-export const HOST = {
+/**
+ * Host of the web application, the API and the database (LCEN art. 1-1: host identity). LCEN asks
+ * for its phone number too: Railway publishes none, which the legal notice says (`phone: null`);
+ * set it here if it ever does.
+ */
+export const HOST: {
+	name: string;
+	address: string;
+	email: string;
+	website: string;
+	websiteLabel: string;
+	phone: string | null;
+} = {
 	name: 'Railway Corporation',
 	address: '548 Market St PMB 68956, San Francisco, CA 94104, USA',
 	email: 'privacy@railway.com',
 	website: 'https://railway.com',
-	websiteLabel: 'railway.com'
-} as const;
+	websiteLabel: 'railway.com',
+	phone: null
+};
 
 /** French data protection authority (GDPR art. 13(2)(d)) */
 export const CNIL = {

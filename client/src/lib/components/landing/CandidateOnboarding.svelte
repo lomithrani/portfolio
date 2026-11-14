@@ -33,7 +33,12 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		LockClosed,
 		Plus
 	} from 'svelte-heros-v2';
-	import { RESERVED_DOMAIN_NAMES, currentConsent, normalizeDomainName } from 'portfolio-common';
+	import {
+		RESERVED_DOMAIN_NAMES,
+		STALE_TERMS_MESSAGE,
+		currentConsent,
+		normalizeDomainName
+	} from 'portfolio-common';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import { portfolioApi } from '#services';
 	import {
@@ -51,7 +56,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		switchMode,
 		type DomainAvailabilityStatus
 	} from '#services/account.ts';
-	import { isSessionValid, login } from '#services/authentication.ts';
+	import { isSessionValid, signIn } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { quotaText, type ImportStatus } from '#services/resumeImport.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
@@ -133,9 +138,10 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	const PILLS: Record<Availability['status'], { label: string; tone: string }> = {
 		checking: { label: 'Checking…', tone: 'preset-tonal' },
 		available: { label: 'Available', tone: 'preset-filled-success-500' },
-		taken: { label: 'Taken', tone: 'preset-filled-error-500' },
-		invalid: { label: 'Not valid', tone: 'preset-filled-warning-500' },
-		reserved: { label: 'Reserved', tone: 'preset-filled-warning-500' },
+		// The same error tone as the field's border and message (and AA contrast on a 12 px badge)
+		taken: { label: 'Taken', tone: 'preset-tonal-error' },
+		invalid: { label: 'Not valid', tone: 'preset-tonal-error' },
+		reserved: { label: 'Reserved', tone: 'preset-tonal-error' },
 		error: { label: 'Not checked', tone: 'preset-tonal' },
 		'rate-limited': { label: 'Not checked', tone: 'preset-tonal' }
 	};
@@ -198,10 +204,12 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		}
 		signInError = '';
 		signingIn = true;
-		const ok = await login(credential, 'candidate', currentConsent());
+		const result = await signIn(credential, { mode: 'candidate', consent: currentConsent() });
 		signingIn = false;
-		if (!ok) {
-			signInError = 'Sign-in failed. Try again.';
+		if (!result.ok) {
+			// Terms changed since the page loaded: retrying sends the same version, only a reload helps
+			signInError =
+				result.reason === 'stale-terms' ? STALE_TERMS_MESSAGE : 'Sign-in failed. Try again.';
 			return;
 		}
 		claimError = '';
@@ -386,9 +394,11 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 			n: 2,
 			title: 'Claim your address',
 			done: `${preview} is yours.`,
-			upcoming: domainNameProblem(name)
-				? 'Reserve the address you choose above.'
-				: `Reserve ${preview} for your portfolio.`
+			// Not an address the pill just called taken, reserved or not valid
+			upcoming:
+				domainNameProblem(name) || addressInvalid
+					? 'Reserve the address you choose above.'
+					: `Reserve ${preview} for your portfolio.`
 		},
 		{
 			n: 3,
@@ -430,13 +440,23 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 			class="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-surface-50-950 px-3 py-1.5 text-sm shadow-inner md:text-base"
 			data-testid="address-preview"
 		>
-			<LockClosed size="14" class="shrink-0 text-success-700-300" aria-hidden="true" />
+			<LockClosed
+				size="14"
+				class={['shrink-0', addressInvalid ? 'text-surface-700-300' : 'text-success-700-300']}
+				aria-hidden="true"
+			/>
 			<span class="sr-only">Your portfolio address:</span>
 			<span class="min-w-0 break-all"
 				><span class="text-surface-700-300">{host}/</span><span
 					class={[
 						'font-semibold',
-						ownedDomain || normalizedName ? 'text-primary-700-300' : 'text-surface-500'
+						ownedDomain
+							? 'text-primary-700-300'
+							: !normalizedName
+								? 'text-surface-700-300'
+								: addressInvalid
+									? 'text-error-700-300 line-through decoration-1'
+									: 'text-primary-700-300'
 					]}>{shownName}</span
 				></span
 			>
@@ -503,7 +523,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 						autocapitalize="none"
 						spellcheck="false"
 						maxlength={DOMAIN_NAME_MAX_LENGTH}
-						placeholder="jane.doe"
+						placeholder={PORTFOLIO_NAME_PLACEHOLDER}
 						readonly={claiming}
 						aria-invalid={addressInvalid ? 'true' : undefined}
 						aria-describedby="{uid}-address-hint"
@@ -517,7 +537,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 					]}
 				>
 					{addressMessage ??
-						'Lowercase letters, digits, dots and hyphens. Your name works well: jane.doe.'}
+						`Lowercase letters, digits, dots and hyphens. Your name works well: ${PORTFOLIO_NAME_PLACEHOLDER}.`}
 				</p>
 				<p class="sr-only" aria-live="polite">{announcement}</p>
 			</div>
@@ -578,7 +598,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 							<p class="text-sm text-surface-700-300">{step.upcoming}</p>
 						{:else if status === 'current'}
 							{#if step.n === 1}
-								{@render signIn()}
+								{@render signInStep()}
 							{:else if step.n === 2}
 								{@render claimStep()}
 							{:else}
@@ -600,8 +620,11 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	</form>
 </section>
 
-{#snippet signIn()}
+{#snippet signInStep()}
 	<div class="space-y-4">
+		<p class="text-sm text-surface-700-300" data-testid="returning-owner">
+			Already have a portfolio? Sign in the same way: you go straight to it.
+		</p>
 		<AgeTermsConsent
 			bind:checked={consent}
 			error={consent ? undefined : consentError || undefined}
@@ -714,7 +737,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				<span>
 					To be read, your PDF is sent to Anthropic, in the United States, which does not use it to
 					train its models. Details in the
-					<a class="anchor" href={resolve('/(site)/legal/privacy')}>privacy policy</a>.
+					<a class="link-text" href={resolve('/(site)/legal/privacy')}>privacy policy</a>.
 				</span>
 			</p>
 			<div class="flex flex-wrap items-center gap-3">

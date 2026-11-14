@@ -151,6 +151,27 @@ test.describe('legal pages', () => {
 		);
 	});
 
+	test('the French pages keep the site footer, links and header in French', async ({ page }) => {
+		await page.goto('/legal/privacy?lang=fr');
+
+		const nav = page.getByRole('navigation', { name: 'Informations légales' });
+		await expect(nav).toHaveAttribute('lang', 'fr');
+		await expect(nav.getByRole('link', { name: "Conditions d'utilisation" })).toBeVisible();
+		await expect(
+			page.getByRole('heading', { level: 1, name: 'Informations légales' })
+		).toHaveAttribute('lang', 'fr');
+		await expect(
+			page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Accueil' })
+		).toBeVisible();
+
+		await nav.getByRole('link', { name: 'Cookies et stockage local' }).click();
+		await expect(page).toHaveURL(/\/legal\/cookies\?lang=fr$/);
+		await expect(page.locator('article[data-legal-document="cookies"]')).toHaveAttribute(
+			'lang',
+			'fr'
+		);
+	});
+
 	test('an unknown language shows the English version', async ({ page }) => {
 		const response = await page.goto('/legal/terms?lang=de');
 		expect(response?.status()).toBe(200);

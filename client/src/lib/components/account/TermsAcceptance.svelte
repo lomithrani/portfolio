@@ -5,7 +5,8 @@ account accepted (portfolio-common LEGAL_VERSION is the one in force), and, when
 accepted that one, the age and terms checkbox with a button that records the acceptance
 (PUT /me/consent with the source 'account', acceptTerms). An account needs it to create a
 portfolio; an account that signed in elsewhere (the header, the recruiter space) may not have
-given it yet.
+given it yet, and a portfolio claimed before the terms existed stays online without it (the text
+says so to its owner).
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
@@ -106,9 +107,9 @@ given it yet.
 					<CheckCircle size="18" class="mt-0.5 shrink-0 text-success-700-300" aria-hidden="true" />
 					<span>
 						You accepted the
-						<a class="anchor" href={resolve('/(site)/legal/terms')}>Terms of use</a>
+						<a class="link-text" href={resolve('/(site)/legal/terms')}>Terms of use</a>
 						and the
-						<a class="anchor" href={resolve('/(site)/legal/privacy')}>Privacy policy</a>
+						<a class="link-text" href={resolve('/(site)/legal/privacy')}>Privacy policy</a>
 						of {currentDate}, the version in force, and confirmed your age.
 					</span>
 				</p>
@@ -116,8 +117,18 @@ given it yet.
 				<p class="text-sm text-surface-700-300" data-terms-status="outdated">
 					You accepted the version of {formatLegalDate(acceptedVersion, 'en')}. The terms changed on
 					{currentDate}: read the
-					<a class="anchor" href={resolve('/(site)/legal/terms')}>Terms of use</a>
-					and accept them to create a portfolio.
+					<a class="link-text" href={resolve('/(site)/legal/terms')}>Terms of use</a>
+					{#if user.domain}
+						and accept them: this records your confirmation for your portfolio.
+					{:else}
+						and accept them to create a portfolio.
+					{/if}
+				</p>
+			{:else if user.domain}
+				<!-- A portfolio claimed before the terms existed (or from a sign-in without the box): it stays online -->
+				<p class="text-sm text-surface-700-300" data-terms-status="none">
+					You have not accepted the current Terms of use yet. Accepting them records your
+					confirmation for your portfolio.
 				</p>
 			{:else}
 				<p class="text-sm text-surface-700-300" data-terms-status="none">

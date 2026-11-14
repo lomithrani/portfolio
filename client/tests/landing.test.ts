@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Request, type Route } from '@playwright/test';
-import { LEGAL_VERSION } from 'portfolio-common';
+import { LEGAL_VERSION, STALE_TERMS_MESSAGE } from 'portfolio-common';
 import { API_URL, JWT_SECRET, gotoHydrated, ownerSession, signIn } from './support/owner';
 
 // The landing page (/) and its onboarding card. Google is never reached: its script is stubbed
@@ -163,7 +163,7 @@ test.describe('landing page, signed out', () => {
 		await gotoHydrated(page, '/');
 		const host = new URL(page.url()).host;
 
-		await expect(preview(page)).toContainText(`${host}/your-name`);
+		await expect(preview(page)).toContainText(`${host}/jane.doe`);
 
 		const free = `e2e-free-${Date.now().toString(36)}`;
 		await addressField(page).fill(free.toUpperCase());
@@ -177,6 +177,9 @@ test.describe('landing page, signed out', () => {
 			card(page).getByText('This name is already taken. Choose another one.')
 		).toBeVisible();
 		await expect(addressField(page)).toHaveAttribute('aria-invalid', 'true');
+		// The next step does not offer to reserve an address just reported as taken
+		await expect(card(page).getByText('Reserve the address you choose above.')).toBeVisible();
+		await expect(card(page).getByText(`Reserve ${host}/louis.gentil`)).toHaveCount(0);
 
 		await addressField(page).fill('admin');
 		await expect(availability(page)).toHaveText('Reserved');
@@ -188,7 +191,7 @@ test.describe('landing page, signed out', () => {
 
 		await addressField(page).fill('');
 		await expect(availability(page)).toHaveCount(0);
-		await expect(preview(page)).toContainText(`${host}/your-name`);
+		await expect(preview(page)).toContainText(`${host}/jane.doe`);
 	});
 
 	test('"Create your portfolio" goes to the address field', async ({ page }) => {
@@ -276,6 +279,36 @@ test.describe('landing page, candidate steps', () => {
 			'href',
 			`/${name}/experiences`
 		);
+	});
+
+	test('a sign-in refused for terms changed since the page loaded asks for a reload', async ({
+		page
+	}) => {
+		await stubGoogle(page);
+		await stubApi(page, 'GET', '/isLogged', () => ({ json: { logged: false } }));
+		const logins = await stubApi(page, 'POST', '/login', () => ({
+			status: 422,
+			json: {
+				type: 'validation',
+				on: 'body',
+				property: 'consent.termsVersion',
+				message: STALE_TERMS_MESSAGE
+			}
+		}));
+
+		await gotoHydrated(page, '/');
+		// A returning owner is told this is also how to sign back in
+		await expect(page.getByTestId('returning-owner')).toHaveText(
+			'Already have a portfolio? Sign in the same way: you go straight to it.'
+		);
+		await card(page)
+			.getByRole('checkbox', { name: /at least 16 years old/ })
+			.check();
+		await card(page).getByRole('button', { name: 'Stub Google sign-in' }).click();
+
+		await expect(card(page).getByRole('alert')).toHaveText(STALE_TERMS_MESSAGE);
+		expect(logins).toHaveLength(1);
+		await expect(currentStep(page)).toContainText('Sign in with Google');
 	});
 
 	test('an account that has not accepted the terms ticks the box before claiming', async ({

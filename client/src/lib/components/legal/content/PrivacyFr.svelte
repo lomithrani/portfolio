@@ -73,12 +73,13 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			pas vous-même.
 		</li>
 		<li>
-			Pas de publicité, pas de mesure d'audience, pas de vente de données. Le seul cookie de ce site
-			vous garde connecté.
+			Pas de publicité, pas de mesure d'audience, pas de vente de données. Notre seul cookie vous
+			garde connecté ; la connexion avec Google, chargée seulement à votre demande, dépose ses
+			propres cookies.
 		</li>
 		<li>
 			Vous pouvez supprimer votre compte et tout son contenu à tout moment depuis
-			<a class="anchor" href={resolve('/(site)/account')}>la page de votre compte</a>.
+			<a class="link-text" href={resolve('/(site)/account')}>la page de votre compte</a>.
 		</li>
 	</ul>
 </div>
@@ -117,6 +118,12 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	publiques d'un portfolio contiennent aussi un identifiant interne aléatoire du compte de son propriétaire,
 	jamais son adresse e-mail.
 </p>
+<p>
+	Les descriptions des expériences et des projets peuvent afficher des images hébergées sur d'autres
+	sites, choisies par le propriétaire du portfolio. Le navigateur des visiteurs les charge depuis
+	ces sites, qui reçoivent alors l'adresse IP du visiteur et des informations sur son navigateur,
+	selon leurs propres règles. Nous ne choisissons ni ne contrôlons ces images.
+</p>
 
 <h4 id="data-resume">Import de CV (facultatif)</h4>
 <p>
@@ -128,9 +135,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 		doc="cookies"
 		{lang}>cookies et stockage local</LegalDocLink
 	>). Pour appliquer les limites d'import, nous comptons les imports avec des compteurs identifiés
-	par une empreinte de l'identifiant de votre compte. Évitez d'envoyer un CV contenant des
-	informations que vous ne voulez pas voir traitées, comme un numéro d'identité ou des données de
-	santé.
+	par une empreinte de l'identifiant de votre compte (voir
+	<a class="link-text" href="#retention">combien de temps nous les conservons</a> pour ce qu'ils deviennent
+	quand vous supprimez votre compte). Évitez d'envoyer un CV contenant des informations que vous ne voulez
+	pas voir traitées, comme un numéro d'identité ou des données de santé.
 </p>
 
 <h4 id="data-recruiter">Espace recruteur et offres d'emploi</h4>
@@ -173,7 +181,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Le propriétaire d'un portfolio qui propose des rendez-vous connecte son agenda Google. Nous
 	conservons alors les jetons d'accès fournis par Google, qui permettent au site de savoir quand il
 	est occupé et de créer les événements réservés par les visiteurs. Les détails figurent dans
-	<a class="anchor" href="#google">Données des utilisateurs Google</a>.
+	<a class="link-text" href="#google">Données des utilisateurs Google</a>.
 </p>
 
 <h4 id="data-suggestions">Suggestions d'étapes</h4>
@@ -203,8 +211,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 <h4 id="data-device">Sur votre appareil</h4>
 <p>
-	Le site utilise un cookie pour vous garder connecté et enregistre certaines données dans votre
-	navigateur (thème, brouillons non enregistrés). Voir
+	Le site dépose un cookie qui lui est propre, pour vous garder connecté, et enregistre certaines
+	données dans votre navigateur (thème, brouillons non enregistrés). La connexion avec Google, quand
+	vous la demandez, dépose ses propres cookies. Voir
 	<LegalDocLink doc="cookies" {lang}>cookies et stockage local</LegalDocLink>.
 </p>
 
@@ -268,7 +277,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 					Intérêt légitime, art. 6(1)(f) : garder le site sûr et disponible, empêcher les
 					réservations abusives et l'abus des imports par IA, qui sont payants. Les données sont
 					minimales, remplacées par une empreinte lorsque c'est possible et conservées peu de temps
-					; vous pouvez vous y opposer (voir <a class="anchor" href="#rights">vos droits</a>)
+					; vous pouvez vous y opposer (voir <a class="link-text" href="#rights">vos droits</a>)
 				</td>
 			</tr>
 			<tr>
@@ -307,15 +316,17 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			<li>
 				{HOST.name} (États-Unis) : hébergement de l'application web, de l'API, de la base de données et
 				de leurs journaux, dans sa région US West (<a
-					class="anchor"
+					class="link-text"
 					href={LINKS.railwayPrivacy}
 					rel="noopener noreferrer">politique de confidentialité</a
 				>) ;
 			</li>
 			<li>
 				Anthropic PBC (États-Unis) : lecture des PDF de CV et d'offres d'emploi que vous importez.
-				Selon les <a class="anchor" href={LINKS.anthropicCommercialTerms} rel="noopener noreferrer"
-					>conditions commerciales</a
+				Selon les <a
+					class="link-text"
+					href={LINKS.anthropicCommercialTerms}
+					rel="noopener noreferrer">conditions commerciales</a
 				> d'Anthropic, Anthropic n'entraîne pas ses modèles sur les contenus envoyés par son API ;
 			</li>
 			<li>
@@ -330,14 +341,14 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			<li>
 				Google LLC (États-Unis) : la connexion avec Google, et l'agenda Google des propriétaires de
 				portfolio qui le connectent, qui envoie aussi les invitations par e-mail (<a
-					class="anchor"
+					class="link-text"
 					href={LINKS.googlePrivacy}
 					rel="noopener noreferrer">règles de confidentialité de Google</a
 				>) ;
 			</li>
 			<li>
 				GitHub, Inc. (États-Unis) : les suggestions d'étapes, publiées sous forme de tickets publics
-				(<a class="anchor" href={LINKS.githubPrivacy} rel="noopener noreferrer"
+				(<a class="link-text" href={LINKS.githubPrivacy} rel="noopener noreferrer"
 					>déclaration de confidentialité de GitHub</a
 				>).
 			</li>
@@ -353,13 +364,13 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Notre hébergeur, Anthropic, Google, GitHub et notre prestataire de supervision peuvent traiter des
 	données aux <strong>États-Unis</strong> ; la base de données y est hébergée. Ces transferts
 	reposent sur le
-	<a class="anchor" href={LINKS.dpf} rel="noopener noreferrer"
+	<a class="link-text" href={LINKS.dpf} rel="noopener noreferrer"
 		>cadre de protection des données UE-États-Unis</a
 	>
 	(décision d'adéquation de la Commission européenne du 10 juillet 2023) pour les destinataires certifiés,
 	et à défaut sur les
-	<a class="anchor" href={LINKS.scc} rel="noopener noreferrer">clauses contractuelles types</a> de la
-	Commission européenne (décision (UE) 2021/914) prévues par leurs conditions de traitement des données.
+	<a class="link-text" href={LINKS.scc} rel="noopener noreferrer">clauses contractuelles types</a> de
+	la Commission européenne (décision (UE) 2021/914) prévues par leurs conditions de traitement des données.
 	Vous pouvez nous demander une copie de ces garanties.
 </p>
 
@@ -410,12 +421,19 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				<td>Jetons Google Agenda</td>
 				<td>
 					Jusqu'à ce que le propriétaire déconnecte Google Agenda ou supprime son compte ; ils sont
-					alors révoqués auprès de Google
+					alors supprimés, et nous demandons à Google de révoquer l'accès
 				</td>
 			</tr>
 			<tr>
 				<td>Compteurs de limitation et de quotas (empreintes)</td>
-				<td>Supprimés automatiquement à la fin de leur période : d'une heure à 30 jours</td>
+				<td>
+					Supprimés automatiquement à la fin de leur période : d'une heure à 30 jours. Quand vous
+					supprimez votre compte, les quotas que vous avez utilisés (imports de CV et d'offres,
+					suggestions d'étapes, et imports d'offres de votre offre recruteur) sont reportés sur des
+					compteurs identifiés par une empreinte de l'identifiant de votre compte Google, conservés
+					jusqu'à la fin de leur période (30 jours au plus), pour que supprimer puis recréer un
+					compte ne les remette pas à zéro
+				</td>
 			</tr>
 			<tr>
 				<td>Journaux du serveur, journaux de l'hébergeur et traces</td>
@@ -443,14 +461,22 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	</table>
 </div>
 <p>
-	La suppression de votre compte depuis <a class="anchor" href={resolve('/(site)/account')}
+	La suppression de votre compte depuis <a class="link-text" href={resolve('/(site)/account')}
 		>la page de votre compte</a
-	> est immédiate et complète : votre compte, votre portfolio et ses expériences, votre parcours de recrutement
-	et la progression de ses visiteurs, votre progression dans d'autres parcours, vos agendas et réservations
+	>
+	est immédiate : votre compte, votre portfolio et ses expériences, votre parcours de recrutement et la
+	progression de ses visiteurs, votre progression dans d'autres parcours, vos agendas et réservations
 	de rendez-vous, vos offres d'emploi et leurs candidatures, ainsi que vos candidatures sont aussitôt
-	retirés de notre base de données, votre accès à Google Agenda est révoqué et l'adresse de votre portfolio
-	redevient disponible. Ce qui reste : les noms de compétences du catalogue partagé (ils ne sont liés
-	à personne), les suggestions d'étapes déjà publiées sur GitHub, et les journaux jusqu'à leur expiration.
+	retirés de notre base de données, les jetons Google Agenda sont supprimés et nous demandons à Google
+	de révoquer l'accès (vous pouvez le vérifier dans les
+	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
+		>autorisations de votre compte Google</a
+	>), et l'adresse de votre portfolio redevient disponible. Ce qui reste : les noms de compétences
+	du catalogue partagé (ils ne sont liés à personne), les suggestions d'étapes déjà publiées sur
+	GitHub, les créneaux que vous avez réservés comme invité d'autres portfolios (jusqu'à la fin du
+	créneau), les compteurs contre les abus et de quotas (empreintes, supprimées à la fin de leur
+	période, 30 jours au plus ; les quotas utilisés sont reportés sur une empreinte de l'identifiant
+	de votre compte Google, comme indiqué ci-dessus), et les journaux jusqu'à leur expiration.
 </p>
 
 <h3 id="rights">Vos droits</h3>
@@ -463,7 +489,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	</li>
 	<li>
 		les <strong>effacer</strong> : supprimez vous-même votre compte depuis
-		<a class="anchor" href={resolve('/(site)/account')}>la page de votre compte</a>, ou
+		<a class="link-text" href={resolve('/(site)/account')}>la page de votre compte</a>, ou
 		demandez-le-nous ;
 	</li>
 	<li>en <strong>limiter</strong> le traitement ;</li>
@@ -485,8 +511,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <p>
 	Vous pouvez aussi introduire une réclamation auprès d'une autorité de protection des données,
 	notamment celle du lieu où vous résidez ou travaillez. En France : {CNIL.name}, {CNIL.address},
-	<a class="anchor" href={CNIL.website} rel="noopener noreferrer">www.cnil.fr</a>
-	(<a class="anchor" href={CNIL.complaint} rel="noopener noreferrer">adresser une plainte</a>).
+	<a class="link-text" href={CNIL.website} rel="noopener noreferrer">www.cnil.fr</a>
+	(<a class="link-text" href={CNIL.complaint} rel="noopener noreferrer">adresser une plainte</a>).
 </p>
 
 <h3 id="required">Ce que vous devez fournir</h3>
@@ -509,7 +535,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <h3 id="children">Mineurs</h3>
 <p>
 	Le site ne s'adresse pas aux personnes de moins de {MINIMUM_AGE} ans ou n'ayant pas atteint l'âge légal
-	minimum pour travailler dans leur pays, et l'inscription ou la création d'un portfolio exige de le confirmer.
+	minimum pour travailler dans leur pays. Le confirmer est exigé lors de l'inscription depuis la page
+	d'accueil ou de la création d'un portfolio, et utiliser un compte signifie que vous remplissez ces conditions.
 	Si nous apprenons qu'un compte appartient à une personne plus jeune, nous le supprimons. Les parents
 	et tuteurs peuvent nous écrire à <ContactEmail {publisher} {lang} /> pour en demander la suppression.
 </p>
@@ -527,10 +554,12 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 <h3 id="cookies">Cookies et stockage local</h3>
 <p>
-	Le site utilise un cookie, qui vous garde connecté, et le stockage de votre navigateur pour vos
-	préférences et vos brouillons non enregistrés. Google dépose ses propres cookies lorsque sa
-	connexion est affichée. Il n'y a aucun cookie de mesure d'audience ni de publicité : aucun bandeau
-	de consentement n'est donc nécessaire. La liste complète figure sur la page
+	Le site dépose un cookie qui lui est propre, qui vous garde connecté, et utilise le stockage de
+	votre navigateur pour vos préférences et vos brouillons non enregistrés. La connexion avec Google
+	n'est chargée que lorsque vous la demandez ; elle dépose alors son cookie <code>g_state</code> sur
+	le domaine de ce site et ses propres cookies sur accounts.google.com. Il n'y a aucun cookie de
+	mesure d'audience ni de publicité : aucun bandeau de consentement n'est donc nécessaire. La liste
+	complète figure sur la page
 	<LegalDocLink doc="cookies" {lang}>cookies et stockage local</LegalDocLink>.
 </p>
 
@@ -541,13 +570,17 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Not Track ou Global Privacy Control.
 </p>
 <p>
-	Aucun tiers ne collecte d'informations sur votre activité sur ce site au fil du temps et sur
-	d'autres sites, à une exception près : sur les pages qui affichent un bouton « Se connecter avec
-	Google », le script de connexion de Google est chargé ; Google reçoit alors votre adresse IP et
-	des informations sur votre navigateur, et peut lire ou déposer ses cookies, selon les
-	<a class="anchor" href={LINKS.googlePrivacy} rel="noopener noreferrer"
+	Aucun tiers ne collecte pour notre compte d'informations sur votre activité sur ce site au fil du
+	temps et sur d'autres sites. Deux sortes de tiers peuvent toutefois recevoir des informations
+	quand vous le parcourez. Google, dont le script de connexion est chargé quand vous le demandez
+	(clic sur un bouton de connexion, case d'âge et de conditions cochée, connexion de Google Agenda,
+	déconnexion ou suppression de votre compte) : Google reçoit alors votre adresse IP et des
+	informations sur votre navigateur, et peut lire ou déposer ses cookies, selon les
+	<a class="link-text" href={LINKS.googlePrivacy} rel="noopener noreferrer"
 		>règles de confidentialité de Google</a
-	>.
+	>. Et les sites qui hébergent les images que le propriétaire d'un portfolio affiche dans ses
+	descriptions : votre navigateur les charge depuis ces sites, qui reçoivent votre adresse IP et des
+	informations sur votre navigateur.
 </p>
 <p>
 	Nous ne vendons ni ne partageons de données personnelles, et ne les utilisons pas pour de la
@@ -565,7 +598,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <p class="legal-callout" lang="en">
 	{SITE_NAME}'s use and transfer to any other app of information received from Google APIs will
 	adhere to the
-	<a class="anchor" href={LINKS.googleApiPolicy} rel="noopener noreferrer" hreflang="en"
+	<a class="link-text" href={LINKS.googleApiPolicy} rel="noopener noreferrer" hreflang="en"
 		>Google API Services User Data Policy</a
 	>, including the Limited Use requirements.
 </p>
@@ -592,9 +625,11 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	<li>
 		Les jetons Google Agenda sont conservés dans notre base de données pour qu'une réservation
 		fonctionne en votre absence ; ils ne sont jamais renvoyés par l'API ni journalisés. Déconnecter
-		Google Agenda (Admin, Appointments, Disconnect) ou supprimer votre compte les supprime et
-		révoque l'accès auprès de Google. Vous pouvez aussi le révoquer à tout moment depuis les
-		<a class="anchor" href={LINKS.googlePermissions} rel="noopener noreferrer"
+		Google Agenda (Admin, Appointments, Disconnect) ou supprimer votre compte les supprime, et nous
+		demandons à Google de révoquer l'accès ; si Google ne répond pas à ce moment-là, l'accès peut
+		rester listé dans votre compte Google jusqu'à ce que vous l'y retiriez. Vous pouvez le vérifier
+		ou le révoquer à tout moment depuis les
+		<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 			>autorisations de votre compte Google</a
 		>.
 	</li>

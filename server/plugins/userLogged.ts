@@ -2,6 +2,7 @@ import jwt from "@elysiajs/jwt";
 import Elysia from "elysia";
 import { env } from "../env";
 import { AuthExpiredError, CouldntVerifyJwtError, MissingAuthCookieError, SubMissingError } from "../errors";
+import { sessionAccounts } from "../services/session";
 
 // Returns a new instance on purpose: `.use(userLogged)` continues the caller's
 // chain on this instance, so its derive guards every route declared after it
@@ -21,6 +22,10 @@ export const userLogged = () => new Elysia({ name: 'userLogged' })
     if (!user.sub) throw new SubMissingError("Unauthorized")
 
     if (!user.exp || user.exp < (Date.now() / 1000)) throw new AuthExpiredError("Unauthorized: session expired")
+
+    // A session outlives a deleted account (on another device, or a copied
+    // cookie): it must not act, nor recreate data no one can delete
+    if (!(await sessionAccounts.exists(user.sub))) throw new CouldntVerifyJwtError("Unauthorized: unknown user")
 
     return {
       userId: user.sub

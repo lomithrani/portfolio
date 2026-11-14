@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia'
 import type { Cookie } from 'elysia'
 import { jwt } from '@elysiajs/jwt'
 import { User } from '../models/database';
-import { consentRequest, userMode } from '../models/elysia';
+import { consentRequest, loginConsentSource, userMode } from '../models/elysia';
 import { env } from '../env';
 import { google } from '../services/google';
 import { assertValidConsent, recordConsent } from '../services/legal';
@@ -36,7 +36,7 @@ export const googleAuth = new Elysia()
     exp: `${SESSION_DAYS}d`
   }))
   .post("/login",
-    async ({ body: { token, mode, consent }, jwt, cookie: { auth } }) => {
+    async ({ body: { token, mode, consent, consentSource }, jwt, cookie: { auth } }) => {
       // The age and terms confirmation of the sign-in, checked before
       // anything else: an older version of the terms is a 422, and no account
       // is created nor session issued
@@ -49,7 +49,8 @@ export const googleAuth = new Elysia()
       const found = await findOrCreateGoogleUser(identity);
       // Recorded before the session exists: an account signed in with the
       // confirmation never has a session without it
-      const recorded = accepted ? await recordConsent(found.id, accepted, 'landing') : false;
+      // From where the box was ticked: the landing page, or a claim form that signs in first
+      const recorded = accepted ? await recordConsent(found.id, accepted, consentSource ?? 'landing') : false;
       // The space picked on the login screen, set (and the recruiter space
       // created) before the session is issued, as PUT /me/mode would
       const user = mode
@@ -82,8 +83,11 @@ export const googleAuth = new Elysia()
         // Without it, the account keeps the space it last chose
         mode: t.Optional(userMode),
         // Sent when the person ticked the age and terms checkbox before
-        // signing in (the landing page); recorded with the source 'landing'
-        consent: t.Optional(consentRequest)
+        // signing in; recorded with the source consentSource
+        consent: t.Optional(consentRequest),
+        // Where that checkbox was: the landing page (default), or the claim
+        // form of a portfolio page, which signs in before claiming
+        consentSource: t.Optional(loginConsentSource)
       })
     })
   .get("/isLogged",

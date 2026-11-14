@@ -25,6 +25,6 @@ French). Its text is the document's title unless children are given.
 </script>
 
 <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d, with ?lang= and #hash -->
-<a class="anchor" {href}
+<a class="link-text" {href}
 	>{#if children}{@render children()}{:else}{meta.title[lang]}{/if}</a
 >

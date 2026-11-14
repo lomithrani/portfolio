@@ -51,8 +51,17 @@ l'éditeur vient uniquement des variables LEGAL_* (PublisherDetails).
 	<dd>{HOST.address}</dd>
 	<dt>Contact</dt>
 	<dd>
-		<a class="anchor" href="mailto:{HOST.email}">{HOST.email}</a>,
-		<a class="anchor" href={HOST.website} rel="noopener noreferrer">{HOST.websiteLabel}</a>
+		<a class="link-text" href="mailto:{HOST.email}">{HOST.email}</a>,
+		<a class="link-text" href={HOST.website} rel="noopener noreferrer">{HOST.websiteLabel}</a>
+	</dd>
+	<dt>Téléphone</dt>
+	<dd>
+		{#if HOST.phone}
+			<a class="link-text" href="tel:{HOST.phone.replace(/\s/g, '')}">{HOST.phone}</a>
+		{:else}
+			L'hébergeur ne publie pas de numéro de téléphone : il peut être joint aux adresses
+			électronique et postale ci-dessus.
+		{/if}
 	</dd>
 	<dt>Localisation des serveurs</dt>
 	<dd>États-Unis (région Railway US West)</dd>
@@ -108,7 +117,7 @@ l'éditeur vient uniquement des variables LEGAL_* (PublisherDetails).
 </p>
 <p>
 	En France, vous pouvez aussi signaler un contenu illicite aux autorités sur
-	<a class="anchor" href="https://www.internet-signalement.gouv.fr" rel="noopener noreferrer"
+	<a class="link-text" href="https://www.internet-signalement.gouv.fr" rel="noopener noreferrer"
 		>internet-signalement.gouv.fr</a
 	> (PHAROS).
 </p>

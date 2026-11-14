@@ -25,9 +25,14 @@
 	let pathname = $derived(page.url.pathname);
 	let onHome = $derived(pathname === resolve('/(site)'));
 
+	/** The French legal pages (`?lang=fr`): their header, site links and footer are in French */
+	let french = $derived(
+		isCurrentSection(pathname, '/legal') && page.url.searchParams.get('lang') === 'fr'
+	);
+
 	let header = $derived.by(() => {
 		if (isCurrentSection(pathname, '/legal')) {
-			return page.url.searchParams.get('lang') === 'fr'
+			return french
 				? {
 						title: 'Informations légales',
 						subtitle: 'Mentions légales, confidentialité, conditions et cookies'
@@ -45,24 +50,33 @@
 </script>
 
 <div class="h-full flex flex-col">
-	<Header headerTitle={header.title} headerSubtitle={header.subtitle} showSignIn={false} />
+	<Header
+		headerTitle={header.title}
+		headerSubtitle={header.subtitle}
+		headerLang={french ? 'fr' : undefined}
+		showSignIn={false}
+	/>
 	<div
 		class="flex items-center gap-2 border-b border-surface-200-800 bg-surface-50-950 px-3 py-1.5 md:px-4"
 	>
-		<nav aria-label="Site" class="min-w-0 flex-1 overflow-x-auto">
+		<nav aria-label="Site" class="min-w-0 flex-1 overflow-x-auto" lang={french ? 'fr' : undefined}>
 			<ul class="flex items-center gap-1">
 				<li class="shrink-0">
 					<a
 						href={resolve('/(site)')}
 						class={linkClass(onHome)}
-						aria-current={onHome ? 'page' : undefined}>Home</a
+						aria-current={onHome ? 'page' : undefined}>{french ? 'Accueil' : 'Home'}</a
 					>
 				</li>
 				<li class="shrink-0">
-					<a href={resolve('/(app)/jobs')} class={linkClass(false)}>Browse jobs</a>
+					<a href={resolve('/(app)/jobs')} class={linkClass(false)}
+						>{french ? "Offres d'emploi" : 'Browse jobs'}</a
+					>
 				</li>
 				<li class="shrink-0">
-					<a href={resolve('/(app)/recruiter')} class={linkClass(false)}>For recruiters</a>
+					<a href={resolve('/(app)/recruiter')} class={linkClass(false)}
+						>{french ? 'Pour les recruteurs' : 'For recruiters'}</a
+					>
 				</li>
 			</ul>
 		</nav>
@@ -78,7 +92,7 @@
 		<div class="flex-1">
 			{@render children()}
 		</div>
-		<LegalFooter />
+		<LegalFooter lang={french ? 'fr' : 'en'} />
 	</main>
 </div>
 

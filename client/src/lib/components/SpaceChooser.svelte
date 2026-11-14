@@ -30,6 +30,7 @@ focused; closing the dialog keeps the person where they are.
 	import { authenticationStore } from '#services/stores/index.ts';
 	import {
 		DOMAIN_NAME_MAX_LENGTH,
+		PORTFOLIO_NAME_PLACEHOLDER,
 		claimPortfolio,
 		domainNameProblem,
 		hasAcceptedCurrentTerms,
@@ -365,7 +366,7 @@ focused; closing the dialog keeps the person where they are.
 									autocapitalize="none"
 									spellcheck="false"
 									maxlength={DOMAIN_NAME_MAX_LENGTH}
-									placeholder="jane.doe"
+									placeholder={PORTFOLIO_NAME_PLACEHOLDER}
 									aria-invalid={nameError ? 'true' : undefined}
 									aria-describedby="{uid}-name-hint{nameError ? ` ${uid}-name-error` : ''}"
 									readonly={busy === 'claim'}
@@ -376,7 +377,7 @@ focused; closing the dialog keeps the person where they are.
 								<p id="{uid}-name-hint" class="text-sm text-surface-700-300 wrap-anywhere">
 									Lowercase letters, digits, dots and hyphens. Your portfolio will be at
 									<span class="font-medium text-surface-950-50"
-										>{host}/{normalizedName || 'your-name'}</span
+										>{host}/{normalizedName || PORTFOLIO_NAME_PLACEHOLDER}</span
 									>.
 								</p>
 								{#if showConsent}

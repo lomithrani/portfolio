@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { AGE_CONFIRMATION_KEY, LEGAL_VERSION, parseConsent } from 'portfolio-common';
 import type { ConsentInput, ConsentSource } from 'portfolio-common';
 import { User } from '../models/database';
-import { FieldValidationError } from '../errors';
+import { CouldntVerifyJwtError, FieldValidationError } from '../errors';
 
 // Acceptances of the Terms of use and Privacy policy (portfolio-common
 // LEGAL_VERSION), with the age confirmation (AGE_CONFIRMATION_KEY): recorded
@@ -78,7 +78,8 @@ export const recordConsent = async (
  * Gate of the routes that need the terms in force (POST /domain/claim): an
  * account that accepted them goes through; otherwise the confirmation sent
  * with the request is checked and recorded from `source`. Throws
- * FieldValidationError (422 on `consent`) without one, or for an invalid one.
+ * FieldValidationError (422 on `consent`) without one, or for an invalid one,
+ * and CouldntVerifyJwtError (401) when the account no longer exists.
  */
 export const requireCurrentTerms = async (
   userId: string,
@@ -89,5 +90,11 @@ export const requireCurrentTerms = async (
   if (input === undefined || input === null) {
     throw new FieldValidationError('consent', CLAIM_CONSENT_REQUIRED_MESSAGE);
   }
-  await recordConsent(userId, input, source);
+  if (await recordConsent(userId, input, source)) return;
+  // Nothing recorded: accepted meanwhile by a concurrent request, or the
+  // account is gone (deleted while this session was still valid). The gated
+  // route never goes on for an account without an acceptance on record
+  if (!(await userAcceptedCurrentTerms(userId))) {
+    throw new CouldntVerifyJwtError('Unauthorized: unknown user');
+  }
 };

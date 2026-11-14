@@ -54,15 +54,16 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 <ul>
 	<li>
 		be at least <strong>{MINIMUM_AGE} years old</strong> and have reached the
-		<strong>minimum legal working age in your country</strong>, which you confirm when you sign up
-		or claim a portfolio;
+		<strong>minimum legal working age in your country</strong>, which you confirm when the site asks
+		for it (when you sign up from the home page or claim a portfolio);
 	</li>
 	<li>have a Google account, which you use to sign in;</li>
 	<li>if you publish job descriptions for an organisation, be allowed to act on its behalf.</li>
 </ul>
 <p>
-	The site is not intended for anyone younger. We delete accounts that we learn belong to someone
-	who does not meet these conditions.
+	Using an account means that you meet these conditions, whether or not the site asked you to
+	confirm them. The site is not intended for anyone younger. We delete accounts that we learn belong
+	to someone who does not meet these conditions.
 </p>
 
 <h3 id="service">The service</h3>
@@ -197,9 +198,9 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 <h3 id="termination">Deleting your account, suspension</h3>
 <p>
 	You can stop using the site and delete your account at any time from
-	<a class="anchor" href={resolve('/(site)/account')}>your account page</a>. Deletion is immediate
-	and final: your portfolio and everything tied to your account are removed, and your portfolio
-	address becomes available to others.
+	<a class="link-text" href={resolve('/(site)/account')}>your account page</a>. Deletion is
+	immediate and final: your portfolio and everything tied to your account are removed, and your
+	portfolio address becomes available to others.
 </p>
 <p>
 	We may suspend or close an account that seriously or repeatedly breaks these terms or the law, as

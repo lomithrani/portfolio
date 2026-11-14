@@ -9,6 +9,7 @@ import {
   putWithCookie,
   postWithCookie,
   putJson,
+  allowTestUserSessions,
   authCookie,
   TEST_DOMAIN_NAME,
   TEST_USER_ID,
@@ -19,6 +20,8 @@ let app: ReturnType<typeof createApp>;
 
 beforeEach(() => {
   app = createApp();
+  // Sessions of the unsaved test user, whose models are mocked
+  allowTestUserSessions();
 });
 
 afterEach(() => {

@@ -10,7 +10,7 @@ import { AGE_CONFIRMATION_KEY, LEGAL_VERSION, STALE_TERMS_MESSAGE } from 'portfo
 import { env } from '../env';
 import { createApp } from '../app';
 import { Domain, User } from '../models/database';
-import { hasAcceptedCurrentTerms, recordConsent, userAcceptedCurrentTerms } from '../services/legal';
+import { hasAcceptedCurrentTerms, recordConsent, requireCurrentTerms, userAcceptedCurrentTerms } from '../services/legal';
 import { CONSENT, authCookie, parseCookie, signGoogleIdToken, useTestGoogleKeys } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
@@ -181,6 +181,20 @@ describe('POST /login with the age and terms confirmation', () => {
     expect(user).toEqual({ _id: userId, email: t.email('plain'), recruiter: false });
     expect((await me(cookie)).json().user.termsVersion).toBeUndefined();
     expect((await stored(userId))?.legalAcceptances).toBeUndefined();
+  });
+
+  it('records where the box was ticked: a claim form that signs in first says so', async () => {
+    const { userId } = await login('modal', { consent: CONSENT, consentSource: 'claim' });
+
+    expect(await acceptances(userId)).toEqual([expect.objectContaining({ version: LEGAL_VERSION, source: 'claim' })]);
+  });
+
+  it.each([['account'], ['elsewhere']])('refuses the source %s on sign-in (422), without creating the account', async (source) => {
+    const result = await loginCall('bad-source', { consent: CONSENT, consentSource: source });
+
+    expect(result.status).toBe(422);
+    expect(sessionIssued(result.headers)).toBe(false);
+    expect(await User.exists({ email: t.email('bad-source') })).toBeNull();
   });
 
   it('records it for an existing account that never accepted', async () => {
@@ -385,6 +399,12 @@ describe('services/legal.ts', () => {
     expect(hasAcceptedCurrentTerms(await stored(userId))).toBe(true);
     expect(hasAcceptedCurrentTerms(null)).toBe(false);
     expect(hasAcceptedCurrentTerms({ legalAcceptances: [{ version: LEGAL_VERSION }, { version: '2025-01-01' }] })).toBe(false);
+  });
+
+  it('never lets a gated route go on for an account that does not exist (401), consent or not', async () => {
+    const userId = new Types.ObjectId().toString();
+    await expect(requireCurrentTerms(userId, CONSENT, 'claim')).rejects.toMatchObject({ status: 401 });
+    await expect(requireCurrentTerms(userId, undefined, 'claim')).rejects.toMatchObject({ status: 422 });
   });
 
   it('records nothing for an account that does not exist', async () => {

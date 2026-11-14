@@ -11,10 +11,13 @@
 	let {
 		headerTitle,
 		headerSubtitle,
+		headerLang,
 		showSignIn = true
 	}: {
 		headerTitle?: string;
 		headerSubtitle?: string;
+		/** Language of the title and subtitle when it is not the page's ('fr' on the French legal pages) */
+		headerLang?: string;
 		/**
 		 * false: no Google sign-in for a signed-out visitor (neither the button nor One Tap, so
 		 * Google is not loaded): pages that sign in their own way, after a confirmation (the
@@ -67,7 +70,10 @@
 		</AppBar.Lead>
 		<!-- Small screens: one line, smaller font, so the header stays short -->
 		<AppBar.Headline class="min-w-0 text-center">
-			<h1 class="truncate text-lg font-bold md:overflow-visible md:text-3xl md:whitespace-normal">
+			<h1
+				class="truncate text-lg font-bold md:overflow-visible md:text-3xl md:whitespace-normal"
+				lang={headerLang}
+			>
 				{#if headerTitle}
 					<span
 						class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
@@ -91,7 +97,9 @@
 				{/if}
 			</h1>
 			{#if headerTitle && headerSubtitle}
-				<p class="truncate text-xs opacity-75 md:whitespace-normal md:text-sm">{headerSubtitle}</p>
+				<p class="truncate text-xs opacity-75 md:whitespace-normal md:text-sm" lang={headerLang}>
+					{headerSubtitle}
+				</p>
 			{/if}
 		</AppBar.Headline>
 		<AppBar.Trail class="items-center">

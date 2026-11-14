@@ -14,6 +14,7 @@ import {
   Experience,
   JobApplication,
   JobPosting,
+  RateLimitCounter,
   Skill,
   User,
   Workflow,
@@ -21,7 +22,11 @@ import {
 } from '../models/database';
 import { REVOKE_ENDPOINT } from '../services/googleCalendar';
 import { logger } from '../services/logger';
-import { deleteAccount } from '../services/accountDeletion';
+import { LEGACY_WORKFLOWS_COLLECTION, deleteAccount } from '../services/accountDeletion';
+import { CARRIED_PLAN_IMPORTS_MS, carriedPlanImportsKey } from '../services/accountQuotas';
+import { hashValue, peekRateLimit, rateLimitKey, takeRateLimit } from '../services/rateLimit';
+import { RESUME_IMPORT_MONTHLY_WINDOW_MS, resumeImportAttemptsKey, resumeImportUserKey } from '../services/resumeImport';
+import { jobImportAttemptsKey } from '../services/jobImport';
 import {
   CONSENT,
   authCookie,
@@ -39,6 +44,8 @@ const testNames = () => {
 };
 
 let t: ReturnType<typeof testNames>;
+/** Rate limit counters a test created (removed after it), by _id prefix */
+const createdCounters = new Set<string>();
 let app: ReturnType<typeof createApp>;
 let connected = false;
 
@@ -74,6 +81,9 @@ afterEach(async () => {
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: userIds } }, { visitor: { $in: userIds } }] });
   await AppointmentSchedule.deleteMany({ user: { $in: userIds } });
   await AppointmentBooking.deleteMany({ user: { $in: userIds } });
+  await mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).deleteMany({ name: named });
+  await RateLimitCounter.deleteMany({ _id: { $in: [...createdCounters] } });
+  createdCounters.clear();
   await Skill.deleteMany({ displayName: new RegExp(named.source, 'i') });
   await User.deleteMany({ _id: { $in: userIds } });
 });
@@ -96,8 +106,10 @@ const call = async (method: string, path: string, { body, cookie }: { body?: unk
   };
 };
 
+const googleSub = (name: string) => t.id(`sub-${name}`);
+
 const login = async (name: string) => {
-  const token = await signGoogleIdToken({ claims: { sub: t.id(`sub-${name}`), email: t.email(name) } });
+  const token = await signGoogleIdToken({ claims: { sub: googleSub(name), email: t.email(name) } });
   const result = await call('POST', '/login', { body: { token, consent: CONSENT } });
   expect(result.status).toBe(200);
   const cookie = `auth=${parseCookie(result.headers.get('Set-Cookie') ?? '')['auth']}`;
@@ -157,6 +169,14 @@ const accountWithData = async (name: string) => {
   });
   expect(experience.status).toBe(200);
   await Workflow.create({ user: user.userId, steps: [{ id: 'meeting', type: 'meeting', config: {} }] });
+  // A document of the old /workflows API, still stored in the legacy collection
+  await mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).insertOne({
+    user: new Types.ObjectId(user.userId),
+    name: t.id(`${name}-legacy-workflow`),
+    description: 'Written through the old /workflows API',
+    enabled: true,
+    steps: []
+  });
   const posting = await JobPosting.create(job(user.userId, t.id(`${name}-job`)));
   const scheduleDoc = await AppointmentSchedule.create(schedule(user.userId));
   await AppointmentBooking.create(booking(user.userId, scheduleDoc._id, 48 + Math.floor(Math.random() * 1000)));
@@ -170,6 +190,9 @@ const remaining = async (userId: string, domainName: string, experienceId: strin
   domains: await Domain.countDocuments({ $or: [{ admin: userId }, { name: domainName }] }),
   experiences: await Experience.countDocuments({ _id: experienceId }),
   workflows: await Workflow.countDocuments({ user: userId }),
+  legacyWorkflows: await mongoose.connection
+    .collection(LEGACY_WORKFLOWS_COLLECTION)
+    .countDocuments({ user: new Types.ObjectId(userId) }),
   workflowInstances: await WorkflowInstance.countDocuments({ $or: [{ owner: userId }, { visitor: userId }] }),
   jobPostings: await JobPosting.countDocuments({ recruiter: userId }),
   jobApplications: await JobApplication.countDocuments({ candidate: userId }),
@@ -182,6 +205,7 @@ const nothing = {
   domains: 0,
   experiences: 0,
   workflows: 0,
+  legacyWorkflows: 0,
   workflowInstances: 0,
   jobPostings: 0,
   jobApplications: 0,
@@ -235,6 +259,7 @@ describe('DELETE /me', () => {
       domains: 1,
       experiences: 1,
       workflows: 1,
+      legacyWorkflows: 1,
       workflowInstances: 2,
       jobPostings: 1,
       jobApplications: 1,
@@ -371,6 +396,75 @@ describe('DELETE /me', () => {
     expect(await User.exists({ _id: userId })).not.toBeNull();
   });
 
+  it("refuses every request of the account's other sessions (401): nothing is recreated under its id", async () => {
+    const { cookie, userId } = await login('stale-session');
+    // The same session on another device, or a copy of the cookie: DELETE /me only clears the caller's
+    const otherDevice = cookie;
+    expect((await deleteMe(cookie)).status).toBe(204);
+
+    const name = t.id('ghost');
+    const claim = await call('POST', '/domain/claim', { body: { name, consent: CONSENT }, cookie: otherDevice });
+    expect(claim.status).toBe(401);
+    expect(claim.text).toBe('Unauthorized: unknown user');
+    expect((await call('PUT', '/workflow', { body: { steps: [] }, cookie: otherDevice })).status).toBe(401);
+    expect((await call('POST', '/experiences', { body: experienceRequestBody, cookie: otherDevice })).status).toBe(401);
+    expect((await call('PUT', '/me/consent', { body: CONSENT, cookie: otherDevice })).status).toBe(401);
+    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter' }, cookie: otherDevice })).status).toBe(401);
+
+    expect(await Domain.exists({ name })).toBeNull();
+    expect(await Domain.exists({ admin: userId })).toBeNull();
+    expect(await Workflow.exists({ user: userId })).toBeNull();
+    expect(await User.exists({ _id: userId })).toBeNull();
+  });
+
+  it('keeps the quotas the account used for its Google identity: signing in again does not reset them', async () => {
+    const before = await login('quota');
+    // Used: 2 résumé imports this month, 4 attempts today, the 3 job imports of the plan, 1 job import attempt
+    const used: [string, number, number][] = [
+      [resumeImportUserKey(before.userId), RESUME_IMPORT_MONTHLY_WINDOW_MS, 2],
+      [resumeImportAttemptsKey(before.userId), 24 * 60 * 60_000, 4],
+      [jobImportAttemptsKey(before.userId), 24 * 60 * 60_000, 1]
+    ];
+    for (const [key, windowMs, count] of used) {
+      for (let index = 0; index < count; index += 1) {
+        createdCounters.add((await takeRateLimit(key, { limit: 100, windowMs })).counterId);
+      }
+    }
+    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter' }, cookie: before.cookie })).status).toBe(200);
+    await User.updateOne({ _id: before.userId }, { $set: { 'recruiter.jobImportsUsed': 3 } });
+
+    expect((await deleteMe(before.cookie)).status).toBe(204);
+    // What is kept: counters keyed by a hash of the Google id, expiring with their window
+    const sub = googleSub('quota');
+    const carried = await RateLimitCounter.find({ _id: { $regex: `^carried:.*:${hashValue(sub)}(:|$)` } }).lean();
+    for (const counter of carried) createdCounters.add(counter._id);
+    expect(carried).toHaveLength(4);
+    const planCounter = await RateLimitCounter.findById(carriedPlanImportsKey(sub)).lean();
+    expect(planCounter?.count).toBe(3);
+    expect(planCounter!.expiresAt.getTime()).toBeLessThanOrEqual(Date.now() + CARRIED_PLAN_IMPORTS_MS);
+    expect(JSON.stringify(carried)).not.toContain(sub);
+    expect(JSON.stringify(carried)).not.toContain(before.userId);
+
+    const after = await login('quota');
+    expect(after.userId).not.toBe(before.userId);
+    for (const [key, windowMs, count] of [
+      [resumeImportUserKey(after.userId), RESUME_IMPORT_MONTHLY_WINDOW_MS, 2],
+      [resumeImportAttemptsKey(after.userId), 24 * 60 * 60_000, 4],
+      [jobImportAttemptsKey(after.userId), 24 * 60 * 60_000, 1]
+    ] as const) {
+      createdCounters.add(`${key}:${Math.floor(Date.now() / windowMs) * windowMs}`);
+      expect((await peekRateLimit(key, { windowMs })).count).toBe(count);
+    }
+    // The plan's job imports come back with the new recruiter space
+    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter' }, cookie: after.cookie })).status).toBe(200);
+    expect((await User.findById(after.userId).lean())?.recruiter?.jobImportsUsed).toBe(3);
+
+    // Another Google identity starts from nothing
+    const stranger = await login('quota-stranger');
+    expect((await peekRateLimit(resumeImportUserKey(stranger.userId), { windowMs: RESUME_IMPORT_MONTHLY_WINDOW_MS })).count).toBe(0);
+    expect(rateLimitKey('carried:resume-import:user', sub)).not.toBe(rateLimitKey('carried:resume-import:user', googleSub('quota-stranger')));
+  });
+
   it('refuses a form body (415) before anything is deleted', async () => {
     const { cookie, userId } = await login('form');
 
@@ -400,7 +494,14 @@ describe('deleteAccount', () => {
 
     const summary = await deleteAccount(account.userId);
 
-    expect(summary).toMatchObject({ domains: 1, experiences: 0, workflows: 1, jobPostings: 1, googleCalendar: 'none' });
+    expect(summary).toMatchObject({
+      domains: 1,
+      experiences: 0,
+      workflows: 1,
+      legacyWorkflows: 1,
+      jobPostings: 1,
+      googleCalendar: 'none'
+    });
     expect(await remaining(account.userId, account.domainName, account.experienceId)).toEqual(nothing);
   });
 });

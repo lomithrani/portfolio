@@ -13,6 +13,7 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import {
 		DOMAIN_NAME_MAX_LENGTH,
+		PORTFOLIO_NAME_PLACEHOLDER,
 		claimPortfolio,
 		domainNameProblem,
 		hasAcceptedCurrentTerms,
@@ -155,7 +156,7 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 			autocapitalize="none"
 			spellcheck="false"
 			maxlength={DOMAIN_NAME_MAX_LENGTH}
-			placeholder="jane.doe"
+			placeholder={PORTFOLIO_NAME_PLACEHOLDER}
 			aria-invalid={nameError ? 'true' : undefined}
 			aria-describedby="{uid}-hint{nameError ? ` ${uid}-error` : ''}"
 			readonly={busy}
@@ -165,7 +166,9 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 		{/if}
 		<p id="{uid}-hint" class="text-sm wrap-anywhere text-surface-700-300">
 			Lowercase letters, digits, dots and hyphens. Your portfolio will be at
-			<span class="font-medium text-surface-950-50">{host}/{normalizedName || 'your-name'}</span>.
+			<span class="font-medium text-surface-950-50"
+				>{host}/{normalizedName || PORTFOLIO_NAME_PLACEHOLDER}</span
+			>.
 		</p>
 	</div>
 	{#if showConsent}

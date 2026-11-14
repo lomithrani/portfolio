@@ -54,14 +54,14 @@ sends portfolio-common's currentConsent() with its request.
 	<p id={noticeId} class="ps-7 text-xs text-surface-700-300">
 		By continuing you agree to the
 		<a
-			class="anchor"
+			class="link-text"
 			href={resolve('/(site)/legal/terms')}
 			target="_blank"
 			rel="noopener noreferrer">Terms of use<span class="sr-only"> (opens in a new tab)</span></a
 		>
 		and acknowledge the
 		<a
-			class="anchor"
+			class="link-text"
 			href={resolve('/(site)/legal/privacy')}
 			target="_blank"
 			rel="noopener noreferrer">Privacy policy<span class="sr-only"> (opens in a new tab)</span></a

@@ -15,7 +15,7 @@ The publisher's contact address (LEGAL_CONTACT_EMAIL) as a mailto link, with an 
 
 {#if publisher.email}
 	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a mailto: link -->
-	<a class="anchor break-all" href={mailtoHref(publisher.email, subject)}>{publisher.email}</a>
+	<a class="link-text break-all" href={mailtoHref(publisher.email, subject)}>{publisher.email}</a>
 {:else}
 	<em data-testid="legal-not-configured"
 		>{lang === 'fr'

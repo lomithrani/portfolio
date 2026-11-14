@@ -91,3 +91,23 @@ export async function peekRateLimit(key: string, { windowMs }: Pick<RateLimit, '
   const counter = await RateLimitCounter.findById(counterId).lean()
   return { count: counter?.count ?? 0, resetsAt }
 }
+
+/**
+ * Copies the count of `fromKey`'s current window onto `toKey`'s current
+ * window, unless `toKey` already counts more (never lowers a count); the copy
+ * expires with that window. Returns the count copied (0: nothing to copy)
+ */
+export async function carryRateLimit(fromKey: string, toKey: string, { windowMs }: Pick<RateLimit, 'windowMs'>) {
+  const now = Date.now()
+  const from = windowOf(fromKey, windowMs, now)
+  const counter = await RateLimitCounter.findById(from.counterId).lean()
+  const count = counter?.count ?? 0
+  if (count <= 0) return 0
+  const to = windowOf(toKey, windowMs, now)
+  await RateLimitCounter.updateOne(
+    { _id: to.counterId },
+    { $max: { count }, $setOnInsert: { expiresAt: to.resetsAt } },
+    { upsert: true }
+  )
+  return count
+}

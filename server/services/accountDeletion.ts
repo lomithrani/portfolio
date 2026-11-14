@@ -1,4 +1,4 @@
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import {
   AppointmentBooking,
   AppointmentSchedule,
@@ -11,18 +11,23 @@ import {
   WorkflowInstance
 } from '../models/database';
 import { CouldntVerifyJwtError } from '../errors';
+import { carryOverAccountQuotas } from './accountQuotas';
 import { revokeGoogleCalendarAccess } from './googleCalendar';
 import { logger } from './logger';
 
 // Self-service deletion of an account (DELETE /me, GDPR art. 17): everything
 // tied to the account goes, at once and for good. What stays is shared or
-// anonymous: the skills catalogue (names other portfolios use) and the rate
-// limit counters (keyed hashes, gone at the end of their window).
+// pseudonymous: the skills catalogue (names other portfolios use) and the
+// rate limit counters (keyed hashes, gone at the end of their window); the
+// per-account quotas the account used are carried over to a keyed hash of its
+// Google id until their window ends (at most 30 days, services/accountQuotas.ts),
+// so deleting and re-creating the account does not reset them.
 //
 // Every model with a user reference (server/models/database/) is covered:
 // - Domain.admin, and the Experiences listed by those domains (their
 //   companies and projects are embedded in them)
-// - Workflow.user (the owner's hiring journey)
+// - Workflow.user (the owner's hiring journey), and the documents of the
+//   legacy `workflows` collection (the old /workflows API, no longer read)
 // - WorkflowInstance.owner (visitors' progress in the owner's journey) and
 //   .visitor (the account's progress in other journeys)
 // - JobPosting.recruiter, with every JobApplication to those postings
@@ -35,6 +40,8 @@ export interface AccountDeletionSummary {
   domains: number;
   experiences: number;
   workflows: number;
+  /** Documents of the legacy `workflows` collection (models/database/workflow.ts) */
+  legacyWorkflows: number;
   workflowInstances: number;
   jobPostings: number;
   jobApplications: number;
@@ -43,6 +50,9 @@ export interface AccountDeletionSummary {
   /** What Google answered when asked to revoke the Google Calendar grant ('none': no grant stored) */
   googleCalendar: Awaited<ReturnType<typeof revokeGoogleCalendarAccess>>;
 }
+
+/** Collection of the old /workflows API (`{ user, name, description, enabled, steps }`), still stored, never read */
+export const LEGACY_WORKFLOWS_COLLECTION = 'workflows';
 
 const unknownUser = () => new CouldntVerifyJwtError('Unauthorized: unknown user');
 
@@ -56,7 +66,8 @@ const unknownUser = () => new CouldntVerifyJwtError('Unauthorized: unknown user'
 export async function deleteAccount(userId: string): Promise<AccountDeletionSummary> {
   if (!Types.ObjectId.isValid(userId)) throw unknownUser();
   const id = new Types.ObjectId(userId);
-  if (!(await User.exists({ _id: id }))) throw unknownUser();
+  const user = await User.findById(id, { googleId: 1, 'recruiter.jobImportsUsed': 1 }).lean();
+  if (!user) throw unknownUser();
 
   // While the tokens are still stored: they go with the account
   const googleCalendar = await revokeGoogleCalendarAccess(id);
@@ -67,27 +78,39 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
   const experienceIds = domains.flatMap((domain) => domain.experiences);
   const jobIds = (await JobPosting.find({ recruiter: id }, { _id: 1 }).lean()).map((job) => job._id);
 
-  const [experiences, jobApplications, workflowInstances, workflows, appointmentBookings, appointmentSchedules] =
-    await Promise.all([
-      Experience.deleteMany({ _id: { $in: experienceIds } }),
-      JobApplication.deleteMany({
-        $or: [{ job: { $in: jobIds } }, { candidate: id }, { domain: { $in: domainIds } }]
-      }),
-      WorkflowInstance.deleteMany({ $or: [{ owner: id }, { visitor: id }] }),
-      Workflow.deleteMany({ user: id }),
-      AppointmentBooking.deleteMany({ user: id }),
-      AppointmentSchedule.deleteMany({ user: id })
-    ]);
+  const [
+    experiences,
+    jobApplications,
+    workflowInstances,
+    workflows,
+    legacyWorkflows,
+    appointmentBookings,
+    appointmentSchedules
+  ] = await Promise.all([
+    Experience.deleteMany({ _id: { $in: experienceIds } }),
+    JobApplication.deleteMany({
+      $or: [{ job: { $in: jobIds } }, { candidate: id }, { domain: { $in: domainIds } }]
+    }),
+    WorkflowInstance.deleteMany({ $or: [{ owner: id }, { visitor: id }] }),
+    Workflow.deleteMany({ user: id }),
+    // The old /workflows API wrote there; no model reads it any more
+    mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).deleteMany({ user: { $in: [id, userId] } }),
+    AppointmentBooking.deleteMany({ user: id }),
+    AppointmentSchedule.deleteMany({ user: id })
+  ]);
   // After their applications, then the domains after their experiences: an
   // interrupted deletion leaves nothing pointing at what is gone
   const jobPostings = await JobPosting.deleteMany({ _id: { $in: jobIds } });
   const removedDomains = await Domain.deleteMany({ _id: { $in: domainIds } });
+  // Before the account, which holds the Google id and the plan's imports used
+  await carryOverAccountQuotas(userId, user.googleId, user.recruiter?.jobImportsUsed);
   await User.deleteOne({ _id: id });
 
   const summary: AccountDeletionSummary = {
     domains: removedDomains.deletedCount,
     experiences: experiences.deletedCount,
     workflows: workflows.deletedCount,
+    legacyWorkflows: legacyWorkflows.deletedCount,
     workflowInstances: workflowInstances.deletedCount,
     jobPostings: jobPostings.deletedCount,
     jobApplications: jobApplications.deletedCount,

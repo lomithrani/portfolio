@@ -30,6 +30,7 @@ import {
 	login,
 	logout,
 	readUser,
+	signIn,
 	termsVersionText,
 	watchSessionExpiry
 } from '../authentication';
@@ -281,6 +282,69 @@ describe('login', () => {
 		mockLoginPost.mockRejectedValue(new TypeError('Failed to fetch'));
 
 		await expect(login('token')).resolves.toBe(false);
+	});
+});
+
+describe('signIn', () => {
+	it('sends where the box was ticked with the confirmation, and succeeds', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(
+			signIn('cred', { mode: 'candidate', consent: currentConsent(), consentSource: 'claim' })
+		).resolves.toEqual({ ok: true });
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{
+				token: 'cred',
+				mode: 'candidate',
+				consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true },
+				consentSource: 'claim'
+			},
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it('sends no source without a confirmation', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await signIn('cred', { consentSource: 'claim' });
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'cred' },
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it("says 'stale-terms' when the API refuses the version of the terms (only a reload helps)", async () => {
+		mockLoginPost.mockResolvedValue({
+			data: null,
+			error: {
+				status: 422,
+				value: { type: 'validation', property: 'consent.termsVersion', message: 'changed' }
+			}
+		});
+
+		await expect(signIn('cred', { consent: currentConsent() })).resolves.toEqual({
+			ok: false,
+			reason: 'stale-terms'
+		});
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it("says 'error' for any other failure", async () => {
+		mockLoginPost.mockResolvedValue({
+			data: null,
+			error: { status: 422, value: { type: 'validation', property: 'consent.ageConfirmed' } }
+		});
+		await expect(signIn('cred')).resolves.toEqual({ ok: false, reason: 'error' });
+
+		mockLoginPost.mockResolvedValue(apiError(401));
+		await expect(signIn('cred')).resolves.toEqual({ ok: false, reason: 'error' });
+
+		mockLoginPost.mockRejectedValue(new TypeError('Failed to fetch'));
+		await expect(signIn('cred')).resolves.toEqual({ ok: false, reason: 'error' });
 	});
 });
 

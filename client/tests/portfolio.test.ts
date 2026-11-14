@@ -178,6 +178,38 @@ test.describe('unknown paths', () => {
 		expect(warnings.filter((text) => text.includes('derived_inert'))).toEqual([]);
 	});
 
+	test('the header loads Google only once Sign in is clicked: no One Tap on its own', async ({
+		page
+	}) => {
+		const google: string[] = [];
+		await page.route('https://accounts.google.com/**', (route) => {
+			google.push(route.request().url());
+			return route.fulfill({
+				contentType: 'application/javascript',
+				body: GSI_STUB.replace(
+					'prompt() {}',
+					'prompt() { window.__gsiPrompts = (window.__gsiPrompts ?? 0) + 1; }'
+				)
+			});
+		});
+
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		const signIn = page.getByRole('group', { name: 'Sign in' });
+		await expect(signIn.getByRole('button', { name: 'Sign in' })).toBeVisible();
+		// Reading a portfolio asks nothing from Google
+		await page.waitForTimeout(500);
+		expect(google).toEqual([]);
+
+		await signIn.getByRole('button', { name: 'Sign in' }).click();
+
+		await expect(signIn.getByRole('button', { name: 'Stub Google sign-in' })).toBeVisible();
+		expect(google.length).toBeGreaterThan(0);
+		// Asked for: the account chooser shows once
+		expect(
+			await page.evaluate(() => (window as Window & { __gsiPrompts?: number }).__gsiPrompts)
+		).toBe(1);
+	});
+
 	test('the claim dialog loads Google only once the age and terms box is ticked, and sends the confirmation with the sign-in and the claim', async ({
 		page
 	}) => {
@@ -224,7 +256,7 @@ test.describe('unknown paths', () => {
 		await expect(page).toHaveURL(/\/e2e-unclaimed-domain\/experiences$/);
 		const consent = { termsVersion: LEGAL_VERSION, ageConfirmed: true };
 		expect(logins.map((request) => request.postDataJSON())).toEqual([
-			{ token: 'stub-credential', mode: 'candidate', consent }
+			{ token: 'stub-credential', mode: 'candidate', consent, consentSource: 'claim' }
 		]);
 		expect(claims.map((request) => request.postDataJSON())).toEqual([
 			{ name: 'e2e-unclaimed-domain', consent }

@@ -72,12 +72,12 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			not store the PDF, and nothing is published until you add it yourself.
 		</li>
 		<li>
-			No advertising, no analytics, no sale of data. The only cookie of this site keeps you signed
-			in.
+			No advertising, no analytics, no sale of data. Our only cookie keeps you signed in; Google's
+			sign-in, loaded only when you ask for it, sets cookies of its own.
 		</li>
 		<li>
 			You can delete your account and everything in it at any time from
-			<a class="anchor" href={resolve('/(site)/account')}>your account page</a>.
+			<a class="link-text" href={resolve('/(site)/account')}>your account page</a>.
 		</li>
 	</ul>
 </div>
@@ -116,6 +116,11 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	description, time zone, meeting location and available times). The public data of a portfolio also
 	contains a random internal identifier of the owner's account, never their email address.
 </p>
+<p>
+	The descriptions of experiences and projects can show images hosted on other sites, chosen by the
+	portfolio's owner. Visitors' browsers load them from those sites, which then receive the visitor's
+	IP address and browser details, under their own rules. We do not choose or control these images.
+</p>
 
 <h4 id="data-resume">Résumé import (optional)</h4>
 <p>
@@ -126,8 +131,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	kept in your browser (see <LegalDocLink doc="cookies" {lang}
 		>cookies and local storage</LegalDocLink
 	>). To enforce the import limits, we count imports with counters keyed by a hash of your account
-	identifier. Avoid sending a résumé with information you would not want processed, such as an ID
-	number or health data.
+	identifier (see <a class="link-text" href="#retention">how long we keep it</a> for what happens to them
+	when you delete your account). Avoid sending a résumé with information you would not want processed,
+	such as an ID number or health data.
 </p>
 
 <h4 id="data-recruiter">Recruiter space and job descriptions</h4>
@@ -168,7 +174,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	A portfolio owner who offers meetings connects their Google Calendar. We then store the access
 	tokens Google gives us, which let the site read when the owner is busy and create the events that
-	visitors book. Details are in <a class="anchor" href="#google">Google user data</a>.
+	visitors book. Details are in <a class="link-text" href="#google">Google user data</a>.
 </p>
 
 <h4 id="data-suggestions">Step suggestions</h4>
@@ -195,8 +201,11 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 <h4 id="data-device">On your device</h4>
 <p>
-	The site uses one cookie to keep you signed in and stores some data in your browser (theme,
-	unsaved drafts). See <LegalDocLink doc="cookies" {lang}>cookies and local storage</LegalDocLink>.
+	The site sets one cookie of its own, to keep you signed in, and stores some data in your browser
+	(theme, unsaved drafts). Google's sign-in, when you ask for it, sets cookies of its own. See <LegalDocLink
+		doc="cookies"
+		{lang}>cookies and local storage</LegalDocLink
+	>.
 </p>
 
 <h3 id="legal-bases">Purposes and legal bases</h3>
@@ -252,7 +261,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				<td>
 					Legitimate interest, art. 6(1)(f): keeping the site secure and available, preventing spam
 					bookings and the abuse of paid AI imports. The data is minimal, hashed where possible and
-					kept briefly; you can object (see <a class="anchor" href="#rights">your rights</a>)
+					kept briefly; you can object (see <a class="link-text" href="#rights">your rights</a>)
 				</td>
 			</tr>
 			<tr>
@@ -286,14 +295,14 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 		<ul>
 			<li>
 				{HOST.name} (USA): hosting of the web application, the API, the database and their logs, in its
-				US West region (<a class="anchor" href={LINKS.railwayPrivacy} rel="noopener noreferrer"
+				US West region (<a class="link-text" href={LINKS.railwayPrivacy} rel="noopener noreferrer"
 					>privacy policy</a
 				>);
 			</li>
 			<li>
 				Anthropic PBC (USA): reading the résumé and job description PDFs you import. Under
 				Anthropic's <a
-					class="anchor"
+					class="link-text"
 					href={LINKS.anthropicCommercialTerms}
 					rel="noopener noreferrer">commercial terms</a
 				>, Anthropic does not train its models on content sent through its API;
@@ -307,14 +316,14 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			<li>
 				Google LLC (USA): Sign in with Google, and the Google Calendar of the portfolio owners who
 				connect it, which also emails meeting invitations (<a
-					class="anchor"
+					class="link-text"
 					href={LINKS.googlePrivacy}
 					rel="noopener noreferrer">Google privacy policy</a
 				>);
 			</li>
 			<li>
 				GitHub, Inc. (USA): the step suggestions, published as public issues (<a
-					class="anchor"
+					class="link-text"
 					href={LINKS.githubPrivacy}
 					rel="noopener noreferrer">GitHub privacy statement</a
 				>).
@@ -330,12 +339,12 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	Our host, Anthropic, Google, GitHub and our monitoring provider may process data in the
 	<strong>United States</strong>; the database is hosted there. These transfers rely on the
-	<a class="anchor" href={LINKS.dpf} rel="noopener noreferrer">EU-US Data Privacy Framework</a>
+	<a class="link-text" href={LINKS.dpf} rel="noopener noreferrer">EU-US Data Privacy Framework</a>
 	(adequacy decision of the European Commission of 10 July 2023) for recipients certified under it, and
 	otherwise on the
-	<a class="anchor" href={LINKS.scc} rel="noopener noreferrer">standard contractual clauses</a> of the
-	European Commission (decision (EU) 2021/914) in their data processing terms. You can ask us for a copy
-	of these safeguards.
+	<a class="link-text" href={LINKS.scc} rel="noopener noreferrer">standard contractual clauses</a> of
+	the European Commission (decision (EU) 2021/914) in their data processing terms. You can ask us for
+	a copy of these safeguards.
 </p>
 
 <h3 id="retention">How long we keep it</h3>
@@ -382,12 +391,18 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				<td>Google Calendar tokens</td>
 				<td>
 					Until the owner disconnects Google Calendar or deletes their account; they are then
-					revoked at Google
+					deleted, and we ask Google to revoke the access
 				</td>
 			</tr>
 			<tr>
 				<td>Rate limit and quota counters (keyed hashes)</td>
-				<td>Deleted automatically at the end of their window: one hour to 30 days</td>
+				<td>
+					Deleted automatically at the end of their window: one hour to 30 days. When you delete
+					your account, the quotas you used (résumé and job description imports, step suggestions,
+					and the job description imports of your recruiter plan) are carried over to counters keyed
+					by a hash of your Google account identifier, kept until the end of their window (at most
+					30 days), so that deleting and re-creating an account does not reset them
+				</td>
 			</tr>
 			<tr>
 				<td>Server logs, host logs and traces</td>
@@ -413,14 +428,21 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	</table>
 </div>
 <p>
-	Deleting your account from <a class="anchor" href={resolve('/(site)/account')}
+	Deleting your account from <a class="link-text" href={resolve('/(site)/account')}
 		>your account page</a
-	> is immediate and complete: your account, your portfolio and its experiences, your hiring journey and
-	the progress of its visitors, your progress in other journeys, your booking schedules and reservations,
-	your job descriptions and their applications, and your applications are removed from our database at
-	once, your Google Calendar access is revoked, and your portfolio address becomes available to others.
-	What stays: skill names in the shared catalogue (they are not linked to anyone), step suggestions already
-	published on GitHub, and logs until they expire.
+	>
+	is immediate: your account, your portfolio and its experiences, your hiring journey and the progress
+	of its visitors, your progress in other journeys, your booking schedules and reservations, your job
+	descriptions and their applications, and your applications are removed from our database at once, the
+	Google Calendar tokens are deleted and we ask Google to revoke the access (you can check it in your
+	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
+		>Google account permissions</a
+	>), and your portfolio address becomes available to others. What stays: skill names in the shared
+	catalogue (they are not linked to anyone), step suggestions already published on GitHub, the
+	meeting slots you reserved as a guest of other portfolios (until the slot ends), the abuse and
+	quota counters (keyed hashes, deleted at the end of their window, at most 30 days; the quotas you
+	used are carried over to a hash of your Google account identifier, as described above), and logs
+	until they expire.
 </p>
 
 <h3 id="rights">Your rights</h3>
@@ -433,7 +455,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	</li>
 	<li>
 		<strong>erase</strong> it: delete your account yourself from
-		<a class="anchor" href={resolve('/(site)/account')}>your account page</a>, or ask us;
+		<a class="link-text" href={resolve('/(site)/account')}>your account page</a>, or ask us;
 	</li>
 	<li><strong>restrict</strong> its processing;</li>
 	<li>
@@ -453,8 +475,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	You can also lodge a complaint with a data protection authority, in particular where you live or
 	work. In France: {CNIL.name}, {CNIL.address},
-	<a class="anchor" href={CNIL.website} rel="noopener noreferrer">www.cnil.fr</a>
-	(<a class="anchor" href={CNIL.complaint} rel="noopener noreferrer" hreflang="fr"
+	<a class="link-text" href={CNIL.website} rel="noopener noreferrer">www.cnil.fr</a>
+	(<a class="link-text" href={CNIL.complaint} rel="noopener noreferrer" hreflang="fr"
 		>online complaint</a
 	>).
 </p>
@@ -478,8 +500,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <h3 id="children">Children</h3>
 <p>
 	The site is not intended for anyone under {MINIMUM_AGE} or below the minimum legal working age of their
-	country, and signing up or claiming a portfolio requires confirming it. If we learn that an account
-	belongs to someone younger, we delete it. Parents and guardians can write to us at
+	country. Confirming it is required when you sign up from the home page or claim a portfolio, and using
+	an account means you meet these conditions. If we learn that an account belongs to someone younger,
+	we delete it. Parents and guardians can write to us at
 	<ContactEmail {publisher} {lang} /> to have it deleted.
 </p>
 
@@ -494,9 +517,11 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 <h3 id="cookies">Cookies and local storage</h3>
 <p>
-	The site uses one cookie, which keeps you signed in, and your browser's storage for preferences
-	and unsaved drafts. Google sets its own cookies when its sign-in is shown. There is no analytics
-	or advertising cookie, so no consent banner is needed. The full list is on the
+	The site sets one cookie of its own, which keeps you signed in, and uses your browser's storage
+	for preferences and unsaved drafts. Google's sign-in is loaded only when you ask for it; it then
+	sets its cookie <code>g_state</code> on this site's domain and its own cookies on
+	accounts.google.com. There is no analytics or advertising cookie, so no consent banner is needed.
+	The full list is on the
 	<LegalDocLink doc="cookies" {lang}>cookies and local storage</LegalDocLink> page.
 </p>
 
@@ -507,12 +532,14 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	Control signal.
 </p>
 <p>
-	No third party collects information about your activity on this site over time and across sites,
-	with one exception: on pages that show a "Sign in with Google" button, Google's sign-in script is
-	loaded, so Google receives your IP address and browser details and may read or set its cookies,
-	under the <a class="anchor" href={LINKS.googlePrivacy} rel="noopener noreferrer"
-		>Google privacy policy</a
-	>.
+	No third party collects information about your activity on this site over time and across sites on
+	our behalf. Two kinds of third parties can still receive information when you browse it. Google,
+	whose sign-in script is loaded when you ask for it (clicking a sign-in button, ticking the age and
+	terms box, connecting Google Calendar, signing out or deleting your account): Google then receives
+	your IP address and browser details and may read or set its cookies, under the
+	<a class="link-text" href={LINKS.googlePrivacy} rel="noopener noreferrer">Google privacy policy</a
+	>. And the sites hosting images that a portfolio's owner shows in their descriptions: your browser
+	loads them from those sites, which receive your IP address and browser details.
 </p>
 <p>
 	We do not sell or share personal information, and we do not use it for targeted advertising. We do
@@ -524,7 +551,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p class="legal-callout">
 	{SITE_NAME}'s use and transfer to any other app of information received from Google APIs will
 	adhere to the
-	<a class="anchor" href={LINKS.googleApiPolicy} rel="noopener noreferrer"
+	<a class="link-text" href={LINKS.googleApiPolicy} rel="noopener noreferrer"
 		>Google API Services User Data Policy</a
 	>, including the Limited Use requirements.
 </p>
@@ -549,9 +576,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	<li>
 		The Calendar tokens are stored in our database so that a booking works while you are away; they
 		are never returned by the API or logged. Disconnecting Google Calendar (Admin, Appointments,
-		Disconnect) or deleting your account deletes them and revokes the access at Google. You can also
-		revoke it at any time from your
-		<a class="anchor" href={LINKS.googlePermissions} rel="noopener noreferrer"
+		Disconnect) or deleting your account deletes them, and we ask Google to revoke the access; if
+		Google cannot be reached at that moment, the access may stay listed in your Google account until
+		you remove it there. You can check or revoke it at any time from your
+		<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 			>Google account permissions</a
 		>.
 	</li>

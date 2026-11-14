@@ -51,8 +51,16 @@ variables only (PublisherDetails).
 	<dd>{HOST.address}</dd>
 	<dt>Contact</dt>
 	<dd>
-		<a class="anchor" href="mailto:{HOST.email}">{HOST.email}</a>,
-		<a class="anchor" href={HOST.website} rel="noopener noreferrer">{HOST.websiteLabel}</a>
+		<a class="link-text" href="mailto:{HOST.email}">{HOST.email}</a>,
+		<a class="link-text" href={HOST.website} rel="noopener noreferrer">{HOST.websiteLabel}</a>
+	</dd>
+	<dt>Phone</dt>
+	<dd>
+		{#if HOST.phone}
+			<a class="link-text" href="tel:{HOST.phone.replace(/\s/g, '')}">{HOST.phone}</a>
+		{:else}
+			The host publishes no phone number: it can be reached at the email and postal addresses above.
+		{/if}
 	</dd>
 	<dt>Location of the servers</dt>
 	<dd>United States (Railway region US West)</dd>
@@ -99,7 +107,7 @@ variables only (PublisherDetails).
 </p>
 <p>
 	In France you can also report illegal content to the authorities on
-	<a class="anchor" href="https://www.internet-signalement.gouv.fr" rel="noopener noreferrer"
+	<a class="link-text" href="https://www.internet-signalement.gouv.fr" rel="noopener noreferrer"
 		>internet-signalement.gouv.fr</a
 	> (PHAROS).
 </p>

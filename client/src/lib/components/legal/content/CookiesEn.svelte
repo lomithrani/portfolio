@@ -26,12 +26,16 @@ French loi Informatique et Libertés art. 82), how to clear them.
 <!-- eslint-disable svelte/no-navigation-without-resolve -- the links left are external sites, mailto: and in-page anchors (facts.ts); the site's pages go through resolve() (LegalDocLink) -->
 <h3 id="summary">In short</h3>
 <p>
-	{SITE_NAME} uses <strong>one cookie</strong>, which keeps you signed in, and your browser's
-	<strong>local storage</strong> for your theme and your unsaved drafts. There is no analytics, no advertising
-	and no social media tracker. Everything listed here is strictly necessary for a service you ask for,
-	which is why the site does not ask for your consent with a banner (article 5(3) of the ePrivacy Directive,
-	article 82 of the French loi Informatique et Libertés). Google sets its own cookies when its sign-in
-	is shown, under its own policy.
+	{SITE_NAME} sets <strong>one cookie of its own</strong>, which keeps you signed in, and uses your
+	browser's <strong>local storage</strong> for your theme and your unsaved drafts. There is no
+	analytics, no advertising and no social media tracker. Google's sign-in is loaded only when you
+	ask for it (for example by clicking "Sign in"); it then sets its own cookie <code>g_state</code> on
+	this site's domain and its cookies on accounts.google.com, under Google's policy. Everything listed
+	here is strictly necessary for a service you ask for, which is why the site does not ask for your consent
+	with a banner (article 5(3) of the ePrivacy Directive, article 82 of the French loi Informatique et
+	Libertés). The descriptions of a portfolio can also show images hosted on other sites, chosen by its
+	owner: your browser loads them from those sites, which receive your IP address and browser details and
+	apply their own rules.
 </p>
 
 <h3 id="cookies">Cookies</h3>
@@ -73,7 +77,7 @@ French loi Informatique et Libertés art. 82), how to clear them.
 					window.
 				</td>
 				<td>
-					See the <a class="anchor" href={LINKS.googlePrivacy} rel="noopener noreferrer"
+					See the <a class="link-text" href={LINKS.googlePrivacy} rel="noopener noreferrer"
 						>Google privacy policy</a
 					>
 				</td>
@@ -82,10 +86,14 @@ French loi Informatique et Libertés art. 82), how to clear them.
 	</table>
 </div>
 <p>
-	<strong>When Google is involved.</strong> Google's sign-in script is loaded only on pages that show
-	a "Sign in with Google" button: in the header of portfolios and job pages when you are signed out, and
-	on the home page once you tick the age and terms box. Loading it sends your IP address and browser details
-	to Google, even if you do not sign in. The legal pages never load it.
+	<strong>When Google is involved.</strong> Google's sign-in script is loaded only after you ask for something
+	that needs it: clicking a "Sign in" or "Sign in with Google" button (in the header of portfolios, job
+	pages and the recruiter space, in the apply panel of a job page or in a hiring journey), ticking the
+	age and terms box on the home page or in a claim form, connecting Google Calendar, and also signing
+	out or deleting your account, to turn off Google's automatic sign-in on this browser (otherwise Google
+	would sign you straight back in). Loading it sends your IP address and browser details to Google, even
+	if you do not sign in. Once loaded, it stays loaded until you leave or reload the site, including on
+	the pages you open next, such as the legal pages.
 </p>
 
 <h3 id="local-storage">Local storage</h3>
@@ -159,7 +167,8 @@ French loi Informatique et Libertés art. 82), how to clear them.
 	</li>
 	<li>
 		Google's cookies are managed in your browser and your Google account, under the
-		<a class="anchor" href={LINKS.googlePrivacy} rel="noopener noreferrer">Google privacy policy</a
+		<a class="link-text" href={LINKS.googlePrivacy} rel="noopener noreferrer"
+			>Google privacy policy</a
 		>.
 	</li>
 </ul>

@@ -4,13 +4,14 @@
 Google" button that signs in straight into it (POST /login with mode 'recruiter': the space is
 created the first time). `onSignedIn` runs once the session is stored.
 
-Google Identity Services routes every credential to the handler registered last. The header's
-sign-in (on screen with this page, and the one that set GSI up) keeps that role: its button and
-One Tap sign in and then ask which space to use. This page registers its own handler only when
-its button is clicked (`click_listener`), so the header's keeps working until then.
-googleIdentity.ts cannot give the role back yet (`release` clears it): after a click on this
-button that did not end in a sign-in (popup closed, sign-in failed), the header's button signs in
-here, and once this page is gone, without choosing a space.
+Google's sign-in is loaded only once the visitor asks for it: a local "Sign in with Google" button
+first (nothing reaches accounts.google.com before), then Google's button and its One Tap prompt.
+Google Identity Services routes every credential to the handler registered last: this page
+registers its own when its button is clicked, and the header's sign-in takes the role back when
+it is clicked in turn. googleIdentity.ts cannot give the role back yet (`release` clears it):
+after a click here that did not end in a sign-in (popup closed, sign-in failed), a sign-in from
+the header's button (if it was set up before) comes here, and once this page is gone, signs in
+without choosing a space.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -24,7 +25,7 @@ here, and once this page is gone, without choosing a space.
 		Users
 	} from 'svelte-heros-v2';
 	import { login } from '#services/authentication.ts';
-	import { loadGoogleIdentity, setupGoogleIdentity } from '#services/googleIdentity.ts';
+	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { FREE_PLAN_IMPORTS } from '#services/jobImport.ts';
 
@@ -32,7 +33,9 @@ here, and once this page is gone, without choosing a space.
 
 	const uid = $props.id();
 	let buttonContainer: HTMLDivElement | undefined = $state();
-	let gsiState = $state<'loading' | 'ready' | 'unavailable'>('loading');
+	let gsiState = $state<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+	/** Loads Google's sign-in (set once mounted) */
+	let start: () => void = () => {};
 	let signingIn = $state(false);
 	let errorMessage = $state('');
 
@@ -82,27 +85,31 @@ here, and once this page is gone, without choosing a space.
 			notify?.();
 		};
 
-		// GSI is set up by the header's sign-in, mounted before this page (same condition: signed
-		// out), so the button can render without taking the credential callback from it
-		loadGoogleIdentity()
-			.then((id) => {
-				if (!mounted || !buttonContainer) return;
-				id.renderButton(buttonContainer, {
-					theme: isDark() ? 'filled_black' : 'outline',
-					size: 'large',
-					type: 'standard',
-					text: 'signin_with',
-					shape: 'pill',
-					logo_alignment: 'left',
-					width: Math.min(320, Math.max(200, buttonContainer.clientWidth)),
-					// This button's credential comes back here (into the recruiter space)
-					click_listener: () => void setupGoogleIdentity(onCredential).catch(() => {})
+		start = () => {
+			if (gsiState === 'loading' || gsiState === 'ready') return;
+			gsiState = 'loading';
+			// Asked for here: this page takes the credential callback (into the recruiter space)
+			setupGoogleIdentity(onCredential)
+				.then(({ id }) => {
+					if (!mounted || !buttonContainer) return;
+					id.renderButton(buttonContainer, {
+						theme: isDark() ? 'filled_black' : 'outline',
+						size: 'large',
+						type: 'standard',
+						text: 'signin_with',
+						shape: 'pill',
+						logo_alignment: 'left',
+						width: Math.min(320, Math.max(200, buttonContainer.clientWidth)),
+						// Clicked after the header's sign-in took the callback back: here again
+						click_listener: () => void setupGoogleIdentity(onCredential).catch(() => {})
+					});
+					gsiState = 'ready';
+					id.prompt();
+				})
+				.catch(() => {
+					if (mounted) gsiState = 'unavailable';
 				});
-				gsiState = 'ready';
-			})
-			.catch(() => {
-				if (mounted) gsiState = 'unavailable';
-			});
+		};
 
 		return () => {
 			mounted = false;
@@ -142,9 +149,21 @@ here, and once this page is gone, without choosing a space.
 				Signing in…
 			</p>
 		{/if}
+		{#if gsiState === 'idle' || gsiState === 'unavailable'}
+			<button
+				type="button"
+				class="btn preset-filled-primary-700-300 min-h-11 w-full max-w-80 rounded-full"
+				onclick={() => start()}
+			>
+				Sign in with Google
+			</button>
+		{/if}
 		<!-- Google renders its button in there; a placeholder of its size until it does -->
 		<div
-			class={['relative flex min-h-11 w-full max-w-80 justify-center', { invisible: signingIn }]}
+			class={[
+				'relative flex min-h-11 w-full max-w-80 justify-center',
+				{ invisible: signingIn, hidden: gsiState === 'idle' || gsiState === 'unavailable' }
+			]}
 		>
 			<div bind:this={buttonContainer} class="flex w-full justify-center"></div>
 			{#if gsiState === 'loading'}
@@ -157,7 +176,7 @@ here, and once this page is gone, without choosing a space.
 		{#if gsiState === 'unavailable'}
 			<p class="max-w-md text-sm text-error-700-300" role="alert">
 				Google sign-in could not load. Check your connection (or allow accounts.google.com if a
-				blocker is on), then reload the page.
+				blocker is on), then try again.
 			</p>
 		{/if}
 		<p class="max-w-md text-sm text-surface-700-300">

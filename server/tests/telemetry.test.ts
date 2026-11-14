@@ -17,7 +17,7 @@ import { createApp } from '../app';
 import { env } from '../env';
 import { SENSITIVE_SPAN_ATTRIBUTES, createSpanProcessors } from '../instrumentation';
 import { Domain, RateLimitCounter, User } from '../models/database';
-import { authCookie, makeUser, messageStream, parseCookie, signGoogleIdToken, useTestGoogleKeys } from './helpers';
+import { allowTestUserSessions, authCookie, makeUser, messageStream, parseCookie, signGoogleIdToken, useTestGoogleKeys } from './helpers';
 
 let memory: InMemorySpanExporter;
 let provider: TracerProvider;
@@ -153,7 +153,8 @@ describe('exported spans', () => {
     const savedKey = env.ANTHROPIC_API_KEY;
     env.ANTHROPIC_API_KEY = apiKey;
     try {
-      // The caller owns a domain; the quota counters answer "first import"
+      // The caller (the unsaved test user) owns a domain; the quota counters answer "first import"
+      allowTestUserSessions();
       spyOn(Domain, 'exists').mockResolvedValue({ _id: 'domain' } as never);
       spyOn(RateLimitCounter, 'findOneAndUpdate').mockReturnValue({ lean: async () => ({ count: 1 }) } as never);
       const anthropicPaths: string[] = [];

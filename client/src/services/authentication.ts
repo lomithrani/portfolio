@@ -114,44 +114,81 @@ const isLogged = async (): Promise<boolean> => {
 	}
 };
 
+/** Why a sign-in failed: 'stale-terms' (the confirmation was given for an older version of the terms) or anything else */
+type SignInFailureReason = 'stale-terms' | 'error';
+
+type SignInResult = { ok: true } | { ok: false; reason: SignInFailureReason };
+
+interface SignInOptions {
+	/** The space to make active ('recruiter' creates the recruiter space) */
+	mode?: UserMode;
+	/** The age and terms checkbox ticked before signing in (portfolio-common currentConsent()) */
+	consent?: ConsentInput;
+	/** Where that checkbox was: the landing page (the API's default) or a claim form */
+	consentSource?: 'landing' | 'claim';
+}
+
+/** The field a 422 validation error names (`property`), '' for any other body */
+const validationProperty = (value: unknown): string =>
+	value && typeof value === 'object' && 'property' in value && typeof value.property === 'string'
+		? value.property
+		: '';
+
 /**
- * Exchanges a Google ID token for the API's auth cookie. Returns false (and leaves the user
- * logged out) when the API rejects the token or when the cookie does not round-trip.
- * `mode` makes that space the account's active one (choosing 'recruiter' creates the recruiter
- * space); without it the account keeps the space it last chose. `consent` (the age and terms
- * checkbox ticked before signing in, portfolio-common currentConsent()) is recorded by the API
- * before the session is issued; an outdated version of the terms makes the sign-in fail.
+ * Exchanges a Google ID token for the API's auth cookie, and says why it failed: 'stale-terms'
+ * when the API refused the confirmation as given for an older version of the terms (a page loaded
+ * before they changed: only a reload helps), 'error' otherwise (the API rejected the token, or the
+ * cookie does not round-trip). The user stays logged out on failure. `mode` makes that space the
+ * account's active one (choosing 'recruiter' creates the recruiter space); without it the account
+ * keeps the space it last chose. `consent` is recorded by the API, from `consentSource`, before
+ * the session is issued.
  */
-const login = async (
+const signIn = async (
 	googleCredential: string,
-	mode?: UserMode,
-	consent?: ConsentInput
-): Promise<boolean> => {
+	{ mode, consent, consentSource }: SignInOptions = {}
+): Promise<SignInResult> => {
 	try {
 		const { data, error } = await portfolioApi.login.post(
-			{ token: googleCredential, ...(mode ? { mode } : {}), ...(consent ? { consent } : {}) },
+			{
+				token: googleCredential,
+				...(mode ? { mode } : {}),
+				...(consent ? { consent } : {}),
+				...(consent && consentSource ? { consentSource } : {})
+			},
 			withCredentials
 		);
 		const session = { user: readUser(data), expires: readExpires(data) };
 		if (error || !isSessionValid(session)) {
 			clearAuthentication();
-			return false;
+			const stale =
+				errorStatus(error) === 422 && validationProperty(error?.value) === 'consent.termsVersion';
+			return { ok: false, reason: stale ? 'stale-terms' : 'error' };
 		}
 
 		// The cookie is httpOnly: make sure the browser stored it and sends it back
 		const check = await portfolioApi.isLogged.get(withCredentials);
 		if (check.error || !isLoggedIn(check.data)) {
 			clearAuthentication();
-			return false;
+			return { ok: false, reason: 'error' };
 		}
 
 		authenticationStore.set(session);
-		return true;
+		return { ok: true };
 	} catch {
 		clearAuthentication();
-		return false;
+		return { ok: false, reason: 'error' };
 	}
 };
+
+/**
+ * Exchanges a Google ID token for the API's auth cookie (signIn). Returns false (and leaves the
+ * user logged out) when the API rejects the token or when the cookie does not round-trip.
+ */
+const login = async (
+	googleCredential: string,
+	mode?: UserMode,
+	consent?: ConsentInput
+): Promise<boolean> => (await signIn(googleCredential, { mode, consent })).ok;
 
 const logout = async (): Promise<void> => {
 	try {
@@ -203,6 +240,8 @@ export {
 	login,
 	logout,
 	readUser,
+	signIn,
 	termsVersionText,
 	watchSessionExpiry
 };
+export type { SignInFailureReason, SignInOptions, SignInResult };

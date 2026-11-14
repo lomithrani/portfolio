@@ -27,13 +27,17 @@ Libertés art. 82), comment les effacer.
 <!-- eslint-disable svelte/no-navigation-without-resolve -- the links left are external sites, mailto: and in-page anchors (facts.ts); the site's pages go through resolve() (LegalDocLink) -->
 <h3 id="summary">En bref</h3>
 <p>
-	{SITE_NAME} utilise <strong>un seul cookie</strong>, qui vous garde connecté, et le
-	<strong>stockage local</strong> de votre navigateur pour votre thème et vos brouillons non enregistrés.
-	Il n'y a ni mesure d'audience, ni publicité, ni traceur de réseaux sociaux. Tout ce qui est listé ici
-	est strictement nécessaire à un service que vous demandez : c'est pourquoi le site ne vous demande pas
-	votre consentement par un bandeau (article 5(3) de la directive ePrivacy, article 82 de la loi Informatique
-	et Libertés). Google dépose ses propres cookies lorsque sa connexion est affichée, selon ses propres
-	règles.
+	{SITE_NAME} dépose <strong>un seul cookie qui lui est propre</strong>, qui vous garde connecté, et
+	utilise le <strong>stockage local</strong> de votre navigateur pour votre thème et vos brouillons
+	non enregistrés. Il n'y a ni mesure d'audience, ni publicité, ni traceur de réseaux sociaux. La
+	connexion avec Google n'est chargée que lorsque vous la demandez (par exemple en cliquant sur « Se
+	connecter ») ; elle dépose alors son propre cookie <code>g_state</code> sur le domaine de ce site et
+	ses cookies sur accounts.google.com, selon les règles de Google. Tout ce qui est listé ici est strictement
+	nécessaire à un service que vous demandez : c'est pourquoi le site ne vous demande pas votre consentement
+	par un bandeau (article 5(3) de la directive ePrivacy, article 82 de la loi Informatique et Libertés).
+	Les descriptions d'un portfolio peuvent aussi afficher des images hébergées sur d'autres sites, choisies
+	par son propriétaire : votre navigateur les charge depuis ces sites, qui reçoivent votre adresse IP
+	et des informations sur votre navigateur et appliquent leurs propres règles.
 </p>
 
 <h3 id="cookies">Cookies</h3>
@@ -77,7 +81,7 @@ Libertés art. 82), comment les effacer.
 					de la fenêtre de connexion de Google.
 				</td>
 				<td>
-					Voir les <a class="anchor" href={LINKS.googlePrivacy} rel="noopener noreferrer"
+					Voir les <a class="link-text" href={LINKS.googlePrivacy} rel="noopener noreferrer"
 						>règles de confidentialité de Google</a
 					>
 				</td>
@@ -86,11 +90,16 @@ Libertés art. 82), comment les effacer.
 	</table>
 </div>
 <p>
-	<strong>Quand Google intervient.</strong> Le script de connexion de Google n'est chargé que sur les
-	pages qui affichent un bouton « Se connecter avec Google » : dans l'en-tête des portfolios et des pages
-	d'offres lorsque vous n'êtes pas connecté, et sur la page d'accueil une fois la case d'âge et de conditions
-	cochée. Son chargement transmet à Google votre adresse IP et des informations sur votre navigateur,
-	même si vous ne vous connectez pas. Les pages légales ne le chargent jamais.
+	<strong>Quand Google intervient.</strong> Le script de connexion de Google n'est chargé qu'après une
+	demande de votre part qui en a besoin : un clic sur un bouton « Se connecter » ou « Se connecter avec
+	Google » (dans l'en-tête des portfolios, des pages d'offres et de l'espace recruteur, dans le panneau
+	de candidature d'une offre ou dans un parcours de recrutement), la case d'âge et de conditions cochée
+	sur la page d'accueil ou dans un formulaire de création de portfolio, la connexion de Google Agenda,
+	ainsi que la déconnexion ou la suppression de votre compte, pour désactiver la connexion automatique
+	de Google sur ce navigateur (sans quoi Google vous reconnecterait aussitôt). Son chargement transmet
+	à Google votre adresse IP et des informations sur votre navigateur, même si vous ne vous connectez pas.
+	Une fois chargé, il le reste jusqu'à ce que vous quittiez ou rechargiez le site, y compris sur les pages
+	que vous ouvrez ensuite, comme les pages légales.
 </p>
 
 <h3 id="local-storage">Stockage local</h3>
@@ -168,7 +177,7 @@ Libertés art. 82), comment les effacer.
 	</li>
 	<li>
 		Les cookies de Google se gèrent dans votre navigateur et votre compte Google, selon les
-		<a class="anchor" href={LINKS.googlePrivacy} rel="noopener noreferrer"
+		<a class="link-text" href={LINKS.googlePrivacy} rel="noopener noreferrer"
 			>règles de confidentialité de Google</a
 		>.
 	</li>

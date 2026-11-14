@@ -58,8 +58,9 @@ résiliation, responsabilité, modifications, droit applicable.
 <ul>
 	<li>
 		avoir au moins <strong>{MINIMUM_AGE} ans</strong> et avoir atteint
-		<strong>l'âge légal minimum pour travailler dans votre pays</strong>, ce que vous confirmez lors
-		de votre inscription ou de la création d'un portfolio ;
+		<strong>l'âge légal minimum pour travailler dans votre pays</strong>, ce que vous confirmez
+		lorsque le site vous le demande (lors de l'inscription depuis la page d'accueil ou de la
+		création d'un portfolio) ;
 	</li>
 	<li>avoir un compte Google, avec lequel vous vous connectez ;</li>
 	<li>
@@ -67,8 +68,9 @@ résiliation, responsabilité, modifications, droit applicable.
 	</li>
 </ul>
 <p>
-	Le site ne s'adresse pas aux personnes plus jeunes. Nous supprimons les comptes dont nous
-	apprenons qu'ils appartiennent à une personne qui ne remplit pas ces conditions.
+	Utiliser un compte signifie que vous remplissez ces conditions, que le site vous ait demandé de
+	les confirmer ou non. Le site ne s'adresse pas aux personnes plus jeunes. Nous supprimons les
+	comptes dont nous apprenons qu'ils appartiennent à une personne qui ne remplit pas ces conditions.
 </p>
 
 <h3 id="service">Le service</h3>
@@ -222,7 +224,7 @@ résiliation, responsabilité, modifications, droit applicable.
 <h3 id="termination">Suppression du compte, suspension</h3>
 <p>
 	Vous pouvez cesser d'utiliser le site et supprimer votre compte à tout moment depuis
-	<a class="anchor" href={resolve('/(site)/account')}>la page de votre compte</a>. La suppression
+	<a class="link-text" href={resolve('/(site)/account')}>la page de votre compte</a>. La suppression
 	est immédiate et définitive : votre portfolio et tout ce qui est lié à votre compte sont
 	supprimés, et l'adresse de votre portfolio redevient disponible.
 </p>

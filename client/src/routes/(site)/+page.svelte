@@ -166,7 +166,7 @@
 					</a>
 				</div>
 				<ul class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-surface-700-300">
-					{#each ['Free, no card', 'Sign in with Google', 'Delete everything at any time'] as point (point)}
+					{#each ['Free, no card', 'Sign in with Google', 'Delete your account at any time'] as point (point)}
 						<li class="flex items-center gap-1.5">
 							<Check size="16" class="shrink-0 text-success-700-300" aria-hidden="true" />
 							{point}
@@ -242,7 +242,7 @@
 				{@render question('Is it free?', isFree)}
 				{@render question('What happens to my résumé PDF?', resumePdf)}
 				{@render question('Who can see my portfolio?', whoCanSee)}
-				{@render question('Can I delete everything?', deleteEverything)}
+				{@render question('Can I delete my account?', deleteEverything)}
 				{@render question('Why do you ask my age?', whyAge)}
 				{@render question('Which data do you keep?', whichData)}
 			</div>
@@ -318,6 +318,11 @@
 		Yes. Your <a href={resolve('/(site)/account')} class={linkClass}>account page</a> deletes your account
 		and everything tied to it at once: portfolio, hiring journey, applications and Google Calendar access.
 		Your address becomes free for someone else.
+	</p>
+	<p>
+		Meetings already in someone's calendar and step suggestions already on GitHub (which do not name
+		you) stay; server logs expire on their own. Details in the
+		<a href={resolve('/(site)/legal/privacy')} class={linkClass}>privacy policy</a>.
 	</p>
 {/snippet}
 
