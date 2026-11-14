@@ -1,7 +1,8 @@
 <!--
 @component
 The signed-in account's menu in the header: its initials and current space on the trigger, then
-the two spaces (radio items: the active one is checked), Browse jobs and Log out. Choosing a space
+the two spaces (radio items: the active one is checked), Browse jobs, Account & privacy (/account:
+the account's data, the terms it accepted, deleting it) and Log out. Choosing a space
 opens its home, and the space is recorded once its page shows (recordSpaceShown, PUT /me/mode): a
 page that keeps the visitor (unsaved changes) leaves the space as it was. The recruiter space is
 created first, the first time. A candidate without a portfolio is sent to the claim form instead
@@ -24,6 +25,7 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 		Check,
 		ChevronDown,
 		MagnifyingGlass,
+		ShieldCheck,
 		UserCircle
 	} from 'svelte-heros-v2';
 	import type { HTMLAttributes } from 'svelte/elements';
@@ -107,7 +109,7 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 		if (value === 'candidate') void openCandidateSpace();
 		else if (value === 'recruiter') void openRecruiterSpace();
 		else if (value === 'logout') void logout();
-		// 'jobs' is a link: the browser follows it
+		// 'jobs' and 'account' are links: the browser follows them
 	}
 
 	const itemClass = 'gap-3 py-2 cursor-pointer data-[state=checked]:bg-primary-500/10';
@@ -208,6 +210,20 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 								<MagnifyingGlass size="18" />
 							</span>
 							<span class="font-medium">Browse jobs</span>
+						</a>
+					{/snippet}
+				</Menu.Item>
+				<Menu.Item value="account" valueText="Account & privacy">
+					{#snippet element(attributes)}
+						<a
+							{...attributes as HTMLAttributes<HTMLAnchorElement>}
+							href={resolve('/(site)/account')}
+							class="{itemClass} justify-start"
+						>
+							<span class="{iconClass} preset-tonal" aria-hidden="true">
+								<ShieldCheck size="18" />
+							</span>
+							<span class="font-medium">Account & privacy</span>
 						</a>
 					{/snippet}
 				</Menu.Item>

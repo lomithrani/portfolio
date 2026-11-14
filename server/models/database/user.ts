@@ -1,6 +1,6 @@
 import { Schema, model } from "mongoose";
 import type { InferSchemaType } from "mongoose";
-import { RECRUITER_PLANS, USER_MODES } from "portfolio-common";
+import { CONSENT_SOURCES, RECRUITER_PLANS, USER_MODES } from "portfolio-common";
 
 export const userSchema = new Schema({
   name: { type: String },
@@ -35,6 +35,21 @@ export const userSchema = new Schema({
       plan: { type: String, enum: Object.keys(RECRUITER_PLANS), required: true, default: 'free' },
       jobImportsUsed: { type: Number, required: true, default: 0, min: 0 }
     }, { _id: false }),
+    default: undefined
+  },
+  // Every acceptance of the Terms of use and Privacy policy (services/legal.ts),
+  // oldest first, appended and never edited: the proof of what the account
+  // accepted, when, with which wording of the age confirmation and where.
+  // No birth date and no IP address: the age is only declared
+  legalAcceptances: {
+    type: [new Schema({
+      /** portfolio-common LEGAL_VERSION at the time */
+      version: { type: String, required: true },
+      acceptedAt: { type: Date, required: true },
+      /** portfolio-common AGE_CONFIRMATION_KEY: the exact wording ticked */
+      ageConfirmationKey: { type: String, required: true },
+      source: { type: String, enum: CONSENT_SOURCES, required: true }
+    }, { _id: false })],
     default: undefined
   }
 });

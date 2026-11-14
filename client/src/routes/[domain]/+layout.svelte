@@ -2,6 +2,7 @@
 	import '../../app.css';
 	import Header from '#components/Header.svelte';
 	import LeftBar from '#components/LeftBar.svelte';
+	import LegalLinks from '#components/legal/LegalLinks.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
 	import { recordSpaceShown } from '#services/account.ts';
@@ -38,8 +39,15 @@
 		<aside>
 			<LeftBar domain={data.domain} />
 		</aside>
-		<main class="h-full overflow-auto scroll-smooth" id="page">
-			{@render children()}
+		<main class="flex h-full flex-col overflow-auto scroll-smooth" id="page">
+			<div class="flex-1">
+				{@render children()}
+			</div>
+			<!-- The legal pages, small, at the end of every page of the portfolio: they scroll with it.
+			     Its side padding clears the sidebar's handle -->
+			<footer class="portfolio-legal border-t border-surface-200-800 px-10 py-3">
+				<LegalLinks compact class="mx-auto max-w-4xl justify-center" />
+			</footer>
 		</main>
 	</div>
 </div>
@@ -60,3 +68,13 @@
 		</Toast>
 	{/snippet}
 </Toast.Group>
+
+<style>
+	/* Small screens: the experiences page's floating "Add" button sits at the bottom right, over the
+	   end of the page; the links stay above it */
+	@media (max-width: 47.999rem) {
+		:global(body:has([data-add-fab])) .portfolio-legal {
+			padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+		}
+	}
+</style>

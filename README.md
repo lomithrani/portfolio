@@ -3,6 +3,14 @@
 Personal portfolio: a SvelteKit web app backed by an Elysia API and MongoDB, in one Bun workspace,
 deployed on [Railway](https://railway.com).
 
+Candidates get a public portfolio of their experiences and projects at an address of their own
+(`/<name>/experiences`, with a timeline and skill filters) and a hiring journey recruiters go
+through before booking a meeting; recruiters publish job descriptions candidates apply to. The
+home page (`/`) is the candidate landing page: it previews the address and checks it is free as
+you type, then walks through three steps (sign in with Google after confirming your age and
+accepting the terms, claim the address, import a PDF résumé). Legal notice, privacy policy, terms
+and cookies are at `/legal` (French with `?lang=fr`); each account can delete itself at `/account`.
+
 ```
 client/   SvelteKit web app (portfolio-client)
 server/   Elysia API (portfolio-api)
@@ -56,7 +64,8 @@ bun run db:seed    # owner user + the 'louis.gentil' domain (safe to re-run)
 bun run dev        # API on http://localhost:3000 and web app on http://localhost:5173
 ```
 
-Open http://localhost:5173: it redirects to `/louis.gentil/experiences`. Stop with `Ctrl+C`, and
+Open http://localhost:5173 for the landing page, or http://localhost:5173/louis.gentil/experiences
+for the seeded portfolio. Stop with `Ctrl+C`, and
 `bun run db:down` stops MongoDB (the data stays in a Docker volume).
 
 The `.env.example` files document every variable (required ones are set to working local values,
@@ -121,6 +130,9 @@ JWT_SECRET=<the API's JWT_SECRET> bun run --cwd client test:e2e
 The owner tests (`client/tests/experiences-owner.test.ts`) add, edit and delete experiences of
 the `e2e-owner` domain that `seed:e2e` creates. They sign in without Google, with a session
 signed with the API's `JWT_SECRET` (from `server/.env`), and are skipped when it is not set.
+The account page tests (`client/tests/account.test.ts`) sign in the same way as the candidate
+`e2e.candidate@example.com` (no portfolio) that `seed:e2e` creates; accepting the terms, claiming
+and deleting the account are answered in the browser, so the seeded users never change.
 
 CI (`.github/workflows/main.yml`) runs on pushes and pull requests to `develop` and `main`, in
 three jobs: lint, type-check and build; API and web unit tests against MongoDB 7 (production) and 9; Playwright end

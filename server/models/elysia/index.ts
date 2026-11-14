@@ -24,3 +24,4 @@ export {
   userMode,
   jobImportRequest
 } from "./jobPostingRequest.models";
+export { consentRequest, acceptTermsRequest, deleteAccountRequest, loginConsentSource } from "./legalRequest.models";

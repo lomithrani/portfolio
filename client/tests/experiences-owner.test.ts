@@ -876,6 +876,9 @@ test.describe('hovering a skill tag', () => {
 		// Escape closes it
 		await page.keyboard.press('Escape');
 		await expect(preview).toHaveCount(0);
+		// The keyboard alone from here: the pointer leaves the cards, or the tag that the page
+		// scrolling back to the filters brings under it would show its own preview
+		await page.mouse.move(0, 0);
 
 		// The filters' tags, with the keyboard too: the tag is described by its preview
 		await filters.getByRole('button', { name: 'Go', exact: true }).focus();

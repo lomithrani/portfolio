@@ -15,7 +15,8 @@ import type { InferSchemaType, Types } from "mongoose";
 //
 // Its own collection: `workflows` holds the documents of the earlier
 // /workflows API (name, enabled, description, never any step), which nothing
-// reads anymore.
+// reads anymore; DELETE /me removes an account's documents from it
+// (services/accountDeletion.ts).
 const workflowStepSchema = new Schema({
   id: { type: String, required: true },
   // A field named `type`: declared as an object, so Mongoose does not take it for the path's type

@@ -3,15 +3,20 @@
 The apply panel's claim form, for a signed-in account without a portfolio: a portfolio name
 (suggested from the account's name), the address it gets, and POST /domain/claim
 (claimPortfolio). The visitor stays on the job page: once claimed, the panel offers to apply.
+An account that has not accepted the Terms of use in force ticks the age and terms checkbox
+(AgeTermsConsent) first: the API refuses the claim otherwise, and records the acceptance with it.
 -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { normalizeDomainName } from 'portfolio-common';
+	import { currentConsent, normalizeDomainName } from 'portfolio-common';
+	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import {
 		DOMAIN_NAME_MAX_LENGTH,
+		PORTFOLIO_NAME_PLACEHOLDER,
 		claimPortfolio,
 		domainNameProblem,
+		hasAcceptedCurrentTerms,
 		refreshAccount,
 		suggestDomainName,
 		switchMode
@@ -45,6 +50,18 @@ The apply panel's claim form, for a signed-in account without a portfolio: a por
 	let nameInput: HTMLInputElement | undefined = $state();
 	let alertElement: HTMLParagraphElement | undefined = $state();
 
+	/** The age and terms checkbox */
+	let consentChecked = $state(false);
+	/** The API asked for the confirmation (the session did not know the account lacked it) */
+	let consentAsked = $state(false);
+	let consentProblem = $state('');
+	/** The API refused the version of the terms this page sends: ticking again cannot fix it */
+	let consentStale = $state(false);
+	/** Shown until the box is ticked (a refused version of the terms stays: the page is outdated) */
+	let consentError = $derived(consentChecked && !consentStale ? '' : consentProblem);
+	let showConsent = $derived(consentAsked || !hasAcceptedCurrentTerms(user));
+	const consentId = `${uid}-consent`;
+
 	let normalizedName = $derived(normalizeDomainName(name));
 	let nameError = $derived.by(() => {
 		if (refused && refused.name === normalizedName) return refused.message;
@@ -67,11 +84,16 @@ The apply panel's claim form, for a signed-in account without a portfolio: a por
 			nameInput?.focus();
 			return;
 		}
+		if (showConsent && !consentChecked) {
+			consentProblem = 'Tick the box to confirm your age and accept the terms.';
+			document.getElementById(consentId)?.focus();
+			return;
+		}
 
 		busy = true;
 		const claimedName = normalizedName;
 		try {
-			const result = await claimPortfolio(claimedName);
+			const result = await claimPortfolio(claimedName, showConsent ? currentConsent() : undefined);
 			if (result.ok) {
 				// Claiming a portfolio is choosing the candidate space (as everywhere else); the
 				// portfolio exists whether or not the choice is recorded
@@ -89,6 +111,15 @@ The apply panel's claim form, for a signed-in account without a portfolio: a por
 			}
 			if (result.reason === 'session-expired') {
 				onSessionExpired(result.message);
+			} else if (result.cause === 'consent') {
+				// The account has not accepted the terms in force, or this page's version is outdated
+				consentAsked = true;
+				consentStale = consentChecked;
+				consentProblem = result.message;
+				// Enabled again (a disabled checkbox takes no focus), and shown
+				busy = false;
+				await tick();
+				document.getElementById(consentId)?.focus();
 			} else if (result.cause === 'name') {
 				refused = { name: claimedName, message: result.message };
 				await tick();
@@ -125,7 +156,7 @@ The apply panel's claim form, for a signed-in account without a portfolio: a por
 			autocapitalize="none"
 			spellcheck="false"
 			maxlength={DOMAIN_NAME_MAX_LENGTH}
-			placeholder="jane.doe"
+			placeholder={PORTFOLIO_NAME_PLACEHOLDER}
 			aria-invalid={nameError ? 'true' : undefined}
 			aria-describedby="{uid}-hint{nameError ? ` ${uid}-error` : ''}"
 			readonly={busy}
@@ -135,9 +166,19 @@ The apply panel's claim form, for a signed-in account without a portfolio: a por
 		{/if}
 		<p id="{uid}-hint" class="text-sm wrap-anywhere text-surface-700-300">
 			Lowercase letters, digits, dots and hyphens. Your portfolio will be at
-			<span class="font-medium text-surface-950-50">{host}/{normalizedName || 'your-name'}</span>.
+			<span class="font-medium text-surface-950-50"
+				>{host}/{normalizedName || PORTFOLIO_NAME_PLACEHOLDER}</span
+			>.
 		</p>
 	</div>
+	{#if showConsent}
+		<AgeTermsConsent
+			bind:checked={consentChecked}
+			error={consentError}
+			disabled={busy}
+			id={consentId}
+		/>
+	{/if}
 	{#if formError}
 		<p
 			bind:this={alertElement}

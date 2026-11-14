@@ -5,7 +5,11 @@
 // client/tests/jobs-apply.test.ts sign in as the recruiter 'e2e.recruiter@example.com' (a
 // recruiter space, no domain) and as the owner of 'e2e-applicant', who applies or is added to the
 // applicants. client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
-// and goes through it as the e2e recruiter. Idempotent: safe to run against a seeded database.
+// and goes through it as the e2e recruiter. client/tests/account.test.ts (and the signed-in steps of
+// client/tests/landing.test.ts) use the candidate 'e2e.candidate@example.com': no domain, no
+// recruiter space, no acceptance of the terms; the tests that would change it (accepting the terms,
+// claiming, deleting the account) answer those requests in the browser, so it stays that way.
+// Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose, { Types } from "mongoose";
 import { Domain, User } from "../models/database";
@@ -61,6 +65,22 @@ await User.findOneAndUpdate(
   { upsert: true }
 );
 
-console.log(`Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, and the e2e recruiter`);
+// A candidate without a portfolio (nor recruiter space, nor acceptance of the terms). Its id is
+// fixed for the same reason (CANDIDATE_ID of client/tests/account.test.ts and landing.test.ts)
+await User.findOneAndUpdate(
+  { email: 'e2e.candidate@example.com' },
+  {
+    $setOnInsert: {
+      _id: new Types.ObjectId('65e2e0000000000000000002'),
+      name: 'E2E',
+      surname: 'Candidate'
+    }
+  },
+  { upsert: true }
+);
+
+console.log(
+  `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate`
+);
 await mongoose.disconnect();
 process.exit(0);

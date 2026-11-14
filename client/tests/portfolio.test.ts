@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Request, type Route } from '@playwright/test';
+import { LEGAL_VERSION } from 'portfolio-common';
 
 // Runs against the CI seed (server/tests/seedDb.ts): the domain 'louis.gentil' exists and has
 // no experiences, and the visitor is anonymous.
@@ -6,6 +7,58 @@ import { expect, test, type Page } from '@playwright/test';
 const DOMAIN = 'louis.gentil';
 // Same API as the web server under test (see playwright.config.ts)
 const API_URL = process.env.PUBLIC_PORTFOLIO_API_URL ?? 'http://localhost:3000';
+
+/** Google Identity Services: a button that signs in with a fake credential when clicked */
+const GSI_STUB = `
+window.google = { accounts: { id: {
+	initialize(options) { window.__gsiCallback = options.callback; },
+	renderButton(element) {
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.textContent = 'Stub Google sign-in';
+		button.onclick = () => window.__gsiCallback && window.__gsiCallback({ credential: 'stub-credential' });
+		element.replaceChildren(button);
+	},
+	prompt() {}, cancel() {}, disableAutoSelect() {}
+} } };`;
+
+/** A signed-in account that exists only in the browser (its requests are answered there) */
+const STUB_USER_ID = '65e2e00000000000000000ff';
+
+/**
+ * Answers `method path` of the API in the browser with the JSON `answer` returns, with the CORS
+ * headers the API would send (the page and the API are on different origins). Returns the
+ * requests answered.
+ */
+const stubApi = async (
+	page: Page,
+	method: string,
+	path: string,
+	answer: (request: Request) => unknown
+) => {
+	const answered: Request[] = [];
+	await page.route(`${API_URL}${path}`, async (route: Route) => {
+		const request = route.request();
+		const cors = {
+			'access-control-allow-origin': request.headers()['origin'] ?? '*',
+			'access-control-allow-credentials': 'true'
+		};
+		if (request.method() === 'OPTIONS') {
+			return route.fulfill({
+				status: 204,
+				headers: {
+					...cors,
+					'access-control-allow-methods': 'GET, POST, PUT, DELETE',
+					'access-control-allow-headers': request.headers()['access-control-request-headers'] ?? ''
+				}
+			});
+		}
+		if (request.method() !== method) return route.fallback();
+		answered.push(request);
+		return route.fulfill({ json: answer(request), headers: cors });
+	});
+	return answered;
+};
 
 /**
  * Navigates and waits until the page has hydrated: the header asks the API whether the
@@ -20,11 +73,6 @@ const gotoHydrated = async (page: Page, path: string) => {
 };
 
 test.describe('navigation', () => {
-	test('the landing page redirects to the default portfolio', async ({ page }) => {
-		await page.goto('/');
-		await expect(page).toHaveURL(new RegExp(`/${DOMAIN.replace('.', '\\.')}/experiences$`));
-	});
-
 	test('a domain root redirects to its experiences', async ({ page }) => {
 		await page.goto(`/${DOMAIN}`);
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN.replace('.', '\\.')}/experiences$`));
@@ -91,7 +139,7 @@ test.describe('unknown paths', () => {
 	test('going back with the claim dialog open closes it without a Svelte warning', async ({
 		page
 	}) => {
-		// Opening the dialog loads Google Sign-In: stub it so the test does not depend on Google
+		// Ticking the box loads Google Sign-In: stub it so the test does not depend on Google
 		await page.route('https://accounts.google.com/**', (route) =>
 			route.fulfill({
 				contentType: 'application/javascript',
@@ -115,6 +163,10 @@ test.describe('unknown paths', () => {
 		await page.getByRole('link', { name: 'Unclaimed domain' }).click();
 		await page.getByRole('button', { name: 'Claim this domain' }).click();
 		await expect(page.getByRole('dialog')).toBeVisible();
+		await page
+			.getByRole('dialog')
+			.getByRole('checkbox', { name: /at least 16 years old/ })
+			.check();
 
 		await page.goBack();
 		await expect(page.getByText('No experiences have been published yet.')).toBeVisible();
@@ -124,6 +176,91 @@ test.describe('unknown paths', () => {
 			await page.evaluate(() => (window as Window & { e2eSameDocument?: boolean }).e2eSameDocument)
 		).toBe(true);
 		expect(warnings.filter((text) => text.includes('derived_inert'))).toEqual([]);
+	});
+
+	test('the header loads Google only once Sign in is clicked: no One Tap on its own', async ({
+		page
+	}) => {
+		const google: string[] = [];
+		await page.route('https://accounts.google.com/**', (route) => {
+			google.push(route.request().url());
+			return route.fulfill({
+				contentType: 'application/javascript',
+				body: GSI_STUB.replace(
+					'prompt() {}',
+					'prompt() { window.__gsiPrompts = (window.__gsiPrompts ?? 0) + 1; }'
+				)
+			});
+		});
+
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		const signIn = page.getByRole('group', { name: 'Sign in' });
+		await expect(signIn.getByRole('button', { name: 'Sign in' })).toBeVisible();
+		// Reading a portfolio asks nothing from Google
+		await page.waitForTimeout(500);
+		expect(google).toEqual([]);
+
+		await signIn.getByRole('button', { name: 'Sign in' }).click();
+
+		await expect(signIn.getByRole('button', { name: 'Stub Google sign-in' })).toBeVisible();
+		expect(google.length).toBeGreaterThan(0);
+		// Asked for: the account chooser shows once
+		expect(
+			await page.evaluate(() => (window as Window & { __gsiPrompts?: number }).__gsiPrompts)
+		).toBe(1);
+	});
+
+	test('the claim dialog loads Google only once the age and terms box is ticked, and sends the confirmation with the sign-in and the claim', async ({
+		page
+	}) => {
+		const google: string[] = [];
+		await page.route('https://accounts.google.com/**', (route) => {
+			google.push(route.request().url());
+			return route.fulfill({ contentType: 'application/javascript', body: GSI_STUB });
+		});
+		// Signed out on arrival, signed in once POST /login answered; nothing is claimed for real
+		let signedIn = false;
+		const user = { _id: STUB_USER_ID, email: 'e2e.claimer@example.com' };
+		await stubApi(page, 'GET', '/isLogged', () =>
+			signedIn
+				? { logged: true, user, expires: Math.floor(Date.now() / 1000) + 3600 }
+				: { logged: false }
+		);
+		const logins = await stubApi(page, 'POST', '/login', () => {
+			signedIn = true;
+			return { user, expires: Math.floor(Date.now() / 1000) + 3600 };
+		});
+		const claims = await stubApi(page, 'POST', '/domain/claim', () => ({
+			name: 'e2e-unclaimed-domain'
+		}));
+
+		// The 404 page has no header (no GET /isLogged to wait for): click until it has hydrated
+		await page.goto('/e2e-unclaimed-domain');
+		const dialog = page.getByRole('dialog');
+		await expect(async () => {
+			await page.getByRole('button', { name: 'Claim this domain' }).click();
+			await expect(dialog).toBeVisible({ timeout: 1000 });
+		}).toPass();
+		const box = dialog.getByRole('checkbox', { name: /at least 16 years old/ });
+		await expect(box).not.toBeChecked();
+		await expect(dialog.getByText('Tick the box to show the Google sign-in button.')).toBeVisible();
+		await expect(dialog.getByRole('link', { name: /Terms of use/ })).toHaveAttribute(
+			'href',
+			'/legal/terms'
+		);
+		expect(google).toEqual([]);
+
+		await box.check();
+		await dialog.getByRole('button', { name: 'Stub Google sign-in' }).click();
+
+		await expect(page).toHaveURL(/\/e2e-unclaimed-domain\/experiences$/);
+		const consent = { termsVersion: LEGAL_VERSION, ageConfirmed: true };
+		expect(logins.map((request) => request.postDataJSON())).toEqual([
+			{ token: 'stub-credential', mode: 'candidate', consent, consentSource: 'claim' }
+		]);
+		expect(claims.map((request) => request.postDataJSON())).toEqual([
+			{ name: 'e2e-unclaimed-domain', consent }
+		]);
 	});
 
 	test('scanner-like paths return a plain 404 without the claim flow', async ({ page }) => {

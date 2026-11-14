@@ -2,9 +2,11 @@ import { spyOn } from 'bun:test';
 import { Types } from 'mongoose';
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from 'jose';
 import type { JWTPayload } from 'jose';
+import { currentConsent } from 'portfolio-common';
 import { env } from '../env';
 import { Domain, Experience, User } from '../models/database';
 import { createGoogleIdTokenVerifier, google } from '../services/google';
+import { sessionAccounts } from '../services/session';
 
 // Tests replace model methods with spyOn(...) and every test file restores
 // them with `afterEach(() => mock.restore())`, so nothing leaks between files.
@@ -77,6 +79,10 @@ export const experienceRequestBody = {
   ],
 };
 
+// The age and terms confirmation of the terms in force, as the client sends
+// it with POST /login, PUT /me/consent and the first POST /domain/claim
+export const CONSENT = currentConsent();
+
 // A hiring journey as the admin tab saves it (each step with its id, its type and that type's
 // settings): pick a job, then book a meeting
 export const workflowRequestBody = {
@@ -147,6 +153,19 @@ export const authCookie = async (userId = TEST_USER_ID, expiresIn: string | numb
     .setExpirationTime(expiresIn)
     .sign(new TextEncoder().encode(env.JWT_SECRET));
   return `auth=${token}`;
+};
+
+/**
+ * Lets the sessions of the unsaved test user (TEST_USER_ID, whose models the
+ * test mocks) through userLogged's account check; every other session is
+ * checked against the database as usual. Call it in a beforeEach: the
+ * afterEach mock.restore() removes it
+ */
+export const allowTestUserSessions = () => {
+  const exists = sessionAccounts.exists;
+  return spyOn(sessionAccounts, 'exists').mockImplementation(async (userId) =>
+    userId === TEST_USER_ID || exists(userId)
+  );
 };
 
 // ── Request helpers ─────────────────────────────────────────

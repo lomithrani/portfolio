@@ -1,6 +1,7 @@
 import Elysia, { t } from 'elysia';
 import { isValidDomainName, normalizeDomainName } from 'portfolio-common';
 import { Experience, Domain, EXPERIENCE_POPULATE } from '../models/database';
+import { consentRequest } from '../models/elysia';
 import {
   DomainDoesNotExistError,
   DomainAlreadyExistsError,
@@ -9,6 +10,9 @@ import {
   UserAlreadyOwnsDomainError
 } from '../errors';
 import { userLogged } from './userLogged';
+import { clientAddress } from '../services/clientAddress';
+import { domainAvailability, limitDomainAvailabilityRequestsFromIp } from '../services/domainAvailability';
+import { requireCurrentTerms } from '../services/legal';
 import { isDuplicateKeyError } from '../services/mongoErrors';
 
 /** Finds a domain by name, ignoring case: names are stored lowercase */
@@ -25,6 +29,18 @@ const domainPublic = new Elysia()
     return populatedDomain.toObject<Omit<Domain, "experiences"> & {
       experiences: Experience[];
     }>()
+  })
+  // Whether a name can still be claimed, for the claim forms' live hint.
+  // Advisory only (POST /domain/claim decides): one indexed lookup, nothing
+  // about the owner. Rate limited per IP, as it is public
+  .get('/domain/:name/availability', async ({ params: { name }, request, server }) => {
+    await limitDomainAvailabilityRequestsFromIp(clientAddress(request, server));
+    return await domainAvailability(name);
+  }, {
+    params: t.Object({ name: t.String({ maxLength: 255 }) }),
+    detail: {
+      summary: 'Whether a portfolio name is free to claim (advisory: the claim decides)'
+    }
   })
 
 const domainAdmin = new Elysia()
@@ -61,6 +77,12 @@ const domainClaim = new Elysia()
     // Same rules as the client: no reserved route names, no file-like names
     if (!isValidDomainName(name)) throw new InvalidDomainNameError('Invalid domain name');
 
+    // A portfolio is published under the Terms of use in force: an account
+    // that has not accepted them sends its confirmation with the claim
+    // (recorded from 'claim'), or gets a 422 on `consent`. Only claims are
+    // gated: portfolios claimed before the terms existed stay online
+    await requireCurrentTerms(userId, body.consent, 'claim');
+
     const existing = await Domain.findOne({ name });
     if (existing) throw new DomainAlreadyExistsError('Domain already exists');
 
@@ -77,7 +99,10 @@ const domainClaim = new Elysia()
     }
   }, {
     body: t.Object({
-      name: t.String({ maxLength: 255 })
+      name: t.String({ maxLength: 255 }),
+      // The age and terms confirmation, for an account that has not accepted
+      // the terms in force yet
+      consent: t.Optional(consentRequest)
     })
   })
 

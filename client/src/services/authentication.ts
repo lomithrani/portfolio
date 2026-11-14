@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import type { UserMode } from 'portfolio-common';
+import type { ConsentInput, UserMode } from 'portfolio-common';
 import { portfolioApi } from '#services';
 import {
 	authenticationStore,
@@ -32,10 +32,33 @@ const isDomainAdmin = (
 
 const clearAuthentication = () => authenticationStore.set({ user: undefined, expires: undefined });
 
+const ISO_DATE_TIME = /^(\d{4}-\d{2}-\d{2})T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?$/;
+
+/**
+ * The version of the terms an account accepted, as the text the API sends ('2026-11-14'), or
+ * undefined. Eden Treaty parses date-like strings of the API's JSON into Dates, so the version
+ * arrives as a Date (midnight UTC), and a session persisted before it was read back as text keeps
+ * that Date's ISO string ('2026-11-14T00:00:00.000Z'): both are read back as the date.
+ */
+const termsVersionText = (value: unknown): string | undefined => {
+	if (value instanceof Date) {
+		return Number.isNaN(value.getTime()) ? undefined : value.toISOString().slice(0, 10);
+	}
+	if (typeof value !== 'string' || !value) return undefined;
+	return ISO_DATE_TIME.exec(value)?.[1] ?? value;
+};
+
+/**
+ * The account in a response of POST /login, GET /isLogged, GET /me, PUT /me/mode or
+ * PUT /me/consent (`{ user }`), its termsVersion as text (termsVersionText); undefined without one.
+ */
 const readUser = (data: unknown): AuthUser | undefined => {
 	if (!data || typeof data !== 'object' || !('user' in data)) return undefined;
 	const user = (data as { user?: unknown }).user;
-	return user && typeof user === 'object' && '_id' in user ? (user as AuthUser) : undefined;
+	if (!user || typeof user !== 'object' || !('_id' in user)) return undefined;
+	const { termsVersion, ...rest } = user as AuthUser & { termsVersion?: unknown };
+	const version = termsVersionText(termsVersion);
+	return { ...rest, ...(version ? { termsVersion: version } : {}) } as AuthUser;
 };
 
 const readExpires = (data: unknown): number | undefined => {
@@ -91,38 +114,81 @@ const isLogged = async (): Promise<boolean> => {
 	}
 };
 
+/** Why a sign-in failed: 'stale-terms' (the confirmation was given for an older version of the terms) or anything else */
+type SignInFailureReason = 'stale-terms' | 'error';
+
+type SignInResult = { ok: true } | { ok: false; reason: SignInFailureReason };
+
+interface SignInOptions {
+	/** The space to make active ('recruiter' creates the recruiter space) */
+	mode?: UserMode;
+	/** The age and terms checkbox ticked before signing in (portfolio-common currentConsent()) */
+	consent?: ConsentInput;
+	/** Where that checkbox was: the landing page (the API's default) or a claim form */
+	consentSource?: 'landing' | 'claim';
+}
+
+/** The field a 422 validation error names (`property`), '' for any other body */
+const validationProperty = (value: unknown): string =>
+	value && typeof value === 'object' && 'property' in value && typeof value.property === 'string'
+		? value.property
+		: '';
+
 /**
- * Exchanges a Google ID token for the API's auth cookie. Returns false (and leaves the user
- * logged out) when the API rejects the token or when the cookie does not round-trip.
- * `mode` makes that space the account's active one (choosing 'recruiter' creates the recruiter
- * space); without it the account keeps the space it last chose.
+ * Exchanges a Google ID token for the API's auth cookie, and says why it failed: 'stale-terms'
+ * when the API refused the confirmation as given for an older version of the terms (a page loaded
+ * before they changed: only a reload helps), 'error' otherwise (the API rejected the token, or the
+ * cookie does not round-trip). The user stays logged out on failure. `mode` makes that space the
+ * account's active one (choosing 'recruiter' creates the recruiter space); without it the account
+ * keeps the space it last chose. `consent` is recorded by the API, from `consentSource`, before
+ * the session is issued.
  */
-const login = async (googleCredential: string, mode?: UserMode): Promise<boolean> => {
+const signIn = async (
+	googleCredential: string,
+	{ mode, consent, consentSource }: SignInOptions = {}
+): Promise<SignInResult> => {
 	try {
 		const { data, error } = await portfolioApi.login.post(
-			{ token: googleCredential, ...(mode ? { mode } : {}) },
+			{
+				token: googleCredential,
+				...(mode ? { mode } : {}),
+				...(consent ? { consent } : {}),
+				...(consent && consentSource ? { consentSource } : {})
+			},
 			withCredentials
 		);
 		const session = { user: readUser(data), expires: readExpires(data) };
 		if (error || !isSessionValid(session)) {
 			clearAuthentication();
-			return false;
+			const stale =
+				errorStatus(error) === 422 && validationProperty(error?.value) === 'consent.termsVersion';
+			return { ok: false, reason: stale ? 'stale-terms' : 'error' };
 		}
 
 		// The cookie is httpOnly: make sure the browser stored it and sends it back
 		const check = await portfolioApi.isLogged.get(withCredentials);
 		if (check.error || !isLoggedIn(check.data)) {
 			clearAuthentication();
-			return false;
+			return { ok: false, reason: 'error' };
 		}
 
 		authenticationStore.set(session);
-		return true;
+		return { ok: true };
 	} catch {
 		clearAuthentication();
-		return false;
+		return { ok: false, reason: 'error' };
 	}
 };
+
+/**
+ * Exchanges a Google ID token for the API's auth cookie (signIn). Returns false (and leaves the
+ * user logged out) when the API rejects the token or when the cookie does not round-trip.
+ */
+const login = async (
+	googleCredential: string,
+	mode?: UserMode,
+	consent?: ConsentInput
+): Promise<boolean> => (await signIn(googleCredential, { mode, consent })).ok;
 
 const logout = async (): Promise<void> => {
 	try {
@@ -173,5 +239,9 @@ export {
 	isSessionValid,
 	login,
 	logout,
+	readUser,
+	signIn,
+	termsVersionText,
 	watchSessionExpiry
 };
+export type { SignInFailureReason, SignInOptions, SignInResult };

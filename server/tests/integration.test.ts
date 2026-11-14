@@ -9,6 +9,7 @@ import { env } from '../env';
 import { createApp } from '../app';
 import { Domain, Experience, Skill, User, Workflow } from '../models/database';
 import {
+  CONSENT,
   experienceRequestBody,
   getWithCookie,
   makeRequest,
@@ -81,7 +82,7 @@ const login = async (name: string, email = t.email(name)) => {
 const loginWithDomain = async (name: string, domainName: string) => {
   const user = await login(name);
   expect(user.result.status).toBe(200);
-  const claim = await postWithCookie(app, '/domain/claim', { name: domainName }, user.cookie);
+  const claim = await postWithCookie(app, '/domain/claim', { name: domainName, consent: CONSENT }, user.cookie);
   expect(claim.status).toBe(200);
   return user;
 };
@@ -149,11 +150,11 @@ describe('domains and experiences (real collections)', () => {
     const owner = await login('owner');
     const other = await login('other');
 
-    const claim = await postWithCookie(app, '/domain/claim', { name: domainName.toUpperCase() }, owner.cookie);
+    const claim = await postWithCookie(app, '/domain/claim', { name: domainName.toUpperCase(), consent: CONSENT }, owner.cookie);
     expect(claim.status).toBe(200);
     expect((await readJson(claim)).name).toBe(domainName);
 
-    const taken = await postWithCookie(app, '/domain/claim', { name: domainName }, other.cookie);
+    const taken = await postWithCookie(app, '/domain/claim', { name: domainName, consent: CONSENT }, other.cookie);
     expect(taken.status).toBe(409);
 
     const invalid = await postWithCookie(app, '/domain/claim', { name: 'login' }, other.cookie);
@@ -238,7 +239,7 @@ describe('domains and experiences (real collections)', () => {
     expect(ownerPosted.status).toBe(200);
 
     const other = await login('other');
-    const claim = await postWithCookie(app, '/domain/claim', { name: otherDomainName }, other.cookie);
+    const claim = await postWithCookie(app, '/domain/claim', { name: otherDomainName, consent: CONSENT }, other.cookie);
     expect(claim.status).toBe(200);
 
     const posted = await postWithCookie(
@@ -488,7 +489,7 @@ describe('cross-site form bodies (real collections)', () => {
     expect(await Domain.exists({ name: formDomainName })).toBeNull();
 
     // The same requests as JSON (what the client sends) go through
-    const claim = await postWithCookie(app, '/domain/claim', { name: formDomainName }, user.cookie);
+    const claim = await postWithCookie(app, '/domain/claim', { name: formDomainName, consent: CONSENT }, user.cookie);
     expect(claim.status).toBe(200);
     const posted = await postWithCookie(
       app,
