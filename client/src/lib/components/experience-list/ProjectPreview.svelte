@@ -95,15 +95,16 @@
 		const rect = anchor.getBoundingClientRect();
 		const viewWidth = document.documentElement.clientWidth;
 		const viewHeight = document.documentElement.clientHeight;
-		// Gone (removed, or scrolled out of sight): nothing to point at
-		if (
-			!anchor.isConnected ||
-			rect.bottom < 0 ||
-			rect.top > viewHeight ||
-			rect.right < 0 ||
-			rect.left > viewWidth
-		) {
+		if (!anchor.isConnected) {
 			hide();
+			return;
+		}
+		if (rect.bottom < 0 || rect.top > viewHeight || rect.right < 0 || rect.left > viewWidth) {
+			// Out of sight. A tag that has the keyboard's focus keeps its preview, unseen until it is
+			// in sight again (a focus scrolls its element into view smoothly: it is still out of sight
+			// when the preview first opens); anything else has nothing to point at
+			if (anchor === document.activeElement) position = null;
+			else hide();
 			return;
 		}
 		const width = popover.offsetWidth;

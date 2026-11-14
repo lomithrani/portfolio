@@ -32,10 +32,33 @@ const isDomainAdmin = (
 
 const clearAuthentication = () => authenticationStore.set({ user: undefined, expires: undefined });
 
+const ISO_DATE_TIME = /^(\d{4}-\d{2}-\d{2})T[\d:.]+(?:Z|[+-]\d{2}:?\d{2})?$/;
+
+/**
+ * The version of the terms an account accepted, as the text the API sends ('2026-11-14'), or
+ * undefined. Eden Treaty parses date-like strings of the API's JSON into Dates, so the version
+ * arrives as a Date (midnight UTC), and a session persisted before it was read back as text keeps
+ * that Date's ISO string ('2026-11-14T00:00:00.000Z'): both are read back as the date.
+ */
+const termsVersionText = (value: unknown): string | undefined => {
+	if (value instanceof Date) {
+		return Number.isNaN(value.getTime()) ? undefined : value.toISOString().slice(0, 10);
+	}
+	if (typeof value !== 'string' || !value) return undefined;
+	return ISO_DATE_TIME.exec(value)?.[1] ?? value;
+};
+
+/**
+ * The account in a response of POST /login, GET /isLogged, GET /me, PUT /me/mode or
+ * PUT /me/consent (`{ user }`), its termsVersion as text (termsVersionText); undefined without one.
+ */
 const readUser = (data: unknown): AuthUser | undefined => {
 	if (!data || typeof data !== 'object' || !('user' in data)) return undefined;
 	const user = (data as { user?: unknown }).user;
-	return user && typeof user === 'object' && '_id' in user ? (user as AuthUser) : undefined;
+	if (!user || typeof user !== 'object' || !('_id' in user)) return undefined;
+	const { termsVersion, ...rest } = user as AuthUser & { termsVersion?: unknown };
+	const version = termsVersionText(termsVersion);
+	return { ...rest, ...(version ? { termsVersion: version } : {}) } as AuthUser;
 };
 
 const readExpires = (data: unknown): number | undefined => {
@@ -179,5 +202,7 @@ export {
 	isSessionValid,
 	login,
 	logout,
+	readUser,
+	termsVersionText,
 	watchSessionExpiry
 };

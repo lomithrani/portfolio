@@ -29,6 +29,8 @@ import {
 	isSessionValid,
 	login,
 	logout,
+	readUser,
+	termsVersionText,
 	watchSessionExpiry
 } from '../authentication';
 import { LEGAL_VERSION, currentConsent } from 'portfolio-common';
@@ -332,5 +334,53 @@ describe('watchSessionExpiry', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(get(authenticationStore)).toEqual(loggedOut);
 		stop();
+	});
+});
+
+describe('termsVersionText', () => {
+	it('reads the version back as text, from a Date (Eden parses date-like strings) or its ISO string', () => {
+		expect(termsVersionText(LEGAL_VERSION)).toBe(LEGAL_VERSION);
+		expect(termsVersionText(new Date(`${LEGAL_VERSION}T00:00:00.000Z`))).toBe(LEGAL_VERSION);
+		expect(termsVersionText(`${LEGAL_VERSION}T00:00:00.000Z`)).toBe(LEGAL_VERSION);
+		expect(termsVersionText('2025-01-01')).toBe('2025-01-01');
+	});
+
+	it('is undefined without a version', () => {
+		expect(termsVersionText(undefined)).toBeUndefined();
+		expect(termsVersionText(null)).toBeUndefined();
+		expect(termsVersionText('')).toBeUndefined();
+		expect(termsVersionText(new Date('not a date'))).toBeUndefined();
+		expect(termsVersionText(20261114)).toBeUndefined();
+	});
+});
+
+describe('readUser', () => {
+	it('keeps the account with its terms version as text', () => {
+		const parsed = { ...user, termsVersion: new Date(`${LEGAL_VERSION}T00:00:00.000Z`) };
+		expect(readUser({ user: parsed })).toEqual({ ...user, termsVersion: LEGAL_VERSION });
+		expect(readUser({ user })).toEqual(user);
+		expect(readUser({ user: { ...user, termsVersion: null } })).toEqual(user);
+	});
+
+	it('is undefined without an account', () => {
+		expect(readUser(null)).toBeUndefined();
+		expect(readUser({})).toBeUndefined();
+		expect(readUser({ user: { email: 'no-id@example.com' } })).toBeUndefined();
+	});
+});
+
+describe('session with a parsed terms version', () => {
+	it('stores the version as text after login and isLogged', async () => {
+		const parsedUser = { ...user, termsVersion: new Date(`${LEGAL_VERSION}T00:00:00.000Z`) };
+		const session = { user: parsedUser, expires: nowSeconds() + 3600 };
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(login('google-jwt', 'candidate', currentConsent())).resolves.toBe(true);
+		expect(get(authenticationStore).user).toEqual({ ...user, termsVersion: LEGAL_VERSION });
+
+		authenticationStore.set({ ...loggedOut });
+		await expect(isLogged()).resolves.toBe(true);
+		expect(get(authenticationStore).user).toEqual({ ...user, termsVersion: LEGAL_VERSION });
 	});
 });

@@ -132,7 +132,7 @@ only, not continuously.
 - **API: `/health`** answers `200 OK` when MongoDB is connected and `503` otherwise, so a
   deployment that cannot reach MongoDB never receives traffic.
 - **Web: `/healthz`** answers `200 ok` without calling the API, so an API outage does not block a
-  web deployment. (`/` cannot be used: it is a `302` redirect to `/louis.gentil/experiences`.)
+  web deployment. (`/`, the landing page, would work but renders a whole page for each check.)
 
 ## Graceful shutdown
 
@@ -198,6 +198,13 @@ browser's calls from that origin fail CORS. Check the deploy logs after changing
 | `PUBLIC_PORTFOLIO_API_URL`    | yes      | Public URL of the API, e.g. `https://api.example.com` (or `https://${{<api service>.RAILWAY_PUBLIC_DOMAIN}}`) |
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | recommended | `30`                                                                                     |
 | `PUBLIC_GOOGLE_CLIENT_ID`     | no       | Only with your own OAuth client; must equal the API's `GOOGLE_CLIENT_ID`                             |
+| `LEGAL_PUBLISHER_NAME`        | yes (legal) | Publisher and data controller named by the legal notice and the privacy policy                    |
+| `LEGAL_CONTACT_EMAIL`         | yes (legal) | Contact address for users, authorities, privacy requests and reports of illegal content           |
+| `LEGAL_PUBLISHER_ADDRESS`     | no       | Postal address, one line                                                                             |
+| `LEGAL_PUBLISHER_PHONE`       | no       | Phone number                                                                                         |
+| `LEGAL_PUBLISHER_SIREN`       | no       | SIREN/SIRET: when set, the publisher is shown as a professional                                      |
+| `LEGAL_PUBLISHER_VAT`         | no       | Intra-community VAT number                                                                           |
+| `LEGAL_PUBLICATION_DIRECTOR`  | no       | Defaults to `LEGAL_PUBLISHER_NAME`                                                                   |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no       | Same as the API; telemetry is fully off while it is unset                                            |
 | `OTEL_EXPORTER_OTLP_HEADERS`  | no       | Same as the API; sealed                                                                              |
 | `OTEL_SERVICE_NAME`           | no       | Defaults to `portfolio-client`                                                                       |
@@ -214,6 +221,29 @@ assumes `https`, which matches Railway's TLS-terminating proxy.
 Google Sign-In: add the web origin (e.g. `https://example.com`) to the **Authorized JavaScript
 origins** of the OAuth client in the Google Cloud console, or the sign-in button fails on the
 deployed site.
+
+The landing page's share tags (`canonical`, `og:url`, `og:image` = `/og-image.png`) are built from
+that same derived origin: after the first deploy, check they read `https://<your domain>/...`
+(`curl -s https://example.com/ | grep -o '<meta property="og:url"[^>]*>'`).
+
+### Legal pages
+
+The legal notice (`/legal`), privacy policy (`/legal/privacy`), terms (`/legal/terms`) and cookies
+page (`/legal/cookies`), in English and in French (`?lang=fr`), take the publisher's identity from
+the `LEGAL_*` variables above: nothing personal is in the repository. Set them as **service
+variables of the web service** (they are read on the server only, at startup, and never sent to the
+API); a restart applies a change. Until `LEGAL_PUBLISHER_NAME` and `LEGAL_CONTACT_EMAIL` are both
+set (and the email looks like one), the pages say **"Publisher details are not configured yet."**
+in place of the publisher and contact, and the web deploy logs one warning at startup
+(`LEGAL_PUBLISHER_NAME is not set: the legal notice and the privacy policy show ...`). Without a
+SIREN the publisher is presented as an individual acting on a non-professional basis.
+
+Before going live, confirm what the texts state about the operations: log and trace retention
+("up to 30 days", `LOG_RETENTION` in `client/src/lib/components/legal/legalDocuments.ts`),
+database backups, and the processors' transfer basis (Railway, Anthropic, Google, GitHub, the
+monitoring provider). When the Terms of use or the Privacy policy change materially, bump
+`LEGAL_VERSION` in `common/models/legal.ts`: accounts are asked to accept the new version, and a
+claim needs it.
 
 ## Google Calendar appointments
 
@@ -243,7 +273,8 @@ To enable it on Railway (service `portfolio api develop`, and any other API serv
 
 The OAuth tokens are stored on the owner's user document in MongoDB (`googleCalendar`), excluded
 from every query unless the calendar service asks for them, and never returned by the API.
-**Disconnect** deletes them. If Google answers that it "did not grant offline access" (no refresh
+**Disconnect** deletes them and revokes the grant at Google (best effort), as does deleting the
+account at `/account`. If Google answers that it "did not grant offline access" (no refresh
 token because the app was authorized before), remove the app under
 [Google account, Third-party connections](https://myaccount.google.com/connections) and connect
 again.
@@ -509,12 +540,33 @@ the deploy.
 - If the API and MongoDB are in the same Railway project, reference the variable
   (`${{MongoDB.MONGO_URL}}`) instead of copying the connection string, so it keeps working if the
   credentials change.
-- Seed a fresh database once with the owner's user and the `louis.gentil` domain (the target of
-  `/`); the script is idempotent and never prints the connection string's password:
+- Seed a fresh database once with the owner's user and the `louis.gentil` domain (the example the
+  landing page links to); the script is idempotent and never prints the connection string's
+  password:
 
   ```bash
   MONGO_URL="<production MONGO_URL>" bun run db:seed
   ```
+
+### Reserved portfolio names
+
+Every top-level route of the web app is a reserved portfolio name (`RESERVED_DOMAIN_NAMES` in
+`common/models/domainName.ts`): a portfolio with that name would be hidden behind the route.
+The landing page, legal pages and account page reserved `about`, `contact`, `cookies`, `help`,
+`legal`, `privacy`, `report`, `signup`, `start` and `terms`. Before deploying a version that
+reserves new names, check that no existing portfolio uses one (it would become unreachable, and
+could not be found or claimed again):
+
+```bash
+mongosh "<production MONGO_URL>" --quiet --eval '
+  db.domains.find(
+    { name: { $in: ["about", "contact", "cookies", "help", "legal", "privacy", "report", "signup", "start", "terms"] } },
+    { name: 1, admin: 1 }
+  ).toArray()'
+```
+
+An empty array (`[]`) means nothing to do. Otherwise, rename the domain (`db.domains.updateOne`
+with a free name) and tell its owner before deploying.
 
 ## Verify a deploy
 
@@ -529,7 +581,10 @@ the deploy.
    ```bash
    curl -i https://api.example.com/health      # 200 OK
    curl -i https://example.com/healthz         # 200 ok
-   curl -sI https://example.com/ | grep -i '^location'    # /louis.gentil/experiences
+   curl -s -o /dev/null -w '%{http_code}\n' https://example.com/   # 200 (the landing page, no redirect)
+   curl -s https://example.com/ | grep -o '<title>[^<]*</title>'    # <title>Your career on one page | Portfolio</title>
+   curl -s https://example.com/legal | grep -c 'Publisher details are not configured yet'   # 0 once LEGAL_* are set
+   curl -s https://api.example.com/domain/louis.gentil/availability   # {"name":"louis.gentil","available":false,"reason":"taken"}
    curl -si -H 'Origin: https://example.com' https://api.example.com/domain/louis.gentil \
      | grep -i '^access-control-allow-origin'  # https://example.com
    ```
@@ -679,6 +734,8 @@ service) is planned as a **deletion**.
    		healthcheck: '/healthz',
    		env: {
    			PUBLIC_PORTFOLIO_API_URL: preserve(),
+   			LEGAL_PUBLISHER_NAME: preserve(),
+   			LEGAL_CONTACT_EMAIL: preserve(),
    			RAILWAY_DEPLOYMENT_DRAINING_SECONDS: '30'
    		}
    	});

@@ -6,6 +6,16 @@ import { expect, test, type Page } from '@playwright/test';
 // 'louis.gentil' portfolio exists); the visitor is anonymous. The publisher's details come from
 // the web server's LEGAL_* variables, which CI does not set: the pages then say so.
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The absolute URL of `path` on the site, as the server writes it: on the page's host, over http or
+ * https (the production adapter-bun server says https unless ORIGIN or PROTOCOL_HEADER tells it
+ * otherwise, as behind Railway's proxy; the dev server says http).
+ */
+const absoluteUrl = (page: Page, path: string): RegExp =>
+	new RegExp(`^https?://${escapeRegExp(new URL(page.url()).host)}${escapeRegExp(path)}$`);
+
 const PAGES = [
 	{
 		path: '/legal',
@@ -73,22 +83,21 @@ test.describe('legal pages', () => {
 				).toBeVisible();
 
 				// Search engines find both versions; each page names itself canonical
-				const origin = new URL(page.url()).origin;
 				await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
 					'href',
-					`${origin}${url}`
+					absoluteUrl(page, url)
 				);
 				await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute(
 					'href',
-					`${origin}${doc.path}`
+					absoluteUrl(page, doc.path)
 				);
 				await expect(page.locator('link[rel="alternate"][hreflang="fr"]')).toHaveAttribute(
 					'href',
-					`${origin}${doc.path}?lang=fr`
+					absoluteUrl(page, `${doc.path}?lang=fr`)
 				);
 				await expect(page.locator('link[rel="alternate"][hreflang="x-default"]')).toHaveAttribute(
 					'href',
-					`${origin}${doc.path}`
+					absoluteUrl(page, doc.path)
 				);
 
 				// The current language is marked in the switch
@@ -146,10 +155,9 @@ test.describe('legal pages', () => {
 		const response = await page.goto('/legal/terms?lang=de');
 		expect(response?.status()).toBe(200);
 		await expect(page.locator('article[data-legal-document]')).toHaveAttribute('lang', 'en');
-		const origin = new URL(page.url()).origin;
 		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
 			'href',
-			`${origin}/legal/terms`
+			absoluteUrl(page, '/legal/terms')
 		);
 	});
 

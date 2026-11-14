@@ -12,7 +12,7 @@ import {
 } from 'portfolio-common';
 import { portfolioApi } from '#services';
 import { authenticationStore, type AuthUser } from './stores';
-import { clearAuthentication, isSessionValid } from './authentication';
+import { clearAuthentication, isSessionValid, readUser, termsVersionText } from './authentication';
 import { disableGoogleAutoSelect } from './googleIdentity';
 import { errorStatus } from './apiErrors';
 
@@ -156,11 +156,12 @@ export const portfolioUrlPreview = (originOrHost: string, rawName: string): stri
 
 /**
  * Whether the account accepted the Terms of use in force (portfolio-common LEGAL_VERSION): the
- * claim forms hide the age and terms checkbox when it did.
+ * claim forms hide the age and terms checkbox when it did. The version may be a Date or its ISO
+ * string (Eden's date parsing, termsVersionText).
  */
 export const hasAcceptedCurrentTerms = (
-	user: Pick<AuthUser, 'termsVersion'> | null | undefined
-): boolean => isCurrentTermsVersion(user?.termsVersion);
+	user: { termsVersion?: unknown } | null | undefined
+): boolean => isCurrentTermsVersion(termsVersionText(user?.termsVersion));
 
 /** Whether `pathname` is `base` or a page under it ('/recruiter/jobs/1' is under '/recruiter') */
 export const isCurrentSection = (pathname: string, base: string): boolean =>
@@ -258,12 +259,6 @@ export const switchErrorMessage = (mode: UserMode): string =>
 		: 'Could not switch to your candidate space. Try again.';
 
 // --- API calls -----------------------------------------------------------------------------
-
-const readUser = (data: unknown): AuthUser | undefined => {
-	if (!data || typeof data !== 'object' || !('user' in data)) return undefined;
-	const user = (data as { user?: unknown }).user;
-	return user && typeof user === 'object' && '_id' in user ? (user as AuthUser) : undefined;
-};
 
 /**
  * Stores the account the API returned, keeping the session's expiry. Ignored when the session
@@ -526,6 +521,9 @@ export const clearUserBrowserData = (
 
 export const DELETE_ACCOUNT_ERROR_MESSAGE = 'Could not delete your account. Try again.';
 
+/** How long deleteAccount waits for Google's automatic sign-in to be turned off */
+export const GOOGLE_AUTO_SELECT_TIMEOUT_MS = 3000;
+
 /**
  * Deletes the signed-in account and everything tied to it (DELETE /me): its portfolio, hiring
  * journey, job postings, applications and schedules; the API revokes its Google Calendar access
@@ -548,10 +546,20 @@ export const deleteAccount = async (): Promise<{ ok: true } | AccountFailure> =>
 	}
 	if (userId) clearUserBrowserData(String(userId));
 	clearAuthentication();
+	// Loading Google's script can hang (a firewall dropping packets): the account is already gone,
+	// so the page does not wait for it longer than this
+	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
-		await disableGoogleAutoSelect();
+		await Promise.race([
+			disableGoogleAutoSelect(),
+			new Promise<void>((resolve) => {
+				timer = setTimeout(resolve, GOOGLE_AUTO_SELECT_TIMEOUT_MS);
+			})
+		]);
 	} catch {
 		// Only Google's automatic sign-in is left on: the account is gone either way
+	} finally {
+		clearTimeout(timer);
 	}
 	return { ok: true };
 };

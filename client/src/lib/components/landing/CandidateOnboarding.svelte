@@ -257,18 +257,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	let claimConsentError = $state('');
 	/** The API asked for the confirmation although the session said it was given */
 	let consentAsked = $state(false);
-	// Eden Treaty turns date-like strings into Dates: the account's termsVersion ('2026-11-14') can
-	// reach the store as a Date, or as its ISO string once persisted. Read back as the version.
-	const termsVersionOf = (value: unknown): string | undefined => {
-		if (value instanceof Date)
-			return Number.isNaN(value.getTime()) ? undefined : value.toISOString().slice(0, 10);
-		return typeof value === 'string' ? value.slice(0, 10) : undefined;
-	};
-	let needsClaimConsent = $derived(
-		!!user &&
-			(consentAsked ||
-				!hasAcceptedCurrentTerms({ termsVersion: termsVersionOf(user.termsVersion) }))
-	);
+	let needsClaimConsent = $derived(!!user && (consentAsked || !hasAcceptedCurrentTerms(user)));
 	let claiming = $state(false);
 	let claimError = $state('');
 

@@ -15,6 +15,7 @@ given it yet.
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import { formatLegalDate } from '#components/legal/legalDocuments.ts';
 	import { acceptTerms, hasAcceptedCurrentTerms } from '#services/account.ts';
+	import { termsVersionText } from '#services/authentication.ts';
 	import type { AuthUser } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
 
@@ -25,7 +26,7 @@ given it yet.
 
 	let accepted = $derived(hasAcceptedCurrentTerms(user));
 	/** An older version of the terms: they changed since the account accepted them */
-	let acceptedVersion = $derived(user.termsVersion);
+	let acceptedVersion = $derived(termsVersionText(user.termsVersion));
 	let currentDate = formatLegalDate(LEGAL_VERSION, 'en');
 
 	let checked = $state(false);
@@ -33,6 +34,8 @@ given it yet.
 	let consentError = $state('');
 	let formError = $state('');
 	let alertElement: HTMLParagraphElement | undefined = $state();
+	/** The status line: it takes the focus once the form it replaces is gone */
+	let acceptedElement: HTMLParagraphElement | undefined = $state();
 
 	// Ticked: the reminder has done its job
 	let shownConsentError = $derived(checked ? '' : consentError);
@@ -60,6 +63,9 @@ given it yet.
 			const result = await acceptTerms('account');
 			if (result.ok) {
 				checked = false;
+				// The form (and the focused button) is gone: the status line takes the focus
+				await tick();
+				acceptedElement?.focus();
 				toaster.success({
 					title: 'Terms accepted',
 					description: `You accepted the Terms of use of ${currentDate}.`
@@ -91,7 +97,12 @@ given it yet.
 		<div class="min-w-0 flex-1 space-y-1">
 			<h3 id="{uid}-title" class="text-lg font-semibold">Terms of use</h3>
 			{#if accepted}
-				<p class="flex items-start gap-2 text-sm text-surface-700-300" data-terms-status="accepted">
+				<p
+					bind:this={acceptedElement}
+					class="flex items-start gap-2 text-sm text-surface-700-300 outline-none"
+					data-terms-status="accepted"
+					tabindex="-1"
+				>
 					<CheckCircle size="18" class="mt-0.5 shrink-0 text-success-700-300" aria-hidden="true" />
 					<span>
 						You accepted the

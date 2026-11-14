@@ -32,6 +32,7 @@ import { LEGAL_VERSION, STALE_TERMS_MESSAGE, currentConsent } from 'portfolio-co
 import {
 	CLAIM_CONSENT_MESSAGE,
 	DELETE_ACCOUNT_ERROR_MESSAGE,
+	GOOGLE_AUTO_SELECT_TIMEOUT_MS,
 	NETWORK_ERROR_MESSAGE,
 	SESSION_EXPIRED_MESSAGE,
 	acceptTerms,
@@ -479,6 +480,14 @@ describe('hasAcceptedCurrentTerms', () => {
 		expect(hasAcceptedCurrentTerms(null)).toBe(false);
 		expect(hasAcceptedCurrentTerms(undefined)).toBe(false);
 	});
+
+	it('reads a version Eden parsed into a Date, or its persisted ISO string', () => {
+		expect(hasAcceptedCurrentTerms({ termsVersion: new Date(`${LEGAL_VERSION}T00:00:00Z`) })).toBe(
+			true
+		);
+		expect(hasAcceptedCurrentTerms({ termsVersion: `${LEGAL_VERSION}T00:00:00.000Z` })).toBe(true);
+		expect(hasAcceptedCurrentTerms({ termsVersion: new Date('2025-01-01T00:00:00Z') })).toBe(false);
+	});
 });
 
 describe('checkDomainAvailability', () => {
@@ -569,6 +578,16 @@ describe('acceptTerms', () => {
 			withCredentials
 		);
 		expect(get(authenticationStore)).toEqual({ user: updated, expires });
+	});
+
+	it('stores the version as text when Eden parsed it into a Date', async () => {
+		const parsed = { ...user, termsVersion: new Date(`${LEGAL_VERSION}T00:00:00.000Z`) };
+		mockConsentPut.mockResolvedValue({ data: { user: parsed }, error: null });
+
+		const result = await acceptTerms();
+		expect(result).toEqual({ ok: true, user: { ...user, termsVersion: LEGAL_VERSION } });
+		expect(get(authenticationStore).user).toEqual({ ...user, termsVersion: LEGAL_VERSION });
+		expect(hasAcceptedCurrentTerms(get(authenticationStore).user)).toBe(true);
 	});
 
 	it('says where it was given', async () => {
@@ -726,6 +745,21 @@ describe('deleteAccount', () => {
 		expect(get(authenticationStore).user).toEqual(user);
 		expect(storage.keys()).toHaveLength(4);
 		expect(disableGoogleAutoSelect).not.toHaveBeenCalled();
+	});
+
+	it('does not wait for Google longer than the timeout once the account is deleted', async () => {
+		vi.useFakeTimers();
+		try {
+			mockMeDelete.mockResolvedValue({ data: null, error: null, status: 204 });
+			vi.mocked(disableGoogleAutoSelect).mockReturnValueOnce(new Promise<void>(() => {}));
+
+			const result = deleteAccount();
+			await vi.advanceTimersByTimeAsync(GOOGLE_AUTO_SELECT_TIMEOUT_MS);
+			await expect(result).resolves.toEqual({ ok: true });
+			expect(get(authenticationStore)).toEqual(loggedOut);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('clears the session on 401, keeping the drafts (the account was not deleted)', async () => {

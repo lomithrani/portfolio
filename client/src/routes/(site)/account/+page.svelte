@@ -22,7 +22,6 @@
 	let host = $derived(page.url.host);
 	let name = $derived(user?.name || user?.surname ? userDisplayName(user) : '');
 	let activeSpace = $derived(spaceLabel(user?.activeMode));
-	let createPortfolioHref = $derived(`${resolve('/(site)')}#create`);
 
 	// The account as the API has it now (the persisted session may be behind: a portfolio claimed
 	// or terms accepted in another tab). Once per account; a failure keeps what the session knows
@@ -73,7 +72,7 @@
 					space.
 				</p>
 				{#snippet actions()}
-					<a href={createPortfolioHref} class="btn preset-filled-primary-700-300 min-h-11">
+					<a href="{resolve('/(site)')}#create" class="btn preset-filled-primary-700-300 min-h-11">
 						<UserCircle size="18" aria-hidden="true" />
 						<span>Sign in as a candidate</span>
 					</a>
@@ -116,7 +115,7 @@
 							>
 						{:else}
 							<span>None yet.</span>
-							<a href={createPortfolioHref} class={linkClass}>Create your portfolio</a>
+							<a href="{resolve('/(site)')}#create" class={linkClass}>Create your portfolio</a>
 						{/if}
 					</dd>
 					<dt class="font-medium text-surface-700-300">Recruiter space</dt>
