@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import { ExperienceType } from 'portfolio-common';
-	import { flushSync, tick } from 'svelte';
+	import { flushSync, tick, untrack } from 'svelte';
 	import {
 		AcademicCap,
 		Briefcase,
@@ -77,6 +77,8 @@
 
 	// Plain spaces around the dot (a text expression: the template would trim them)
 	const SEPARATOR = ' · ';
+	/** Pixels left after the last bar when the timeline opens */
+	const OPENING_ROOM = 24;
 
 	const periodOf = (experience: ExperienceModel) => {
 		const period = experiencePeriod(experience);
@@ -213,29 +215,51 @@
 		};
 	});
 
-	// Opens on the most recent months: a career scrolls back in time
+	// Opens on the most recent months drawn: a career scrolls back in time. The last bar's end
+	// (the current month for an ongoing one) goes near the right edge, not the axis' own end: the
+	// axis runs to the end of that year, months of nothing at this zoom. Once, when the timeline
+	// is mounted: a zoom or a save never scrolls back here
 	$effect(() => {
-		if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+		const element = scroller;
+		const line = track;
+		if (!element || !line) return;
+		untrack(() => {
+			if (months <= 0) return;
+			const last = timeline.today ?? Math.max(...timeline.items.map((item) => item.extent.end));
+			const drawn = line.getBoundingClientRect();
+			const view = element.getBoundingClientRect();
+			const end =
+				element.scrollLeft +
+				(drawn.left - view.left) +
+				((last - axis.start) / months) * drawn.width;
+			// A little room after it; the browser keeps to what can be scrolled
+			element.scrollLeft = end - element.clientWidth + OPENING_ROOM;
+		});
 	});
 
-	// The experiences changed under the timeline (the owner saved one from here) and the axis
-	// with them: the month at the left edge stays there, whatever the axis gained or lost
-	let drawn: { start: number; months: number } | undefined;
+	// The experiences changed under the timeline (the owner saved one from here): the month at
+	// the left edge stays there, whatever the axis gained or lost and whatever the zoom it opens
+	// with became (a shorter shortest bar makes every month wider). It follows the experiences
+	// only (the axis is rebuilt with them), never the zoom: zoomTo places its own scroll
+	let drawnAxis: { start: number; months: number } | undefined;
 	$effect.pre(() => {
 		const next = { start: axis.start, months };
-		const previous = drawn;
-		drawn = next;
+		const previous = drawnAxis;
+		drawnAxis = next;
 		const element = scroller;
 		const line = track;
 		if (!previous || !element || !line || previous.months <= 0 || next.months <= 0) return;
-		if (previous.start === next.start && previous.months === next.months) return;
 		// Still the axis as it was drawn
 		const width = line.offsetWidth;
 		if (width <= 0) return;
 		const month = previous.start + (element.scrollLeft / width) * previous.months;
 		void tick().then(() => {
 			if (!line.isConnected) return;
-			element.scrollLeft = ((month - next.start) / next.months) * line.offsetWidth;
+			const same =
+				previous.start === next.start &&
+				previous.months === next.months &&
+				line.offsetWidth === width;
+			if (!same) element.scrollLeft = ((month - next.start) / next.months) * line.offsetWidth;
 		});
 	});
 </script>
