@@ -42,14 +42,19 @@
 
 	let isOpen = $state(false);
 	let pinned = $state(false);
-	// Wide screens show the rail for 3 s on page load, as a hint. Small screens never do: it would
-	// cover the content (the CSS also ignores it there, so the server render never flashes it).
+	// The rail shows for 3 s on page load, as a hint, where it fits in the margin beside the page.
+	// Elsewhere it never does: it is laid over the page, so it would cover the start of every line.
+	// The CSS decides where it fits (--peek-fits below, so the server render never flashes it).
 	let peeking = $state(true);
 	let open = $derived(isOpen || peeking);
+	let wrapper: HTMLElement | undefined = $state();
+
+	const peekFits = () =>
+		!!wrapper && getComputedStyle(wrapper).getPropertyValue('--peek-fits').trim() === '1';
 
 	$effect(() => {
 		if (!browser) return;
-		if (!window.matchMedia('(min-width: 768px)').matches) {
+		if (!peekFits()) {
 			peeking = false;
 			return;
 		}
@@ -71,8 +76,9 @@
 	}
 
 	function handleToggle() {
-		if (peeking && !isOpen) {
-			// Only the load-time peek shows it: the handle reads "Close sidebar"
+		if (peeking && !isOpen && peekFits()) {
+			// Only the load-time peek shows it: the handle reads "Close sidebar". (Not when the
+			// peek stopped fitting meanwhile, e.g. the page switched to the timeline: it is closed)
 			peeking = false;
 			return;
 		}
@@ -89,6 +95,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
+	bind:this={wrapper}
 	class="drawer-wrapper"
 	class:drawer-open={isOpen}
 	class:drawer-peek={peeking && !isOpen}
@@ -111,7 +118,7 @@
 								{@const Icon = item.icon}
 								<Icon />
 							{/if}
-							<span>{item.label}</span>
+							<Navigation.TriggerText>{item.label}</Navigation.TriggerText>
 						</Navigation.TriggerAnchor>
 					{/if}
 				{/each}
@@ -145,21 +152,36 @@
 		transform: translateX(calc(-100% + var(--handle-w)));
 		transition: transform 0.3s ease;
 		--handle-w: 20px;
+		/* 1 where the rail and its handle (7.5rem) fit in the margin beside the page, 0 where they
+		   would cover it. A page's content is centred and at most 56rem wide (max-w-4xl), which
+		   leaves that margin from 72rem (1rem to spare for a scrollbar); what is wider is marked
+		   data-page-wide and is at most 80rem (max-w-7xl: the timeline), so from 96rem. */
+		--peek-fits: 0;
+	}
+
+	@media (min-width: 72rem) {
+		.drawer-wrapper {
+			--peek-fits: 1;
+		}
+	}
+
+	@media (max-width: 95.999rem) {
+		:global(body:has([data-page-wide])) .drawer-wrapper {
+			--peek-fits: 0;
+		}
 	}
 
 	.drawer-wrapper.drawer-open {
 		transform: translateX(0);
 	}
 
-	/* The load-time peek is for wide screens only */
-	@media (min-width: 768px) {
-		.drawer-wrapper.drawer-peek {
-			transform: translateX(0);
-		}
+	/* The load-time peek: shown where it fits, the handle alone elsewhere */
+	.drawer-wrapper.drawer-peek {
+		transform: translateX(calc((1 - var(--peek-fits)) * (-100% + var(--handle-w))));
+	}
 
-		.drawer-peek .handle-icon {
-			transform: rotate(180deg);
-		}
+	.drawer-peek .handle-icon {
+		transform: rotate(calc(var(--peek-fits) * 180deg));
 	}
 
 	.drawer-content {
@@ -180,6 +202,12 @@
 		:global([data-scope='navigation'][data-part='trigger-anchor'][data-layout='rail'] > svg) {
 		width: 1.5rem;
 		height: 1.5rem;
+	}
+
+	/* The labels fit the rail: "Experiences" at the page's text size is wider than its link */
+	.drawer-content :global([data-scope='navigation'][data-part='trigger-text'][data-layout='rail']) {
+		font-size: var(--text-xs);
+		line-height: var(--text-xs--line-height);
 	}
 
 	.drawer-handle {
