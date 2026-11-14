@@ -1,8 +1,22 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import { ExperienceType } from 'portfolio-common';
-	import { AcademicCap, Briefcase, Heart, User } from 'svelte-heros-v2';
-	import { buildTimeline, placeSpan, timelineMinWidth } from '#services/timeline.ts';
+	import { flushSync } from 'svelte';
+	import {
+		AcademicCap,
+		Briefcase,
+		Heart,
+		MagnifyingGlassMinus,
+		MagnifyingGlassPlus,
+		User
+	} from 'svelte-heros-v2';
+	import {
+		buildTimeline,
+		closestMonthWidth,
+		defaultMonthWidth,
+		placeSpan,
+		timelineTicks
+	} from '#services/timeline.ts';
 	import {
 		experiencePeriod,
 		formatMonthRange,
@@ -35,7 +49,7 @@
 
 	let timeline = $derived(buildTimeline(experiences));
 	let axis = $derived({ start: timeline.start, end: timeline.end });
-	let minWidth = $derived(timelineMinWidth(timeline.end - timeline.start));
+	let months = $derived(timeline.end - timeline.start);
 	let filtering = $derived(filters.skills.length > 0);
 	let previewFilters = $derived({ skills: previewSkill ? [previewSkill] : [] });
 	let types = $derived(
@@ -69,8 +83,117 @@
 		return formatMonthRange(period.start, period.ongoing ? undefined : period.end);
 	};
 
-	// Opens on the most recent years: a long career scrolls back in time
+	// --- Zoom -----------------------------------------------------------------------------------
+	// The zoom is the width of a month. The timeline opens with its shortest bar wide enough to be
+	// read (see defaultMonthWidth) and scrolls sideways; the wheel, a pinch or the buttons change
+	// it, between the whole axis in sight and the closest zoom.
 	let scroller: HTMLElement | undefined = $state();
+	let track: HTMLElement | undefined = $state();
+	/** The month's width the visitor chose; null until they zoom */
+	let zoom: number | null = $state(null);
+	/** The width the axis has to fill: the scroller's, without its padding (0 until measured) */
+	let available = $state(0);
+	/** The month's width that shows the whole axis: the farthest zoom (0 until measured) */
+	let fit = $derived(available > 0 && months > 0 ? available / months : 0);
+	let closest = $derived(Math.max(closestMonthWidth(months), fit));
+	// A page wider than the axis stretches it: a month is never narrower than at the farthest zoom
+	let monthWidth = $derived(Math.max(zoom ?? defaultMonthWidth(timeline), fit));
+	let ticks = $derived(timelineTicks(axis, monthWidth));
+	let monthly = $derived(ticks.some((tick) => !tick.year));
+	let canZoomIn = $derived(monthWidth < closest - 0.01);
+	let canZoomOut = $derived(fit > 0 && monthWidth > fit + 0.01);
+
+	/**
+	 * Sets the month's width, within the zoom's limits, keeping the month at `clientX` where it
+	 * is on the screen. False when the zoom is already at that limit.
+	 */
+	const zoomTo = (width: number, clientX: number): boolean => {
+		if (!scroller || !track || months <= 0 || fit <= 0) return false;
+		const next = Math.min(Math.max(width, fit), closest);
+		if (Math.abs(next - monthWidth) < 0.001) return false;
+		const before = track.getBoundingClientRect();
+		const ratio = before.width > 0 ? (clientX - before.left) / before.width : 0;
+		flushSync(() => (zoom = next));
+		const after = track.getBoundingClientRect();
+		scroller.scrollLeft += after.left + ratio * after.width - clientX;
+		return true;
+	};
+
+	/** The buttons: around the middle of what is in sight */
+	const zoomBy = (factor: number) => {
+		if (!scroller) return;
+		const view = scroller.getBoundingClientRect();
+		zoomTo(monthWidth * factor, view.left + view.width / 2);
+	};
+
+	$effect(() => {
+		const element = scroller;
+		if (!element) return;
+
+		// The wheel zooms once the pointer was moved over the timeline. A page scrolled with the
+		// wheel brings the timeline under a pointer that did not move: it keeps scrolling the page.
+		// (Browsers send a move event for that too, at the same place on the screen.)
+		let armed = false;
+		let screenX = NaN;
+		let screenY = NaN;
+		const onPointerMove = (event: PointerEvent) => {
+			if (event.screenX === screenX && event.screenY === screenY) return;
+			screenX = event.screenX;
+			screenY = event.screenY;
+			armed = event.target instanceof Node && element.contains(event.target);
+		};
+
+		const onWheel = (event: WheelEvent) => {
+			// Ctrl + wheel is also what a trackpad's pinch sends
+			const pinching = event.ctrlKey;
+			// A sideways wheel (or Shift + wheel) scrolls along the axis
+			const sideways = event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY);
+			if (!pinching && (!armed || sideways)) return;
+			const unit = event.deltaMode === 1 ? 32 : event.deltaMode === 2 ? 400 : 1;
+			const factor = Math.exp(-event.deltaY * unit * (pinching ? 0.01 : 0.002));
+			// At a limit the wheel goes back to the page: the timeline never traps the scroll
+			if (zoomTo(monthWidth * factor, event.clientX) || pinching) event.preventDefault();
+		};
+
+		// Two fingers: the timeline's zoom follows their spread (the page's own pinch zoom is off
+		// over the timeline, see touch-action)
+		let pinch: { spread: number; width: number } | null = null;
+		const spread = (touches: TouchList) =>
+			Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+		const onTouchStart = (event: TouchEvent) => {
+			pinch =
+				event.touches.length === 2 ? { spread: spread(event.touches), width: monthWidth } : null;
+		};
+		const onTouchMove = (event: TouchEvent) => {
+			if (!pinch || event.touches.length !== 2) return;
+			if (event.cancelable) event.preventDefault();
+			if (pinch.spread <= 0) return;
+			zoomTo(
+				(pinch.width * spread(event.touches)) / pinch.spread,
+				(event.touches[0].clientX + event.touches[1].clientX) / 2
+			);
+		};
+		const onTouchEnd = (event: TouchEvent) => {
+			if (event.touches.length < 2) pinch = null;
+		};
+
+		document.addEventListener('pointermove', onPointerMove, { passive: true });
+		element.addEventListener('wheel', onWheel, { passive: false });
+		element.addEventListener('touchstart', onTouchStart, { passive: true });
+		element.addEventListener('touchmove', onTouchMove, { passive: false });
+		element.addEventListener('touchend', onTouchEnd);
+		element.addEventListener('touchcancel', onTouchEnd);
+		return () => {
+			document.removeEventListener('pointermove', onPointerMove);
+			element.removeEventListener('wheel', onWheel);
+			element.removeEventListener('touchstart', onTouchStart);
+			element.removeEventListener('touchmove', onTouchMove);
+			element.removeEventListener('touchend', onTouchEnd);
+			element.removeEventListener('touchcancel', onTouchEnd);
+		};
+	});
+
+	// Opens on the most recent months: a career scrolls back in time
 	$effect(() => {
 		if (scroller) scroller.scrollLeft = scroller.scrollWidth;
 	});
@@ -82,14 +205,27 @@
 	data-timeline
 >
 	{#if timeline.items.length > 0}
-		<div class="overflow-x-auto px-3 pt-3 pb-2 md:px-4 md:pt-4" bind:this={scroller}>
-			<div class="relative" style:min-width="{minWidth}px">
-				<!-- Year lines and the current month, behind the bars -->
+		<div
+			class="scroller overflow-x-auto px-3 pt-3 pb-2 md:px-4 md:pt-4"
+			bind:this={scroller}
+			data-timeline-scroller
+		>
+			<!-- As wide as the scroller's content box, whatever the axis overflows by -->
+			<div class="h-0" bind:clientWidth={available}></div>
+			<div
+				class="relative min-w-full"
+				style:width="{Math.round(months * monthWidth)}px"
+				bind:this={track}
+				data-timeline-track
+			>
+				<!-- The axis' lines and the current month, behind the bars -->
 				<div class="pointer-events-none absolute inset-0" aria-hidden="true">
-					{#each timeline.years as year (year.year)}
+					{#each ticks as tick (tick.month)}
 						<div
-							class="absolute inset-y-0 border-l border-surface-200-800"
-							style:left={at(year.month)}
+							class="absolute inset-y-0 border-l {tick.year && monthly
+								? 'border-surface-300-700'
+								: 'border-surface-200-800'}"
+							style:left={at(tick.month)}
 						></div>
 					{/each}
 					{#if timeline.today !== undefined}
@@ -101,9 +237,15 @@
 					{/if}
 				</div>
 				<div class="relative h-6 text-xs text-surface-700-300" aria-hidden="true">
-					{#each timeline.years as year (year.year)}
-						{#if year.labelled}
-							<span class="absolute pl-1.5" style:left={at(year.month)}>{year.year}</span>
+					{#each ticks as tick (tick.month)}
+						{#if tick.label}
+							<span
+								class="absolute pl-1.5 whitespace-nowrap {tick.year && monthly
+									? 'font-semibold'
+									: ''}"
+								style:left={at(tick.month)}
+								data-timeline-tick>{tick.label}</span
+							>
 						{/if}
 					{/each}
 				</div>
@@ -202,7 +344,29 @@
 		<div
 			class="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-surface-200-800 px-3 py-2 text-xs text-surface-700-300 md:px-4"
 		>
-			<p>Select a bar to read about it.</p>
+			<p>Select a bar to read about it. Scroll or pinch over the timeline to zoom.</p>
+			<div class="flex gap-1" role="group" aria-label="Zoom">
+				<button
+					type="button"
+					class="btn-icon btn-icon-sm size-8 hover:preset-tonal"
+					aria-label="Zoom out"
+					title="Zoom out"
+					disabled={!canZoomOut}
+					onclick={() => zoomBy(1 / 1.6)}
+				>
+					<MagnifyingGlassMinus size="16" aria-hidden="true" />
+				</button>
+				<button
+					type="button"
+					class="btn-icon btn-icon-sm size-8 hover:preset-tonal"
+					aria-label="Zoom in"
+					title="Zoom in"
+					disabled={!canZoomIn}
+					onclick={() => zoomBy(1.6)}
+				>
+					<MagnifyingGlassPlus size="16" aria-hidden="true" />
+				</button>
+			</div>
 			{#if types.length > 1}
 				<ul class="ml-auto flex flex-wrap gap-x-3 gap-y-1" aria-label="Types of experience">
 					{#each types as type (type)}
@@ -262,6 +426,11 @@
 	}
 	.lanes > :global(li) {
 		grid-column: 1;
+	}
+
+	/* Two fingers zoom the timeline, not the page (one still scrolls both ways) */
+	.scroller {
+		touch-action: pan-x pan-y;
 	}
 
 	.bar {

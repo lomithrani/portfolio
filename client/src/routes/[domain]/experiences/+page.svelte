@@ -4,7 +4,7 @@
 	import { afterNavigate, beforeNavigate, invalidateAll, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { tick, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { Briefcase, DocumentArrowUp, Plus } from 'svelte-heros-v2';
 	import Experience from '#components/Experience.svelte';
 	import ExperienceEditor from '#components/experience-editor/ExperienceEditor.svelte';
@@ -41,6 +41,14 @@
 	// Admin-only UI appears once the session has been checked with the API (in the browser,
 	// after hydration): never for a stale local session, and the SSR markup stays the same
 	let isAdmin = $derived($sessionCheckedStore && isDomainAdmin($authenticationStore, data.domain));
+	// "Hire me" is for everyone but the owner. The server renders it (it cannot know the visitor);
+	// in the browser it steps aside as soon as the kept session says this is the owner's own
+	// portfolio, before the API confirms it (a stale session is cleared, and brings it back)
+	let hydrated = $state(false);
+	onMount(() => {
+		hydrated = true;
+	});
+	let maybeOwner = $derived(hydrated && isDomainAdmin($authenticationStore, data.domain));
 
 	// A shared filtered link renders filtered on the server too (Filters keeps the URL in sync)
 	let filters: ExperienceFilters = $state(filtersFromSearchParams(page.url.searchParams));
@@ -363,10 +371,44 @@
 	/>
 </svelte:head>
 
-<!-- Owners get extra bottom space: neither the floating button (small screens, with the toasts
-	above it) nor the toasts (bottom-end) hide the end of the list, e.g. the Edit button of a card
-	just added last -->
-<div class="p-4 md:p-6 {isAdmin ? 'pb-40 md:pb-24' : ''}">
+<!-- The page's floating corner: the view switch, and next to it what this visitor is most likely
+	here for: "Hire me" for a visitor, "Add experience" for the owner on a small screen once the
+	toolbar has scrolled away. First in the page, so the keyboard reaches it before the list -->
+{#if allExperiences.length > 0}
+	<div
+		class="dock pointer-events-none fixed z-10 flex flex-wrap-reverse items-stretch justify-end gap-2"
+		data-page-dock
+	>
+		<ViewSwitch bind:view class="pointer-events-auto shadow-xl" />
+		{#if isAdmin}
+			{#if !toolbarVisible}
+				<button
+					type="button"
+					class="btn preset-filled-primary-700-300 pointer-events-auto min-h-11 px-5 shadow-xl md:hidden"
+					data-add-fab
+					onclick={() => openEditor(null)}
+				>
+					<Plus size="20" aria-hidden="true" />
+					Add experience
+				</button>
+			{/if}
+		{:else if !maybeOwner}
+			<a
+				href={resolve('/[domain]/hire', { domain: data.domain.name })}
+				class="btn preset-filled-primary-700-300 pointer-events-auto min-h-11 px-5 font-semibold shadow-xl"
+				data-hire-me
+			>
+				<Briefcase size="20" aria-hidden="true" />
+				Hire me
+			</a>
+		{/if}
+	</div>
+{/if}
+
+<!-- Bottom space for the floating corner: it never hides the end of the list. Owners get more
+	on small screens, where the toasts (bottom-end) sit above it: e.g. the Edit button of a card
+	just added last stays in reach -->
+<div class="p-4 md:p-6 {allExperiences.length === 0 ? '' : isAdmin ? 'pb-40 md:pb-24' : 'pb-24'}">
 	<div class="mx-auto w-full max-w-4xl space-y-4">
 		{#if allExperiences.length === 0}
 			{#if isAdmin}
@@ -425,17 +467,12 @@
 				</section>
 			{/if}
 		{:else}
-			<!-- The view switch is on the heading's line; phones: the owner's buttons share a row
-				under it -->
-			<div class="flex flex-wrap items-center gap-3">
-				{#if isAdmin}
-					<h2 class="text-xl font-bold md:text-2xl">Experience</h2>
-				{/if}
-				<div class="ml-auto">
-					<ViewSwitch bind:view />
-				</div>
-				{#if isAdmin}
-					<div class="flex flex-wrap gap-2 max-sm:w-full" bind:this={toolbar}>
+			<!-- The owner's heading and buttons (phones: the buttons share a row under it). Visitors
+				have neither: their page starts with the filters -->
+			{#if isAdmin}
+				<div class="flex flex-wrap items-center gap-3">
+					<h2 class="text-xl font-bold md:text-2xl">Experiences</h2>
+					<div class="ml-auto flex flex-wrap gap-2 max-sm:w-full" bind:this={toolbar}>
 						{#if importAvailable}
 							{@render importButton('min-h-10 max-sm:flex-1')}
 						{/if}
@@ -449,8 +486,8 @@
 							Add experience
 						</button>
 					</div>
-				{/if}
-			</div>
+				</div>
+			{/if}
 
 			<Filters experiences={allExperiences} bind:filters resultCount={experiences.length} />
 
@@ -518,18 +555,6 @@
 	<ProjectPreview experiences={allExperiences} {view} onSkill={(key) => (previewSkill = key)} />
 {/if}
 
-{#if isAdmin && allExperiences.length > 0 && !toolbarVisible}
-	<button
-		type="button"
-		class="fab btn preset-filled-primary-700-300 fixed z-10 h-12 rounded-full px-5 shadow-xl md:hidden"
-		data-add-fab
-		onclick={() => openEditor(null)}
-	>
-		<Plus size="20" aria-hidden="true" />
-		Add experience
-	</button>
-{/if}
-
 {#snippet importButton(classes: string)}
 	<button
 		type="button"
@@ -581,16 +606,21 @@
 {/if}
 
 <style>
-	.fab {
+	/* Clear of the page's scrollbar on wide screens (it belongs to <main>, under the corner) */
+	.dock {
 		bottom: calc(1rem + env(safe-area-inset-bottom));
 		right: calc(1rem + env(safe-area-inset-right));
+		left: calc(2.5rem + env(safe-area-inset-left));
+	}
+	@media (min-width: 48rem) {
+		.dock {
+			right: calc(1.5rem + env(safe-area-inset-right));
+		}
 	}
 
-	/* While the floating button shows (small screens), the toasts (bottom-end) sit above it rather
-		than over it. The group's own offset is an inline style */
-	@media (max-width: 47.999rem) {
-		:global(body:has([data-add-fab]) [data-scope='toast'][data-part='group'][data-side='bottom']) {
-			bottom: calc(5rem + env(safe-area-inset-bottom, 0px)) !important;
-		}
+	/* The toasts (bottom-end) sit above the floating corner rather than over it. The group's own
+		offset is an inline style */
+	:global(body:has([data-page-dock]) [data-scope='toast'][data-part='group'][data-side='bottom']) {
+		bottom: calc(5rem + env(safe-area-inset-bottom, 0px)) !important;
 	}
 </style>
