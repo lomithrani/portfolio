@@ -61,6 +61,7 @@ const jobOutput = Type.Object(
     description: text('The job description as markdown, in the language of the document'),
     city: text('City of the workplace, as written'),
     postalCode: text('Postal code of the workplace'),
+    address: text('Street and number of the workplace, without the postal code and the city'),
     country: text('Country of the workplace, as written'),
     workMode: choice(WORK_MODES, 'on_site, hybrid (some days remote each week) or remote (fully remote)'),
     remoteDaysPerWeek: numberText('Remote days per week of a hybrid job'),
@@ -110,7 +111,7 @@ Rules:
 - Keep the document's language: write the title, the description and the list items in the language of the document. Do not translate.
 - title: the job title as written. company: the hiring company; "" when it is not named (e.g. an agency hiring for "a client").
 - description: the job description itself, as markdown: short "## " headings (such as the company, the mission, the responsibilities, the profile sought, the hiring process) and "- " bullet points, keeping the document's wording and facts. Leave out personal contact details (names, emails, phone numbers).
-- city and postalCode: the workplace, as written. country: as written (e.g. "France"); "" when the document names none.
+- city and postalCode: the workplace, as written. address: its street and number (e.g. "12 rue de la République"), without the postal code and the city; "" when the document gives none. country: as written (e.g. "France"); "" when the document names none.
 - workMode: "on_site", "hybrid" (some days remote each week) or "remote" (fully remote). remoteDaysPerWeek: the remote days a week of a hybrid job.
 - contractType, for French contracts: "cdi" (CDI, permanent), "cdd" (CDD, fixed-term), "interim" (intérim, temporary work), "apprenticeship" (contrat d'apprentissage, or "alternance" when the kind of contract is not given), "professionalisation" (contrat de professionnalisation), "internship" (stage), "freelance" (freelance, independent, portage salarial). durationMonths: the length of the contract in months. startDate: "YYYY-MM-DD", the first of the month when only a month is given, "" for "as soon as possible". trialPeriodMonths: the trial period (période d'essai) in months. collectiveAgreement: the convention collective (e.g. "Syntec").
 - workingTimeArrangement: "weekly_hours" when the job counts hours a week (then hoursPerWeek, e.g. "35" or "37.5"), "annual_days" for a forfait jours (then daysPerYear, e.g. "218"). rttDaysPerYear: the RTT days a year.
@@ -142,6 +143,7 @@ export interface JobPostingDraft {
     country: JobCountry
     city?: string
     postalCode?: string
+    address?: string
     workMode?: WorkMode
     /** Hybrid only */
     remoteDaysPerWeek?: number
@@ -499,6 +501,7 @@ export function normalizeJobExtraction(output: unknown): JobExtraction {
   // left for the recruiter to check, not guessed
   const city = read.line('city', 'city', JOB_LIMITS.city)
   const postalCode = read.postalCode('postalCode')
+  const address = read.line('address', 'address', JOB_LIMITS.address)
   const country = read.plain('country')
   if (country && !isFrance(country)) {
     read.warnings.push('Only jobs in France are handled: check the location and the contract')
@@ -583,7 +586,7 @@ export function normalizeJobExtraction(output: unknown): JobExtraction {
     company,
     status: 'draft' as const,
     openings,
-    location: compact({ country: 'FR' as const, city, postalCode, workMode, remoteDaysPerWeek })!,
+    location: compact({ country: 'FR' as const, city, postalCode, address, workMode, remoteDaysPerWeek })!,
     contract,
     workingTime,
     pay: payFound

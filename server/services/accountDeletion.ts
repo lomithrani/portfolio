@@ -6,6 +6,7 @@ import {
   Experience,
   JobApplication,
   JobPosting,
+  PerfectJob,
   User,
   Workflow,
   WorkflowInstance
@@ -30,6 +31,10 @@ import { logger } from './logger';
 //   legacy `workflows` collection (the old /workflows API, no longer read)
 // - WorkflowInstance.owner (visitors' progress in the owner's journey) and
 //   .visitor (the account's progress in other journeys)
+// - PerfectJob.user (the criteria the owner rated, the address they travel
+//   from among them). The travel times computed from that address stay in
+//   CommuteCache until they expire (30 days at most): their keys are hashes
+//   that show neither the address nor the account
 // - JobPosting.recruiter, with every JobApplication to those postings
 // - JobApplication.candidate (and .domain, the candidate's own domain)
 // - AppointmentSchedule.user and AppointmentBooking.user
@@ -43,6 +48,7 @@ export interface AccountDeletionSummary {
   /** Documents of the legacy `workflows` collection (models/database/workflow.ts) */
   legacyWorkflows: number;
   workflowInstances: number;
+  perfectJobs: number;
   jobPostings: number;
   jobApplications: number;
   appointmentSchedules: number;
@@ -83,6 +89,7 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     jobApplications,
     workflowInstances,
     workflows,
+    perfectJobs,
     legacyWorkflows,
     appointmentBookings,
     appointmentSchedules
@@ -93,6 +100,7 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     }),
     WorkflowInstance.deleteMany({ $or: [{ owner: id }, { visitor: id }] }),
     Workflow.deleteMany({ user: id }),
+    PerfectJob.deleteMany({ user: id }),
     // The old /workflows API wrote there; no model reads it any more
     mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).deleteMany({ user: { $in: [id, userId] } }),
     AppointmentBooking.deleteMany({ user: id }),
@@ -112,6 +120,7 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     workflows: workflows.deletedCount,
     legacyWorkflows: legacyWorkflows.deletedCount,
     workflowInstances: workflowInstances.deletedCount,
+    perfectJobs: perfectJobs.deletedCount,
     jobPostings: jobPostings.deletedCount,
     jobApplications: jobApplications.deletedCount,
     appointmentSchedules: appointmentSchedules.deletedCount,

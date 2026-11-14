@@ -1,5 +1,6 @@
 import type { ServerStep } from './types';
 import { jobStep } from './job';
+import { jobMatchStep } from './jobMatch';
 import { meetingStep } from './meeting';
 import { noteStep } from './note';
 
@@ -9,7 +10,7 @@ import { noteStep } from './note';
 // (docs/WORKFLOW_STEPS.md). tests/workflows.test.ts fails when the two
 // registries differ.
 // (any: each step has its own settings and data types)
-const steps: ServerStep<any, any, any>[] = [noteStep, jobStep, meetingStep];
+const steps: ServerStep<any, any, any>[] = [noteStep, jobStep, jobMatchStep, meetingStep];
 
 const SERVER_STEPS: Record<string, ServerStep> = Object.fromEntries(steps.map((step) => [step.type, step]));
 
@@ -20,7 +21,8 @@ export const serverStep = (type: string): ServerStep | undefined =>
 /** Every step type the API has */
 export const serverStepTypes = (): string[] => Object.keys(SERVER_STEPS);
 
-export type { ServerStep, StepContext } from './types';
+export type { EarlierStep, ServerStep, StepContext } from './types';
 export type { JourneyJobDto, JobStepData, JobStepView } from './job';
+export type { JobMatchCriterionView, JobMatchOutcome, JobMatchView } from './jobMatch';
 export type { MeetingStepData } from './meeting';
 export type { NoteStepData } from './note';

@@ -22,6 +22,8 @@ import {
 const locationSchema = new Schema({
   country: { type: String, enum: JOB_COUNTRIES, required: true },
   city: String,
+  // The office's street and number, when the posting gives it
+  address: String,
   postalCode: String,
   workMode: { type: String, enum: WORK_MODES, required: true },
   remoteDaysPerWeek: Number

@@ -141,7 +141,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	Recruiters write job descriptions: title, company, location, work mode, contract, working time,
 	pay, requirements, benefits and description. Once published, a job description is public, but it
 	never names the recruiter's account. A job description PDF can also be imported: it is sent to
-	Anthropic like a résumé, and not stored by us.
+	Anthropic like a résumé, and not stored by us. When a job description is scored in a hiring
+	journey with a commute criterion (see <a class="link-text" href="#data-perfect-job">perfect job</a
+	>), the address of its office is sent to the map service that locates it.
 </p>
 
 <h4 id="data-applications">Applications</h4>
@@ -168,6 +170,27 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	you chose). We keep only a reservation of the time slot (the time, the calendar, the event identifier
 	and a hash of your email address keyed with a secret), which is deleted automatically when the slot
 	ends or the meeting is cancelled.
+</p>
+
+<h4 id="data-perfect-job">Your perfect job (private)</h4>
+<p>
+	A portfolio owner can describe the job they are looking for: criteria such as the pay they ask
+	for, the contracts and work modes they accept, their skills, and how much each one matters. It is
+	<strong>private</strong>: only its owner can read it. If the owner adds the matching step to their
+	hiring journey, the job description a recruiter picks is scored against these criteria, out of
+	100, by fixed rules. The recruiter sees the score and the minimum the owner set and, if the owner
+	chooses so, the name of each criterion and whether their job matches it; never what the owner
+	asked for. A recruiter who tries several job descriptions can still infer part of it from the
+	scores.
+</p>
+<p>
+	The commute criterion is optional, and offered only where this site computes travel times. It
+	stores the address you travel from (a place nearby does as well as your home) and where it is on a
+	map. To find it and to compute travel times to a job, that address is sent to the Géoplateforme of
+	IGN, the French state's map service, and, where public transport is offered, its position to
+	Transitous, a journey planner run by volunteers. Neither receives your name, your account or your
+	IP address. Recruiters never see your address; whether the commute to their job matches does say
+	something about where you are.
 </p>
 
 <h4 id="data-calendar">Google Calendar (portfolio owners)</h4>
@@ -224,6 +247,13 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			</tr>
 			<tr>
 				<td>Publish your portfolio, your hiring journey and your booking schedules</td>
+				<td>Contract, art. 6(1)(b)</td>
+			</tr>
+			<tr>
+				<td>
+					Score the job descriptions picked in your hiring journey against your perfect job, and
+					compute the travel times it asks for
+				</td>
 				<td>Contract, art. 6(1)(b)</td>
 			</tr>
 			<tr>
@@ -326,6 +356,22 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 					class="link-text"
 					href={LINKS.githubPrivacy}
 					rel="noopener noreferrer">GitHub privacy statement</a
+				>);
+			</li>
+			<li>
+				IGN, Institut national de l'information géographique et forestière (France): the addresses
+				to locate and the points to compute a travel time between, for the commute criterion (<a
+					class="link-text"
+					href={LINKS.geoplateforme}
+					rel="noopener noreferrer">Géoplateforme</a
+				>);
+			</li>
+			<li>
+				Transitous, a journey planner run by volunteers: the points to compute a public transport
+				time between, where this site offers it (<a
+					class="link-text"
+					href={LINKS.transitous}
+					rel="noopener noreferrer">transitous.org</a
 				>).
 			</li>
 		</ul>
@@ -363,9 +409,17 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			</tr>
 			<tr>
 				<td>
-					Portfolio, experiences, hiring journey, booking schedules, job descriptions, applications
+					Portfolio, experiences, hiring journey, perfect job (the address you travel from
+					included), booking schedules, job descriptions, applications
 				</td>
 				<td>Until you delete them, or your account</td>
+			</tr>
+			<tr>
+				<td>Travel times, and where the addresses of job descriptions are</td>
+				<td>
+					30 days for a travel time, 90 for the location of a job's address, under a keyed hash that
+					does not show the addresses; they are not tied to an account
+				</td>
 			</tr>
 			<tr>
 				<td>Your progress in other portfolios' journeys</td>
@@ -495,6 +549,12 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	be incomplete or wrong: you review and edit them, and nothing is published until you add it. No
 	decision with legal or similarly significant effects on you is made by automated means: the site
 	does not score, rank or filter candidates, and recruiters see applications as they are.
+</p>
+<p>
+	A hiring journey can score the job description a recruiter picks against the owner's perfect job,
+	and open its next steps only from a minimum the owner set. The score is computed by fixed rules,
+	not by an AI model, and it is about the job description, not about a person: the recruiter can
+	complete it, pick another one, or reach the owner another way.
 </p>
 
 <h3 id="children">Children</h3>

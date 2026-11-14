@@ -17,6 +17,7 @@ import {
   RateLimitCounter,
   Skill,
   User,
+  PerfectJob,
   Workflow,
   WorkflowInstance
 } from '../models/database';
@@ -78,6 +79,7 @@ afterEach(async () => {
   await JobApplication.deleteMany({ $or: [{ job: { $in: jobIds } }, { candidate: { $in: userIds } }] });
   await JobPosting.deleteMany({ _id: { $in: jobIds } });
   await Workflow.deleteMany({ user: { $in: userIds } });
+  await PerfectJob.deleteMany({ user: { $in: userIds } });
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: userIds } }, { visitor: { $in: userIds } }] });
   await AppointmentSchedule.deleteMany({ user: { $in: userIds } });
   await AppointmentBooking.deleteMany({ user: { $in: userIds } });
@@ -169,6 +171,19 @@ const accountWithData = async (name: string) => {
   });
   expect(experience.status).toBe(200);
   await Workflow.create({ user: user.userId, steps: [{ id: 'meeting', type: 'meeting', config: {} }] });
+  // What the account looks for in a job, where it travels from included
+  await PerfectJob.create({
+    user: user.userId,
+    criteria: {
+      commute: {
+        importance: 4,
+        from: '1 rue du Test, Lyon',
+        place: { label: '1 Rue du Test 69001 Lyon', lat: 45.767, lon: 4.834 },
+        modes: ['bike'],
+        maxMinutesPerWeek: 300
+      }
+    }
+  });
   // A document of the old /workflows API, still stored in the legacy collection
   await mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).insertOne({
     user: new Types.ObjectId(user.userId),
@@ -194,6 +209,7 @@ const remaining = async (userId: string, domainName: string, experienceId: strin
     .collection(LEGACY_WORKFLOWS_COLLECTION)
     .countDocuments({ user: new Types.ObjectId(userId) }),
   workflowInstances: await WorkflowInstance.countDocuments({ $or: [{ owner: userId }, { visitor: userId }] }),
+  perfectJobs: await PerfectJob.countDocuments({ user: userId }),
   jobPostings: await JobPosting.countDocuments({ recruiter: userId }),
   jobApplications: await JobApplication.countDocuments({ candidate: userId }),
   appointmentSchedules: await AppointmentSchedule.countDocuments({ user: userId }),
@@ -207,6 +223,7 @@ const nothing = {
   workflows: 0,
   legacyWorkflows: 0,
   workflowInstances: 0,
+  perfectJobs: 0,
   jobPostings: 0,
   jobApplications: 0,
   appointmentSchedules: 0,
@@ -261,6 +278,7 @@ describe('DELETE /me', () => {
       workflows: 1,
       legacyWorkflows: 1,
       workflowInstances: 2,
+      perfectJobs: 1,
       jobPostings: 1,
       jobApplications: 1,
       appointmentSchedules: 1,

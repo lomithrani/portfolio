@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from 'portfolio-common';
 import {
+	JOB_FIELD_LABELS,
+	JOB_FORM_FIELDS,
 	emptyJobForm,
 	formToJobInput,
 	formatContract,
@@ -11,6 +14,7 @@ import {
 	formatWorkingTime,
 	jobFieldOfProperty,
 	jobFormErrors,
+	jobFormFieldOf,
 	jobFormSignature,
 	jobToForm,
 	parseFormNumber,
@@ -272,5 +276,55 @@ describe('display', () => {
 		expect(formatLevelsToCeo(1)).toBe('Reports to the CEO');
 		expect(formatLevelsToCeo(3)).toBe('3 levels below the CEO');
 		expect(formatLevelsToCeo(undefined)).toBe('');
+	});
+});
+
+// A candidate's perfect job is read from the fields of a posting (portfolio-common's
+// JOB_FIELD_CRITERIA; the API's tests check the scoring and the storage): the editor must have an
+// input for each of them, or a recruiter could not state what a candidate asks for
+describe('the fields a perfect job is scored on', () => {
+	const scored = JOB_FIELD_PATHS.filter((path) => JOB_FIELD_CRITERIA[path].length > 0);
+
+	it('each have an input in the editor, shown and named', () => {
+		expect(scored.length).toBeGreaterThan(10);
+		for (const path of scored) {
+			const field = jobFormFieldOf(path);
+			expect({ path, field: field !== undefined }).toEqual({ path, field: true });
+			expect(JOB_FORM_FIELDS, path).toContain(field);
+			expect(JOB_FIELD_LABELS[field!], path).toBeTruthy();
+		}
+	});
+
+	it('leaves no field of a posting without an input, but the country and the currency', () => {
+		expect(JOB_FIELD_PATHS.filter((path) => jobFormFieldOf(path) === undefined)).toEqual([
+			'location.country',
+			'pay.currency'
+		]);
+		expect(jobFormFieldOf('toString')).toBeUndefined();
+	});
+
+	it('go from the form to the posting sent, and back', () => {
+		const form: JobForm = {
+			...emptyJobForm(),
+			title: 'Staff Engineer',
+			description: 'Build things.',
+			city: 'Lyon',
+			postalCode: '69003',
+			address: ' 12 rue de la République ',
+			workMode: 'hybrid',
+			remoteDaysPerWeek: '2'
+		};
+		const sent = formToJobInput(form);
+		expect(sent.location).toEqual({
+			country: 'FR',
+			city: 'Lyon',
+			postalCode: '69003',
+			address: '12 rue de la République',
+			workMode: 'hybrid',
+			remoteDaysPerWeek: 2
+		});
+		expect(jobToForm(sent).address).toBe('12 rue de la République');
+		expect(formatPlace(sent.location)).toBe('12 rue de la République, Lyon (69003), France');
+		expect(jobFieldOfProperty('location.address')).toBe('address');
 	});
 });

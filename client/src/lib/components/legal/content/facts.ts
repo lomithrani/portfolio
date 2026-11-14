@@ -40,6 +40,10 @@ export const LINKS = {
 	railwayPrivacy: 'https://railway.com/legal/privacy',
 	githubPrivacy:
 		'https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement',
+	/** The French state's map services (geocoding, routes), used for travel times */
+	geoplateforme: 'https://geoservices.ign.fr/',
+	/** The community journey planner used for public transport times, where offered */
+	transitous: 'https://transitous.org/',
 	dpf: 'https://www.dataprivacyframework.gov',
 	scc: 'https://eur-lex.europa.eu/eli/dec_impl/2021/914/oj'
 } as const;

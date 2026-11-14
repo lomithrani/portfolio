@@ -10,6 +10,8 @@ import {
 	toasts,
 	type OwnerSession
 } from './support/owner';
+import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from 'portfolio-common';
+import { jobFormFieldOf } from '../src/services/jobPosting';
 import { createJob, deleteJobs, listRecruiterJobs } from './support/jobs';
 
 // The recruiter space, as the e2e recruiter (seeded by `bun run --cwd server seed:e2e`: a
@@ -130,6 +132,60 @@ test.describe('the recruiter', () => {
 		await expect(page).toHaveURL(new RegExp(`/jobs/${id}$`));
 		await expect(page.getByRole('heading', { level: 2, name: title, exact: true })).toBeVisible();
 		await expect(fact(page, 'Contract')).toContainText('CDD (fixed-term) · 12 months');
+	});
+
+	test('has an input for every field a perfect job is scored on, the office address among them', async ({
+		page
+	}) => {
+		const title = `Platform engineer ${tag}`;
+		await openAsRecruiter(page, '/recruiter/jobs/new');
+		await expect(page.getByRole('textbox', { name: 'Job title' })).toBeVisible();
+
+		// Some inputs show for some jobs only: a hybrid job counted in hours, then one counted in days
+		const inputs = new Set<string>();
+		const note = async () => {
+			for (const id of await page.evaluate(() =>
+				[...document.querySelectorAll('form [id]')].map((element) => element.id)
+			)) {
+				inputs.add(id.replace(/^.*?-/, ''));
+			}
+		};
+		const workMode = page.getByRole('radiogroup', { name: 'Work mode' });
+		await workMode.getByText('Hybrid', { exact: true }).click();
+		await expect(page.getByLabel('Remote days a week')).toBeVisible();
+		await note();
+		await page
+			.getByRole('radiogroup', { name: /Counted in/ })
+			.getByText('Days per year (forfait jours)', { exact: true })
+			.click();
+		await expect(page.getByRole('textbox', { name: /^Days per year/ })).toBeVisible();
+		await note();
+		const scored = JOB_FIELD_PATHS.filter((path) => JOB_FIELD_CRITERIA[path].length > 0);
+		expect(scored.filter((path) => !inputs.has(jobFormFieldOf(path) ?? 'no input'))).toEqual([]);
+
+		// The address goes with the posting, and shows with its place
+		await page.getByRole('textbox', { name: 'Job title' }).fill(title);
+		await page.getByRole('textbox', { name: 'Job description' }).fill('Build the platform.');
+		await page.getByRole('textbox', { name: 'City', exact: true }).fill('Lyon');
+		await page.getByRole('textbox', { name: 'Postal code' }).fill('69003');
+		await page.getByRole('textbox', { name: 'Address' }).fill('12 rue de la République');
+		await page.getByRole('textbox', { name: /^Days per year/ }).fill('215');
+		await page.getByRole('textbox', { name: 'Minimum pay' }).fill('60000');
+		await page.getByRole('textbox', { name: 'Maximum pay' }).fill('70000');
+		await page.getByRole('button', { name: 'Create job description' }).click();
+		await expect(page).toHaveURL(JOB_PAGE);
+		await expect(fact(page, 'Location')).toContainText(
+			'12 rue de la République, Lyon (69003), France'
+		);
+		const id = JOB_PAGE.exec(new URL(page.url()).pathname)![1];
+		const stored = await (await api.get(`${API_URL}/recruiter/jobs/${id}`)).json();
+		expect(stored.location).toEqual({
+			country: 'FR',
+			city: 'Lyon',
+			postalCode: '69003',
+			address: '12 rue de la République',
+			workMode: 'hybrid'
+		});
 	});
 
 	test('edits a job description, then deletes it', async ({ page }) => {

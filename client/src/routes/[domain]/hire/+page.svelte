@@ -76,8 +76,11 @@
 	let request = 0;
 	const stepHeadings: HTMLElement[] = $state([]);
 
-	/** The steps a visitor can act on: not the ones locked or not passed */
-	const isUsable = (state: StepState) => state === 'open' || state === 'done';
+	/**
+	 * The steps a visitor can open: not the locked ones. A step that is not passed shows too: its
+	 * type says why (the job match: the score, and what to do about it)
+	 */
+	const isUsable = (state: StepState) => state !== 'locked';
 
 	/**
 	 * A step shows its controls when its type is known and the caller can use it. The owner
@@ -276,7 +279,9 @@
 						'card border p-4 sm:p-6 space-y-4',
 						unfolded ? 'border-primary-500/60' : 'border-surface-200-800'
 					]}
-					aria-current={!journey.own && state === 'open' ? 'step' : undefined}
+					aria-current={!journey.own && (state === 'open' || state === 'failed')
+						? 'step'
+						: undefined}
 				>
 					<div class="flex items-start gap-3">
 						<span
@@ -311,7 +316,7 @@
 								{#if state === 'failed'}<span class="sr-only">(not passed)</span>{/if}
 							</h2>
 							<p class="text-sm text-surface-700-300 break-words">
-								{stepNote(journey, index, state, entry?.note)}
+								{stepNote(journey, index, state, entry?.note, entry?.failedNote)}
 							</p>
 						</div>
 						{#if live && !unfolded}

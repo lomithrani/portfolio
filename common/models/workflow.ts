@@ -47,6 +47,11 @@ export interface WorkflowStepManifest<Config extends object = Record<string, nev
 	description: string;
 	/** How many steps of this type a journey can have; any number when unset */
 	max?: number;
+	/**
+	 * The step types a step of this type needs earlier in the journey: it works on what the
+	 * visitor did there (the job match scores the job picked in the job step)
+	 */
+	needs?: readonly string[];
 	/** The settings a new step of this type starts with (possibly incomplete: the owner fills them in) */
 	defaultConfig(): Config;
 	/**
@@ -117,8 +122,8 @@ export type WorkflowResult =
 /**
  * The journey as it is stored (each step's settings normalised by its type), or the first rule
  * it breaks: too many steps, an id used twice or not an id, a type this version does not have,
- * too many steps of one type, settings their type refuses, or a requirement step with no access
- * step after it (it would open nothing)
+ * too many steps of one type, settings their type refuses, a step without a step it needs
+ * before it, or a requirement step with no access step after it (it would open nothing)
  */
 export function parseWorkflow(input: readonly WorkflowStepInput[]): WorkflowResult {
 	const fail = (problem: WorkflowProblem): WorkflowResult => ({ ok: false, problem });
@@ -158,6 +163,20 @@ export function parseWorkflow(input: readonly WorkflowStepInput[]): WorkflowResu
 			return fail({ message: parsed.message, stepId: step.id, field: parsed.field });
 		}
 		steps.push({ id: step.id, type: manifest.type, config: parsed.config });
+	}
+	for (const [index, step] of steps.entries()) {
+		const manifest = stepManifest(step.type);
+		const missing = manifest?.needs?.find(
+			(type) => !steps.slice(0, index).some((earlier) => earlier.type === type)
+		);
+		if (!manifest || missing === undefined) continue;
+		const needed = `“${stepManifest(missing)?.label ?? missing}”`;
+		return fail({
+			message: steps.some((other) => other.type === missing)
+				? `“${manifest.label}” works on what recruiters did in ${needed}: move it below that step.`
+				: `“${manifest.label}” works on what recruiters did in ${needed}: add that step before it.`,
+			stepId: step.id
+		});
 	}
 	const lastAccess = steps.findLastIndex((step) => stepManifest(step.type)?.kind === 'access');
 	const dangling = steps.find(

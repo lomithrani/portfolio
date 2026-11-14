@@ -75,6 +75,27 @@ export interface ServerEnv {
   GITHUB_ISSUES_TOKEN?: string;
   /** The repository those issues are filed in, as `owner/name` */
   GITHUB_ISSUES_REPO: string;
+  /**
+   * COMMUTE_TIMES=true: travel times are computed for the commute criterion
+   * of the perfect job (services/commute.ts), with the public geocoding and
+   * route services of the French Géoplateforme (IGN): car, on foot, and by
+   * bike as an estimate. Off without it: the addresses of owners and job
+   * postings are sent to no one
+   */
+  commuteTimesEnabled: boolean;
+  /**
+   * COMMUTE_TRANSIT=transitous: public transport times too, from
+   * api.transitous.org (its usage policy: open-source, non-commercial
+   * projects, light use). Needs COMMUTE_CONTACT
+   */
+  COMMUTE_TRANSIT?: 'transitous';
+  /**
+   * How the operator can be reached (an email address or a web page), sent
+   * as the User-Agent of the requests to Transitous, which asks for it
+   */
+  COMMUTE_CONTACT?: string;
+  /** Requests to the geocoding and route services per UTC day, for the whole site (0 turns travel times off) */
+  COMMUTE_DAILY_LIMIT: number;
   /** Serve OpenAPI docs (always outside production, opt-in with API_DOCS=true) */
   apiDocsEnabled: boolean;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
@@ -236,6 +257,8 @@ const GITHUB_REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za
 const DEFAULT_RESUME_IMPORT_ATTEMPTS_PER_DAY = 10;
 const DEFAULT_JOB_IMPORT_DAILY_LIMIT = 30;
 const DEFAULT_JOB_IMPORT_ATTEMPTS_PER_DAY = 10;
+/** Under what Transitous asks to be told about (720 route requests a day) */
+const DEFAULT_COMMUTE_DAILY_LIMIT = 500;
 
 // A count of requests: 0 or more, digits only (Number() would also accept
 // '1e3', '0x3e8' or '2.5'); 0 turns `feature` off
@@ -366,6 +389,33 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
 
   // Like the other secrets: a pasted value with quotes or spaces would only
   // fail at the first suggestion, and the message never repeats it
+  const COMMUTE_DAILY_LIMIT = parseLimit(
+    'COMMUTE_DAILY_LIMIT',
+    source.COMMUTE_DAILY_LIMIT,
+    DEFAULT_COMMUTE_DAILY_LIMIT,
+    problems,
+    'travel times'
+  );
+  const commuteTimes = optional(source.COMMUTE_TIMES);
+  if (commuteTimes !== undefined && commuteTimes !== 'true' && commuteTimes !== 'false') {
+    problems.push(`COMMUTE_TIMES must be true or false (got ${JSON.stringify(commuteTimes)})`);
+  }
+  const commuteTransit = optional(source.COMMUTE_TRANSIT);
+  if (commuteTransit !== undefined && commuteTransit !== 'transitous') {
+    problems.push(`COMMUTE_TRANSIT must be transitous, or unset (got ${JSON.stringify(commuteTransit)})`);
+  }
+  const COMMUTE_CONTACT = optional(source.COMMUTE_CONTACT);
+  // Sent in a header: one line of printable ASCII
+  if (COMMUTE_CONTACT && !/^[\x21-\x7e]{3,200}$/.test(COMMUTE_CONTACT)) {
+    problems.push('COMMUTE_CONTACT must be an email address or a URL, without spaces');
+  }
+  if (commuteTransit && !COMMUTE_CONTACT) {
+    problems.push('COMMUTE_TRANSIT needs COMMUTE_CONTACT: Transitous asks who sends the requests');
+  }
+  if (commuteTransit && commuteTimes !== 'true') {
+    warnings.push('COMMUTE_TRANSIT is set without COMMUTE_TIMES=true: travel times stay off');
+  }
+
   const GITHUB_ISSUES_TOKEN = optional(source.GITHUB_ISSUES_TOKEN);
   if (GITHUB_ISSUES_TOKEN && /[\s"']/.test(GITHUB_ISSUES_TOKEN)) {
     problems.push('GITHUB_ISSUES_TOKEN must be the bare GitHub token (no quotes or spaces)');
@@ -418,6 +468,10 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     JOB_IMPORT_ATTEMPTS_PER_DAY,
     GITHUB_ISSUES_TOKEN,
     GITHUB_ISSUES_REPO,
+    commuteTimesEnabled: commuteTimes === 'true' && COMMUTE_DAILY_LIMIT > 0,
+    COMMUTE_TRANSIT: commuteTransit === 'transitous' ? 'transitous' : undefined,
+    COMMUTE_CONTACT,
+    COMMUTE_DAILY_LIMIT,
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',

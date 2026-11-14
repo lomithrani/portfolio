@@ -11,12 +11,26 @@ import type { WorkflowStepStatus } from 'portfolio-common';
 // back from the database as they were written, possibly by an older version
 // of the step: read them defensively.
 
+/** A step that comes before another in the journey, with what it stored for the visitor */
+export interface EarlierStep {
+  id: string;
+  type: string;
+  /** As that step's type wrote it: read it with that type's own helpers */
+  data: unknown;
+}
+
 export interface StepContext<Config, Data> {
   ownerId: string;
   visitorId: string;
   config: Config;
   /** What this step stored for this visitor; undefined when nothing yet */
   data: Data | undefined;
+  /**
+   * The steps before this one, in order: for a type that works on what the
+   * visitor did earlier (its manifest's `needs`: the job match scores the job
+   * picked in the job step)
+   */
+  earlier: readonly EarlierStep[];
 }
 
 export interface ServerStep<Config extends object = object, Data = unknown, View = unknown> {

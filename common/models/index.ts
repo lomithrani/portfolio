@@ -63,7 +63,8 @@ export type {
 	TravelFrequency,
 	NumberRange,
 	JobPostingInput,
-	JobPostingProblem
+	JobPostingProblem,
+	JobFieldPath
 } from './jobPosting';
 export {
 	USER_MODES,
@@ -92,8 +93,52 @@ export type {
 	WorkflowProblem,
 	WorkflowResult
 } from './workflow';
-export { NOTE_STEP_LIMITS } from './workflowSteps';
-export type { NoteStepConfig } from './workflowSteps';
+export {
+	NOTE_STEP_LIMITS,
+	JOB_MATCH_STEP_LIMITS,
+	DEFAULT_JOB_MATCH_MIN_SCORE
+} from './workflowSteps';
+export type { NoteStepConfig, JobMatchStepConfig } from './workflowSteps';
+export {
+	PERFECT_JOB_CRITERIA,
+	IMPORTANCE_LEVELS,
+	DEFAULT_IMPORTANCE,
+	MANAGEMENT_ROLES,
+	COMMUTE_MODES,
+	WORK_DAYS_PER_WEEK,
+	COMMUTE_TOLERANCE,
+	BIKE_METERS_PER_MINUTE,
+	PAY_TOLERANCE,
+	HOURS_TOLERANCE,
+	PERFECT_JOB_LIMITS,
+	IMPORTANCE_LABELS,
+	PERFECT_JOB_CRITERION_LABELS,
+	MANAGEMENT_ROLE_LABELS,
+	COMMUTE_MODE_LABELS,
+	JOB_FIELD_CRITERIA,
+	JOB_FIELD_PATHS,
+	criterionJobFields,
+	officeAddress,
+	officeDaysPerWeek,
+	parsePerfectJob,
+	storedPerfectJob,
+	ratedCriteria,
+	scorePerfectJob
+} from './perfectJob';
+export type {
+	PerfectJobCriterion,
+	Importance,
+	ManagementRole,
+	CommuteMode,
+	GeoPlace,
+	ScoreContext,
+	CriterionRating,
+	PerfectJob,
+	PerfectJobProblem,
+	ScoredJob,
+	CriterionScore,
+	PerfectJobScore
+} from './perfectJob';
 export {
 	STEP_SUGGESTION_LIMITS,
 	cleanStepSuggestionText,

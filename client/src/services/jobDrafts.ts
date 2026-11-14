@@ -128,6 +128,7 @@ const TEXT_FIELDS = [
 	'openings',
 	'city',
 	'postalCode',
+	'address',
 	'remoteDaysPerWeek',
 	'durationMonths',
 	'startDate',

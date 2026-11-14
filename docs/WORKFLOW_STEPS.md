@@ -17,7 +17,7 @@ say who sent it.
 A journey is an ordered list of **steps**. Each step has three fields:
 
 - `id`: unique in the journey (`note`, `note-2`, `job`...). A visitor's progress is stored under it.
-- `type`: the name of a **step type** (`note`, `job`, `meeting`).
+- `type`: the name of a **step type** (`note`, `job`, `job-match`, `meeting`).
 - `config`: the settings of that step, whose shape belongs to its type (`{}` for a type without
   settings).
 
@@ -26,7 +26,8 @@ Three people meet in a journey. The **owner** of the portfolio chooses the steps
 **anonymous** caller is not signed in: they see the steps, and have no progress.
 
 A visitor stands on each step with a **status**: `pending` (not done yet, or to do again),
-`succeeded`, or `failed`. No step produces `failed` yet (see [What comes next](#what-comes-next)).
+`succeeded`, or `failed`. One step produces `failed` today: the job match, for a job that scores
+under the owner's minimum (see [A step that can fail](#a-step-that-can-fail-the-job-match)).
 The one rule of the runtime is: **a step is open when every step before it has the status
 `succeeded`** (`openWorkflowSteps` in `common/models/workflow.ts`). The first step is therefore
 open to anyone, signed in or not. The owner previews their own journey and is never stopped by it.
@@ -121,6 +122,7 @@ The manifest is a `WorkflowStepManifest<Config>` (declared in `common/models/wor
 | `label` | The step's name, for the owner and the visitor ("Read a note"). |
 | `description` | What the step asks of visitors, written for the owner who is choosing steps. |
 | `max` | How many steps of this type a journey can have. Leave it unset for any number (the note), set `1` when a second one would make no sense (the job, the meeting). |
+| `needs` | The step types a step of this type needs earlier in the journey, because it works on what the visitor did there (the job match needs `job`: it scores the job picked there). A journey cannot be saved without them before it. Leave it unset for a step that stands alone. |
 | `defaultConfig()` | The settings a new step starts with. They may be incomplete: the note starts with an empty title and text, which the owner fills in before they can save. |
 | `parseConfig(raw)` | Checks and normalises the settings. `raw` is whatever the client sent: treat it as `unknown`. Return `{ ok: true, config }` with **only the keys you know** (the rest is dropped), or `{ ok: false, message, field }` where `field` names the setting the message is about. |
 
@@ -171,8 +173,9 @@ The editor shows the message at that field, which is why `field` must be the key
 
 A server step is a `ServerStep<Config, Data, View>` (declared in
 `server/services/workflowSteps/types.ts`). Every function receives a context: `ownerId`,
-`visitorId`, the step's `config`, and `data`, what this step stored for this visitor (`undefined`
-when nothing yet).
+`visitorId`, the step's `config`, `data`, what this step stored for this visitor (`undefined`
+when nothing yet), and `earlier`, the steps before this one in the journey (`{ id, type, data }`
+each), for a type whose manifest has `needs`.
 
 | Function | Required | What it does |
 | --- | --- | --- |
@@ -256,6 +259,7 @@ The registry `client/src/lib/components/hire/steps/index.ts` maps a type name to
 | `Settings` | no | The component of the step's settings form in the owner's editor. Leave it out for a type without settings. |
 | `note(step, state)` | yes | The line under the step's name: what it asks, or what the visitor did there. |
 | `title(step)` | no | The step's name when it is not the manifest's label. The note returns its `config.title`. |
+| `failedNote(step)` | no | The line under the step's name for a visitor who did not pass it, for a type that can return `failed`; "Not passed." when unset. |
 | `wantsOpen(step, address)` | no | Whether the address asks for this step to be shown unfolded. The job step uses it when the address carries a `?job=` other than the job picked. |
 | `reopenLabel` | no | What the button that unfolds the step says once it is done ("Change" for the job step); "Open" when unset. |
 | `ownerPreview` | no | Set it to `true` when the owner's preview should show the step itself (the note, without its button) instead of the manifest's description. The `Visitor` then gets `journey.own` and must offer the owner nothing to submit: the API refuses the owner on their own journey. |
@@ -300,12 +304,14 @@ either. Three things the page does for every step:
   live for them.
 - A journey of a single step is shown bare, without the list of steps (this is the booking page of
   a default journey).
-- A step whose status is `failed` is shown as "Not passed".
+- A step whose status is `failed` is marked as not passed and stays unfolded for the visitor: its
+  `Visitor` says why, and its `failedNote` is the line under its name ("Not passed." without one).
+  The steps after it are locked.
 
 ### 4. Tests
 
-- `server/tests/workflows.test.ts`: add a builder for your step next to `note()`, `job()` and
-  `meeting()`, then cover its settings (`PUT /workflow` refusing each bad setting with the right
+- `server/tests/workflows.test.ts`: add a builder for your step next to `note()`, `job()`,
+  `jobMatch()` and `meeting()`, then cover its settings (`PUT /workflow` refusing each bad setting with the right
   `property`), what visitors see of it (`journeyOf`), and its submit (`submit`): every kind of bad
   `input` refused, a good one stored, the status that follows. The suite needs MongoDB and must
   pass in any order: each test creates its own users and removes them (see "Testing" in
@@ -313,6 +319,43 @@ either. Three things the page does for every step:
 - `client/src/services/tests/workflow.test.ts` for pure client helpers, and
   `client/tests/hire-journey.test.ts` (Playwright) when the step changes what a visitor goes
   through on the page.
+
+## A step that can fail: the job match
+
+The `job-match` step ("Match the perfect job") scores the job the visitor picked on the job step
+against the owner's **perfect job**, and returns `failed` under the minimum score the owner set
+in the step's settings. It is the example of three things no other step does.
+
+**It works on another step's data.** Its manifest has `needs: ['job']`, so `parseWorkflow`
+refuses a journey where no job step comes before it. Its `evaluate` finds the nearest job step in
+`ctx.earlier` and reads the job picked with a helper the job step exports (`pickedPosting` in
+`server/services/workflowSteps/job.ts`): a step never reads another step's `data` by itself, it
+goes through the helpers of the type that wrote it. `pickedPosting` checks again that the
+posting is the visitor's.
+
+**It stores nothing and takes no submission.** The score is computed at each read, from the
+posting and the owner's criteria as they are now (`scorePerfectJob` in
+`common/models/perfectJob.ts`, which is pure and tested in
+`server/tests/perfectJobScore.test.ts`). The recruiter editing the posting, picking another one,
+or the owner changing their criteria or the minimum all change the status at the next read.
+
+**It reads something private of the owner's.** The perfect job (`GET`/`PUT /perfect-job`, model
+`PerfectJob`, admin tab "Perfect job") is the owner's alone. `visitorConfig` returns the minimum
+score only. The `view` holds the score, the minimum and the job scored; with the owner's
+`showDetails` setting, also the name of each criterion and how the job does on it (`match`,
+`partial`, `miss`, whether the posting states it, whether it is a deal-breaker that was missed),
+and never what the owner asks for or how much a criterion weighs. A recruiter can still learn
+about the criteria by trying postings: this is inherent to a gate, and the reason the details
+are the owner's choice.
+
+One criterion, the commute, needs something neither the posting nor the criteria hold: a travel
+time. The step asks `commuteContext` (`server/services/commute.ts`) for it before scoring, which
+answers from a cache or from outside services, once per posting. When it is not known (travel
+times are off, a service did not answer), the criterion is left out of the score instead of
+failing the visitor: an outage of someone else's service must not close a journey.
+
+A stored minimum that is not a score (written by hand) reads as 100: the step fails closed.
+An owner without any criterion asks nothing: every job scores 100.
 
 ## Steps with routes of their own
 
@@ -390,9 +433,9 @@ step does not work against them.
 - **Branches on success or failure.** Today the order of the list is the path, and a journey stops
   at a step that did not succeed. Steps have ids so that a journey can later carry transitions
   between step ids: where to go when a step succeeded, and where when it failed. The `failed`
-  status exists for this. No step returns it yet. Until transitions exist, a step that returned it
-  would block the journey exactly like a pending one, and the Hire page would show it as "Not
-  passed".
+  status exists for this. The job match returns it today; until transitions exist, it blocks the
+  journey exactly like a pending step, and the Hire page shows the step as not passed, with what
+  its type says about it.
 - **A visual designer.** The owner's editor is a list with "Move up" and "Move down". Once journeys
   have branches, a list no longer shows them: the editor is expected to become a diagram of steps
   and transitions, built on the same manifests and `Settings` components.

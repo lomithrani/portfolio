@@ -114,6 +114,8 @@ export const JOB_LIMITS = {
 	company: 200,
 	city: 120,
 	postalCode: 10,
+	/** The office's street and number */
+	address: 200,
 	collectiveAgreement: 200,
 	variablePay: 300,
 	/** Per item of the skills, languages and benefits lists */
@@ -163,6 +165,11 @@ export interface JobPostingInput {
 		/** Required unless the job is fully remote */
 		city?: string;
 		postalCode?: string;
+		/**
+		 * The office's street and number, when the job has one ("12 rue de la République"): the
+		 * travel time of a candidate is computed to it, to the city's centre without it
+		 */
+		address?: string;
 		workMode: WorkMode;
 		/** Hybrid only */
 		remoteDaysPerWeek?: number;
@@ -214,6 +221,22 @@ export interface JobPostingInput {
 	benefits?: string[];
 	travel?: TravelFrequency;
 }
+
+/** The dotted paths of an object's fields, down to the values (a list is a value) */
+type FieldPaths<T> = {
+	[K in keyof T & string]-?: NonNullable<T[K]> extends readonly unknown[]
+		? K
+		: NonNullable<T[K]> extends object
+			? `${K}.${FieldPaths<NonNullable<T[K]>>}`
+			: K;
+}[keyof T & string];
+
+/**
+ * Every field of a job posting, as a dotted path (`location.city`, `pay.min`): what
+ * validateJobPosting names, and what the perfect job says its criteria read (perfectJob.ts's
+ * JOB_FIELD_CRITERIA, which must list each of them)
+ */
+export type JobFieldPath = FieldPaths<JobPostingInput>;
 
 // ── Normalisation ───────────────────────────────────────────
 
@@ -287,6 +310,7 @@ export function normalizeJobPosting(input: JobPostingInput): JobPostingInput {
 			country: location.country,
 			city: trimmed(location.city),
 			postalCode: trimmed(location.postalCode),
+			address: trimmed(location.address),
 			workMode,
 			remoteDaysPerWeek: workMode === 'hybrid' ? location.remoteDaysPerWeek : undefined
 		})!,
@@ -386,6 +410,9 @@ export function validateJobPosting(job: JobPostingInput): JobPostingProblem[] {
 	}
 	if (location.postalCode !== undefined && !/^[0-9A-Za-z -]{2,10}$/.test(location.postalCode)) {
 		problem('location.postalCode', 'Postal code is not valid');
+	}
+	if (location.address !== undefined && location.address.length > JOB_LIMITS.address) {
+		problem('location.address', `Address must be at most ${JOB_LIMITS.address} characters`);
 	}
 	if (location.workMode === 'hybrid') {
 		wholeNumber(

@@ -2,7 +2,7 @@
 // (services/jobExtraction.ts): the model's output is untrusted, so every enum,
 // range and length is enforced here.
 import { describe, it, expect } from 'bun:test';
-import { JOB_LIMITS, normalizeJobPosting, validateJobPosting } from 'portfolio-common';
+import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS, JOB_LIMITS, normalizeJobPosting, validateJobPosting } from 'portfolio-common';
 import type { JobPostingInput } from 'portfolio-common';
 import {
   JOB_EXTRACTION_SCHEMA,
@@ -12,6 +12,7 @@ import {
   parseNumber
 } from '../services/jobExtraction';
 import { describeJobImport } from '../services/jobImport';
+import { fieldPaths } from './completePostings';
 
 /** An output where the document stated nothing */
 const blank = {
@@ -20,6 +21,7 @@ const blank = {
   description: '',
   city: '',
   postalCode: '',
+  address: '',
   country: '',
   workMode: '',
   remoteDaysPerWeek: '',
@@ -56,6 +58,7 @@ const complete = {
   description: '## La mission\n\n- Construire la plateforme de paiement',
   city: 'Lyon',
   postalCode: '69002',
+  address: '12 rue de la République',
   country: 'France',
   workMode: 'hybrid',
   remoteDaysPerWeek: '2',
@@ -88,7 +91,14 @@ const completeDraft = {
   company: 'Acme',
   status: 'draft',
   openings: 2,
-  location: { country: 'FR', city: 'Lyon', postalCode: '69002', workMode: 'hybrid', remoteDaysPerWeek: 2 },
+  location: {
+    country: 'FR',
+    city: 'Lyon',
+    postalCode: '69002',
+    address: '12 rue de la République',
+    workMode: 'hybrid',
+    remoteDaysPerWeek: 2
+  },
   contract: { type: 'cdi', startDate: '2026-09-01', trialPeriodMonths: 3, collectiveAgreement: 'Syntec' },
   workingTime: { arrangement: 'weekly_hours', hoursPerWeek: 37.5, rttDaysPerYear: 10 },
   pay: { min: 45000, max: 55000, currency: 'EUR', period: 'year', variable: 'Prime sur objectifs (10 %)' },
@@ -210,7 +220,13 @@ describe('normalizeJobExtraction', () => {
     it('leaves out what is not a number, with a warning quoting it', () => {
       const { draft, warnings } = normalize({ remoteDaysPerWeek: '2 ou 3', peers: 'une dizaine' });
       // Without its days, a hybrid job stays hybrid
-      expect(draft.location).toEqual({ country: 'FR', city: 'Lyon', postalCode: '69002', workMode: 'hybrid' });
+      expect(draft.location).toEqual({
+        country: 'FR',
+        city: 'Lyon',
+        postalCode: '69002',
+        address: '12 rue de la République',
+        workMode: 'hybrid'
+      });
       expect(draft.organization).toEqual({ directReports: 0, levelsToCeo: 3 });
       expect(warnings).toEqual([
         'Left out the remote days per week ("2 ou 3"): it is not a number',
@@ -348,6 +364,7 @@ describe('normalizeJobExtraction', () => {
         country: 'FR',
         city: 'Lyon',
         postalCode: '69002',
+        address: '12 rue de la République',
         workMode: 'on_site'
       });
       expect(normalize({ workMode: '', remoteDaysPerWeek: '3' }).draft.location).toMatchObject({
@@ -538,9 +555,19 @@ describe('normalizeJobExtraction', () => {
     });
   });
 
+  it('can read every field a perfect job is scored on (JOB_FIELD_CRITERIA)', () => {
+    // A document cannot count its time in hours and in days: one draft of each
+    const inDays = { ...complete, workingTimeArrangement: 'annual_days', hoursPerWeek: '', daysPerYear: '215' };
+    const read = new Set(
+      [complete, inDays].flatMap((output) => fieldPaths(normalizeJobExtraction(output).draft))
+    );
+    const scored = JOB_FIELD_PATHS.filter((path) => JOB_FIELD_CRITERIA[path].length > 0);
+    expect(scored.filter((path) => !read.has(path))).toEqual([]);
+  });
+
   it('counts the fields found, for the log line', () => {
     expect(draftFieldCount(normalizeJobExtraction(undefined).draft)).toBe(0);
-    expect(draftFieldCount(normalizeJobExtraction(complete).draft)).toBe(28);
+    expect(draftFieldCount(normalizeJobExtraction(complete).draft)).toBe(29);
   });
 });
 

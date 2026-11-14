@@ -38,6 +38,7 @@ export const jobPostingRequest = t.Object({
   location: t.Object({
     country: t.UnionEnum(JOB_COUNTRIES, noDefault),
     city: t.Optional(line(JOB_LIMITS.city)),
+    address: t.Optional(line(JOB_LIMITS.address)),
     postalCode: t.Optional(line(JOB_LIMITS.postalCode)),
     workMode: t.UnionEnum(WORK_MODES, noDefault),
     remoteDaysPerWeek: t.Optional(t.Number())

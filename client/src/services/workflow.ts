@@ -1,6 +1,9 @@
 import {
 	APPLICABLE_JOB_STATUS,
+	DEFAULT_JOB_MATCH_MIN_SCORE,
+	JOB_MATCH_STEP_LIMITS,
 	JOB_STATUS_LABELS,
+	PERFECT_JOB_CRITERIA,
 	WORKFLOW_LIMITS,
 	isValidDomainName,
 	newWorkflowStep,
@@ -8,6 +11,7 @@ import {
 	openWorkflowSteps,
 	stepManifest,
 	type JobStatus,
+	type PerfectJobCriterion,
 	type WorkflowProblem,
 	type WorkflowStep,
 	type WorkflowStepManifest,
@@ -239,13 +243,15 @@ export const STEP_UNAVAILABLE = 'This step is not available.';
 
 /**
  * The line under a step's name. `describe`: what the step's type says to a visitor it is open
- * to (what it asks, or what they did there); undefined for a type this version does not show
+ * to (what it asks, or what they did there); undefined for a type this version does not show.
+ * `describeFailed`: what it says to a visitor who did not pass it, when it says more than that
  */
 export const stepNote = (
 	journey: Journey,
 	index: number,
 	state: StepState,
-	describe: ((step: JourneyStep, state: 'open' | 'done') => string) | undefined
+	describe: ((step: JourneyStep, state: 'open' | 'done') => string) | undefined,
+	describeFailed?: (step: JourneyStep) => string
 ): string => {
 	const step = journey.steps[index];
 	if (!describe) return STEP_UNAVAILABLE;
@@ -254,7 +260,7 @@ export const stepNote = (
 	if (state === 'locked') {
 		return index === 1 ? 'Complete the step above first.' : 'Complete the steps above first.';
 	}
-	if (state === 'failed') return 'Not passed.';
+	if (state === 'failed') return describeFailed?.(step) ?? 'Not passed.';
 	return describe(step, state);
 };
 
@@ -459,4 +465,103 @@ export const noteContent = (config: unknown): { title: string; text: string } =>
 		title: typeof title === 'string' ? title : '',
 		text: typeof text === 'string' ? text : ''
 	};
+};
+
+// --- Job match step ----------------------------------------------------------------------
+
+/** How a job does on one criterion of the owner's perfect job, as the visitor is told */
+export interface JobMatchCriterion {
+	criterion: PerfectJobCriterion;
+	/** `unknown`: it could not be computed (a travel time), and does not count in the score */
+	outcome: 'match' | 'partial' | 'miss' | 'unknown';
+	/** The job description does not say what the criterion reads */
+	notStated: boolean;
+	/** A deal-breaker of the owner's that the job does not match: the score is 0 */
+	dealBreaker: boolean;
+}
+
+/** The score of the visitor's job, as the job match step's `view` has it */
+export interface JobMatch {
+	/** Out of 100 */
+	score: number;
+	minScore: number;
+	job: { _id: string; title: string };
+	/** Only when the owner shows them */
+	criteria?: JobMatchCriterion[];
+}
+
+const isScore = (value: unknown): value is number => {
+	const { min, max } = JOB_MATCH_STEP_LIMITS.minScore;
+	return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
+};
+
+const OUTCOMES: readonly JobMatchCriterion['outcome'][] = ['match', 'partial', 'miss', 'unknown'];
+
+/** The score, from a job match step's `view`; undefined when there is none (or it is not one) */
+export const jobMatch = (view: unknown): JobMatch | undefined => {
+	if (!view || typeof view !== 'object') return undefined;
+	const { score, minScore, job, criteria } = view as Record<string, unknown>;
+	const { _id, title } = (job && typeof job === 'object' ? job : {}) as Record<string, unknown>;
+	if (!isScore(score) || !isScore(minScore)) return undefined;
+	if (typeof _id !== 'string' || typeof title !== 'string') return undefined;
+	const listed = Array.isArray(criteria)
+		? criteria.flatMap((entry): JobMatchCriterion[] => {
+				const { criterion, outcome, notStated, dealBreaker } = (entry ?? {}) as Record<
+					string,
+					unknown
+				>;
+				const known = PERFECT_JOB_CRITERIA.find((name) => name === criterion);
+				const result = OUTCOMES.find((name) => name === outcome);
+				if (!known || !result) return [];
+				return [
+					{
+						criterion: known,
+						outcome: result,
+						notStated: notStated === true,
+						dealBreaker: dealBreaker === true
+					}
+				];
+			})
+		: undefined;
+	return { score, minScore, job: { _id, title }, ...(listed ? { criteria: listed } : {}) };
+};
+
+/** The minimum score of a job match step, from its settings (the owner's, or as visitors get them) */
+export const jobMatchMinScore = (config: unknown): number | undefined => {
+	const minScore = (config && typeof config === 'object' ? config : {}) as { minScore?: unknown };
+	return isScore(minScore.minScore) ? minScore.minScore : undefined;
+};
+
+/** A job match step's settings as its form shows them (what is not a setting: the defaults) */
+export const jobMatchSettings = (config: unknown): { minScore: unknown; showDetails: boolean } => {
+	const source = (config && typeof config === 'object' ? config : {}) as Record<string, unknown>;
+	return {
+		minScore: Object.hasOwn(source, 'minScore') ? source.minScore : DEFAULT_JOB_MATCH_MIN_SCORE,
+		showDetails: source.showDetails === true
+	};
+};
+
+/** The score reached the minimum */
+export const passesJobMatch = (match: JobMatch): boolean => match.score >= match.minScore;
+
+/** The line under the job match step's name: what it asks, or the score of the job picked */
+export const jobMatchNote = (step: { config?: unknown; view?: unknown }): string => {
+	const match = jobMatch(step.view);
+	if (match) {
+		return passesJobMatch(match)
+			? `${match.job.title} scores ${match.score} out of 100.`
+			: `${match.job.title} scores ${match.score} out of 100: at least ${match.minScore} is needed.`;
+	}
+	const minScore = jobMatchMinScore(step.config);
+	return minScore === undefined
+		? 'The job you picked is scored out of 100.'
+		: `The job you picked is scored out of 100: at least ${minScore} is needed.`;
+};
+
+/** How a criterion's outcome reads in the details of a score */
+export const jobMatchOutcomeText = (entry: JobMatchCriterion): string => {
+	if (entry.outcome === 'unknown') return 'Could not be computed right now: not counted';
+	if (entry.notStated) return 'Not stated in your job description';
+	if (entry.outcome === 'match') return 'Matches';
+	return entry.outcome === 'partial' ? 'Partly matches' : 'Does not match';
 };

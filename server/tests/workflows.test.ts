@@ -12,7 +12,7 @@ import { NOTE_STEP_LIMITS, WORKFLOW_LIMITS, stepManifests } from 'portfolio-comm
 import { env } from '../env';
 import { createApp } from '../app';
 import { ConflictError, JourneyStepLockedError, MissingAuthCookieError, ResourceNotFoundError } from '../errors';
-import { Domain, JobPosting, User, Workflow, WorkflowInstance } from '../models/database';
+import { Domain, JobPosting, PerfectJob, User, Workflow, WorkflowInstance } from '../models/database';
 import { enableRecruiterSpace } from '../services/recruiters';
 import { assertStepOpen, openStepOfType, recordStepData } from '../services/workflows';
 import { serverStep, serverStepTypes } from '../services/workflowSteps';
@@ -92,7 +92,18 @@ const note = (id = 'note', title = 'Before you book', text = 'I am looking for a
   type: 'note',
   config: { title, text }
 });
+const jobMatch = (minScore: unknown = 70, showDetails: unknown = false, id = 'job-match'): Step => ({
+  id,
+  type: 'job-match',
+  config: { minScore, showDetails }
+});
 const journey = (...steps: Step[]) => ({ steps });
+
+/** The owner saves `criteria` as their perfect job */
+const setPerfectJob = async (owner: TestUser, criteria: Record<string, unknown>) => {
+  const saved = await call('PUT', '/perfect-job', { body: { criteria }, cookie: owner.cookie });
+  expect(saved.status).toBe(200);
+};
 
 /** The owner saves `steps` as their journey */
 const setJourney = async (owner: TestUser, ...steps: Step[]) => {
@@ -122,6 +133,7 @@ const removeTestData = async (suffix: string) => {
   const users = (await User.find({ email: named }, '_id').lean()).map((user) => user._id);
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: users } }, { visitor: { $in: users } }] });
   await Workflow.deleteMany({ user: { $in: users } });
+  await PerfectJob.deleteMany({ user: { $in: users } });
   await JobPosting.deleteMany({ recruiter: { $in: users } });
   await Domain.deleteMany({ $or: [{ admin: { $in: users } }, { name: named }] });
   await User.deleteMany({ _id: { $in: users } });
@@ -134,7 +146,7 @@ beforeAll(async () => {
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
   connected = true;
   // The unique indexes the routes rely on (one journey per owner, one progress per visitor)
-  await Promise.all([User.init(), Domain.init(), Workflow.init(), WorkflowInstance.init()]);
+  await Promise.all([User.init(), Domain.init(), Workflow.init(), WorkflowInstance.init(), PerfectJob.init()]);
 });
 
 afterAll(async () => {
@@ -278,6 +290,66 @@ describe("the owner's journey (GET, PUT /workflow)", () => {
       });
     }
     expect(await Workflow.countDocuments({ user: owner.id })).toBe(0);
+  });
+
+  it('keeps the minimum score of a job match, and refuses one that is not a score', async () => {
+    const owner = await createUser('owner');
+    const saved = await call('PUT', '/workflow', {
+      body: {
+        steps: [job(), { id: 'job-match', type: 'job-match', config: { minScore: 60, showDetails: 'yes', other: 1 } }, meeting()]
+      },
+      cookie: owner.cookie
+    });
+    expect(saved.status).toBe(200);
+    // Only what the type knows is stored; details are shown only when asked with `true`
+    expect(saved.json().steps[1]).toEqual({ id: 'job-match', type: 'job-match', config: { minScore: 60, showDetails: false } });
+    expect((await setJourney(owner, job(), jobMatch(0, true), meeting())).steps[1].config).toEqual({
+      minScore: 0,
+      showDetails: true
+    });
+
+    for (const minScore of [-1, 101, 70.5, '70', null, [70], {}]) {
+      const answer = await call('PUT', '/workflow', { body: journey(job(), jobMatch(minScore), meeting()), cookie: owner.cookie });
+      expect({ minScore, status: answer.status, body: answer.json() }).toEqual({
+        minScore,
+        status: 422,
+        body: {
+          type: 'validation',
+          on: 'body',
+          property: 'steps.1.config.minScore',
+          message: 'The minimum score is a whole number from 0 to 100.'
+        }
+      });
+    }
+  });
+
+  it('refuses a job match without a job step before it', async () => {
+    const owner = await createUser('owner');
+    const refused = async (...steps: Step[]) => {
+      const answer = await call('PUT', '/workflow', { body: journey(...steps), cookie: owner.cookie });
+      expect(answer.status).toBe(422);
+      return answer.json();
+    };
+    expect(await refused(jobMatch(), meeting())).toEqual({
+      type: 'validation',
+      on: 'body',
+      property: 'steps.0',
+      message:
+        '“Match the perfect job” works on what recruiters did in “Select or create a job”: add that step before it.'
+    });
+    expect(await refused(note(), jobMatch(), job(), meeting())).toEqual({
+      type: 'validation',
+      on: 'body',
+      property: 'steps.1',
+      message:
+        '“Match the perfect job” works on what recruiters did in “Select or create a job”: move it below that step.'
+    });
+    // Once per journey, like the job it scores
+    expect(await refused(job(), jobMatch(), jobMatch(50, false, 'again'), meeting())).toMatchObject({
+      property: 'steps.2',
+      message: '“Match the perfect job” can be used only once.'
+    });
+    await setJourney(owner, job(), note(), jobMatch(), meeting());
   });
 
   it('refuses a requirement that opens nothing, unknown types and journeys that are not one', async () => {
@@ -473,6 +545,139 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
     expect(await journeyOf(owner.domain, recruiter)).toEqual({
       steps: [{ id: 'job', type: 'job', status: 'pending' }, meetingStep]
     });
+  });
+
+  it("scores the visitor's job against the owner's perfect job, and stops the journey under the minimum", async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), jobMatch(70), meeting());
+    // The posting of createJob: hybrid, 2 remote days, CDI, 50-60k a year
+    await setPerfectJob(owner, {
+      workMode: { importance: 5, modes: ['remote', 'hybrid'], minRemoteDays: 2 },
+      contractTypes: { importance: 3, types: ['cdi'] },
+      pay: { importance: 2, perYear: 80000 }
+    });
+
+    // The minimum is told to anyone; nothing else of the step's settings, nothing of the criteria
+    const match = { id: 'job-match', type: 'job-match', status: 'pending', config: { minScore: 70 } };
+    const meetingStep = { id: 'meeting', type: 'meeting', status: 'pending' };
+    for (const viewer of [undefined, owner, recruiter]) {
+      expect((await journeyOf(owner.domain, viewer)).steps).toEqual([{ id: 'job', type: 'job', status: 'pending' }, match, meetingStep]);
+    }
+
+    const jobId = await createJob(recruiter);
+    const picked = await submit(owner.domain, 'job', { jobId }, recruiter);
+    expect(picked.status).toBe(200);
+    // Work mode and contract match (8 of 10), the pay is more than 20% under what is asked
+    const scored = { score: 80, minScore: 70, job: { _id: jobId, title: 'Staff Engineer' } };
+    expect(picked.json().steps[1]).toEqual({ ...match, status: 'succeeded', view: scored });
+    expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:succeeded', 'job-match:succeeded', 'meeting:pending']);
+    await assertStepOpen(owner.id, recruiter.id, 'meeting');
+
+    // Nobody else gets the score: not the anonymous visitor, the owner or another recruiter
+    const other = await createUser('other', { recruiter: true });
+    for (const viewer of [undefined, owner, other]) {
+      expect((await journeyOf(owner.domain, viewer)).steps[1]).toEqual(match);
+    }
+
+    // The score is computed at each read: the owner asks for more, the same job does not pass
+    await setJourney(owner, job(), jobMatch(90), meeting());
+    const failed = await journeyOf(owner.domain, recruiter);
+    expect(failed.steps[1]).toEqual({
+      ...match,
+      status: 'failed',
+      config: { minScore: 90 },
+      view: { ...scored, minScore: 90 }
+    });
+    await expect(assertStepOpen(owner.id, recruiter.id, 'meeting')).rejects.toBeInstanceOf(JourneyStepLockedError);
+
+    // The recruiter raises the pay of the posting: it passes again
+    await JobPosting.updateOne({ _id: jobId }, { pay: { min: 80000, max: 90000, currency: 'EUR', period: 'year' } });
+    expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'succeeded', view: { score: 100 } });
+
+    // A deal-breaker the job does not match at all: 0, whatever the rest
+    await setPerfectJob(owner, {
+      workMode: { importance: 5, modes: ['remote', 'hybrid'] },
+      contractTypes: { importance: 1, dealBreaker: true, types: ['freelance'] }
+    });
+    expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'failed', view: { score: 0 } });
+
+    // A posting that is not open anymore: the job step is to do again, and the score still shows
+    await JobPosting.updateOne({ _id: jobId }, { status: 'closed' });
+    expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:pending', 'job-match:failed', 'meeting:pending']);
+    // No posting, nothing to score
+    await JobPosting.deleteOne({ _id: jobId });
+    expect((await journeyOf(owner.domain, recruiter)).steps[1]).toEqual({ ...match, config: { minScore: 90 } });
+  });
+
+  it('passes any job while the owner rated no criterion, and shows the criteria only when the owner says so', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), jobMatch(100, true), meeting());
+    const jobId = await createJob(recruiter);
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).status).toBe(200);
+    // Nothing is asked: every job scores 100
+    expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({
+      status: 'succeeded',
+      view: { score: 100, minScore: 100, criteria: [] }
+    });
+
+    await setPerfectJob(owner, {
+      seniority: { importance: 4, levels: ['senior', 'lead'] },
+      workMode: { importance: 5, modes: ['remote', 'hybrid'], minRemoteDays: 4 },
+      contractTypes: { importance: 3, dealBreaker: true, types: ['freelance'] },
+      pay: { importance: 2, perYear: 55000 }
+    });
+    const shown = (await journeyOf(owner.domain, recruiter)).steps[1];
+    expect(shown.status).toBe('failed');
+    // The name of each criterion and how the job does on it: never what is asked or its weight
+    expect(shown.view).toEqual({
+      score: 0,
+      minScore: 100,
+      job: { _id: jobId, title: 'Staff Engineer' },
+      criteria: [
+        { criterion: 'seniority', outcome: 'miss', notStated: true },
+        { criterion: 'workMode', outcome: 'partial' },
+        { criterion: 'contractTypes', outcome: 'miss', dealBreaker: true },
+        { criterion: 'pay', outcome: 'match' }
+      ]
+    });
+    expect(JSON.stringify(shown)).not.toMatch(/importance|55000|freelance|lead|levels|modes/);
+
+    await setJourney(owner, job(), jobMatch(100, false), meeting());
+    expect((await journeyOf(owner.domain, recruiter)).steps[1].view).toEqual({
+      score: 0,
+      minScore: 100,
+      job: { _id: jobId, title: 'Staff Engineer' }
+    });
+  });
+
+  it('fails closed on a job match whose stored minimum is not a score', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), jobMatch(0), meeting());
+    await setPerfectJob(owner, { contractTypes: { importance: 3, types: ['freelance'] } });
+    const jobId = await createJob(recruiter);
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).status).toBe(200);
+    expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'succeeded', view: { score: 0 } });
+
+    // Written by hand (or by an older version): the highest minimum, not none
+    await Workflow.updateOne({ user: owner.id }, { $set: { 'steps.1.config': { minScore: 'none' } } });
+    expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({
+      status: 'failed',
+      config: { minScore: 100 },
+      view: { score: 0, minScore: 100 }
+    });
+  });
+
+  it('takes no submission on a job match', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), jobMatch(0), meeting());
+    const jobId = await createJob(recruiter);
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).status).toBe(200);
+    const answer = await submit(owner.domain, 'job-match', { score: 100 }, recruiter);
+    expect({ status: answer.status, text: answer.text }).toEqual({ status: 409, text: 'Nothing can be submitted on this step' });
   });
 
   it('stops at a stored step whose type is gone, instead of skipping it', async () => {
@@ -859,6 +1064,20 @@ describe('the engine behind the routes of a step (services/workflows.ts)', () =>
       'Job: Staff Engineer',
       `https://web.example/jobs/${jobId}`
     ]);
+  });
+
+  it('says the score of the job in the invitation', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), jobMatch(50), meeting());
+    await setPerfectJob(owner, {
+      contractTypes: { importance: 3, types: ['cdi'] },
+      workMode: { importance: 1, modes: ['remote'] }
+    });
+    const jobId = await createJob(recruiter, { company: undefined });
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).status).toBe(200);
+    const step = await openStepOfType(owner.id, recruiter.id, 'meeting', noStep);
+    expect(await step.invitationLines()).toEqual(['Job: Staff Engineer', 'Job match: 75/100']);
   });
 
   it('picks the first open step when a journey has several of the type', async () => {

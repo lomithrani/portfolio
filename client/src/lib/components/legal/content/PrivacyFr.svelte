@@ -147,6 +147,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	contrat, temps de travail, rémunération, prérequis, avantages et description. Une fois publiée,
 	une offre est publique, mais elle ne nomme jamais le compte du recruteur. Une offre peut aussi
 	être importée depuis un PDF : il est envoyé à Anthropic comme un CV, et nous ne le conservons pas.
+	Lorsqu'une offre est notée dans un parcours de recrutement comportant un critère de trajet (voir
+	<a class="link-text" href="#data-perfect-job">poste idéal</a>), l'adresse de son lieu de travail
+	est transmise au service cartographique qui la localise.
 </p>
 
 <h4 id="data-applications">Candidatures</h4>
@@ -174,6 +177,28 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	gardons qu'une réservation du créneau (l'horaire, l'agenda, l'identifiant de l'événement et une empreinte
 	de votre adresse e-mail calculée avec une clé secrète), supprimée automatiquement à la fin du créneau
 	ou à l'annulation du rendez-vous.
+</p>
+
+<h4 id="data-perfect-job">Votre poste idéal (privé)</h4>
+<p>
+	Le propriétaire d'un portfolio peut décrire le poste qu'il recherche : des critères comme la
+	rémunération demandée, les contrats et les modes de travail acceptés, ses compétences, et
+	l'importance de chacun. Cette description est <strong>privée</strong> : seul son propriétaire peut la
+	lire. S'il ajoute l'étape correspondante à son parcours de recrutement, l'offre choisie par un recruteur
+	est notée sur 100 au regard de ces critères, selon des règles fixes. Le recruteur voit la note et le
+	minimum fixé par le propriétaire et, si celui-ci le décide, le nom de chaque critère et si son offre
+	y correspond ; jamais ce que le propriétaire a demandé. Un recruteur qui essaie plusieurs offres peut
+	néanmoins en déduire une partie à partir des notes.
+</p>
+<p>
+	Le critère de trajet est facultatif, et proposé uniquement lorsque ce site calcule des temps de
+	trajet. Il conserve l'adresse d'où vous partez (un lieu proche convient aussi bien que votre
+	domicile) et sa position sur une carte. Pour la trouver et calculer les temps de trajet jusqu'à un
+	poste, cette adresse est transmise à la Géoplateforme de l'IGN, le service cartographique de
+	l'État, et, lorsque les transports en commun sont proposés, sa position à Transitous, un
+	calculateur d'itinéraires animé par des bénévoles. Aucun des deux ne reçoit votre nom, votre
+	compte ni votre adresse IP. Les recruteurs ne voient jamais votre adresse ; le fait que le trajet
+	vers leur poste corresponde ou non renseigne toutefois sur l'endroit où vous vous trouvez.
 </p>
 
 <h4 id="data-calendar">Google Agenda (propriétaires de portfolio)</h4>
@@ -234,6 +259,13 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			<tr>
 				<td>Publier votre portfolio, votre parcours de recrutement et vos agendas de rendez-vous</td
 				>
+				<td>Contrat, art. 6(1)(b)</td>
+			</tr>
+			<tr>
+				<td>
+					Noter les offres choisies dans votre parcours de recrutement au regard de votre poste
+					idéal, et calculer les temps de trajet qu'il demande
+				</td>
 				<td>Contrat, art. 6(1)(b)</td>
 			</tr>
 			<tr>
@@ -350,6 +382,21 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				GitHub, Inc. (États-Unis) : les suggestions d'étapes, publiées sous forme de tickets publics
 				(<a class="link-text" href={LINKS.githubPrivacy} rel="noopener noreferrer"
 					>déclaration de confidentialité de GitHub</a
+				>) ;
+			</li>
+			<li>
+				l'IGN, Institut national de l'information géographique et forestière (France) : les adresses
+				à localiser et les points entre lesquels calculer un temps de trajet, pour le critère de
+				trajet (<a class="link-text" href={LINKS.geoplateforme} rel="noopener noreferrer"
+					>Géoplateforme</a
+				>) ;
+			</li>
+			<li>
+				Transitous, un calculateur d'itinéraires animé par des bénévoles : les points entre lesquels
+				calculer un temps de trajet en transports en commun, lorsque ce site le propose (<a
+					class="link-text"
+					href={LINKS.transitous}
+					rel="noopener noreferrer">transitous.org</a
 				>).
 			</li>
 		</ul>
@@ -390,10 +437,18 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			</tr>
 			<tr>
 				<td>
-					Portfolio, expériences, parcours de recrutement, agendas de rendez-vous, offres d'emploi,
-					candidatures
+					Portfolio, expériences, parcours de recrutement, poste idéal (y compris l'adresse d'où
+					vous partez), agendas de rendez-vous, offres d'emploi, candidatures
 				</td>
 				<td>Jusqu'à ce que vous les supprimiez, ou votre compte</td>
+			</tr>
+			<tr>
+				<td>Temps de trajet, et position des adresses des offres d'emploi</td>
+				<td>
+					30 jours pour un temps de trajet, 90 pour la position de l'adresse d'un poste, sous une
+					empreinte calculée avec une clé secrète qui ne montre pas les adresses ; ils ne sont
+					rattachés à aucun compte
+				</td>
 			</tr>
 			<tr>
 				<td>Votre progression dans les parcours d'autres portfolios</td>
@@ -530,6 +585,13 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	publié tant que vous ne l'ajoutez pas. Aucune décision produisant des effets juridiques ou vous
 	affectant de manière significative n'est prise par des moyens automatisés : le site ne note, ne
 	classe ni ne filtre les candidats, et les recruteurs voient les candidatures telles qu'elles sont.
+</p>
+<p>
+	Un parcours de recrutement peut noter l'offre choisie par un recruteur au regard du poste idéal du
+	propriétaire, et n'ouvrir ses étapes suivantes qu'à partir d'un minimum fixé par celui-ci. La note
+	est calculée selon des règles fixes, et non par un modèle d'IA, et elle porte sur l'offre, non sur
+	une personne : le recruteur peut la compléter, en choisir une autre, ou joindre le propriétaire
+	autrement.
 </p>
 
 <h3 id="children">Mineurs</h3>

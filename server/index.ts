@@ -10,6 +10,7 @@ import { startMemoryDiagnostics } from './services/memoryDiagnostics';
 import { createShutdown } from './services/shutdown';
 import { describeResumeImport } from './services/resumeImport';
 import { describeJobImport } from './services/jobImport';
+import { describeCommute } from './services/commute';
 import { describeStepSuggestions } from './services/stepSuggestions';
 
 export { app };
@@ -49,7 +50,8 @@ logger.info(`Running at ${formatListenUrl(host, app.server!.port ?? env.PORT, !!
   telemetry: describeTelemetry(env),
   resumeImport: describeResumeImport(env),
   jobImport: describeJobImport(env),
-  stepSuggestions: describeStepSuggestions(env)
+  stepSuggestions: describeStepSuggestions(env),
+  travelTimes: describeCommute()
 });
 
 // 'memory' log line at startup, then every MEMORY_LOG_INTERVAL_MS
