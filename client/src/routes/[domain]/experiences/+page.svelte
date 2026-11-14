@@ -373,10 +373,12 @@
 
 <!-- The page's floating corner: the view switch, and next to it what this visitor is most likely
 	here for: "Hire me" for a visitor, "Add experience" for the owner on a small screen once the
-	toolbar has scrolled away. First in the page, so the keyboard reaches it before the list -->
+	toolbar has scrolled away. First in the page, so the keyboard reaches it before the list.
+	Always one row (the page's bottom padding and the toasts count on its height): the owner's
+	button reads "Add" there, and the view switch drops its labels on the narrowest screens -->
 {#if allExperiences.length > 0}
 	<div
-		class="dock pointer-events-none fixed z-10 flex flex-wrap-reverse items-stretch justify-end gap-2"
+		class="dock pointer-events-none fixed z-10 flex items-stretch justify-end gap-2"
 		data-page-dock
 	>
 		<ViewSwitch bind:view class="pointer-events-auto shadow-xl" />
@@ -389,7 +391,9 @@
 					onclick={() => openEditor(null)}
 				>
 					<Plus size="20" aria-hidden="true" />
-					Add experience
+					<!-- "Add" to fit the row; the space stays outside the inner span (Svelte trims those at
+						the edges of a tag) -->
+					<span>Add <span class="sr-only">experience</span></span>
 				</button>
 			{/if}
 		{:else if !maybeOwner}
@@ -407,8 +411,15 @@
 
 <!-- Bottom space for the floating corner: it never hides the end of the list. Owners get more
 	on small screens, where the toasts (bottom-end) sit above it: e.g. the Edit button of a card
-	just added last stays in reach -->
-<div class="p-4 md:p-6 {allExperiences.length === 0 ? '' : isAdmin ? 'pb-40 md:pb-24' : 'pb-24'}">
+	just added last stays in reach. (Each with its own md: variant: md:p-6 would win over a bare
+	pb-24 on wide screens) -->
+<div
+	class="p-4 md:p-6 {allExperiences.length === 0
+		? ''
+		: isAdmin
+			? 'pb-40 md:pb-24'
+			: 'pb-24 md:pb-24'}"
+>
 	<div class="mx-auto w-full max-w-4xl space-y-4">
 		{#if allExperiences.length === 0}
 			{#if isAdmin}
@@ -610,12 +621,18 @@
 	.dock {
 		bottom: calc(1rem + env(safe-area-inset-bottom));
 		right: calc(1rem + env(safe-area-inset-right));
-		left: calc(2.5rem + env(safe-area-inset-left));
+		left: calc(1rem + env(safe-area-inset-left));
 	}
 	@media (min-width: 48rem) {
 		.dock {
 			right: calc(1.5rem + env(safe-area-inset-right));
 		}
+	}
+
+	/* What the page scrolls into view (a project picked on the timeline, the focused element)
+		stops above the floating corner, not under it. <main id="page"> is the page's scroller */
+	:global(main#page:has([data-page-dock])) {
+		scroll-padding-bottom: 5rem;
 	}
 
 	/* The toasts (bottom-end) sit above the floating corner rather than over it. The group's own

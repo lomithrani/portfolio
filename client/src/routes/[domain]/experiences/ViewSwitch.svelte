@@ -28,7 +28,9 @@
 			onclick={() => (view = value)}
 		>
 			<Icon size="16" aria-hidden="true" />
-			{label}
+			<!-- Icons alone under 360 px: the switch shares its row with "Hire me" (the label stays
+				the button's name) -->
+			<span class="max-[22.4rem]:sr-only">{label}</span>
 		</button>
 	{/each}
 </div>

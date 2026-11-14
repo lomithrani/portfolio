@@ -4,6 +4,7 @@ import {
 	formatMonthCount,
 	formatMonthRange,
 	formatProjectMonths,
+	monthIndex,
 	projectEnd
 } from '#services/experienceDates.ts';
 import { normalizeSkill, projectMatchesFilters, skillOptions } from '#services/filters.ts';
@@ -117,7 +118,8 @@ const noSkills = () => ({ hard: [], soft: [] });
 /**
  * The months a skill (by key) was used in all: the calendar months of the projects using it, as
  * the timeline places them (see projectMonthSpan), each counted once however many of them ran
- * that month. Projects of an experience without dates count for nothing.
+ * that month, up to the current month (a project planned later, or to a later end, was not used
+ * yet). Projects of an experience without dates count for nothing.
  */
 export function skillMonths(
 	experiences: PreviewedExperience[],
@@ -125,12 +127,16 @@ export function skillMonths(
 	now: Date = new Date()
 ): number {
 	const filters = { skills: [normalizeSkill(key)] };
+	// The month after the current one: nothing is counted from there on
+	const until = monthIndex(now) + 1;
 	const spans: MonthSpan[] = [];
 	for (const experience of experiences) {
 		for (const project of experience.projects ?? []) {
 			if (!projectMatchesFilters(project, filters)) continue;
 			const span = projectMonthSpan(project, experience, now);
-			if (span) spans.push(span);
+			if (span && span.start < until) {
+				spans.push({ start: span.start, end: Math.min(span.end, until) });
+			}
 		}
 	}
 	spans.sort((a, b) => a.start - b.start);

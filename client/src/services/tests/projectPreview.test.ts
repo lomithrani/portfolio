@@ -150,6 +150,17 @@ describe('skillMonths', () => {
 		expect(skillMonths([job([go('Undated')])], 'go', NOW)).toBe(36);
 	});
 
+	it('counts nothing after the current month', () => {
+		// Planned to Jun 2028: Sep 2025 to Nov 2026 so far
+		const degree = [job([go('Thesis', '2025-09', '2028-06')], '2025-09', '2028-06')];
+		expect(skillPreview(degree, 'go', NOW)?.caption).toBe('Used in 1 project (1 year 3 months)');
+
+		// Not started yet: a project, no time
+		const planned = [job([go('Next', '2027-03')], '2026-01', null)];
+		expect(skillMonths(planned, 'go', NOW)).toBe(0);
+		expect(skillPreview(planned, 'go', NOW)?.caption).toBe('Used in 1 project');
+	});
+
 	it('leaves the time out when no project can be placed', () => {
 		expect(skillMonths(all, 'kubernetes', NOW)).toBe(0);
 		expect(skillPreview(all, 'kubernetes', NOW)?.caption).toBe('Used in 1 project');

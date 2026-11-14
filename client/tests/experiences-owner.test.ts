@@ -683,7 +683,11 @@ test.describe('the floating corner of the page', () => {
 		page
 	}) => {
 		const title = `Backend Engineer ${tag}`;
-		await createExperience({ title });
+		// A card taller than a short screen: the page scrolls
+		await createExperience({
+			title,
+			projects: ['Streams', 'Billing', 'Platform', 'Tooling'].map((name) => project(name, ['Go']))
+		});
 		const hire = page.getByRole('link', { name: 'Hire me' });
 		const views = page.getByRole('group', { name: 'View' });
 
@@ -696,6 +700,25 @@ test.describe('the floating corner of the page', () => {
 		// The corner stays in sight at the end of the page, clear of the last card
 		await card(page, title).scrollIntoViewIfNeeded();
 		await expect(hire).toBeInViewport();
+		// At the end of the page it covers nothing of the last card, on a wide screen as on the
+		// narrowest phone, where it stays one row
+		const dock = page.locator('[data-page-dock]');
+		for (const size of [
+			{ width: 1280, height: 500 },
+			{ width: 320, height: 568 }
+		]) {
+			await page.setViewportSize(size);
+			await page
+				.locator('#page')
+				.evaluate((main) => main.scrollTo({ top: main.scrollHeight, behavior: 'instant' }));
+			const corner = (await dock.boundingBox())!;
+			const last = (await card(page, title).boundingBox())!;
+			expect(corner.height).toBeLessThan(60);
+			expect(last.y + last.height).toBeLessThanOrEqual(corner.y);
+			// Its buttons keep their names where the view switch shows icons alone
+			await expect(views.getByRole('button', { name: 'Timeline', exact: true })).toBeVisible();
+		}
+		await page.setViewportSize({ width: 1280, height: 720 });
 		await views.getByRole('button', { name: 'Timeline', exact: true }).click();
 		await expect(hire).toBeVisible();
 		await hire.click();
@@ -707,6 +730,16 @@ test.describe('the floating corner of the page', () => {
 		await expect(page.getByRole('button', { name: 'Add experience', exact: true })).toBeVisible();
 		await expect(views).toBeVisible();
 		await expect(hire).toHaveCount(0);
+		// On a phone, once their buttons have scrolled away: "Add experience" joins the corner,
+		// on the view switch's row
+		await page.setViewportSize({ width: 390, height: 600 });
+		await page
+			.locator('#page')
+			.evaluate((main) => main.scrollTo({ top: main.scrollHeight, behavior: 'instant' }));
+		const add = page.locator('[data-add-fab]');
+		await expect(add).toBeVisible();
+		await expect(add).toHaveAccessibleName('Add experience');
+		expect((await dock.boundingBox())!.height).toBeLessThan(60);
 	});
 });
 

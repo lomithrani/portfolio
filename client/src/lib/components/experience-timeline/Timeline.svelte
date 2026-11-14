@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import { ExperienceType } from 'portfolio-common';
-	import { flushSync } from 'svelte';
+	import { flushSync, tick } from 'svelte';
 	import {
 		AcademicCap,
 		Briefcase,
@@ -89,16 +89,29 @@
 	// it, between the whole axis in sight and the closest zoom.
 	let scroller: HTMLElement | undefined = $state();
 	let track: HTMLElement | undefined = $state();
-	/** The month's width the visitor chose; null until they zoom */
-	let zoom: number | null = $state(null);
+	/**
+	 * The month's width the visitor chose; 'fit' for the whole axis in sight, which follows the
+	 * page's width (a scrollbar appearing, a phone turned); null until they zoom
+	 */
+	let zoom: number | 'fit' | null = $state(null);
 	/** The width the axis has to fill: the scroller's, without its padding (0 until measured) */
 	let available = $state(0);
 	/** The month's width that shows the whole axis: the farthest zoom (0 until measured) */
 	let fit = $derived(available > 0 && months > 0 ? available / months : 0);
 	let closest = $derived(Math.max(closestMonthWidth(months), fit));
-	// A page wider than the axis stretches it: a month is never narrower than at the farthest zoom
-	let monthWidth = $derived(Math.max(zoom ?? defaultMonthWidth(timeline), fit));
-	let ticks = $derived(timelineTicks(axis, monthWidth));
+	// Within the zoom's limits, which move with the page's width and with the experiences (the
+	// owner adds one from here). A page wider than the axis stretches it: a month is never
+	// narrower than at the farthest zoom
+	let monthWidth = $derived.by(() => {
+		const chosen = zoom === 'fit' ? fit : (zoom ?? defaultMonthWidth(timeline));
+		return Math.max(Math.min(chosen, closest), fit) || defaultMonthWidth(timeline);
+	});
+	// Until the scroller is measured (the server render), the axis is drawn at least as wide as
+	// a narrow page (the track is min-w-full): its lines are those of that width, not of a width
+	// it will not have
+	let ticks = $derived(
+		timelineTicks(axis, fit > 0 ? monthWidth : Math.max(monthWidth, months > 0 ? 320 / months : 0))
+	);
 	let monthly = $derived(ticks.some((tick) => !tick.year));
 	let canZoomIn = $derived(monthWidth < closest - 0.01);
 	let canZoomOut = $derived(fit > 0 && monthWidth > fit + 0.01);
@@ -113,7 +126,7 @@
 		if (Math.abs(next - monthWidth) < 0.001) return false;
 		const before = track.getBoundingClientRect();
 		const ratio = before.width > 0 ? (clientX - before.left) / before.width : 0;
-		flushSync(() => (zoom = next));
+		flushSync(() => (zoom = next <= fit + 0.001 ? 'fit' : next));
 		const after = track.getBoundingClientRect();
 		scroller.scrollLeft += after.left + ratio * after.width - clientX;
 		return true;
@@ -141,6 +154,11 @@
 			screenX = event.screenX;
 			screenY = event.screenY;
 			armed = event.target instanceof Node && element.contains(event.target);
+		};
+		// The timeline went from under the pointer (the page scrolled, at a zoom limit): coming
+		// back under it without a move, it keeps scrolling the page
+		const onPointerLeave = () => {
+			armed = false;
 		};
 
 		const onWheel = (event: WheelEvent) => {
@@ -178,6 +196,7 @@
 		};
 
 		document.addEventListener('pointermove', onPointerMove, { passive: true });
+		element.addEventListener('pointerleave', onPointerLeave);
 		element.addEventListener('wheel', onWheel, { passive: false });
 		element.addEventListener('touchstart', onTouchStart, { passive: true });
 		element.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -185,6 +204,7 @@
 		element.addEventListener('touchcancel', onTouchEnd);
 		return () => {
 			document.removeEventListener('pointermove', onPointerMove);
+			element.removeEventListener('pointerleave', onPointerLeave);
 			element.removeEventListener('wheel', onWheel);
 			element.removeEventListener('touchstart', onTouchStart);
 			element.removeEventListener('touchmove', onTouchMove);
@@ -196,6 +216,27 @@
 	// Opens on the most recent months: a career scrolls back in time
 	$effect(() => {
 		if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+	});
+
+	// The experiences changed under the timeline (the owner saved one from here) and the axis
+	// with them: the month at the left edge stays there, whatever the axis gained or lost
+	let drawn: { start: number; months: number } | undefined;
+	$effect.pre(() => {
+		const next = { start: axis.start, months };
+		const previous = drawn;
+		drawn = next;
+		const element = scroller;
+		const line = track;
+		if (!previous || !element || !line || previous.months <= 0 || next.months <= 0) return;
+		if (previous.start === next.start && previous.months === next.months) return;
+		// Still the axis as it was drawn
+		const width = line.offsetWidth;
+		if (width <= 0) return;
+		const month = previous.start + (element.scrollLeft / width) * previous.months;
+		void tick().then(() => {
+			if (!line.isConnected) return;
+			element.scrollLeft = ((month - next.start) / next.months) * line.offsetWidth;
+		});
 	});
 </script>
 
@@ -236,7 +277,12 @@
 						></div>
 					{/if}
 				</div>
-				<div class="relative h-6 text-xs text-surface-700-300" aria-hidden="true">
+				<!-- Not a target: the labels come and go with the zoom, and a pinch that started on one
+					would lose its touches with it -->
+				<div
+					class="pointer-events-none relative h-6 text-xs text-surface-700-300"
+					aria-hidden="true"
+				>
 					{#each ticks as tick (tick.month)}
 						{#if tick.label}
 							<span
