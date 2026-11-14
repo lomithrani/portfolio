@@ -5,7 +5,9 @@ right after a sign-in from the header, or from the account menu (`start: 'claim'
 claim form). Candidate goes to the portfolio the account owns (or claims one first: POST
 /domain/claim), Recruiter to /recruiter (its space is created the first time). Either choice is
 recorded as the account's active mode (PUT /me/mode) once its page shows (recordSpaceShown: a page
-that keeps the person, with unsaved changes, records nothing). The last used space is marked and
+that keeps the person, with unsaved changes, records nothing). An account that has not accepted
+the Terms of use in force ticks the age and terms checkbox (AgeTermsConsent) before claiming: the
+API refuses the claim otherwise, and records the acceptance with it. The last used space is marked and
 focused; closing the dialog keeps the person where they are.
 -->
 <script lang="ts">
@@ -23,12 +25,15 @@ focused; closing the dialog keeps the person where they are.
 		UserCircle,
 		XMark
 	} from 'svelte-heros-v2';
-	import { normalizeDomainName, type UserMode } from 'portfolio-common';
+	import { currentConsent, normalizeDomainName, type UserMode } from 'portfolio-common';
+	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import { authenticationStore } from '#services/stores/index.ts';
 	import {
 		DOMAIN_NAME_MAX_LENGTH,
+		PORTFOLIO_NAME_PLACEHOLDER,
 		claimPortfolio,
 		domainNameProblem,
+		hasAcceptedCurrentTerms,
 		recordSpaceShown,
 		refreshAccount,
 		suggestDomainName,
@@ -83,6 +88,17 @@ focused; closing the dialog keeps the person where they are.
 	 * field follows the typing and stays quiet. Cleared once the name is edited.
 	 */
 	let claimAlert = $derived(freshOn([open, name], ''));
+	/** The age and terms checkbox of the claim form */
+	let consentChecked = $derived(freshOn(open, false));
+	/** The API asked for the confirmation (the session did not know the account lacked it) */
+	let consentAsked = $derived(freshOn(open, false));
+	let consentProblem = $derived(freshOn(open, ''));
+	/** The API refused the version of the terms this page sends: ticking again cannot fix it */
+	let consentStale = $derived(freshOn(open, false));
+	/** Shown until the box is ticked (a refused version of the terms stays: the page is outdated) */
+	let consentError = $derived(consentChecked && !consentStale ? '' : consentProblem);
+	let showConsent = $derived(consentAsked || !hasAcceptedCurrentTerms(user));
+	const consentId = `${uid}-consent`;
 
 	let candidateButton: HTMLButtonElement | undefined = $state();
 	let recruiterButton: HTMLButtonElement | undefined = $state();
@@ -134,11 +150,12 @@ focused; closing the dialog keeps the person where they are.
 	 * Says why the claim was refused, also when it was submitted with Enter from the field (the
 	 * focus does not move then), and puts the focus back on the field.
 	 */
-	const announceClaimError = async (message: string) => {
+	const announceClaimError = async (message: string, fieldId?: string) => {
 		claimAlert = '';
 		await tick();
 		claimAlert = message;
-		if (document.activeElement !== nameInput) nameInput?.focus();
+		const field = fieldId ? document.getElementById(fieldId) : nameInput;
+		if (field && document.activeElement !== field) field.focus();
 	};
 
 	const goToStep = async (next: Step) => {
@@ -194,12 +211,25 @@ focused; closing the dialog keeps the person where they are.
 			return;
 		}
 
+		if (showConsent && !consentChecked) {
+			consentProblem = 'Tick the box to confirm your age and accept the terms.';
+			await announceClaimError(consentProblem, consentId);
+			return;
+		}
+
 		busy = 'claim';
-		const result = await claimPortfolio(name);
+		const result = await claimPortfolio(name, showConsent ? currentConsent() : undefined);
 		if (!result.ok) {
 			busy = null;
 			if (result.reason === 'session-expired') {
 				sessionExpired(result);
+			} else if (result.cause === 'consent') {
+				// The account has not accepted the terms in force, or this page's version is outdated
+				consentAsked = true;
+				consentStale = consentChecked;
+				consentProblem = result.message;
+				// Its checkbox shows by then (announceClaimError waits for the update)
+				await announceClaimError(result.message, consentId);
 			} else if (result.cause === 'name') {
 				refusedName = { name: normalizedName, message: result.message };
 				await announceClaimError(result.message);
@@ -336,7 +366,7 @@ focused; closing the dialog keeps the person where they are.
 									autocapitalize="none"
 									spellcheck="false"
 									maxlength={DOMAIN_NAME_MAX_LENGTH}
-									placeholder="jane.doe"
+									placeholder={PORTFOLIO_NAME_PLACEHOLDER}
 									aria-invalid={nameError ? 'true' : undefined}
 									aria-describedby="{uid}-name-hint{nameError ? ` ${uid}-name-error` : ''}"
 									readonly={busy === 'claim'}
@@ -347,9 +377,19 @@ focused; closing the dialog keeps the person where they are.
 								<p id="{uid}-name-hint" class="text-sm text-surface-700-300 wrap-anywhere">
 									Lowercase letters, digits, dots and hyphens. Your portfolio will be at
 									<span class="font-medium text-surface-950-50"
-										>{host}/{normalizedName || 'your-name'}</span
+										>{host}/{normalizedName || PORTFOLIO_NAME_PLACEHOLDER}</span
 									>.
 								</p>
+								{#if showConsent}
+									<div class="pt-2">
+										<AgeTermsConsent
+											bind:checked={consentChecked}
+											error={consentError}
+											disabled={busy === 'claim'}
+											id={consentId}
+										/>
+									</div>
+								{/if}
 								<p class="sr-only" role="alert">{claimAlert}</p>
 							</form>
 						{/if}

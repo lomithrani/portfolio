@@ -5,15 +5,16 @@ space (`mode`, the default: the visitor stays on the job page to apply); the hir
 step passes null, so the account keeps the space it last chose (it creates its recruiter space next,
 if it has none).
 `onSignedIn` runs once the session is stored.
-Google Identity has one credential callback for the whole page. The header's sign-in (shown
-whenever this one is: both are for signed-out visitors) keeps it, with its space chooser and its
-own errors; this button takes it only when it is clicked.
+Google's sign-in is loaded only once the visitor asks for it: a local "Sign in with Google" button
+first (nothing reaches accounts.google.com before), then Google's button and its One Tap prompt.
+Google Identity has one credential callback for the whole page: this button takes it when it is
+clicked (the header's sign-in takes it back when it is clicked in turn).
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { UserMode } from 'portfolio-common';
 	import { login } from '#services/authentication.ts';
-	import { loadGoogleIdentity, setupGoogleIdentity } from '#services/googleIdentity.ts';
+	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
 
 	let {
@@ -26,7 +27,9 @@ own errors; this button takes it only when it is clicked.
 	} = $props();
 
 	let buttonContainer: HTMLDivElement | undefined = $state();
-	let status = $state<'loading' | 'ready' | 'unavailable' | 'signing-in'>('loading');
+	let status = $state<'idle' | 'loading' | 'ready' | 'unavailable' | 'signing-in'>('idle');
+	/** Loads Google's sign-in (set once mounted) */
+	let start: () => void = () => {};
 	let errorMessage = $state('');
 
 	const isDark = () => document.documentElement.classList.contains('dark');
@@ -61,9 +64,9 @@ own errors; this button takes it only when it is clicked.
 			if (signedIn) notify?.();
 		};
 
-		/** Renders the button; false when Google Identity is not set up yet (nothing rendered) */
-		const render = (id: typeof google.accounts.id): boolean => {
-			if (!buttonContainer) return false;
+		/** Renders Google's button */
+		const render = (id: typeof google.accounts.id) => {
+			if (!buttonContainer) return;
 			id.renderButton(buttonContainer, {
 				theme: isDark() ? 'filled_black' : 'outline',
 				size: 'large',
@@ -73,32 +76,31 @@ own errors; this button takes it only when it is clicked.
 				logo_alignment: 'left',
 				click_listener: () => {
 					clickedAt = Date.now();
-					// This button's credential comes back here (the page's callback until a sign-in
-					// from the header takes it back: it does whenever it shows again)
+					// This button's credential comes back here (the page's callback until the
+					// header's sign-in is clicked and takes it back)
 					void setupGoogleIdentity(onCredential).catch(() => {});
 				}
 			});
-			return buttonContainer.childElementCount > 0;
 		};
 
 		const show = async () => {
-			// Loaded without taking the callback. The header's sign-in sets Google Identity up as the
-			// same script loads: rendered a task later, once it did
-			const id = await loadGoogleIdentity();
-			await new Promise((resolve) => setTimeout(resolve));
+			// Clicked here: this button takes the page's credential callback
+			const gsi = await setupGoogleIdentity(onCredential);
 			if (destroyed || !buttonContainer) return;
-			if (!render(id)) {
-				// Nothing set it up (no header sign-in on this page): set up here
-				const gsi = await setupGoogleIdentity(onCredential);
-				if (destroyed) return;
-				render(gsi.id);
-			}
+			render(gsi.id);
 			status = 'ready';
+			gsi.id.prompt();
 		};
 
-		show().catch(() => {
-			if (!destroyed) status = 'unavailable';
-		});
+		start = () => {
+			if (status !== 'idle' && status !== 'unavailable') return;
+			status = 'loading';
+			// Asked for here: the account chosen in One Tap signs in like this button
+			clickedAt = Date.now();
+			show().catch(() => {
+				if (!destroyed) status = 'unavailable';
+			});
+		};
 
 		return () => {
 			destroyed = true;
@@ -108,8 +110,20 @@ own errors; this button takes it only when it is clicked.
 
 <div class="space-y-3">
 	<!-- Kept in the page while signing in: Google's popup reports to its button -->
+	{#if status === 'idle' || status === 'unavailable'}
+		<button
+			type="button"
+			class="btn preset-outlined-surface-300-700 min-h-11 rounded-full px-5 hover:preset-tonal"
+			onclick={() => start()}
+		>
+			Sign in with Google
+		</button>
+	{/if}
 	<div
-		class={['relative min-h-11', { hidden: status === 'signing-in' || status === 'unavailable' }]}
+		class={[
+			'relative min-h-11',
+			{ hidden: status === 'signing-in' || status === 'unavailable' || status === 'idle' }
+		]}
 	>
 		<div bind:this={buttonContainer} class="google-button flex min-h-11 items-center"></div>
 		{#if status === 'loading'}
@@ -129,7 +143,7 @@ own errors; this button takes it only when it is clicked.
 		</p>
 	{:else if status === 'unavailable'}
 		<p class="text-sm text-surface-700-300" role="alert">
-			Google sign-in could not be loaded. Check your connection, then reload the page.
+			Google sign-in could not be loaded. Check your connection, then try again.
 		</p>
 	{/if}
 	{#if errorMessage}

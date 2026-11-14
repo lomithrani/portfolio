@@ -34,3 +34,18 @@ body {
 :is(.input, .select, .textarea)[aria-invalid='true'] {
 	--tw-ring-color: var(--color-error-500);
 }
+
+/*
+ * Links in running text of the legal pages, the consent notices and the account page: the theme's
+ * `anchor` is primary-500 (3.4:1 on a light surface with the default theme, below AA for the small
+ * text of a notice); primary-700 in light mode and primary-300 in dark mode, underlined
+ */
+@utility link-text {
+	font-weight: 500;
+	color: var(--color-primary-700-300);
+	text-decoration-line: underline;
+	text-underline-offset: 2px;
+	&:hover {
+		text-decoration-thickness: 2px;
+	}
+}

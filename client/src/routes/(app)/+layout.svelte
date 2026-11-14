@@ -2,6 +2,7 @@
 	import '../../app.css';
 	import Header from '#components/Header.svelte';
 	import ThemeToggle from '#components/ThemeToggle.svelte';
+	import LegalLinks from '#components/legal/LegalLinks.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
 	import { isCurrentSection, recordSpaceShown } from '#services/account.ts';
@@ -90,8 +91,14 @@
 	<!-- relative: the page's absolutely positioned elements (sr-only text, live regions) are
 	     placed in this scroll container, not at the top of the document, which they would make
 	     scrollable: following an in-page link would then scroll the header out of reach -->
-	<main class="relative flex-1 overflow-auto scroll-smooth" id="page">
-		{@render children()}
+	<main class="relative flex flex-1 flex-col overflow-auto scroll-smooth" id="page">
+		<div class="flex-1">
+			{@render children()}
+		</div>
+		<!-- The legal pages, small, at the end of every page: they scroll with it -->
+		<footer class="border-t border-surface-200-800 px-4 py-3 md:px-6">
+			<LegalLinks compact class="mx-auto max-w-4xl justify-center" />
+		</footer>
 	</main>
 </div>
 

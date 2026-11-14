@@ -3,7 +3,9 @@ import { USER_MODES } from 'portfolio-common';
 import type { UserMode } from 'portfolio-common';
 import { Domain, User } from '../models/database';
 import { ConflictError, CouldntVerifyJwtError } from '../errors';
+import { restoreAccountQuotas } from './accountQuotas';
 import type { GoogleIdentity } from './google';
+import { latestTermsVersion } from './legal';
 import { isDuplicateKeyError } from './mongoErrors';
 import { enableRecruiterSpace } from './recruiters';
 
@@ -19,6 +21,11 @@ export interface UserDto {
   recruiter: boolean;
   /** Name of the domain (portfolio) the account owns, if any */
   domain?: string;
+  /**
+   * Version of the Terms of use the account last accepted (portfolio-common
+   * LEGAL_VERSION when they are the terms in force); unset until it accepts
+   */
+  termsVersion?: string;
 }
 
 const isUserMode = (value: unknown): value is UserMode =>
@@ -33,17 +40,22 @@ export const toUserDto = (
     surname?: string | null;
     activeMode?: string | null;
     recruiter?: object | null;
+    legalAcceptances?: readonly { version?: string | null }[] | null;
   },
   domain?: string | null
-): UserDto => ({
-  _id: user._id.toString(),
-  email: user.email,
-  ...(user.name ? { name: user.name } : {}),
-  ...(user.surname ? { surname: user.surname } : {}),
-  ...(isUserMode(user.activeMode) ? { activeMode: user.activeMode } : {}),
-  recruiter: !!user.recruiter,
-  ...(domain ? { domain } : {})
-});
+): UserDto => {
+  const termsVersion = latestTermsVersion(user);
+  return {
+    _id: user._id.toString(),
+    email: user.email,
+    ...(user.name ? { name: user.name } : {}),
+    ...(user.surname ? { surname: user.surname } : {}),
+    ...(isUserMode(user.activeMode) ? { activeMode: user.activeMode } : {}),
+    recruiter: !!user.recruiter,
+    ...(domain ? { domain } : {}),
+    ...(termsVersion ? { termsVersion } : {})
+  };
+};
 
 /** Name of the domain the user owns, if any (an account claims at most one: POST /domain/claim) */
 export const ownedDomainName = async (userId: Types.ObjectId | string) =>
@@ -86,7 +98,8 @@ export const setActiveMode = async (userId: string, mode: UserMode) => {
  * Finds the user for a verified Google identity. Users are matched by their
  * Google `sub` first; accounts created before `googleId` existed are matched
  * once by verified email and linked to the `sub`. An email already linked to a
- * different Google account is never taken over.
+ * different Google account is never taken over. A new account starts from the
+ * quotas a deleted account of the same Google identity used (services/accountQuotas.ts).
  */
 export const findOrCreateGoogleUser = async ({ sub, email }: GoogleIdentity) => {
   const bySub = await User.findOne({ googleId: sub });
@@ -99,13 +112,17 @@ export const findOrCreateGoogleUser = async ({ sub, email }: GoogleIdentity) => 
   );
   if (legacy) return legacy;
 
+  let created;
   try {
-    return await User.create({ email, googleId: sub });
+    created = await User.create({ email, googleId: sub });
   } catch (error) {
     if (!isDuplicateKeyError(error)) throw error;
     // Concurrent first login with the same Google account
-    const created = await User.findOne({ googleId: sub });
-    if (created) return created;
+    const concurrent = await User.findOne({ googleId: sub });
+    if (concurrent) return concurrent;
     throw new ConflictError('This email is linked to a different Google account');
   }
+  // A Google identity whose account was deleted starts from the quotas it used
+  await restoreAccountQuotas(created.id, sub);
+  return created;
 };

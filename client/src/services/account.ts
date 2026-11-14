@@ -1,14 +1,19 @@
 import { get } from 'svelte/store';
 import {
 	RESERVED_DOMAIN_NAMES,
+	STALE_TERMS_MESSAGE,
 	USER_MODE_LABELS,
+	currentConsent,
+	isCurrentTermsVersion,
 	isValidDomainName,
 	normalizeDomainName,
+	type ConsentInput,
 	type UserMode
 } from 'portfolio-common';
 import { portfolioApi } from '#services';
 import { authenticationStore, type AuthUser } from './stores';
-import { clearAuthentication, isSessionValid } from './authentication';
+import { clearAuthentication, isSessionValid, readUser, termsVersionText } from './authentication';
+import { disableGoogleAutoSelect } from './googleIdentity';
 import { errorStatus } from './apiErrors';
 
 // The account's spaces (portfolio-common USER_MODES): the candidate space is the portfolio of the
@@ -132,6 +137,32 @@ export const suggestDomainName = (
 	return '';
 };
 
+/** The example name of the claim forms: their address preview while no name is typed, and their field's placeholder */
+export const PORTFOLIO_NAME_PLACEHOLDER = 'jane.doe';
+
+/**
+ * The address a portfolio would have, as text for the claim forms' live preview:
+ * "portfolio.example/jane.doe". `originOrHost` is the site's origin ("https://portfolio.example")
+ * or host ("portfolio.example", `page.url.host`); the scheme is left out. The name is shown as it
+ * would be claimed (trimmed, lower case), the example name (PORTFOLIO_NAME_PLACEHOLDER) while empty.
+ */
+export const portfolioUrlPreview = (originOrHost: string, rawName: string): string => {
+	const host = originOrHost
+		.trim()
+		.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '')
+		.replace(/\/.*$/, '');
+	return `${host}/${normalizeDomainName(rawName) || PORTFOLIO_NAME_PLACEHOLDER}`;
+};
+
+/**
+ * Whether the account accepted the Terms of use in force (portfolio-common LEGAL_VERSION): the
+ * claim forms hide the age and terms checkbox when it did. The version may be a Date or its ISO
+ * string (Eden's date parsing, termsVersionText).
+ */
+export const hasAcceptedCurrentTerms = (
+	user: { termsVersion?: unknown } | null | undefined
+): boolean => isCurrentTermsVersion(termsVersionText(user?.termsVersion));
+
 /** Whether `pathname` is `base` or a page under it ('/recruiter/jobs/1' is under '/recruiter') */
 export const isCurrentSection = (pathname: string, base: string): boolean =>
 	pathname === base || pathname.startsWith(base.endsWith('/') ? base : `${base}/`);
@@ -171,17 +202,34 @@ const bodyText = (value: unknown): string => {
 	return '';
 };
 
+/** The field a 422 validation error names (`property`), '' for any other body */
+const bodyProperty = (value: unknown): string =>
+	value && typeof value === 'object' && 'property' in value && typeof value.property === 'string'
+		? value.property
+		: '';
+
+/** A 422 about the age and terms confirmation (`consent`, `consent.termsVersion`...) */
+const isConsentProblem = (status: number | undefined, body: unknown): boolean =>
+	status === 422 && /^consent(\.|$)/.test(bodyProperty(body));
+
+/** The claim form's message when the API asks for the age and terms confirmation */
+export const CLAIM_CONSENT_MESSAGE =
+	'Confirm your age and accept the terms of use to create a portfolio.';
+
 /**
  * What a failed POST /domain/claim was about: 'name' (invalid or already taken: the person picks
- * another one), 'owns-domain' (the account already owns a portfolio), or nothing else to fix.
+ * another one), 'owns-domain' (the account already owns a portfolio), 'consent' (the account has
+ * not accepted the terms in force: the form shows the age and terms checkbox), or nothing else
+ * to fix.
  */
-export type ClaimFailureCause = 'name' | 'owns-domain';
+export type ClaimFailureCause = 'name' | 'owns-domain' | 'consent';
 
 export const claimFailureCause = (
 	status: number | undefined,
 	body: unknown
 ): ClaimFailureCause | undefined => {
 	if (status === 409) return /already own/i.test(bodyText(body)) ? 'owns-domain' : 'name';
+	if (isConsentProblem(status, body)) return 'consent';
 	if (status === 400 || status === 422) return 'name';
 	return undefined;
 };
@@ -190,6 +238,12 @@ export const claimFailureCause = (
 export const claimErrorMessage = (status: number | undefined, body: unknown): string => {
 	const text = bodyText(body);
 	if (status === 401) return SESSION_EXPIRED_MESSAGE;
+	if (isConsentProblem(status, body)) {
+		// The client always sends the version it was built with: a refused one is outdated
+		return bodyProperty(body) === 'consent.termsVersion'
+			? STALE_TERMS_MESSAGE
+			: CLAIM_CONSENT_MESSAGE;
+	}
 	if (status === 409 && /already own/i.test(text)) {
 		return 'Your account already owns a portfolio.';
 	}
@@ -205,12 +259,6 @@ export const switchErrorMessage = (mode: UserMode): string =>
 		: 'Could not switch to your candidate space. Try again.';
 
 // --- API calls -----------------------------------------------------------------------------
-
-const readUser = (data: unknown): AuthUser | undefined => {
-	if (!data || typeof data !== 'object' || !('user' in data)) return undefined;
-	const user = (data as { user?: unknown }).user;
-	return user && typeof user === 'object' && '_id' in user ? (user as AuthUser) : undefined;
-};
 
 /**
  * Stores the account the API returned, keeping the session's expiry. Ignored when the session
@@ -291,14 +339,24 @@ export type ClaimResult = { ok: true; name: string } | ClaimFailure;
 
 /**
  * Claims the portfolio `name` for the signed-in account (POST /domain/claim). The name is
- * normalised first and must pass domainNameProblem.
+ * normalised first and must pass domainNameProblem. `consent` (the age and terms checkbox,
+ * portfolio-common currentConsent()) is required by the API from an account that has not
+ * accepted the terms in force (hasAcceptedCurrentTerms): without it the claim fails with the
+ * cause 'consent'. Once claimed, the session's account has the domain (and the terms version
+ * when consent was sent).
  */
-export const claimPortfolio = async (rawName: string): Promise<ClaimResult> => {
+export const claimPortfolio = async (
+	rawName: string,
+	consent?: ConsentInput
+): Promise<ClaimResult> => {
 	const name = normalizeDomainName(rawName);
 	const problem = domainNameProblem(name);
 	if (problem) return { ...failure('error', problem), cause: 'name' };
 	try {
-		const { error } = await portfolioApi.domain.claim.post({ name }, withCredentials);
+		const { error } = await portfolioApi.domain.claim.post(
+			{ name, ...(consent ? { consent } : {}) },
+			withCredentials
+		);
 		if (error) {
 			const status = errorStatus(error);
 			if (status === 401) {
@@ -312,9 +370,205 @@ export const claimPortfolio = async (rawName: string): Promise<ClaimResult> => {
 			};
 		}
 		const user = get(authenticationStore).user;
-		if (user) storeUser({ ...user, domain: name });
+		if (user) {
+			storeUser({
+				...user,
+				domain: name,
+				...(consent ? { termsVersion: consent.termsVersion } : {})
+			});
+		}
 		return { ok: true, name };
 	} catch {
 		return failure('network', NETWORK_ERROR_MESSAGE);
 	}
+};
+
+/** What the availability check says about a name: free, why not, or that it could not tell */
+export type DomainAvailabilityStatus =
+	'available' | 'taken' | 'invalid' | 'reserved' | 'error' | 'rate-limited';
+
+export type DomainAvailabilityCheck = { status: DomainAvailabilityStatus };
+
+const AVAILABILITY_REASONS = new Set<DomainAvailabilityStatus>(['taken', 'invalid', 'reserved']);
+
+const readAvailability = (data: unknown): DomainAvailabilityStatus => {
+	if (!data || typeof data !== 'object' || !('available' in data)) return 'error';
+	if (data.available === true) return 'available';
+	const reason = 'reason' in data ? data.reason : undefined;
+	return AVAILABILITY_REASONS.has(reason as DomainAvailabilityStatus)
+		? (reason as DomainAvailabilityStatus)
+		: 'error';
+};
+
+/**
+ * Asks the API whether the portfolio `name` can still be claimed (GET /domain/:name/availability,
+ * public): a hint while typing, the claim decides. Call it only once domainNameProblem(name) is
+ * null; an invalid or reserved name is answered here without a request. 'rate-limited' (429) and
+ * 'error' (network, other failures, or `signal` aborted) mean the name could not be checked.
+ */
+export const checkDomainAvailability = async (
+	rawName: string,
+	signal?: AbortSignal
+): Promise<DomainAvailabilityCheck> => {
+	const name = normalizeDomainName(rawName);
+	if (RESERVED_DOMAIN_NAMES.has(name)) return { status: 'reserved' };
+	if (domainNameProblem(name)) return { status: 'invalid' };
+	try {
+		const { data, error } = await portfolioApi
+			.domain({ name })
+			.availability.get(signal ? { fetch: { signal } } : undefined);
+		if (error) return { status: errorStatus(error) === 429 ? 'rate-limited' : 'error' };
+		return { status: readAvailability(data) };
+	} catch {
+		return { status: 'error' };
+	}
+};
+
+/** The line the claim forms show for an availability check of `rawName` (null while it is available) */
+export const domainAvailabilityMessage = (
+	status: DomainAvailabilityStatus,
+	rawName: string
+): string | null => {
+	switch (status) {
+		case 'available':
+			return null;
+		case 'taken':
+			return 'This name is already taken. Choose another one.';
+		case 'invalid':
+		case 'reserved':
+			return domainNameProblem(rawName) ?? 'This name cannot be used. Choose another one.';
+		case 'rate-limited':
+			return 'Too many checks for now: the name will be checked when you claim it.';
+		case 'error':
+			return 'Could not check this name: it will be checked when you claim it.';
+	}
+};
+
+/**
+ * Records that the signed-in account accepts the Terms of use in force, with the age confirmation
+ * (PUT /me/consent): for an account that signed in without the checkbox. `source` says where it
+ * was given. Updates the persisted session with the account returned (its termsVersion).
+ */
+export const acceptTerms = async (
+	source: 'claim' | 'account' = 'account'
+): Promise<AccountResult> => {
+	try {
+		const { data, error } = await portfolioApi.me.consent.put(
+			{ ...currentConsent(), source },
+			withCredentials
+		);
+		if (error) {
+			const status = errorStatus(error);
+			if (status === 401) {
+				clearAuthentication();
+				return failure('session-expired', SESSION_EXPIRED_MESSAGE);
+			}
+			if (isConsentProblem(status, error.value)) return failure('error', STALE_TERMS_MESSAGE);
+			return failure('error', 'Could not record your acceptance. Try again.');
+		}
+		const user = readUser(data);
+		if (!user) return failure('error', 'Could not record your acceptance. Try again.');
+		storeUser(user);
+		return { ok: true, user };
+	} catch {
+		return failure('network', NETWORK_ERROR_MESSAGE);
+	}
+};
+
+/**
+ * The localStorage keys this browser keeps for the account `userId`: its experience editor drafts
+ * (`experienceDraft:<userId>:…`), résumé import reviews (`resumeImport:<userId>:…`), job
+ * description drafts (`jobDraft:<userId>:…`) and job description import (`jobImportDraft:<userId>`).
+ */
+export const isUserStorageKey = (key: string, userId: string): boolean =>
+	!!userId &&
+	(key.startsWith(`experienceDraft:${userId}:`) ||
+		key.startsWith(`resumeImport:${userId}:`) ||
+		key.startsWith(`jobDraft:${userId}:`) ||
+		key === `jobImportDraft:${userId}`);
+
+type KeyedStorage = Pick<Storage, 'length' | 'key' | 'removeItem'>;
+
+const browserStorage = (): KeyedStorage | undefined => {
+	try {
+		return globalThis.localStorage ?? undefined;
+	} catch {
+		return undefined;
+	}
+};
+
+/**
+ * Removes what this browser keeps for the account `userId` (isUserStorageKey). Storage that
+ * cannot be read (private mode, blocked) is left as it is. Returns the keys removed.
+ */
+export const clearUserBrowserData = (
+	userId: string,
+	storage: KeyedStorage | undefined = browserStorage()
+): string[] => {
+	if (!storage || !userId) return [];
+	try {
+		const keys: string[] = [];
+		for (let index = 0; index < storage.length; index++) {
+			const key = storage.key(index);
+			if (key !== null && isUserStorageKey(key, userId)) keys.push(key);
+		}
+		for (const key of keys) storage.removeItem(key);
+		return keys;
+	} catch {
+		return [];
+	}
+};
+
+export const DELETE_ACCOUNT_ERROR_MESSAGE = 'Could not delete your account. Try again.';
+
+/** How long deleteAccount waits for Google's automatic sign-in to be turned off */
+export const GOOGLE_AUTO_SELECT_TIMEOUT_MS = 3000;
+
+/** The API's 401 for a session whose account no longer exists (deleted, here or elsewhere) */
+const UNKNOWN_USER = 'Unauthorized: unknown user';
+
+/** Whether a failed request was refused because the session's account no longer exists */
+const isUnknownUser = (error: { status: unknown; value?: unknown }): boolean =>
+	errorStatus(error) === 401 && bodyText(error.value).trim() === UNKNOWN_USER;
+
+/**
+ * Deletes the signed-in account and everything tied to it (DELETE /me): its portfolio, hiring
+ * journey, job postings, applications and schedules; the API asks Google to revoke its Google
+ * Calendar access and ends the session. Then this browser forgets the account: the session, its
+ * drafts (clearUserBrowserData) and Google's automatic sign-in. A 401 saying the account no longer
+ * exists counts as deleted: a retry after a lost answer (the first request did delete it), or a
+ * deletion from another tab. Any other 401 (the session expired) says nothing about the account.
+ */
+export const deleteAccount = async (): Promise<{ ok: true } | AccountFailure> => {
+	const userId = get(authenticationStore).user?._id;
+	try {
+		const { error } = await portfolioApi.me.delete({ confirm: 'DELETE' }, withCredentials);
+		if (error && !isUnknownUser(error)) {
+			if (errorStatus(error) === 401) {
+				clearAuthentication();
+				return failure('session-expired', SESSION_EXPIRED_MESSAGE);
+			}
+			return failure('error', DELETE_ACCOUNT_ERROR_MESSAGE);
+		}
+	} catch {
+		return failure('network', NETWORK_ERROR_MESSAGE);
+	}
+	if (userId) clearUserBrowserData(String(userId));
+	clearAuthentication();
+	// Loading Google's script can hang (a firewall dropping packets): the account is already gone,
+	// so the page does not wait for it longer than this
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		await Promise.race([
+			disableGoogleAutoSelect(),
+			new Promise<void>((resolve) => {
+				timer = setTimeout(resolve, GOOGLE_AUTO_SELECT_TIMEOUT_MS);
+			})
+		]);
+	} catch {
+		// Only Google's automatic sign-in is left on: the account is gone either way
+	} finally {
+		clearTimeout(timer);
+	}
+	return { ok: true };
 };

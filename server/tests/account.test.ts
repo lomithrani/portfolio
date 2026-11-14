@@ -5,11 +5,12 @@
 // removes them after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
+import { LEGAL_VERSION } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import { Domain, User } from '../models/database';
 import { enableRecruiterSpace, findRecruiterSpace } from '../services/recruiters';
-import { authCookie, parseCookie, signGoogleIdToken, useTestGoogleKeys } from './helpers';
+import { CONSENT, authCookie, parseCookie, signGoogleIdToken, useTestGoogleKeys } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
@@ -244,9 +245,17 @@ describe('GET /me', () => {
   it('names the domain the account owns, in every mode', async () => {
     const { cookie, userId } = await login('owner', 'candidate');
     const domainName = t.id('domain');
-    expect((await call('POST', '/domain/claim', { body: { name: domainName }, cookie })).status).toBe(200);
+    expect((await call('POST', '/domain/claim', { body: { name: domainName, consent: CONSENT }, cookie })).status).toBe(200);
 
-    const expected = { _id: userId, email: t.email('owner'), activeMode: 'candidate', recruiter: false, domain: domainName };
+    // The claim recorded the terms it was sent with
+    const expected = {
+      _id: userId,
+      email: t.email('owner'),
+      activeMode: 'candidate',
+      recruiter: false,
+      domain: domainName,
+      termsVersion: LEGAL_VERSION
+    };
     expect((await me(cookie)).json()).toEqual({ user: expected });
     expect((await isLogged(cookie)).json().user).toEqual(expected);
     expect((await login('owner')).user).toEqual(expected);
@@ -261,7 +270,7 @@ describe('GET /me', () => {
     const owner = await login('someone');
     const theirDomain = t.id('their-domain');
     // A domain must exist for the lookup to wrongly find it
-    expect((await call('POST', '/domain/claim', { body: { name: theirDomain }, cookie: owner.cookie })).status).toBe(200);
+    expect((await call('POST', '/domain/claim', { body: { name: theirDomain, consent: CONSENT }, cookie: owner.cookie })).status).toBe(200);
     expect((await me(owner.cookie)).json().user.domain).toBe(theirDomain);
     const { cookie } = await login('nobody');
 
@@ -344,6 +353,27 @@ describe('the user DTO', () => {
       }
       const { user } = JSON.parse(body);
       expect(Object.keys(user).sort()).toEqual(['_id', 'activeMode', 'email', 'recruiter']);
+    }
+  });
+
+  it('carries the version of the terms accepted, never the acceptances themselves', async () => {
+    const { cookie } = await login('terms', 'candidate');
+
+    const bodies = [
+      (await call('PUT', '/me/consent', { body: CONSENT, cookie })).text,
+      (await login('terms')).text,
+      (await isLogged(cookie)).text,
+      (await me(cookie)).text,
+      (await switchMode(cookie, 'candidate')).text
+    ];
+
+    for (const body of bodies) {
+      for (const field of ['legalAcceptances', 'acceptedAt', 'ageConfirmationKey', 'source']) {
+        expect(body).not.toContain(field);
+      }
+      const { user } = JSON.parse(body);
+      expect(Object.keys(user).sort()).toEqual(['_id', 'activeMode', 'email', 'recruiter', 'termsVersion']);
+      expect(user.termsVersion).toBe(LEGAL_VERSION);
     }
   });
 });

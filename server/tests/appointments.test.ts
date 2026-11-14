@@ -41,6 +41,7 @@ import { stepSuggestionAttemptsKey, stepSuggestionCounters, stepSuggestionOwnerK
 import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
 import {
+  CONSENT,
   experienceRequestBody,
   messageStream,
   parseCookie,
@@ -159,9 +160,10 @@ const createFakeGoogle = (suffix: string) => {
     return Response.json({ error: 'unsupported_grant_type' }, { status: 400 });
   };
 
-  // Revoking a token revokes its whole grant
-  const revokeEndpoint = (url: URL) => {
-    const token = url.searchParams.get('token') ?? '';
+  // Revoking a token revokes its whole grant. Google reads the token from the
+  // query string or the form body
+  const revokeEndpoint = (url: URL, body: string) => {
+    const token = url.searchParams.get('token') ?? new URLSearchParams(body).get('token') ?? '';
     state.revokeRequests.push(token);
     if (!state.refreshTokens.has(token) && !state.accessTokens.has(token)) {
       return Response.json({ error: 'invalid_token', error_description: 'Token expired or revoked' }, { status: 400 });
@@ -257,7 +259,7 @@ const createFakeGoogle = (suffix: string) => {
         return tokenEndpoint(recorded.body);
       }
       if (recorded.url.origin === 'https://oauth2.googleapis.com' && recorded.url.pathname === '/revoke') {
-        return revokeEndpoint(recorded.url);
+        return revokeEndpoint(recorded.url, recorded.body);
       }
       if (recorded.url.origin === 'https://www.googleapis.com' && recorded.url.pathname.startsWith('/calendar/v3/')) {
         return calendarApi(recorded);
@@ -432,7 +434,7 @@ beforeEach(async () => {
   // Every test starts with an owner (calendar not connected) who has a domain, and another user
   owner = await login('owner');
   other = await login('other');
-  expect((await call('POST', '/domain/claim', { body: { name: t.id('domain') }, cookie: owner.cookie })).status).toBe(200);
+  expect((await call('POST', '/domain/claim', { body: { name: t.id('domain'), consent: CONSENT }, cookie: owner.cookie })).status).toBe(200);
 });
 
 afterEach(async () => {
@@ -947,10 +949,16 @@ describe('public booking', () => {
   });
 
   it('offers nothing once the owner disconnects', async () => {
+    const stored = (await storedTokens(owner.userId))?.googleCalendar?.refreshToken ?? 'missing';
     const disconnected = await call('POST', '/appointments/disconnect', { body: {}, cookie: owner.cookie });
     expect(disconnected.json()).toEqual({ connected: false });
     // The whole subdocument is gone from MongoDB
     expect((await storedTokens(owner.userId).lean())?.googleCalendar).toBeUndefined();
+    // And the grant is revoked at Google, the token in the body, never in the URL
+    expect(google.state.revokeRequests).toEqual([stored]);
+    expect(google.state.refreshTokens.has(stored)).toBe(false);
+    const revoke = google.state.requests.find((request) => request.url.pathname === '/revoke');
+    expect(revoke?.url.search).toBe('');
 
     expect((await call('GET', `/appointments/domains/${t.id('domain')}/schedules`)).json()).toEqual([]);
     expect((await call('GET', `/appointments/available-slots?scheduleId=${scheduleId}&date=${BOOKING_DATE}`)).status).toBe(409);
@@ -1631,6 +1639,8 @@ describe('no Google token in any API response', () => {
     await login('sweep');
     expect((await call('GET', '/isLogged', auth)).status).toBe(200);
     expect((await call('GET', '/health')).status).toBe(200);
+    expect((await call('PUT', '/me/consent', { ...auth, body: CONSENT })).status).toBe(200);
+    expect((await call('GET', `/domain/${sweepDomain}/availability`)).status).toBe(200);
     expect((await call('POST', '/domain/claim', { ...auth, body: { name: sweepDomain } })).status).toBe(200);
     expect((await call('GET', '/appointments/calendar-status', auth)).status).toBe(200);
 
@@ -1815,8 +1825,12 @@ describe('no Google token in any API response', () => {
     ).toBe(200);
     expect((await call('DELETE', `/appointments/schedules/${scheduleId}`, auth)).status).toBe(200);
     expect((await call('GET', '/logout', auth)).status).toBe(200);
-    // Last: the tokens are gone after it
+    // The grant was live for every route above
+    expect(google.state.refreshTokens.size).toBeGreaterThan(0);
+    expect(google.state.accessTokens.size).toBeGreaterThan(0);
+    // Last: the tokens are gone (and revoked at Google) after it
     expect((await call('POST', '/appointments/disconnect', { ...auth, body: {} })).status).toBe(200);
+    expect((await call('DELETE', '/me', { ...auth, body: { confirm: 'DELETE' } })).status).toBe(204);
 
     const swept = responses.slice(first);
 
@@ -1845,8 +1859,7 @@ describe('no Google token in any API response', () => {
 
     // Neither token, in any body or header of this suite so far (afterEach
     // also checks each test's own responses, whatever the order)
-    expect(google.state.refreshTokens.size).toBeGreaterThan(0);
-    expect(google.state.accessTokens.size).toBeGreaterThan(0);
+    expect(google.state.issuedTokens.size).toBeGreaterThan(0);
     expect(tokenLeaks(responses)).toEqual([]);
   });
 });

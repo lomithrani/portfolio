@@ -11,6 +11,7 @@ import {
   postWithCookie,
   putWithCookie,
   deleteWithCookie,
+  allowTestUserSessions,
   authCookie,
   TEST_EXPERIENCE_ID,
   readJson
@@ -21,6 +22,8 @@ const skillIds = new Map<string, Types.ObjectId>();
 
 beforeEach(() => {
   app = createApp();
+  // Sessions of the unsaved test user, whose models are mocked
+  allowTestUserSessions();
   skillIds.clear();
   // Skills are shared documents found or created by name
   spyOn(Skill, 'findOrCreate').mockImplementation(async (name: string) => {

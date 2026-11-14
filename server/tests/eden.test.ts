@@ -9,6 +9,7 @@ import { connect } from 'node:net'
 import { treaty } from '@elysiajs/eden'
 import type { Subprocess } from 'bun'
 import mongoose from 'mongoose'
+import { LEGAL_VERSION } from 'portfolio-common'
 import type { Portfolio } from '..'
 import { env } from '../env'
 import { Domain, User } from '../models/database'
@@ -172,6 +173,10 @@ describe('typed Eden client against the running server', () => {
     expect(api.logout.get).toBeFunction()
     expect(api.domain({ name: DOMAIN_NAME }).get).toBeFunction()
     expect(api.domain.claim.post).toBeFunction()
+    expect(api.domain({ name: DOMAIN_NAME }).availability.get).toBeFunction()
+    expect(api.me.get).toBeFunction()
+    expect(api.me.consent.put).toBeFunction()
+    expect(api.me.delete).toBeFunction()
     expect(api.experiences.post).toBeFunction()
     expect(api.experiences({ id: 'x' }).put).toBeFunction()
     expect(api.experiences({ id: 'x' }).delete).toBeFunction()
@@ -248,6 +253,22 @@ describe('typed Eden client against the running server', () => {
     expect(data?.name).toBe(DOMAIN_NAME)
     expect(data?.admin).toBeDefined()
     expect(data?.experiences).toBeArray()
+  })
+
+  test('GET /domain/:name/availability says the seeded domain is taken, and a free name is available', async () => {
+    const taken = await api.domain({ name: DOMAIN_NAME }).availability.get()
+    expect(taken.error).toBeNull()
+    expect(taken.data).toEqual({ name: DOMAIN_NAME, available: false, reason: 'taken' })
+
+    const free = await api.domain({ name: `free-${suffix}` }).availability.get()
+    expect(free.data).toEqual({ name: `free-${suffix}`, available: true })
+  })
+
+  test('PUT /me/consent and DELETE /me need a session', async () => {
+    const consent = await api.me.consent.put({ termsVersion: LEGAL_VERSION, ageConfirmed: true })
+    expect(consent.error?.status as number).toBe(401)
+    const deletion = await api.me.delete({ confirm: 'DELETE' })
+    expect(deletion.error?.status as number).toBe(401)
   })
 
   test('GET /domain/:name answers 404 for an unknown domain', async () => {

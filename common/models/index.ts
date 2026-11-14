@@ -149,3 +149,18 @@ export type {
 	StepSuggestionField,
 	StepSuggestionResult
 } from './stepSuggestion';
+export {
+	LEGAL_VERSION,
+	MINIMUM_AGE,
+	AGE_CONFIRMATION_KEY,
+	AGE_CONFIRMATION_TEXT,
+	CONSENT_SOURCES,
+	TERMS_VERSION_MAX_LENGTH,
+	CONSENT_REQUIRED_MESSAGE,
+	STALE_TERMS_MESSAGE,
+	isCurrentTermsVersion,
+	parseConsent,
+	consentProblem,
+	currentConsent
+} from './legal';
+export type { ConsentInput, ConsentSource, ConsentProblemProperty, ConsentResult } from './legal';

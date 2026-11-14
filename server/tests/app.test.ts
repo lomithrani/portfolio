@@ -8,7 +8,7 @@ import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
 import { google } from '../services/google';
 import { logger } from '../services/logger';
 import { SignJWT } from 'jose';
-import { afterResponseHooks, authCookie, makeRequest, readJson, TEST_USER_ID, useTestGoogleKeys } from './helpers';
+import { afterResponseHooks, allowTestUserSessions, authCookie, makeRequest, readJson, TEST_USER_ID, useTestGoogleKeys } from './helpers';
 
 // Overrides mongoose.connection.readyState (a prototype getter) for one test
 const setReadyState = (state: number) =>
@@ -235,6 +235,7 @@ describe('request bodies', () => {
     });
 
     it('lets the résumé import (a base64 PDF) above 1 MB through to its route, with a session', async () => {
+      allowTestUserSessions();
       const cookie = await authCookie();
       // Read, parsed and checked by the route: no file (422), not a size or session refusal
       expect((await postOfSize('/experiences/import', 5 * MB, { Cookie: cookie })).status).toBe(422);

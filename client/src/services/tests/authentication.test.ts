@@ -29,8 +29,12 @@ import {
 	isSessionValid,
 	login,
 	logout,
+	readUser,
+	signIn,
+	termsVersionText,
 	watchSessionExpiry
 } from '../authentication';
+import { LEGAL_VERSION, currentConsent } from 'portfolio-common';
 import { authenticationStore, sessionCheckedStore } from '../stores';
 import { disableGoogleAutoSelect } from '../googleIdentity';
 import { portfolioApi } from '#services';
@@ -209,6 +213,48 @@ describe('login', () => {
 		expect(get(authenticationStore)).toEqual(session);
 	});
 
+	it('sends the age and terms confirmation with the chosen space when given', async () => {
+		const session = {
+			user: { ...user, activeMode: 'candidate', termsVersion: LEGAL_VERSION },
+			expires: nowSeconds() + 3600
+		};
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(login('google-cred-token', 'candidate', currentConsent())).resolves.toBe(true);
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{
+				token: 'google-cred-token',
+				mode: 'candidate',
+				consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true }
+			},
+			{ fetch: { credentials: 'include' } }
+		);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('sends the confirmation without a space', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await login('google-cred-token', undefined, currentConsent());
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'google-cred-token', consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } },
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it('stays signed out when the API refuses an outdated confirmation (422)', async () => {
+		mockLoginPost.mockResolvedValue(apiError(422));
+
+		await expect(
+			login('token', 'candidate', { termsVersion: '2025-01-01', ageConfirmed: true })
+		).resolves.toBe(false);
+		expect(mockIsLoggedGet).not.toHaveBeenCalled();
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
 	it('returns false when the API rejects the token (401)', async () => {
 		mockLoginPost.mockResolvedValue(apiError(401));
 
@@ -236,6 +282,69 @@ describe('login', () => {
 		mockLoginPost.mockRejectedValue(new TypeError('Failed to fetch'));
 
 		await expect(login('token')).resolves.toBe(false);
+	});
+});
+
+describe('signIn', () => {
+	it('sends where the box was ticked with the confirmation, and succeeds', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(
+			signIn('cred', { mode: 'candidate', consent: currentConsent(), consentSource: 'claim' })
+		).resolves.toEqual({ ok: true });
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{
+				token: 'cred',
+				mode: 'candidate',
+				consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true },
+				consentSource: 'claim'
+			},
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it('sends no source without a confirmation', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await signIn('cred', { consentSource: 'claim' });
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'cred' },
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it("says 'stale-terms' when the API refuses the version of the terms (only a reload helps)", async () => {
+		mockLoginPost.mockResolvedValue({
+			data: null,
+			error: {
+				status: 422,
+				value: { type: 'validation', property: 'consent.termsVersion', message: 'changed' }
+			}
+		});
+
+		await expect(signIn('cred', { consent: currentConsent() })).resolves.toEqual({
+			ok: false,
+			reason: 'stale-terms'
+		});
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it("says 'error' for any other failure", async () => {
+		mockLoginPost.mockResolvedValue({
+			data: null,
+			error: { status: 422, value: { type: 'validation', property: 'consent.ageConfirmed' } }
+		});
+		await expect(signIn('cred')).resolves.toEqual({ ok: false, reason: 'error' });
+
+		mockLoginPost.mockResolvedValue(apiError(401));
+		await expect(signIn('cred')).resolves.toEqual({ ok: false, reason: 'error' });
+
+		mockLoginPost.mockRejectedValue(new TypeError('Failed to fetch'));
+		await expect(signIn('cred')).resolves.toEqual({ ok: false, reason: 'error' });
 	});
 });
 
@@ -289,5 +398,53 @@ describe('watchSessionExpiry', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(get(authenticationStore)).toEqual(loggedOut);
 		stop();
+	});
+});
+
+describe('termsVersionText', () => {
+	it('reads the version back as text, from a Date (Eden parses date-like strings) or its ISO string', () => {
+		expect(termsVersionText(LEGAL_VERSION)).toBe(LEGAL_VERSION);
+		expect(termsVersionText(new Date(`${LEGAL_VERSION}T00:00:00.000Z`))).toBe(LEGAL_VERSION);
+		expect(termsVersionText(`${LEGAL_VERSION}T00:00:00.000Z`)).toBe(LEGAL_VERSION);
+		expect(termsVersionText('2025-01-01')).toBe('2025-01-01');
+	});
+
+	it('is undefined without a version', () => {
+		expect(termsVersionText(undefined)).toBeUndefined();
+		expect(termsVersionText(null)).toBeUndefined();
+		expect(termsVersionText('')).toBeUndefined();
+		expect(termsVersionText(new Date('not a date'))).toBeUndefined();
+		expect(termsVersionText(20261114)).toBeUndefined();
+	});
+});
+
+describe('readUser', () => {
+	it('keeps the account with its terms version as text', () => {
+		const parsed = { ...user, termsVersion: new Date(`${LEGAL_VERSION}T00:00:00.000Z`) };
+		expect(readUser({ user: parsed })).toEqual({ ...user, termsVersion: LEGAL_VERSION });
+		expect(readUser({ user })).toEqual(user);
+		expect(readUser({ user: { ...user, termsVersion: null } })).toEqual(user);
+	});
+
+	it('is undefined without an account', () => {
+		expect(readUser(null)).toBeUndefined();
+		expect(readUser({})).toBeUndefined();
+		expect(readUser({ user: { email: 'no-id@example.com' } })).toBeUndefined();
+	});
+});
+
+describe('session with a parsed terms version', () => {
+	it('stores the version as text after login and isLogged', async () => {
+		const parsedUser = { ...user, termsVersion: new Date(`${LEGAL_VERSION}T00:00:00.000Z`) };
+		const session = { user: parsedUser, expires: nowSeconds() + 3600 };
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(login('google-jwt', 'candidate', currentConsent())).resolves.toBe(true);
+		expect(get(authenticationStore).user).toEqual({ ...user, termsVersion: LEGAL_VERSION });
+
+		authenticationStore.set({ ...loggedOut });
+		await expect(isLogged()).resolves.toBe(true);
+		expect(get(authenticationStore).user).toEqual({ ...user, termsVersion: LEGAL_VERSION });
 	});
 });

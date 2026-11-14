@@ -1,5 +1,7 @@
 import { jwtVerify } from 'jose'
+import { Types } from 'mongoose'
 import { env } from '../env'
+import { User } from '../models/database'
 
 // The session of a request read outside the userLogged plugin: by app.ts
 // before a PDF import's body is read, and by the public routes that answer
@@ -29,4 +31,16 @@ export const sessionUserId = async (request: Request): Promise<string | undefine
   } catch {
     return undefined
   }
+}
+
+/**
+ * Whether the account of a session still exists. A session JWT outlives its
+ * account (DELETE /me only clears the cookie of the device that asked), so
+ * userLogged checks it: a deleted account's sessions on other devices get
+ * 401 and cannot recreate data (a portfolio, a journey) under its id. An
+ * object, so tests that use a session of an unsaved user can stub it
+ */
+export const sessionAccounts = {
+  exists: async (userId: string): Promise<boolean> =>
+    Types.ObjectId.isValid(userId) && !!(await User.exists({ _id: userId }))
 }
