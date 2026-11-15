@@ -70,15 +70,16 @@ cannot be saved until it is fixed.
 	let changed = $derived(!sameSteps(steps, saved));
 
 	// Unsaved steps hold text the owner wrote (a note): leaving the page asks first. A reload or
-	// a closed tab gets the browser's own prompt; a link ("See your Hire page"...), this one
+	// a closed tab gets the browser's own prompt (confirm() cannot show there); every link
+	// ("See your Hire page"...), this one, also a link that reloads the page (the language
+	// switch): cancelling it without asking would ignore the click
 	beforeNavigate((navigation) => {
-		if (!changed || navigation.willUnload) {
-			if (changed) navigation.cancel();
+		if (!changed) return;
+		if (navigation.type === 'leave') {
+			navigation.cancel();
 			return;
 		}
-		if (!confirm(m.leaveUnsaved)) {
-			navigation.cancel();
-		}
+		if (!confirm(m.leaveUnsaved)) navigation.cancel();
 	});
 
 	/** The name of its own a step has (a note's title), when it has one */
@@ -96,6 +97,13 @@ cannot be saved until it is fixed.
 		}
 		return failureText(error.value, fallback);
 	};
+
+	/**
+	 * Why a save failed. An expired session does not sign the page out here, unlike a load: the
+	 * tab would be unmounted, and what was typed lost
+	 */
+	const saveFailure = (error: { status: unknown; value?: unknown }) =>
+		errorStatus(error) === 401 ? m.sessionExpired : failureText(error.value, m.saveFailed);
 
 	async function load() {
 		status = 'loading';
@@ -171,7 +179,7 @@ cannot be saved until it is fixed.
 			if (error || !data) {
 				// The rules are checked here first: the API only refuses what this page does not know yet
 				refused = errorStatus(error) === 422 ? savedWorkflowProblem(error?.value, sent) : null;
-				if (!refused) saveError = error ? failure(error, m.saveFailed) : m.saveFailed;
+				if (!refused) saveError = error ? saveFailure(error) : m.saveFailed;
 				return;
 			}
 			saved = data.steps;

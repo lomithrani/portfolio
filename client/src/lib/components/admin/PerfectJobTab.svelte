@@ -103,15 +103,15 @@ see the criteria.
 	const at = (field: string) => problemAt(problems, field) ?? '';
 
 	// Unsaved criteria: leaving the page asks first. A reload or a closed tab gets the browser's
-	// own prompt; a link, this one
+	// own prompt (confirm() cannot show there); every link, this one, also a link that reloads
+	// the page (the language switch): cancelling it without asking would ignore the click
 	beforeNavigate((navigation) => {
-		if (!changed || navigation.willUnload) {
-			if (changed) navigation.cancel();
+		if (!changed) return;
+		if (navigation.type === 'leave') {
+			navigation.cancel();
 			return;
 		}
-		if (!confirm(m.leaveUnsaved)) {
-			navigation.cancel();
-		}
+		if (!confirm(m.leaveUnsaved)) navigation.cancel();
 	});
 
 	const failure = (error: { status: unknown; value?: unknown }, fallback: string) => {
@@ -121,6 +121,13 @@ see the criteria.
 		}
 		return failureText(error.value, fallback);
 	};
+
+	/**
+	 * Why a save failed. An expired session does not sign the page out here, unlike a load: the
+	 * tab would be unmounted, and what was typed lost
+	 */
+	const saveFailure = (error: { status: unknown; value?: unknown }) =>
+		errorStatus(error) === 401 ? m.sessionExpired : failureText(error.value, m.saveFailed);
 
 	async function load() {
 		status = 'loading';
@@ -158,7 +165,7 @@ see the criteria.
 				// The rules are checked here first: the API only refuses what this page does not know yet
 				const problem = errorStatus(error) === 422 ? savedPerfectJobProblem(error?.value) : null;
 				refused = problem && { problem, sent: JSON.stringify(criteria) };
-				if (!refused) saveError = error ? failure(error, m.saveFailed) : m.saveFailed;
+				if (!refused) saveError = error ? saveFailure(error) : m.saveFailed;
 				return;
 			}
 			const next = savedForm($state.snapshot(form), data.criteria);
