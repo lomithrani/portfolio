@@ -193,12 +193,14 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <p>
 	Le critère de trajet est facultatif, et proposé uniquement lorsque ce site calcule des temps de
 	trajet. Il conserve l'adresse d'où vous partez (un lieu proche convient aussi bien que votre
-	domicile) et sa position sur une carte. Pour la trouver et calculer les temps de trajet jusqu'à un
-	poste, cette adresse est transmise à la Géoplateforme de l'IGN, le service cartographique de
-	l'État, et, lorsque les transports en commun sont proposés, sa position à Transitous, un
-	calculateur d'itinéraires animé par des bénévoles. Aucun des deux ne reçoit votre nom, votre
+	domicile) et sa position sur une carte. Pour la trouver, pendant sa saisie et à son
+	enregistrement, et calculer les temps de trajet jusqu'à un poste, cette adresse est transmise à la
+	Géoplateforme de l'IGN, le service cartographique de l'État, et, lorsque les transports en commun
+	sont proposés, sa position au calculateur d'itinéraires que ce site utilise : HERE, ou Transitous,
+	un calculateur d'itinéraires animé par des bénévoles. Aucun d'eux ne reçoit votre nom, votre
 	compte ni votre adresse IP. Les recruteurs ne voient jamais votre adresse ; le fait que le trajet
 	vers leur poste corresponde ou non renseigne toutefois sur l'endroit où vous vous trouvez.
+	L'adresse du bureau d'une offre, saisie par son recruteur, est recherchée de la même façon.
 </p>
 
 <h4 id="data-calendar">Google Agenda (propriétaires de portfolio)</h4>
@@ -393,12 +395,14 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				>) ;
 			</li>
 			<li>
-				Transitous, un calculateur d'itinéraires animé par des bénévoles : les points entre lesquels
-				calculer un temps de trajet en transports en commun, lorsque ce site le propose (<a
+				HERE (HERE Technologies, Pays-Bas), ou Transitous, un calculateur d'itinéraires animé par
+				des bénévoles, selon celui que ce site utilise : les points entre lesquels calculer un temps
+				de trajet en transports en commun, lorsque ce site le propose (<a
 					class="link-text"
-					href={LINKS.transitous}
-					rel="noopener noreferrer">transitous.org</a
-				>).
+					href={LINKS.herePrivacy}
+					rel="noopener noreferrer">politique de confidentialité de HERE</a
+				>,
+				<a class="link-text" href={LINKS.transitous} rel="noopener noreferrer">transitous.org</a>).
 			</li>
 		</ul>
 	</li>

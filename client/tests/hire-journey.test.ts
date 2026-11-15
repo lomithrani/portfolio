@@ -11,6 +11,7 @@ import {
 	toasts,
 	type OwnerSession
 } from './support/owner';
+import { stubAddressSearch } from './support/addresses';
 import { createJob, deleteJobs } from './support/jobs';
 
 // The hiring journey of 'e2e-journey' (seeded by `bun run --cwd server seed:e2e`, changed by this
@@ -895,13 +896,39 @@ test.describe('the hiring journey', () => {
 						headers
 					});
 		});
+		const searched = await stubAddressSearch(page, {
+			search: (query) =>
+				/rep/i.test(query.get('q') ?? '')
+					? [
+							{
+								label: '10 Rue de la République 69001 Lyon',
+								kind: 'housenumber',
+								street: '10 Rue de la République',
+								postalCode: '69001',
+								city: 'Lyon'
+							},
+							{
+								label: '10 Rue de la République 69100 Villeurbanne',
+								kind: 'housenumber',
+								street: '10 Rue de la République',
+								postalCode: '69100',
+								city: 'Villeurbanne'
+							}
+						]
+					: []
+		});
 		await page.reload();
 		await page.getByRole('tab', { name: 'Perfect job' }).click();
 		await commute.getByText('Commute', { exact: true }).click();
 		await expect(page.getByText('Commute: Give the address you would travel from.')).toBeVisible();
 
-		const from = commute.getByLabel('Where you travel from');
+		const from = commute.getByRole('combobox', { name: 'Where you travel from' });
 		await from.fill('Nowhere at all');
+		// Nothing like it on the map: said under the field, which keeps what was typed
+		await expect(commute.locator('[data-address-notice]')).toContainText(
+			'No address found for what you typed.'
+		);
+		await from.press('Escape');
 		// Public transport is not offered by this site: said, and not to pick
 		await expect(commute.getByRole('checkbox', { name: /^Public transport/ })).toBeDisabled();
 		await expect(commute).toContainText('Public transport (not available on this site)');
@@ -923,7 +950,17 @@ test.describe('the hiring journey', () => {
 		await expect(from).toHaveAccessibleDescription(
 			'This address was not found. Check it, or give a town or a place nearby.'
 		);
-		await from.fill('10 rue de la République, Lyon');
+		// Typed, the address is searched: the one picked is kept as the map writes it
+		await from.fill('10 rue de la rep');
+		const options = commute.getByRole('listbox', { name: 'Suggestions' }).getByRole('option');
+		await expect(options).toHaveText([
+			'10 Rue de la République 69001 Lyon',
+			'10 Rue de la République 69100 Villeurbanne'
+		]);
+		expect(searched.search.at(-1)?.get('q')).toBe('10 rue de la rep');
+		await options.first().click();
+		await expect(from).toHaveValue('10 Rue de la République 69001 Lyon');
+		await expect(options).toHaveCount(0);
 		await save.click();
 		await expect(toasts(page).getByText('Perfect job saved')).toBeVisible();
 		await expect(commute.locator('[data-place]')).toHaveText(
@@ -934,7 +971,7 @@ test.describe('the hiring journey', () => {
 			criteria: {
 				commute: {
 					importance: 3,
-					from: '10 rue de la République, Lyon',
+					from: '10 Rue de la République 69001 Lyon',
 					modes: ['bike', 'car'],
 					maxMinutesPerWeek: 300
 				}
@@ -942,6 +979,7 @@ test.describe('the hiring journey', () => {
 		});
 		// Another address is not found yet: it is looked up on the next save
 		await from.fill('Gare Part-Dieu, Lyon');
+		await from.press('Escape');
 		await expect(commute.locator('[data-place]')).toHaveCount(0);
 		await page.getByRole('button', { name: 'Undo changes' }).click();
 	});

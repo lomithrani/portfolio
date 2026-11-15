@@ -516,6 +516,10 @@ describe('the job match step', () => {
 				{ criterion: 'contractTypes', outcome: 'miss', notStated: false, dealBreaker: true }
 			]
 		});
+		// The service to credit for public transport: one this page knows, or none
+		expect(jobMatch({ ...view, transit: 'here' })).toEqual({ ...view, transit: 'here' });
+		expect(jobMatch({ ...view, transit: 'transitous' })?.transit).toBe('transitous');
+		expect(jobMatch({ ...view, transit: 'google' })).toEqual(view);
 		for (const bad of [
 			undefined,
 			null,

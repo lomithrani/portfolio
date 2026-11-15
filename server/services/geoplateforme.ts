@@ -1,11 +1,13 @@
-import type { GeoPlace } from 'portfolio-common';
+import { ADDRESS_KINDS, ADDRESS_SEARCH } from 'portfolio-common';
+import type { AddressKind, AddressSuggestion, GeoPlace } from 'portfolio-common';
 
 // The public geocoding and route services of the Géoplateforme (IGN, the
 // French mapping agency): https://data.geopf.fr. No key; France only, like
-// the job postings. Geocoding finds an address; the route service gives the
-// time and the distance of a way by car or on foot (it has no bike profile
-// and no public transport). Called by services/commute.ts only, which
-// counts and caches the calls.
+// the job postings. Geocoding finds an address, or the addresses that what
+// was typed so far could be; the route service gives the time and the
+// distance of a way by car or on foot (it has no bike profile and no public
+// transport). Called by services/commute.ts, which counts and caches the
+// calls, and by services/addressSearch.ts, which counts its own.
 //
 // Every function answers `null` for a definitive "no" (no such address, no
 // way between the two points) and throws when the service gave no usable
@@ -25,7 +27,10 @@ const MIN_GEOCODING_SCORE = 0.6;
 
 const headers = { accept: 'application/json', 'user-agent': 'portfolio-commute' };
 
-export class GeoServiceError extends Error {}
+/** A service gave no usable answer. Its message is logged: a status or a reason, never the question */
+export class GeoServiceError extends Error {
+  override name = 'GeoServiceError';
+}
 
 const getJson = async (url: URL, timeoutMs: number): Promise<{ status: number; body: unknown }> => {
   // A redirect is never followed: the question (an address, two points) goes nowhere else
@@ -51,27 +56,91 @@ export interface GeocodingQuery {
   townOnly?: boolean;
 }
 
-/** Where an address is; null when the geocoder knows no such place */
-export async function geocode({ text, postalCode, townOnly }: GeocodingQuery): Promise<GeoPlace | null> {
+/** An address as the geocoder answered it: where it is, and how well it matches the question */
+interface FoundAddress extends AddressSuggestion {
+  lat: number;
+  lon: number;
+  /** 0 to 1: an address it knows scores over 0.9, its nearest guess for one it does not, under 0.6 */
+  score: number;
+}
+
+const text = (value: unknown, max: number): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
+
+/** A feature of the geocoder's answer; undefined for one without a position, a score or a name */
+const foundAddress = (feature: unknown): FoundAddress | undefined => {
+  if (!isObject(feature) || !isObject(feature.geometry) || !isObject(feature.properties)) return undefined;
+  const [lon, lat] = Array.isArray(feature.geometry.coordinates) ? feature.geometry.coordinates : [];
+  if (typeof lat !== 'number' || typeof lon !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lon)) return undefined;
+  const { label, score, type, name, postcode, city } = feature.properties;
+  if (typeof score !== 'number' || !Number.isFinite(score)) return undefined;
+  const kind = ADDRESS_KINDS.find((known) => known === type) as AddressKind | undefined;
+  const street = kind === 'municipality' ? undefined : text(name, 200);
+  const postalCode = typeof postcode === 'string' && /^\d{5}$/.test(postcode) ? postcode : undefined;
+  return {
+    label: text(label, 300) ?? '',
+    // What the geocoder does not name (it has other indexes than addresses) is a place like a street
+    kind: kind ?? 'street',
+    ...(street ? { street } : {}),
+    ...(postalCode ? { postalCode } : {}),
+    ...(text(city, 200) ? { city: text(city, 200) } : {}),
+    lat,
+    lon,
+    score
+  };
+};
+
+interface SearchQuery extends GeocodingQuery {
+  /** Narrows the search to the towns of this name */
+  city?: string;
+  limit: number;
+}
+
+/** What the geocoder answers `query` with, its best match first; none for a text it cannot read */
+async function search({ text: asked, postalCode, city, townOnly, limit }: SearchQuery): Promise<FoundAddress[]> {
   const url = new URL(GEOCODING);
   // The geocoder refuses a query over 200 characters
-  url.searchParams.set('q', text.slice(0, 200));
-  url.searchParams.set('limit', '1');
+  url.searchParams.set('q', asked.slice(0, 200));
+  url.searchParams.set('limit', String(limit));
   if (postalCode && /^\d{5}$/.test(postalCode)) url.searchParams.set('postcode', postalCode);
+  if (city) url.searchParams.set('city', city.slice(0, 100));
   if (townOnly) url.searchParams.set('type', 'municipality');
   const { status, body } = await getJson(url, geoplateformeTimeouts.geocodingMs);
   // 400: a query it cannot read (too short, no letter): no such place
-  if (status === 400) return null;
+  if (status === 400) return [];
   if (status !== 200 || !isObject(body) || !Array.isArray(body.features)) {
     throw new GeoServiceError(`geocoding answered ${status}`);
   }
-  const [feature] = body.features as unknown[];
-  if (!isObject(feature) || !isObject(feature.geometry) || !isObject(feature.properties)) return null;
-  const [lon, lat] = Array.isArray(feature.geometry.coordinates) ? feature.geometry.coordinates : [];
-  const { label, score } = feature.properties;
-  if (typeof lat !== 'number' || typeof lon !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  if (typeof score !== 'number' || score < MIN_GEOCODING_SCORE) return null;
-  return { label: typeof label === 'string' ? label.slice(0, 300) : text, lat, lon };
+  return (body.features as unknown[]).map(foundAddress).filter((found) => found !== undefined);
+}
+
+/** Where an address is; null when the geocoder knows no such place */
+export async function geocode(query: GeocodingQuery): Promise<GeoPlace | null> {
+  const [found] = await search({ ...query, limit: 1 });
+  if (!found || found.score < MIN_GEOCODING_SCORE) return null;
+  return { label: found.label || query.text, lat: found.lat, lon: found.lon };
+}
+
+export interface SuggestionQuery {
+  /** What was typed so far: the geocoder completes its last word */
+  text: string;
+  /** Narrows the search to a postal code (5 digits) */
+  postalCode?: string;
+  /** Narrows the search to the towns of this name */
+  city?: string;
+}
+
+/**
+ * The addresses that what was typed could be, the likeliest first. Not held
+ * to the score an address must reach to be the place asked for: a few letters
+ * of a street match it poorly, and are what a suggestion is for
+ */
+export async function suggestAddresses(query: SuggestionQuery): Promise<AddressSuggestion[]> {
+  const found = await search({ ...query, limit: ADDRESS_SEARCH.suggestions });
+  const seen = new Set<string>();
+  return found
+    .filter(({ label }) => label && !seen.has(label) && !!seen.add(label))
+    .map(({ lat: _lat, lon: _lon, score: _score, ...suggestion }) => suggestion);
 }
 
 export interface Point {

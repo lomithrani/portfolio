@@ -12,6 +12,7 @@ import {
 } from './support/owner';
 import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from 'portfolio-common';
 import { jobFormFieldOf } from '../src/services/jobPosting';
+import { stubAddressSearch } from './support/addresses';
 import { createJob, deleteJobs, listRecruiterJobs } from './support/jobs';
 
 // The recruiter space, as the e2e recruiter (seeded by `bun run --cwd server seed:e2e`: a
@@ -168,7 +169,7 @@ test.describe('the recruiter', () => {
 		await page.getByRole('textbox', { name: 'Job description' }).fill('Build the platform.');
 		await page.getByRole('textbox', { name: 'City', exact: true }).fill('Lyon');
 		await page.getByRole('textbox', { name: 'Postal code' }).fill('69003');
-		await page.getByRole('textbox', { name: 'Address' }).fill('12 rue de la République');
+		await page.getByRole('combobox', { name: 'Address' }).fill('12 rue de la République');
 		await page.getByRole('textbox', { name: /^Days per year/ }).fill('215');
 		await page.getByRole('textbox', { name: 'Minimum pay' }).fill('60000');
 		await page.getByRole('textbox', { name: 'Maximum pay' }).fill('70000');
@@ -186,6 +187,107 @@ test.describe('the recruiter', () => {
 			address: '12 rue de la République',
 			workMode: 'hybrid'
 		});
+	});
+
+	test("finds the office's address as it is typed, and says where the map has it", async ({
+		page
+	}) => {
+		const REPUBLIQUE = {
+			label: '12 Rue de la République 69002 Lyon',
+			kind: 'housenumber' as const,
+			street: '12 Rue de la République',
+			postalCode: '69002',
+			city: 'Lyon'
+		};
+		const PLACE = {
+			label: 'Place de la République 69002 Lyon',
+			kind: 'street' as const,
+			street: 'Place de la République',
+			postalCode: '69002',
+			city: 'Lyon'
+		};
+		const asked = await stubAddressSearch(page, {
+			search: (query) => (/rep/i.test(query.get('q') ?? '') ? [REPUBLIQUE, PLACE] : []),
+			office: (query) =>
+				/inconnue/i.test(query.get('address') ?? '')
+					? { found: 'town', label: 'Lyon' }
+					: query.get('address')
+						? { found: 'street', label: REPUBLIQUE.label }
+						: { found: 'town', label: 'Lyon' }
+		});
+		await openAsRecruiter(page, '/recruiter/jobs/new');
+		const city = page.getByRole('textbox', { name: 'City', exact: true });
+		const postalCode = page.getByRole('textbox', { name: 'Postal code' });
+		const address = page.getByRole('combobox', { name: 'Address' });
+		const found = page.locator('[data-office-place]');
+		const options = page.getByRole('listbox', { name: 'Suggestions' }).getByRole('option');
+
+		// A town alone: said, without a warning
+		await city.fill('Lyon');
+		await page.getByRole('textbox', { name: 'Job title' }).focus();
+		await expect(found).toHaveText(
+			'Without a street, travel times are counted to the centre of Lyon.'
+		);
+
+		// What is typed is searched in the town already given; too little is not
+		await address.pressSequentially('12');
+		await expect(address).toHaveAttribute('aria-expanded', 'false');
+		await address.pressSequentially(' rue de la rep');
+		await expect(options).toHaveText([
+			'12 Rue de la République 69002 Lyon',
+			'Place de la République 69002 Lyon'
+		]);
+		await expect(address).toHaveAttribute('aria-expanded', 'true');
+		expect(Object.fromEntries(asked.search.at(-1)!)).toEqual({
+			q: '12 rue de la rep',
+			city: 'Lyon'
+		});
+
+		// Escape closes the list, and only the list: nothing is lost
+		await address.press('Escape');
+		await expect(options).toHaveCount(0);
+		await expect(address).toHaveValue('12 rue de la rep');
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'New job description' })
+		).toBeVisible();
+
+		// The arrows and Enter pick an address: its street, postal code and town fill their fields
+		await address.press('ArrowDown');
+		await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+		await address.press('Enter');
+		await expect(address).toHaveValue('12 Rue de la République');
+		await expect(postalCode).toHaveValue('69002');
+		await expect(city).toHaveValue('Lyon');
+		await expect(options).toHaveCount(0);
+		await expect(found).toHaveText(
+			'Found on the map: 12 Rue de la République 69002 Lyon. Travel times are counted to this address.'
+		);
+		// Picked from the map: it is not asked again
+		const lookups = asked.office.length;
+
+		// A street the map does not know is said once its fields are left
+		await address.fill('99 rue Inconnue');
+		await expect(page.locator('[data-address-notice]')).toContainText(
+			'No address found for what you typed.'
+		);
+		await expect(found).toHaveText('');
+		await page.getByRole('textbox', { name: 'Job title' }).focus();
+		await expect(found).toHaveText(
+			'This street was not found on the map: travel times are counted to the centre of Lyon. Pick the address in the list, or check its spelling.'
+		);
+		expect(asked.office).toHaveLength(lookups + 1);
+		expect(Object.fromEntries(asked.office.at(-1)!)).toEqual({
+			address: '99 rue Inconnue',
+			postalCode: '69002',
+			city: 'Lyon'
+		});
+
+		// A fully remote job has no office to travel to
+		await page
+			.getByRole('radiogroup', { name: 'Work mode' })
+			.getByText('Full remote', { exact: true })
+			.click();
+		await expect(found).toHaveCount(0);
 	});
 
 	test('edits a job description, then deletes it', async ({ page }) => {

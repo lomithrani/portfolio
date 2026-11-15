@@ -1,6 +1,8 @@
 import { JOB_MATCH_STEP_LIMITS, scorePerfectJob } from 'portfolio-common';
 import type { CriterionScore, JobMatchStepConfig, PerfectJobCriterion } from 'portfolio-common';
 import { commuteContext } from '../commute';
+import { transitProvider } from '../transit';
+import type { TransitProvider } from '../transit';
 import { perfectJobOf } from '../perfectJobs';
 import { pickedPosting } from './job';
 import type { ServerStep, StepContext } from './types';
@@ -40,6 +42,12 @@ export interface JobMatchView {
   job: { _id: string; title: string };
   /** Only when the owner shows them */
   criteria?: JobMatchCriterionView[];
+  /**
+   * With the commute among `criteria`: the service this site asks for public
+   * transport times, to credit it. The site's, whatever the owner asked for:
+   * it says nothing of how they travel
+   */
+  transit?: TransitProvider;
 }
 
 /** The minimum as stored, when it still is one; else the highest (the journey fails closed) */
@@ -70,11 +78,14 @@ const scored = async ({ ownerId, visitorId, config, earlier }: JobMatchContext):
   // The one criterion a posting and the criteria do not settle alone: a travel time, asked for once and kept
   const context = await commuteContext(perfectJob.commute, job.location);
   const { score, criteria } = scorePerfectJob(perfectJob, job, context);
+  const shown = config?.showDetails === true ? criteria.map(criterionView) : undefined;
+  const transit = shown?.some(({ criterion }) => criterion === 'commute') ? transitProvider() : undefined;
   return {
     score,
     minScore: minScoreOf(config),
     job: { _id: job._id, title: job.title },
-    ...(config?.showDetails === true ? { criteria: criteria.map(criterionView) } : {})
+    ...(shown ? { criteria: shown } : {}),
+    ...(transit ? { transit } : {})
   };
 };
 

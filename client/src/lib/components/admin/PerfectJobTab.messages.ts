@@ -133,8 +133,8 @@ export const m = defineMessages({
 			fr: (place: string) => `Trouvé : ${place}.`
 		},
 		fromHelp: {
-			en: 'Your address, or a place nearby if you prefer (a station, a square). It is looked up on a map when you save.',
-			fr: "Votre adresse, ou un lieu proche si vous préférez (une gare, une place). Elle est recherchée sur une carte à l'enregistrement."
+			en: 'Your address, or a street nearby if you prefer. Start typing, then pick it in the list: it is the address travel times are counted from.',
+			fr: "Votre adresse, ou une rue proche si vous préférez. Commencez à saisir, puis choisissez-la dans la liste : c'est de cette adresse que les temps de trajet sont comptés."
 		},
 		modes: { en: 'How you would travel', fr: 'Comment vous vous déplaceriez' },
 		modesHelp: {
@@ -156,14 +156,20 @@ export const m = defineMessages({
 			en: 'A job over it matches less, and not at all 50% over.',
 			fr: "Au-delà, l'offre correspond moins, et plus du tout à 50 % de plus."
 		},
+		/** Who the address goes to: on a site without public transport, then with each service it can ask */
 		privacy: {
-			en: 'Only you see this address. To compute travel times, it is sent, without your name, to the map service of the French state (<ign>Géoplateforme, IGN</ign>). Recruiters learn whether their job matches, never where you are.',
-			fr: "Vous seul voyez cette adresse. Pour calculer les temps de trajet, elle est envoyée, sans votre nom, au service cartographique de l'État français (<ign>Géoplateforme, IGN</ign>). Les recruteurs savent si leur offre correspond, jamais où vous êtes."
-		},
-		/** The same, on a site that also asks Transitous for public transport */
-		privacyTransit: {
-			en: 'Only you see this address. To compute travel times, it is sent, without your name, to the map service of the French state (<ign>Géoplateforme, IGN</ign>), and its position to <transitous>Transitous</transitous>, a community journey planner. Recruiters learn whether their job matches, never where you are.',
-			fr: "Vous seul voyez cette adresse. Pour calculer les temps de trajet, elle est envoyée, sans votre nom, au service cartographique de l'État français (<ign>Géoplateforme, IGN</ign>), et sa position à <transitous>Transitous</transitous>, un calculateur d'itinéraires communautaire. Les recruteurs savent si leur offre correspond, jamais où vous êtes."
+			none: {
+				en: 'Only you see this address. To find it as you type and to compute travel times, it is sent, without your name, to the map service of the French state (<ign>Géoplateforme, IGN</ign>). Recruiters learn whether their job matches, never where you are.',
+				fr: "Vous seul voyez cette adresse. Pour la trouver pendant la saisie et calculer les temps de trajet, elle est envoyée, sans votre nom, au service cartographique de l'État français (<ign>Géoplateforme, IGN</ign>). Les recruteurs savent si leur offre correspond, jamais où vous êtes."
+			},
+			here: {
+				en: 'Only you see this address. To find it as you type and to compute travel times, it is sent, without your name, to the map service of the French state (<ign>Géoplateforme, IGN</ign>), and its position to <here>HERE</here>, a journey planner, for public transport. Recruiters learn whether their job matches, never where you are.',
+				fr: "Vous seul voyez cette adresse. Pour la trouver pendant la saisie et calculer les temps de trajet, elle est envoyée, sans votre nom, au service cartographique de l'État français (<ign>Géoplateforme, IGN</ign>), et sa position à <here>HERE</here>, un calculateur d'itinéraires, pour les transports en commun. Les recruteurs savent si leur offre correspond, jamais où vous êtes."
+			},
+			transitous: {
+				en: 'Only you see this address. To find it as you type and to compute travel times, it is sent, without your name, to the map service of the French state (<ign>Géoplateforme, IGN</ign>), and its position to <transitous>Transitous</transitous>, a community journey planner. Recruiters learn whether their job matches, never where you are.',
+				fr: "Vous seul voyez cette adresse. Pour la trouver pendant la saisie et calculer les temps de trajet, elle est envoyée, sans votre nom, au service cartographique de l'État français (<ign>Géoplateforme, IGN</ign>), et sa position à <transitous>Transitous</transitous>, un calculateur d'itinéraires communautaire. Les recruteurs savent si leur offre correspond, jamais où vous êtes."
+			}
 		}
 	},
 

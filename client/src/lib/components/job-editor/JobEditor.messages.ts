@@ -202,8 +202,8 @@ export const m = defineMessages({
 		fr: 'Facultative pour un poste entièrement en télétravail.'
 	},
 	addressHint: {
-		en: "The office's street and number, if you can share it. A candidate's travel time is counted to it, or to the city's centre without it.",
-		fr: "Le numéro et la rue du bureau, si vous pouvez les indiquer. Le temps de trajet d'un candidat est calculé jusqu'à cette adresse, ou jusqu'au centre de la ville sans elle."
+		en: "The office's street and number, if you can share it: start typing, then pick it in the list. A candidate's travel time is counted to it, or to the city's centre without it.",
+		fr: "Le numéro et la rue du bureau, si vous pouvez les indiquer : commencez à saisir, puis choisissez-les dans la liste. Le temps de trajet d'un candidat est calculé jusqu'à cette adresse, ou jusqu'au centre de la ville sans elle."
 	},
 	/** An option of the remote days: '2 days a week' */
 	daysAWeek: {

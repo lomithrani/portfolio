@@ -8,13 +8,11 @@ import type { Point } from './geoplateforme';
 // COMMUTE_TRANSIT=transitous: open-source and non-commercial projects, light
 // use (services/commute.ts caps and caches the calls), a User-Agent that
 // says who asks (COMMUTE_CONTACT), and a link to its sources where the times
-// are shown. Called by services/commute.ts only.
+// are shown. Called by services/transit.ts only.
 
 const PLAN = 'https://api.transitous.org/api/v1/plan';
 
 export const transitousTimeouts = { planMs: 15_000 };
-
-export const transitEnabled = () => env.COMMUTE_TRANSIT === 'transitous' && !!env.COMMUTE_CONTACT;
 
 /**
  * The next Tuesday that is at least two days away, 07:30 UTC (a morning's
@@ -35,7 +33,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
  * (the walks to and from the stops included), arriving for a morning at
  * work; null when no journey is found
  */
-export async function transitMinutes(from: Point, to: Point): Promise<number | null> {
+export async function transitousMinutes(from: Point, to: Point): Promise<number | null> {
   const url = new URL(PLAN);
   url.searchParams.set('fromPlace', `${from.lat},${from.lon}`);
   url.searchParams.set('toPlace', `${to.lat},${to.lon}`);

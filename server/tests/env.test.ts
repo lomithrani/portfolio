@@ -152,14 +152,16 @@ describe('parseEnv', () => {
 
     it('takes public transport from Transitous only with a contact to send it', () => {
       const transit = { ...base, COMMUTE_TIMES: 'true', COMMUTE_TRANSIT: 'transitous' };
-      expect(problemsOf(transit)).toEqual(['COMMUTE_TRANSIT needs COMMUTE_CONTACT: Transitous asks who sends the requests']);
+      expect(problemsOf(transit)).toEqual([
+        'COMMUTE_TRANSIT=transitous needs COMMUTE_CONTACT: Transitous asks who sends the requests'
+      ]);
       expect(parseEnv({ ...transit, COMMUTE_CONTACT: ' https://portfolio.example/contact ' })).toMatchObject({
         commuteTimesEnabled: true,
         COMMUTE_TRANSIT: 'transitous',
         COMMUTE_CONTACT: 'https://portfolio.example/contact'
       });
       expect(problemsOf({ ...transit, COMMUTE_TRANSIT: 'google', COMMUTE_CONTACT: 'ops@example.com' })).toEqual([
-        'COMMUTE_TRANSIT must be transitous, or unset (got "google")'
+        'COMMUTE_TRANSIT must be here or transitous, or unset (got "google")'
       ]);
       // Sent in a header: one line, nothing that could add another
       for (const contact of ['ops@example.com\r\nx-injected: 1', 'two words', 'é@example.com', 'ab']) {
@@ -171,6 +173,26 @@ describe('parseEnv', () => {
       const withoutSwitch = parseEnv({ ...base, COMMUTE_TRANSIT: 'transitous', COMMUTE_CONTACT: 'ops@example.com' });
       expect(withoutSwitch.commuteTimesEnabled).toBe(false);
       expect(withoutSwitch.warnings).toEqual(['COMMUTE_TRANSIT is set without COMMUTE_TIMES=true: travel times stay off']);
+    });
+
+    it('takes public transport from HERE only with the key of a HERE app, which it never repeats', () => {
+      const transit = { ...base, COMMUTE_TIMES: 'true', COMMUTE_TRANSIT: 'here' };
+      expect(problemsOf(transit)).toEqual(['COMMUTE_TRANSIT=here needs HERE_API_KEY: the API key of a HERE platform app']);
+      const key = 'hEre-Key_0123456789abcdefghijklmnopqrstuvw';
+      expect(parseEnv({ ...transit, HERE_API_KEY: ` ${key} ` })).toMatchObject({
+        commuteTimesEnabled: true,
+        COMMUTE_TRANSIT: 'here',
+        HERE_API_KEY: key,
+        COMMUTE_CONTACT: undefined
+      });
+      // Sent in a URL: nothing that could add a parameter, and no pasted quotes
+      for (const pasted of [`"${key}"`, `${key}&x=1`, 'key with spaces 0123456789abcdef', 'short']) {
+        const problems = problemsOf({ ...transit, HERE_API_KEY: pasted });
+        expect(problems).toEqual(['HERE_API_KEY must be the bare API key of a HERE platform app (letters, digits, - and _)']);
+        expect(problems.join(' ')).not.toContain(pasted);
+      }
+      // A key alone asks nothing: the service is chosen with COMMUTE_TRANSIT
+      expect(parseEnv({ ...base, COMMUTE_TIMES: 'true', HERE_API_KEY: key }).COMMUTE_TRANSIT).toBeUndefined();
     });
   });
 

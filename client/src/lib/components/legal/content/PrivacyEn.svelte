@@ -187,11 +187,13 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	The commute criterion is optional, and offered only where this site computes travel times. It
 	stores the address you travel from (a place nearby does as well as your home) and where it is on a
-	map. To find it and to compute travel times to a job, that address is sent to the Géoplateforme of
-	IGN, the French state's map service, and, where public transport is offered, its position to
-	Transitous, a journey planner run by volunteers. Neither receives your name, your account or your
-	IP address. Recruiters never see your address; whether the commute to their job matches does say
-	something about where you are.
+	map. To find it, as you type it and when you save it, and to compute travel times to a job, that
+	address is sent to the Géoplateforme of IGN, the French state's map service, and, where public
+	transport is offered, its position to the journey planner this site uses: HERE, or Transitous, a
+	journey planner run by volunteers. None of them receives your name, your account or your IP
+	address. Recruiters never see your address; whether the commute to their job matches does say
+	something about where you are. The address of a job's office, typed by its recruiter, is looked up
+	the same way.
 </p>
 
 <h4 id="data-calendar">Google Calendar (portfolio owners)</h4>
@@ -368,12 +370,14 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				>);
 			</li>
 			<li>
-				Transitous, a journey planner run by volunteers: the points to compute a public transport
-				time between, where this site offers it (<a
+				HERE (HERE Technologies, the Netherlands), or Transitous, a journey planner run by
+				volunteers, whichever this site uses: the points to compute a public transport time between,
+				where this site offers it (<a
 					class="link-text"
-					href={LINKS.transitous}
-					rel="noopener noreferrer">transitous.org</a
-				>).
+					href={LINKS.herePrivacy}
+					rel="noopener noreferrer">HERE privacy policy</a
+				>,
+				<a class="link-text" href={LINKS.transitous} rel="noopener noreferrer">transitous.org</a>).
 			</li>
 		</ul>
 	</li>

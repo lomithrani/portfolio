@@ -8,7 +8,7 @@ import { localized, type Localized } from '../i18n';
 import { legalMessages } from './legal.messages';
 
 /** Version (date) of the Terms of use and Privacy policy in force; bump when either changes materially */
-export const LEGAL_VERSION = '2026-11-14';
+export const LEGAL_VERSION = '2026-11-15';
 
 /** Fixed age floor of the confirmation (GDPR art. 8 max threshold, above COPPA 13, French working age 16) */
 export const MINIMUM_AGE = 16;
