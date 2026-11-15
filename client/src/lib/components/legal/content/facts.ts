@@ -44,7 +44,8 @@ export const LINKS = {
 		'https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement',
 	/** The French state's map services (geocoding, routes), used for travel times */
 	geoplateforme: 'https://geoservices.ign.fr/',
-	/** The community journey planner used for public transport times, where offered */
+	/** The journey planners public transport times can come from, where offered: one of the two */
+	herePrivacy: 'https://legal.here.com/privacy/policy',
 	transitous: 'https://transitous.org/',
 	dpf: 'https://www.dataprivacyframework.gov',
 	scc: 'https://eur-lex.europa.eu/eli/dec_impl/2021/914/oj'

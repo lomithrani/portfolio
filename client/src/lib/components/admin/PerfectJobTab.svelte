@@ -59,6 +59,7 @@ see the criteria.
 	import { toaster } from '#services/toaster.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import Rich from '#lib/i18n/Rich.svelte';
+	import AddressSearch from '#components/address/AddressSearch.svelte';
 	import { m } from './PerfectJobTab.messages.ts';
 	import ChipList from './perfect-job/ChipList.svelte';
 	import Choices from './perfect-job/Choices.svelte';
@@ -372,10 +373,8 @@ see the criteria.
 					{/if}
 					<div class="space-y-1">
 						<label class="label-text text-sm" for="{uid}-commute-from">{m.commute.from}</label>
-						<input
-							class="input"
+						<AddressSearch
 							id="{uid}-commute-from"
-							type="text"
 							autocomplete="off"
 							maxlength={PERFECT_JOB_LIMITS.address}
 							placeholder={m.commute.fromPlaceholder}
@@ -442,13 +441,19 @@ see the criteria.
 					</fieldset>
 					<p class="text-xs text-surface-700-300">
 						<Rich
-							text={travelTimes.modes.includes('transit')
-								? m.commute.privacyTransit
-								: m.commute.privacy}
+							text={m.commute.privacy[
+								(travelTimes.modes.includes('transit') && travelTimes.transit) || 'none'
+							]}
 						>
 							{#snippet ign(text)}<a
 									class="underline underline-offset-2"
 									href="https://geoservices.ign.fr/"
+									target="_blank"
+									rel="noreferrer">{text}</a
+								>{/snippet}
+							{#snippet here(text)}<a
+									class="underline underline-offset-2"
+									href="https://legal.here.com/privacy/policy"
 									target="_blank"
 									rel="noreferrer">{text}</a
 								>{/snippet}

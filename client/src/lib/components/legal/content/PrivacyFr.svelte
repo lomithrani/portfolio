@@ -147,9 +147,12 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	contrat, temps de travail, rémunération, prérequis, avantages et description. Une fois publiée,
 	une offre est publique, mais elle ne nomme jamais le compte du recruteur. Une offre peut aussi
 	être importée depuis un PDF : il est envoyé à Anthropic comme un CV, et nous ne le conservons pas.
-	Lorsqu'une offre est notée dans un parcours de recrutement comportant un critère de trajet (voir
-	<a class="link-text" href="#data-perfect-job">poste idéal</a>), l'adresse de son lieu de travail
-	est transmise au service cartographique qui la localise.
+	Lorsque ce site calcule des temps de trajet (voir <a class="link-text" href="#data-perfect-job"
+		>poste idéal</a
+	>), l'adresse du lieu de travail d'une offre (rue, code postal et ville) est transmise à la
+	Géoplateforme de l'IGN, le service cartographique qui la localise : pendant sa saisie dans
+	l'éditeur d'offre, lorsque ses champs sont quittés, et lorsque l'offre est notée dans un parcours
+	de recrutement comportant un critère de trajet, même pour un brouillon jamais publié.
 </p>
 
 <h4 id="data-applications">Candidatures</h4>
@@ -193,12 +196,14 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <p>
 	Le critère de trajet est facultatif, et proposé uniquement lorsque ce site calcule des temps de
 	trajet. Il conserve l'adresse d'où vous partez (un lieu proche convient aussi bien que votre
-	domicile) et sa position sur une carte. Pour la trouver et calculer les temps de trajet jusqu'à un
-	poste, cette adresse est transmise à la Géoplateforme de l'IGN, le service cartographique de
-	l'État, et, lorsque les transports en commun sont proposés, sa position à Transitous, un
-	calculateur d'itinéraires animé par des bénévoles. Aucun des deux ne reçoit votre nom, votre
+	domicile) et sa position sur une carte. Pour la trouver, pendant sa saisie et à son
+	enregistrement, et calculer les temps de trajet jusqu'à un poste, cette adresse est transmise à la
+	Géoplateforme de l'IGN, le service cartographique de l'État, et, lorsque les transports en commun
+	sont proposés, sa position au calculateur d'itinéraires que ce site utilise : HERE, ou Transitous,
+	un calculateur d'itinéraires animé par des bénévoles. Aucun d'eux ne reçoit votre nom, votre
 	compte ni votre adresse IP. Les recruteurs ne voient jamais votre adresse ; le fait que le trajet
 	vers leur poste corresponde ou non renseigne toutefois sur l'endroit où vous vous trouvez.
+	L'adresse du bureau d'une offre, saisie par son recruteur, est recherchée de la même façon.
 </p>
 
 <h4 id="data-calendar">Google Agenda (propriétaires de portfolio)</h4>
@@ -229,9 +234,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Nos serveurs tiennent un journal des requêtes qu'ils traitent (méthode, route, statut et erreurs),
 	sans adresse IP, e-mail ni nom. Notre hébergeur tient ses propres journaux des requêtes entrantes
 	et, lorsque la supervision est activée, notre prestataire de supervision reçoit des traces des
-	requêtes, qui comprennent l'adresse IP, l'agent utilisateur du navigateur, l'adresse de la page et
-	les en-têtes de la requête (les cookies, les en-têtes d'autorisation et le corps des requêtes sont
-	retirés avant l'envoi).
+	requêtes, qui comprennent l'adresse IP, l'agent utilisateur du navigateur, l'adresse de la page
+	sans ses paramètres et les en-têtes de la requête (les cookies, les en-têtes d'autorisation, les
+	paramètres d'adresse et le corps des requêtes sont retirés avant l'envoi).
 </p>
 
 <h4 id="data-device">Sur votre appareil</h4>
@@ -393,12 +398,14 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				>) ;
 			</li>
 			<li>
-				Transitous, un calculateur d'itinéraires animé par des bénévoles : les points entre lesquels
-				calculer un temps de trajet en transports en commun, lorsque ce site le propose (<a
+				HERE (HERE Technologies, Pays-Bas), ou Transitous, un calculateur d'itinéraires animé par
+				des bénévoles, selon celui que ce site utilise : les points entre lesquels calculer un temps
+				de trajet en transports en commun, lorsque ce site le propose (<a
 					class="link-text"
-					href={LINKS.transitous}
-					rel="noopener noreferrer">transitous.org</a
-				>).
+					href={LINKS.herePrivacy}
+					rel="noopener noreferrer">politique de confidentialité de HERE</a
+				>,
+				<a class="link-text" href={LINKS.transitous} rel="noopener noreferrer">transitous.org</a>).
 			</li>
 		</ul>
 	</li>
@@ -609,10 +616,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Les connexions passent par HTTPS. Le cookie de session ne peut pas être lu par les scripts de la
 	page. Les jetons Google Agenda ne sont jamais renvoyés par l'API ni écrits dans les journaux. Les
 	adresses IP et e-mail utilisées contre les abus sont remplacées par une empreinte calculée avec
-	une clé secrète. Les cookies, les en-têtes d'autorisation et le corps des requêtes sont retirés
-	des traces. Si une violation de données personnelles est susceptible de vous exposer à un risque,
-	nous la notifions à la CNIL dans les 72 heures et vous en informons sans tarder lorsque le risque
-	est élevé.
+	une clé secrète. Les cookies, les en-têtes d'autorisation, les paramètres d'adresse et le corps
+	des requêtes sont retirés des traces. Si une violation de données personnelles est susceptible de
+	vous exposer à un risque, nous la notifions à la CNIL dans les 72 heures et vous en informons sans
+	tarder lorsque le risque est élevé.
 </p>
 
 <h3 id="cookies">Cookies et stockage local</h3>

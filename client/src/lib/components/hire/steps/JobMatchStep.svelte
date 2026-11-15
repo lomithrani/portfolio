@@ -140,10 +140,16 @@ Not for the portfolio's owner: the page shows them the step's description instea
 				{#if match.criteria.some((entry) => entry.criterion === 'commute')}
 					<p class="text-xs text-surface-700-300">
 						{m.jobMatch.commute(ownerName)}
-						<Rich text={m.jobMatch.commuteSources}>
+						<Rich text={m.jobMatch.commuteSources[match.transit ?? 'none']}>
 							{#snippet ign(text)}<a
 									class="underline underline-offset-2"
 									href="https://geoservices.ign.fr/"
+									target="_blank"
+									rel="noreferrer">{text}</a
+								>{/snippet}
+							{#snippet here(text)}<a
+									class="underline underline-offset-2"
+									href="https://www.here.com/"
 									target="_blank"
 									rel="noreferrer">{text}</a
 								>{/snippet}

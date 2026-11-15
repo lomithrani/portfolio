@@ -237,6 +237,8 @@ export const savedForm = (form: PerfectJobForm, stored: PerfectJob): PerfectJobF
 export interface CommuteAvailability {
 	enabled: boolean;
 	modes: CommuteMode[];
+	/** The service asked for public transport times, when `modes` has them */
+	transit?: 'here' | 'transitous';
 }
 
 /** '45 minutes', '1 hour', '2 h 30' */

@@ -18,6 +18,7 @@ import {
   Workflow,
   WorkflowInstance
 } from '../models/database';
+import { logger } from '../services/logger';
 import { enableRecruiterSpace } from '../services/recruiters';
 import { commuteArrival } from '../services/transitous';
 import { authCookie } from './helpers';
@@ -37,6 +38,8 @@ let connected = false;
 
 const HOME = { label: '1 Rue du Test 69001 Lyon', lat: 45.767, lon: 4.834 };
 const OFFICE = { label: '9 Rue du Bureau 69003 Lyon', lat: 45.7601, lon: 4.8591 };
+/** A key no response and no log line may hold */
+const HERE_KEY = 'hEre-test-Key_0123456789abcdefghijklmnopqr';
 
 interface Services {
   requests: { service: 'geocode' | 'route' | 'transit'; url: URL; headers: Headers; redirect: string | undefined }[];
@@ -45,7 +48,7 @@ interface Services {
   car: { duration: number; distance: number } | 'none' | 'down';
   foot: { duration: number; distance: number } | 'none' | 'down';
   /** Seconds of each journey found */
-  transit: number[] | 'down';
+  transit: number[] | 'down' | 'untimed';
   geocoding: 'up' | 'down';
   /** `unknown`: only towns are found (a query for a street gets a guess) */
   streets: 'known' | 'unknown';
@@ -89,9 +92,33 @@ const installFakeServices = () => {
       if (answer === 'none') return Response.json({ error: { message: ' No path found ' } }, { status: 404 });
       return Response.json(answer);
     }
+    if (url.href.startsWith('https://transit.router.hereapi.com/v8/routes')) {
+      record('transit');
+      if (services.transit === 'down') return new Response(JSON.stringify({ title: 'Unauthorized', status: 401 }), { status: 401 });
+      // Journeys whose times are missing (HERE's schema does not promise them)
+      if (services.transit === 'untimed') {
+        return Response.json({ routes: [{ id: 'R0', sections: [{ type: 'transit', departure: { place: {} }, arrival: { place: {} } }] }] });
+      }
+      // Each journey: a walk to the stop, a ride, a walk to the door, in the office's time
+      const routes = services.transit.map((seconds, index) => ({
+        id: `R${index}`,
+        sections: [
+          { type: 'pedestrian', departure: { time: '2026-11-17T07:00:00+01:00' }, arrival: { time: '2026-11-17T07:04:00+01:00' } },
+          { type: 'transit', departure: { time: '2026-11-17T07:04:00+01:00' }, arrival: { time: '2026-11-17T07:20:00+01:00' } },
+          {
+            type: 'pedestrian',
+            departure: { time: '2026-11-17T07:20:00+01:00' },
+            // Told in another offset: an instant all the same
+            arrival: { time: new Date(Date.parse('2026-11-17T07:00:00+01:00') + seconds * 1000).toISOString() }
+          }
+        ]
+      }));
+      return Response.json(routes.length > 0 ? { routes } : { routes, notices: [{ code: 'noCoverage', title: 'No coverage' }] });
+    }
     if (url.href.startsWith('https://api.transitous.org/api/v1/plan')) {
       record('transit');
       if (services.transit === 'down') return new Response('Unavailable', { status: 503 });
+      if (services.transit === 'untimed') return Response.json({ itineraries: [{}], direct: [] });
       return Response.json({ itineraries: services.transit.map((duration) => ({ duration })), direct: [] });
     }
     throw new Error(`Unexpected request to ${url.origin}`);
@@ -192,6 +219,7 @@ const saved = {
   enabled: env.commuteTimesEnabled,
   transit: env.COMMUTE_TRANSIT,
   contact: env.COMMUTE_CONTACT,
+  hereKey: env.HERE_API_KEY,
   limit: env.COMMUTE_DAILY_LIMIT
 };
 
@@ -212,6 +240,7 @@ beforeEach(async () => {
   env.commuteTimesEnabled = true;
   env.COMMUTE_TRANSIT = undefined;
   env.COMMUTE_CONTACT = undefined;
+  env.HERE_API_KEY = undefined;
   env.COMMUTE_DAILY_LIMIT = 500;
   installFakeServices();
   if (connected) await clearCommuteData();
@@ -222,6 +251,7 @@ afterEach(async () => {
   env.commuteTimesEnabled = saved.enabled;
   env.COMMUTE_TRANSIT = saved.transit;
   env.COMMUTE_CONTACT = saved.contact;
+  env.HERE_API_KEY = saved.hereKey;
   env.COMMUTE_DAILY_LIMIT = saved.limit;
   if (!connected) return;
   await clearCommuteData();
@@ -245,7 +275,17 @@ describe("the owner's address (PUT /perfect-job)", () => {
     env.COMMUTE_CONTACT = 'ops@example.com';
     expect((await call('GET', '/perfect-job', { cookie: owner.cookie })).json().commute).toEqual({
       enabled: true,
-      modes: ['transit', 'bike', 'car', 'walk']
+      modes: ['transit', 'bike', 'car', 'walk'],
+      transit: 'transitous'
+    });
+    env.COMMUTE_TRANSIT = 'here';
+    // Chosen without its key: no public transport
+    expect((await call('GET', '/perfect-job', { cookie: owner.cookie })).json().commute.modes).toEqual(['bike', 'car', 'walk']);
+    env.HERE_API_KEY = HERE_KEY;
+    expect((await call('GET', '/perfect-job', { cookie: owner.cookie })).json().commute).toEqual({
+      enabled: true,
+      modes: ['transit', 'bike', 'car', 'walk'],
+      transit: 'here'
     });
     env.commuteTimesEnabled = false;
     expect((await call('GET', '/perfect-job', { cookie: owner.cookie })).json().commute).toEqual({ enabled: false, modes: [] });
@@ -459,6 +499,103 @@ describe('the commute in the score of a job', () => {
     services.transit = [];
     await clearCommuteData();
     expect(outcome(await matchOf(owner, recruiter, jobId))).toEqual({ criterion: 'commute', outcome: 'miss' });
+  });
+
+  it('asks HERE for public transport with the key of the site, which nothing it answers or logs holds', async () => {
+    const lines: string[] = [];
+    for (const level of ['debug', 'info', 'warn', 'error'] as const) {
+      spyOn(logger, level).mockImplementation((text, attributes) => {
+        lines.push(`${text} ${JSON.stringify(attributes ?? {})}`);
+      });
+    }
+    env.COMMUTE_TRANSIT = 'here';
+    env.HERE_API_KEY = HERE_KEY;
+    const owner = await ownerWith({ commute: commute({ modes: ['transit'], maxMinutesPerWeek: 250 }) });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    const jobId = await createJob(recruiter);
+
+    // The shortest journey, door to door: 25 minutes, 250 a week
+    const found = await matchOf(owner, recruiter, jobId);
+    expect({ score: found.view.score, commute: outcome(found) }).toEqual({
+      score: 100,
+      commute: { criterion: 'commute', outcome: 'match' }
+    });
+    // The service to credit: the site's, told with the commute
+    expect((found.view as { transit?: string }).transit).toBe('here');
+    const routes = services.requests.find((request) => request.service === 'transit')!;
+    expect(routes.url.origin + routes.url.pathname).toBe('https://transit.router.hereapi.com/v8/routes');
+    expect(routes.url.searchParams.get('origin')).toBe(`${HOME.lat},${HOME.lon}`);
+    expect(routes.url.searchParams.get('destination')).toBe(`${OFFICE.lat},${OFFICE.lon}`);
+    // 08:30 at the office, on the Tuesday asked of any service
+    expect(routes.url.searchParams.get('arrivalTime')).toBe(`${commuteArrival().toISOString().slice(0, 10)}T08:30:00`);
+    expect(routes.url.searchParams.get('apiKey')).toBe(HERE_KEY);
+    expect(routes.redirect).toBe('manual');
+    expect(asked('transit')).toBe(1);
+
+    // No journey there, and an hour on foot: walking all the way is the way
+    services.transit = [];
+    await clearCommuteData();
+    expect(outcome(await matchOf(owner, recruiter, jobId))).toEqual({ criterion: 'commute', outcome: 'miss' });
+
+    // A key HERE refuses: the commute does not count, and the log says the status, not the key
+    services.transit = 'down';
+    await clearCommuteData();
+    const refused = await matchOf(owner, recruiter, jobId);
+    expect(outcome(refused)).toEqual({ criterion: 'commute', outcome: 'unknown' });
+    expect(lines.filter((line) => line.includes('Travel times: no answer'))).toEqual([
+      'Travel times: no answer {"kind":"transit","reason":"GeoServiceError","detail":"transit answered 401"}'
+    ]);
+    const told = [JSON.stringify(found), JSON.stringify(refused), ...lines].join('\n');
+    expect(told).not.toContain(HERE_KEY);
+    expect(JSON.stringify(await CommuteCache.find({}).lean())).not.toContain(HERE_KEY);
+  });
+
+  it('takes journeys HERE cannot time for a failure, asked again later, not for "no journey" kept 30 days', async () => {
+    env.COMMUTE_TRANSIT = 'here';
+    env.HERE_API_KEY = HERE_KEY;
+    const owner = await ownerWith({ commute: commute({ modes: ['transit'], maxMinutesPerWeek: 250 }) });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    const jobId = await createJob(recruiter);
+    services.transit = 'untimed';
+    expect(outcome(await matchOf(owner, recruiter, jobId))).toEqual({ criterion: 'commute', outcome: 'unknown' });
+    const kept = await CommuteCache.find({ _id: { $regex: '^transit:' } }).lean();
+    expect(kept.map(({ value }) => value)).toEqual([{ failed: true }]);
+    // Remembered as a failure for minutes, not days
+    expect(kept[0].expiresAt.getTime() - Date.now()).toBeLessThan(11 * 60_000);
+  });
+
+  it('keeps the answers of each public transport service apart: a site that changes service asks again', async () => {
+    env.COMMUTE_TRANSIT = 'transitous';
+    env.COMMUTE_CONTACT = 'https://portfolio.example/contact';
+    const owner = await ownerWith({ commute: commute({ modes: ['transit'], maxMinutesPerWeek: 250 }) });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    const jobId = await createJob(recruiter);
+    // Transitous finds no journey: walking all the way (an hour) misses
+    services.transit = [];
+    expect(outcome(await matchOf(owner, recruiter, jobId))).toEqual({ criterion: 'commute', outcome: 'miss' });
+    expect(asked('transit')).toBe(1);
+
+    // HERE has one of 25 minutes: its own answer counts, not what Transitous said
+    env.COMMUTE_TRANSIT = 'here';
+    env.HERE_API_KEY = HERE_KEY;
+    services.transit = [1500];
+    const withHere = await matchOf(owner, recruiter, jobId);
+    expect(outcome(withHere)).toEqual({ criterion: 'commute', outcome: 'match' });
+    expect((withHere.view as { transit?: string }).transit).toBe('here');
+    expect(asked('transit')).toBe(2);
+  });
+
+  it('credits no public transport service while travel times are off', async () => {
+    env.COMMUTE_TRANSIT = 'here';
+    env.HERE_API_KEY = HERE_KEY;
+    const owner = await ownerWith({ commute: commute({ modes: ['transit'], maxMinutesPerWeek: 250 }) });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    const jobId = await createJob(recruiter);
+    env.commuteTimesEnabled = false;
+    const off = await matchOf(owner, recruiter, jobId);
+    expect(outcome(off)).toEqual({ criterion: 'commute', outcome: 'unknown' });
+    expect((off.view as { transit?: string }).transit).toBeUndefined();
+    expect(asked('transit')).toBe(0);
   });
 
   it('arrives on a Tuesday morning at least two days away', () => {

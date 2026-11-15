@@ -128,9 +128,20 @@ export const m = defineMessages({
 			fr: (ownerName: string) =>
 				`Le trajet est le temps que met ${ownerName} pour aller à l'adresse de votre offre et en revenir, sur une semaine.`
 		},
+		/** Who the travel times come from: on a site without public transport, then with each service it can ask */
 		commuteSources: {
-			en: 'Travel times: <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> and <osm>OpenStreetMap contributors</osm>.',
-			fr: "Temps de trajet : <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> et <osm>les contributeurs d'OpenStreetMap</osm>."
+			none: {
+				en: 'Travel times: <ign>Géoplateforme (IGN)</ign>.',
+				fr: 'Temps de trajet : <ign>Géoplateforme (IGN)</ign>.'
+			},
+			here: {
+				en: 'Travel times: <ign>Géoplateforme (IGN)</ign> and, by public transport, <here>HERE</here>.',
+				fr: 'Temps de trajet : <ign>Géoplateforme (IGN)</ign> et, en transports en commun, <here>HERE</here>.'
+			},
+			transitous: {
+				en: 'Travel times: <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> and <osm>OpenStreetMap contributors</osm>.',
+				fr: "Temps de trajet : <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> et <osm>les contributeurs d'OpenStreetMap</osm>."
+			}
 		},
 		dealBreakerMissed: {
 			en: (ownerName: string) =>
