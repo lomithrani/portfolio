@@ -461,7 +461,13 @@ export interface JobMatch {
 	job: { _id: string; title: string };
 	/** Only when the owner shows them */
 	criteria?: JobMatchCriterion[];
+	/** The service this site asks for public transport times, to credit with the commute */
+	transit?: TransitProvider;
 }
+
+/** The services public transport times can come from (the API's COMMUTE_TRANSIT) */
+export const TRANSIT_PROVIDERS = ['here', 'transitous'] as const;
+export type TransitProvider = (typeof TRANSIT_PROVIDERS)[number];
 
 const isScore = (value: unknown): value is number => {
 	const { min, max } = JOB_MATCH_STEP_LIMITS.minScore;
@@ -473,7 +479,8 @@ const OUTCOMES: readonly JobMatchCriterion['outcome'][] = ['match', 'partial', '
 /** The score, from a job match step's `view`; undefined when there is none (or it is not one) */
 export const jobMatch = (view: unknown): JobMatch | undefined => {
 	if (!view || typeof view !== 'object') return undefined;
-	const { score, minScore, job, criteria } = view as Record<string, unknown>;
+	const { score, minScore, job, criteria, transit } = view as Record<string, unknown>;
+	const provider = TRANSIT_PROVIDERS.find((name) => name === transit);
 	const { _id, title } = (job && typeof job === 'object' ? job : {}) as Record<string, unknown>;
 	if (!isScore(score) || !isScore(minScore)) return undefined;
 	if (typeof _id !== 'string' || typeof title !== 'string') return undefined;
@@ -496,7 +503,13 @@ export const jobMatch = (view: unknown): JobMatch | undefined => {
 				];
 			})
 		: undefined;
-	return { score, minScore, job: { _id, title }, ...(listed ? { criteria: listed } : {}) };
+	return {
+		score,
+		minScore,
+		job: { _id, title },
+		...(listed ? { criteria: listed } : {}),
+		...(provider ? { transit: provider } : {})
+	};
 };
 
 /** The minimum score of a job match step, from its settings (the owner's, or as visitors get them) */

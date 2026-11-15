@@ -182,8 +182,9 @@ local development.
 | `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé import (see [Résumé import](#résumé-import)) |
 | `GITHUB_ISSUES_TOKEN`          | for step suggestions | Fine-grained GitHub token with Issues write on one repository; sealed. Enables step suggestions (see [Step suggestions](#step-suggestions)) |
 | `COMMUTE_TIMES`                | for the commute criterion | `true` turns travel times on (see [Travel times](#travel-times)); addresses then go to the Géoplateforme |
-| `COMMUTE_TRANSIT`              | no       | `transitous` adds public transport times, under Transitous' usage policy; needs `COMMUTE_CONTACT`   |
-| `COMMUTE_CONTACT`              | with `COMMUTE_TRANSIT` | An email address or a web page, sent as the User-Agent of the requests to Transitous |
+| `COMMUTE_TRANSIT`              | for public transport | `here` or `transitous`: the service asked for public transport times (see [Travel times](#travel-times)) |
+| `HERE_API_KEY`                 | with `COMMUTE_TRANSIT=here` | API key of an app of your HERE platform account; sealed. Billed per journey asked beyond the free monthly allowance |
+| `COMMUTE_CONTACT`              | with `COMMUTE_TRANSIT=transitous` | An email address or a web page, sent as the User-Agent of the requests to Transitous |
 | `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off |
 | `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions are filed in, `owner/name`; leave unset (`lomithrani/portfolio`)         |
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
@@ -427,9 +428,10 @@ before the body is read, then on the bytes actually read, so a body without a us
 `Content-Length` (chunked, as a proxy or an HTTP/2 client may forward it, or with the header
 repeated) stops at 1 MB too; both answer `413` with CORS headers.
 
-**Traces.** Request and response bodies, cookies and the `Authorization` header are dropped from
-each span as it ends, before the batch processor queues it for export (and again in the
-exporter), so queued spans never hold a PDF.
+**Traces.** Request and response bodies, cookies, the `Authorization` header and the URL's query
+string (`url.query`, and what follows `?` in `url.full`) are dropped from each span as it ends,
+before the batch processor queues it for export (and again in the exporter), so queued spans never
+hold a PDF, nor what a person typed in a query string.
 
 ## Job description import
 
@@ -509,27 +511,66 @@ production API with `COMMUTE_TIMES=true`, or take those mentions out.
 
 | Service | Used for | Key | What it receives |
 | --- | --- | --- | --- |
-| Géoplateforme, IGN (`data.geopf.fr`) | Finding addresses; the way by car and on foot (the time by bike is estimated from the distance on foot, at 15 km/h) | none | The owner's address as typed, the address of a job posting, and pairs of points |
+| Géoplateforme, IGN (`data.geopf.fr`) | Finding addresses (as they are typed, and when they are saved or scored); the way by car and on foot (the time by bike is estimated from the distance on foot, at 15 km/h) | none | The owner's address as typed, the address of a job posting, and pairs of points |
+| HERE Public Transit API (`transit.router.hereapi.com`), only with `COMMUTE_TRANSIT=here` | Journeys by public transport | `HERE_API_KEY` | Pairs of points, and the key |
 | Transitous (`api.transitous.org`), only with `COMMUTE_TRANSIT=transitous` | Journeys by public transport | none | Pairs of points, and `COMMUTE_CONTACT` as User-Agent |
 
-Neither receives a name, an account or an IP address of the people concerned: the requests come
-from the API. Both are public services without a contract: they can change or stop.
+None receives a name, an account or an IP address of the people concerned: the requests come
+from the API, never from the browser.
 
 - **Géoplateforme** is the French state's map service, open to any use, limited to 50 geocoding
-  and 5 route requests a second for one IP. It covers France, like the job postings.
-- **Transitous** is run by volunteers. Its [usage policy](https://transitous.org/api/) is for
-  **open-source, non-commercial** projects with light use (it asks to be told above 720 route
-  requests a day), a User-Agent that says who asks, and a link to its sources where the times
-  are used (the Hire page has it). Set `COMMUTE_TRANSIT` only if the site fits, with
-  `COMMUTE_CONTACT`. Without it, owners can pick bike, car and on foot.
+  and 5 route requests a second for one IP. It covers France, like the job postings. It has no
+  public transport.
+- **Public transport** needs one of two services, chosen with `COMMUTE_TRANSIT`. Without one,
+  owners can pick bike, car and on foot, and the tab says public transport is not available.
+  - **HERE** (`COMMUTE_TRANSIT=here`) is a commercial service: the choice for a site that is
+    not open source or may earn money. Create an account on the
+    [HERE platform](https://platform.here.com/), an app in it, and an API key for that app:
+    that key is `HERE_API_KEY` (seal it). Each journey asked is one transaction of the Public
+    Transit API: 5,000 a month are free, then about €2.33 per 1,000 (prices of April 2026:
+    check [HERE's pricing](https://www.here.com/get-started/pricing)). It answers from the
+    timetables of the operators it [lists for France](https://docs.here.com/transit/docs/coverage-transit)
+    (SNCF, the regional trains and the networks of about fifty urban areas): outside them it
+    finds no journey, and the way on foot counts. Its
+    [terms](https://legal.here.com/en-gb/terms/here-platform-terms) let a result be kept for
+    30 days, which is how long a way is kept here. The key travels in the URL of each request,
+    as HERE asks: the API never logs that URL and traces no outgoing request. A key HERE
+    refuses shows in the logs as `Travel times: no answer` with `transit answered 401` (or
+    `403`), never the key.
+  - **Transitous** (`COMMUTE_TRANSIT=transitous`) is run by volunteers. Its
+    [usage policy](https://transitous.org/api/) is for **open-source, non-commercial** projects
+    with light use (it asks to be told above 720 route requests a day), a User-Agent that says
+    who asks (`COMMUTE_CONTACT`), and a link to its sources where the times are used. Set it
+    only if the site fits.
+
+  The Hire page credits the service in use next to the commute, and the owner's tab names it
+  where it says who the address goes to. The privacy policy names both.
 
 What keeps the use light: an address is looked up once (the owner's on save, a posting's the
-first time it is scored) and a way is asked for once, then kept for 30 days (places: 90) in the
-`commutecaches` collection, under keys that do not show the question. Every request counts
-against `COMMUTE_DAILY_LIMIT` (500 a day for the whole site by default); over it, and while a
+first time it is scored or checked in the job editor) and a way is asked for once, then kept
+for 30 days (places: 90) in the `commutecaches` collection, under keys that do not show the
+question. Every one of those requests counts against `COMMUTE_DAILY_LIMIT` (500 a day for the
+whole site by default: with HERE, at most 500 journeys a day, so at most about 15,000 a month;
+lower it to stay within the free allowance whatever happens, e.g. `160`); over it, and while a
 service does not answer, the commute is left out of the scores (recruiters see "Could not be
 computed right now: not counted") instead of blocking anyone. The API logs `Travel times: no
 answer` at warn level with the kind of request and the reason, never the address.
+
+**Address search.** The two forms that take an address (the commute of the perfect job, the
+office of a job posting) search it as it is typed: `POST /addresses/search` answers with the
+addresses the Géoplateforme knows, and `POST /addresses/office` tells a recruiter where their
+posting's office is found (its street, only its town, or nowhere). Both are for signed-in
+accounts and go through the API; they are POSTs so that what is typed travels in a body, which
+neither the traces nor the host's request logs keep, never in a URL. A posting's postal code and
+town narrow the search while it finds a good match there; otherwise it is asked again without
+the postal code, then without the town (the geocoder refuses a town it does not know as a
+commune, such as "La Défense"): one request to the map service, at most three. The searches are
+not counted against `COMMUTE_DAILY_LIMIT` (typing an address takes a dozen): they have limits of
+their own, 60 a minute and 500 a day per account, and 10,000 a day for the site
+(`server/services/addressSearch.ts`), and what is typed is never logged or kept. An office
+looked up is kept and counted like at scoring, at most 40 new lookups a day per account (a
+street not found takes a second one, for its town). Both are off with travel times: nothing is
+sent to the map service then, and the fields are plain text fields.
 
 An owner's address is as private as the rest of their perfect job: only they read it. A
 recruiter learns whether their job's commute matches, which says something about where the
@@ -576,12 +617,54 @@ Work goes to `develop`: every pull request targets it (`develop` is the reposito
 branch) and is squash-merged. A release brings `develop` into `main`:
 
 1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship.
-2. Open a pull request with base **`main`** and compare **`develop`**, titled with the new version:
-   `Release v1.2.0` ([semantic versioning](https://semver.org): the last number for fixes only,
-   the middle one for new features, the first for a change that breaks what users or other
-   services rely on).
-3. When CI is green, merge it with **Create a merge commit** (never squash or rebase: `main` must
-   contain `develop`'s commits, or the next release conflicts). The merge deploys production.
+2. Run the `Release` workflow (after its one-time setup, below): **Actions**, **Release**, **Run
+   workflow** (branch `develop`), and pick what the release brings since the last one
+   ([semantic versioning](https://semver.org)):
+   **patch** for fixes only (`v1.2.3` to `v1.2.4`), **minor** for new features (`v1.3.0`),
+   **major** for a change that breaks what users or other services rely on (`v2.0.0`). Leave
+   **Tag only** unticked.
+
+That is the whole release. The workflow (`.github/workflows/release.yml`) opens the pull request
+from `develop` into `main`, titled with the new version (`Release v1.2.4`) and listing what it
+brings, and turns on auto-merge: once the required checks pass, GitHub merges it with a merge
+commit, which deploys production. On that merge the workflow runs again and publishes a **GitHub
+Release**: the tag `vX.Y.Z` on the merge commit, with notes generated from the pull requests merged
+since the previous release (the **Releases** page lists what each production deploy brought). To
+hold a release back, press **Disable auto-merge** on its pull request, or close it. A pull request
+from `develop` into `main` that is already open becomes the release: it is retitled and its
+description replaced, not doubled. What is merged is `develop` as it is when the checks pass: a
+pull request merged into `develop` in the meantime is part of the release, after the checks ran
+again.
+
+A failing check does not end the release: its pull request stays open with auto-merge on, and is
+merged as soon as the checks pass, after a re-run or the next merge into `develop`. Fix `develop`,
+or close the pull request to give the release up. If the pull request is still open a few minutes
+after all its checks passed (auto-merge has been reported not to fire on some repositories
+protected by rulesets), merge it by hand with **Create a merge commit**: the release is published
+on that merge all the same.
+
+One-time setup, before the first run (without it the workflow stops with a message saying what is
+missing, and merges nothing):
+
+- **Settings**, **General**, **Pull Requests**: tick **Allow auto-merge**.
+- A token of a maintainer, as the repository secret **`RELEASE_TOKEN`** (**Settings**, **Secrets
+  and variables**, **Actions**): a fine-grained personal access token (your account's
+  **Settings**, **Developer settings**, **Personal access tokens**, **Fine-grained tokens**,
+  **Generate new token**), with **Repository access** set to **Only select repositories** and
+  this repository, and under **Permissions** **Contents**, **Pull requests** and **Workflows** set
+  to *Read and write* (Workflows: a release often carries changes to `.github/workflows`, which a
+  token without it may not merge). The token merges as you, an admin whom the ruleset of `main`
+  lets merge a pull request whose checks have not passed: the workflow only ever asks for
+  auto-merge, which waits for them, and any workflow of the repository can read the secret, so
+  keep the token to this use. The workflow's own token cannot do this: the CI of a pull request
+  it opens waits for someone to approve it, and a merge made with it starts no workflow, so it
+  would neither publish the release nor run the CI on `main` that the production deploy waits
+  for. Give the token an expiry date and renew it then.
+
+A release can still be made by hand: open a pull request with base **`main`** and compare
+**`develop`**, titled `Release v1.2.0`, and when CI is green merge it with **Create a merge
+commit** (never squash or rebase: `main` must contain `develop`'s commits, or the next release
+conflicts). The release is published on the merge all the same.
 
 The `Release guard` workflow (`.github/workflows/release-guard.yml`) fails any pull request into
 `main` whose source branch is not `develop`, or whose title does not name the next version: one
@@ -591,12 +674,10 @@ for the first release; fix the title: the check runs again). A fix needed in pro
 `main` merged back after a release: GitHub shows `develop` as "behind" `main` by the release merge
 commits, while their files are the same.
 
-Once the release pull request is merged, the `Release` workflow (`.github/workflows/release.yml`)
-publishes a **GitHub Release**: the tag `vX.Y.Z` on the merge commit, with notes generated from the
-pull requests merged since the previous release (the **Releases** page lists what each production
-deploy brought). If it could not (no version, a tag that exists), publish it by hand: **Actions**,
-**Release**, **Run workflow** (branch `develop`), with the version; it tags `main`'s current
-commit. That is also how a release merged before the workflow existed gets its tag.
+**Tag only** is not a release of `develop`: it merges nothing. It publishes `main`'s current
+commit as the next version, for a release that was merged without its tag (a pull request merged
+by hand whose title named no version, or a publication that failed). It refuses a commit that is
+already released, since that would publish a release that brings nothing.
 
 ### Branch protection
 

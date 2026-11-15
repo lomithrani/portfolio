@@ -142,9 +142,13 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	Recruiters write job descriptions: title, company, location, work mode, contract, working time,
 	pay, requirements, benefits and description. Once published, a job description is public, but it
 	never names the recruiter's account. A job description PDF can also be imported: it is sent to
-	Anthropic like a résumé, and not stored by us. When a job description is scored in a hiring
-	journey with a commute criterion (see <a class="link-text" href="#data-perfect-job">perfect job</a
-	>), the address of its office is sent to the map service that locates it.
+	Anthropic like a résumé, and not stored by us. Where this site computes travel times (see <a
+		class="link-text"
+		href="#data-perfect-job">perfect job</a
+	>), the address of a job's office (street, postal code and town) is sent to the Géoplateforme of
+	IGN, the map service that locates it: as it is typed in the job editor, when its fields are left,
+	and when the job description is scored in a hiring journey with a commute criterion, even for a
+	draft that is never published.
 </p>
 
 <h4 id="data-applications">Applications</h4>
@@ -187,11 +191,13 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	The commute criterion is optional, and offered only where this site computes travel times. It
 	stores the address you travel from (a place nearby does as well as your home) and where it is on a
-	map. To find it and to compute travel times to a job, that address is sent to the Géoplateforme of
-	IGN, the French state's map service, and, where public transport is offered, its position to
-	Transitous, a journey planner run by volunteers. Neither receives your name, your account or your
-	IP address. Recruiters never see your address; whether the commute to their job matches does say
-	something about where you are.
+	map. To find it, as you type it and when you save it, and to compute travel times to a job, that
+	address is sent to the Géoplateforme of IGN, the French state's map service, and, where public
+	transport is offered, its position to the journey planner this site uses: HERE, or Transitous, a
+	journey planner run by volunteers. None of them receives your name, your account or your IP
+	address. Recruiters never see your address; whether the commute to their job matches does say
+	something about where you are. The address of a job's office, typed by its recruiter, is looked up
+	the same way.
 </p>
 
 <h4 id="data-calendar">Google Calendar (portfolio owners)</h4>
@@ -219,8 +225,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	Our servers write a log of the requests they handle (method, route, status and errors), without IP
 	addresses, emails or names. Our host records its own logs of incoming requests, and, when
 	monitoring is enabled, our monitoring provider receives traces of the requests, which include the
-	IP address, the browser's user agent, the address of the page and the request headers (cookies,
-	authorisation headers and request bodies are removed before they are sent).
+	IP address, the browser's user agent, the address of the page without its query string, and the
+	request headers (cookies, authorisation headers, query strings and request bodies are removed
+	before they are sent).
 </p>
 
 <h4 id="data-device">On your device</h4>
@@ -368,12 +375,14 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				>);
 			</li>
 			<li>
-				Transitous, a journey planner run by volunteers: the points to compute a public transport
-				time between, where this site offers it (<a
+				HERE (HERE Technologies, the Netherlands), or Transitous, a journey planner run by
+				volunteers, whichever this site uses: the points to compute a public transport time between,
+				where this site offers it (<a
 					class="link-text"
-					href={LINKS.transitous}
-					rel="noopener noreferrer">transitous.org</a
-				>).
+					href={LINKS.herePrivacy}
+					rel="noopener noreferrer">HERE privacy policy</a
+				>,
+				<a class="link-text" href={LINKS.transitous} rel="noopener noreferrer">transitous.org</a>).
 			</li>
 		</ul>
 	</li>
@@ -571,9 +580,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	Connections use HTTPS. The session cookie cannot be read by scripts on the page. Google Calendar
 	tokens are never returned by the API or written to logs. IP and email addresses used against abuse
-	are hashed with a secret key. Cookies, authorisation headers and request bodies are removed from
-	traces. If a personal data breach is likely to put you at risk, we notify the CNIL within 72 hours
-	and tell you without delay when the risk is high.
+	are hashed with a secret key. Cookies, authorisation headers, query strings and request bodies are
+	removed from traces. If a personal data breach is likely to put you at risk, we notify the CNIL
+	within 72 hours and tell you without delay when the risk is high.
 </p>
 
 <h3 id="cookies">Cookies and local storage</h3>

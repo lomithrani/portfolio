@@ -18,20 +18,27 @@ import type { ServerEnv } from './env'
 
 // Span attributes the Elysia plugin fills with credentials or personal data:
 // every request header (the session cookie is a 7-day JWT), the parsed
-// cookies, and request/response bodies (the Google ID token posted to /login,
-// user emails). They must never reach the trace backend.
+// cookies, request/response bodies (the Google ID token posted to /login,
+// user emails), and the URL's query string, which can hold what a person
+// typed. They must never reach the trace backend.
 export const SENSITIVE_SPAN_ATTRIBUTES = [
 	'http.request.header.cookie',
 	'http.request.header.authorization',
 	'http.request.cookie',
 	'http.request.body',
 	'http.response.body',
-	'http.response.header.set-cookie'
+	'http.response.header.set-cookie',
+	'url.query'
 ]
 
 // Ended spans are not frozen: this deletes from what processors and exporters read
 const dropSensitiveAttributes = (span: ReadableSpan) => {
 	for (const key of SENSITIVE_SPAN_ATTRIBUTES) delete span.attributes[key]
+	// The whole URL holds the query string too: only its path is kept, for every route
+	const full = span.attributes['url.full']
+	if (typeof full === 'string' && full.includes('?')) {
+		;(span.attributes as Record<string, unknown>)['url.full'] = full.slice(0, full.indexOf('?'))
+	}
 }
 
 /**

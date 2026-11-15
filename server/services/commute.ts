@@ -7,7 +7,8 @@ import type { Point } from './geoplateforme';
 import { logger } from './logger';
 import { hashValue, takeRateLimit } from './rateLimit';
 import type { RateLimit } from './rateLimit';
-import { transitEnabled, transitMinutes } from './transitous';
+import { transitEnabled, transitMinutes, transitProvider } from './transit';
+import type { TransitProvider } from './transit';
 
 // Travel times for the commute criterion of the perfect job
 // (portfolio-common's perfectJob.ts): from the address an owner gave to the
@@ -17,9 +18,10 @@ import { transitEnabled, transitMinutes } from './transitous';
 //
 // Who is asked what: the Géoplateforme (services/geoplateforme.ts) finds the
 // addresses, and gives the way by car and on foot; the time by bike is an
-// estimate from the distance on foot; Transitous (services/transitous.ts,
-// COMMUTE_TRANSIT=transitous) gives the journey by public transport. They
-// receive an address or two points, and nothing about who asks.
+// estimate from the distance on foot; the service COMMUTE_TRANSIT names
+// (services/transit.ts: HERE or Transitous) gives the journey by public
+// transport. They receive an address or two points, and nothing about who
+// asks.
 //
 // Every answer is kept (CommuteCache) and every call counted against one
 // daily cap for the site (COMMUTE_DAILY_LIMIT): a job is scored at each read
@@ -41,25 +43,37 @@ const commuteCalls = (): RateLimit => ({ limit: env.COMMUTE_DAILY_LIMIT, windowM
 export interface CommuteAvailability {
   enabled: boolean;
   modes: CommuteMode[];
+  /** The service asked for public transport times, when `modes` has them: its name is shown */
+  transit?: TransitProvider;
 }
 
 export const commuteAvailability = (): CommuteAvailability => {
   const enabled = env.commuteTimesEnabled;
+  const transit = enabled ? transitProvider() : undefined;
   return {
     enabled,
-    modes: enabled ? COMMUTE_MODES.filter((mode) => mode !== 'transit' || transitEnabled()) : []
+    modes: enabled ? COMMUTE_MODES.filter((mode) => mode !== 'transit' || transitEnabled()) : [],
+    ...(transit ? { transit } : {})
   };
 };
 
 /** For the startup log line: whether travel times are computed, by which modes, and the daily cap */
 export const describeCommute = (): string => {
   const { enabled, modes } = commuteAvailability();
-  return enabled ? `on (${modes.join(', ')}; ${env.COMMUTE_DAILY_LIMIT} requests a day)` : 'off (COMMUTE_TIMES is not true)';
+  const transit = transitProvider();
+  return enabled
+    ? `on (${modes.join(', ')}; ${transit ? `public transport from ${transit}; ` : ''}${env.COMMUTE_DAILY_LIMIT} requests a day)`
+    : 'off (COMMUTE_TIMES is not true)';
 };
 
 // ── Asking once ─────────────────────────────────────────────
 
 class OverDailyLimit extends Error {}
+/** The caller may not ask anything new now (its own limit): nothing is asked, nothing is logged */
+class NotAllowed extends Error {}
+
+/** Called before a question goes out (never for an answer already kept): false keeps it in */
+export type MayAsk = () => Promise<boolean>;
 
 type Cached<T> = { found: T } | { none: true } | { failed: true };
 
@@ -68,7 +82,13 @@ type Cached<T> = { found: T } | { none: true } | { failed: true };
  * no). Undefined when it is not known now: the service did not answer, or
  * the site asked enough for today
  */
-async function answered<T>(kind: string, question: string, ttlMs: number, ask: () => Promise<T | null>): Promise<T | null | undefined> {
+async function answered<T>(
+  kind: string,
+  question: string,
+  ttlMs: number,
+  ask: () => Promise<T | null>,
+  mayAsk?: MayAsk
+): Promise<T | null | undefined> {
   const id = `${kind}:${hashValue(question)}`;
   const cached = (await CommuteCache.findById(id).lean())?.value as Cached<T> | undefined;
   if (cached && 'found' in cached) return cached.found;
@@ -78,11 +98,13 @@ async function answered<T>(kind: string, question: string, ttlMs: number, ask: (
   const keep = (value: Cached<T>, ttl: number) =>
     CommuteCache.updateOne({ _id: id }, { $set: { value, expiresAt: new Date(Date.now() + ttl) } }, { upsert: true });
   try {
+    if (mayAsk && !(await mayAsk())) throw new NotAllowed();
     if ((await takeRateLimit('commute-calls', commuteCalls())).retryAfterSeconds !== null) throw new OverDailyLimit();
     const answer = await ask();
     await keep(answer === null ? { none: true } : { found: answer }, ttlMs);
     return answer;
   } catch (error) {
+    if (error instanceof NotAllowed) return undefined;
     // Never the question: it holds an address or the place of someone's home
     logger.warn('Travel times: no answer', {
       kind,
@@ -113,22 +135,43 @@ export async function locateOwnerAddress(address: string): Promise<GeoPlace | nu
 
 type JobLocation = JobPostingInput['location'];
 
+/** Where an office is, as its posting says it (portfolio-common's officeAddress) */
+export type OfficeAddress = ReturnType<typeof officeAddress>;
+
+/** Where an office was found, and whether that is its street or only its town */
+export interface LocatedOffice {
+  place: GeoPlace;
+  level: 'street' | 'town';
+}
+
 /**
  * Where a posting's office is: its street when it gives one that is found,
- * its town otherwise. Null when neither is found
+ * its town otherwise. Null when neither is found, undefined when it is not
+ * known now. Kept in the cache: asked at each read of a journey, and by the
+ * job editor (services/addressSearch.ts, which gives `mayAsk`: its own limit
+ * on what one account has looked up), it is looked up once
  */
-const locateJob = async (location: JobLocation): Promise<GeoPlace | null | undefined> => {
-  const { address, postalCode, city } = officeAddress(location);
+export const locateOffice = async (
+  { address, postalCode, city }: OfficeAddress,
+  mayAsk?: MayAsk
+): Promise<LocatedOffice | null | undefined> => {
   const lookedUp = (text: string, townOnly: boolean) =>
-    answered('place', `${townOnly ? 'town' : 'street'}|${text.toLowerCase()}`, PLACE_TTL_MS, () =>
-      geocode({ text, postalCode, townOnly })
+    answered(
+      'place',
+      `${townOnly ? 'town' : 'street'}|${text.toLowerCase()}`,
+      PLACE_TTL_MS,
+      () => geocode({ text, postalCode, townOnly }),
+      mayAsk
     );
   if (address) {
     const street = await lookedUp([address, postalCode, city].filter(Boolean).join(' '), false);
-    // Found, or not known now; a street that is not found leaves the town
-    if (street !== null || !city) return street;
+    if (street) return { place: street, level: 'street' };
+    // Not known now; a street that is not found leaves the town
+    if (street === undefined || !city) return street;
   }
-  return city ? lookedUp([postalCode, city].filter(Boolean).join(' '), true) : null;
+  if (!city) return null;
+  const town = await lookedUp([postalCode, city].filter(Boolean).join(' '), true);
+  return town ? { place: town, level: 'town' } : town;
 };
 
 // ── Ways ────────────────────────────────────────────────────
@@ -148,7 +191,10 @@ async function minutesByMode(modes: readonly CommuteMode[], from: Point, to: Poi
   const [car, foot, transit] = await Promise.all([
     wants('car') ? answered('car', way(from, to), ROUTE_TTL_MS, () => streetRoute('car', from, to)) : null,
     needsFoot ? answered('foot', way(from, to), ROUTE_TTL_MS, () => streetRoute('pedestrian', from, to)) : null,
-    wants('transit') ? answered('transit', way(from, to), ROUTE_TTL_MS, () => transitMinutes(from, to)) : null
+    // Each service reads only its own answers: a site that changes COMMUTE_TRANSIT asks again
+    wants('transit')
+      ? answered('transit', `${transitProvider()}|${way(from, to)}`, ROUTE_TTL_MS, () => transitMinutes(from, to))
+      : null
   ]);
   if (car === undefined || foot === undefined || transit === undefined) return undefined;
   const none = Number.POSITIVE_INFINITY;
@@ -173,9 +219,9 @@ export async function commuteContext(criterion: PerfectJob['commute'], location:
   const { enabled, modes: offered } = commuteAvailability();
   const modes = criterion.modes.filter((mode) => offered.includes(mode));
   if (!enabled || modes.length === 0) return {};
-  const office = await locateJob(location);
+  const office = await locateOffice(officeAddress(location));
   if (office === undefined) return {};
   if (office === null) return { commute: { located: false } };
-  const times = await minutesByMode(modes, rounded(criterion.place), rounded(office));
+  const times = await minutesByMode(modes, rounded(criterion.place), rounded(office.place));
   return times ? { commute: { minutes: Math.min(...times) } } : {};
 }

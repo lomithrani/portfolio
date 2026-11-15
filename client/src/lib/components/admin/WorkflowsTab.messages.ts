@@ -9,6 +9,11 @@ export const m = defineMessages({
 		en: 'Could not save your hiring journey. Try again.',
 		fr: "Impossible d'enregistrer votre parcours de recrutement. Réessayez."
 	},
+	/** A save refused for an expired session: the page stays as it is, with the steps edited */
+	sessionExpired: {
+		en: 'Your session expired. Your steps are still here: sign in again in another tab, then save.',
+		fr: 'Votre session a expiré. Vos étapes sont toujours là : reconnectez-vous dans un autre onglet, puis enregistrez.'
+	},
 	leaveUnsaved: {
 		en: 'Leave without saving your hiring journey? Your changes will be lost.',
 		fr: 'Quitter sans enregistrer votre parcours de recrutement ? Vos modifications seront perdues.'

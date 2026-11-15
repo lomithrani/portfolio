@@ -146,6 +146,48 @@ describe('exported spans', () => {
     expect(queued.flatMap((span) => span.sensitive)).toEqual([]);
   });
 
+  it('carry no query string, nor an address typed in the address search', async () => {
+    allowTestUserSessions();
+    spyOn(User, 'findById').mockResolvedValue(makeUser() as never);
+    spyOn(User, 'findOne').mockResolvedValue(makeUser() as never);
+    spyOn(Domain, 'findOne').mockResolvedValue(null as never);
+    const cookie = await authCookie();
+    const travelTimes = env.commuteTimesEnabled;
+    // Off: the search answers without the database or the map service
+    env.commuteTimesEnabled = false;
+    try {
+      // A query string, on any route: dropped
+      expect((await request('/isLogged?from=7%20impasse%20du%20Secret', { headers: { Cookie: cookie } })).status).toBe(200);
+      // The address search: a body, dropped like every body
+      const search = await request('/addresses/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ q: '7 impasse du Secret', city: 'Villesecrète' })
+      });
+      expect(search.status).toBe(200);
+      const office = await request('/addresses/office', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ address: '7 impasse du Secret', city: 'Villesecrète' })
+      });
+      expect(office.status).toBe(200);
+    } finally {
+      env.commuteTimesEnabled = travelTimes;
+    }
+
+    const spans = await exportedSpans();
+    const exported = JSON.stringify(spans.map((span) => ({ name: span.name, attributes: span.attributes, events: span.events })));
+    expect(exported).not.toMatch(/secret|villesecr/i);
+    for (const span of spans) expect(sensitiveKeysOf(span.attributes)).toEqual([]);
+    const roots = spans.filter((span) => span.attributes['http.request.method'] !== undefined);
+    expect(roots.map((span) => span.attributes['url.full']).sort()).toEqual([
+      'http://localhost/addresses/office',
+      'http://localhost/addresses/search',
+      'http://localhost/isLogged'
+    ]);
+    expect(roots.map((span) => span.attributes['url.query'])).toEqual([undefined, undefined, undefined]);
+  });
+
   it('carry neither the résumé PDF nor the Anthropic API key of an import, the SDK spans included', async () => {
     const apiKey = 'sk-ant-api03-telemetry-test-key';
     const pdf = Buffer.from(`%PDF-1.7\n% telemetry-sentinel-${Date.now()}\n%%EOF\n`).toString('base64');

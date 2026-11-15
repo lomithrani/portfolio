@@ -1672,6 +1672,15 @@ describe('no Google token in any API response', () => {
       (await call('PUT', '/perfect-job', { ...auth, body: { criteria: { travel: { importance: 3, max: 'none' } } } })).status
     ).toBe(200);
     expect((await call('GET', '/perfect-job', auth)).status).toBe(200);
+    // The address search, with travel times off whatever .env says: nothing is looked up
+    const travelTimes = env.commuteTimesEnabled;
+    env.commuteTimesEnabled = false;
+    try {
+      expect((await call('POST', '/addresses/search', { ...auth, body: { q: '12 rue de la rep' } })).status).toBe(200);
+      expect((await call('POST', '/addresses/office', { ...auth, body: { city: 'Lyon' } })).status).toBe(200);
+    } finally {
+      env.commuteTimesEnabled = travelTimes;
+    }
     expect((await call('GET', `/workflow/domains/${sweepDomain}`, auth)).status).toBe(200);
 
     // A step suggestion (tests/stepSuggestions.test.ts covers it): its request,

@@ -56,6 +56,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		WORKING_TIME_LABELS,
 		WORK_MODES,
 		WORK_MODE_LABELS,
+		type AddressSuggestion,
+		type OfficePlace as OfficePlaceFound,
 		type WorkMode,
 		type WorkingTimeArrangement
 	} from 'portfolio-common';
@@ -80,7 +82,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		type JobFormField,
 		type JobPostingLike
 	} from '#services/jobPosting.ts';
+	import { officeFromSuggestion, officeKey, type OfficeAddress } from '#services/addressSearch.ts';
 	import { toaster } from '#services/toaster.ts';
+	import AddressSearch from '#components/address/AddressSearch.svelte';
 	import {
 		clearImportedDraft,
 		clearJobDraft,
@@ -97,6 +101,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	import Field from './Field.svelte';
 	import LeaveDialog from './LeaveDialog.svelte';
 	import ListInput from './ListInput.svelte';
+	import OfficePlace from './OfficePlace.svelte';
 	import { setJobEditorContext } from './context';
 	import { m } from './JobEditor.messages.ts';
 
@@ -180,6 +185,30 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	})();
 
 	let form: JobForm = $state(start.form);
+
+	// Where the office is found on the map (OfficePlace.svelte): looked up for the office the
+	// editor opened with, then each time the recruiter leaves its fields
+	const office = (): OfficeAddress => ({
+		address: form.address,
+		postalCode: form.postalCode,
+		city: form.city
+	});
+	let officeAsked: OfficeAddress = $state.raw(untrack(office));
+	/** The address last picked in the search's list: found already */
+	let officePicked = $state.raw<{ key: string; place: OfficePlaceFound } | null>(null);
+
+	function pickOffice(suggestion: AddressSuggestion) {
+		const picked = officeFromSuggestion(suggestion, office());
+		form.address = picked.address;
+		form.postalCode = picked.postalCode;
+		form.city = picked.city;
+		// A town picked has no street: the office is looked up (the town's, or a street typed beside it)
+		officePicked =
+			suggestion.kind === 'municipality'
+				? null
+				: { key: officeKey(picked), place: { found: 'street', label: suggestion.label } };
+		officeAsked = picked;
+	}
 	// Text typed in the lists (skills…) and not added yet: a change too (ListInput's bind:text)
 	let pendingText: PendingListText = $state(start.pending);
 	let dirty = $derived(jobFormSignature(form) !== baselineSignature || hasPendingText(pendingText));
@@ -474,6 +503,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	/** The form as the editor started (the posting, the import or a blank form), no draft */
 	function startOver() {
 		form = structuredClone(start.baseline);
+		// The office is the starting one again: its note is looked up for it
+		officeAsked = office();
 		pendingText = emptyPendingText();
 		restoredNotice = false;
 		confirming = null;
@@ -899,53 +930,67 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{/each}
 					</SegmentedControl.Control>
 				</SegmentedControl>
-				<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
-					<Field
-						field="city"
-						label={labels.city}
-						required={form.workMode !== 'remote'}
-						hint={form.workMode === 'remote' ? m.cityOptional : ''}
-					>
+				<!-- Leaving the three fields looks the office up on the map -->
+				<div
+					class="space-y-4"
+					onfocusout={(event) => {
+						if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+							officeAsked = office();
+						}
+					}}
+				>
+					<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
+						<Field
+							field="city"
+							label={labels.city}
+							required={form.workMode !== 'remote'}
+							hint={form.workMode === 'remote' ? m.cityOptional : ''}
+						>
+							{#snippet control(attributes)}
+								<input
+									{...attributes}
+									class="input"
+									type="text"
+									autocomplete="address-level2"
+									maxlength={JOB_LIMITS.city}
+									placeholder={m.example('Lyon')}
+									bind:value={form.city}
+								/>
+							{/snippet}
+						</Field>
+						<Field field="postalCode" label={labels.postalCode}>
+							{#snippet control(attributes)}
+								<input
+									{...attributes}
+									class="input"
+									type="text"
+									inputmode="numeric"
+									autocomplete="postal-code"
+									maxlength={JOB_LIMITS.postalCode}
+									placeholder={m.example('69003')}
+									bind:value={form.postalCode}
+								/>
+							{/snippet}
+						</Field>
+					</div>
+					<Field field="address" label={labels.address} hint={m.addressHint}>
 						{#snippet control(attributes)}
-							<input
+							<!-- No browser autofill: its list would cover the addresses found -->
+							<AddressSearch
 								{...attributes}
-								class="input"
-								type="text"
-								autocomplete="address-level2"
-								maxlength={JOB_LIMITS.city}
-								placeholder={m.example('Lyon')}
-								bind:value={form.city}
+								autocomplete="off"
+								maxlength={JOB_LIMITS.address}
+								placeholder={m.example('12 rue de la République')}
+								bind:value={form.address}
+								near={{ postalCode: form.postalCode, city: form.city }}
+								onpick={pickOffice}
 							/>
 						{/snippet}
 					</Field>
-					<Field field="postalCode" label={labels.postalCode}>
-						{#snippet control(attributes)}
-							<input
-								{...attributes}
-								class="input"
-								type="text"
-								inputmode="numeric"
-								autocomplete="postal-code"
-								maxlength={JOB_LIMITS.postalCode}
-								placeholder={m.example('69003')}
-								bind:value={form.postalCode}
-							/>
-						{/snippet}
-					</Field>
+					{#if form.workMode !== 'remote'}
+						<OfficePlace asked={officeAsked} current={office()} picked={officePicked} />
+					{/if}
 				</div>
-				<Field field="address" label={labels.address} hint={m.addressHint}>
-					{#snippet control(attributes)}
-						<input
-							{...attributes}
-							class="input"
-							type="text"
-							autocomplete="street-address"
-							maxlength={JOB_LIMITS.address}
-							placeholder={m.example('12 rue de la République')}
-							bind:value={form.address}
-						/>
-					{/snippet}
-				</Field>
 				{#if form.workMode === 'hybrid'}
 					<Field field="remoteDaysPerWeek" label={labels.remoteDaysPerWeek} class="sm:max-w-xs">
 						{#snippet control(attributes)}

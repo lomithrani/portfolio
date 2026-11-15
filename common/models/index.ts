@@ -144,6 +144,8 @@ export type {
 	PerfectJobScore
 } from './perfectJob';
 export { perfectJobMessages } from './perfectJob.messages';
+export { ADDRESS_KINDS, ADDRESS_SEARCH, addressSearchText, canSearchAddress } from './address';
+export type { AddressKind, AddressSuggestion, OfficePlace } from './address';
 export {
 	STEP_SUGGESTION_LIMITS,
 	cleanStepSuggestionText,

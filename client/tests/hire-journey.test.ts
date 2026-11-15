@@ -11,7 +11,9 @@ import {
 	toasts,
 	type OwnerSession
 } from './support/owner';
+import { stubAddressSearch } from './support/addresses';
 import { createJob, deleteJobs } from './support/jobs';
+import { PERFECT_JOB_CRITERIA } from 'portfolio-common';
 
 // The hiring journey of 'e2e-journey' (seeded by `bun run --cwd server seed:e2e`, changed by this
 // file alone): its owner adds, sets and orders the steps in the admin tab, and the e2e recruiter
@@ -829,7 +831,7 @@ test.describe('the hiring journey', () => {
 		await gotoHydrated(page, `/${DOMAIN}/admin`);
 		await page.getByRole('tab', { name: 'Perfect job' }).click();
 		const cards = page.locator('[data-criterion]');
-		await expect(cards).toHaveCount(13);
+		await expect(cards).toHaveCount(PERFECT_JOB_CRITERIA.length);
 
 		for (const card of await cards.all()) {
 			const name = await card.getAttribute('data-criterion');
@@ -846,6 +848,77 @@ test.describe('the hiring journey', () => {
 			await expect(page.getByRole('tablist'), `after ${name}`).toBeInViewport({ ratio: 1 });
 			await expect(card, `after ${name}`).toBeInViewport();
 		}
+	});
+
+	test('unsaved criteria: the language switch asks before reloading the page', async ({ page }) => {
+		await setPerfectJob({});
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin`);
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+		await criterion(page, 'Pay').getByText('Pay', { exact: true }).click();
+
+		// The language switch is in the rail, a link that reloads the page. It used to be ignored
+		await page.getByRole('button', { name: 'Open sidebar' }).click();
+		const languageSwitch = page.locator('aside a[data-language-switch]');
+		const asked: string[] = [];
+		page.once('dialog', (dialog) => {
+			asked.push(dialog.message());
+			return dialog.dismiss();
+		});
+		await languageSwitch.click();
+		await expect
+			.poll(() => asked)
+			.toEqual(['Leave without saving your perfect job? Your changes will be lost.']);
+		await expect(page).not.toHaveURL(/lang=fr/);
+		await expect(criterion(page, 'Pay').locator('[data-importance]')).toBeVisible();
+
+		// Accepted: the page reloads in the other language, asked once
+		page.once('dialog', (dialog) => {
+			asked.push(dialog.message());
+			return dialog.accept();
+		});
+		await languageSwitch.click();
+		await expect(page).toHaveURL(/lang=fr/);
+		expect(asked).toHaveLength(2);
+		await expect(page.getByRole('tab', { name: 'Poste idéal' })).toBeVisible();
+	});
+
+	test('an expired session on save keeps what was typed, and says so', async ({ page }) => {
+		await setPerfectJob({});
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin`);
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+		const pay = criterion(page, 'Pay');
+		await pay.getByText('Pay', { exact: true }).click();
+		await pay.getByLabel('Per year').fill('70 000');
+
+		// The save is answered 401: the tab is not signed out from under the owner
+		await page.route(`${API_URL}/perfect-job`, (route) => {
+			const request = route.request();
+			if (request.method() === 'OPTIONS') {
+				return route.fulfill({
+					...preflight(request),
+					headers: { ...preflight(request).headers, 'access-control-allow-methods': 'GET, PUT' }
+				});
+			}
+			if (request.method() === 'PUT') {
+				return route.fulfill({
+					status: 401,
+					json: { message: 'Unauthorized' },
+					headers: cors(request)
+				});
+			}
+			return route.fallback();
+		});
+		await page.getByRole('button', { name: 'Save perfect job' }).click();
+		await expect(page.getByRole('alert')).toHaveText(
+			'Your session expired. Your changes are still here: sign in again in another tab, then save.'
+		);
+		await expect(pay.getByLabel('Per year')).toHaveValue('70 000');
+		await expect(page.getByRole('button', { name: 'Save perfect job' })).toBeEnabled();
+		expect(await (await ownerApi.get(`${API_URL}/perfect-job`)).json()).toMatchObject({
+			criteria: {}
+		});
 	});
 
 	test('the commute is offered only where the site computes travel times, and finds the address on save', async ({
@@ -895,13 +968,39 @@ test.describe('the hiring journey', () => {
 						headers
 					});
 		});
+		const searched = await stubAddressSearch(page, {
+			search: (sent) =>
+				/rep/i.test(sent.q ?? '')
+					? [
+							{
+								label: '10 Rue de la République 69001 Lyon',
+								kind: 'housenumber',
+								street: '10 Rue de la République',
+								postalCode: '69001',
+								city: 'Lyon'
+							},
+							{
+								label: '10 Rue de la République 69100 Villeurbanne',
+								kind: 'housenumber',
+								street: '10 Rue de la République',
+								postalCode: '69100',
+								city: 'Villeurbanne'
+							}
+						]
+					: []
+		});
 		await page.reload();
 		await page.getByRole('tab', { name: 'Perfect job' }).click();
 		await commute.getByText('Commute', { exact: true }).click();
 		await expect(page.getByText('Commute: Give the address you would travel from.')).toBeVisible();
 
-		const from = commute.getByLabel('Where you travel from');
+		const from = commute.getByRole('combobox', { name: 'Where you travel from' });
 		await from.fill('Nowhere at all');
+		// Nothing like it on the map: said under the field, which keeps what was typed
+		await expect(commute.locator('[data-address-notice]')).toContainText(
+			'No address found for what you typed.'
+		);
+		await from.press('Escape');
 		// Public transport is not offered by this site: said, and not to pick
 		await expect(commute.getByRole('checkbox', { name: /^Public transport/ })).toBeDisabled();
 		await expect(commute).toContainText('Public transport (not available on this site)');
@@ -923,7 +1022,17 @@ test.describe('the hiring journey', () => {
 		await expect(from).toHaveAccessibleDescription(
 			'This address was not found. Check it, or give a town or a place nearby.'
 		);
-		await from.fill('10 rue de la République, Lyon');
+		// Typed, the address is searched: the one picked is kept as the map writes it
+		await from.fill('10 rue de la rep');
+		const options = commute.getByRole('listbox', { name: 'Suggestions' }).getByRole('option');
+		await expect(options).toHaveText([
+			'10 Rue de la République 69001 Lyon',
+			'10 Rue de la République 69100 Villeurbanne'
+		]);
+		expect(searched.search.at(-1)?.q).toBe('10 rue de la rep');
+		await options.first().click();
+		await expect(from).toHaveValue('10 Rue de la République 69001 Lyon');
+		await expect(options).toHaveCount(0);
 		await save.click();
 		await expect(toasts(page).getByText('Perfect job saved')).toBeVisible();
 		await expect(commute.locator('[data-place]')).toHaveText(
@@ -934,14 +1043,20 @@ test.describe('the hiring journey', () => {
 			criteria: {
 				commute: {
 					importance: 3,
-					from: '10 rue de la République, Lyon',
+					from: '10 Rue de la République 69001 Lyon',
 					modes: ['bike', 'car'],
 					maxMinutesPerWeek: 300
 				}
 			}
 		});
-		// Another address is not found yet: it is looked up on the next save
+		// Another address is not found yet: it is looked up on the next save. Escape before the pause
+		// in typing is over: nothing is searched, no list opens
+		const searches = searched.search.length;
 		await from.fill('Gare Part-Dieu, Lyon');
+		await from.press('Escape');
+		await page.waitForTimeout(500);
+		expect(searched.search).toHaveLength(searches);
+		await expect(commute.locator('[data-address-suggestions]')).toBeHidden();
 		await expect(commute.locator('[data-place]')).toHaveCount(0);
 		await page.getByRole('button', { name: 'Undo changes' }).click();
 	});

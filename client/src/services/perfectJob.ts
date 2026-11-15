@@ -136,9 +136,13 @@ export const perfectJobCriteria = (form: PerfectJobForm): Record<string, unknown
 		titles: { keywords: form.titles.keywords },
 		seniority: { levels: form.seniority.levels },
 		management: { role: form.management.role },
+		// A setting whose field is hidden is not sent: it can then neither block a save nor count as
+		// a change (the remote days show for a hybrid job, the hours for weekly hours)
 		workMode: {
 			modes: form.workMode.modes,
-			minRemoteDays: typedNumber(form.workMode.minRemoteDays)
+			...(form.workMode.modes.includes('hybrid')
+				? { minRemoteDays: typedNumber(form.workMode.minRemoteDays) }
+				: {})
 		},
 		cities: { places: form.cities.places },
 		// Its place is the API's to find: none is sent
@@ -150,7 +154,9 @@ export const perfectJobCriteria = (form: PerfectJobForm): Record<string, unknown
 		contractTypes: { types: form.contractTypes.types },
 		workingTime: {
 			arrangements: form.workingTime.arrangements,
-			maxHoursPerWeek: typedNumber(form.workingTime.maxHoursPerWeek)
+			...(form.workingTime.arrangements.includes('weekly_hours')
+				? { maxHoursPerWeek: typedNumber(form.workingTime.maxHoursPerWeek) }
+				: {})
 		},
 		// Required: nothing typed is not a number either
 		rttDays: { min: typedNumber(form.rttDays.min) ?? Number.NaN },
@@ -231,6 +237,8 @@ export const savedForm = (form: PerfectJobForm, stored: PerfectJob): PerfectJobF
 export interface CommuteAvailability {
 	enabled: boolean;
 	modes: CommuteMode[];
+	/** The service asked for public transport times, when `modes` has them */
+	transit?: 'here' | 'transitous';
 }
 
 /** '45 minutes', '1 hour', '2 h 30' */

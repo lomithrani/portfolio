@@ -84,11 +84,19 @@ export interface ServerEnv {
    */
   commuteTimesEnabled: boolean;
   /**
-   * COMMUTE_TRANSIT=transitous: public transport times too, from
-   * api.transitous.org (its usage policy: open-source, non-commercial
-   * projects, light use). Needs COMMUTE_CONTACT
+   * Public transport times too, from the service named:
+   * COMMUTE_TRANSIT=here, the HERE Public Transit API (a commercial service
+   * with a free monthly allowance; needs HERE_API_KEY), or
+   * COMMUTE_TRANSIT=transitous, api.transitous.org (its usage policy:
+   * open-source, non-commercial projects, light use; needs COMMUTE_CONTACT)
    */
-  COMMUTE_TRANSIT?: 'transitous';
+  COMMUTE_TRANSIT?: 'here' | 'transitous';
+  /**
+   * API key of a HERE platform app, billed for the public transport times
+   * asked with COMMUTE_TRANSIT=here (services/hereTransit.ts). Never logged,
+   * returned or traced
+   */
+  HERE_API_KEY?: string;
   /**
    * How the operator can be reached (an email address or a web page), sent
    * as the User-Agent of the requests to Transitous, which asks for it
@@ -401,16 +409,24 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     problems.push(`COMMUTE_TIMES must be true or false (got ${JSON.stringify(commuteTimes)})`);
   }
   const commuteTransit = optional(source.COMMUTE_TRANSIT);
-  if (commuteTransit !== undefined && commuteTransit !== 'transitous') {
-    problems.push(`COMMUTE_TRANSIT must be transitous, or unset (got ${JSON.stringify(commuteTransit)})`);
+  if (commuteTransit !== undefined && commuteTransit !== 'here' && commuteTransit !== 'transitous') {
+    problems.push(`COMMUTE_TRANSIT must be here or transitous, or unset (got ${JSON.stringify(commuteTransit)})`);
+  }
+  const HERE_API_KEY = optional(source.HERE_API_KEY);
+  // Sent in a URL: a pasted value with quotes or spaces would only fail at the first journey
+  if (HERE_API_KEY && !/^[A-Za-z0-9_-]{20,200}$/.test(HERE_API_KEY)) {
+    problems.push('HERE_API_KEY must be the bare API key of a HERE platform app (letters, digits, - and _)');
+  }
+  if (commuteTransit === 'here' && !HERE_API_KEY) {
+    problems.push('COMMUTE_TRANSIT=here needs HERE_API_KEY: the API key of a HERE platform app');
   }
   const COMMUTE_CONTACT = optional(source.COMMUTE_CONTACT);
   // Sent in a header: one line of printable ASCII
   if (COMMUTE_CONTACT && !/^[\x21-\x7e]{3,200}$/.test(COMMUTE_CONTACT)) {
     problems.push('COMMUTE_CONTACT must be an email address or a URL, without spaces');
   }
-  if (commuteTransit && !COMMUTE_CONTACT) {
-    problems.push('COMMUTE_TRANSIT needs COMMUTE_CONTACT: Transitous asks who sends the requests');
+  if (commuteTransit === 'transitous' && !COMMUTE_CONTACT) {
+    problems.push('COMMUTE_TRANSIT=transitous needs COMMUTE_CONTACT: Transitous asks who sends the requests');
   }
   if (commuteTransit && commuteTimes !== 'true') {
     warnings.push('COMMUTE_TRANSIT is set without COMMUTE_TIMES=true: travel times stay off');
@@ -469,7 +485,8 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     GITHUB_ISSUES_TOKEN,
     GITHUB_ISSUES_REPO,
     commuteTimesEnabled: commuteTimes === 'true' && COMMUTE_DAILY_LIMIT > 0,
-    COMMUTE_TRANSIT: commuteTransit === 'transitous' ? 'transitous' : undefined,
+    COMMUTE_TRANSIT: commuteTransit === 'here' || commuteTransit === 'transitous' ? commuteTransit : undefined,
+    HERE_API_KEY,
     COMMUTE_CONTACT,
     COMMUTE_DAILY_LIMIT,
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
