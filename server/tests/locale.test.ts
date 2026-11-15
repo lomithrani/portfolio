@@ -207,7 +207,7 @@ describe('texts of a successful answer', () => {
       'No experiences were found in this file'
     ]);
     expect(runWithLocale('fr', () => normalizeExtraction(output)).warnings).toEqual([
-      '1 entrée ignorée : sa forme était inattendue',
+      '1 entrée ignorée\u00a0: sa forme était inattendue',
       "Aucune expérience n'a été trouvée dans ce fichier"
     ]);
   });
@@ -219,7 +219,7 @@ describe('texts of a successful answer', () => {
       'Left out the contract type ("forever"): it is not one of the accepted values'
     );
     expect(runWithLocale('fr', () => normalizeJobExtraction(output)).warnings[0]).toBe(
-      'Type de contrat ("forever") : valeur ignorée, ce n\'est pas l\'une des valeurs acceptées'
+      'Type de contrat ("forever")\u00a0: valeur ignorée, ce n\'est pas l\'une des valeurs acceptées'
     );
   });
 });

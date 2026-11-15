@@ -46,7 +46,8 @@ const PAGES = [
 const SITE_NAME = 'Portfolio';
 const LAST_UPDATED = {
 	en: /Last updated: \d{1,2} \w+ \d{4}/,
-	fr: /Dernière mise à jour : \d{1,2} \S+ \d{4}/
+	// \s before the colon: French messages are read with an unbreakable space there
+	fr: /Dernière mise à jour\s: \d{1,2} \S+ \d{4}/
 };
 
 /** Fails the test if the page asks Google for anything (the legal pages never load its sign-in) */

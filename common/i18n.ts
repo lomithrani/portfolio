@@ -136,11 +136,29 @@ const SOURCE = Symbol('messages');
 
 const isMessage = (node: object): node is Localized<unknown> => DEFAULT_LOCALE in node;
 
+/**
+ * French writes a space before `:`, `;`, `?`, `!` and inside « »: made unbreakable here, so a
+ * line never starts with the sign, while the messages are typed with plain spaces
+ */
+const frenchSpaces = (text: string): string =>
+	text.replace(/ (?=[:;?!»])/g, '\u00a0').replace(/« /g, '«\u00a0');
+
+/** `entry` as it is shown: French texts (what a function returns, the items of an array) typeset */
+const typeset = (entry: unknown): unknown => {
+	if (typeof entry === 'string') return frenchSpaces(entry);
+	if (Array.isArray(entry)) return entry.map(typeset);
+	if (typeof entry === 'function') return (...values: unknown[]) => typeset(entry(...values));
+	return entry;
+};
+
+const read = (node: Localized<unknown>): unknown =>
+	getLocale() === 'fr' ? typeset(localized(node)) : localized(node);
+
 const resolveTree = (tree: MessageTree): object => {
 	const messages = {};
 	for (const [key, node] of Object.entries(tree)) {
 		if (isMessage(node)) {
-			Object.defineProperty(messages, key, { enumerable: true, get: () => localized(node) });
+			Object.defineProperty(messages, key, { enumerable: true, get: () => read(node) });
 		} else {
 			Object.defineProperty(messages, key, { enumerable: true, value: resolveTree(node) });
 		}

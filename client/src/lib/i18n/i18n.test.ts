@@ -79,6 +79,24 @@ describe('messages', () => {
 		]);
 	});
 
+	test('French gets unbreakable spaces before its punctuation, typed as plain spaces', () => {
+		const french = defineMessages({
+			question: { en: 'Is it free?', fr: 'Est-ce gratuit ?' },
+			quoted: {
+				en: (status: string) => `Status: "${status}"`,
+				fr: (status: string) => `Statut : « ${status} »`
+			},
+			list: { en: ['One: two'], fr: ['Un : deux'] }
+		});
+		expect(french.question).toBe('Is it free?');
+		expect(french.quoted('Open')).toBe('Status: "Open"');
+		expect(withLocale('fr', () => french.question)).toBe('Est-ce gratuit\u00a0?');
+		expect(withLocale('fr', () => french.quoted('Ouverte'))).toBe(
+			'Statut\u00a0: «\u00a0Ouverte\u00a0»'
+		);
+		expect(withLocale('fr', () => french.list)).toEqual(['Un\u00a0: deux']);
+	});
+
 	test('messages list like the object they were declared as', () => {
 		expect(Object.keys(m)).toEqual(['save', 'group']);
 		expect(withLocale('fr', () => ({ ...m }).save)).toBe('Enregistrer');
