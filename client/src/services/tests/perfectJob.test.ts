@@ -116,6 +116,32 @@ describe('the form of the perfect job', () => {
 		expect(sameCriteria(form, saved)).toBe(false);
 	});
 
+	it('leaves out a setting whose field is hidden: it neither blocks a save nor is a change', () => {
+		const saved = perfectJobForm(CRITERIA);
+		const form = perfectJobForm(CRITERIA);
+		// Hours typed wrong, then weekly hours unticked: the field is gone, so is its problem
+		form.workingTime.maxHoursPerWeek = 'abc';
+		expect(problemAt(checkPerfectJob(form).problems, 'workingTime.maxHoursPerWeek')).toBeTruthy();
+		form.workingTime.arrangements = ['annual_days'];
+		expect(checkPerfectJob(form).problems).toEqual([]);
+		expect(perfectJobCriteria(form).workingTime).not.toHaveProperty('maxHoursPerWeek');
+		// Hybrid unticked: its remote days are not sent, whatever they say
+		const remote = perfectJobForm(CRITERIA);
+		remote.workMode.modes = ['remote'];
+		const changed = perfectJobForm(CRITERIA);
+		changed.workMode.modes = ['remote'];
+		changed.workMode.minRemoteDays = '1';
+		expect(sameCriteria(changed, remote)).toBe(true);
+		expect(perfectJobCriteria(changed).workMode).toEqual({
+			importance: 5,
+			dealBreaker: true,
+			modes: ['remote']
+		});
+		// Shown again, the value counts again
+		changed.workMode.modes = ['hybrid', 'remote'];
+		expect(sameCriteria(changed, saved)).toBe(false);
+	});
+
 	it('keeps what was typed for the criteria that are off after a save', () => {
 		const form = perfectJobForm(CRITERIA);
 		form.travel.max = 'occasional';
@@ -190,6 +216,10 @@ describe('what the criteria weigh', () => {
 			pay: { importance: 4, dealBreaker: true, perYear: 70000 }
 		});
 		expect(perfectJobSummary(two)).toMatch(/2 of them are deal-breakers\.$/);
+		// An acronym keeps its capitals inside the sentence
+		expect(perfectJobSummary(perfectJobForm({ rttDays: { importance: 3, min: 10 } }))).toBe(
+			'A job is scored on one criterion: RTT days.'
+		);
 	});
 });
 
