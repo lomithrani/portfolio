@@ -597,6 +597,10 @@ the old one). Each ruleset:
   `develop`, by merge commit into `main`;
 - requires the CI jobs to pass (`Lint, type-check, build`, both `Server and client unit tests`,
   `Playwright end-to-end tests`), and on `main` also `Only develop merges into main`;
+- on `develop` only, requires the pull request to be up to date with `develop`: after another
+  merge, press **Update branch** and let CI run again, so what is merged is what was tested. Not
+  on `main`: a release leaves a merge commit there that `develop` never gets, so a release PR is
+  never up to date;
 - lets a repository admin bypass it only when merging a pull request (an emergency merge with a
   failing check), never by pushing directly.
 
