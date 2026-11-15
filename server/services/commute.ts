@@ -191,7 +191,10 @@ async function minutesByMode(modes: readonly CommuteMode[], from: Point, to: Poi
   const [car, foot, transit] = await Promise.all([
     wants('car') ? answered('car', way(from, to), ROUTE_TTL_MS, () => streetRoute('car', from, to)) : null,
     needsFoot ? answered('foot', way(from, to), ROUTE_TTL_MS, () => streetRoute('pedestrian', from, to)) : null,
-    wants('transit') ? answered('transit', way(from, to), ROUTE_TTL_MS, () => transitMinutes(from, to)) : null
+    // Each service reads only its own answers: a site that changes COMMUTE_TRANSIT asks again
+    wants('transit')
+      ? answered('transit', `${transitProvider()}|${way(from, to)}`, ROUTE_TTL_MS, () => transitMinutes(from, to))
+      : null
   ]);
   if (car === undefined || foot === undefined || transit === undefined) return undefined;
   const none = Number.POSITIVE_INFINITY;

@@ -63,6 +63,10 @@ export async function hereTransitMinutes(from: Point, to: Point): Promise<number
   if (response.status !== 200) throw new GeoServiceError(`transit answered ${response.status}`);
   const body: unknown = await response.json().catch(() => undefined);
   if (!isObject(body) || !Array.isArray(body.routes)) throw new GeoServiceError('transit answered without journeys');
-  const durations = (body.routes as unknown[]).map(routeSeconds).filter((seconds) => Number.isFinite(seconds) && seconds >= 0);
+  const routes = body.routes as unknown[];
+  const durations = routes.map(routeSeconds).filter((seconds) => Number.isFinite(seconds) && seconds >= 0);
+  // Journeys this code cannot time are not "no journey": a failure, logged and asked again
+  // in 10 minutes, never kept 30 days as none (HERE's schema does not promise the times)
+  if (routes.length > 0 && durations.length === 0) throw new GeoServiceError('transit answered without journey times');
   return durations.length === 0 ? null : Math.min(...durations) / 60;
 }

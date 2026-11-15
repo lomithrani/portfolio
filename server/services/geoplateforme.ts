@@ -96,8 +96,13 @@ interface SearchQuery extends GeocodingQuery {
   limit: number;
 }
 
-/** What the geocoder answers `query` with, its best match first; none for a text it cannot read */
-async function search({ text: asked, postalCode, city, townOnly, limit }: SearchQuery): Promise<FoundAddress[]> {
+/**
+ * What the geocoder answers `query` with, its best match first. Null when it
+ * refuses the question (400): a text it cannot read (too short, no letter),
+ * or a `city` that is no commune's name ("La Défense", "Sophia Antipolis", a
+ * town half typed), whatever the text
+ */
+async function search({ text: asked, postalCode, city, townOnly, limit }: SearchQuery): Promise<FoundAddress[] | null> {
   const url = new URL(GEOCODING);
   // The geocoder refuses a query over 200 characters
   url.searchParams.set('q', asked.slice(0, 200));
@@ -106,8 +111,7 @@ async function search({ text: asked, postalCode, city, townOnly, limit }: Search
   if (city) url.searchParams.set('city', city.slice(0, 100));
   if (townOnly) url.searchParams.set('type', 'municipality');
   const { status, body } = await getJson(url, geoplateformeTimeouts.geocodingMs);
-  // 400: a query it cannot read (too short, no letter): no such place
-  if (status === 400) return [];
+  if (status === 400) return null;
   if (status !== 200 || !isObject(body) || !Array.isArray(body.features)) {
     throw new GeoServiceError(`geocoding answered ${status}`);
   }
@@ -116,7 +120,7 @@ async function search({ text: asked, postalCode, city, townOnly, limit }: Search
 
 /** Where an address is; null when the geocoder knows no such place */
 export async function geocode(query: GeocodingQuery): Promise<GeoPlace | null> {
-  const [found] = await search({ ...query, limit: 1 });
+  const [found] = (await search({ ...query, limit: 1 })) ?? [];
   if (!found || found.score < MIN_GEOCODING_SCORE) return null;
   return { label: found.label || query.text, lat: found.lat, lon: found.lon };
 }
@@ -124,21 +128,60 @@ export async function geocode(query: GeocodingQuery): Promise<GeoPlace | null> {
 export interface SuggestionQuery {
   /** What was typed so far: the geocoder completes its last word */
   text: string;
-  /** Narrows the search to a postal code (5 digits) */
+  /** Narrows the search to a postal code (5 digits), while it finds something there */
   postalCode?: string;
-  /** Narrows the search to the towns of this name */
+  /** Narrows the search to the towns of this name, while it finds something there */
   city?: string;
 }
 
 /**
+ * Under this, the best of a narrowed search is a guess, not what was typed: a
+ * street of another arrondissement is no match under the postal code an
+ * earlier pick wrote ("129 rue ser" in 69002 is "Rue Seguin" at 0.35, without
+ * it "129 Rue Servient 69003 Lyon" at 0.88)
+ */
+const GOOD_SUGGESTION_SCORE = 0.6;
+
+const bestScore = (found: FoundAddress[]) => found.reduce((best, { score }) => Math.max(best, score), -1);
+
+/**
+ * A suggestion as the one line of text that finds it again. A town's label is
+ * its name alone, which other towns, hamlets and streets share ("Saint-Denis"
+ * alone is the one of La Réunion): its postal code goes with it
+ */
+const suggestionLabel = ({ kind, label, postalCode }: FoundAddress): string =>
+  kind === 'municipality' && postalCode && !label.includes(postalCode) ? `${label} ${postalCode}` : label;
+
+/**
  * The addresses that what was typed could be, the likeliest first. Not held
  * to the score an address must reach to be the place asked for: a few letters
- * of a street match it poorly, and are what a suggestion is for
+ * of a street match it poorly, and are what a suggestion is for.
+ *
+ * The postal code and the town are a preference, not a condition: the
+ * geocoder takes them as filters, so a town it does not know as a commune
+ * would refuse every address (a 400), and a postal code an earlier pick wrote
+ * would hide every street of the town but its own. When the narrowed search
+ * finds no good match, the postal code is dropped, then the town: at most
+ * three requests, one when the narrowing finds the address
  */
-export async function suggestAddresses(query: SuggestionQuery): Promise<AddressSuggestion[]> {
-  const found = await search({ ...query, limit: ADDRESS_SEARCH.suggestions });
+export async function suggestAddresses({ text: asked, postalCode, city }: SuggestionQuery): Promise<AddressSuggestion[]> {
+  let narrowing = { postalCode, city };
+  let kept: FoundAddress[] = [];
+  for (;;) {
+    const found = await search({ text: asked, ...narrowing, limit: ADDRESS_SEARCH.suggestions });
+    // The town refused (or the text: then it is refused again, and nothing is found)
+    if (found === null && narrowing.city) {
+      narrowing = { ...narrowing, city: undefined };
+      continue;
+    }
+    // The most narrowed answer wins a tie: it is the one the form asked for
+    if (found && bestScore(found) > bestScore(kept)) kept = found;
+    if (bestScore(kept) >= GOOD_SUGGESTION_SCORE || (!narrowing.postalCode && !narrowing.city)) break;
+    narrowing = narrowing.postalCode ? { ...narrowing, postalCode: undefined } : { ...narrowing, city: undefined };
+  }
   const seen = new Set<string>();
-  return found
+  return kept
+    .map((found) => ({ ...found, label: suggestionLabel(found) }))
     .filter(({ label }) => label && !seen.has(label) && !!seen.add(label))
     .map(({ lat: _lat, lon: _lon, score: _score, ...suggestion }) => suggestion);
 }

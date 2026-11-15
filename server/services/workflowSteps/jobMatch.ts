@@ -1,7 +1,6 @@
 import { JOB_MATCH_STEP_LIMITS, scorePerfectJob } from 'portfolio-common';
 import type { CriterionScore, JobMatchStepConfig, PerfectJobCriterion } from 'portfolio-common';
-import { commuteContext } from '../commute';
-import { transitProvider } from '../transit';
+import { commuteAvailability, commuteContext } from '../commute';
 import type { TransitProvider } from '../transit';
 import { perfectJobOf } from '../perfectJobs';
 import { pickedPosting } from './job';
@@ -79,7 +78,8 @@ const scored = async ({ ownerId, visitorId, config, earlier }: JobMatchContext):
   const context = await commuteContext(perfectJob.commute, job.location);
   const { score, criteria } = scorePerfectJob(perfectJob, job, context);
   const shown = config?.showDetails === true ? criteria.map(criterionView) : undefined;
-  const transit = shown?.some(({ criterion }) => criterion === 'commute') ? transitProvider() : undefined;
+  // The site's, while it computes travel times (not when they are off: nothing was asked)
+  const transit = shown?.some(({ criterion }) => criterion === 'commute') ? commuteAvailability().transit : undefined;
   return {
     score,
     minScore: minScoreOf(config),

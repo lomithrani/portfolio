@@ -1676,8 +1676,8 @@ describe('no Google token in any API response', () => {
     const travelTimes = env.commuteTimesEnabled;
     env.commuteTimesEnabled = false;
     try {
-      expect((await call('GET', '/addresses/search?q=12%20rue%20de%20la%20rep', auth)).status).toBe(200);
-      expect((await call('GET', '/addresses/office?city=Lyon', auth)).status).toBe(200);
+      expect((await call('POST', '/addresses/search', { ...auth, body: { q: '12 rue de la rep' } })).status).toBe(200);
+      expect((await call('POST', '/addresses/office', { ...auth, body: { city: 'Lyon' } })).status).toBe(200);
     } finally {
       env.commuteTimesEnabled = travelTimes;
     }

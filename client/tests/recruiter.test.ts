@@ -207,11 +207,11 @@ test.describe('the recruiter', () => {
 			city: 'Lyon'
 		};
 		const asked = await stubAddressSearch(page, {
-			search: (query) => (/rep/i.test(query.get('q') ?? '') ? [REPUBLIQUE, PLACE] : []),
-			office: (query) =>
-				/inconnue/i.test(query.get('address') ?? '')
+			search: (sent) => (/rep/i.test(sent.q ?? '') ? [REPUBLIQUE, PLACE] : []),
+			office: (sent) =>
+				/inconnue/i.test(sent.address ?? '')
 					? { found: 'town', label: 'Lyon' }
-					: query.get('address')
+					: sent.address
 						? { found: 'street', label: REPUBLIQUE.label }
 						: { found: 'town', label: 'Lyon' }
 		});
@@ -229,8 +229,10 @@ test.describe('the recruiter', () => {
 			'Without a street, travel times are counted to the centre of Lyon.'
 		);
 
-		// What is typed is searched in the town already given; too little is not
+		// What is typed is searched in the town already given; too little is not, even after the pause
 		await address.pressSequentially('12');
+		await page.waitForTimeout(500);
+		expect(asked.search).toEqual([]);
 		await expect(address).toHaveAttribute('aria-expanded', 'false');
 		await address.pressSequentially(' rue de la rep');
 		await expect(options).toHaveText([
@@ -238,10 +240,7 @@ test.describe('the recruiter', () => {
 			'Place de la République 69002 Lyon'
 		]);
 		await expect(address).toHaveAttribute('aria-expanded', 'true');
-		expect(Object.fromEntries(asked.search.at(-1)!)).toEqual({
-			q: '12 rue de la rep',
-			city: 'Lyon'
-		});
+		expect(asked.search.at(-1)).toEqual({ q: '12 rue de la rep', city: 'Lyon' });
 
 		// Escape closes the list, and only the list: nothing is lost
 		await address.press('Escape');
@@ -262,21 +261,23 @@ test.describe('the recruiter', () => {
 		await expect(found).toHaveText(
 			'Found on the map: 12 Rue de la République 69002 Lyon. Travel times are counted to this address.'
 		);
-		// Picked from the map: it is not asked again
-		const lookups = asked.office.length;
+		// Picked from the map: it is not asked again (the only lookup so far is the town's, above)
+		expect(asked.office).toHaveLength(1);
 
 		// A street the map does not know is said once its fields are left
 		await address.fill('99 rue Inconnue');
 		await expect(page.locator('[data-address-notice]')).toContainText(
 			'No address found for what you typed.'
 		);
+		// A notice is no list: the field does not say it is expanded
+		await expect(address).toHaveAttribute('aria-expanded', 'false');
 		await expect(found).toHaveText('');
 		await page.getByRole('textbox', { name: 'Job title' }).focus();
 		await expect(found).toHaveText(
 			'This street was not found on the map: travel times are counted to the centre of Lyon. Pick the address in the list, or check its spelling.'
 		);
-		expect(asked.office).toHaveLength(lookups + 1);
-		expect(Object.fromEntries(asked.office.at(-1)!)).toEqual({
+		expect(asked.office).toHaveLength(2);
+		expect(asked.office.at(-1)).toEqual({
 			address: '99 rue Inconnue',
 			postalCode: '69002',
 			city: 'Lyon'

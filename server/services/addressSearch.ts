@@ -6,7 +6,7 @@ import { locateOffice } from './commute';
 import type { OfficeAddress } from './commute';
 import { suggestAddresses } from './geoplateforme';
 import { logger } from './logger';
-import { consumeRateLimit, takeRateLimit } from './rateLimit';
+import { consumeRateLimit, rateLimitKey, takeRateLimit } from './rateLimit';
 import type { RateLimit } from './rateLimit';
 import { m } from './addressSearch.messages';
 import { m as limits } from './rateLimit.messages';
@@ -20,8 +20,10 @@ import { m as limits } from './rateLimit.messages';
 //
 // On only where travel times are (COMMUTE_TIMES=true): nothing is sent to the
 // map service otherwise. What is typed is an address, maybe someone's home:
-// it is never logged and never kept. The browser never calls the map service
-// itself: it learns nothing about who types.
+// it is never logged and never kept, and it travels in request bodies, which
+// traces drop (instrumentation.ts), never in a URL. The browser never calls
+// the map service itself: it learns nothing about who types. The counters
+// are keyed by a hash of the account (rateLimitKey), like every other one.
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -32,15 +34,23 @@ const DAY_MS = 24 * 60 * MINUTE_MS;
  */
 export const ADDRESS_SEARCHES_PER_USER: RateLimit = { limit: 60, windowMs: MINUTE_MS };
 /**
+ * Searches per account per UTC day: some forty addresses, far over what a
+ * person types, so that one account cannot use up the site's day
+ */
+export const ADDRESS_SEARCHES_PER_USER_PER_DAY: RateLimit = { limit: 500, windowMs: DAY_MS };
+/**
  * Searches per UTC day for the whole site. They are not counted against
  * COMMUTE_DAILY_LIMIT, which a few people typing would use up: that one keeps
- * the routes and the lookups of scoring. Far under what the map service takes
- * (50 searches a second for one IP)
+ * the routes and the lookups of scoring. A search is one request to the map
+ * service, up to three when the postal code and the town given find nothing
+ * (services/geoplateforme.ts suggestAddresses): far under what it takes (50
+ * searches a second for one IP)
  */
 export const ADDRESS_SEARCHES_PER_DAY: RateLimit = { limit: 10_000, windowMs: DAY_MS };
 /**
- * Offices one account has the map service look up per UTC day (one it
- * already found is not counted): each is a request counted against
+ * Lookups of offices one account has the map service make per UTC day (an
+ * office already found is not counted; a street not found takes a second
+ * lookup, for its town): each is a request counted against
  * COMMUTE_DAILY_LIMIT, which one account must not use up
  */
 export const OFFICE_LOOKUPS_PER_USER: RateLimit = { limit: 40, windowMs: DAY_MS };
@@ -51,7 +61,7 @@ const waitText = (seconds: number) =>
 const tooManySearches = (retryAfter: number) =>
   new TooManyRequestsError(() => m.tooManySearches(waitText(retryAfter)), retryAfter);
 
-/** GET /addresses/search */
+/** POST /addresses/search */
 export interface AddressSearchResult {
   /** Whether this server looks addresses up at all (COMMUTE_TIMES=true) */
   enabled: boolean;
@@ -66,14 +76,17 @@ export interface AddressSearchQuery {
 
 /**
  * The addresses that what `userId` typed could be. None for a text too short
- * to look up; 429 over the account's searches a minute, 503 when the map
- * service does not answer or the site searched enough for today
+ * to look up; 429 over the account's searches a minute or a day, 503 when the
+ * map service does not answer or the site searched enough for today
  */
 export async function searchAddresses(userId: string, query: AddressSearchQuery): Promise<AddressSearchResult> {
   if (!env.commuteTimesEnabled) return { enabled: false, suggestions: [] };
   const text = addressSearchText(query.q);
   if (!canSearchAddress(text)) return { enabled: true, suggestions: [] };
-  const retryAfter = await consumeRateLimit(`address-search:user:${userId}`, ADDRESS_SEARCHES_PER_USER);
+  // A search refused by the minute's limit is not counted against the day's
+  const retryAfter =
+    (await consumeRateLimit(rateLimitKey('address-search:user', userId), ADDRESS_SEARCHES_PER_USER)) ??
+    (await consumeRateLimit(rateLimitKey('address-search:user-day', userId), ADDRESS_SEARCHES_PER_USER_PER_DAY));
   if (retryAfter !== null) throw tooManySearches(retryAfter);
   if ((await takeRateLimit('address-search', ADDRESS_SEARCHES_PER_DAY)).retryAfterSeconds !== null) {
     logger.warn('Address search: no answer', { reason: 'daily limit' });
@@ -89,7 +102,7 @@ export async function searchAddresses(userId: string, query: AddressSearchQuery)
   }
 }
 
-/** GET /addresses/office */
+/** POST /addresses/office */
 export interface OfficePlaceResult extends OfficePlace {
   /** Whether this server looks addresses up at all (COMMUTE_TIMES=true) */
   enabled: boolean;
@@ -110,7 +123,7 @@ export async function officePlace(
   if (!asked.address && !asked.city) return { enabled: true, found: 'none' };
   let refused: number | null = null;
   const office = await locateOffice(asked, async () => {
-    refused = await consumeRateLimit(`office-lookup:user:${userId}`, OFFICE_LOOKUPS_PER_USER);
+    refused = await consumeRateLimit(rateLimitKey('office-lookup:user', userId), OFFICE_LOOKUPS_PER_USER);
     return refused === null;
   });
   if (refused !== null) throw tooManySearches(refused);

@@ -897,8 +897,8 @@ test.describe('the hiring journey', () => {
 					});
 		});
 		const searched = await stubAddressSearch(page, {
-			search: (query) =>
-				/rep/i.test(query.get('q') ?? '')
+			search: (sent) =>
+				/rep/i.test(sent.q ?? '')
 					? [
 							{
 								label: '10 Rue de la République 69001 Lyon',
@@ -957,7 +957,7 @@ test.describe('the hiring journey', () => {
 			'10 Rue de la République 69001 Lyon',
 			'10 Rue de la République 69100 Villeurbanne'
 		]);
-		expect(searched.search.at(-1)?.get('q')).toBe('10 rue de la rep');
+		expect(searched.search.at(-1)?.q).toBe('10 rue de la rep');
 		await options.first().click();
 		await expect(from).toHaveValue('10 Rue de la République 69001 Lyon');
 		await expect(options).toHaveCount(0);
@@ -977,9 +977,14 @@ test.describe('the hiring journey', () => {
 				}
 			}
 		});
-		// Another address is not found yet: it is looked up on the next save
+		// Another address is not found yet: it is looked up on the next save. Escape before the pause
+		// in typing is over: nothing is searched, no list opens
+		const searches = searched.search.length;
 		await from.fill('Gare Part-Dieu, Lyon');
 		await from.press('Escape');
+		await page.waitForTimeout(500);
+		expect(searched.search).toHaveLength(searches);
+		await expect(commute.locator('[data-address-suggestions]')).toBeHidden();
 		await expect(commute.locator('[data-place]')).toHaveCount(0);
 		await page.getByRole('button', { name: 'Undo changes' }).click();
 	});

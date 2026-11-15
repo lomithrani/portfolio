@@ -202,7 +202,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		form.address = picked.address;
 		form.postalCode = picked.postalCode;
 		form.city = picked.city;
-		// A town picked in the street's field says nothing of the street: that is looked up
+		// A town picked has no street: the office is looked up (the town's, or a street typed beside it)
 		officePicked =
 			suggestion.kind === 'municipality'
 				? null
@@ -503,6 +503,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	/** The form as the editor started (the posting, the import or a blank form), no draft */
 	function startOver() {
 		form = structuredClone(start.baseline);
+		// The office is the starting one again: its note is looked up for it
+		officeAsked = office();
 		pendingText = emptyPendingText();
 		restoredNotice = false;
 		confirming = null;

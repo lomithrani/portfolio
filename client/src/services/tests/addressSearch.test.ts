@@ -53,13 +53,46 @@ describe('officeFromSuggestion', () => {
 		).toEqual({ address: 'Place Bellecour', postalCode: '69002', city: 'Lyon' });
 	});
 
-	it('keeps the street typed when a town is picked', () => {
+	const villeurbanne: AddressSuggestion = {
+		label: 'Villeurbanne 69100',
+		kind: 'municipality',
+		postalCode: '69100',
+		city: 'Villeurbanne'
+	};
+
+	it('keeps a street typed beside the town picked', () => {
+		expect(officeFromSuggestion(villeurbanne, current)).toEqual({
+			address: '12 rue de la rep',
+			postalCode: '69100',
+			city: 'Villeurbanne'
+		});
+		expect(
+			officeFromSuggestion(villeurbanne, { ...current, address: 'Technopole villeurbanne' }).address
+		).toBe('Technopole villeurbanne');
+	});
+
+	it('keeps no street when what was typed was only the town', () => {
+		for (const address of ['Villeurb', 'villeurbanne', ' VILLEURBANNE 691', '69100']) {
+			expect(officeFromSuggestion(villeurbanne, { ...current, address }).address).toBe('');
+		}
+		const paris15: AddressSuggestion = {
+			label: 'Paris 15e Arrondissement 75015',
+			kind: 'municipality',
+			postalCode: '75015',
+			city: 'Paris 15e Arrondissement'
+		};
+		expect(officeFromSuggestion(paris15, { ...current, address: 'paris 15' }).address).toBe('');
 		expect(
 			officeFromSuggestion(
-				{ label: 'Villeurbanne', kind: 'municipality', postalCode: '69100', city: 'Villeurbanne' },
-				current
-			)
-		).toEqual({ address: '12 rue de la rep', postalCode: '69100', city: 'Villeurbanne' });
+				{
+					label: 'Saint-Étienne 42000',
+					kind: 'municipality',
+					postalCode: '42000',
+					city: 'Saint-Étienne'
+				},
+				{ ...current, address: 'saint etien' }
+			).address
+		).toBe('');
 	});
 });
 

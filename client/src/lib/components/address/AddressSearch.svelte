@@ -52,6 +52,11 @@ given (`id`, `aria-describedby`, `aria-invalid`...) go on the input.
 	let open = $state(false);
 	/** The suggestion the arrows are on; -1: none */
 	let active = $state(-1);
+	/**
+	 * The arrows were on an address that a newer answer no longer has: Enter then does nothing,
+	 * rather than send the form around the field the person was choosing in
+	 */
+	let lost = false;
 	/** Announced to screen readers */
 	let announcement = $state('');
 	let list: HTMLDivElement | undefined = $state();
@@ -70,11 +75,15 @@ given (`id`, `aria-describedby`, `aria-invalid`...) go on the input.
 	function close() {
 		open = false;
 		active = -1;
+		lost = false;
+		// Emptied: the next list is announced even when its sentence is the same
+		announcement = '';
 	}
 
 	/** Searches for what is in the field, after a pause; a search under way is dropped */
 	function search() {
 		cancel();
+		lost = false;
 		const query = { text: value, ...near };
 		if (searchOff || !addressSearchParams(query)) {
 			suggestions = [];
@@ -89,7 +98,8 @@ given (`id`, `aria-describedby`, `aria-invalid`...) go on the input.
 			// Typed on since, or the field was left: this answer is for another text
 			if (mine.signal.aborted) return;
 			request = undefined;
-			active = -1;
+			// The arrows may already be on an address of the list still open: they stay on it
+			const kept = open && active >= 0 ? suggestions[active]?.label : undefined;
 			if (outcome.status === 'off') {
 				searchOff = true;
 				suggestions = [];
@@ -98,6 +108,8 @@ given (`id`, `aria-describedby`, `aria-invalid`...) go on the input.
 				return;
 			}
 			suggestions = outcome.status === 'found' ? outcome.suggestions : [];
+			active = kept === undefined ? -1 : suggestions.findIndex(({ label }) => label === kept);
+			lost = kept !== undefined && active < 0;
 			notice =
 				outcome.status === 'unavailable' ? 'unavailable' : suggestions.length === 0 ? 'none' : null;
 			open = true;
@@ -111,21 +123,23 @@ given (`id`, `aria-describedby`, `aria-invalid`...) go on the input.
 	function pick(suggestion: AddressSuggestion) {
 		cancel();
 		if (onpick) onpick(suggestion);
+		// A town's label carries its postal code (the API's): it finds that town again
 		else value = suggestion.label;
 		suggestions = [];
 		notice = null;
-		announcement = '';
 		close();
 	}
 
 	function onkeydown(event: KeyboardEvent) {
 		if (event.isComposing) return;
 		if (event.key === 'Escape') {
+			// A search waiting for the pause in typing is dropped too: no list opens after Escape
+			cancel();
+			// No list: the key is the dialog's or the form's around the field
 			if (!open) return;
-			// Only the list closes: not the dialog or the form around the field
+			// Only the list closes
 			event.preventDefault();
 			event.stopPropagation();
-			cancel();
 			close();
 			return;
 		}
@@ -137,6 +151,7 @@ given (`id`, `aria-describedby`, `aria-invalid`...) go on the input.
 				active = event.key === 'ArrowDown' ? 0 : suggestions.length - 1;
 				return;
 			}
+			lost = false;
 			const step = event.key === 'ArrowDown' ? 1 : -1;
 			// From the last one, back to the field (none), then round again
 			active = ((active + 1 + step + suggestions.length + 1) % (suggestions.length + 1)) - 1;
@@ -144,6 +159,9 @@ given (`id`, `aria-describedby`, `aria-invalid`...) go on the input.
 			// Picks the address: does not send the form
 			event.preventDefault();
 			pick(suggestions[active]);
+		} else if (event.key === 'Enter' && open && lost) {
+			// The address the arrows were on is gone from the list: nothing is picked or sent
+			event.preventDefault();
 		}
 	}
 
@@ -167,7 +185,7 @@ given (`id`, `aria-describedby`, `aria-invalid`...) go on the input.
 		type="text"
 		role="combobox"
 		aria-autocomplete="list"
-		aria-expanded={open}
+		aria-expanded={open && suggestions.length > 0}
 		aria-controls={listId}
 		aria-activedescendant={open && active >= 0 ? optionId(active) : undefined}
 		bind:value

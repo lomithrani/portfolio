@@ -53,8 +53,8 @@ export const searchAddresses = async (
 	const params = addressSearchParams(query);
 	if (!params) return { status: 'found', suggestions: [] };
 	try {
-		const { data, error } = await textApi.addresses.search.get({
-			query: params,
+		// A POST: what is typed travels in the body, never in a URL (server/plugins/addresses.ts)
+		const { data, error } = await textApi.addresses.search.post(params, {
 			fetch: { ...withCredentials, signal }
 		});
 		if (error || !data) return { status: 'unavailable' };
@@ -83,14 +83,13 @@ export const lookUpOffice = async (
 	office: OfficeAddress,
 	signal?: AbortSignal
 ): Promise<OfficePlace | null> => {
-	const query = Object.fromEntries(
+	const asked = Object.fromEntries(
 		Object.entries(office)
 			.map(([key, value]) => [key, addressSearchText(value)])
 			.filter(([, value]) => value)
 	);
 	try {
-		const { data, error } = await textApi.addresses.office.get({
-			query,
+		const { data, error } = await textApi.addresses.office.post(asked, {
 			fetch: { ...withCredentials, signal }
 		});
 		if (error || !data || !data.enabled || data.found === 'unknown') return null;
@@ -100,15 +99,44 @@ export const lookUpOffice = async (
 	}
 };
 
+/** The words of a text as they are compared: no accents, no capitals, no punctuation */
+const words = (text: string): string[] =>
+	addressSearchText(text)
+		.normalize('NFD')
+		.replace(/\p{M}/gu, '')
+		.toLowerCase()
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter(Boolean);
+
+/**
+ * Whether `typed` is only what was typed to find `town`: every word of it starts a word of the
+ * town's name or its postal code ("Villeurb", "paris 15" for Paris 15e Arrondissement)
+ */
+const isTownSearch = (typed: string, town: AddressSuggestion): boolean => {
+	const typedWords = words(typed);
+	const townWords = words([town.city, town.label, town.postalCode].filter(Boolean).join(' '));
+	return (
+		typedWords.length > 0 &&
+		typedWords.every((word) => townWords.some((townWord) => townWord.startsWith(word)))
+	);
+};
+
 /**
  * What picking `suggestion` puts in the fields of a job posting's office: the street in the
- * address, and the postal code and the town it is in. A town picked leaves the street as it is
+ * address, and the postal code and the town it is in. A town has no street: what was typed in
+ * the address to find it is not kept as one; anything else typed there (a street the map does
+ * not know, a building's name) stays
  */
 export const officeFromSuggestion = (
 	suggestion: AddressSuggestion,
 	current: OfficeAddress
 ): OfficeAddress => ({
-	address: suggestion.kind === 'municipality' ? current.address : (suggestion.street ?? ''),
+	address:
+		suggestion.kind === 'municipality'
+			? isTownSearch(current.address, suggestion)
+				? ''
+				: current.address
+			: (suggestion.street ?? ''),
 	postalCode: suggestion.postalCode ?? current.postalCode,
 	city: suggestion.city ?? current.city
 });

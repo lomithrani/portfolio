@@ -428,9 +428,10 @@ before the body is read, then on the bytes actually read, so a body without a us
 `Content-Length` (chunked, as a proxy or an HTTP/2 client may forward it, or with the header
 repeated) stops at 1 MB too; both answer `413` with CORS headers.
 
-**Traces.** Request and response bodies, cookies and the `Authorization` header are dropped from
-each span as it ends, before the batch processor queues it for export (and again in the
-exporter), so queued spans never hold a PDF.
+**Traces.** Request and response bodies, cookies, the `Authorization` header and the URL's query
+string (`url.query`, and what follows `?` in `url.full`) are dropped from each span as it ends,
+before the batch processor queues it for export (and again in the exporter), so queued spans never
+hold a PDF, nor what a person typed in a query string.
 
 ## Job description import
 
@@ -556,15 +557,20 @@ computed right now: not counted") instead of blocking anyone. The API logs `Trav
 answer` at warn level with the kind of request and the reason, never the address.
 
 **Address search.** The two forms that take an address (the commute of the perfect job, the
-office of a job posting) search it as it is typed: `GET /addresses/search` answers with the
-addresses the Géoplateforme knows, and `GET /addresses/office` tells a recruiter where their
+office of a job posting) search it as it is typed: `POST /addresses/search` answers with the
+addresses the Géoplateforme knows, and `POST /addresses/office` tells a recruiter where their
 posting's office is found (its street, only its town, or nowhere). Both are for signed-in
-accounts and go through the API. The searches are not counted against `COMMUTE_DAILY_LIMIT`
-(typing an address takes a dozen): they have limits of their own, 60 a minute per account and
-10,000 a day for the site (`server/services/addressSearch.ts`), and what is typed is never
-logged or kept. An office looked up is kept and counted like at scoring, at most 40 new ones a
-day per account. Both are off with travel times: nothing is sent to the map service then, and
-the fields are plain text fields.
+accounts and go through the API; they are POSTs so that what is typed travels in a body, which
+neither the traces nor the host's request logs keep, never in a URL. A posting's postal code and
+town narrow the search while it finds a good match there; otherwise it is asked again without
+the postal code, then without the town (the geocoder refuses a town it does not know as a
+commune, such as "La Défense"): one request to the map service, at most three. The searches are
+not counted against `COMMUTE_DAILY_LIMIT` (typing an address takes a dozen): they have limits of
+their own, 60 a minute and 500 a day per account, and 10,000 a day for the site
+(`server/services/addressSearch.ts`), and what is typed is never logged or kept. An office
+looked up is kept and counted like at scoring, at most 40 new lookups a day per account (a
+street not found takes a second one, for its town). Both are off with travel times: nothing is
+sent to the map service then, and the fields are plain text fields.
 
 An owner's address is as private as the rest of their perfect job: only they read it. A
 recruiter learns whether their job's commute matches, which says something about where the
