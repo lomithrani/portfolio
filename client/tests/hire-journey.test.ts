@@ -820,6 +820,34 @@ test.describe('the hiring journey', () => {
 		});
 	});
 
+	test('switching criteria on down the page keeps the page in sight', async ({ page }) => {
+		// A switch's input is hidden and absolutely positioned: placed outside the page's scroll
+		// container, it stayed where the page was before it scrolled, and focusing it (pressing a
+		// switch further down) scrolled the rail and the page away, leaving the header alone
+		await setPerfectJob({});
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin`);
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+		const cards = page.locator('[data-criterion]');
+		await expect(cards).toHaveCount(13);
+
+		for (const card of await cards.all()) {
+			const name = await card.getAttribute('data-criterion');
+			// This API computes no travel times (no COMMUTE_TIMES): the commute cannot be switched on
+			if (name === 'commute') continue;
+			await card.locator('[data-part="control"]').click();
+			await expect(card.locator('[data-importance]'), `${name} is on`).toBeVisible();
+			// Only the page scrolls: the box around it and the rail stays put
+			expect(
+				await page.locator('#page').evaluate((main) => main.parentElement?.scrollTop),
+				`after ${name}`
+			).toBe(0);
+			// The tabs stick to the top of the page, and the criterion just pressed is on screen
+			await expect(page.getByRole('tablist'), `after ${name}`).toBeInViewport({ ratio: 1 });
+			await expect(card, `after ${name}`).toBeInViewport();
+		}
+	});
+
 	test('the commute is offered only where the site computes travel times, and finds the address on save', async ({
 		page
 	}) => {

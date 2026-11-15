@@ -43,7 +43,12 @@
 		<aside>
 			<LeftBar domain={data.domain} />
 		</aside>
-		<main class="flex h-full flex-col overflow-auto scroll-smooth" id="page">
+		<!-- relative: the page's absolutely positioned elements (the hidden input of a switch,
+		     sr-only text, live regions) are placed in this scroll container and scroll with the
+		     page (see (app)/+layout.svelte). Placed in the box around it, they stay where the page
+		     was before it scrolled and make that box scrollable: focusing one (a switch pressed
+		     further down the page) scrolls the rail and the whole page out of sight -->
+		<main class="relative flex h-full flex-col overflow-auto scroll-smooth" id="page">
 			<div class="flex-1">
 				{@render children()}
 			</div>
