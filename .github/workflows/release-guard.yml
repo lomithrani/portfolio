@@ -47,4 +47,20 @@ jobs:
             echo "::error::$version is already released: give this release a new version in the title."
             exit 1
           fi
-          echo "This release will be published as $version."
+          # Semantic versioning: one step after the latest release (none yet: any version)
+          latest=$(gh api "repos/$REPO/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
+            | sed 's#^refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          if [ -n "$latest" ]; then
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            fix="v$major.$minor.$((patch + 1))"
+            feature="v$major.$((minor + 1)).0"
+            breaking="v$((major + 1)).0.0"
+            case "$version" in
+              "$fix" | "$feature" | "$breaking") ;;
+              *)
+                echo "::error::The latest release is $latest: the next one is $fix (fixes only), $feature (new features) or $breaking (breaking changes), not $version."
+                exit 1
+                ;;
+            esac
+          fi
+          echo "This release will be published as $version${latest:+ (after $latest)}."

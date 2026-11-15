@@ -584,8 +584,9 @@ branch) and is squash-merged. A release brings `develop` into `main`:
    contain `develop`'s commits, or the next release conflicts). The merge deploys production.
 
 The `Release guard` workflow (`.github/workflows/release-guard.yml`) fails any pull request into
-`main` whose source branch is not `develop`, or whose title names no version `vX.Y.Z` or one
-already released (fix the title: the check runs again). A fix needed in production goes through
+`main` whose source branch is not `develop`, or whose title does not name the next version: one
+step after the latest release, so after `v1.2.3` only `v1.2.4`, `v1.3.0` or `v2.0.0` (any version
+for the first release; fix the title: the check runs again). A fix needed in production goes through
 `develop` first, then a release. `main` never gets commits of its own, so `develop` does not need
 `main` merged back after a release: GitHub shows `develop` as "behind" `main` by the release merge
 commits, while their files are the same.
