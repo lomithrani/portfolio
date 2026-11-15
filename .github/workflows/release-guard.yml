@@ -1,14 +1,17 @@
 name: Release guard
 
 # main is production: it only receives develop, through a release PR (see "Releases" in
-# docs/DEPLOYMENT.md). This check fails any other pull request into main. It is a required status
-# check of the main ruleset (.github/rulesets/main.json), so such a PR cannot be merged.
+# docs/DEPLOYMENT.md). This check fails any other pull request into main, and a release PR whose
+# title does not name a new version ("Release v1.2.0"): the Release workflow tags the merge with
+# it. It is a required status check of the main ruleset (.github/rulesets/main.json), so such a PR
+# cannot be merged. Editing the title runs it again.
 on:
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, edited]
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   develop-only:
@@ -28,3 +31,20 @@ jobs:
           fi
           echo "::error::Only develop can be merged into main. Open this PR against develop (Edit, next to the title, to change its base); it reaches main with the next release."
           exit 1
+      - name: Check the version in the title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          version=$(printf '%s' "$PR_TITLE" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)
+          if [ -z "$version" ]; then
+            echo "::error::Name the version in the title, e.g. \"Release v1.2.0\": the merge is tagged with it."
+            exit 1
+          fi
+          if gh api "repos/$REPO/git/ref/tags/$version" > /dev/null 2>&1; then
+            echo "::error::$version is already released: give this release a new version in the title."
+            exit 1
+          fi
+          echo "This release will be published as $version."
