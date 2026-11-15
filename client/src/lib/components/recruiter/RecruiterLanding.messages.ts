@@ -15,7 +15,7 @@ export const m = defineMessages({
 	},
 	free: {
 		en: 'Free to use. The same Google account can also hold your own portfolio, as a candidate: switch spaces from the account menu.',
-		fr: "Gratuit. Le même compte Google peut aussi porter votre propre portfolio, en tant que candidat : changez d'espace depuis le menu du compte."
+		fr: "Gratuit. Avec le même compte Google, vous pouvez aussi avoir votre propre portfolio de candidat : changez d'espace depuis le menu du compte."
 	},
 	welcome: {
 		title: { en: 'Welcome to your recruiter space', fr: 'Bienvenue dans votre espace recruteur' },

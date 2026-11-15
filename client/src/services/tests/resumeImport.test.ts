@@ -35,6 +35,7 @@ import {
 	serializeImportReview,
 	summaryPreview,
 	untickDuplicates,
+	warningsReadable,
 	type ExtractedExperience,
 	type ImportReview
 } from '../resumeImport';
@@ -214,8 +215,17 @@ describe('duplicate detection', () => {
 		expect(review).toMatchObject({
 			fileName: 'cv.pdf',
 			importedAt: '2026-11-05T10:00:00.000Z',
-			warnings: ['Shortened 1 text that was too long']
+			warnings: ['Shortened 1 text that was too long'],
+			warningsLocale: 'en'
 		});
+		expect(
+			withLocale('fr', () =>
+				reviewFromResult(
+					{ experiences: [], warnings: [] },
+					{ fileName: 'cv.pdf', existing: new Set() }
+				)
+			).warningsLocale
+		).toBe('fr');
 		expect(review.drafts.map((draft) => [draft.form.title, draft.selected, draft.status])).toEqual([
 			['Senior Engineer', false, 'pending'],
 			['Staff Engineer', true, 'pending']
@@ -230,6 +240,7 @@ describe('review helpers', () => {
 		fileName: 'cv.pdf',
 		importedAt: '2026-11-05T10:00:00.000Z',
 		warnings: [],
+		warningsLocale: 'en',
 		drafts: drafts.map((draft, index) => ({
 			id: `d${index}`,
 			form: form(),
@@ -374,15 +385,20 @@ describe('stored review', () => {
 		expect(review.warnings).toEqual(['A warning']);
 	});
 
-	it('leaves out what was worded in another language', () => {
+	it('keeps warnings worded in another language, and leaves out such a failure', () => {
 		// Stored by a French page: the warnings and the failure are French sentences
-		const review = parseImportReview(stored())!;
-		const french = JSON.parse(withLocale('fr', () => serializeImportReview(review)));
+		const french = JSON.parse(
+			withLocale('fr', () => serializeImportReview(parseImportReview(stored({ locale: 'fr' }))!))
+		);
 		expect(french.locale).toBe('fr');
+		expect(french.errorsLocale).toBe('fr');
 		expect(french.drafts[2]).toMatchObject({ status: 'failed', error: 'Nope' });
 
 		const inEnglish = parseImportReview(french)!;
-		expect(inEnglish.warnings).toEqual([]);
+		// Kept, with their language: the review shows a notice instead of them
+		expect(inEnglish.warnings).toEqual(['A warning']);
+		expect(inEnglish.warningsLocale).toBe('fr');
+		expect(warningsReadable(inEnglish)).toBe(false);
 		expect(
 			inEnglish.drafts.map(({ id, selected, status, error }) => ({ id, selected, status, error }))
 		).toEqual([
@@ -392,11 +408,56 @@ describe('stored review', () => {
 			{ id: 'c', selected: true, status: 'pending', error: undefined }
 		]);
 
-		// The same language keeps both, and so does a review stored before languages (English)
+		// The same language keeps both
 		const inFrench = withLocale('fr', () => parseImportReview(french)!);
 		expect(inFrench.warnings).toEqual(['A warning']);
+		expect(withLocale('fr', () => warningsReadable(inFrench))).toBe(true);
 		expect(inFrench.drafts[2]).toMatchObject({ status: 'failed', error: 'Nope' });
-		expect(withLocale('fr', () => parseImportReview(stored())!).warnings).toEqual([]);
+
+		// A review stored before languages is English: on a French page its warnings are kept as
+		// English ones, and its failed draft goes back to pending without its English error
+		const legacyInFrench = withLocale('fr', () => parseImportReview(stored())!);
+		expect(legacyInFrench.warnings).toEqual(['A warning']);
+		expect(legacyInFrench.warningsLocale).toBe('en');
+		expect(legacyInFrench.drafts[2]).toMatchObject({ status: 'pending', selected: true });
+		expect(legacyInFrench.drafts[2].error).toBeUndefined();
+	});
+
+	it('keeps the warnings and their language when saved again in another language', () => {
+		const storage = new MemoryStorage();
+		const key = importStorageKey('user1', 'jane.doe');
+		withLocale('fr', () =>
+			saveImportReview(key, parseImportReview(stored({ locale: 'fr' }))!, storage)
+		);
+
+		// Opened in English, then saved again as the review does as soon as it loads
+		const inEnglish = loadImportReview(key, storage)!;
+		saveImportReview(key, inEnglish, storage);
+		expect(JSON.parse(storage.getItem(key)!).locale).toBe('fr');
+
+		// Back in French: nothing was lost
+		const backInFrench = withLocale('fr', () => loadImportReview(key, storage)!);
+		expect(backInFrench.warnings).toEqual(['A warning']);
+		expect(backInFrench.warningsLocale).toBe('fr');
+		expect(withLocale('fr', () => warningsReadable(backInFrench))).toBe(true);
+	});
+
+	it('keeps the language of the errors apart from that of the warnings', () => {
+		// French warnings, then a draft that failed on an English page: its error is English
+		const storage = new MemoryStorage();
+		const key = importStorageKey('user1', 'jane.doe');
+		const review = parseImportReview(stored({ locale: 'fr' }))!;
+		review.drafts[2] = { ...review.drafts[2], status: 'failed', error: 'Invalid dates' };
+		saveImportReview(key, review, storage);
+
+		expect(loadImportReview(key, storage)!.drafts[2]).toMatchObject({
+			status: 'failed',
+			error: 'Invalid dates'
+		});
+		const inFrench = withLocale('fr', () => loadImportReview(key, storage)!);
+		expect(inFrench.drafts[2]).toMatchObject({ status: 'pending' });
+		expect(inFrench.drafts[2].error).toBeUndefined();
+		expect(inFrench.warnings).toEqual(['A warning']);
 	});
 
 	it('repairs what it can of a damaged review', () => {

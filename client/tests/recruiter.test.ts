@@ -595,6 +595,34 @@ test.describe('job description import', () => {
 		await expect(page.getByText(/but have not created the posting yet/)).toHaveCount(0);
 	});
 
+	test('remarks written in the other language are not shown, and the banner says so', async ({
+		page
+	}) => {
+		await stubJobImport(page, {
+			status: () => importStatus(),
+			post: (route) => route.fulfill({ json: extraction() })
+		});
+		await openAsRecruiter(page, '/recruiter');
+		const dialog = await openImport(page);
+		await dialog.locator('input[type="file"]').setInputFiles(PDF);
+		await dialog.getByRole('button', { name: 'Import', exact: true }).click();
+		await expect(page).toHaveURL(/\/recruiter\/jobs\/new\?import=1$/);
+		await expect(page.getByText('The pay period was not stated: per year assumed')).toBeVisible();
+
+		// The same import reopened in French: its English remarks are not shown. Leaving the
+		// unsaved import asks the browser first (beforeunload): accepted
+		page.on('dialog', (leave) => leave.accept());
+		await gotoHydrated(page, '/recruiter/jobs/new?import=1&lang=fr');
+		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+		await expect(
+			page.getByText(
+				"Les remarques de cet import ont été rédigées dans l'autre langue du site et ne sont pas affichées."
+			)
+		).toBeVisible();
+		await expect(page.getByText('The pay period was not stated: per year assumed')).toHaveCount(0);
+		await expect(page.getByText(/Rien n'a été laissé de côté/)).toHaveCount(0);
+	});
+
 	test('once the free imports are used, says so and offers no import', async ({ page }) => {
 		const calls = await stubJobImport(page, {
 			status: () => importStatus({ used: 3, remaining: 0 })

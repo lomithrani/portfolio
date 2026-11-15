@@ -46,7 +46,7 @@ export const m = defineMessages({
 	createdDraft: {
 		en: (open: string) => `It is a draft: only you can see it until you set its status to ${open}.`,
 		fr: (open: string) =>
-			`Elle est encore un brouillon : vous seul pouvez la voir tant que son statut n'est pas « ${open} ».`
+			`Elle est enregistrée comme brouillon : vous seul pouvez la voir tant que son statut n'est pas « ${open} ».`
 	},
 	createdPublic: {
 		en: 'It is public on its job page.',

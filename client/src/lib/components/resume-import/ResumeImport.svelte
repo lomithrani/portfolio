@@ -56,6 +56,7 @@ taken into the review when it is loaded or the dialog opens.
 		saveErrorNeedsEdit,
 		saveImportReview,
 		untickDuplicates,
+		warningsReadable,
 		type ImportQuota,
 		type ImportReview,
 		type ImportStatus
@@ -828,7 +829,11 @@ taken into the review when it is loaded or the dialog opens.
 									</div>
 								{/if}
 
-								{#if review.warnings.length > 0}
+								{#if review.warnings.length > 0 && !warningsReadable(review)}
+									<p class="rounded-base preset-tonal-warning p-3 text-sm">
+										{m.review.warningsOtherLanguage}
+									</p>
+								{:else if review.warnings.length > 0}
 									<div
 										class="space-y-1 rounded-base preset-tonal-warning p-3 text-sm"
 										aria-labelledby="{uid}-warnings"

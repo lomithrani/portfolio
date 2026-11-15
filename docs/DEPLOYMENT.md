@@ -486,9 +486,13 @@ in a job's score.
 
 The landing page, its share images and the signed-out recruiter page present the commute as one of
 the criteria a job is scored against (`client/src/routes/(site)/page.messages.ts`: the
-description, the hero's lead, the first "Calls you can stop taking" card;
-`client/scripts/og-image/render.mjs`; `RecruiterLanding.messages.ts`). Run the production API with
-`COMMUTE_TIMES=true`, or take those mentions out.
+description (`meta.description`), the hero's lead (`hero.lead`), the first "Calls you can stop
+taking" card (`match.spared.commute`), the "The job gets a score" step (`match.steps.score`), the
+journey demo's label and caption (`match.demo`) and its recording
+`client/static/landing/demo-journey.*`, and the FAQ answer about the commute address
+(`faq.recruiters.address`); `client/scripts/og-image/render.mjs` and the share images it made,
+`client/static/og-image.png` and `og-image-fr.png`; `RecruiterLanding.messages.ts`). Run the
+production API with `COMMUTE_TIMES=true`, or take those mentions out.
 
 | Service | Used for | Key | What it receives |
 | --- | --- | --- | --- |

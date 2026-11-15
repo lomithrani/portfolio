@@ -45,7 +45,7 @@ backdrop mean "Keep editing".
 				<Dialog.Description class="text-sm text-surface-700-300">
 					{m.description}
 				</Dialog.Description>
-				<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+				<div class="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
 					<button
 						type="button"
 						class="btn text-error-700-300 hover:preset-tonal-error sm:me-auto"

@@ -64,6 +64,12 @@ test.describe('a visitor whose browser prefers French', () => {
 
 		await page.goto('/louis.gentil/experiences');
 		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+		// A portfolio without a title is headed by words that are not translated, marked as English
+		const heading = page.getByRole('heading', { level: 1 });
+		await expect(heading).toHaveText(/Problem Solver\s*Engineer\s*Programmer/);
+		await expect(heading.locator('[lang="en"]')).toHaveText(
+			/Problem Solver\s*Engineer\s*Programmer/
+		);
 		await expect(page.getByRole('button', { name: 'Se connecter' })).toBeVisible();
 		await expect(page.getByRole('navigation', { name: 'Informations légales' })).toBeVisible();
 
@@ -145,6 +151,29 @@ test.describe('a visitor whose browser prefers English', () => {
 		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
 	});
 
+	test("this site's own switch replaces a saved choice", async ({ page, context, baseURL }) => {
+		await context.addCookies([{ name: 'lang', value: 'fr', url: baseURL! }]);
+		await page.goto('/');
+		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+		await expect(languageSwitch(page)).toHaveText('English');
+
+		// A same-origin navigation (the link has data-sveltekit-reload)
+		await languageSwitch(page).click();
+		await expect(page).toHaveURL(/\/\?lang=en$/);
+		await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+		expect((await languageCookie(page))?.value).toBe('en');
+
+		// Kept without the parameter
+		await page.goto('/jobs');
+		await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+	});
+
+	test('a portfolio address keeps the language it asks for', async ({ page }) => {
+		await page.goto('/louis.gentil?lang=fr');
+		await expect(page).toHaveURL(/\/louis\.gentil\/experiences\?lang=fr$/);
+		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+	});
+
 	test('the switch keeps the page and what its address says', async ({ page }) => {
 		await page.goto('/louis.gentil/experiences?view=timeline');
 		// The rail holds the switch on a portfolio: its name is the other language's
@@ -166,6 +195,14 @@ test.describe('a visitor whose browser prefers English', () => {
 		await page.setExtraHTTPHeaders({ 'sec-fetch-site': 'cross-site' });
 		await page.goto('/jobs?lang=fr');
 		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+		expect((await languageCookie(page))?.value).toBe('en');
+
+		// The page's own data requests carry its address, `?lang=` included, from this site: they
+		// are no choice either (invalidateAll sends one)
+		const data = await page.request.get('/jobs/__data.json?lang=fr', {
+			headers: { 'sec-fetch-site': 'same-origin' }
+		});
+		expect(data.ok()).toBe(true);
 		expect((await languageCookie(page))?.value).toBe('en');
 
 		// The job pages tell search engines where each language is

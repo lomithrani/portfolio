@@ -406,7 +406,7 @@ test.describe('landing page, candidate steps', () => {
 		await gotoHydrated(page, '/');
 		// A returning owner is told this is also how to sign back in
 		await expect(page.getByTestId('returning-owner')).toHaveText(
-			'Already on Portfolio? Sign in the same way: you go straight to your portfolio.'
+			'Already have your portfolio? Sign in the same way: you go straight to it.'
 		);
 		await card(page)
 			.getByRole('checkbox', { name: /at least 16 years old/ })

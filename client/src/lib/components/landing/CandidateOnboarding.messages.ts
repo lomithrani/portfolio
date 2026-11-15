@@ -60,8 +60,8 @@ export const m = defineMessages({
 		},
 		signedIn: { en: 'Signed in.', fr: 'Connecté.' },
 		returning: {
-			en: 'Already on Portfolio? Sign in the same way: you go straight to your portfolio.',
-			fr: 'Déjà sur Portfolio ? Connectez-vous de la même façon : vous arrivez directement sur votre portfolio.'
+			en: 'Already have your portfolio? Sign in the same way: you go straight to it.',
+			fr: 'Vous avez déjà votre portfolio ? Connectez-vous de la même façon : vous y arrivez directement.'
 		},
 		tickToSignIn: { en: 'Tick the box to sign in.', fr: 'Cochez la case pour vous connecter.' },
 		tickToContinue: { en: 'Tick the box to continue', fr: 'Cochez la case pour continuer' },
