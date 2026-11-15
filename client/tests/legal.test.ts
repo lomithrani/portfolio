@@ -164,9 +164,19 @@ test.describe('legal pages', () => {
 			'href',
 			'/'
 		);
-		const site = page.getByRole('navigation', { name: 'Site' });
+		// The site's links: in the footer only, no bar of links under the header
+		await expect(page.locator('nav:not(header nav, main nav)')).toHaveCount(0);
+		await expect(page.getByRole('navigation', { name: 'Site' })).toHaveCount(1);
+		const site = page.locator('main > footer').getByRole('navigation', { name: 'Site' });
 		await expect(site).toHaveAttribute('lang', 'fr');
-		await expect(site.getByRole('link', { name: "Offres d'emploi" })).toBeVisible();
+		await expect(site.getByRole('link', { name: "Offres d'emploi" })).toHaveAttribute(
+			'href',
+			'/jobs'
+		);
+		await expect(site.getByRole('link', { name: 'Pour les recruteurs' })).toHaveAttribute(
+			'href',
+			'/recruiter'
+		);
 
 		await nav.getByRole('link', { name: 'Cookies et stockage local' }).click();
 		await expect(page).toHaveURL(/\/legal\/cookies\?lang=fr$/);

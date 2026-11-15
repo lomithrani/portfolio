@@ -138,7 +138,10 @@ test.describe('landing page, signed out', () => {
 		await stubGoogle(page);
 		await gotoHydrated(page, '/');
 
-		// No bar of links under the header: the site's links close the page
+		// No bar of links under the header (no navigation between it and the scrolling page): the site's
+		// links close the page
+		const outsidePage = page.locator('nav:not(header nav, main nav)');
+		await expect(outsidePage).toHaveCount(0);
 		const site = page.getByRole('navigation', { name: 'Site' });
 		await expect(site).toHaveCount(1);
 		await expect(
@@ -163,6 +166,8 @@ test.describe('landing page, signed out', () => {
 		// The job pages: no bar either, the switch next to the legal links, the logo back to here
 		await site.getByRole('link', { name: 'Browse jobs' }).click();
 		await expect(page).toHaveURL(/\/jobs$/);
+		await expect(page.getByRole('heading', { level: 2, name: 'Open positions' })).toBeVisible();
+		await expect(outsidePage).toHaveCount(0);
 		await expect(page.getByRole('navigation', { name: 'Jobs' })).toHaveCount(0);
 		await expect(
 			page
