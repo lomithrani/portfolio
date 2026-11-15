@@ -11,9 +11,9 @@ name: Release
 #      one. It runs the same way for a release pull request opened and merged by hand.
 #
 # Step 1 needs the RELEASE_TOKEN secret (a token of a maintainer, see the runbook), not the
-# workflow's own token: what that one opens and merges starts no other workflow, so CI would wait
-# for an approval, and the merge would neither publish the release nor run the CI on main that
-# the production deploy waits for.
+# workflow's own token: the CI of a pull request that one opens waits for an approval, and a
+# merge made with it starts no workflow, so it would neither publish the release nor run the CI
+# on main that the production deploy waits for.
 #
 # "Tag only" does not release develop: it publishes main's current commit, for a release that was
 # merged without its tag (its pull request named no version, or this workflow failed).
@@ -39,9 +39,13 @@ on:
 
 permissions: {}
 
+# One run at a time, and every run waits for its turn: by default GitHub keeps a single pending
+# run per group and cancels it when another joins, which could drop the publication of a release
+# that was just merged
 concurrency:
   group: release
   cancel-in-progress: false
+  queue: max
 
 jobs:
   open:
@@ -68,8 +72,9 @@ jobs:
           fi
 
           # Semantic versioning: one step after the latest release (none yet: after v0.0.0)
-          latest=$(gh api "repos/$REPO/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
-            | sed 's#^refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          refs=$(gh api "repos/$REPO/git/matching-refs/tags/v" --paginate --jq '.[].ref')
+          latest=$(printf '%s\n' "$refs" | sed 's#^refs/tags/##' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
           IFS=. read -r major minor patch <<< "${latest:-v0.0.0}"
           major=${major#v}
           case "$BUMP" in
@@ -96,9 +101,11 @@ jobs:
             fi
           } > body.md
 
-          # One release at a time: an open pull request from develop into main becomes this one
-          number=$(gh pr list --repo "$REPO" --base main --head develop --state open \
-            --json number --jq '.[0].number // empty')
+          # One release at a time: an open pull request from develop into main becomes this one.
+          # Not a fork's: --head matches the branch name alone, and a fork has a develop too
+          number=$(gh pr list --repo "$REPO" --base main --head develop --state open --limit 100 \
+            --json number,isCrossRepository \
+            --jq 'map(select(.isCrossRepository | not)) | .[0].number // empty')
           if [ -n "$number" ]; then
             gh pr edit "$number" --repo "$REPO" --title "Release $version" --body-file body.md
           else
@@ -107,18 +114,30 @@ jobs:
             number=${url##*/}
           fi
 
-          # Auto-merge waits for the required checks. It cannot be turned on when there is nothing
-          # left to wait for (they all passed already): the pull request is then merged right away
-          if ! gh pr merge "$number" --repo "$REPO" --auto --merge; then
-            if ! gh pr merge "$number" --repo "$REPO" --merge; then
-              echo "::error::Pull request #$number is open, but auto-merge could not be turned on. Allow it in the repository's settings (General, Pull Requests, Allow auto-merge), then run this workflow again, or merge #$number by hand with \"Create a merge commit\" once its checks pass."
+          # A draft cannot be merged, and auto-merge may be on already (a second run for the same
+          # release, which only changed the version)
+          state=$(gh pr view "$number" --repo "$REPO" --json isDraft,autoMergeRequest \
+            --jq '"\(.isDraft) \(.autoMergeRequest != null)"')
+          if [ "${state% *}" = "true" ]; then
+            gh pr ready "$number" --repo "$REPO"
+          fi
+          # Auto-merge waits for the required checks; when they have all passed already there is
+          # nothing to wait for, and gh merges the pull request right away instead. Always with
+          # --auto, never a plain merge: the token is an administrator's, whom the ruleset lets
+          # merge a pull request whose checks have not passed, and a plain "gh pr merge" only
+          # refuses a pull request it sees as blocked, not one whose state GitHub has not worked
+          # out yet (as right after it is opened). The second try is for that moment
+          if [ "${state#* }" != "true" ] && ! gh pr merge "$number" --repo "$REPO" --auto --merge; then
+            sleep 10
+            if ! gh pr merge "$number" --repo "$REPO" --auto --merge; then
+              echo "::error::Pull request #$number is open, but auto-merge could not be turned on (the reason is above). If auto-merge is not allowed yet, allow it in the repository's settings (General, Pull Requests, Allow auto-merge), then run this workflow again, or merge #$number by hand with \"Create a merge commit\" once its checks pass."
               exit 1
             fi
           fi
           {
             echo "Release pull request #$number: \`develop\` into \`main\` as **$version**."
             echo
-            echo "It is merged once its checks pass; the release is published then."
+            echo "It is merged once its checks pass; the release is published then. If a check fails, it stays open with auto-merge on and is merged at the next run that passes: fix develop, or close it."
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish:
@@ -145,8 +164,8 @@ jobs:
           BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
-          tags=$(gh api "repos/$REPO/git/matching-refs/tags/v" --paginate \
-            --jq '.[] | "\(.object.sha) \(.ref)"' | sed 's# refs/tags/# #')
+          # Each tag with the commit it is on (an annotated tag's own object is not the commit)
+          tags=$(gh api "repos/$REPO/tags" --paginate --jq '.[] | "\(.commit.sha) \(.name)"')
           latest=$(printf '%s\n' "$tags" | cut -d ' ' -f 2 \
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
           IFS=. read -r major minor patch <<< "${latest:-v0.0.0}"
