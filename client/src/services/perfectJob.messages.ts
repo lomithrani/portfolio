@@ -8,6 +8,10 @@ const listed = (items: readonly string[], and: string): string =>
 const insideSentence = (label: string): string =>
 	/^\p{Lu}{2}/u.test(label) ? label : label.charAt(0).toLowerCase() + label.slice(1);
 
+/** A label inside an English sentence: lower case, unless it starts with an acronym (RTT days) */
+const inEnglishSentence = (label: string): string =>
+	/^\p{Lu}{2}/u.test(label) ? label : label.toLowerCase();
+
 export const m = defineMessages({
 	duration: {
 		minutes: {
@@ -40,7 +44,7 @@ export const m = defineMessages({
 		scoredOn: {
 			en: (labels: readonly string[]) => {
 				const count = labels.length === 1 ? 'one criterion' : `${labels.length} criteria`;
-				const names = labels.map((label) => label.toLowerCase());
+				const names = labels.map(inEnglishSentence);
 				return `A job is scored on ${count}: ${listed(names, 'and')}.`;
 			},
 			fr: (labels: readonly string[]) => {
