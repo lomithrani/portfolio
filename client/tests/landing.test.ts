@@ -132,6 +132,51 @@ test.describe('landing page, signed out', () => {
 		await expect(currentStep(page)).toContainText('Sign in with Google');
 	});
 
+	test('the footer leads to the job pages and holds the light/dark switch; the logo leads back', async ({
+		page
+	}) => {
+		await stubGoogle(page);
+		await gotoHydrated(page, '/');
+
+		// No bar of links under the header: the site's links close the page
+		const site = page.getByRole('navigation', { name: 'Site' });
+		await expect(site).toHaveCount(1);
+		await expect(
+			page.locator('main > footer').getByRole('navigation', { name: 'Site' })
+		).toHaveCount(1);
+		await expect(site.getByRole('link', { name: 'For recruiters' })).toHaveAttribute(
+			'href',
+			'/recruiter'
+		);
+
+		// The switch: one for the page, kept in this browser
+		const html = page.locator('html');
+		const dark = await html.evaluate((element) => element.classList.contains('dark'));
+		await page
+			.getByRole('button', { name: dark ? 'Switch to light mode' : 'Switch to dark mode' })
+			.click();
+		await expect(html).toHaveClass(dark ? /^(?!.*\bdark\b)/ : /\bdark\b/);
+		expect(await page.evaluate(() => localStorage.getItem('portfolio-dark-mode'))).toBe(
+			String(!dark)
+		);
+
+		// The job pages: no bar either, the switch next to the legal links, the logo back to here
+		await site.getByRole('link', { name: 'Browse jobs' }).click();
+		await expect(page).toHaveURL(/\/jobs$/);
+		await expect(page.getByRole('navigation', { name: 'Jobs' })).toHaveCount(0);
+		await expect(
+			page
+				.locator('main > footer')
+				.getByRole('button', { name: dark ? 'Switch to dark mode' : 'Switch to light mode' })
+		).toBeVisible();
+		await page.getByRole('banner').getByRole('link', { name: 'Home' }).click();
+		await expect(page).toHaveURL(/\/$/);
+		await expect(page.getByRole('banner').getByRole('link', { name: 'Home' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
+	});
+
 	test('Google is loaded only once the age and terms box is ticked', async ({ page }) => {
 		const google = await stubGoogle(page);
 		await gotoHydrated(page, '/');

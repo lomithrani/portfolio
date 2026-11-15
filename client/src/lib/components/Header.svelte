@@ -7,12 +7,15 @@
 	import { AppBar } from '@skeletonlabs/skeleton-svelte';
 	import Logo from '#images/logo.svelte';
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 
 	let {
 		headerTitle,
 		headerSubtitle,
 		headerLang,
-		showSignIn = true
+		showSignIn = true,
+		homeLink = false
 	}: {
 		headerTitle?: string;
 		headerSubtitle?: string;
@@ -25,7 +28,14 @@
 		 * menu still shows once signed in.
 		 */
 		showSignIn?: boolean;
+		/**
+		 * true: the logo is a link to the landing page (the site's own pages, the job pages and the
+		 * recruiter space: nothing else on them leads there). A portfolio's header keeps a plain logo.
+		 */
+		homeLink?: boolean;
 	} = $props();
+
+	const home = resolve('/(site)');
 
 	onMount(() => {
 		const stopWatchingExpiry = watchSessionExpiry();
@@ -66,7 +76,17 @@
 	<AppBar.Toolbar class="grid-cols-[auto_minmax(0,1fr)_auto] gap-2 md:gap-4">
 		<AppBar.Lead>
 			<!-- currentColor: the logo follows the text colour, visible in light and dark mode -->
-			<span class="logo block size-9 text-surface-950-50 md:size-[50px]"><Logo /></span>
+			{#if homeLink}
+				<a
+					href={home}
+					class="logo block size-9 rounded text-surface-950-50 focus-visible:ring-2 focus-visible:ring-primary-500 md:size-[50px]"
+					aria-label={headerLang === 'fr' ? 'Accueil' : 'Home'}
+					aria-current={page.url.pathname === home ? 'page' : undefined}
+					lang={headerLang}><Logo /></a
+				>
+			{:else}
+				<span class="logo block size-9 text-surface-950-50 md:size-[50px]"><Logo /></span>
+			{/if}
 		</AppBar.Lead>
 		<!-- Small screens: one line, smaller font, so the header stays short -->
 		<AppBar.Headline class="min-w-0 text-center">

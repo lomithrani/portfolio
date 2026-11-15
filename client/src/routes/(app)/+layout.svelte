@@ -6,18 +6,17 @@
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
 	import { isCurrentSection, recordSpaceShown } from '#services/account.ts';
-	import { isSessionValid } from '#services/authentication.ts';
-	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
+	import { sessionCheckedStore } from '#services/stores/index.ts';
 	import { untrack, type Snippet } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/env';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
 
 	// Pages that belong to no portfolio: the recruiter space (/recruiter) and the public job pages
-	// (/jobs). Same header and toasts as a portfolio; a slim bar replaces its rail (sections and
-	// the light/dark switch).
+	// (/jobs). Same header and toasts as a portfolio, without its rail: the account menu leads
+	// from one to the other (the spaces, Browse jobs), the header's logo to the landing page, and
+	// the light/dark switch closes the page, next to the legal links.
 	let { children }: { children: Snippet } = $props();
 
 	$effect(() => {
@@ -26,15 +25,6 @@
 	});
 
 	let inRecruiterSpace = $derived(isCurrentSection(page.url.pathname, '/recruiter'));
-
-	// "My job descriptions" once the session is known to have a recruiter space
-	let isRecruiter = $derived(
-		$sessionCheckedStore &&
-			isSessionValid($authenticationStore) &&
-			!!$authenticationStore.user?.recruiter
-	);
-
-	let inJobs = $derived(isCurrentSection(page.url.pathname, '/jobs'));
 
 	// A page of the recruiter space records it as the account's active space (recordSpaceShown),
 	// so the account menu names the space shown: after each navigation (a link, a bookmark, the
@@ -56,38 +46,10 @@
 				}
 			: { title: 'Jobs', subtitle: 'Open job descriptions: apply with your portfolio' }
 	);
-
-	const linkClass = (current: boolean) =>
-		`btn btn-sm ${current ? 'preset-tonal-primary font-semibold' : 'hover:preset-tonal'}`;
 </script>
 
 <div class="h-full flex flex-col">
-	<Header headerTitle={header.title} headerSubtitle={header.subtitle} />
-	<div
-		class="flex items-center gap-2 border-b border-surface-200-800 bg-surface-50-950 px-3 py-1.5 md:px-4"
-	>
-		<nav aria-label="Jobs" class="min-w-0 flex-1 overflow-x-auto">
-			<ul class="flex items-center gap-1">
-				{#if isRecruiter || inRecruiterSpace}
-					<li class="shrink-0">
-						<a
-							href={resolve('/(app)/recruiter')}
-							class={linkClass(inRecruiterSpace)}
-							aria-current={inRecruiterSpace ? 'page' : undefined}>My job descriptions</a
-						>
-					</li>
-				{/if}
-				<li class="shrink-0">
-					<a
-						href={resolve('/(app)/jobs')}
-						class={linkClass(inJobs)}
-						aria-current={inJobs ? 'page' : undefined}>Browse jobs</a
-					>
-				</li>
-			</ul>
-		</nav>
-		<ThemeToggle />
-	</div>
+	<Header headerTitle={header.title} headerSubtitle={header.subtitle} homeLink />
 	<!-- relative: the page's absolutely positioned elements (sr-only text, live regions) are
 	     placed in this scroll container, not at the top of the document, which they would make
 	     scrollable: following an in-page link would then scroll the header out of reach -->
@@ -95,9 +57,13 @@
 		<div class="flex-1">
 			{@render children()}
 		</div>
-		<!-- The legal pages, small, at the end of every page: they scroll with it -->
-		<footer class="border-t border-surface-200-800 px-4 py-3 md:px-6">
-			<LegalLinks compact class="mx-auto max-w-4xl justify-center" />
+		<!-- The legal pages, small, and the light/dark switch at the end of every page: they scroll
+		     with it -->
+		<footer
+			class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-surface-200-800 px-4 py-3 md:px-6"
+		>
+			<LegalLinks compact class="justify-center" />
+			<ThemeToggle />
 		</footer>
 	</main>
 </div>

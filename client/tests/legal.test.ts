@@ -160,9 +160,13 @@ test.describe('legal pages', () => {
 		await expect(
 			page.getByRole('heading', { level: 1, name: 'Informations légales' })
 		).toHaveAttribute('lang', 'fr');
-		await expect(
-			page.getByRole('navigation', { name: 'Site' }).getByRole('link', { name: 'Accueil' })
-		).toBeVisible();
+		await expect(page.getByRole('banner').getByRole('link', { name: 'Accueil' })).toHaveAttribute(
+			'href',
+			'/'
+		);
+		const site = page.getByRole('navigation', { name: 'Site' });
+		await expect(site).toHaveAttribute('lang', 'fr');
+		await expect(site.getByRole('link', { name: "Offres d'emploi" })).toBeVisible();
 
 		await nav.getByRole('link', { name: 'Cookies et stockage local' }).click();
 		await expect(page).toHaveURL(/\/legal\/cookies\?lang=fr$/);
