@@ -1,0 +1,17 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "client",
+			"runtimeExecutable": "bun",
+			"runtimeArgs": ["--cwd", "client", "run", "dev"],
+			"port": 5173
+		},
+		{
+			"name": "server",
+			"runtimeExecutable": "bun",
+			"runtimeArgs": ["--cwd", "server", "run", "dev"],
+			"port": 3000
+		}
+	]
+}

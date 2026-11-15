@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "railway": {
+      "command": "railway",
+      "args": ["mcp"]
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "context7": {
+      "command": "bunx",
+      "args": ["@upstash/context7-mcp@4"]
+    },
+    "svelte": {
+      "command": "bunx",
+      "args": ["@sveltejs/mcp@0.1"]
+    },
+    "chrome-devtools": {
+      "command": "bunx",
+      "args": ["chrome-devtools-mcp@1"]
+    }
+  }
+}
