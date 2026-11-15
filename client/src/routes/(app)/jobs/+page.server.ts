@@ -8,6 +8,7 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async () => {
 	// Eden throws when the API cannot be reached at all (connection refused, DNS)
 	const response = await portfolioApi.jobs.get().catch(() => null);
-	if (!response || response.error || !response.data) error(503, m.jobsUnavailable);
+	if (!response || response.error || !response.data)
+		error(503, m.jobsUnavailable, { code: 'jobsUnavailable' });
 	return { jobs: response.data.jobs };
 };

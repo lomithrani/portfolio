@@ -10,7 +10,7 @@ export const m = defineMessages({
 			fr: 'Votre portfolio trie les offres pour vous | Portfolio'
 		},
 		description: {
-			en: 'Portfolio is free and works as your job matchmaker: say what you want (pay, remote days, commute, skills), set the steps recruiters follow, and the job they bring is scored against it before they can book a meeting with you.',
+			en: 'Portfolio is free and works as your job matchmaker: say what you want (pay, remote days, commute, skills) and set the steps recruiters follow. The job they bring is scored against what you want before they can book a meeting with you.',
 			fr: "Portfolio est gratuit et vous met en relation avec les bons postes : dites ce que vous cherchez (rémunération, télétravail, trajet, compétences), définissez les étapes que suivent les recruteurs, et l'offre qu'ils apportent est notée avant qu'ils puissent réserver un rendez-vous avec vous."
 		},
 		imageAlt: {
@@ -27,7 +27,7 @@ export const m = defineMessages({
 			fr: 'Fini les appels pour le <nowrap>mauvais poste.</nowrap>'
 		},
 		lead: {
-			en: 'Say what you are looking for (pay, remote days, commute, skills) and choose the steps recruiters follow: the job they bring is scored against it, and only a match gets time in your calendar.',
+			en: 'Say what you are looking for (pay, remote days, commute, skills) and choose the steps recruiters follow: the job they bring is scored against what you want, and only a match gets time in your calendar.',
 			fr: "Dites ce que vous cherchez (rémunération, télétravail, trajet, compétences) et choisissez les étapes que suivent les recruteurs : l'offre qu'ils apportent est notée, et seule une offre qui correspond obtient un créneau dans votre agenda."
 		},
 		create: { en: 'Create your portfolio', fr: 'Créer mon portfolio' },
@@ -111,8 +111,8 @@ export const m = defineMessages({
 			}
 		},
 		keep: {
-			en: 'Keep the steps you want: your portfolio starts with the meeting alone.',
-			fr: 'Gardez les étapes que vous voulez : votre portfolio commence avec le rendez-vous seul.'
+			en: 'Choose the steps you want: your portfolio starts with the meeting alone.',
+			fr: 'Choisissez les étapes que vous voulez : votre portfolio commence avec le rendez-vous seul.'
 		},
 		demo: {
 			label: {
@@ -140,7 +140,7 @@ export const m = defineMessages({
 		}
 	},
 	yours: {
-		title: { en: 'Make it yours', fr: 'Donnez-lui votre style' },
+		title: { en: 'Make it yours', fr: 'Personnalisez votre portfolio' },
 		intro: {
 			en: "Your portfolio does not have to look like everyone else's. You choose how your career is shown, and you can change it whenever you like.",
 			fr: "Votre portfolio n'a pas à ressembler à celui des autres. Vous choisissez comment montrer votre parcours, et vous pouvez en changer quand vous voulez."

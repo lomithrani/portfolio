@@ -32,10 +32,13 @@ export const handle: Handle = ({ event, resolve }) => {
 	// it for a year, as the cookies page says. A link opened from elsewhere (a shared address, a
 	// search result) is rendered in the language it asks for, and saved for a visitor who had
 	// not chosen, but never replaces a choice: only this site's own switch, a same-origin
-	// navigation, does (a browser that sends no Sec-Fetch-Site is taken at its word)
+	// navigation, does (a browser that sends no Sec-Fetch-Site is taken at its word). A data
+	// request (`__data.json`, sent by invalidateAll or a client-side navigation with the page's
+	// current URL, `?lang=` included) is answered in that language but is not a choice: it never
+	// saves it. The switch is a `data-sveltekit-reload` link, always a document request.
 	const fetchSite = event.request.headers.get('sec-fetch-site');
 	const fromThisSite = fetchSite === null || fetchSite === 'same-origin';
-	if (asked && (fromThisSite || !parseLocale(saved))) {
+	if (asked && !event.isDataRequest && (fromThisSite || !parseLocale(saved))) {
 		event.cookies.set(LOCALE_COOKIE, asked, {
 			path: '/',
 			maxAge: LOCALE_COOKIE_MAX_AGE,
