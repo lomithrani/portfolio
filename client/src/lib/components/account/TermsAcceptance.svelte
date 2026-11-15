@@ -12,13 +12,17 @@ says so to its owner).
 	import { tick } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { ArrowPath, CheckCircle, DocumentText, ExclamationTriangle } from 'svelte-heros-v2';
-	import { LEGAL_VERSION } from 'portfolio-common';
+	import { LEGAL_VERSION, getLocale } from 'portfolio-common';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import { formatLegalDate } from '#components/legal/legalDocuments.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { acceptTerms, hasAcceptedCurrentTerms } from '#services/account.ts';
+	import { accountMessages } from '#services/account.messages.ts';
 	import { termsVersionText } from '#services/authentication.ts';
 	import type { AuthUser } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { m } from './TermsAcceptance.messages.ts';
 
 	let { user }: { user: AuthUser } = $props();
 
@@ -28,7 +32,7 @@ says so to its owner).
 	let accepted = $derived(hasAcceptedCurrentTerms(user));
 	/** An older version of the terms: they changed since the account accepted them */
 	let acceptedVersion = $derived(termsVersionText(user.termsVersion));
-	let currentDate = formatLegalDate(LEGAL_VERSION, 'en');
+	let currentDate = formatLegalDate(LEGAL_VERSION, getLocale());
 
 	let checked = $state(false);
 	let busy = $state(false);
@@ -41,8 +45,6 @@ says so to its owner).
 	// Ticked: the reminder has done its job
 	let shownConsentError = $derived(checked ? '' : consentError);
 
-	const TICK_THE_BOX = 'Tick the box to confirm your age and accept the terms.';
-
 	const showError = async (message: string) => {
 		formError = message;
 		await tick();
@@ -54,7 +56,7 @@ says so to its owner).
 		if (busy) return;
 		formError = '';
 		if (!checked) {
-			consentError = TICK_THE_BOX;
+			consentError = accountMessages.claim.tickTheBox;
 			document.getElementById(checkboxId)?.focus();
 			return;
 		}
@@ -68,12 +70,12 @@ says so to its owner).
 				await tick();
 				acceptedElement?.focus();
 				toaster.success({
-					title: 'Terms accepted',
-					description: `You accepted the Terms of use of ${currentDate}.`
+					title: m.done.title,
+					description: m.done.description(currentDate)
 				});
 			} else if (result.reason === 'session-expired') {
 				// The page now asks to sign in again
-				toaster.error({ title: result.message, description: 'Your acceptance was not saved.' });
+				toaster.error({ title: result.message, description: m.notSaved });
 			} else {
 				await showError(result.message);
 			}
@@ -96,7 +98,7 @@ says so to its owner).
 			<DocumentText size="20" />
 		</span>
 		<div class="min-w-0 flex-1 space-y-1">
-			<h3 id="{uid}-title" class="text-lg font-semibold">Terms of use</h3>
+			<h3 id="{uid}-title" class="text-lg font-semibold">{m.title}</h3>
 			{#if accepted}
 				<p
 					bind:this={acceptedElement}
@@ -106,35 +108,32 @@ says so to its owner).
 				>
 					<CheckCircle size="18" class="mt-0.5 shrink-0 text-success-700-300" aria-hidden="true" />
 					<span>
-						You accepted the
-						<a class="link-text" href={resolve('/(site)/legal/terms')}>Terms of use</a>
-						and the
-						<a class="link-text" href={resolve('/(site)/legal/privacy')}>Privacy policy</a>
-						of <span class="whitespace-nowrap">{currentDate}</span>, the version in force, and
-						confirmed your age.
+						<Rich text={m.accepted(currentDate)} {terms} {date}>
+							{#snippet privacy(text)}<a class="link-text" href={resolve('/(site)/legal/privacy')}
+									>{text}</a
+								>{/snippet}
+						</Rich>
 					</span>
 				</p>
 			{:else if acceptedVersion}
 				<p class="text-sm text-surface-700-300" data-terms-status="outdated">
-					You accepted the version of
-					<span class="whitespace-nowrap">{formatLegalDate(acceptedVersion, 'en')}</span>. The terms
-					changed on <span class="whitespace-nowrap">{currentDate}</span>: read the
-					<a class="link-text" href={resolve('/(site)/legal/terms')}>Terms of use</a>
-					{#if user.domain}
-						and accept them: this records your confirmation for your portfolio.
-					{:else}
-						and accept them to create a portfolio.
-					{/if}
+					<Rich
+						text={(user.domain ? m.outdated.withPortfolio : m.outdated.withoutPortfolio)(
+							formatLegalDate(acceptedVersion, getLocale()),
+							currentDate
+						)}
+						{terms}
+						{date}
+					/>
 				</p>
 			{:else if user.domain}
 				<!-- A portfolio claimed before the terms existed (or from a sign-in without the box): it stays online -->
 				<p class="text-sm text-surface-700-300" data-terms-status="none">
-					You have not accepted the current Terms of use yet. Accepting them records your
-					confirmation for your portfolio.
+					{m.notAccepted.withPortfolio}
 				</p>
 			{:else}
 				<p class="text-sm text-surface-700-300" data-terms-status="none">
-					You have not accepted the Terms of use yet. You need to before you create a portfolio.
+					{m.notAccepted.withoutPortfolio}
 				</p>
 			{/if}
 		</div>
@@ -165,11 +164,16 @@ says so to its owner).
 			>
 				{#if busy}
 					<ArrowPath size="16" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-					<span>Saving…</span>
+					<span>{common.saving}</span>
 				{:else}
-					<span>Accept the terms</span>
+					<span>{m.accept}</span>
 				{/if}
 			</button>
 		</form>
 	{/if}
 </section>
+
+{#snippet terms(text: string)}<a class="link-text" href={resolve('/(site)/legal/terms')}>{text}</a
+	>{/snippet}
+
+{#snippet date(text: string)}<span class="whitespace-nowrap">{text}</span>{/snippet}

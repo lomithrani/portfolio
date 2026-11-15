@@ -1,24 +1,15 @@
 // The four legal pages (legal notice, privacy policy, terms of use, cookies), each in English
-// (default) and French (`?lang=fr`): their routes, titles and the helpers the pages, the footer
-// links and the e2e tests share. The texts themselves are the content components next to this
-// file, one per document and language (content/).
+// and French, in the language of the site (docs/I18N.md): their routes, titles and the helpers
+// the pages, the footer links and the e2e tests share. The texts themselves are the content
+// components next to this file, one per document and language (content/).
 
-import { LEGAL_VERSION } from 'portfolio-common';
+import { LEGAL_VERSION, type Locale } from 'portfolio-common';
 
 /** Name of the service, used in page titles, the footer and the Google Limited Use statement */
 export const SITE_NAME = 'Portfolio';
 
-export const LEGAL_LANGUAGES = ['en', 'fr'] as const;
-export type LegalLanguage = (typeof LEGAL_LANGUAGES)[number];
-
-/** Query parameter of the French version (`?lang=fr`); English has none */
-export const LEGAL_LANGUAGE_PARAM = 'lang';
-
-/** The language a `?lang=` value asks for: French for `fr` (any case), English otherwise */
-export const legalLanguage = (value: string | null | undefined): LegalLanguage =>
-	value?.trim().toLowerCase() === 'fr' ? 'fr' : 'en';
-
-export const LANGUAGE_NAMES: Record<LegalLanguage, string> = { en: 'English', fr: 'Français' };
+/** The language of a legal document: one of the site's */
+export type LegalLanguage = Locale;
 
 export type LegalDocumentId = 'notice' | 'privacy' | 'terms' | 'cookies';
 
@@ -78,8 +69,8 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocumentMeta> = {
 		title: { en: 'Cookies and local storage', fr: 'Cookies et stockage local' },
 		shortTitle: { en: 'Cookies', fr: 'Cookies' },
 		description: {
-			en: 'The cookie and the browser storage this site uses, what each is for and how long it lasts.',
-			fr: 'Le cookie et le stockage du navigateur utilisés par ce site, à quoi ils servent et leur durée.'
+			en: 'The cookies and the browser storage this site uses, what each is for and how long it lasts.',
+			fr: 'Les cookies et le stockage du navigateur utilisés par ce site, à quoi ils servent et leur durée.'
 		}
 	}
 };
@@ -91,10 +82,6 @@ export const LEGAL_DOCUMENT_ORDER: readonly LegalDocumentId[] = [
 	'terms',
 	'cookies'
 ];
-
-/** `path` in `lang`: the French version adds `?lang=fr` */
-export const withLegalLanguage = (path: string, lang: LegalLanguage): string =>
-	lang === 'fr' ? `${path}?${LEGAL_LANGUAGE_PARAM}=fr` : path;
 
 /** "14 November 2026" / "14 novembre 2026" for a `YYYY-MM-DD` date (read in UTC) */
 export const formatLegalDate = (isoDate: string, lang: LegalLanguage): string => {

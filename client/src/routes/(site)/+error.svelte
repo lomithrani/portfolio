@@ -2,6 +2,8 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { DocumentMagnifyingGlass, ExclamationTriangle } from 'svelte-heros-v2';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import { m } from './error.messages.ts';
 
 	// Errors of the site's own pages (landing, legal pages, account), inside their layout (header,
 	// navigation, legal footer)
@@ -9,7 +11,7 @@
 </script>
 
 <svelte:head>
-	<title>{notFound ? 'Not found' : 'Error'} | Portfolio</title>
+	<title>{notFound ? m.pageTitle.notFound : m.pageTitle.error} | Portfolio</title>
 </svelte:head>
 
 <div class="p-4 md:p-6">
@@ -30,14 +32,10 @@
 				{/if}
 			</div>
 			<h2 id="site-error-title" class="text-xl font-bold">
-				{notFound ? 'Page not found' : 'Something went wrong'}
+				{notFound ? m.heading.notFound : m.heading.error}
 			</h2>
 			<p class="mx-auto max-w-md text-surface-700-300">
-				{#if notFound}
-					This page does not exist, or the link is wrong.
-				{:else}
-					The page could not be shown. Try again in a moment.
-				{/if}
+				{notFound ? m.text.notFound : m.text.error}
 			</p>
 			<div class="flex flex-wrap justify-center gap-3">
 				{#if !notFound}
@@ -46,14 +44,14 @@
 						class="btn preset-filled-primary-700-300 min-h-11"
 						onclick={() => location.reload()}
 					>
-						Try again
+						{common.retry}
 					</button>
 				{/if}
 				<a
 					href={resolve('/(site)')}
 					class="btn min-h-11 {notFound ? 'preset-filled-primary-700-300' : 'preset-tonal'}"
 				>
-					Go to the home page
+					{m.home}
 				</a>
 			</div>
 		</section>

@@ -139,7 +139,7 @@ l'éditeur vient uniquement des variables LEGAL_* (PublisherDetails).
 <h3 id="personal-data">Données personnelles et cookies</h3>
 <p>
 	La manière dont ce site traite les données personnelles, et vos droits, sont expliqués dans la
-	<LegalDocLink doc="privacy" {lang}>politique de confidentialité</LegalDocLink>. Le cookie et le
+	<LegalDocLink doc="privacy" {lang}>politique de confidentialité</LegalDocLink>. Les cookies et le
 	stockage du navigateur qu'il utilise sont listés sur la page
 	<LegalDocLink doc="cookies" {lang}>cookies et stockage local</LegalDocLink>. Les règles
 	d'utilisation du site figurent dans les

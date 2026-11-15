@@ -96,10 +96,6 @@ async function answered<T>(kind: string, question: string, ttlMs: number, ask: (
 
 // ── Places ──────────────────────────────────────────────────
 
-export const ADDRESS_NOT_FOUND = 'This address was not found. Check it, or give a town or a place nearby.';
-export const COMMUTE_UNAVAILABLE = 'Travel times are not available on this site.';
-export const ADDRESS_LOOKUP_FAILED = 'The address could not be looked up right now. Try again in a moment.';
-
 /**
  * Where the address an owner travels from is, looked up when they save it.
  * Not kept in the cache (it is stored with their perfect job): null when no

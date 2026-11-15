@@ -8,11 +8,13 @@
 	import type { Snippet } from 'svelte';
 	import { browser } from '$app/env';
 	import { page } from '$app/state';
+	import { SITE_NAME } from '#components/legal/legalDocuments.ts';
+	import { m } from './layout.messages.ts';
 
 	// The site's own pages, which belong to no portfolio: the landing page (/), the legal pages
 	// (/legal...) and the account page (/account). Same header and toasts as the other layouts
 	// (its logo leads back to the landing page), with the site footer: the job board, the
-	// recruiter space, the light/dark switch and the legal pages. The header offers no Google
+	// recruiter space, the language and light/dark switches and the legal pages. The header offers no Google
 	// sign-in here: the landing page signs in after its age and terms checkbox, and nothing else
 	// on these pages needs a session to read.
 	let { children }: { children: Snippet } = $props();
@@ -24,38 +26,15 @@
 
 	let pathname = $derived(page.url.pathname);
 
-	/** The French legal pages (`?lang=fr`): their header, site links and footer are in French */
-	let french = $derived(
-		isCurrentSection(pathname, '/legal') && page.url.searchParams.get('lang') === 'fr'
-	);
-
 	let header = $derived.by(() => {
-		if (isCurrentSection(pathname, '/legal')) {
-			return french
-				? {
-						title: 'Informations légales',
-						subtitle: 'Mentions légales, confidentialité, conditions et cookies'
-					}
-				: { title: 'Legal', subtitle: 'Legal notice, privacy, terms and cookies' };
-		}
-		if (isCurrentSection(pathname, '/account')) {
-			return { title: 'Your account', subtitle: 'Your data, the terms you accepted, deletion' };
-		}
-		return {
-			title: 'Portfolio',
-			subtitle: 'Your portfolio, your way. Hiring without the back-and-forth.'
-		};
+		if (isCurrentSection(pathname, '/legal')) return m.legal;
+		if (isCurrentSection(pathname, '/account')) return m.account;
+		return { title: SITE_NAME, subtitle: m.home.subtitle };
 	});
 </script>
 
 <div class="h-full flex flex-col">
-	<Header
-		headerTitle={header.title}
-		headerSubtitle={header.subtitle}
-		headerLang={french ? 'fr' : undefined}
-		showSignIn={false}
-		homeLink
-	/>
+	<Header headerTitle={header.title} headerSubtitle={header.subtitle} showSignIn={false} homeLink />
 	<!-- relative: the page's absolutely positioned elements (sr-only text, live regions) are
 	     placed in this scroll container, not at the top of the document (see (app)/+layout.svelte).
 	     The footer scrolls with the page: it closes every page, it does not take room from it -->
@@ -66,7 +45,7 @@
 		<div class="flex-1">
 			{@render children()}
 		</div>
-		<LegalFooter lang={french ? 'fr' : 'en'} />
+		<LegalFooter />
 	</main>
 </div>
 

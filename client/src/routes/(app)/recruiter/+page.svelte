@@ -14,6 +14,8 @@
 		Trash,
 		Users
 	} from 'svelte-heros-v2';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { SIGN_IN_ID } from '#components/Login.svelte';
 	import JobCard from '#components/jobs/JobCard.svelte';
 	import JobImport from '#components/job-import/JobImport.svelte';
@@ -40,7 +42,7 @@
 	} from '#services/jobImport.ts';
 	import {
 		applicantCountText,
-		NETWORK_ERROR,
+		networkError,
 		deleteJobText,
 		failureText,
 		filterJobs,
@@ -51,6 +53,8 @@
 		type RecruiterJob,
 		type StatusFilter
 	} from '#services/recruiter.ts';
+	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
+	import { m } from './page.messages.ts';
 
 	// The recruiter's dashboard: their job descriptions (GET /recruiter/jobs), with the PDF import
 	// (GET / POST /jobs/import) and deletion. Signed out: what the space does and a sign-in; signed
@@ -65,7 +69,7 @@
 		| { kind: 'error'; userId: string };
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const SESSION_EXPIRED = 'Your session expired. Sign in again.';
+	const SESSION_EXPIRED = recruiterMessages.sessionExpired;
 
 	// The signed-in account, once the session has been checked with the API
 	let user = $derived(
@@ -149,7 +153,7 @@
 	async function onImported({ fileName, warnings }: { fileName: string; warnings: string[] }) {
 		importOpen = false;
 		toaster.success({
-			title: 'Job description imported',
+			title: m.imported,
 			description: importedToastText(fileName, warnings)
 		});
 		await tick();
@@ -203,8 +207,8 @@
 			return;
 		}
 		toaster.success({
-			title: 'Your recruiter space is ready',
-			description: 'Write your first job description.'
+			title: m.space.ready,
+			description: m.space.readyDescription
 		});
 		// Signed out, or into another account, meanwhile: the effect has taken over
 		if (user?._id !== userId || requested !== userId) return;
@@ -268,7 +272,7 @@
 				if (code === 404) {
 					removeFromList(job._id, userId);
 					deleting = null;
-					toaster.info({ title: 'This job description was already deleted' });
+					toaster.info({ title: m.alreadyDeleted });
 				} else if (code === 401) {
 					deleting = null;
 					clearAuthentication();
@@ -277,16 +281,16 @@
 					deleting = {
 						job,
 						busy: false,
-						error: failureText(error.value, 'Could not delete it. Try again in a moment.')
+						error: failureText(error.value, recruiterMessages.deleteJobFailed)
 					};
 				}
 				return;
 			}
 			removeFromList(job._id, userId);
 			deleting = null;
-			toaster.success({ title: 'Job description deleted', description: job.title });
+			toaster.success({ title: recruiterMessages.jobDeleted, description: job.title });
 		} catch {
-			deleting = { job, busy: false, error: NETWORK_ERROR };
+			deleting = { job, busy: false, error: networkError() };
 		}
 	}
 
@@ -321,7 +325,7 @@
 </script>
 
 <svelte:head>
-	<title>Your job descriptions | Recruiter</title>
+	<title>{m.pageTitle}</title>
 </svelte:head>
 
 <div class="p-4 md:p-6">
@@ -331,11 +335,8 @@
 		{:else if !user}
 			<RecruiterLanding onSignedIn={() => (focusHeading = true)} />
 		{:else if user.recruiter === false || listState.kind === 'no-space'}
-			<PageNotice title="Create your recruiter space" icon={Briefcase}>
-				<p>
-					Your account has a candidate space. Add a recruiter space to write job descriptions and
-					see the portfolios that apply. You can switch between both from the account menu.
-				</p>
+			<PageNotice title={m.space.title} icon={Briefcase}>
+				<p>{m.space.text}</p>
 				{#if createError}
 					<p
 						class="flex items-start justify-center gap-2 text-sm font-medium text-error-700-300"
@@ -358,10 +359,10 @@
 								class="animate-spin motion-reduce:animate-none"
 								aria-hidden="true"
 							/>
-							Creating your space…
+							{m.space.creating}
 						{:else}
 							<Plus size="18" aria-hidden="true" />
-							Create my recruiter space
+							{m.space.create}
 						{/if}
 					</button>
 				{/snippet}
@@ -370,9 +371,9 @@
 			<div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
 				<div class="min-w-0 space-y-1">
 					<h2 bind:this={heading} tabindex="-1" class="text-2xl font-bold outline-none md:text-3xl">
-						Your job descriptions
+						{m.title}
 					</h2>
-					<p class="text-surface-700-300">Publish them, then see the portfolios that apply.</p>
+					<p class="text-surface-700-300">{m.lead}</p>
 				</div>
 				{#if jobs.length > 0}
 					{@render listActions('sm:items-end')}
@@ -385,33 +386,33 @@
 				>
 					<InformationCircle size="20" class="shrink-0" aria-hidden="true" />
 					<p class="min-w-60 flex-1 text-surface-950-50">
-						You imported <span class="font-semibold wrap-anywhere"
-							>{pendingImport.fileName || 'a job description'}</span
-						> but have not created the posting yet.
+						<Rich text={m.pendingImport}>
+							{#snippet file(fallback)}
+								<span class="font-semibold wrap-anywhere"
+									>{pendingImport?.fileName || fallback}</span
+								>
+							{/snippet}
+						</Rich>
 					</p>
 					<a
 						href={resolve('/(app)/recruiter/jobs/new?import=1')}
 						class="btn btn-sm preset-filled-primary-700-300 min-h-9"
 					>
-						Continue editing
+						{m.continueEditing}
 					</a>
 				</div>
 			{/if}
 
 			{#if listState.kind === 'error'}
-				<PageNotice
-					title="Could not load your job descriptions"
-					icon={ExclamationTriangle}
-					tone="error"
-				>
-					<p>The server could not be reached, or it failed. Check your connection and try again.</p>
+				<PageNotice title={m.loadFailed} icon={ExclamationTriangle} tone="error">
+					<p>{recruiterMessages.loadFailed}</p>
 					{#snippet actions()}
 						<button
 							type="button"
 							class="btn preset-filled-primary-700-300 min-h-11"
 							onclick={() => loadJobs(listState.kind === 'error' ? listState.userId : '')}
 						>
-							Try again
+							{common.retry}
 						</button>
 					{/snippet}
 				</PageNotice>
@@ -427,12 +428,9 @@
 					>
 						<Briefcase size="24" aria-hidden="true" />
 					</div>
-					<h3 id="empty-jobs-title" class="text-xl font-bold">No job descriptions yet</h3>
+					<h3 id="empty-jobs-title" class="text-xl font-bold">{m.empty.title}</h3>
 					<p class="mx-auto max-w-md text-surface-700-300">
-						{importStatus?.enabled
-							? 'Write your first one, or import an existing job description from a PDF.'
-							: 'Write your first one.'}
-						It stays a draft, visible only to you, until you open it to candidates.
+						{importStatus?.enabled ? m.empty.textWithImport : m.empty.text}
 					</p>
 					{@render listActions('items-center')}
 				</section>
@@ -441,7 +439,7 @@
 					<div
 						class="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0"
 						role="group"
-						aria-label="Filter by status"
+						aria-label={m.filterByStatus}
 					>
 						<div class="flex w-max gap-1.5">
 							{#each filters as option (option.value)}
@@ -468,7 +466,7 @@
 				{/if}
 				<p class="sr-only" aria-live="polite">{filterAnnouncement}</p>
 
-				<ul class="space-y-3" aria-label="Job descriptions">
+				<ul class="space-y-3" aria-label={m.jobDescriptions}>
 					{#each shownJobs as job (job._id)}
 						<li data-job-card={job._id}>
 							<JobCard {job} href={jobHref(job._id)} showStatus>
@@ -483,9 +481,11 @@
 												{applicantCountText(job.applicantCount)}
 											</a>
 											<span>
-												Updated <time datetime={isoDate(job.updatedAt)}
-													>{formatDay(job.updatedAt)}</time
-												>
+												<Rich text={m.updated(formatDay(job.updatedAt))}>
+													{#snippet time(day)}
+														<time datetime={isoDate(job.updatedAt)}>{day}</time>
+													{/snippet}
+												</Rich>
 											</span>
 										</p>
 										<div class="flex flex-wrap gap-1">
@@ -494,14 +494,14 @@
 												class="btn btn-sm min-h-9 hover:preset-tonal"
 											>
 												<Eye size="16" aria-hidden="true" />
-												View<span class="sr-only">: {job.title}</span>
+												{m.view}<span class="sr-only">{m.ofJob(job.title)}</span>
 											</a>
 											<a
 												href={resolve('/(app)/recruiter/jobs/[id]/edit', { id: job._id })}
 												class="btn btn-sm min-h-9 hover:preset-tonal"
 											>
 												<PencilSquare size="16" aria-hidden="true" />
-												Edit<span class="sr-only">: {job.title}</span>
+												{common.edit}<span class="sr-only">{m.ofJob(job.title)}</span>
 											</a>
 											<button
 												type="button"
@@ -509,7 +509,7 @@
 												onclick={() => askDelete(job)}
 											>
 												<Trash size="16" aria-hidden="true" />
-												Delete<span class="sr-only">: {job.title}</span>
+												{common.delete}<span class="sr-only">{m.ofJob(job.title)}</span>
 											</button>
 										</div>
 									</div>
@@ -525,7 +525,7 @@
 
 {#snippet placeholder()}
 	<div class="space-y-4" aria-busy="true">
-		<p class="sr-only" role="status">Loading…</p>
+		<p class="sr-only" role="status">{common.loading}</p>
 		{#each [0, 1, 2] as row (row)}
 			<div
 				class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-3 p-4 sm:p-5"
@@ -553,7 +553,7 @@
 					onclick={openImport}
 				>
 					<DocumentArrowUp size="18" aria-hidden="true" />
-					Import from PDF
+					{m.importFromPdf}
 				</button>
 			{/if}
 			<a
@@ -561,7 +561,7 @@
 				class="btn preset-filled-primary-700-300 min-h-11 max-sm:flex-1"
 			>
 				<Plus size="18" aria-hidden="true" />
-				New job description
+				{m.newJob}
 			</a>
 		</div>
 		{#if allowance}
@@ -600,9 +600,9 @@
 
 <ConfirmDialog
 	open={!!deleting && !!user}
-	title={deleting ? `Delete “${deleting.job.title}”?` : ''}
+	title={deleting ? recruiterMessages.deleteJobTitle(deleting.job.title) : ''}
 	description={deleting ? deleteJobText(deleting.job.applicantCount) : ''}
-	confirmLabel="Delete"
+	confirmLabel={common.delete}
 	busy={deleting?.busy ?? false}
 	error={deleting?.error ?? ''}
 	onConfirm={confirmDelete}

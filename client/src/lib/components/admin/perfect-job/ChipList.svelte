@@ -10,13 +10,15 @@ and the reason is said.
 	import { tick } from 'svelte';
 	import { Plus, XMark } from 'svelte-heros-v2';
 	import { addListItems } from '#services/jobPosting.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import { m, type ChipListKind } from './ChipList.messages.ts';
 
 	let {
 		label,
 		value = $bindable([]),
 		max,
 		maxLength,
-		itemName,
+		kind,
 		placeholder = '',
 		hint = '',
 		error = '',
@@ -29,8 +31,8 @@ and the reason is said.
 		max: number;
 		/** Characters per item */
 		maxLength: number;
-		/** What one item is called in messages: 'skill', 'place', 'job title' */
-		itemName: string;
+		/** What the list holds, for its messages: job titles, places, skills */
+		kind: ChipListKind;
 		placeholder?: string;
 		hint?: string;
 		/** What is wrong with the list, shown under it */
@@ -48,20 +50,19 @@ and the reason is said.
 	let input: HTMLInputElement | undefined = $state();
 	let list: HTMLUListElement | undefined = $state();
 	let full = $derived(value.length >= max);
-
-	const quoted = (items: string[]) => items.map((item) => `“${item}”`).join(', ');
+	let names = $derived(m.kinds[kind]);
 
 	function add(raw: string) {
 		const result = addListItems(value, raw.replace(/[,;]/g, '\n'), { max, maxLength });
 		if (result.added.length > 0) value = result.list;
-		const added = result.added.length > 0 ? `Added ${quoted(result.added)}.` : '';
+		const added = result.added.length > 0 ? m.added(result.added) : '';
 		problem =
 			result.problem === 'full'
-				? `The list is full: ${max} ${itemName}s at most.`
+				? names.full(max)
 				: result.problem === 'too_long'
-					? `Each ${itemName} must be at most ${maxLength} characters.`
+					? names.tooLong(maxLength)
 					: result.problem === 'duplicate'
-						? 'Already in the list.'
+						? m.duplicate
 						: '';
 		message = [added, problem].filter(Boolean).join(' ');
 		// What could not be added stays in the field, to fix it
@@ -85,7 +86,7 @@ and the reason is said.
 		const item = value[index];
 		value = value.filter((_, position) => position !== index);
 		problem = '';
-		message = `Removed “${item}”.`;
+		message = m.removed(item);
 		await tick();
 		// The next chip's remove button, else the previous one, else the text field
 		const buttons = list?.querySelectorAll<HTMLButtonElement>('[data-remove-item]');
@@ -111,7 +112,7 @@ and the reason is said.
 			enterkeyhint="done"
 			maxlength={maxLength}
 			disabled={disabled || (full && !text)}
-			placeholder={full ? `${max} ${itemName}s at most` : placeholder}
+			placeholder={full ? names.atMost(max) : placeholder}
 			aria-invalid={error ? true : undefined}
 			aria-describedby="{id}-hint{error ? ` ${id}-error` : ''}"
 			{onkeydown}
@@ -127,24 +128,24 @@ and the reason is said.
 			}}
 		>
 			<Plus size="18" aria-hidden="true" />
-			Add<span class="sr-only"> {itemName}</span>
+			{common.add}<span class="sr-only"> {names.add}</span>
 		</button>
 	</div>
 	{#if problem}
 		<p class="text-sm text-warning-800-200" aria-hidden="true">{problem}</p>
 	{/if}
 	<p id="{id}-hint" class="text-xs text-surface-700-300">
-		{hint ? `${hint} ` : ''}Press Enter to add. {value.length} of {max}.
+		{hint ? `${hint} ` : ''}{m.pressEnter(value.length, max)}
 	</p>
 	{#if value.length > 0}
-		<ul bind:this={list} class="flex flex-wrap gap-2" aria-label="{label} added">
+		<ul bind:this={list} class="flex flex-wrap gap-2" aria-label={m.addedList(label)}>
 			{#each value as item, index (item)}
 				<li class="chip preset-tonal-primary max-w-full gap-1 py-1 ps-3 pe-1 text-sm">
 					<span class="min-w-0 break-words whitespace-normal">{item}</span>
 					<button
 						type="button"
 						class="btn-icon size-7 shrink-0 rounded-full hover:preset-tonal"
-						aria-label="Remove {itemName} {item}"
+						aria-label={names.remove(item)}
 						data-remove-item
 						{disabled}
 						onclick={() => remove(index)}

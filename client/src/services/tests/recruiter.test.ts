@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { JobStatus } from 'portfolio-common';
 import {
-	APPLICANT_SOURCE_LABELS,
-	NETWORK_ERROR,
 	addApplicantError,
 	applicantCountText,
 	applicantDateText,
@@ -18,11 +16,13 @@ import {
 	hasPublicPage,
 	isJobPostingGone,
 	isoDate,
+	networkError,
 	removeApplicantText,
 	shownJobsText,
 	statusChangedText,
 	statusFilters
 } from '../recruiter';
+import { m } from '../recruiter.messages';
 
 const jobs = (...statuses: JobStatus[]) => statuses.map((status, index) => ({ id: index, status }));
 
@@ -136,8 +136,8 @@ describe('applicants', () => {
 	});
 
 	it('labels the source and the date', () => {
-		expect(APPLICANT_SOURCE_LABELS.applied).toBe('Applied');
-		expect(APPLICANT_SOURCE_LABELS.added_by_recruiter).toBe('Added by you');
+		expect(m.applicantSource.applied).toBe('Applied');
+		expect(m.applicantSource.added_by_recruiter).toBe('Added by you');
 		expect(applicantDateText({ source: 'applied', appliedAt: '2026-11-03T10:00:00Z' }, 'UTC')).toBe(
 			'Applied 3 Nov 2026'
 		);
@@ -229,7 +229,7 @@ describe('addApplicantError', () => {
 		expect(addApplicantError(403, 'Create your recruiter space first', 'ada').field).toBe(false);
 		expect(addApplicantError(401, 'Unauthorized', 'ada').message).toMatch(/session expired/);
 		expect(addApplicantError(503, new TypeError('Failed to fetch'), 'ada')).toEqual({
-			message: NETWORK_ERROR,
+			message: networkError(),
 			field: false
 		});
 		expect(addApplicantError(500, 'boom', 'ada')).toEqual({
@@ -242,7 +242,7 @@ describe('addApplicantError', () => {
 describe('failureText', () => {
 	it('blames the connection when the request got no answer', () => {
 		expect(failureText(new TypeError('Failed to fetch'), 'Could not delete it.')).toBe(
-			NETWORK_ERROR
+			networkError()
 		);
 	});
 

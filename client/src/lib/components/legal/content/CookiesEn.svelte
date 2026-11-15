@@ -1,6 +1,7 @@
 <!--
 @component
-Cookies and local storage (English): the session cookie, Google Identity Services cookies, each
+Cookies and local storage (English): the session cookie, the language cookie, Google Identity
+Services cookies, each
 localStorage key with its purpose and lifetime, why there is no consent banner (ePrivacy art. 5(3),
 French loi Informatique et Libertés art. 82), how to clear them.
 -->
@@ -18,7 +19,7 @@ French loi Informatique et Libertés art. 82), how to clear them.
 <script lang="ts">
 	import LegalDocLink from '../LegalDocLink.svelte';
 	import { SITE_NAME } from '../legalDocuments.ts';
-	import { LINKS, SESSION_DAYS } from './facts.ts';
+	import { LANGUAGE_COOKIE_DAYS, LINKS, SESSION_DAYS } from './facts.ts';
 
 	const lang = 'en';
 </script>
@@ -26,16 +27,16 @@ French loi Informatique et Libertés art. 82), how to clear them.
 <!-- eslint-disable svelte/no-navigation-without-resolve -- the links left are external sites, mailto: and in-page anchors (facts.ts); the site's pages go through resolve() (LegalDocLink) -->
 <h3 id="summary">In short</h3>
 <p>
-	{SITE_NAME} sets <strong>one cookie of its own</strong>, which keeps you signed in, and uses your
-	browser's <strong>local storage</strong> for your theme and your unsaved drafts. There is no
-	analytics, no advertising and no social media tracker. Google's sign-in is loaded only when you
-	ask for it (for example by clicking "Sign in"); it then sets its own cookie <code>g_state</code> on
-	this site's domain and its cookies on accounts.google.com, under Google's policy. Everything listed
-	here is strictly necessary for a service you ask for, which is why the site does not ask for your consent
-	with a banner (article 5(3) of the ePrivacy Directive, article 82 of the French loi Informatique et
-	Libertés). The descriptions of a portfolio can also show images hosted on other sites, chosen by its
-	owner: your browser loads them from those sites, which receive your IP address and browser details and
-	apply their own rules.
+	{SITE_NAME} sets <strong>two cookies of its own</strong>, one which keeps you signed in and one
+	which remembers the language you chose, and uses your browser's <strong>local storage</strong> for
+	your theme and your unsaved drafts. There is no analytics, no advertising and no social media
+	tracker. Google's sign-in is loaded only when you ask for it (for example by clicking "Sign in");
+	it then sets its own cookie <code>g_state</code> on this site's domain and its cookies on accounts.google.com,
+	under Google's policy. Everything listed here is strictly necessary for a service you ask for, which
+	is why the site does not ask for your consent with a banner (article 5(3) of the ePrivacy Directive,
+	article 82 of the French loi Informatique et Libertés). The descriptions of a portfolio can also show
+	images hosted on other sites, chosen by its owner: your browser loads them from those sites, which receive
+	your IP address and browser details and apply their own rules.
 </p>
 
 <h3 id="cookies">Cookies</h3>
@@ -59,6 +60,18 @@ French loi Informatique et Libertés art. 82), how to clear them.
 					only with this site's own requests (SameSite). Strictly necessary.
 				</td>
 				<td>{SESSION_DAYS} days, or until you sign out</td>
+			</tr>
+			<tr>
+				<td><code>lang</code></td>
+				<td>This site</td>
+				<td>
+					Remembers the language you chose (<code>en</code> or <code>fr</code>, nothing else), so
+					the pages open in it. Set only when you choose a language, with the language switch or a
+					link that asks for one (<code>?lang=fr</code>); until then the pages follow your browser's
+					language and no cookie is set. It cannot be read by scripts on the page (HttpOnly).
+					Strictly necessary for a setting you ask for.
+				</td>
+				<td>{LANGUAGE_COOKIE_DAYS} days, renewed each time you choose</td>
 			</tr>
 			<tr>
 				<td><code>g_state</code></td>
@@ -162,8 +175,8 @@ French loi Informatique et Libertés art. 82), how to clear them.
 	<li>Signing out deletes the session cookie and the copy of your session.</li>
 	<li>
 		Your browser's settings let you delete this site's cookies and storage ("site data"), or block
-		them. Blocking the <code>auth</code> cookie prevents signing in; reading portfolios and job descriptions
-		still works.
+		them. Blocking the <code>auth</code> cookie prevents signing in; reading portfolios and job
+		descriptions still works. Without the <code>lang</code> cookie the pages follow your browser's language.
 	</li>
 	<li>
 		Google's cookies are managed in your browser and your Google account, under the

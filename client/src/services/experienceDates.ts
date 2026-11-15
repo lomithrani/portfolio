@@ -1,6 +1,8 @@
 // Experience and project dates have month precision: the API stores them as UTC
 // midnight of the 1st of the month. Everything here reads them in UTC, so the server
 // render and every visitor's time zone show the same month.
+import { intlLocale } from 'portfolio-common';
+import { m } from './experienceDates.messages.ts';
 
 type DateInput = Date | string | undefined | null;
 
@@ -8,11 +10,18 @@ const pad = (value: number, length = 2) => String(value).padStart(length, '0');
 
 const MONTH_KEY = /^(\d{4})-(\d{2})$/;
 
-const monthFormat = new Intl.DateTimeFormat('en-US', {
-	month: 'short',
-	year: 'numeric',
-	timeZone: 'UTC'
-});
+// One format per language, made the first time a month is shown in it (never at module load:
+// the language is only known while a page is rendered)
+const monthFormats = new Map<string, Intl.DateTimeFormat>();
+const monthFormat = (): Intl.DateTimeFormat => {
+	const locale = intlLocale('en-US');
+	let format = monthFormats.get(locale);
+	if (!format) {
+		format = new Intl.DateTimeFormat(locale, { month: 'short', year: 'numeric', timeZone: 'UTC' });
+		monthFormats.set(locale, format);
+	}
+	return format;
+};
 
 /** A valid Date from a stored date, or undefined */
 export function toDate(date: DateInput): Date | undefined {
@@ -40,10 +49,13 @@ export function fromMonthKey(month: string): Date {
 	return new Date(Date.UTC(Number(match[1]), monthNumber - 1, 1));
 }
 
-/** 'Mar 2024', always formatted in UTC (en-US); '' for an invalid date */
+/**
+ * 'Mar 2024' ('mars 2024' in French), always formatted in UTC, in the page's language; '' for
+ * an invalid date
+ */
 export function formatMonth(date: Date | string): string {
 	const value = toDate(date);
-	return value ? monthFormat.format(value) : '';
+	return value ? monthFormat().format(value) : '';
 }
 
 /** 'Mar 2024 – Present', 'Mar 2024 – Jun 2025', 'Mar 2024' (same month); '' when no start */
@@ -51,12 +63,10 @@ export function formatMonthRange(start?: DateInput, end?: DateInput): string {
 	const from = toDate(start);
 	if (!from) return '';
 	const to = toDate(end);
-	if (!to) return `${formatMonth(from)} – Present`;
+	if (!to) return m.ongoing(formatMonth(from));
 	if (monthIndex(to) === monthIndex(from)) return formatMonth(from);
-	return `${formatMonth(from)} – ${formatMonth(to)}`;
+	return m.range(formatMonth(from), formatMonth(to));
 }
-
-const plural = (count: number, unit: string) => `${count} ${unit}${count > 1 ? 's' : ''}`;
 
 /** '2 yrs 3 mos', '8 mos', '1 yr' (inclusive months, end defaults to now); '' when no start */
 export function formatDuration(start?: DateInput, end?: DateInput, now: Date = new Date()): string {
@@ -65,21 +75,13 @@ export function formatDuration(start?: DateInput, end?: DateInput, now: Date = n
 	const to = toDate(end) ?? now;
 	const months = monthIndex(to) - monthIndex(from) + 1;
 	if (months < 1) return '';
-	const years = Math.floor(months / 12);
-	const rest = months % 12;
-	return [years ? plural(years, 'yr') : '', rest ? plural(rest, 'mo') : '']
-		.filter(Boolean)
-		.join(' ');
+	return m.duration(Math.floor(months / 12), months % 12);
 }
 
 /** '5 years 2 months', '1 year', '3 months', in full words; '' under a month */
 export function formatMonthCount(months: number): string {
 	if (!(months >= 1)) return '';
-	const years = Math.floor(months / 12);
-	const rest = Math.floor(months % 12);
-	return [years ? plural(years, 'year') : '', rest ? plural(rest, 'month') : '']
-		.filter(Boolean)
-		.join(' ');
+	return m.monthCount(Math.floor(months / 12), Math.floor(months % 12));
 }
 
 type Dated = { start?: Date | string | null; end?: Date | string | null };

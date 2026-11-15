@@ -1,7 +1,7 @@
 <!--
 @component
 Cookies et stockage local (français), traduction fidèle de CookiesEn.svelte : le cookie de
-session, les cookies de Google Identity Services, chaque clé du stockage local avec sa finalité et
+session, le cookie de langue, les cookies de Google Identity Services, chaque clé du stockage local avec sa finalité et
 sa durée, pourquoi il n'y a pas de bandeau (directive ePrivacy art. 5(3), loi Informatique et
 Libertés art. 82), comment les effacer.
 -->
@@ -19,7 +19,7 @@ Libertés art. 82), comment les effacer.
 <script lang="ts">
 	import LegalDocLink from '../LegalDocLink.svelte';
 	import { SITE_NAME } from '../legalDocuments.ts';
-	import { LINKS, SESSION_DAYS } from './facts.ts';
+	import { LANGUAGE_COOKIE_DAYS, LINKS, SESSION_DAYS } from './facts.ts';
 
 	const lang = 'fr';
 </script>
@@ -27,17 +27,19 @@ Libertés art. 82), comment les effacer.
 <!-- eslint-disable svelte/no-navigation-without-resolve -- the links left are external sites, mailto: and in-page anchors (facts.ts); the site's pages go through resolve() (LegalDocLink) -->
 <h3 id="summary">En bref</h3>
 <p>
-	{SITE_NAME} dépose <strong>un seul cookie qui lui est propre</strong>, qui vous garde connecté, et
-	utilise le <strong>stockage local</strong> de votre navigateur pour votre thème et vos brouillons
-	non enregistrés. Il n'y a ni mesure d'audience, ni publicité, ni traceur de réseaux sociaux. La
-	connexion avec Google n'est chargée que lorsque vous la demandez (par exemple en cliquant sur « Se
-	connecter ») ; elle dépose alors son propre cookie <code>g_state</code> sur le domaine de ce site et
-	ses cookies sur accounts.google.com, selon les règles de Google. Tout ce qui est listé ici est strictement
-	nécessaire à un service que vous demandez : c'est pourquoi le site ne vous demande pas votre consentement
-	par un bandeau (article 5(3) de la directive ePrivacy, article 82 de la loi Informatique et Libertés).
-	Les descriptions d'un portfolio peuvent aussi afficher des images hébergées sur d'autres sites, choisies
-	par son propriétaire : votre navigateur les charge depuis ces sites, qui reçoivent votre adresse IP
-	et des informations sur votre navigateur et appliquent leurs propres règles.
+	{SITE_NAME} dépose <strong>deux cookies qui lui sont propres</strong>, l'un qui vous garde
+	connecté, l'autre qui retient la langue que vous avez choisie, et utilise le
+	<strong>stockage local</strong>
+	de votre navigateur pour votre thème et vos brouillons non enregistrés. Il n'y a ni mesure d'audience,
+	ni publicité, ni traceur de réseaux sociaux. La connexion avec Google n'est chargée que lorsque vous
+	la demandez (par exemple en cliquant sur « Se connecter ») ; elle dépose alors son propre cookie
+	<code>g_state</code> sur le domaine de ce site et ses cookies sur accounts.google.com, selon les règles
+	de Google. Tout ce qui est listé ici est strictement nécessaire à un service que vous demandez : c'est
+	pourquoi le site ne vous demande pas votre consentement par un bandeau (article 5(3) de la directive
+	ePrivacy, article 82 de la loi Informatique et Libertés). Les descriptions d'un portfolio peuvent aussi
+	afficher des images hébergées sur d'autres sites, choisies par son propriétaire : votre navigateur les
+	charge depuis ces sites, qui reçoivent votre adresse IP et des informations sur votre navigateur et
+	appliquent leurs propres règles.
 </p>
 
 <h3 id="cookies">Cookies</h3>
@@ -62,6 +64,20 @@ Libertés art. 82), comment les effacer.
 					nécessaire.
 				</td>
 				<td>{SESSION_DAYS} jours, ou jusqu'à votre déconnexion</td>
+			</tr>
+			<tr>
+				<td><code>lang</code></td>
+				<td>Ce site</td>
+				<td>
+					Retient la langue que vous avez choisie (<code>en</code> ou <code>fr</code>, rien
+					d'autre), pour que les pages s'ouvrent dans cette langue. Déposé seulement lorsque vous
+					choisissez une langue, avec le sélecteur de langue ou un lien qui en demande une (<code
+						>?lang=fr</code
+					>) ; jusque-là, les pages suivent la langue de votre navigateur et aucun cookie n'est
+					déposé. Il ne peut pas être lu par les scripts de la page (HttpOnly). Strictement
+					nécessaire à un réglage que vous demandez.
+				</td>
+				<td>{LANGUAGE_COOKIE_DAYS} jours, renouvelés à chaque choix</td>
 			</tr>
 			<tr>
 				<td><code>g_state</code></td>
@@ -172,8 +188,9 @@ Libertés art. 82), comment les effacer.
 	<li>La déconnexion supprime le cookie de session et la copie de votre session.</li>
 	<li>
 		Les réglages de votre navigateur permettent de supprimer les cookies et le stockage de ce site
-		(« données de site »), ou de les bloquer. Bloquer le cookie <code>auth</code> empêche de se connecter
-		; la lecture des portfolios et des offres d'emploi fonctionne toujours.
+		(« données de site »), ou de les bloquer. Bloquer le cookie <code>auth</code> empêche de se
+		connecter ; la lecture des portfolios et des offres d'emploi fonctionne toujours. Sans le cookie
+		<code>lang</code>, les pages suivent la langue de votre navigateur.
 	</li>
 	<li>
 		Les cookies de Google se gèrent dans votre navigateur et votre compte Google, selon les

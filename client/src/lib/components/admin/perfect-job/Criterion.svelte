@@ -15,6 +15,7 @@ criterion's part of the form, changed in place.
 		type PerfectJobCriterion
 	} from 'portfolio-common';
 	import type { CriterionForm } from '#services/perfectJob.ts';
+	import { m } from './Criterion.messages.ts';
 
 	let {
 		criterion,
@@ -71,7 +72,7 @@ criterion's part of the form, changed in place.
 
 		<div class="space-y-3 border-t border-surface-200-800 pt-4">
 			<fieldset class="space-y-1.5" {disabled}>
-				<legend class="label-text text-sm">How much it matters</legend>
+				<legend class="label-text text-sm">{m.importance}</legend>
 				<div class="flex flex-wrap gap-1.5">
 					{#each IMPORTANCE_LEVELS as level (level)}
 						<label
@@ -86,7 +87,7 @@ criterion's part of the form, changed in place.
 								type="radio"
 								name="{id}-importance"
 								value={level}
-								aria-label="{level}: {IMPORTANCE_LABELS[level]}"
+								aria-label={m.level(level, IMPORTANCE_LABELS[level])}
 								bind:group={rating.importance}
 							/>
 							{level}
@@ -94,9 +95,9 @@ criterion's part of the form, changed in place.
 					{/each}
 				</div>
 				<p class="text-xs text-surface-700-300" data-importance>
-					{IMPORTANCE_LABELS[rating.importance]}{share === undefined
-						? ''
-						: ` · counts for ${share}% of the score`}
+					{share === undefined
+						? IMPORTANCE_LABELS[rating.importance]
+						: m.share(IMPORTANCE_LABELS[rating.importance], share)}
 				</p>
 			</fieldset>
 			<label class="flex items-start gap-3">
@@ -108,9 +109,9 @@ criterion's part of the form, changed in place.
 					aria-describedby="{id}-breaker-help"
 				/>
 				<span class="space-y-0.5">
-					<span class="block text-sm">Deal-breaker</span>
+					<span class="block text-sm">{m.dealBreaker}</span>
 					<span class="block text-xs text-surface-700-300" id="{id}-breaker-help">
-						A job that does not match it at all scores 0, whatever the rest.
+						{m.dealBreakerHelp}
 					</span>
 				</span>
 			</label>

@@ -20,7 +20,6 @@ import {
   giveBack,
   outputJson,
   pdfExtractionRequest,
-  plural,
   readPdfBase64,
   streamPaidCall,
   utcText
@@ -40,6 +39,8 @@ import { peekRateLimit, rateLimitKey, refundRateLimit, takeRateLimit } from './r
 import type { RateLimit, RateLimitUsage } from './rateLimit'
 import { requireRecruiterSpace } from './recruiters'
 import type { RecruiterSpace } from './recruiters'
+import { m as shared } from './claudePdfExtraction.messages'
+import { m } from './jobImport.messages'
 
 // Job description import: a recruiter uploads a job description as a PDF,
 // Claude Haiku extracts a job posting, and the API answers with a draft the
@@ -86,12 +87,9 @@ export const jobImportCounters = { globalKey: 'job-import:global' }
 
 const LABELS: PdfImportLabels = {
   name: 'Job description import',
-  unavailable: 'Job description import is temporarily unavailable, try again later',
-  interrupted:
-    'The import did not finish. It still counts toward your imports (the job description may already have been read): try again later, or with a shorter document'
+  unavailable: () => m.unavailable,
+  interrupted: () => m.interrupted
 }
-
-const DISABLED = 'Job description import is not enabled on this server'
 
 interface JobImportSettings {
   apiKey: string
@@ -232,7 +230,7 @@ export interface JobImportResult {
  * invalid base64 or a file that is not a PDF, 413 above MAX_JOB_PDF_BYTES
  */
 export const readJobPdf = (file: string) =>
-  readPdfBase64(file, 'The file is too large: job description import takes PDFs of up to 4 MB')
+  readPdfBase64(file, () => m.fileTooLarge)
 
 /**
  * POST /jobs/import: checks that the feature is on, that the caller has a
@@ -243,7 +241,7 @@ export const readJobPdf = (file: string) =>
  */
 export async function importJobDescription(userId: string, file: string, fileName?: string): Promise<JobImportResult> {
   const settings = currentSettings()
-  if (!settings) throw new JobImportDisabledError(DISABLED)
+  if (!settings) throw new JobImportDisabledError(() => m.disabled)
   const space = await requireRecruiterSpace(userId)
   const pdf = readJobPdf(file)
   const { limit } = planUsage(space)
@@ -256,16 +254,14 @@ export async function importJobDescription(userId: string, file: string, fileNam
   try {
     const used = await takePlanImport(userId, limit)
     if (used === null) {
-      throw new PlanLimitReachedError(
-        `You have used the ${plural(limit, 'job description import', 'job description imports')} included in the ${space.plan} plan. Paid plans are coming soon.`
-      )
+      throw new PlanLimitReachedError(() => m.planLimitReached(limit, m.plans[space.plan]))
     }
     refunds.push(() => refundPlanImport(userId))
     const site = await takeRateLimit(jobImportCounters.globalKey, settings.perDay)
     refunds.push(() => refundRateLimit(site.counterId))
     if (site.retryAfterSeconds !== null) {
       throw new TooManyRequestsError(
-        `Job description import has reached its daily limit on this site. Try again after ${utcText(site.resetsAt)}`,
+        () => m.dailyLimitReached(utcText(site.resetsAt)),
         site.retryAfterSeconds
       )
     }
@@ -273,7 +269,7 @@ export async function importJobDescription(userId: string, file: string, fileNam
     const attempts = await takeRateLimit(jobImportAttemptsKey(userId), settings.attempts)
     if (attempts.retryAfterSeconds !== null) {
       throw new TooManyRequestsError(
-        `You have used your ${plural(settings.attempts.limit, 'job description import attempt', 'job description import attempts')} for today. Try again after ${utcText(attempts.resetsAt)}`,
+        () => m.attemptsUsed(settings.attempts.limit, utcText(attempts.resetsAt)),
         attempts.retryAfterSeconds
       )
     }
@@ -294,7 +290,7 @@ export async function importJobDescription(userId: string, file: string, fileNam
       deadlineMs: jobImportTimeouts.countMs
     })
     if (inputTokens > MAX_JOB_INPUT_TOKENS) {
-      throw new UnprocessableContentError('This PDF is too long for an import (more than ~10 pages)')
+      throw new UnprocessableContentError(() => shared.pdfTooLong)
     }
 
     const message = await streamPaidCall(client, request, {
@@ -331,13 +327,11 @@ const readExtraction = (message: Anthropic.Message): JobExtraction => {
   // Before reading the content: neither answer follows the schema
   if (message.stop_reason === 'refusal') {
     logCall(0)
-    throw new UnprocessableContentError('This file could not be read as a job description')
+    throw new UnprocessableContentError(() => m.notAJobDescription)
   }
   if (message.stop_reason === 'max_tokens' || message.stop_reason === 'model_context_window_exceeded') {
     logCall(0)
-    throw new UnprocessableContentError(
-      'This job description has too much content to import at once. Try a shorter version'
-    )
+    throw new UnprocessableContentError(() => m.tooMuchContent)
   }
 
   // Structured outputs make an answer that is not JSON unlikely; the draft is

@@ -1037,6 +1037,7 @@ test.describe('the navigation rail', () => {
 
 	// By its address: collapsed, the rail's links are hidden, so they have no role to be found by
 	const railLink = (page: Page) => page.locator('aside a[href$="/experiences"]');
+	/** The rail's links: its pages (two for a visitor), then the language switch */
 	const railLinks = (page: Page) => page.locator('aside').getByRole('link');
 	const handle = (page: Page) => page.getByRole('button', { name: /^(Open|Close) sidebar$/ });
 	const left = async (locator: Locator) => (await locator.boundingBox())!.x;
@@ -1101,7 +1102,7 @@ test.describe('the navigation rail', () => {
 		await page.keyboard.press('Enter');
 		await expect(railLink(page)).toBeInViewport({ ratio: 1 });
 		await expect(page.getByRole('button', { name: 'Close sidebar' })).toBeVisible();
-		await expect(railLinks(page)).toHaveCount(2);
+		await expect(railLinks(page)).toHaveCount(3);
 		for (const link of await railLinks(page).all()) {
 			const fits = await link.evaluate(
 				(element) =>
@@ -1155,7 +1156,7 @@ test.describe('the navigation rail', () => {
 		await page.setViewportSize({ width: 1280, height: 700 });
 		await page.goto(`/${DOMAIN}/experiences`);
 		await expect(railLink(page)).toBeInViewport({ ratio: 1 });
-		await expect(railLinks(page)).toHaveCount(2);
+		await expect(railLinks(page)).toHaveCount(3);
 		await context.close();
 	});
 });

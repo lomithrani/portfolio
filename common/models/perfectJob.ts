@@ -17,6 +17,7 @@ import {
 	WORK_MODES,
 	normalizeList
 } from './jobPosting';
+import { perfectJobMessages as m } from './perfectJob.messages';
 import type {
 	ContractType,
 	JobFieldPath,
@@ -237,42 +238,18 @@ export const criterionJobFields = (criterion: PerfectJobCriterion): JobFieldPath
 
 // ── Display ─────────────────────────────────────────────────
 
-export const IMPORTANCE_LABELS: Record<Importance, string> = {
-	1: 'Nice to have',
-	2: 'Matters a little',
-	3: 'Important',
-	4: 'Very important',
-	5: 'Essential'
-};
+// The labels are messages (perfectJob.messages.ts): read one when it is shown
+// (`IMPORTANCE_LABELS[level]`), it is in the language in use. A label kept in a module-level
+// constant would stay in English.
+
+export const IMPORTANCE_LABELS: Record<Importance, string> = m.importance;
 
 /** A criterion's name, for the owner's editor and for the recruiter reading their job's score */
-export const PERFECT_JOB_CRITERION_LABELS: Record<PerfectJobCriterion, string> = {
-	titles: 'Job title',
-	seniority: 'Seniority',
-	management: 'Management',
-	workMode: 'Work mode',
-	cities: 'Location',
-	commute: 'Commute',
-	contractTypes: 'Contract',
-	workingTime: 'Working time',
-	rttDays: 'RTT days',
-	pay: 'Pay',
-	skills: 'Skills',
-	avoidedSkills: 'Skills to avoid',
-	travel: 'Travel'
-};
+export const PERFECT_JOB_CRITERION_LABELS: Record<PerfectJobCriterion, string> = m.criterion;
 
-export const COMMUTE_MODE_LABELS: Record<CommuteMode, string> = {
-	transit: 'Public transport',
-	bike: 'Bike',
-	car: 'Car',
-	walk: 'On foot'
-};
+export const COMMUTE_MODE_LABELS: Record<CommuteMode, string> = m.commuteMode;
 
-export const MANAGEMENT_ROLE_LABELS: Record<ManagementRole, string> = {
-	manager: 'Managing people (direct reports)',
-	contributor: 'No direct reports'
-};
+export const MANAGEMENT_ROLE_LABELS: Record<ManagementRole, string> = m.managementRole;
 
 // ── Parsing ─────────────────────────────────────────────────
 
@@ -306,19 +283,34 @@ type CriterionParser<Value> = (
 	problem: (setting: string, message: string) => void
 ) => Value | undefined;
 
+// The parsers below are built once, when this module loads, and a message is in the language in
+// use when it is read: they are given where to find their messages (a group of them, or a
+// function), and read them when they report a problem.
+
+/** What a list of texts says when it is wrong: a group of perfectJob.messages.ts's `lists` */
+type ListMessages = {
+	readonly empty: string;
+	readonly tooMany: (max: number) => string;
+	readonly itemTooLong: (max: number) => string;
+};
+
 const textList =
-	<Key extends string>(setting: Key, max: number, what: string): CriterionParser<Record<Key, string[]>> =>
+	<Key extends string>(
+		setting: Key,
+		max: number,
+		messages: ListMessages
+	): CriterionParser<Record<Key, string[]>> =>
 	(source, problem) => {
 		const raw = source[setting];
 		if (!Array.isArray(raw) || raw.some((item) => typeof item !== 'string')) {
-			problem(setting, `Add at least one ${what}.`);
+			problem(setting, messages.empty);
 			return undefined;
 		}
 		const list = normalizeList(raw as string[]);
-		if (list.length === 0) problem(setting, `Add at least one ${what}.`);
-		else if (list.length > max) problem(setting, `At most ${max} ${what}s.`);
+		if (list.length === 0) problem(setting, messages.empty);
+		else if (list.length > max) problem(setting, messages.tooMany(max));
 		else if (list.some((item) => item.length > PERFECT_JOB_LIMITS.listItem)) {
-			problem(setting, `Each ${what} must be at most ${PERFECT_JOB_LIMITS.listItem} characters.`);
+			problem(setting, messages.itemTooLong(PERFECT_JOB_LIMITS.listItem));
 		} else return { [setting]: list } as Record<Key, string[]>;
 		return undefined;
 	};
@@ -327,12 +319,12 @@ const choices =
 	<Key extends string, T extends string>(
 		setting: Key,
 		allowed: readonly T[],
-		message: string
+		message: () => string
 	): CriterionParser<Record<Key, T[]>> =>
 	(source, problem) => {
 		const picked = subset(source[setting], allowed);
 		if (!picked || picked.length === 0) {
-			problem(setting, message);
+			problem(setting, message());
 			return undefined;
 		}
 		return { [setting]: picked } as Record<Key, T[]>;
@@ -343,13 +335,13 @@ const optionalNumber = (
 	source: Source,
 	setting: string,
 	range: NumberRange,
-	label: string,
+	message: (min: number, max: number) => string,
 	problem: (setting: string, message: string) => void
 ): number | undefined => {
 	const raw = source[setting];
 	if (raw === undefined || raw === null) return undefined;
 	if (inRange(raw, range)) return raw;
-	problem(setting, `${label} must be a whole number from ${range.min} to ${range.max}.`);
+	problem(setting, message(range.min, range.max));
 	return undefined;
 };
 
@@ -369,21 +361,25 @@ type CriterionValue<K extends PerfectJobCriterion> = Omit<
 >;
 
 const PARSERS: { [K in PerfectJobCriterion]: CriterionParser<CriterionValue<K>> } = {
-	titles: textList('keywords', PERFECT_JOB_LIMITS.titles, 'job title'),
-	seniority: choices('levels', SENIORITY_LEVELS, 'Pick at least one seniority level.'),
+	titles: textList('keywords', PERFECT_JOB_LIMITS.titles, m.problems.lists.jobTitle),
+	seniority: choices('levels', SENIORITY_LEVELS, () => m.problems.seniorityRequired),
 	management: (source, problem) => {
 		const role = source.role as ManagementRole;
 		if (MANAGEMENT_ROLES.includes(role)) return { role };
-		problem('role', 'Say whether you want to manage people.');
+		problem('role', m.problems.managementRequired);
 		return undefined;
 	},
 	workMode: (source, problem) => {
-		const picked = choices('modes', WORK_MODES, 'Pick at least one work mode.')(source, problem);
+		const picked = choices(
+			'modes',
+			WORK_MODES,
+			() => m.problems.workModeRequired
+		)(source, problem);
 		const days = optionalNumber(
 			source,
 			'minRemoteDays',
 			PERFECT_JOB_LIMITS.minRemoteDays,
-			'Remote days a week',
+			m.problems.minRemoteDays,
 			problem
 		);
 		if (!picked) return undefined;
@@ -392,39 +388,39 @@ const PARSERS: { [K in PerfectJobCriterion]: CriterionParser<CriterionValue<K>> 
 			? { ...picked, minRemoteDays: days }
 			: picked;
 	},
-	cities: textList('places', PERFECT_JOB_LIMITS.cities, 'place'),
+	cities: textList('places', PERFECT_JOB_LIMITS.cities, m.problems.lists.place),
 	commute: (source, problem) => {
 		const from = typeof source.from === 'string' ? source.from.replace(/\s+/g, ' ').trim() : '';
-		if (!from) problem('from', 'Give the address you would travel from.');
+		if (!from) problem('from', m.problems.commuteFromRequired);
 		else if (from.length > PERFECT_JOB_LIMITS.address) {
-			problem('from', `The address is at most ${PERFECT_JOB_LIMITS.address} characters.`);
+			problem('from', m.problems.commuteFromTooLong(PERFECT_JOB_LIMITS.address));
 		}
 		const picked = choices(
 			'modes',
 			COMMUTE_MODES,
-			'Pick at least one way of travelling.'
+			() => m.problems.commuteModeRequired
 		)(source, problem);
 		const minutes = source.maxMinutesPerWeek;
 		if (!inRange(minutes, PERFECT_JOB_LIMITS.commuteMinutesPerWeek)) {
-			problem('maxMinutesPerWeek', 'Give the travel time you accept a week, from 10 minutes to 50 hours.');
+			problem('maxMinutesPerWeek', m.problems.commuteTime);
 			return undefined;
 		}
 		if (!picked || !from || from.length > PERFECT_JOB_LIMITS.address) return undefined;
 		const place = geoPlace(source.place);
 		return { from, ...(place ? { place } : {}), ...picked, maxMinutesPerWeek: minutes };
 	},
-	contractTypes: choices('types', FR_CONTRACT_TYPES, 'Pick at least one contract.'),
+	contractTypes: choices('types', FR_CONTRACT_TYPES, () => m.problems.contractRequired),
 	workingTime: (source, problem) => {
 		const picked = choices(
 			'arrangements',
 			WORKING_TIME_ARRANGEMENTS,
-			'Pick at least one way of counting working time.'
+			() => m.problems.workingTimeRequired
 		)(source, problem);
 		const hours = optionalNumber(
 			source,
 			'maxHoursPerWeek',
 			PERFECT_JOB_LIMITS.maxHoursPerWeek,
-			'Hours per week',
+			m.problems.maxHoursPerWeek,
 			problem
 		);
 		if (!picked) return undefined;
@@ -436,24 +432,24 @@ const PARSERS: { [K in PerfectJobCriterion]: CriterionParser<CriterionValue<K>> 
 		const min = source.min;
 		if (inRange(min, PERFECT_JOB_LIMITS.rttDays)) return { min };
 		const { min: low, max: high } = PERFECT_JOB_LIMITS.rttDays;
-		problem('min', `RTT days must be a whole number from ${low} to ${high}.`);
+		problem('min', m.problems.rttDays(low, high));
 		return undefined;
 	},
 	pay: (source, problem) => {
 		const before = { failed: false };
-		const amount = (setting: 'perYear' | 'perDay', label: string) => {
+		const amount = (setting: 'perYear' | 'perDay', message: string) => {
 			const raw = source[setting];
 			if (raw === undefined || raw === null) return undefined;
 			if (inRange(raw, PERFECT_JOB_LIMITS.pay)) return raw;
 			before.failed = true;
-			problem(setting, `${label} must be a whole number of euros, above 0.`);
+			problem(setting, message);
 			return undefined;
 		};
-		const perYear = amount('perYear', 'Pay per year');
-		const perDay = amount('perDay', 'Pay per day');
+		const perYear = amount('perYear', m.problems.payPerYear);
+		const perDay = amount('perDay', m.problems.payPerDay);
 		if (before.failed) return undefined;
 		if (perYear === undefined && perDay === undefined) {
-			problem('perYear', 'Give the pay you ask for: per year, per day, or both.');
+			problem('perYear', m.problems.payRequired);
 			return undefined;
 		}
 		return {
@@ -461,12 +457,12 @@ const PARSERS: { [K in PerfectJobCriterion]: CriterionParser<CriterionValue<K>> 
 			...(perDay === undefined ? {} : { perDay })
 		};
 	},
-	skills: textList('names', PERFECT_JOB_LIMITS.skills, 'skill'),
-	avoidedSkills: textList('names', PERFECT_JOB_LIMITS.avoidedSkills, 'skill'),
+	skills: textList('names', PERFECT_JOB_LIMITS.skills, m.problems.lists.skill),
+	avoidedSkills: textList('names', PERFECT_JOB_LIMITS.avoidedSkills, m.problems.lists.skill),
 	travel: (source, problem) => {
 		const max = source.max as TravelFrequency;
 		if (TRAVEL_FREQUENCIES.includes(max)) return { max };
-		problem('max', 'Pick how much travel you accept.');
+		problem('max', m.problems.travelRequired);
 		return undefined;
 	}
 };
@@ -477,13 +473,16 @@ function parseCriterion<K extends PerfectJobCriterion>(
 ): Parsed<NonNullable<PerfectJob[K]>> {
 	const problems: PerfectJobProblem[] = [];
 	if (!isObject(raw)) {
-		return { problems: [{ field: criterion, message: 'This criterion is not valid.' }] };
+		return { problems: [{ field: criterion, message: m.problems.invalidCriterion }] };
 	}
 	const { importance } = raw;
 	if (!IMPORTANCE_LEVELS.includes(importance as Importance)) {
 		problems.push({
 			field: `${criterion}.importance`,
-			message: `Say how much it matters, from ${IMPORTANCE_LEVELS[0]} to ${IMPORTANCE_LEVELS.at(-1)}.`
+			message: m.problems.importance(
+				IMPORTANCE_LEVELS[0],
+				IMPORTANCE_LEVELS[IMPORTANCE_LEVELS.length - 1]
+			)
 		});
 	}
 	const settings = PARSERS[criterion](raw, (setting, message) =>
@@ -510,7 +509,7 @@ export function parsePerfectJob(raw: unknown): {
 	problems: PerfectJobProblem[];
 } {
 	if (!isObject(raw)) {
-		return { criteria: {}, problems: [{ field: 'criteria', message: 'Criteria must be an object.' }] };
+		return { criteria: {}, problems: [{ field: 'criteria', message: m.problems.notAnObject }] };
 	}
 	const source = raw;
 	const criteria: PerfectJob = {};

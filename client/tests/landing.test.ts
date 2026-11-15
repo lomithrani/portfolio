@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Request, type Route } from '@playwright/test';
-import { LEGAL_VERSION, STALE_TERMS_MESSAGE } from 'portfolio-common';
+import { LEGAL_VERSION, legalMessages } from 'portfolio-common';
 import { API_URL, JWT_SECRET, gotoHydrated, ownerSession, signIn } from './support/owner';
 
 // The landing page (/) and its onboarding card. Google is never reached: its script is stubbed
@@ -110,7 +110,7 @@ test.describe('landing page, signed out', () => {
 		const response = await gotoHydrated(page, '/');
 
 		expect(response?.status()).toBe(200);
-		await expect(page).toHaveTitle('Your portfolio, your way | Portfolio');
+		await expect(page).toHaveTitle('The portfolio that screens jobs for you | Portfolio');
 		await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
 			'content',
 			/\/og-image\.png$/
@@ -121,7 +121,13 @@ test.describe('landing page, signed out', () => {
 		);
 		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/$/);
 		await expect(
-			page.getByRole('heading', { level: 2, name: /Your portfolio, your way/ })
+			page.getByRole('heading', {
+				level: 2,
+				name: 'Your portfolio, your way. No more calls about the wrong job.'
+			})
+		).toBeVisible();
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'First the match, then the call' })
 		).toBeVisible();
 		await expect(page.getByRole('link', { name: 'See an example' })).toHaveAttribute(
 			'href',
@@ -393,7 +399,7 @@ test.describe('landing page, candidate steps', () => {
 				type: 'validation',
 				on: 'body',
 				property: 'consent.termsVersion',
-				message: STALE_TERMS_MESSAGE
+				message: legalMessages.staleTerms
 			}
 		}));
 
@@ -407,7 +413,7 @@ test.describe('landing page, candidate steps', () => {
 			.check();
 		await card(page).getByRole('button', { name: 'Stub Google sign-in' }).click();
 
-		await expect(card(page).getByRole('alert')).toHaveText(STALE_TERMS_MESSAGE);
+		await expect(card(page).getByRole('alert')).toHaveText(legalMessages.staleTerms);
 		expect(logins).toHaveLength(1);
 		await expect(currentStep(page)).toContainText('Sign in with Google');
 	});

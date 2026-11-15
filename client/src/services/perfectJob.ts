@@ -17,6 +17,7 @@ import {
 	type WorkMode,
 	type WorkingTimeArrangement
 } from 'portfolio-common';
+import { m } from './perfectJob.messages';
 
 // The owner's perfect job (portfolio-common's perfectJob.ts), as the admin tab "Perfect job"
 // edits it (GET, PUT /perfect-job). Pure helpers: the form the tab keeps (every criterion, on or
@@ -235,11 +236,11 @@ export interface CommuteAvailability {
 /** '45 minutes', '1 hour', '2 h 30' */
 export const formatDuration = (minutes: number): string => {
 	const whole = Math.round(minutes);
-	if (whole < 60) return `${whole} minute${whole === 1 ? '' : 's'}`;
+	if (whole < 60) return m.duration.minutes(whole);
 	const [hours, rest] = [Math.floor(whole / 60), whole % 60];
 	return rest === 0
-		? `${hours} hour${hours === 1 ? '' : 's'}`
-		: `${hours} h ${String(rest).padStart(2, '0')}`;
+		? m.duration.hours(hours)
+		: m.duration.hoursAndMinutes(hours, String(rest).padStart(2, '0'));
 };
 
 /**
@@ -250,7 +251,7 @@ export const commuteBudgetHint = (hours: string, minutes: string): string => {
 	const total = typedDuration(hours, minutes);
 	if (!Number.isFinite(total) || total <= 0) return '';
 	const perTrip = (days: number) => formatDuration(total / (2 * days));
-	return `That is ${perTrip(WORK_DAYS_PER_WEEK)} each way for a job at the office every day, or ${perTrip(1)} each way for a job you go to once a week.`;
+	return m.commuteBudget(perTrip(WORK_DAYS_PER_WEEK), perTrip(1));
 };
 
 /**
@@ -283,22 +284,12 @@ export const criterionShares = (
 /** What a job is scored on, in one sentence (the tab's summary) */
 export const perfectJobSummary = (form: PerfectJobForm): string => {
 	const enabled = PERFECT_JOB_CRITERIA.filter((criterion) => form[criterion].enabled);
-	if (enabled.length === 0) {
-		return 'No criterion yet: nothing is asked of a job, so every job scores 100.';
-	}
+	if (enabled.length === 0) return m.summary.none;
 	// The ones that matter most first
-	const names = [...enabled]
+	const labels = [...enabled]
 		.sort((a, b) => form[b].importance - form[a].importance)
-		.map((criterion) => PERFECT_JOB_CRITERION_LABELS[criterion].toLowerCase());
+		.map((criterion) => PERFECT_JOB_CRITERION_LABELS[criterion]);
 	const dealBreakers = enabled.filter((criterion) => form[criterion].dealBreaker).length;
-	const count = enabled.length === 1 ? 'one criterion' : `${enabled.length} criteria`;
-	const list =
-		names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-	const breakers =
-		dealBreakers === 0
-			? ''
-			: dealBreakers === 1
-				? ' One of them is a deal-breaker.'
-				: ` ${dealBreakers} of them are deal-breakers.`;
-	return `A job is scored on ${count}: ${list}.${breakers}`;
+	const scoredOn = m.summary.scoredOn(labels);
+	return dealBreakers === 0 ? scoredOn : `${scoredOn} ${m.summary.dealBreakers(dealBreakers)}`;
 };

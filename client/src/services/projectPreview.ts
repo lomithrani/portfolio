@@ -15,6 +15,7 @@ import {
 	type MonthSpan,
 	type TimelineYear
 } from '#services/timeline.ts';
+import { m } from '#services/projectPreview.messages.ts';
 
 // The preview shown while a skill tag (or a bar of the timeline) is hovered or focused: a short
 // card with only the projects concerned, without their descriptions. On the timeline view a
@@ -171,12 +172,11 @@ export function skillPreview(
 	if (entries.length === 0) return undefined;
 	const options = skillOptions(experiences);
 	const label = [...options.hard, ...options.soft].find((option) => option.key === skill)?.label;
-	const used = entries.length === 1 ? 'Used in 1 project' : `Used in ${entries.length} projects`;
 	const time = formatMonthCount(skillMonths(experiences, skill, now));
 	return {
 		kind: 'skill',
 		title: label ?? key,
-		caption: time ? `${used} (${time})` : used,
+		caption: m.usedIn(entries.length, time),
 		period: '',
 		entries,
 		skills: noSkills()

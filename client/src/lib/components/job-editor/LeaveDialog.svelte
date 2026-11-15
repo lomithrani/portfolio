@@ -6,6 +6,7 @@ backdrop mean "Keep editing".
 -->
 <script lang="ts">
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
+	import { m } from './LeaveDialog.messages.ts';
 
 	let {
 		open,
@@ -40,10 +41,9 @@ backdrop mean "Keep editing".
 				class="w-full max-w-md space-y-4 card bg-surface-50-950 p-5 text-surface-950-50 shadow-xl sm:p-6"
 				data-leave-dialog
 			>
-				<Dialog.Title class="text-lg font-semibold">Leave without saving?</Dialog.Title>
+				<Dialog.Title class="text-lg font-semibold">{m.title}</Dialog.Title>
 				<Dialog.Description class="text-sm text-surface-700-300">
-					Your changes are not saved yet. They stay in this browser as a draft, and come back when
-					you return to this page.
+					{m.description}
 				</Dialog.Description>
 				<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
 					<button
@@ -51,16 +51,16 @@ backdrop mean "Keep editing".
 						class="btn text-error-700-300 hover:preset-tonal-error sm:me-auto"
 						onclick={onDiscard}
 					>
-						Discard changes
+						{m.discard}
 					</button>
-					<button type="button" class="btn preset-tonal" onclick={onLeave}>Leave</button>
+					<button type="button" class="btn preset-tonal" onclick={onLeave}>{m.leave}</button>
 					<button
 						type="button"
 						class="btn preset-filled-primary-700-300"
 						data-stay
 						onclick={onStay}
 					>
-						Keep editing
+						{m.stay}
 					</button>
 				</div>
 			</Dialog.Content>

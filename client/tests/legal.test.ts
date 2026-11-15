@@ -128,12 +128,17 @@ test.describe('legal pages', () => {
 		).toBeVisible();
 		await expect(page).toHaveTitle(`Politique de confidentialité | ${SITE_NAME}`);
 
-		// The links between documents stay in French
+		// The choice is saved: the whole page is French, and the bare address stays French
+		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+		await page.goto('/legal/privacy');
+		await expect(article).toHaveAttribute('lang', 'fr');
+
+		// Back to English: asked for explicitly, since French is now the saved choice
 		await article
 			.getByRole('navigation', { name: 'Langue' })
 			.getByRole('link', { name: 'English' })
 			.click();
-		await expect(page).toHaveURL(/\/legal\/privacy$/);
+		await expect(page).toHaveURL(/\/legal\/privacy\?lang=en$/);
 		await expect(article).toHaveAttribute('lang', 'en');
 		await expect(article.getByRole('heading', { level: 2, name: 'Privacy policy' })).toBeVisible();
 	});
@@ -144,7 +149,8 @@ test.describe('legal pages', () => {
 			.locator('article footer')
 			.getByRole('link', { name: 'Cookies et stockage local' })
 			.click();
-		await expect(page).toHaveURL(/\/legal\/cookies\?lang=fr$/);
+		// No parameter needed: French is the site's language since the first page asked for it
+		await expect(page).toHaveURL(/\/legal\/cookies$/);
 		await expect(page.locator('article[data-legal-document="cookies"]')).toHaveAttribute(
 			'lang',
 			'fr'
@@ -154,12 +160,13 @@ test.describe('legal pages', () => {
 	test('the French pages keep the site footer, links and header in French', async ({ page }) => {
 		await page.goto('/legal/privacy?lang=fr');
 
+		// The whole page is French, so nothing in it needs a language of its own
+		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
 		const nav = page.getByRole('navigation', { name: 'Informations légales' });
-		await expect(nav).toHaveAttribute('lang', 'fr');
 		await expect(nav.getByRole('link', { name: "Conditions d'utilisation" })).toBeVisible();
 		await expect(
 			page.getByRole('heading', { level: 1, name: 'Informations légales' })
-		).toHaveAttribute('lang', 'fr');
+		).toBeVisible();
 		await expect(page.getByRole('banner').getByRole('link', { name: 'Accueil' })).toHaveAttribute(
 			'href',
 			'/'
@@ -168,7 +175,6 @@ test.describe('legal pages', () => {
 		await expect(page.locator('nav:not(header nav, main nav)')).toHaveCount(0);
 		await expect(page.getByRole('navigation', { name: 'Site' })).toHaveCount(1);
 		const site = page.locator('main > footer').getByRole('navigation', { name: 'Site' });
-		await expect(site).toHaveAttribute('lang', 'fr');
 		await expect(site.getByRole('link', { name: "Offres d'emploi" })).toHaveAttribute(
 			'href',
 			'/jobs'
@@ -179,7 +185,7 @@ test.describe('legal pages', () => {
 		);
 
 		await nav.getByRole('link', { name: 'Cookies et stockage local' }).click();
-		await expect(page).toHaveURL(/\/legal\/cookies\?lang=fr$/);
+		await expect(page).toHaveURL(/\/legal\/cookies$/);
 		await expect(page.locator('article[data-legal-document="cookies"]')).toHaveAttribute(
 			'lang',
 			'fr'

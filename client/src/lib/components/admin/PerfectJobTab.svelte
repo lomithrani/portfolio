@@ -31,14 +31,14 @@ see the criteria.
 		WORKING_TIME_LABELS,
 		WORK_MODES,
 		WORK_MODE_LABELS,
+		stepManifest,
 		type PerfectJob,
-		type PerfectJobProblem,
-		type TravelFrequency
+		type PerfectJobProblem
 	} from 'portfolio-common';
 	import { portfolioTextApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { clearAuthentication } from '#services/authentication.ts';
-	import { SESSION_EXPIRED_MESSAGE } from '#services/account.ts';
+	import { accountMessages } from '#services/account.messages.ts';
 	import {
 		checkPerfectJob,
 		commuteBudgetHint,
@@ -55,8 +55,11 @@ see the criteria.
 		type CommuteAvailability,
 		type PerfectJobForm
 	} from '#services/perfectJob.ts';
-	import { NETWORK_ERROR, failureText } from '#services/recruiter.ts';
+	import { networkError, failureText } from '#services/recruiter.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { m } from './PerfectJobTab.messages.ts';
 	import ChipList from './perfect-job/ChipList.svelte';
 	import Choices from './perfect-job/Choices.svelte';
 	import Criterion from './perfect-job/Criterion.svelte';
@@ -70,14 +73,6 @@ see the criteria.
 
 	const uid = $props.id();
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const LOAD_FAILED = 'Could not load your perfect job.';
-	const SAVE_FAILED = 'Could not save your perfect job. Try again.';
-
-	const TRAVEL_CHOICES: Record<TravelFrequency, string> = {
-		none: 'No travel',
-		occasional: 'Occasional travel at most',
-		frequent: 'Frequent travel is fine'
-	};
 	const groupClass = 'space-y-3';
 	const groupHeadingClass = 'text-lg font-semibold';
 
@@ -114,7 +109,7 @@ see the criteria.
 			if (changed) navigation.cancel();
 			return;
 		}
-		if (!confirm('Leave without saving your perfect job? Your changes will be lost.')) {
+		if (!confirm(m.leaveUnsaved)) {
 			navigation.cancel();
 		}
 	});
@@ -122,7 +117,7 @@ see the criteria.
 	const failure = (error: { status: unknown; value?: unknown }, fallback: string) => {
 		if (errorStatus(error) === 401) {
 			clearAuthentication();
-			return SESSION_EXPIRED_MESSAGE;
+			return accountMessages.sessionExpired;
 		}
 		return failureText(error.value, fallback);
 	};
@@ -132,7 +127,7 @@ see the criteria.
 		try {
 			const { data, error } = await portfolioTextApi['perfect-job'].get(withCredentials);
 			if (error || !data) {
-				loadError = error ? failure(error, LOAD_FAILED) : LOAD_FAILED;
+				loadError = error ? failure(error, m.loadFailed) : m.loadFailed;
 				status = 'error';
 				return;
 			}
@@ -144,7 +139,7 @@ see the criteria.
 			saveError = '';
 			status = 'ready';
 		} catch {
-			loadError = NETWORK_ERROR;
+			loadError = networkError();
 			status = 'error';
 		}
 	}
@@ -163,7 +158,7 @@ see the criteria.
 				// The rules are checked here first: the API only refuses what this page does not know yet
 				const problem = errorStatus(error) === 422 ? savedPerfectJobProblem(error?.value) : null;
 				refused = problem && { problem, sent: JSON.stringify(criteria) };
-				if (!refused) saveError = error ? failure(error, SAVE_FAILED) : SAVE_FAILED;
+				if (!refused) saveError = error ? failure(error, m.saveFailed) : m.saveFailed;
 				return;
 			}
 			const next = savedForm($state.snapshot(form), data.criteria);
@@ -171,9 +166,9 @@ see the criteria.
 			stored = data.criteria;
 			travelTimes = data.commute;
 			form = structuredClone(next);
-			toaster.success({ title: 'Perfect job saved', description: perfectJobSummary(next) });
+			toaster.success({ title: m.saved, description: perfectJobSummary(next) });
 		} catch {
-			saveError = NETWORK_ERROR;
+			saveError = networkError();
 		} finally {
 			saving = false;
 		}
@@ -184,66 +179,58 @@ see the criteria.
 
 <div class="space-y-6">
 	<section class="space-y-2">
-		<h2 class="h3">Perfect job</h2>
-		<p class="opacity-75">
-			Say what you look for in a job and how much each point matters. The job a recruiter picks in
-			your hiring journey is scored against it, out of 100.
-		</p>
+		<h2 class="h3">{m.title}</h2>
+		<p class="opacity-75">{m.intro}</p>
 	</section>
 
 	{#if status === 'loading'}
-		<p class="text-sm opacity-50" role="status">Loading your perfect job...</p>
+		<p class="text-sm opacity-50" role="status">{m.loading}</p>
 	{:else if status === 'error'}
 		<div class="card preset-tonal-error space-y-3 p-4" role="alert">
 			<p class="text-sm">{loadError}</p>
-			<button type="button" class="btn btn-sm preset-tonal" onclick={load}>Try again</button>
+			<button type="button" class="btn btn-sm preset-tonal" onclick={load}>{common.retry}</button>
 		</div>
 	{:else}
 		<div class="card preset-tonal flex items-start gap-3 p-4 text-sm" role="note">
 			<Scale size="20" class="mt-0.5 shrink-0" aria-hidden="true" />
 			<div class="min-w-0 space-y-2">
-				<p class="font-semibold">How a job is scored</p>
+				<p class="font-semibold">{m.scoring.title}</p>
 				<ul class="list-disc space-y-1 ps-5">
-					<li>
-						Each criterion you switch on counts for its importance, from 1 to 5. The score is what
-						the job matches out of the total, on 100.
-					</li>
-					<li>Some criteria can match partly: a pay a little under yours, fewer remote days.</li>
-					<li>
-						What a job description does not state (its seniority, its skills, its travel…) counts as
-						not matching.
-					</li>
-					<li>A deal-breaker the job does not match at all brings the score to 0.</li>
+					<li>{m.scoring.importance}</li>
+					<li>{m.scoring.partly}</li>
+					<li>{m.scoring.notStated}</li>
+					<li>{m.scoring.dealBreaker}</li>
 				</ul>
 				<p>
-					Recruiters never see your criteria. To use the score, add the step “Match the perfect job”
-					to your
-					<button type="button" class="underline underline-offset-2" onclick={openJourney}>
-						hiring journey
-					</button>
-					and set the minimum there.
+					<Rich text={m.scoring.use(stepManifest('job-match')?.label ?? '')}>
+						{#snippet journey(text)}
+							<button type="button" class="underline underline-offset-2" onclick={openJourney}>
+								{text}
+							</button>
+						{/snippet}
+					</Rich>
 				</p>
 			</div>
 		</div>
 
 		<fieldset class="min-w-0 space-y-8" disabled={saving}>
 			<section class={groupClass} aria-labelledby="{uid}-group-role">
-				<h3 class={groupHeadingClass} id="{uid}-group-role">The role</h3>
+				<h3 class={groupHeadingClass} id="{uid}-group-role">{m.groups.role}</h3>
 				<Criterion
 					criterion="titles"
-					description="The job titles you are after. A job matches when its title has one of them, as whole words."
+					description={m.titles.description}
 					bind:rating={form.titles}
 					share={shares.titles}
 					disabled={saving}
 					idPrefix={uid}
 				>
 					<ChipList
-						label="Job titles"
+						label={m.titles.label}
 						bind:value={form.titles.keywords}
 						max={PERFECT_JOB_LIMITS.titles}
 						maxLength={PERFECT_JOB_LIMITS.listItem}
-						itemName="job title"
-						placeholder="e.g. Staff Engineer"
+						kind="jobTitle"
+						placeholder={m.titles.placeholder}
 						error={at('titles.keywords')}
 						disabled={saving}
 						id="{uid}-titles-keywords"
@@ -251,14 +238,14 @@ see the criteria.
 				</Criterion>
 				<Criterion
 					criterion="seniority"
-					description="The levels you would take."
+					description={m.seniority.description}
 					bind:rating={form.seniority}
 					share={shares.seniority}
 					disabled={saving}
 					idPrefix={uid}
 				>
 					<Choices
-						legend="Levels"
+						legend={m.seniority.legend}
 						options={SENIORITY_LEVELS}
 						labels={SENIORITY_LABELS}
 						bind:value={form.seniority.levels}
@@ -268,7 +255,7 @@ see the criteria.
 				</Criterion>
 				<Criterion
 					criterion="management"
-					description="Whether you want people reporting to you (the job's direct reports)."
+					description={m.management.description}
 					bind:rating={form.management}
 					share={shares.management}
 					disabled={saving}
@@ -278,7 +265,7 @@ see the criteria.
 						class="space-y-1.5"
 						aria-describedby={at('management.role') ? `${uid}-management-error` : undefined}
 					>
-						<legend class="label-text text-sm">You want</legend>
+						<legend class="label-text text-sm">{m.management.legend}</legend>
 						<div class="flex flex-wrap gap-x-5 gap-y-2">
 							{#each MANAGEMENT_ROLES as role (role)}
 								<label class="flex min-h-8 items-center gap-2 text-sm">
@@ -303,17 +290,17 @@ see the criteria.
 			</section>
 
 			<section class={groupClass} aria-labelledby="{uid}-group-place">
-				<h3 class={groupHeadingClass} id="{uid}-group-place">The place</h3>
+				<h3 class={groupHeadingClass} id="{uid}-group-place">{m.groups.place}</h3>
 				<Criterion
 					criterion="workMode"
-					description="How you want to work: at the office, partly or fully remote."
+					description={m.workMode.description}
 					bind:rating={form.workMode}
 					share={shares.workMode}
 					disabled={saving}
 					idPrefix={uid}
 				>
 					<Choices
-						legend="Work modes you accept"
+						legend={m.workMode.legend}
 						options={WORK_MODES}
 						labels={WORK_MODE_LABELS}
 						bind:value={form.workMode.modes}
@@ -323,7 +310,7 @@ see the criteria.
 					{#if form.workMode.modes.includes('hybrid')}
 						<div class="space-y-1 sm:max-w-xs">
 							<label class="label-text text-sm" for="{uid}-workMode-days">
-								Remote days a week in a hybrid job, at least
+								{m.workMode.minRemoteDays}
 							</label>
 							<select
 								class="select"
@@ -331,34 +318,33 @@ see the criteria.
 								bind:value={form.workMode.minRemoteDays}
 								aria-describedby="{uid}-workMode-days-help"
 							>
-								<option value="">Any number</option>
+								<option value="">{m.workMode.anyNumber}</option>
 								{#each { length: PERFECT_JOB_LIMITS.minRemoteDays.max }, index (index)}
 									<option value={String(index + 1)}>{index + 1}</option>
 								{/each}
 							</select>
 							<p class="text-xs text-surface-700-300" id="{uid}-workMode-days-help">
-								{at('workMode.minRemoteDays') ||
-									'A hybrid job with fewer remote days matches in proportion.'}
+								{at('workMode.minRemoteDays') || m.workMode.minRemoteDaysHelp}
 							</p>
 						</div>
 					{/if}
 				</Criterion>
 				<Criterion
 					criterion="cities"
-					description="Where the office can be. A fully remote job has no office: it always matches."
+					description={m.cities.description}
 					bind:rating={form.cities}
 					share={shares.cities}
 					disabled={saving}
 					idPrefix={uid}
 				>
 					<ChipList
-						label="Cities or postal codes"
+						label={m.cities.label}
 						bind:value={form.cities.places}
 						max={PERFECT_JOB_LIMITS.cities}
 						maxLength={PERFECT_JOB_LIMITS.listItem}
-						itemName="place"
-						placeholder="e.g. Lyon, or 69"
-						hint="A city's name, or the first digits of a postal code (69 for the Rhône)."
+						kind="place"
+						placeholder={m.cities.placeholder}
+						hint={m.cities.hint}
 						error={at('cities.places')}
 						disabled={saving}
 						id="{uid}-cities-places"
@@ -367,28 +353,25 @@ see the criteria.
 				<Criterion
 					criterion="commute"
 					description={travelTimes.enabled || form.commute.enabled
-						? 'The time you accept on the way to work and back, over a week. A job you go to once a week can be further away than one you go to every day; a fully remote job has no commute.'
-						: 'The time you accept on the way to work and back, over a week. This site does not compute travel times: the criterion cannot be used here.'}
+						? m.commute.description
+						: m.commute.descriptionOff}
 					bind:rating={form.commute}
 					share={shares.commute}
 					disabled={saving || (!travelTimes.enabled && !form.commute.enabled)}
 					idPrefix={uid}
 				>
 					{#if !travelTimes.enabled}
-						<p class="card preset-tonal-warning p-3 text-sm">
-							This site does not compute travel times right now: the commute does not count in a
-							job's score, and its address cannot be changed.
-						</p>
+						<p class="card preset-tonal-warning p-3 text-sm">{m.commute.off}</p>
 					{/if}
 					<div class="space-y-1">
-						<label class="label-text text-sm" for="{uid}-commute-from">Where you travel from</label>
+						<label class="label-text text-sm" for="{uid}-commute-from">{m.commute.from}</label>
 						<input
 							class="input"
 							id="{uid}-commute-from"
 							type="text"
 							autocomplete="off"
 							maxlength={PERFECT_JOB_LIMITS.address}
-							placeholder="e.g. 10 rue de la République, 69001 Lyon"
+							placeholder={m.commute.fromPlaceholder}
 							bind:value={form.commute.from}
 							aria-invalid={at('commute.from') ? true : undefined}
 							aria-describedby="{uid}-commute-from-help"
@@ -397,17 +380,14 @@ see the criteria.
 							{#if at('commute.from')}
 								<span class="text-error-700-300">{at('commute.from')}</span>
 							{:else if place}
-								<span class="text-surface-700-300" data-place>Found: {place.label}.</span>
+								<span class="text-surface-700-300" data-place>{m.commute.found(place.label)}</span>
 							{:else}
-								<span class="text-surface-700-300">
-									Your address, or a place nearby if you prefer (a station, a square). It is looked
-									up on a map when you save.
-								</span>
+								<span class="text-surface-700-300">{m.commute.fromHelp}</span>
 							{/if}
 						</p>
 					</div>
 					<Choices
-						legend="How you would travel"
+						legend={m.commute.modes}
 						options={COMMUTE_MODES}
 						labels={COMMUTE_MODE_LABELS}
 						unavailable={COMMUTE_MODES.filter((mode) => !travelTimes.modes.includes(mode))}
@@ -415,12 +395,9 @@ see the criteria.
 						error={at('commute.modes')}
 						id="{uid}-commute-modes"
 					/>
-					<p class="text-xs text-surface-700-300">
-						The fastest of them counts. By bike, the time is estimated at 15 km/h.
-					</p>
+					<p class="text-xs text-surface-700-300">{m.commute.modesHelp}</p>
 					<fieldset class="space-y-1" aria-describedby="{uid}-commute-time-help">
-						<legend class="label-text text-sm">Travel time you accept a week, there and back</legend
-						>
+						<legend class="label-text text-sm">{m.commute.time}</legend>
 						<div class="flex flex-wrap items-center gap-2">
 							<input
 								class="input w-20"
@@ -428,7 +405,7 @@ see the criteria.
 								inputmode="numeric"
 								autocomplete="off"
 								placeholder="5"
-								aria-label="Hours a week"
+								aria-label={m.commute.hours}
 								bind:value={form.commute.hours}
 								aria-invalid={at('commute.maxMinutesPerWeek') ? true : undefined}
 							/>
@@ -439,7 +416,7 @@ see the criteria.
 								inputmode="numeric"
 								autocomplete="off"
 								placeholder="0"
-								aria-label="Minutes a week"
+								aria-label={m.commute.minutes}
 								bind:value={form.commute.minutes}
 								aria-invalid={at('commute.maxMinutesPerWeek') ? true : undefined}
 							/>
@@ -450,44 +427,47 @@ see the criteria.
 								<span class="text-error-700-300">{at('commute.maxMinutesPerWeek')}</span>
 							{:else}
 								<span class="text-surface-700-300" data-budget>
-									{commuteBudgetHint(form.commute.hours, form.commute.minutes) ||
-										'Each day at the office counts the way there and back.'}
-									A job over it matches less, and not at all 50% over.
+									{commuteBudgetHint(form.commute.hours, form.commute.minutes) || m.commute.eachDay}
+									{m.commute.over}
 								</span>
 							{/if}
 						</p>
 					</fieldset>
 					<p class="text-xs text-surface-700-300">
-						Only you see this address. To compute travel times, it is sent, without your name, to
-						the map service of the French state (<a
-							class="underline underline-offset-2"
-							href="https://geoservices.ign.fr/"
-							target="_blank"
-							rel="noreferrer">Géoplateforme, IGN</a
-						>){#if travelTimes.modes.includes('transit')}, and its position to
-							<a
-								class="underline underline-offset-2"
-								href="https://transitous.org/sources/"
-								target="_blank"
-								rel="noreferrer">Transitous</a
-							>, a community journey planner{/if}. Recruiters learn whether their job matches, never
-						where you are.
+						<Rich
+							text={travelTimes.modes.includes('transit')
+								? m.commute.privacyTransit
+								: m.commute.privacy}
+						>
+							{#snippet ign(text)}<a
+									class="underline underline-offset-2"
+									href="https://geoservices.ign.fr/"
+									target="_blank"
+									rel="noreferrer">{text}</a
+								>{/snippet}
+							{#snippet transitous(text)}<a
+									class="underline underline-offset-2"
+									href="https://transitous.org/sources/"
+									target="_blank"
+									rel="noreferrer">{text}</a
+								>{/snippet}
+						</Rich>
 					</p>
 				</Criterion>
 			</section>
 
 			<section class={groupClass} aria-labelledby="{uid}-group-contract">
-				<h3 class={groupHeadingClass} id="{uid}-group-contract">The contract and the time</h3>
+				<h3 class={groupHeadingClass} id="{uid}-group-contract">{m.groups.contract}</h3>
 				<Criterion
 					criterion="contractTypes"
-					description="The contracts you would sign."
+					description={m.contractTypes.description}
 					bind:rating={form.contractTypes}
 					share={shares.contractTypes}
 					disabled={saving}
 					idPrefix={uid}
 				>
 					<Choices
-						legend="Contracts"
+						legend={m.contractTypes.legend}
 						options={FR_CONTRACT_TYPES}
 						labels={CONTRACT_TYPE_LABELS}
 						bind:value={form.contractTypes.types}
@@ -497,14 +477,14 @@ see the criteria.
 				</Criterion>
 				<Criterion
 					criterion="workingTime"
-					description="How your working time is counted, and how many hours a week at most."
+					description={m.workingTime.description}
 					bind:rating={form.workingTime}
 					share={shares.workingTime}
 					disabled={saving}
 					idPrefix={uid}
 				>
 					<Choices
-						legend="Working time you accept, counted in"
+						legend={m.workingTime.legend}
 						options={WORKING_TIME_ARRANGEMENTS}
 						labels={WORKING_TIME_LABELS}
 						bind:value={form.workingTime.arrangements}
@@ -514,7 +494,9 @@ see the criteria.
 					{#if form.workingTime.arrangements.includes('weekly_hours')}
 						<div class="space-y-1 sm:max-w-xs">
 							<label class="label-text text-sm" for="{uid}-workingTime-hours">
-								Hours a week, at most <span class="font-normal">(optional)</span>
+								<Rich text={m.workingTime.maxHours}>
+									{#snippet note(text)}<span class="font-normal">{text}</span>{/snippet}
+								</Rich>
 							</label>
 							<input
 								class="input"
@@ -522,7 +504,7 @@ see the criteria.
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder="e.g. 35"
+								placeholder={m.workingTime.maxHoursPlaceholder}
 								bind:value={form.workingTime.maxHoursPerWeek}
 								aria-invalid={at('workingTime.maxHoursPerWeek') ? true : undefined}
 								aria-describedby="{uid}-workingTime-hours-help"
@@ -532,8 +514,7 @@ see the criteria.
 									<span class="text-error-700-300">{at('workingTime.maxHoursPerWeek')}</span>
 								{:else}
 									<span class="text-surface-700-300">
-										A job over it matches less with each hour, and not at all {HOURS_TOLERANCE} hours
-										over.
+										{m.workingTime.maxHoursHelp(HOURS_TOLERANCE)}
 									</span>
 								{/if}
 							</p>
@@ -542,7 +523,7 @@ see the criteria.
 				</Criterion>
 				<Criterion
 					criterion="rttDays"
-					description="The reduced working time days (RTT) you want a year. A job with fewer matches in proportion."
+					description={m.rttDays.description}
 					bind:rating={form.rttDays}
 					share={shares.rttDays}
 					disabled={saving}
@@ -550,7 +531,7 @@ see the criteria.
 				>
 					<div class="space-y-1 sm:max-w-xs">
 						<label class="label-text text-sm" for="{uid}-rttDays-min">
-							RTT days a year, at least
+							{m.rttDays.min}
 						</label>
 						<input
 							class="input"
@@ -558,7 +539,7 @@ see the criteria.
 							type="text"
 							inputmode="numeric"
 							autocomplete="off"
-							placeholder="e.g. 10"
+							placeholder={m.rttDays.minPlaceholder}
 							bind:value={form.rttDays.min}
 							aria-invalid={at('rttDays.min') ? true : undefined}
 							aria-describedby={at('rttDays.min') ? `${uid}-rttDays-error` : undefined}
@@ -571,10 +552,10 @@ see the criteria.
 			</section>
 
 			<section class={groupClass} aria-labelledby="{uid}-group-pay">
-				<h3 class={groupHeadingClass} id="{uid}-group-pay">The pay</h3>
+				<h3 class={groupHeadingClass} id="{uid}-group-pay">{m.groups.pay}</h3>
 				<Criterion
 					criterion="pay"
-					description={`The gross pay (brut) you ask for, in euros. A job matches when the middle of its range reaches it, partly when it is under, and not at all ${PAY_TOLERANCE * 100}% under.`}
+					description={m.pay.description(PAY_TOLERANCE * 100)}
 					bind:rating={form.pay}
 					share={shares.pay}
 					disabled={saving}
@@ -582,7 +563,7 @@ see the criteria.
 				>
 					<div class="grid gap-4 sm:grid-cols-2">
 						<div class="space-y-1">
-							<label class="label-text text-sm" for="{uid}-pay-perYear">Per year</label>
+							<label class="label-text text-sm" for="{uid}-pay-perYear">{m.pay.perYear}</label>
 							<div class="flex items-center gap-2">
 								<input
 									class="input min-w-0 flex-1"
@@ -590,7 +571,7 @@ see the criteria.
 									type="text"
 									inputmode="numeric"
 									autocomplete="off"
-									placeholder="e.g. 70 000"
+									placeholder={m.pay.perYearPlaceholder}
 									bind:value={form.pay.perYear}
 									aria-invalid={at('pay.perYear') ? true : undefined}
 									aria-describedby={at('pay.perYear') ? `${uid}-pay-perYear-error` : undefined}
@@ -605,7 +586,9 @@ see the criteria.
 						</div>
 						<div class="space-y-1">
 							<label class="label-text text-sm" for="{uid}-pay-perDay">
-								Per day <span class="font-normal">(day rates)</span>
+								<Rich text={m.pay.perDay}>
+									{#snippet note(text)}<span class="font-normal">{text}</span>{/snippet}
+								</Rich>
 							</label>
 							<div class="flex items-center gap-2">
 								<input
@@ -614,7 +597,7 @@ see the criteria.
 									type="text"
 									inputmode="numeric"
 									autocomplete="off"
-									placeholder="e.g. 600"
+									placeholder={m.pay.perDayPlaceholder}
 									bind:value={form.pay.perDay}
 									aria-invalid={at('pay.perDay') ? true : undefined}
 									aria-describedby={at('pay.perDay') ? `${uid}-pay-perDay-error` : undefined}
@@ -628,30 +611,27 @@ see the criteria.
 							{/if}
 						</div>
 					</div>
-					<p class="text-xs text-surface-700-300">
-						Give one or both. With one only, the other kind of job is converted ({FR_FORFAIT_JOURS_STANDARD_DAYS}
-						days a year); a monthly pay counts 12 months.
-					</p>
+					<p class="text-xs text-surface-700-300">{m.pay.help(FR_FORFAIT_JOURS_STANDARD_DAYS)}</p>
 				</Criterion>
 			</section>
 
 			<section class={groupClass} aria-labelledby="{uid}-group-skills">
-				<h3 class={groupHeadingClass} id="{uid}-group-skills">The skills</h3>
+				<h3 class={groupHeadingClass} id="{uid}-group-skills">{m.groups.skills}</h3>
 				<Criterion
 					criterion="skills"
-					description="What you want to work with. A job scores by the share of the skills it asks for that are in your list."
+					description={m.skills.description}
 					bind:rating={form.skills}
 					share={shares.skills}
 					disabled={saving}
 					idPrefix={uid}
 				>
 					<ChipList
-						label="Skills you want to use"
+						label={m.skills.label}
 						bind:value={form.skills.names}
 						max={PERFECT_JOB_LIMITS.skills}
 						maxLength={PERFECT_JOB_LIMITS.listItem}
-						itemName="skill"
-						placeholder="e.g. TypeScript"
+						kind="skill"
+						placeholder={m.skills.placeholder}
 						error={at('skills.names')}
 						disabled={saving}
 						id="{uid}-skills-names"
@@ -659,19 +639,19 @@ see the criteria.
 				</Criterion>
 				<Criterion
 					criterion="avoidedSkills"
-					description="What you do not want to work with. A job asking for one of them does not match."
+					description={m.avoidedSkills.description}
 					bind:rating={form.avoidedSkills}
 					share={shares.avoidedSkills}
 					disabled={saving}
 					idPrefix={uid}
 				>
 					<ChipList
-						label="Skills you want to avoid"
+						label={m.avoidedSkills.label}
 						bind:value={form.avoidedSkills.names}
 						max={PERFECT_JOB_LIMITS.avoidedSkills}
 						maxLength={PERFECT_JOB_LIMITS.listItem}
-						itemName="skill"
-						placeholder="e.g. PHP"
+						kind="skill"
+						placeholder={m.avoidedSkills.placeholder}
 						error={at('avoidedSkills.names')}
 						disabled={saving}
 						id="{uid}-avoidedSkills-names"
@@ -680,17 +660,17 @@ see the criteria.
 			</section>
 
 			<section class={groupClass} aria-labelledby="{uid}-group-conditions">
-				<h3 class={groupHeadingClass} id="{uid}-group-conditions">The conditions</h3>
+				<h3 class={groupHeadingClass} id="{uid}-group-conditions">{m.groups.conditions}</h3>
 				<Criterion
 					criterion="travel"
-					description="How much the job can make you travel."
+					description={m.travel.description}
 					bind:rating={form.travel}
 					share={shares.travel}
 					disabled={saving}
 					idPrefix={uid}
 				>
 					<div class="space-y-1 sm:max-w-xs">
-						<label class="label-text text-sm" for="{uid}-travel-max">The most you accept</label>
+						<label class="label-text text-sm" for="{uid}-travel-max">{m.travel.max}</label>
 						<select
 							class="select"
 							id="{uid}-travel-max"
@@ -698,9 +678,9 @@ see the criteria.
 							aria-invalid={at('travel.max') ? true : undefined}
 							aria-describedby={at('travel.max') ? `${uid}-travel-error` : undefined}
 						>
-							<option value="" disabled>Pick one</option>
+							<option value="" disabled>{m.travel.pickOne}</option>
 							{#each TRAVEL_FREQUENCIES as value (value)}
-								<option {value}>{TRAVEL_CHOICES[value]}</option>
+								<option {value}>{m.travel.choices[value]}</option>
 							{/each}
 						</select>
 						{#if at('travel.max')}
@@ -715,12 +695,14 @@ see the criteria.
 		<div aria-live="polite">
 			{#if problems.length > 0}
 				<div class="card preset-tonal-warning space-y-1 p-3 text-sm">
-					<p class="font-semibold">Complete the criteria you switched on:</p>
+					<p class="font-semibold">{m.complete}</p>
 					<ul class="list-disc ps-5">
 						{#each problems as problem (problem.field)}
 							{@const criterion = problemCriterion(problem)}
 							<li>
-								{criterion ? `${PERFECT_JOB_CRITERION_LABELS[criterion]}: ` : ''}{problem.message}
+								{criterion
+									? m.problemOf(PERFECT_JOB_CRITERION_LABELS[criterion], problem.message)
+									: problem.message}
 							</li>
 						{/each}
 					</ul>
@@ -738,7 +720,7 @@ see the criteria.
 				disabled={!changed || problems.length > 0 || saving}
 				onclick={save}
 			>
-				{saving ? 'Saving...' : 'Save perfect job'}
+				{saving ? m.saving : m.save}
 			</button>
 			{#if changed}
 				<button
@@ -747,7 +729,7 @@ see the criteria.
 					disabled={saving}
 					onclick={() => (form = structuredClone(saved))}
 				>
-					Undo changes
+					{m.undo}
 				</button>
 			{/if}
 		</div>

@@ -119,8 +119,8 @@ The manifest is a `WorkflowStepManifest<Config>` (declared in `common/models/wor
 | --- | --- |
 | `type` | The type's unique name. It must match `WORKFLOW_LIMITS.stepType`: a lowercase letter, then lowercase letters, digits and hyphens, 40 characters at most. |
 | `kind` | `requirement`: something the visitor does, which gives nothing by itself and only opens the steps after it (read a note, pick a job). `access`: what the journey leads to (book a meeting). A journey cannot be saved with a requirement step that has no access step after it, since it would open nothing. |
-| `label` | The step's name, for the owner and the visitor ("Read a note"). |
-| `description` | What the step asks of visitors, written for the owner who is choosing steps. |
+| `label` | The step's name, for the owner and the visitor ("Read a note"). A getter over a message, so it is read in the language in use (see below). |
+| `description` | What the step asks of visitors, written for the owner who is choosing steps. A getter over a message too. |
 | `max` | How many steps of this type a journey can have. Leave it unset for any number (the note), set `1` when a second one would make no sense (the job, the meeting). |
 | `needs` | The step types a step of this type needs earlier in the journey, because it works on what the visitor did there (the job match needs `job`: it scores the job picked there). A journey cannot be saved without them before it. Leave it unset for a step that stands alone. |
 | `defaultConfig()` | The settings a new step starts with. They may be incomplete: the note starts with an empty title and text, which the owner fills in before they can save. |
@@ -142,13 +142,24 @@ export const NOTE_STEP_LIMITS = { title: 80, text: 2000 } as const;
 export const noteStep: WorkflowStepManifest<NoteStepConfig> = {
 	type: 'note',
 	kind: 'requirement',
-	label: 'Read a note',
-	description:
-		'Recruiters read a note you wrote (what you are looking for, your conditions) and confirm it before going further.',
+	get label() {
+		return m.note.label;
+	},
+	get description() {
+		return m.note.description;
+	},
 	defaultConfig: () => ({ title: '', text: '' }),
 	parseConfig
 };
 ```
+
+Every text of a step type exists in English and French (`docs/I18N.md`). The manifest's are
+messages of `common/models/workflowSteps/workflowSteps.messages.ts`, one group per step type
+(`m.note` above is `workflowStepMessages.note`): its `label`, its `description` and what its
+`parseConfig` says of settings it refuses. `label` and `description` are getters because a
+manifest is created once, when the module loads, while a message must be read when it is shown.
+The texts of the API's step go in a `*.messages.ts` file next to it, those of the client's entry
+next to its components.
 
 Its `parseConfig` trims both fields, refuses an empty or too long title (`field: 'title'`) and an
 empty or too long text (`field: 'text'`), and returns `{ title, text }`.

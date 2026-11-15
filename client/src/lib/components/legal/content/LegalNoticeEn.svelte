@@ -128,7 +128,7 @@ variables only (PublisherDetails).
 <h3 id="personal-data">Personal data and cookies</h3>
 <p>
 	How this site processes personal data, and your rights, are explained in the
-	<LegalDocLink doc="privacy" {lang}>privacy policy</LegalDocLink>. The cookie and the browser
+	<LegalDocLink doc="privacy" {lang}>privacy policy</LegalDocLink>. The cookies and the browser
 	storage it uses are listed on the
 	<LegalDocLink doc="cookies" {lang}>cookies and local storage</LegalDocLink> page. The rules for using
 	the site are in the <LegalDocLink doc="terms" {lang}>terms of use</LegalDocLink>.

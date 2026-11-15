@@ -7,6 +7,7 @@ import { Domain } from '../models/database'
 import { logger } from './logger'
 import { rateLimitKey, refundRateLimit, takeRateLimit } from './rateLimit'
 import type { RateLimit } from './rateLimit'
+import { m } from './stepSuggestions.messages'
 
 // Step suggestions: a portfolio owner who misses a step in their hiring
 // journey describes it in their step editor, and the API files it as a
@@ -44,9 +45,6 @@ export const stepSuggestionTimeouts = { githubMs: 10_000 }
 
 const GITHUB_API = 'https://api.github.com'
 const ISSUE_LABELS = ['enhancement']
-
-const DISABLED = 'Step suggestions are not enabled on this server'
-const UNAVAILABLE = 'Your suggestion could not be sent right now, try again later'
 
 /** One-line state of the feature, for the startup log (never the token) */
 export const describeStepSuggestions = (settings: Pick<ServerEnv, 'GITHUB_ISSUES_TOKEN' | 'GITHUB_ISSUES_REPO'>) =>
@@ -126,11 +124,11 @@ const githubRefusal = async (response: Response, token: string) => {
  */
 export async function suggestStep(userId: string, input: { name?: unknown; description?: unknown; reason?: unknown }) {
   const { GITHUB_ISSUES_TOKEN: token, GITHUB_ISSUES_REPO: repository } = env
-  if (!token) throw new ResourceNotFoundError(DISABLED)
+  if (!token) throw new ResourceNotFoundError(() => m.disabled)
 
   // The step editor is the owner's: an account without a portfolio has none
   if (!(await Domain.exists({ admin: userId }))) {
-    throw new ForbiddenError('Only the owner of a portfolio can suggest a step')
+    throw new ForbiddenError(() => m.ownersOnly)
   }
 
   const parsed = parseStepSuggestion(input)
@@ -138,22 +136,19 @@ export async function suggestStep(userId: string, input: { name?: unknown; descr
 
   const own = await takeRateLimit(stepSuggestionOwnerKey(userId), STEP_SUGGESTIONS_PER_OWNER)
   if (own.retryAfterSeconds !== null) {
-    throw new TooManyRequestsError(
-      `You can send ${STEP_SUGGESTIONS_PER_OWNER.limit} suggestions a day: try again tomorrow`,
-      own.retryAfterSeconds
-    )
+    throw new TooManyRequestsError(() => m.ownerLimit(STEP_SUGGESTIONS_PER_OWNER.limit), own.retryAfterSeconds)
   }
   const site = await takeRateLimit(stepSuggestionCounters.globalKey, STEP_SUGGESTIONS_PER_DAY)
   if (site.retryAfterSeconds !== null) {
     await refundRateLimit(own.counterId)
-    throw new TooManyRequestsError('Too many suggestions were sent today: try again tomorrow', site.retryAfterSeconds)
+    throw new TooManyRequestsError(() => m.siteLimit, site.retryAfterSeconds)
   }
   const giveBack = () => Promise.all([refundRateLimit(own.counterId), refundRateLimit(site.counterId)])
   // Last, and kept whatever happens next: only requests that reach GitHub count
   const attempts = await takeRateLimit(stepSuggestionAttemptsKey(userId), STEP_SUGGESTION_ATTEMPTS_PER_OWNER)
   if (attempts.retryAfterSeconds !== null) {
     await giveBack()
-    throw new TooManyRequestsError('Your suggestions could not be sent today: try again tomorrow', attempts.retryAfterSeconds)
+    throw new TooManyRequestsError(() => m.attemptsLimit, attempts.retryAfterSeconds)
   }
 
   let response: Response
@@ -179,7 +174,7 @@ export async function suggestStep(userId: string, input: { name?: unknown; descr
       userId,
       reason: error instanceof Error ? error.name : 'unknown'
     })
-    throw new ServiceUnavailableError(UNAVAILABLE)
+    throw new ServiceUnavailableError(() => m.unavailable)
   }
 
   if (response.status !== 201) {
@@ -192,7 +187,7 @@ export async function suggestStep(userId: string, input: { name?: unknown; descr
       repository,
       ...(await githubRefusal(response, token))
     })
-    throw new ServiceUnavailableError(UNAVAILABLE)
+    throw new ServiceUnavailableError(() => m.unavailable)
   }
 
   let issueNumber: number | undefined

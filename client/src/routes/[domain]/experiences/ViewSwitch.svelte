@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { Bars3BottomLeft, ListBullet } from 'svelte-heros-v2';
 	import type { ExperienceView } from '#services/timeline.ts';
+	import { m } from './ViewSwitch.messages.ts';
 
 	let { view = $bindable(), class: classes = '' }: { view: ExperienceView; class?: string } =
 		$props();
 
 	const views = [
-		{ value: 'list', label: 'List', icon: ListBullet },
-		{ value: 'timeline', label: 'Timeline', icon: Bars3BottomLeft }
+		{ value: 'list', label: m.list, icon: ListBullet },
+		{ value: 'timeline', label: m.timeline, icon: Bars3BottomLeft }
 	] as const;
 </script>
 
@@ -15,7 +16,7 @@
 	before the page's JavaScript runs (a shared link opens on the timeline) -->
 <div
 	role="group"
-	aria-label="View"
+	aria-label={m.view}
 	class="inline-flex gap-1 rounded-base border border-surface-200-800 bg-surface-50-950 p-1 {classes}"
 >
 	{#each views as { value, label, icon: Icon } (value)}

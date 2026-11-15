@@ -1,4 +1,5 @@
 import type { StepConfigResult, WorkflowStepManifest } from '../workflow';
+import { workflowStepMessages as m } from './workflowSteps.messages';
 
 /** A note of the owner's that the visitor reads and confirms before going further */
 export interface NoteStepConfig {
@@ -16,20 +17,20 @@ const parseConfig = (raw: unknown): StepConfigResult<NoteStepConfig> => {
 	const source = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
 	const title = text(source.title);
 	const body = text(source.text);
-	if (!title) return { ok: false, field: 'title', message: 'Give the note a title.' };
+	if (!title) return { ok: false, field: 'title', message: m.note.titleRequired };
 	if (title.length > NOTE_STEP_LIMITS.title) {
 		return {
 			ok: false,
 			field: 'title',
-			message: `The title is at most ${NOTE_STEP_LIMITS.title} characters.`
+			message: m.note.titleTooLong(NOTE_STEP_LIMITS.title)
 		};
 	}
-	if (!body) return { ok: false, field: 'text', message: 'Write the note recruiters will read.' };
+	if (!body) return { ok: false, field: 'text', message: m.note.textRequired };
 	if (body.length > NOTE_STEP_LIMITS.text) {
 		return {
 			ok: false,
 			field: 'text',
-			message: `The note is at most ${NOTE_STEP_LIMITS.text} characters.`
+			message: m.note.textTooLong(NOTE_STEP_LIMITS.text)
 		};
 	}
 	return { ok: true, config: { title, text: body } };
@@ -38,9 +39,12 @@ const parseConfig = (raw: unknown): StepConfigResult<NoteStepConfig> => {
 export const noteStep: WorkflowStepManifest<NoteStepConfig> = {
 	type: 'note',
 	kind: 'requirement',
-	label: 'Read a note',
-	description:
-		'Recruiters read a note you wrote (what you are looking for, your conditions) and confirm it before going further.',
+	get label() {
+		return m.note.label;
+	},
+	get description() {
+		return m.note.description;
+	},
 	defaultConfig: () => ({ title: '', text: '' }),
 	parseConfig
 };

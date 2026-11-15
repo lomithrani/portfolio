@@ -72,8 +72,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			not store the PDF, and nothing is published until you add it yourself.
 		</li>
 		<li>
-			No advertising, no analytics, no sale of data. Our only cookie keeps you signed in; Google's
-			sign-in, loaded only when you ask for it, sets cookies of its own.
+			No advertising, no analytics, no sale of data. Our only cookies keep you signed in and
+			remember the language you chose; Google's sign-in, loaded only when you ask for it, sets
+			cookies of its own.
 		</li>
 		<li>
 			You can delete your account and everything in it at any time from
@@ -224,10 +225,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 <h4 id="data-device">On your device</h4>
 <p>
-	The site sets one cookie of its own, to keep you signed in, and stores some data in your browser
-	(theme, unsaved drafts). Google's sign-in, when you ask for it, sets cookies of its own. See <LegalDocLink
-		doc="cookies"
-		{lang}>cookies and local storage</LegalDocLink
+	The site sets two cookies of its own, one to keep you signed in and one to remember the language
+	you chose, and stores some data in your browser (theme, unsaved drafts). Google's sign-in, when
+	you ask for it, sets cookies of its own. See <LegalDocLink doc="cookies" {lang}
+		>cookies and local storage</LegalDocLink
 	>.
 </p>
 
@@ -577,11 +578,11 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 <h3 id="cookies">Cookies and local storage</h3>
 <p>
-	The site sets one cookie of its own, which keeps you signed in, and uses your browser's storage
-	for preferences and unsaved drafts. Google's sign-in is loaded only when you ask for it; it then
-	sets its cookie <code>g_state</code> on this site's domain and its own cookies on
-	accounts.google.com. There is no analytics or advertising cookie, so no consent banner is needed.
-	The full list is on the
+	The site sets two cookies of its own, one which keeps you signed in and one which remembers the
+	language you chose, and uses your browser's storage for preferences and unsaved drafts. Google's
+	sign-in is loaded only when you ask for it; it then sets its cookie <code>g_state</code> on this
+	site's domain and its own cookies on accounts.google.com. There is no analytics or advertising
+	cookie, so no consent banner is needed. The full list is on the
 	<LegalDocLink doc="cookies" {lang}>cookies and local storage</LegalDocLink> page.
 </p>
 

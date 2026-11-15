@@ -2,6 +2,8 @@
 // the code enforces. Each one is checked against the code or the provider's published terms;
 // keep them in step when either changes.
 
+import { LOCALE_COOKIE_MAX_AGE } from 'portfolio-common';
+
 /**
  * Host of the web application, the API and the database (LCEN art. 1-1: host identity). LCEN asks
  * for its phone number too: Railway publishes none, which the legal notice says (`phone: null`);
@@ -53,6 +55,9 @@ export const GOOGLE_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 
 /** Session cookie lifetime (server/plugins/auth.ts SESSION_DAYS) */
 export const SESSION_DAYS = 7;
+
+/** Lifetime of the cookie that keeps the language a visitor chose (portfolio-common LOCALE_COOKIE) */
+export const LANGUAGE_COOKIE_DAYS = LOCALE_COOKIE_MAX_AGE / (24 * 60 * 60);
 
 /** Largest PDF the imports read (client and API: 4 MB) */
 export const IMPORT_MAX_MB = 4;

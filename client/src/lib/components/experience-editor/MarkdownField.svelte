@@ -4,6 +4,7 @@
 	import Markdown from '#components/Markdown.svelte';
 	import FieldError from './FieldError.svelte';
 	import { getEditorContext } from './context';
+	import { m } from './editor.messages.ts';
 
 	let {
 		value = $bindable(''),
@@ -53,9 +54,11 @@
 		<label for={id} class={labelClass}>{label}</label>
 		<Tabs.List class="mb-0 gap-1 border-0 pb-0">
 			<Tabs.Trigger value="write" class="btn-sm data-selected:preset-tonal" data-write-tab>
-				Write
+				{m.markdown.write}
 			</Tabs.Trigger>
-			<Tabs.Trigger value="preview" class="btn-sm data-selected:preset-tonal">Preview</Tabs.Trigger>
+			<Tabs.Trigger value="preview" class="btn-sm data-selected:preset-tonal">
+				{m.markdown.preview}
+			</Tabs.Trigger>
 		</Tabs.List>
 	</div>
 	<Tabs.Content value="write">
@@ -75,18 +78,18 @@
 	<Tabs.Content value="preview">
 		<div
 			class="min-h-24 rounded-base border border-surface-200-800 p-3 text-sm"
-			aria-label="{label} preview"
+			aria-label={m.markdown.previewOf(label)}
 			role="region"
 		>
 			{#if value.trim()}
 				<Markdown content={value} headingOffset={2} compact />
 			{:else}
-				<p class="text-surface-700-300">Nothing to preview yet.</p>
+				<p class="text-surface-700-300">{m.markdown.empty}</p>
 			{/if}
 		</div>
 	</Tabs.Content>
 	<p id={hintId} class="text-xs text-surface-700-300">
-		Markdown: **bold**, _italic_, lists with “-”, [links](https://…).
+		{m.markdown.hint}
 	</p>
 	<FieldError {field} />
 </Tabs>

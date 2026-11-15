@@ -5,6 +5,7 @@
 	import { normalizeSkillNames } from '#services/experienceForm.ts';
 	import FieldError from './FieldError.svelte';
 	import { getEditorContext } from './context';
+	import { m } from './editor.messages.ts';
 
 	const MAX_SUGGESTIONS = 6;
 
@@ -101,7 +102,8 @@
 		editable={false}
 		max={EXPERIENCE_LIMITS.skillsPerProject}
 		invalid={!!error}
-		placeholder="Type a skill and press Enter"
+		placeholder={m.skills.placeholder}
+		translations={m.skills.tags}
 		class="gap-1"
 	>
 		<TagsInput.Label>{label}</TagsInput.Label>
@@ -129,13 +131,15 @@
 	</TagsInput>
 	<div bind:this={suggestionBox}>
 		{#if matches.length > 0}
-			<div class="flex flex-wrap items-center gap-1" role="group" aria-label="Suggestions">
-				<span class="me-1 text-xs text-surface-700-300" aria-hidden="true">Suggestions:</span>
+			<div class="flex flex-wrap items-center gap-1" role="group" aria-label={m.skills.suggestions}>
+				<span class="me-1 text-xs text-surface-700-300" aria-hidden="true">
+					{m.skills.suggestionsLabel}
+				</span>
 				{#each matches as skill (skill)}
 					<button
 						type="button"
 						class="chip min-h-8 preset-outlined-surface-300-700 hover:preset-tonal"
-						aria-label="Add {skill}"
+						aria-label={m.skills.add(skill)}
 						onclick={() => pick(skill)}
 					>
 						{skill}
@@ -145,7 +149,7 @@
 		{/if}
 	</div>
 	<p id={hintId} class="text-xs text-surface-700-300">
-		Press Enter, or separate skills with a comma.
+		{m.skills.hint}
 	</p>
 	<FieldError {field} />
 </div>

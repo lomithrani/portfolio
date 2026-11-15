@@ -12,6 +12,8 @@ visitors do, without anything to confirm.
 	import { noteContent, submitFailure } from '#services/workflow.ts';
 	import ApplySignIn from '#components/apply/ApplySignIn.svelte';
 	import Markdown from '#components/Markdown.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import { m } from './steps.messages';
 	import type { StepProps } from './types';
 
 	let { step, journey, submit, reload, locked }: StepProps = $props();
@@ -55,7 +57,7 @@ visitors do, without anything to confirm.
 			></div>
 		{:else if !signedIn}
 			<div class="space-y-3">
-				<p class="text-sm">Sign in to confirm that you have read this.</p>
+				<p class="text-sm">{m.note.signIn}</p>
 				<!-- No space chosen: an account keeps the one it had -->
 				<ApplySignIn mode={null} />
 			</div>
@@ -66,7 +68,7 @@ visitors do, without anything to confirm.
 				disabled={confirming}
 				onclick={confirm}
 			>
-				{confirming ? 'Saving…' : 'I have read this'}
+				{confirming ? common.saving : m.note.confirm}
 			</button>
 		{/if}
 	{/if}

@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
 	AGE_CONFIRMATION_KEY,
-	AGE_CONFIRMATION_TEXT,
-	CONSENT_REQUIRED_MESSAGE,
+	legalMessages,
 	CONSENT_SOURCES,
 	LEGAL_VERSION,
 	MINIMUM_AGE,
 	RESERVED_DOMAIN_NAMES,
-	STALE_TERMS_MESSAGE,
 	TERMS_VERSION_MAX_LENGTH,
 	consentProblem,
 	currentConsent,
@@ -23,8 +21,8 @@ describe('legal constants', () => {
 		expect(LEGAL_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 		expect(LEGAL_VERSION.length).toBeLessThanOrEqual(TERMS_VERSION_MAX_LENGTH);
 		expect(MINIMUM_AGE).toBe(16);
-		expect(AGE_CONFIRMATION_TEXT).toContain(`at least ${MINIMUM_AGE} years old`);
-		expect(AGE_CONFIRMATION_TEXT).toContain('minimum legal working age in my country');
+		expect(legalMessages.ageConfirmation).toContain(`at least ${MINIMUM_AGE} years old`);
+		expect(legalMessages.ageConfirmation).toContain('minimum legal working age in my country');
 		expect(AGE_CONFIRMATION_KEY).toBe('age-16-working-age-v1');
 		expect(CONSENT_SOURCES).toEqual(['landing', 'claim', 'account']);
 	});
@@ -45,7 +43,7 @@ describe('parseConsent and consentProblem', () => {
 			expect(parseConsent(input)).toEqual({
 				ok: false,
 				property: 'consent',
-				message: CONSENT_REQUIRED_MESSAGE
+				message: legalMessages.consentRequired
 			});
 		}
 	});
@@ -55,7 +53,7 @@ describe('parseConsent and consentProblem', () => {
 			expect(parseConsent({ termsVersion: LEGAL_VERSION, ageConfirmed })).toEqual({
 				ok: false,
 				property: 'consent.ageConfirmed',
-				message: CONSENT_REQUIRED_MESSAGE
+				message: legalMessages.consentRequired
 			});
 		}
 	});
@@ -65,11 +63,11 @@ describe('parseConsent and consentProblem', () => {
 			expect(parseConsent({ termsVersion, ageConfirmed: true })).toEqual({
 				ok: false,
 				property: 'consent.termsVersion',
-				message: STALE_TERMS_MESSAGE
+				message: legalMessages.staleTerms
 			});
 		}
 		expect(consentProblem({ termsVersion: '2025-01-01', ageConfirmed: true })).toBe(
-			STALE_TERMS_MESSAGE
+			legalMessages.staleTerms
 		);
 	});
 

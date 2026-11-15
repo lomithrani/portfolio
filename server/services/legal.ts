@@ -1,17 +1,15 @@
 import { Types } from 'mongoose';
-import { AGE_CONFIRMATION_KEY, LEGAL_VERSION, parseConsent } from 'portfolio-common';
+import { LEGAL_VERSION, ageConfirmationKey, parseConsent } from 'portfolio-common';
 import type { ConsentInput, ConsentSource } from 'portfolio-common';
 import { User } from '../models/database';
 import { CouldntVerifyJwtError, FieldValidationError } from '../errors';
+import { UNKNOWN_USER } from '../protocol';
+import { m } from './legal.messages';
 
 // Acceptances of the Terms of use and Privacy policy (portfolio-common
-// LEGAL_VERSION), with the age confirmation (AGE_CONFIRMATION_KEY): recorded
+// LEGAL_VERSION), with the age confirmation (the key of its wording in the request's language, ageConfirmationKey()): recorded
 // on the account, append-only (User.legalAcceptances), so the account can
 // show what it accepted and when (GDPR art. 7(1)).
-
-/** The message of a claim refused because the account never accepted the terms in force */
-export const CLAIM_CONSENT_REQUIRED_MESSAGE =
-  'Confirm your age and accept the terms of use to create a portfolio.';
 
 interface AcceptanceHolder {
   legalAcceptances?: readonly { version?: string | null }[] | null;
@@ -65,7 +63,7 @@ export const recordConsent = async (
         legalAcceptances: {
           version: consent.termsVersion,
           acceptedAt: new Date(),
-          ageConfirmationKey: AGE_CONFIRMATION_KEY,
+          ageConfirmationKey: ageConfirmationKey(),
           source
         }
       }
@@ -88,13 +86,13 @@ export const requireCurrentTerms = async (
 ): Promise<void> => {
   if (await userAcceptedCurrentTerms(userId)) return;
   if (input === undefined || input === null) {
-    throw new FieldValidationError('consent', CLAIM_CONSENT_REQUIRED_MESSAGE);
+    throw new FieldValidationError('consent', () => m.claimConsentRequired);
   }
   if (await recordConsent(userId, input, source)) return;
   // Nothing recorded: accepted meanwhile by a concurrent request, or the
   // account is gone (deleted while this session was still valid). The gated
   // route never goes on for an account without an acceptance on record
   if (!(await userAcceptedCurrentTerms(userId))) {
-    throw new CouldntVerifyJwtError('Unauthorized: unknown user');
+    throw new CouldntVerifyJwtError(UNKNOWN_USER);
   }
 };

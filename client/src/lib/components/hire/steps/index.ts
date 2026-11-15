@@ -5,26 +5,29 @@ import JobStep from './JobStep.svelte';
 import MeetingStep from './MeetingStep.svelte';
 import NoteSettings from './NoteSettings.svelte';
 import NoteStep from './NoteStep.svelte';
+import { m } from './steps.messages';
 import type { ClientStep } from './types';
 
 // The client's side of every step type of the hiring journey, under the name of its manifest in
 // portfolio-common (common/models/workflowSteps/index.ts): a new type is added in both, and in
 // the API's registry (docs/WORKFLOW_STEPS.md). registry.test.ts fails when a manifest has no
-// entry here.
+// entry here. The registry is built once, for every visitor: a text is read from its message
+// when it is asked for (a function, a getter, the messages themselves), never kept here.
 const CLIENT_STEPS: Record<string, ClientStep> = {
 	note: {
 		Visitor: NoteStep,
 		Settings: NoteSettings,
 		title: (step) => noteContent(step.config).title.trim() || undefined,
 		ownerPreview: true,
-		note: (_step, state) =>
-			state === 'done' ? 'You have read this note.' : 'Read the note, then confirm it.'
+		note: (_step, state) => (state === 'done' ? m.note.read : m.note.ask)
 	},
 	job: {
 		Visitor: JobStep,
 		note: (step, state) => jobStepNote(step.view, state),
 		wantsOpen: (step, address) => asksForAnotherJob(step.view, address),
-		reopenLabel: 'Change'
+		get reopenLabel() {
+			return m.job.reopen;
+		}
 	},
 	'job-match': {
 		Visitor: JobMatchStep,
@@ -34,15 +37,8 @@ const CLIENT_STEPS: Record<string, ClientStep> = {
 	},
 	meeting: {
 		Visitor: MeetingStep,
-		note: (_step, state) =>
-			state === 'done'
-				? 'You booked a meeting. You can book another slot.'
-				: 'Pick a time slot that suits you.',
-		goal: {
-			heading: (ownerName) => `Book a meeting with ${ownerName}`,
-			alone: "Pick a time slot that suits you — you'll receive a calendar invitation by email.",
-			after: "Then pick a time slot: you'll receive a calendar invitation by email."
-		}
+		note: (_step, state) => (state === 'done' ? m.meeting.booked : m.meeting.ask),
+		goal: m.meeting.goal
 	}
 };
 

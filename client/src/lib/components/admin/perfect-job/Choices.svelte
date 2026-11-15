@@ -5,6 +5,8 @@ checkbox each, any number picked. The value keeps the order of the options, what
 they were ticked in.
 -->
 <script lang="ts" generics="T extends string">
+	import { m } from './Choices.messages.ts';
+
 	let {
 		legend,
 		options,
@@ -47,7 +49,7 @@ they were ticked in.
 				/>
 				{labels[option]}
 				{#if unavailable.includes(option)}
-					<span class="text-xs text-surface-700-300">(not available on this site)</span>
+					<span class="text-xs text-surface-700-300">{m.unavailable}</span>
 				{/if}
 			</label>
 		{/each}

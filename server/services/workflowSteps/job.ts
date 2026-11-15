@@ -8,6 +8,7 @@ import type { JobPostingDto } from '../jobPostings';
 import { requireRecruiterSpace } from '../recruiters';
 import type { ServerStep, StepContext } from './types';
 import { inputFields } from './types';
+import { m } from './steps.messages';
 
 // Job step: the visitor (a recruiter) picks one of their own open job
 // postings, again if they wish (the latest pick counts). The step holds
@@ -33,6 +34,8 @@ export interface JobStepView {
   job: JourneyJobDto;
 }
 
+// Not a message: the client tells this 409 from its text (/open job/ in pickJobFailure of
+// client/src/services/workflow.ts) and says it in its own words: it stays in English (protocol.ts)
 export const JOB_NOT_OPEN = 'Only an open job description can be picked';
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
@@ -81,7 +84,7 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
    */
   submit: async ({ visitorId, input }) => {
     const id = jobId(inputFields(input)?.jobId);
-    if (!id) throw new FieldValidationError('input.jobId', 'Pick one of your job descriptions');
+    if (!id) throw new FieldValidationError('input.jobId', () => m.job.pickOne);
     await requireRecruiterSpace(visitorId);
     const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }, { status: 1 }).lean();
     if (!job) throw new ResourceNotFoundError(JOB_NOT_FOUND);
@@ -93,7 +96,7 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
     const job = await pickedJob(ctx);
     if (!job) return [];
     return [
-      `Job: ${job.company ? `${job.title} — ${job.company}` : job.title}`,
+      m.job.invitation(job.title, job.company),
       ...(webOrigin ? [`${webOrigin}/jobs/${job._id}`] : [])
     ];
   }

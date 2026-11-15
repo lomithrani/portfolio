@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { STEP_SUGGESTION_LIMITS, parseStepSuggestion } from 'portfolio-common';
-import { NETWORK_ERROR } from '../recruiter';
-import { SUGGESTION_SEND_FAILED, emptySuggestion, suggestionFailure } from '../stepSuggestion';
+import { networkError } from '../recruiter';
+import { emptySuggestion, suggestionFailure } from '../stepSuggestion';
+import { m } from '../stepSuggestion.messages';
 
 describe('parseStepSuggestion', () => {
 	const valid = { name: 'Share the salary range', description: 'The recruiter gives the range.' };
@@ -70,7 +71,7 @@ describe('parseStepSuggestion', () => {
 describe('suggestionFailure', () => {
 	it('tells a lost connection from a refusal', () => {
 		expect(suggestionFailure(503, new TypeError('Failed to fetch'))).toEqual({
-			message: NETWORK_ERROR
+			message: networkError()
 		});
 	});
 
@@ -110,7 +111,7 @@ describe('suggestionFailure', () => {
 		expect(
 			suggestionFailure(503, 'Your suggestion could not be sent right now, try again later').message
 		).toBe('Your suggestion could not be sent right now, try again later');
-		expect(suggestionFailure(500, 'Internal Server Error').message).toBe(SUGGESTION_SEND_FAILED);
-		expect(suggestionFailure(undefined, undefined).message).toBe(SUGGESTION_SEND_FAILED);
+		expect(suggestionFailure(500, 'Internal Server Error').message).toBe(m.sendFailed);
+		expect(suggestionFailure(undefined, undefined).message).toBe(m.sendFailed);
 	});
 });

@@ -35,14 +35,16 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	} from 'svelte-heros-v2';
 	import {
 		RESERVED_DOMAIN_NAMES,
-		STALE_TERMS_MESSAGE,
+		legalMessages,
 		currentConsent,
+		getLocale,
 		normalizeDomainName
 	} from 'portfolio-common';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { portfolioApi } from '#services';
 	import {
-		CLAIM_CONSENT_MESSAGE,
 		DOMAIN_NAME_MAX_LENGTH,
 		PORTFOLIO_NAME_PLACEHOLDER,
 		checkDomainAvailability,
@@ -56,11 +58,13 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		switchMode,
 		type DomainAvailabilityStatus
 	} from '#services/account.ts';
+	import { accountMessages } from '#services/account.messages.ts';
 	import { isSessionValid, signIn } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { quotaText, type ImportStatus } from '#services/resumeImport.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { m } from './CandidateOnboarding.messages.ts';
 
 	const uid = $props.id();
 	const addressId = `${uid}-address`;
@@ -136,14 +140,14 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	});
 
 	const PILLS: Record<Availability['status'], { label: string; tone: string }> = {
-		checking: { label: 'Checking…', tone: 'preset-tonal' },
-		available: { label: 'Available', tone: 'preset-filled-success-500' },
+		checking: { label: m.address.pill.checking, tone: 'preset-tonal' },
+		available: { label: m.address.pill.available, tone: 'preset-filled-success-500' },
 		// The same error tone as the field's border and message (and AA contrast on a 12 px badge)
-		taken: { label: 'Taken', tone: 'preset-tonal-error' },
-		invalid: { label: 'Not valid', tone: 'preset-tonal-error' },
-		reserved: { label: 'Reserved', tone: 'preset-tonal-error' },
-		error: { label: 'Not checked', tone: 'preset-tonal' },
-		'rate-limited': { label: 'Not checked', tone: 'preset-tonal' }
+		taken: { label: m.address.pill.taken, tone: 'preset-tonal-error' },
+		invalid: { label: m.address.pill.invalid, tone: 'preset-tonal-error' },
+		reserved: { label: m.address.pill.reserved, tone: 'preset-tonal-error' },
+		error: { label: m.address.pill.notChecked, tone: 'preset-tonal' },
+		'rate-limited': { label: m.address.pill.notChecked, tone: 'preset-tonal' }
 	};
 
 	/** The claim's refusal of a name, shown while that name is in the field */
@@ -172,7 +176,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	// What a screen reader hears about the address, once typing paused and the check answered
 	let liveText = $derived.by(() => {
 		if (ownedDomain || !normalizedName || !pill || pill === PILLS.checking) return '';
-		return `${preview}: ${pill.label}.`;
+		return m.address.announcement(preview, pill.label);
 	});
 	let announcement = $state('');
 	$effect(() => {
@@ -198,7 +202,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		if (!mounted) return;
 		// The box may have been unticked since the button showed
 		if (!consent) {
-			consentError = 'Tick the box to sign in.';
+			consentError = m.signIn.tickToSignIn;
 			document.getElementById(consentId)?.focus();
 			return;
 		}
@@ -209,15 +213,18 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		if (!result.ok) {
 			// Terms changed since the page loaded: retrying sends the same version, only a reload helps
 			signInError =
-				result.reason === 'stale-terms' ? STALE_TERMS_MESSAGE : 'Sign-in failed. Try again.';
+				result.reason === 'stale-terms' ? legalMessages.staleTerms : common.signInFailed;
 			return;
 		}
 		claimError = '';
 		const account = $authenticationStore.user;
 		toaster.success(
 			account?.domain
-				? { title: 'Welcome back', description: `${account.domain} is your portfolio.` }
-				: { title: 'Signed in', description: 'Now claim your address.' }
+				? {
+						title: m.signIn.welcomeBack.title,
+						description: m.signIn.welcomeBack.description(account.domain)
+					}
+				: { title: m.signIn.done.title, description: m.signIn.done.description }
 		);
 		await focusCurrentStep();
 	};
@@ -240,6 +247,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 					text: 'signin_with',
 					shape: 'pill',
 					logo_alignment: 'left',
+					locale: getLocale(),
 					width: Math.min(320, Math.max(200, container.clientWidth))
 				});
 				gsiState = 'ready';
@@ -291,7 +299,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 			return;
 		}
 		if (needsClaimConsent && !claimConsent) {
-			claimConsentError = CLAIM_CONSENT_MESSAGE;
+			claimConsentError = accountMessages.claim.consent;
 			document.getElementById(claimConsentId)?.focus();
 			return;
 		}
@@ -309,7 +317,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				refusedName = {
 					name: normalizedName,
 					message: result.message,
-					status: /taken/i.test(result.message) ? 'taken' : 'invalid'
+					status: result.message === accountMessages.name.taken ? 'taken' : 'invalid'
 				};
 				focusAddress();
 			} else if (result.cause === 'owns-domain') {
@@ -334,8 +342,8 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		await switchMode('candidate');
 		claiming = false;
 		toaster.success({
-			title: 'Portfolio claimed',
-			description: `${result.name} is yours. Add your résumé next.`
+			title: accountMessages.claim.claimed,
+			description: m.claim.claimed(result.name)
 		});
 		await focusCurrentStep();
 	}
@@ -386,25 +394,23 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	let steps = $derived<StepInfo[]>([
 		{
 			n: 1,
-			title: 'Sign in with Google',
-			done: user?.email ? `Signed in as ${user.email}.` : 'Signed in.',
+			title: common.signInWithGoogle,
+			done: user?.email ? m.signIn.signedInAs(user.email) : m.signIn.signedIn,
 			upcoming: ''
 		},
 		{
 			n: 2,
-			title: 'Claim your address',
-			done: `${preview} is yours.`,
+			title: m.claim.title,
+			done: m.claim.yours(preview),
 			// Not an address the pill just called taken, reserved or not valid
 			upcoming:
-				domainNameProblem(name) || addressInvalid
-					? 'Reserve the address you choose above.'
-					: `Reserve ${preview} for your portfolio.`
+				domainNameProblem(name) || addressInvalid ? m.claim.reserveChosen : m.claim.reserve(preview)
 		},
 		{
 			n: 3,
-			title: 'Add your résumé',
+			title: m.resume.title,
 			done: '',
-			upcoming: 'Import your résumé (PDF), or add your experiences by hand.'
+			upcoming: m.resume.upcoming
 		}
 	]);
 
@@ -412,9 +418,9 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		current === null ? 'unknown' : n < current ? 'done' : n === current ? 'current' : 'upcoming';
 
 	const STEP_STATE_TEXT = {
-		done: 'done',
-		current: 'current step',
-		upcoming: 'to do',
+		done: m.steps.state.done,
+		current: m.steps.state.current,
+		upcoming: m.steps.state.upcoming,
 		unknown: ''
 	} as const;
 
@@ -445,7 +451,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				class={['shrink-0', addressInvalid ? 'text-surface-700-300' : 'text-success-700-300']}
 				aria-hidden="true"
 			/>
-			<span class="sr-only">Your portfolio address:</span>
+			<span class="sr-only">{m.address.preview}</span>
 			<span class="min-w-0 break-all"
 				><span class="text-surface-700-300">{host}/</span><span
 					class={[
@@ -463,7 +469,8 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		</p>
 		{#if ownedDomain}
 			<span class="badge preset-filled-success-500 shrink-0">
-				<Check size="12" aria-hidden="true" /> Yours
+				<Check size="12" aria-hidden="true" />
+				{m.address.yours}
 			</span>
 		{/if}
 	</div>
@@ -471,19 +478,17 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	<form class="space-y-6 p-4 sm:p-5 md:p-6" novalidate onsubmit={claim}>
 		<div class="space-y-1">
 			<h2 id="{uid}-title" class="text-xl font-bold">
-				{ownedDomain ? 'Your portfolio is online' : 'Create your portfolio'}
+				{ownedDomain ? m.title.online : m.title.create}
 			</h2>
 			<p class="text-sm text-surface-700-300">
-				{ownedDomain
-					? 'Fill it with your experiences, then share its address.'
-					: 'Three steps, a few minutes, free.'}
+				{ownedDomain ? m.subtitle.online : m.subtitle.create}
 			</p>
 		</div>
 
 		{#if !ownedDomain}
 			<div class="space-y-2">
 				<div class="flex items-center justify-between gap-3">
-					<label for={addressId} class="text-sm font-medium">Choose your address</label>
+					<label for={addressId} class="text-sm font-medium">{m.address.label}</label>
 					{#if pill}
 						<span class={['badge shrink-0', pill.tone]} data-testid="availability">
 							{#if pill === PILLS.checking}
@@ -536,14 +541,13 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 						addressMessage && addressInvalid ? 'text-error-700-300' : 'text-surface-700-300'
 					]}
 				>
-					{addressMessage ??
-						`Lowercase letters, digits, dots and hyphens. Your name works well: ${PORTFOLIO_NAME_PLACEHOLDER}.`}
+					{addressMessage ?? m.address.hint(PORTFOLIO_NAME_PLACEHOLDER)}
 				</p>
 				<p class="sr-only" aria-live="polite">{announcement}</p>
 			</div>
 		{/if}
 
-		<ol class="space-y-0" aria-label="Steps">
+		<ol class="space-y-0" aria-label={m.steps.label}>
 			{#each steps as step, index (step.n)}
 				{@const status = stepState(step.n)}
 				<li
@@ -586,7 +590,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 								status === 'upcoming' && 'text-surface-700-300'
 							]}
 						>
-							<span class="sr-only">Step {step.n}:</span>
+							<span class="sr-only">{m.steps.number(step.n)}</span>
 							{step.title}
 							{#if STEP_STATE_TEXT[status]}
 								<span class="sr-only">({STEP_STATE_TEXT[status]})</span>
@@ -623,7 +627,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 {#snippet signInStep()}
 	<div class="space-y-4">
 		<p class="text-sm text-surface-700-300" data-testid="returning-owner">
-			Already have a portfolio? Sign in the same way: you go straight to it.
+			{m.signIn.returning}
 		</p>
 		<AgeTermsConsent
 			bind:checked={consent}
@@ -644,7 +648,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		{#if signingIn}
 			<p class="flex items-center gap-2 text-sm font-medium" role="status">
 				<ArrowPath size="16" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-				Signing in…
+				{common.signingIn}
 			</p>
 		{/if}
 		{#if consent}
@@ -660,19 +664,18 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 			</div>
 			{#if gsiState === 'unavailable'}
 				<p class="text-sm text-error-700-300" role="alert">
-					Google sign-in could not load. Check your connection (or allow accounts.google.com if a
-					blocker is on), then reload the page.
+					{m.signIn.googleUnavailable}
 				</p>
 			{/if}
 		{:else}
 			<p
 				class="flex min-h-11 w-full max-w-80 items-center justify-center rounded-full border border-dashed border-surface-300-700 px-4 text-center text-sm text-surface-700-300"
 			>
-				Tick the box to continue
+				{m.signIn.tickToContinue}
 			</p>
 		{/if}
 		<p class="text-xs text-surface-700-300">
-			From your Google account we keep its id and your email address, nothing else.
+			{m.signIn.dataKept}
 		</p>
 	</div>
 {/snippet}
@@ -704,14 +707,14 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		>
 			{#if claiming}
 				<ArrowPath size="18" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-				Claiming…
+				{accountMessages.claim.claiming}
 			{:else}
-				Claim this address
+				{m.claim.submit}
 				<ArrowRight size="18" aria-hidden="true" />
 			{/if}
 		</button>
 		<p class="text-xs text-surface-700-300">
-			One portfolio per account. Its address stays yours until you delete your account.
+			{m.claim.onePerAccount}
 		</p>
 	</div>
 {/snippet}
@@ -725,19 +728,19 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 					class="placeholder h-11 w-full max-w-64 animate-pulse rounded-base motion-reduce:animate-none"
 				></div>
 			</div>
-			<p class="sr-only" role="status">Loading…</p>
+			<p class="sr-only" role="status">{common.loading}</p>
 		{:else if importAvailable && importStatus}
 			<p class="text-sm">
-				Upload your résumé as a PDF, up to 4 MB. Claude, an AI model by Anthropic, reads it and
-				proposes your experiences as drafts. You review each one: nothing is published until you add
-				it, and the PDF is not stored.
+				{m.resume.importIntro}
 			</p>
 			<p class="flex items-start gap-2 text-xs text-surface-700-300">
 				<InformationCircle size="16" class="shrink-0" aria-hidden="true" />
 				<span>
-					To be read, your PDF is sent to Anthropic, in the United States, which does not use it to
-					train its models. Details in the
-					<a class="link-text" href={resolve('/(site)/legal/privacy')}>privacy policy</a>.
+					<Rich text={m.resume.importNotice}>
+						{#snippet privacy(text)}<a class="link-text" href={resolve('/(site)/legal/privacy')}
+								>{text}</a
+							>{/snippet}
+					</Rich>
 				</span>
 			</p>
 			<div class="flex flex-wrap items-center gap-3">
@@ -746,18 +749,17 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 					class="btn preset-filled-primary-700-300 min-h-11 max-sm:w-full"
 				>
 					<DocumentArrowUp size="18" aria-hidden="true" />
-					Upload my résumé (PDF)
+					{m.resume.upload}
 				</a>
 				<span class="text-xs text-surface-700-300">{quotaText(importStatus)}</span>
 			</div>
 		{:else}
 			<p class="text-sm">
-				Add your jobs, studies and projects. Visitors see them as a list or a timeline, the most
-				recent first.
+				{m.resume.byHandIntro}
 			</p>
 			{#if importStatus?.enabled}
 				<p class="text-xs text-surface-700-300">
-					You used this month’s résumé imports: add your experiences by hand for now.
+					{m.resume.importsUsed}
 				</p>
 			{/if}
 			<a
@@ -765,7 +767,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				class="btn preset-filled-primary-700-300 min-h-11 max-sm:w-full"
 			>
 				<Plus size="18" aria-hidden="true" />
-				Add my experiences
+				{m.resume.byHand}
 			</a>
 		{/if}
 		<p>
@@ -773,7 +775,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				href={resolve('/[domain]/experiences', { domain: ownedDomain ?? '' })}
 				class="btn btn-sm -ms-2 px-2 hover:preset-tonal"
 			>
-				Open my portfolio
+				{m.resume.open}
 				<ArrowRight size="16" aria-hidden="true" />
 			</a>
 		</p>

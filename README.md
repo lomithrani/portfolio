@@ -11,7 +11,11 @@ to. The home page (`/`) is the candidate landing page: it shows both with two sh
 the app, previews the portfolio's address and checks it is free as you type, then walks through
 three steps (sign in with Google after confirming your age and accepting the terms, claim the
 address, import a PDF résumé). Legal notice, privacy policy, terms
-and cookies are at `/legal` (French with `?lang=fr`); each account can delete itself at `/account`.
+and cookies are at `/legal`; each account can delete itself at `/account`.
+
+The whole site is in English and French: a page opens in the visitor's browser language, and the
+language switch (or `?lang=fr` / `?lang=en` on any address) changes it. How texts are written and
+translated: [docs/I18N.md](docs/I18N.md).
 
 ```
 client/   SvelteKit web app (portfolio-client)

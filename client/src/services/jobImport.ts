@@ -1,5 +1,6 @@
 import { RECRUITER_PLANS, RESUME_IMPORT_CLIENT_TIMEOUT_MS } from 'portfolio-common';
 import type { portfolioApi } from '#services';
+import { jobImportMessages as m } from './jobImport.messages.ts';
 import { formatFileSize, formatResetDate } from './resumeImport';
 
 // Pure helpers of the job description import (GET / POST /jobs/import): the API reads a PDF job
@@ -52,11 +53,9 @@ export function jobFileProblem(file: {
 	size: number;
 }): string | undefined {
 	const looksLikePdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-	if (!looksLikePdf) return 'Choose a PDF file: the import only reads PDF job descriptions.';
-	if (file.size === 0) return 'This file is empty. Choose another PDF.';
-	if (file.size > MAX_JOB_PDF_BYTES) {
-		return `This PDF is ${formatFileSize(file.size)}: the import takes files of up to 4 MB. Export a lighter version (fewer images) and try again.`;
-	}
+	if (!looksLikePdf) return m.file.notPdf;
+	if (file.size === 0) return m.file.empty;
+	if (file.size > MAX_JOB_PDF_BYTES) return m.file.tooLarge(formatFileSize(file.size));
 	return undefined;
 }
 
@@ -81,14 +80,11 @@ export const jobImportAvailability = (allowance: Allowance): JobImportAvailabili
 };
 
 /** '2 of 3 free imports left' (the plan's: the daily limits are only told once reached) */
-export const jobImportQuotaText = (allowance: Allowance): string => {
-	const left = planImportsLeft(allowance);
-	return `${left} of ${allowance.limit} free ${allowance.limit === 1 ? 'import' : 'imports'} left`;
-};
+export const jobImportQuotaText = (allowance: Allowance): string =>
+	m.quota(planImportsLeft(allowance), allowance.limit);
 
 /** 'You have used your 3 free imports. Paid plans are coming soon.' */
-export const planUsedText = ({ limit }: Pick<Allowance, 'limit'>): string =>
-	`You have used your ${limit} free ${limit === 1 ? 'import' : 'imports'}. Paid plans are coming soon.`;
+export const planUsedText = ({ limit }: Pick<Allowance, 'limit'>): string => m.planUsed(limit);
 
 const resetIso = (resetsAt: Date | string | null | undefined): string | undefined => {
 	if (!resetsAt) return undefined;
@@ -108,9 +104,7 @@ export function jobImportAllowanceText(allowance: Allowance, timeZone?: string):
 			return planUsedText(allowance);
 		case 'paused': {
 			const when = formatResetDate(resetIso(allowance.resetsAt), timeZone);
-			return when
-				? `No imports available right now: you can import again from ${when}.`
-				: 'No imports available right now. Try again later.';
+			return when ? m.pausedUntil(when) : m.paused;
 		}
 		default:
 			return jobImportQuotaText(allowance);
@@ -123,24 +117,13 @@ export function jobImportAllowanceText(allowance: Allowance, timeZone?: string):
  */
 export const importCostText = (allowance: Allowance): string => {
 	const left = planImportsLeft(allowance);
-	return left === 1
-		? 'This is your last free import: it counts even if you discard the draft.'
-		: `This import uses 1 of your ${left} free imports left, even if you discard the draft.`;
+	return left === 1 ? m.lastImportCost : m.importCost(left);
 };
 
 // --- Errors ---------------------------------------------------------------------------
 
-export const JOB_IMPORT_SESSION_EXPIRED =
-	'Your session expired. Sign in again, then import the job description.';
-
-export const JOB_IMPORT_NETWORK_ERROR =
-	'Could not reach the server. Check your connection and try again. If the import had started, it may still count toward your free imports.';
-
-export const JOB_IMPORT_TIMED_OUT =
-	'The import took too long and was stopped. It may still count toward your free imports: try again later, or with a shorter PDF.';
-
-export const JOB_IMPORT_STOPPED =
-	'Import stopped. If Claude had already started reading the PDF, it still counts toward your free imports.';
+// The session expired, the connection failed, the browser stopped waiting, the recruiter stopped
+// the import: `sessionExpired`, `networkError`, `timedOut` and `stopped` of jobImport.messages.ts
 
 /** The text of an API error body: plain text only (a validation object is not about the file) */
 const apiText = (value: unknown): string | undefined => {
@@ -158,27 +141,27 @@ const apiText = (value: unknown): string | undefined => {
  */
 export function jobImportErrorMessage(status: number | undefined, value: unknown): string {
 	// Eden Treaty answers a fetch that failed (no response at all) as a 503 holding the error
-	if (value instanceof Error) return JOB_IMPORT_NETWORK_ERROR;
+	if (value instanceof Error) return m.networkError;
 	const text = apiText(value);
 	switch (status) {
 		case 401:
-			return JOB_IMPORT_SESSION_EXPIRED;
+			return m.sessionExpired;
 		case 402:
 			return text ?? planUsedText({ limit: FREE_PLAN_IMPORTS });
 		case 403:
-			return 'Your account has no recruiter space yet. Create it from your recruiter space, then import the PDF.';
+			return m.errors.noRecruiterSpace;
 		case 404:
-			return 'Job description import is not available on this site right now.';
+			return m.errors.unavailable;
 		case 413:
-			return text ?? 'This PDF is too large: the import takes files of up to 4 MB.';
+			return text ?? m.errors.tooLarge;
 		case 422:
-			return text ?? 'This file could not be read as a job description. Choose another PDF.';
+			return text ?? m.errors.unreadable;
 		case 429:
-			return text ?? 'No imports are available right now. Try again later.';
+			return text ?? m.errors.noImportsAvailable;
 		case 503:
-			return text ?? 'Job description import is temporarily unavailable. Try again later.';
+			return text ?? m.errors.temporarilyUnavailable;
 		default:
-			return 'The import failed. Try again in a moment.';
+			return m.errors.failed;
 	}
 }
 
@@ -187,8 +170,5 @@ export const isAllowanceRefusal = (status: number | undefined): boolean =>
 	status === 402 || status === 429;
 
 /** 'Imported from offer.pdf: 2 things to check' (the toast once the editor opens) */
-export const importedToastText = (fileName: string, warnings: readonly string[]): string => {
-	const from = fileName ? ` from ${fileName}` : '';
-	if (warnings.length === 0) return `Read${from}. Complete it, then create the posting.`;
-	return `Read${from}. Check the ${warnings.length === 1 ? 'note' : `${warnings.length} notes`} above the form, then create the posting.`;
-};
+export const importedToastText = (fileName: string, warnings: readonly string[]): string =>
+	m.importedToast(fileName, warnings.length);

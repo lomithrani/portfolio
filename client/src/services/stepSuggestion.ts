@@ -1,5 +1,6 @@
 import { STEP_SUGGESTION_LIMITS, type StepSuggestionField } from 'portfolio-common';
-import { isNetworkFailure, NETWORK_ERROR } from './recruiter';
+import { isNetworkFailure, networkError } from './recruiter';
+import { m } from './stepSuggestion.messages';
 
 // "Suggest a step" in the owner's hiring journey editor (components/admin/StepSuggestion.svelte):
 // the owner describes a step they miss and the API files it as a feature request in the
@@ -13,8 +14,6 @@ export interface SuggestionForm {
 }
 
 export const emptySuggestion = (): SuggestionForm => ({ name: '', description: '', reason: '' });
-
-export const SUGGESTION_SEND_FAILED = 'Could not send your suggestion. Try again.';
 
 export interface SuggestionFailure {
 	message: string;
@@ -32,36 +31,31 @@ export const suggestionFailure = (
 	status: number | undefined,
 	value: unknown
 ): SuggestionFailure => {
-	if (isNetworkFailure(value)) return { message: NETWORK_ERROR };
+	if (isNetworkFailure(value)) return { message: networkError() };
 	const text = bodyText(value);
 	switch (status) {
 		case 401:
 			// Said, not acted on: signing the page out here would take the journey editor around
 			// the form, and its unsaved steps, away with it
-			return {
-				message:
-					'Your session expired. Copy what you wrote, then reload the page and sign in again.'
-			};
+			return { message: m.sessionExpired };
 		case 403:
-			return { message: 'Only the owner of a portfolio can suggest a step.' };
+			return { message: m.ownerOnly };
 		case 404:
-			return { message: 'Suggestions are not available right now.' };
+			return { message: m.unavailable };
 		case 422: {
 			// A rule of the API this page does not know yet: said at the field it names
 			const problem = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 			const message = bodyText(problem.message);
 			return isField(problem.property) && message
 				? { message, field: problem.property }
-				: { message: 'Check your suggestion and try again.' };
+				: { message: m.checkSuggestion };
 		}
 		case 429:
 			// The API says which limit (the owner's or the site's) and when to come back
-			return {
-				message: text || 'Too many suggestions for today. Try again tomorrow.'
-			};
+			return { message: text || m.tooMany };
 		case 503:
-			return { message: text || SUGGESTION_SEND_FAILED };
+			return { message: text || m.sendFailed };
 		default:
-			return { message: SUGGESTION_SEND_FAILED };
+			return { message: m.sendFailed };
 	}
 };

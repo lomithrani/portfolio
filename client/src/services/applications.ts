@@ -1,4 +1,5 @@
-import { APPLICABLE_JOB_STATUS, type JobStatus } from 'portfolio-common';
+import { APPLICABLE_JOB_STATUS, intlLocale, type JobStatus } from 'portfolio-common';
+import { m } from './applications.messages';
 import { jobSummaryParts, statusLabel, type JobPostingLike } from './jobPosting';
 import type { AuthUser } from './stores';
 
@@ -10,11 +11,11 @@ const LOCALE = 'en-GB';
 
 // --- Public pages -----------------------------------------------------------------------------
 
-/** The API's 404 body for a draft or unknown posting (GET /jobs/:id) */
+/**
+ * The API's 404 body for a draft or unknown posting (GET /jobs/:id): compared with what the API
+ * sends, never shown (the pages' own error is the message `jobNotFound`)
+ */
 export const JOB_NOT_FOUND_MESSAGE = 'Job posting not found';
-
-export const JOBS_UNAVAILABLE_MESSAGE =
-	'The job board is temporarily unavailable. Please retry shortly.';
 
 /** GET /jobs returns at most this many postings, most recently published first */
 export const PUBLIC_JOBS_LIMIT = 100;
@@ -42,8 +43,8 @@ export const isJobNotFound = (
 
 /** 'No open positions', '1 open position', '12 open positions' */
 export const openPositionsText = (count: number): string => {
-	if (count <= 0) return 'No open positions';
-	return `${count} open ${count === 1 ? 'position' : 'positions'}`;
+	if (count <= 0) return m.noOpenPositions;
+	return m.openPositions(count);
 };
 
 const toDate = (value: Date | string | null | undefined): Date | undefined => {
@@ -59,7 +60,7 @@ const toDate = (value: Date | string | null | undefined): Date | undefined => {
 export const formatDay = (value: Date | string | null | undefined, timeZone?: string): string => {
 	const date = toDate(value);
 	if (!date) return '';
-	return date.toLocaleDateString(LOCALE, {
+	return date.toLocaleDateString(intlLocale(LOCALE), {
 		day: 'numeric',
 		month: 'short',
 		year: 'numeric',
@@ -73,14 +74,14 @@ export const publishedText = (
 	timeZone = 'UTC'
 ): string => {
 	const day = formatDay(job.publishedAt ?? job.createdAt, timeZone);
-	return day ? `Published ${day}` : '';
+	return day ? m.published(day) : '';
 };
 
 /** The page title of a posting: 'Backend engineer at Acme', 'Backend engineer' */
 export const jobPageTitle = (job: Pick<JobPostingLike, 'title' | 'company'>): string => {
-	const title = job.title?.trim() || 'Job posting';
+	const title = job.title?.trim() || m.untitled;
 	const company = job.company?.trim();
-	return company ? `${title} at ${company}` : title;
+	return company ? m.titleAtCompany(title, company) : title;
 };
 
 const DESCRIPTION_MAX_LENGTH = 200;
@@ -104,7 +105,7 @@ export const jobShareDescription = (job: JobPostingLike): string => {
 		job.company?.trim() ?? '',
 		...jobSummaryParts(job)
 	].filter(Boolean);
-	if (parts.length === 0) return 'A job description: apply with your portfolio.';
+	if (parts.length === 0) return m.shareFallback;
 	return truncateText(parts.join(' · '), DESCRIPTION_MAX_LENGTH);
 };
 
@@ -181,22 +182,13 @@ export const jobPageAction = (
 export const closedNotice = (status: JobStatus | undefined): { title: string; text: string } => {
 	switch (status) {
 		case 'on_hold':
-			return {
-				title: 'On hold',
-				text: 'This position is not taking applications for now. Check back later.'
-			};
+			return { ...m.closed.on_hold };
 		case 'filled':
-			return {
-				title: 'Position filled',
-				text: 'This position has been filled: it is not taking applications any more.'
-			};
+			return { ...m.closed.filled };
 		case 'closed':
-			return {
-				title: 'Position closed',
-				text: 'This position is closed: it is not taking applications any more.'
-			};
+			return { ...m.closed.closed };
 		default:
-			return { title: 'Not open', text: 'This position is not taking applications.' };
+			return { ...m.closed.other };
 	}
 };
 
@@ -245,11 +237,9 @@ export const applicationSummary = (status: ApplicationStatus, timeZone?: string)
 	if (!status.applied) return '';
 	const day = formatDay(status.appliedAt, timeZone);
 	if (status.source === 'added_by_recruiter') {
-		return day
-			? `The recruiter added your portfolio on ${day}`
-			: 'The recruiter added your portfolio';
+		return day ? m.summary.addedOn(day) : m.summary.added;
 	}
-	return day ? `You applied on ${day}` : 'You applied';
+	return day ? m.summary.appliedOn(day) : m.summary.applied;
 };
 
 /**
@@ -277,25 +267,7 @@ export type LeaveCopy = {
 };
 
 export const leaveCopy = (source: ApplicationSource | undefined): LeaveCopy =>
-	leaveAction(source) === 'remove'
-		? {
-				button: 'Remove me from the list',
-				question:
-					'Remove your portfolio from this applicant list? The recruiter will no longer see it there.',
-				confirm: 'Remove me',
-				busy: 'Removing…',
-				done: 'Removed from the applicant list',
-				doneDescription: 'The recruiter no longer sees your portfolio on this list.'
-			}
-		: {
-				button: 'Withdraw my application',
-				question:
-					'Withdraw your application? The recruiter will no longer see you as an applicant.',
-				confirm: 'Withdraw',
-				busy: 'Withdrawing…',
-				done: 'Application withdrawn',
-				doneDescription: 'The recruiter no longer sees you as an applicant.'
-			};
+	leaveAction(source) === 'remove' ? { ...m.leave.remove } : { ...m.leave.withdraw };
 
 /**
  * What a failed application request means for the panel:
@@ -329,23 +301,6 @@ const bodyText = (value: unknown): string => {
 	return '';
 };
 
-const FALLBACK_MESSAGES: Record<ApplicationAction, string> = {
-	apply: 'Could not send your application. Try again.',
-	withdraw: 'Could not withdraw your application. Try again.',
-	remove: 'Could not remove you from the list. Try again.',
-	status: 'Could not check whether you applied. Try again.'
-};
-
-const SESSION_EXPIRED_MESSAGES: Record<ApplicationAction, string> = {
-	apply: 'Your session expired. Sign in again to apply.',
-	withdraw: 'Your session expired. Sign in again to withdraw your application.',
-	remove: 'Your session expired. Sign in again to remove yourself from the list.',
-	status: 'Your session expired. Sign in again to apply.'
-};
-
-export const APPLICATION_NETWORK_MESSAGE =
-	'Could not reach the server. Check your connection and try again.';
-
 /**
  * The failure of an application request (GET, POST or DELETE /jobs/:id/application) from its
  * HTTP status and body; `status` undefined: the request did not get an answer (network).
@@ -356,44 +311,41 @@ export const applicationFailure = (
 	body?: unknown
 ): ApplicationFailure => {
 	const text = bodyText(body);
-	const fallback: ApplicationFailure = { kind: 'error', message: FALLBACK_MESSAGES[action] };
-	if (status === undefined) return { kind: 'network', message: APPLICATION_NETWORK_MESSAGE };
+	const fallback: ApplicationFailure = { kind: 'error', message: m.failed[action] };
+	if (status === undefined) return { kind: 'network', message: m.network };
 	if (status === 401) {
-		return { kind: 'session-expired', message: SESSION_EXPIRED_MESSAGES[action] };
+		return { kind: 'session-expired', message: m.sessionExpired[action] };
 	}
 	if (status === 403) {
 		if (/own job posting/i.test(text)) {
-			return { kind: 'own-posting', message: 'You cannot apply to your own job description.' };
+			return { kind: 'own-posting', message: m.ownPosting };
 		}
 		if (/claim a portfolio/i.test(text)) {
-			return { kind: 'no-portfolio', message: 'Claim a portfolio before applying.' };
+			return { kind: 'no-portfolio', message: m.noPortfolio };
 		}
 		return fallback;
 	}
 	if (status === 409) {
 		if (/already applied/i.test(text)) {
-			return { kind: 'already-applied', message: 'You had already applied to this job.' };
+			return { kind: 'already-applied', message: m.alreadyApplied };
 		}
 		if (/not taking applications/i.test(text)) {
-			return { kind: 'not-open', message: 'This position is no longer taking applications.' };
+			return { kind: 'not-open', message: m.notOpen };
 		}
 		if (/limit/i.test(text)) {
-			return {
-				kind: 'full',
-				message: 'This job description has reached its limit of applicants.'
-			};
+			return { kind: 'full', message: m.full };
 		}
 		return fallback;
 	}
 	if (status === 404) {
 		if (action === 'withdraw' && /not applied/i.test(text)) {
 			// Withdrawn in another tab, or removed by the recruiter: who did it is not known
-			return { kind: 'not-applied', message: 'You are no longer on this job’s applicant list.' };
+			return { kind: 'not-applied', message: m.notAppliedOnWithdraw };
 		}
 		if (action === 'remove' && /not applied/i.test(text)) {
-			return { kind: 'not-applied', message: 'You were no longer on the applicant list.' };
+			return { kind: 'not-applied', message: m.notAppliedOnRemove };
 		}
-		return { kind: 'not-found', message: 'This job description is no longer published.' };
+		return { kind: 'not-found', message: m.notPublished };
 	}
 	return fallback;
 };

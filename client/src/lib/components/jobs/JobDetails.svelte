@@ -13,6 +13,7 @@ description: applicants...).
 	import type { JobPostingLike } from '#services/jobPosting.ts';
 	import JobFacts from './JobFacts.svelte';
 	import JobStatusBadge from './JobStatusBadge.svelte';
+	import { m } from './jobs.messages.ts';
 
 	let {
 		job,
@@ -38,7 +39,7 @@ description: applicants...).
 	const uid = $props.id();
 	let titleTag = $derived(`h${headingLevel}`);
 	let sectionTag = $derived(`h${headingLevel + 1}`);
-	let title = $derived(job.title?.trim() || 'Untitled job description');
+	let title = $derived(job.title?.trim() || m.untitled);
 	let description = $derived(job.description?.trim() ?? '');
 </script>
 
@@ -74,20 +75,20 @@ description: applicants...).
 		class="card preset-outlined-surface-200-800 bg-surface-50-950 p-4 sm:p-6"
 		aria-labelledby="{uid}-facts"
 	>
-		<svelte:element this={sectionTag} id="{uid}-facts" class="sr-only">Key facts</svelte:element>
+		<svelte:element this={sectionTag} id="{uid}-facts" class="sr-only">{m.keyFacts}</svelte:element>
 		<JobFacts {job} />
 	</section>
 
 	<section class="space-y-3" aria-labelledby="{uid}-about">
 		<svelte:element this={sectionTag} id="{uid}-about" class="text-lg font-semibold">
-			About the job
+			{m.about}
 		</svelte:element>
 		{#if description}
 			<!-- Written by any recruiter: its raw HTML shows as text. Its headings rank right under
 			     "About the job", whichever level the description starts with -->
 			<Markdown content={description} topHeadingLevel={headingLevel + 2} html={false} />
 		{:else}
-			<p class="text-surface-700-300">No description yet.</p>
+			<p class="text-surface-700-300">{m.noDescription}</p>
 		{/if}
 	</section>
 

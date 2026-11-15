@@ -6,22 +6,24 @@ page shows it alone (a journey that is only the meeting step) or as the meeting 
 hiring journey; requests carry the session, which the API checks against the steps before it.
 -->
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, type ComponentProps } from 'svelte';
 	import { DatePicker, parseDate } from '@skeletonlabs/skeleton-svelte';
 	import type { DateValue } from '@skeletonlabs/skeleton-svelte';
-	import { wallDateInTimezone } from 'portfolio-common';
+	import { intlLocale, wallDateInTimezone } from 'portfolio-common';
 	import type { BookingHorizon } from 'portfolio-common';
 	import { portfolioApi } from '#services';
 	import { errorStatus, isSlotUnavailable } from '#services/apiErrors.ts';
 	import {
-		DATES_FAILED,
-		SLOTS_FAILED,
 		availabilityFailure,
 		firstShownDate,
 		isUnbookable,
 		loadBookableDates,
 		toIsoDate
 	} from '#services/bookingDates.ts';
+	import { m as datesMessages } from '#services/bookingDates.messages.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { m } from './MeetingBooking.messages.ts';
 	let {
 		domainName,
 		ownerName,
@@ -86,17 +88,29 @@ hiring journey; requests carry the session, which the API checks against the ste
 		| { status: 'ready'; horizon: BookingHorizon; dates: string[] }
 		| { status: 'error'; message: string; retry: boolean };
 
-	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-	const LOCATION_LABELS: Record<string, string> = {
-		google_meet: 'Google Meet',
-		phone: 'Phone call',
-		in_person: 'In person',
-		custom: 'Details after booking'
-	};
+	/** Where a meeting takes place; a location type this version does not know is shown as it is */
+	const locationLabel = (type: string): string =>
+		Object.hasOwn(m.location, type) ? m.location[type as keyof typeof m.location] : type;
 
 	const visitorTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	// Month and weekday names, and the first day of the week, as the visitor reads them
-	const visitorLocale = Intl.DateTimeFormat().resolvedOptions().locale;
+	// Month and weekday names, and the first day of the week, as the visitor reads them: the
+	// page's language in French, the browser's own otherwise
+	const visitorLocale = intlLocale(Intl.DateTimeFormat().resolvedOptions().locale);
+
+	// What the date picker says of its own, in the page's language. Only what this calendar shows
+	// (days of a month, one date picked): the date picker has its own words for the rest
+	type CalendarTexts = NonNullable<ComponentProps<typeof DatePicker>['translations']>;
+	const calendarTexts: Pick<CalendarTexts, 'content' | 'prevTrigger' | 'nextTrigger' | 'dayCell'> =
+		{
+			content: m.calendar.name,
+			prevTrigger: () => m.calendar.previousMonth,
+			nextTrigger: () => m.calendar.nextMonth,
+			dayCell: (state) => {
+				if (state.unavailable) return m.calendar.unavailable(state.valueText);
+				if (state.selected) return m.calendar.selected(state.valueText);
+				return m.calendar.choose(state.valueText);
+			}
+		};
 
 	let schedules = $state<PublicSchedule[]>([]);
 	let schedulesLoading = $state(true);
@@ -185,7 +199,7 @@ hiring journey; requests carry the session, which the API checks against the ste
 				// Paused or deleted meanwhile: back to the meeting types left (shown even when one is),
 				// saying why. Never one selected for the visitor: nothing would explain the change
 				leaveSchedule();
-				notice = `${gone.title} is not available anymore. Please pick another meeting type.`;
+				notice = m.scheduleGone(gone.title);
 			}
 		}
 		schedulesLoading = false;
@@ -246,7 +260,7 @@ hiring journey; requests carry the session, which the API checks against the ste
 		}
 		// A refreshed calendar stays as it was: the slots of a date are checked when it is picked
 		if (refresh && bookableDates.status === 'ready') return;
-		const failure = availabilityFailure(loaded.error, DATES_FAILED);
+		const failure = availabilityFailure(loaded.error, datesMessages.datesFailed);
 		bookableDates = { status: 'error', message: failure.message, retry: failure.retry };
 		if (failure.reloadJourney) onLocked?.(lockReason(loaded.error));
 		if (failure.reloadSchedules) await loadSchedules();
@@ -296,7 +310,10 @@ hiring journey; requests carry the session, which the API checks against the ste
 		if (request !== slotsRequest) return;
 		slotsLoading = false;
 		if (error || !available) {
-			const failure = availabilityFailure(error ?? { status: undefined }, SLOTS_FAILED);
+			const failure = availabilityFailure(
+				error ?? { status: undefined },
+				datesMessages.slotsFailed
+			);
 			slots = [];
 			slotsLoaded = false;
 			slotsError = { message: failure.message, retry: failure.retry };
@@ -331,7 +348,7 @@ hiring journey; requests carry the session, which the API checks against the ste
 		if (error || !booked) {
 			const status = errorStatus(error);
 			if (isSlotUnavailable(error)) {
-				bookingError = 'This slot was just taken. Please pick another one.';
+				bookingError = m.slotTaken;
 			} else if (status === 401 || status === 403) {
 				// The hiring journey stopped the booking: the page shows the step to do
 				bookingError = availabilityFailure(error, '').message;
@@ -341,13 +358,13 @@ hiring journey; requests carry the session, which the API checks against the ste
 				// The owner's calendar cannot take bookings now (not connected, or its Google access
 				// was revoked): reloading the schedules shows that online booking is unavailable
 				await loadSchedules();
-				bookingError = 'Online booking is not available right now. Please reach out directly.';
+				bookingError = datesMessages.bookingUnavailable;
 				return;
 			} else if (status === 429 && typeof error?.value === 'string') {
 				// Rate limit or booking cap: the API's message says what to do, or how long to wait
 				bookingError = error.value;
 			} else {
-				bookingError = 'Booking failed. Please try again.';
+				bookingError = m.failed;
 			}
 			await loadSlots();
 			return;
@@ -360,7 +377,10 @@ hiring journey; requests carry the session, which the API checks against the ste
 	}
 
 	function formatTime(iso: string): string {
-		return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+		return new Date(iso).toLocaleTimeString(intlLocale(undefined), {
+			hour: '2-digit',
+			minute: '2-digit'
+		});
 	}
 
 	/**
@@ -370,16 +390,16 @@ hiring journey; requests carry the session, which the API checks against the ste
 	function slotLabel(slot: Slot): string {
 		const time = formatTime(slot.start);
 		if (wallDateInTimezone(new Date(slot.start), visitorTimezone) === selectedDate) return time;
-		const day = new Date(slot.start).toLocaleDateString(undefined, {
+		const day = new Date(slot.start).toLocaleDateString(intlLocale(undefined), {
 			weekday: 'short',
 			month: 'short',
 			day: 'numeric'
 		});
-		return `${day}, ${time}`;
+		return m.slotOnDay(day, time);
 	}
 
 	function formatFullDate(iso: string): string {
-		return new Date(iso).toLocaleString(undefined, {
+		return new Date(iso).toLocaleString(intlLocale(undefined), {
 			weekday: 'long',
 			month: 'long',
 			day: 'numeric',
@@ -394,13 +414,15 @@ hiring journey; requests carry the session, which the API checks against the ste
 <div class="space-y-8">
 	{#if confirmation}
 		<section class="card p-6 space-y-4">
-			<h2 class="h3">You're booked! 🎉</h2>
+			<h2 class="h3">{m.booked}</h2>
 			<p>
 				<strong>{formatFullDate(confirmation.start)}</strong>
 				({formatTime(confirmation.start)} – {formatTime(confirmation.end)}, {visitorTimezone})
 			</p>
 			<p class="opacity-75">
-				A calendar invitation has been sent to <strong>{confirmation.email}</strong>.
+				<Rich text={m.invitationSent}>
+					{#snippet recipient()}<strong>{confirmation?.email}</strong>{/snippet}
+				</Rich>
 			</p>
 			{#if confirmation.meetLink}
 				<!-- eslint-disable svelte/no-navigation-without-resolve -- external Google Meet URL -->
@@ -410,7 +432,7 @@ hiring journey; requests carry the session, which the API checks against the ste
 					target="_blank"
 					rel="noopener noreferrer"
 				>
-					Google Meet link
+					{m.meetLink}
 				</a>
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{/if}
@@ -422,16 +444,14 @@ hiring journey; requests carry the session, which the API checks against the ste
 					loadSlots();
 				}}
 			>
-				Book another slot
+				{m.bookAnother}
 			</button>
 		</section>
 	{:else if schedulesLoading}
-		<p class="text-sm opacity-50">Loading availability...</p>
+		<p class="text-sm opacity-50">{m.loading}</p>
 	{:else if schedules.length === 0}
 		<section class="card p-6">
-			<p class="opacity-75">
-				Online booking is not available right now. Please reach out directly.
-			</p>
+			<p class="opacity-75">{datesMessages.bookingUnavailable}</p>
 		</section>
 	{:else}
 		{#if notice}
@@ -441,7 +461,7 @@ hiring journey; requests carry the session, which the API checks against the ste
 		<!-- Also with one meeting type left when none is selected: the one picked went away -->
 		{#if schedules.length > 1 || !selectedSchedule}
 			<section class="space-y-3">
-				<h2 class="h4">Meeting type</h2>
+				<h2 class="h4">{m.meetingType}</h2>
 				<div class="grid gap-3 sm:grid-cols-2">
 					{#each schedules as schedule (schedule.id)}
 						<button
@@ -452,8 +472,7 @@ hiring journey; requests carry the session, which the API checks against the ste
 						>
 							<p class="font-semibold">{schedule.title}</p>
 							<p class="text-sm opacity-75">
-								{schedule.durationMinutes} min · {LOCATION_LABELS[schedule.locationType] ??
-									schedule.locationType}
+								{m.duration(schedule.durationMinutes)} · {locationLabel(schedule.locationType)}
 							</p>
 							{#if schedule.description}
 								<p class="text-sm opacity-50">{schedule.description}</p>
@@ -469,43 +488,45 @@ hiring journey; requests carry the session, which the API checks against the ste
 				<div class="space-y-1">
 					<h2 class="h4">{selectedSchedule.title}</h2>
 					<p class="text-sm opacity-75">
-						{selectedSchedule.durationMinutes} min · {LOCATION_LABELS[
+						{m.duration(selectedSchedule.durationMinutes)} · {locationLabel(
 							selectedSchedule.locationType
-						] ?? selectedSchedule.locationType}
+						)}
 						{#if selectedSchedule.locationType !== 'google_meet' && selectedSchedule.locationDetails}
 							· {selectedSchedule.locationDetails}
 						{/if}
 					</p>
 					{#if availableDays.length > 0}
 						<p class="text-sm opacity-50">
-							Available on {availableDays.map((d) => DAY_NAMES[d]).join(', ')}
+							{m.availableOn(availableDays.map((d) => m.days[d]).join(', '))}
 						</p>
 					{/if}
 				</div>
 
 				{#if bookableDates.status === 'loading'}
-					<p class="text-sm opacity-50" role="status">Loading available dates...</p>
+					<p class="text-sm opacity-50" role="status">{m.loadingDates}</p>
 				{:else if bookableDates.status === 'error'}
 					<div class="space-y-2" role="alert">
 						<p class="text-sm text-error-500">{bookableDates.message}</p>
 						{#if bookableDates.retry}
-							<button class="btn btn-sm preset-tonal" onclick={() => loadDates()}>Try again</button>
+							<button class="btn btn-sm preset-tonal" onclick={() => loadDates()}>
+								{common.retry}
+							</button>
 						{/if}
 					</div>
 				{:else if bookableDates.dates.length === 0}
 					<p class="text-sm opacity-75" role="status">
-						No date is open for booking in the next {selectedSchedule.maxAdvanceDays} days. Please check
-						back later, or reach out directly.
+						{m.noDate(selectedSchedule.maxAdvanceDays)}
 					</p>
 				{:else if calendarBounds && opensOn}
 					<div class="space-y-2">
-						<p class="label-text" id="booking-date-label">Pick a date</p>
+						<p class="label-text" id="booking-date-label">{m.pickDate}</p>
 						<!-- Mounted once the dates of the schedule are known: it opens on the month of the
 						first bookable one. Unbookable dates are greyed out, and neither a click nor the
 						keyboard (Enter, Space) can pick them -->
 						<DatePicker
 							inline
 							locale={visitorLocale}
+							translations={calendarTexts as CalendarTexts}
 							timeZone={selectedSchedule.timezone}
 							min={calendarBounds.min}
 							max={calendarBounds.max}
@@ -560,29 +581,30 @@ hiring journey; requests carry the session, which the API checks against the ste
 							</DatePicker.Content>
 						</DatePicker>
 						<p class="text-xs opacity-60">
-							Greyed-out dates have no free slot.
+							{m.greyedOut}
 							{#if selectedSchedule.timezone !== visitorTimezone}
-								Dates follow {ownerName}'s time zone ({selectedSchedule.timezone}); times are shown
-								in yours.
+								{m.ownerTimezone(ownerName, selectedSchedule.timezone)}
 							{/if}
 						</p>
 					</div>
 				{/if}
 
 				{#if slotsLoading}
-					<p class="text-sm opacity-50" role="status">Checking availability...</p>
+					<p class="text-sm opacity-50" role="status">{m.checking}</p>
 				{:else if slotsError}
 					<div class="space-y-2" role="alert">
 						<p class="text-sm text-error-500">{slotsError.message}</p>
 						{#if slotsError.retry}
-							<button class="btn btn-sm preset-tonal" onclick={() => loadSlots()}>Try again</button>
+							<button class="btn btn-sm preset-tonal" onclick={() => loadSlots()}>
+								{common.retry}
+							</button>
 						{/if}
 					</div>
 				{:else if slotsLoaded && slots.length === 0}
-					<p class="text-sm opacity-75">No slots left on this date — please pick another one.</p>
+					<p class="text-sm opacity-75">{m.noSlot}</p>
 				{:else if slots.length > 0}
 					<div class="space-y-2">
-						<p class="text-sm opacity-50">Times shown in your timezone ({visitorTimezone})</p>
+						<p class="text-sm opacity-50">{m.yourTimezone(visitorTimezone)}</p>
 						<div class="flex flex-wrap gap-2">
 							{#each slots as slot (slot.start)}
 								<button
@@ -607,35 +629,45 @@ hiring journey; requests carry the session, which the API checks against the ste
 						}}
 					>
 						<p class="text-sm">
-							Booking <strong>{formatFullDate(selectedSlot.start)}</strong>
+							<Rich text={m.booking}>
+								{#snippet date()}<strong
+										>{selectedSlot ? formatFullDate(selectedSlot.start) : ''}</strong
+									>{/snippet}
+							</Rich>
 						</p>
 						<label class="label">
-							<span class="label-text">Your name *</span>
-							<input class="input" type="text" required bind:value={name} placeholder="Jane Doe" />
+							<span class="label-text">{m.name}</span>
+							<input
+								class="input"
+								type="text"
+								required
+								bind:value={name}
+								placeholder={m.namePlaceholder}
+							/>
 						</label>
 						<label class="label">
-							<span class="label-text">Your email *</span>
+							<span class="label-text">{m.email}</span>
 							<input
 								class="input"
 								type="email"
 								required
 								bind:value={email}
-								placeholder="jane@company.com"
+								placeholder={m.emailPlaceholder}
 							/>
 						</label>
 						<label class="label">
-							<span class="label-text">Notes (optional)</span>
+							<span class="label-text">{m.notes}</span>
 							<textarea
 								class="textarea"
 								rows="3"
 								bind:value={notes}
-								placeholder="What would you like to talk about?"></textarea>
+								placeholder={m.notesPlaceholder}></textarea>
 						</label>
 						{#if bookingError}
 							<p class="text-sm text-error-500">{bookingError}</p>
 						{/if}
 						<button class="btn preset-filled-primary-700-300" type="submit" disabled={booking}>
-							{booking ? 'Booking...' : 'Confirm booking'}
+							{booking ? m.submitting : m.confirm}
 						</button>
 					</form>
 				{/if}

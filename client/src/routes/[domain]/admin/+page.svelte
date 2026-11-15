@@ -8,6 +8,7 @@
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { isDomainAdmin } from '#services/authentication.ts';
 	import type { PageData } from './$types';
+	import { m } from './page.messages.ts';
 
 	let { data }: { data: PageData } = $props();
 
@@ -38,8 +39,8 @@
 <svelte:window onresize={measureTabs} />
 
 <svelte:head>
-	<title>Admin Settings</title>
-	<meta name="description" content="Admin settings" />
+	<title>{m.title}</title>
+	<meta name="description" content={m.description} />
 </svelte:head>
 
 {#if isAdmin}
@@ -51,10 +52,10 @@
 				onscrollcapture={measureTabs}
 			>
 				<Tabs.List class="overflow-x-auto overflow-y-hidden whitespace-nowrap">
-					<Tabs.Trigger value="appearance">Appearance</Tabs.Trigger>
-					<Tabs.Trigger value="workflows">Hiring journey</Tabs.Trigger>
-					<Tabs.Trigger value="perfect-job">Perfect job</Tabs.Trigger>
-					<Tabs.Trigger value="appointments">Appointments</Tabs.Trigger>
+					<Tabs.Trigger value="appearance">{m.tabs.appearance}</Tabs.Trigger>
+					<Tabs.Trigger value="workflows">{m.tabs.workflows}</Tabs.Trigger>
+					<Tabs.Trigger value="perfect-job">{m.tabs.perfectJob}</Tabs.Trigger>
+					<Tabs.Trigger value="appointments">{m.tabs.appointments}</Tabs.Trigger>
 					<Tabs.Indicator />
 				</Tabs.List>
 				{#if moreTabs}
@@ -83,13 +84,13 @@
 {:else if $sessionCheckedStore}
 	<div class="flex flex-col items-center justify-center gap-4 p-8">
 		<p class="text-lg text-surface-600-400">
-			Only the admin of this domain can change its settings. Please log in.
+			{m.adminOnly}
 		</p>
 		<a
 			class="btn preset-tonal"
 			href={resolve('/[domain]/experiences', { domain: data.domainName })}
 		>
-			Back to experiences
+			{m.backToExperiences}
 		</a>
 	</div>
 {/if}

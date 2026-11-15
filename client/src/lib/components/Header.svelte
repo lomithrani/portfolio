@@ -9,18 +9,16 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { m } from './Header.messages.ts';
 
 	let {
 		headerTitle,
 		headerSubtitle,
-		headerLang,
 		showSignIn = true,
 		homeLink = false
 	}: {
 		headerTitle?: string;
 		headerSubtitle?: string;
-		/** Language of the title and subtitle when it is not the page's ('fr' on the French legal pages) */
-		headerLang?: string;
 		/**
 		 * false: no Google sign-in for a signed-out visitor (neither the button nor One Tap, so
 		 * Google is not loaded): pages that sign in their own way, after a confirmation (the
@@ -80,9 +78,8 @@
 				<a
 					href={home}
 					class="logo block size-9 rounded text-surface-950-50 focus-visible:ring-2 focus-visible:ring-primary-500 md:size-[50px]"
-					aria-label={headerLang === 'fr' ? 'Accueil' : 'Home'}
-					aria-current={page.url.pathname === home ? 'page' : undefined}
-					lang={headerLang}><Logo /></a
+					aria-label={m.home}
+					aria-current={page.url.pathname === home ? 'page' : undefined}><Logo /></a
 				>
 			{:else}
 				<span class="logo block size-9 text-surface-950-50 md:size-[50px]"><Logo /></span>
@@ -90,10 +87,7 @@
 		</AppBar.Lead>
 		<!-- Small screens: one line, smaller font, so the header stays short -->
 		<AppBar.Headline class="min-w-0 text-center">
-			<h1
-				class="truncate text-lg font-bold md:overflow-visible md:text-3xl md:whitespace-normal"
-				lang={headerLang}
-			>
+			<h1 class="truncate text-lg font-bold md:overflow-visible md:text-3xl md:whitespace-normal">
 				{#if headerTitle}
 					<span
 						class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
@@ -102,26 +96,23 @@
 				{:else}
 					<span
 						class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
-						>Problem Solver</span
+						>{m.tagline.solver}</span
 					>
 
 					<span
 						class="bg-gradient-to-br from-red-500 to-yellow-500 bg-clip-text text-transparent box-decoration-clone"
-						>Engineer</span
+						>{m.tagline.engineer}</span
 					>
 
 					<span
 						class="bg-gradient-to-br from-pink-500 to-violet-500 bg-clip-text text-transparent box-decoration-clone"
-						>Programmer</span
+						>{m.tagline.programmer}</span
 					>
 				{/if}
 			</h1>
 			{#if headerTitle && headerSubtitle}
 				<!-- Small screens: up to two balanced lines rather than a cut-off sentence -->
-				<p
-					class="line-clamp-2 text-xs text-balance opacity-75 md:line-clamp-none md:text-sm"
-					lang={headerLang}
-				>
+				<p class="line-clamp-2 text-xs text-balance opacity-75 md:line-clamp-none md:text-sm">
 					{headerSubtitle}
 				</p>
 			{/if}

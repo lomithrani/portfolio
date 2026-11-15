@@ -27,6 +27,8 @@ focused; closing the dialog keeps the person where they are.
 	} from 'svelte-heros-v2';
 	import { currentConsent, normalizeDomainName, type UserMode } from 'portfolio-common';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { authenticationStore } from '#services/stores/index.ts';
 	import {
 		DOMAIN_NAME_MAX_LENGTH,
@@ -40,7 +42,9 @@ focused; closing the dialog keeps the person where they are.
 		switchMode,
 		type AccountFailure
 	} from '#services/account.ts';
+	import { accountMessages } from '#services/account.messages.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { m } from './SpaceChooser.messages.ts';
 
 	type Step = 'choose' | 'claim';
 
@@ -116,13 +120,7 @@ focused; closing the dialog keeps the person where they are.
 	let host = $derived(page.url.host);
 
 	let statusText = $derived(
-		busy === 'recruiter'
-			? 'Opening your recruiter space…'
-			: busy === 'candidate'
-				? 'Opening your portfolio…'
-				: busy === 'claim'
-					? 'Claiming your portfolio…'
-					: ''
+		busy === 'claim' ? m.claimingPortfolio : busy ? accountMessages.opening[busy] : ''
 	);
 
 	const initialFocus = () => {
@@ -143,7 +141,7 @@ focused; closing the dialog keeps the person where they are.
 	/** The session ended: the header now offers to sign in again, and this dialog has no use */
 	const sessionExpired = (result: AccountFailure) => {
 		onClose();
-		toaster.error({ title: result.message, description: 'Your choice was not saved.' });
+		toaster.error({ title: result.message, description: m.choiceNotSaved });
 	};
 
 	/**
@@ -212,7 +210,7 @@ focused; closing the dialog keeps the person where they are.
 		}
 
 		if (showConsent && !consentChecked) {
-			consentProblem = 'Tick the box to confirm your age and accept the terms.';
+			consentProblem = accountMessages.claim.tickTheBox;
 			await announceClaimError(consentProblem, consentId);
 			return;
 		}
@@ -238,9 +236,7 @@ focused; closing the dialog keeps the person where they are.
 				await refreshAccount();
 				step = 'choose';
 				await showError(
-					user?.domain
-						? `${result.message} Choose Candidate to open ${user.domain}.`
-						: result.message
+					user?.domain ? m.ownsPortfolio(result.message, user.domain) : result.message
 				);
 			} else {
 				await showError(result.message);
@@ -250,8 +246,8 @@ focused; closing the dialog keeps the person where they are.
 
 		busy = null;
 		toaster.success({
-			title: 'Portfolio claimed',
-			description: `${result.name} is yours. Add your first experience to it.`
+			title: accountMessages.claim.claimed,
+			description: accountMessages.claim.claimedFirstExperience(result.name)
 		});
 		onClose();
 		await goto(resolve('/[domain]/experiences', { domain: result.name }));
@@ -288,16 +284,14 @@ focused; closing the dialog keeps the person where they are.
 							<Dialog.Title>
 								{#snippet element(attributes)}
 									<h2 {...attributes} class="text-lg font-semibold sm:text-xl">
-										{step === 'claim' ? 'Claim your portfolio' : 'How do you want to continue?'}
+										{step === 'claim' ? m.title.claim : m.title.choose}
 									</h2>
 								{/snippet}
 							</Dialog.Title>
 							<Dialog.Description>
 								{#snippet element(attributes)}
 									<p {...attributes} class="mt-1 text-sm text-surface-700-300">
-										{step === 'claim'
-											? 'Choose the address of your portfolio. Each account owns one.'
-											: 'You can switch spaces at any time from your account menu.'}
+										{step === 'claim' ? m.description.claim : m.description.choose}
 									</p>
 								{/snippet}
 							</Dialog.Description>
@@ -305,7 +299,7 @@ focused; closing the dialog keeps the person where they are.
 						<button
 							type="button"
 							class="btn-icon size-10 shrink-0 hover:preset-tonal"
-							aria-label="Close"
+							aria-label={common.close}
 							aria-disabled={busy ? 'true' : undefined}
 							onclick={requestClose}
 						>
@@ -336,23 +330,23 @@ focused; closing the dialog keeps the person where they are.
 							<div class="grid gap-3 sm:grid-cols-2">
 								{@render choice({
 									mode: 'candidate',
-									title: 'Candidate',
+									title: m.candidate.title,
 									description: user?.domain
-										? `Go to your portfolio ${user.domain}.`
-										: 'Claim a portfolio to show your experience and apply to job descriptions.',
+										? m.candidate.openPortfolio(user.domain)
+										: m.candidate.claimPortfolio,
 									onclick: chooseCandidate
 								})}
 								{@render choice({
 									mode: 'recruiter',
-									title: 'Recruiter',
-									description: 'Post job descriptions and review the portfolios that apply.',
+									title: m.recruiter.title,
+									description: m.recruiter.description,
 									onclick: chooseRecruiter
 								})}
 							</div>
 						{:else}
 							<form id="{uid}-claim" class="space-y-2" novalidate onsubmit={claim}>
 								<label class="label" for="{uid}-name">
-									<span class="label-text font-medium">Portfolio name</span>
+									<span class="label-text font-medium">{accountMessages.claim.portfolioName}</span>
 								</label>
 								<input
 									bind:this={nameInput}
@@ -375,10 +369,11 @@ focused; closing the dialog keeps the person where they are.
 									<p id="{uid}-name-error" class="text-sm text-error-700-300">{nameError}</p>
 								{/if}
 								<p id="{uid}-name-hint" class="text-sm text-surface-700-300 wrap-anywhere">
-									Lowercase letters, digits, dots and hyphens. Your portfolio will be at
-									<span class="font-medium text-surface-950-50"
-										>{host}/{normalizedName || PORTFOLIO_NAME_PLACEHOLDER}</span
-									>.
+									<Rich text={accountMessages.claim.nameHint}>
+										{#snippet address()}<span class="font-medium text-surface-950-50"
+												>{host}/{normalizedName || PORTFOLIO_NAME_PLACEHOLDER}</span
+											>{/snippet}
+									</Rich>
 								</p>
 								{#if showConsent}
 									<div class="pt-2">
@@ -408,7 +403,7 @@ focused; closing the dialog keeps the person where they are.
 								onclick={() => !busy && goToStep('choose')}
 							>
 								<ChevronLeft size="16" aria-hidden="true" />
-								<span>Back</span>
+								<span>{common.back}</span>
 							</button>
 							<button
 								type="submit"
@@ -418,9 +413,9 @@ focused; closing the dialog keeps the person where they are.
 							>
 								{#if busy === 'claim'}
 									<ArrowPath size="16" class="animate-spin" aria-hidden="true" />
-									<span>Claiming…</span>
+									<span>{accountMessages.claim.claiming}</span>
 								{:else}
-									<span>Claim portfolio</span>
+									<span>{m.claim}</span>
 								{/if}
 							</button>
 						{:else}
@@ -430,7 +425,7 @@ focused; closing the dialog keeps the person where they are.
 								aria-disabled={busy ? 'true' : undefined}
 								onclick={requestClose}
 							>
-								Not now
+								{m.notNow}
 							</button>
 						{/if}
 					</div>
@@ -491,7 +486,7 @@ focused; closing the dialog keeps the person where they are.
 				<span id="{uid}-{mode}-title" class="text-base font-semibold">{title}</span>
 				{#if isLastUsed}
 					<span id="{uid}-{mode}-last" class="badge preset-filled-primary-700-300 text-xs"
-						>Last used</span
+						>{m.lastUsed}</span
 					>
 				{/if}
 			</span>

@@ -25,9 +25,13 @@ site is held back, so the person sees how it ended.
 	import { page } from '$app/state';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { ArrowPath, ExclamationTriangle, Trash, XMark } from 'svelte-heros-v2';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { deleteAccount } from '#services/account.ts';
+	import { accountMessages } from '#services/account.messages.ts';
 	import type { AuthUser } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { m } from './DeleteAccountDialog.messages.ts';
 
 	let {
 		open,
@@ -67,7 +71,7 @@ site is held back, so the person sees how it ended.
 
 	let confirmed = $derived(confirmation.trim() === DELETE_CONFIRMATION_WORD);
 	let confirmationError = $derived(
-		submitted && !confirmed ? `Type ${DELETE_CONFIRMATION_WORD} in capital letters to confirm.` : ''
+		submitted && !confirmed ? m.typeInCapitals(DELETE_CONFIRMATION_WORD) : ''
 	);
 	let portfolioAddress = $derived(account?.domain ? `${page.url.host}/${account.domain}` : '');
 
@@ -120,7 +124,7 @@ site is held back, so the person sees how it ended.
 				// Whether the account still exists is not known here: signing in again tells
 				toaster.error({
 					title: result.message,
-					description: 'Sign in again to check your account.'
+					description: m.checkAccount
 				});
 			} else {
 				await showError(result.message);
@@ -129,8 +133,8 @@ site is held back, so the person sees how it ended.
 		}
 
 		toaster.success({
-			title: 'Your account was deleted',
-			description: 'Everything tied to it is gone, and you are signed out.'
+			title: m.done.title,
+			description: m.done.description
 		});
 		leaving = true;
 		busy = false;
@@ -171,14 +175,14 @@ site is held back, so the person sees how it ended.
 							<Dialog.Title>
 								{#snippet element(attributes)}
 									<h2 {...attributes} class="text-lg font-semibold sm:text-xl">
-										Delete your account?
+										{m.title}
 									</h2>
 								{/snippet}
 							</Dialog.Title>
 							<Dialog.Description>
 								{#snippet element(attributes)}
 									<p {...attributes} class="mt-1 text-sm text-surface-700-300">
-										Everything tied to your account is deleted at once. This cannot be undone.
+										{m.description}
 									</p>
 								{/snippet}
 							</Dialog.Description>
@@ -186,7 +190,7 @@ site is held back, so the person sees how it ended.
 						<button
 							type="button"
 							class="btn-icon size-10 shrink-0 hover:preset-tonal"
-							aria-label="Close"
+							aria-label={common.close}
 							aria-disabled={busy ? 'true' : undefined}
 							onclick={requestClose}
 						>
@@ -214,43 +218,35 @@ site is held back, so the person sees how it ended.
 						{/if}
 
 						<div class="space-y-2">
-							<h3 class="font-semibold">What is deleted</h3>
+							<h3 class="font-semibold">{m.whatIsDeleted}</h3>
 							<ul class="list-disc space-y-1.5 ps-5 text-surface-700-300" data-deleted-items>
 								{#if portfolioAddress}
 									<li>
-										Your portfolio
-										<span class="font-medium text-surface-950-50 wrap-anywhere"
-											>{portfolioAddress}</span
-										>, its experiences and projects, and your hiring journey. The address becomes
-										available to others.
+										<Rich text={m.deleted.portfolio}>
+											{#snippet address()}<span
+													class="font-medium text-surface-950-50 wrap-anywhere"
+													>{portfolioAddress}</span
+												>{/snippet}
+										</Rich>
 									</li>
 								{/if}
 								{#if account?.recruiter}
-									<li>Your job descriptions and their lists of applicants.</li>
+									<li>{m.deleted.jobs}</li>
 								{/if}
-								<li>
-									Your job applications and your progress in other portfolios' hiring journeys.
-								</li>
-								<li>
-									Your meeting types and bookings. If you connected Google Calendar, its tokens are
-									deleted and Google is asked to revoke its access.
-								</li>
-								<li>
-									Your account: your email address, your Google account id and the terms you
-									accepted.
-								</li>
-								<li>The drafts this browser keeps for your account.</li>
+								<li>{m.deleted.applications}</li>
+								<li>{m.deleted.meetings}</li>
+								<li>{m.deleted.account}</li>
+								<li>{m.deleted.drafts}</li>
 							</ul>
-							<p class="text-surface-700-300">
-								Meetings already added to Google calendars stay there, and step suggestions already
-								published on GitHub stay (they do not name you).
-							</p>
+							<p class="text-surface-700-300">{m.whatStays}</p>
 						</div>
 
 						<form id="{uid}-form" class="space-y-1.5" novalidate onsubmit={submit}>
 							<label class="label" for="{uid}-confirmation">
 								<span class="label-text font-medium">
-									Type <span class="font-mono font-bold">{DELETE_CONFIRMATION_WORD}</span> to confirm
+									<Rich text={m.typeToConfirm(DELETE_CONFIRMATION_WORD)}>
+										{#snippet word(text)}<span class="font-mono font-bold">{text}</span>{/snippet}
+									</Rich>
 								</span>
 							</label>
 							<input
@@ -275,7 +271,7 @@ site is held back, so the person sees how it ended.
 						</form>
 
 						<p class="sr-only" role="status" aria-live="polite">
-							{busy ? 'Deleting your account…' : ''}
+							{busy ? m.deleting : ''}
 						</p>
 					</div>
 
@@ -288,7 +284,7 @@ site is held back, so the person sees how it ended.
 							aria-disabled={busy ? 'true' : undefined}
 							onclick={requestClose}
 						>
-							Cancel
+							{common.cancel}
 						</button>
 						<button
 							type="submit"
@@ -302,10 +298,10 @@ site is held back, so the person sees how it ended.
 									class="animate-spin motion-reduce:animate-none"
 									aria-hidden="true"
 								/>
-								<span>Deleting…</span>
+								<span>{common.deleting}</span>
 							{:else}
 								<Trash size="16" aria-hidden="true" />
-								<span>Delete my account</span>
+								<span>{accountMessages.deleteMyAccount}</span>
 							{/if}
 						</button>
 					</div>

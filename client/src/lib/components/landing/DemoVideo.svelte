@@ -10,6 +10,7 @@ by itself: the button plays it. Without JavaScript it is its first frame.
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { Pause, Play } from 'svelte-heros-v2';
+	import { m } from './DemoVideo.messages.ts';
 
 	let {
 		name,
@@ -94,9 +95,9 @@ by itself: the button plays it. Without JavaScript it is its first frame.
 		{#if ready}
 			<button type="button" class="btn btn-sm preset-tonal" onclick={() => (wanted = !wanted)}>
 				{#if wanted}
-					<Pause size="16" aria-hidden="true" /> Pause the demo
+					<Pause size="16" aria-hidden="true" /> {m.pause}
 				{:else}
-					<Play size="16" aria-hidden="true" /> Play the demo
+					<Play size="16" aria-hidden="true" /> {m.play}
 				{/if}
 			</button>
 		{/if}

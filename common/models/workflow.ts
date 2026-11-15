@@ -15,6 +15,7 @@
 // journey keeps it, and the same type can appear more than once (two notes to read). The order of
 // the list is the path today; branches (where to go when a step succeeded or failed) will be
 // transitions between step ids, added to this shape.
+import { workflowMessages as m } from './workflow.messages';
 import { WORKFLOW_STEP_MANIFESTS } from './workflowSteps';
 
 /**
@@ -41,7 +42,10 @@ export interface WorkflowStepManifest<Config extends object = Record<string, nev
 	/** Unique name of the type: lowercase letters, digits and hyphens */
 	type: string;
 	kind: WorkflowStepKind;
-	/** The step's name, for the owner and the visitor */
+	/**
+	 * The step's name, for the owner and the visitor. A message, like `description`: a manifest
+	 * gives it with a getter, so it is in the language in use when it is read
+	 */
 	label: string;
 	/** What the step asks of visitors, as the owner reads it when choosing the steps */
 	description: string;
@@ -128,20 +132,20 @@ export type WorkflowResult =
 export function parseWorkflow(input: readonly WorkflowStepInput[]): WorkflowResult {
 	const fail = (problem: WorkflowProblem): WorkflowResult => ({ ok: false, problem });
 	if (input.length > WORKFLOW_LIMITS.steps) {
-		return fail({ message: `A journey has at most ${WORKFLOW_LIMITS.steps} steps.` });
+		return fail({ message: m.tooManySteps(WORKFLOW_LIMITS.steps) });
 	}
 	const steps: WorkflowStep[] = [];
 	const ids = new Set<string>();
 	const perType = new Map<string, number>();
 	for (const step of input) {
 		if (typeof step.id !== 'string' || !WORKFLOW_LIMITS.stepId.test(step.id)) {
-			return fail({ message: 'A step has an invalid id.' });
+			return fail({ message: m.invalidStepId });
 		}
-		if (ids.has(step.id)) return fail({ message: 'Two steps have the same id.', stepId: step.id });
+		if (ids.has(step.id)) return fail({ message: m.duplicateStepId, stepId: step.id });
 		ids.add(step.id);
 		const manifest = typeof step.type === 'string' ? stepManifest(step.type) : undefined;
 		if (!manifest) {
-			return fail({ message: 'This step is not available anymore: remove it.', stepId: step.id });
+			return fail({ message: m.unknownStepType, stepId: step.id });
 		}
 		const count = (perType.get(manifest.type) ?? 0) + 1;
 		perType.set(manifest.type, count);
@@ -149,14 +153,14 @@ export function parseWorkflow(input: readonly WorkflowStepInput[]): WorkflowResu
 			return fail({
 				message:
 					manifest.max === 1
-						? `“${manifest.label}” can be used only once.`
-						: `“${manifest.label}” can be used at most ${manifest.max} times.`,
+						? m.usedOnce(manifest.label)
+						: m.usedTooOften(manifest.label, manifest.max),
 				stepId: step.id
 			});
 		}
 		const settings = step.config ?? {};
 		if (typeof settings !== 'object' || Array.isArray(settings)) {
-			return fail({ message: 'The settings of a step must be an object.', stepId: step.id });
+			return fail({ message: m.settingsNotAnObject, stepId: step.id });
 		}
 		const parsed = manifest.parseConfig(settings);
 		if (!parsed.ok) {
@@ -170,11 +174,11 @@ export function parseWorkflow(input: readonly WorkflowStepInput[]): WorkflowResu
 			(type) => !steps.slice(0, index).some((earlier) => earlier.type === type)
 		);
 		if (!manifest || missing === undefined) continue;
-		const needed = `“${stepManifest(missing)?.label ?? missing}”`;
+		const needed = stepManifest(missing)?.label ?? missing;
 		return fail({
 			message: steps.some((other) => other.type === missing)
-				? `“${manifest.label}” works on what recruiters did in ${needed}: move it below that step.`
-				: `“${manifest.label}” works on what recruiters did in ${needed}: add that step before it.`,
+				? m.neededStepBelow(manifest.label, needed)
+				: m.neededStepMissing(manifest.label, needed),
 			stepId: step.id
 		});
 	}
@@ -183,17 +187,16 @@ export function parseWorkflow(input: readonly WorkflowStepInput[]): WorkflowResu
 		(step, index) => stepManifest(step.type)?.kind === 'requirement' && index > lastAccess
 	);
 	if (dangling) {
-		const label = `“${stepManifest(dangling.type)?.label}”`;
+		const label = stepManifest(dangling.type)?.label ?? dangling.type;
 		// The journey has a step it could open, above it: the fix is to move, not to add
 		const above = lastAccess === -1 ? undefined : stepManifest(steps[lastAccess].type)?.label;
 		const access = stepManifests()
 			.filter((manifest) => manifest.kind === 'access')
-			.map((manifest) => `“${manifest.label}”`)
-			.join(' or ');
+			.map((manifest) => manifest.label);
 		return fail({
 			message: above
-				? `${label} must come before a step it opens: move it above “${above}”.`
-				: `${label} must come before a step it opens: add ${access} after it.`,
+				? m.opensNothingMove(label, above)
+				: m.opensNothingAdd(label, access),
 			stepId: dangling.id
 		});
 	}

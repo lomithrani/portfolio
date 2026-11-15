@@ -18,13 +18,16 @@ its unsaved steps, away.
 	} from 'portfolio-common';
 	import { portfolioTextApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
-	import { NETWORK_ERROR } from '#services/recruiter.ts';
+	import { networkError } from '#services/recruiter.ts';
 	import {
 		emptySuggestion,
 		suggestionFailure,
 		type SuggestionFailure
 	} from '#services/stepSuggestion.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { m } from './StepSuggestion.messages.ts';
 
 	const uid = $props.id();
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -89,13 +92,10 @@ its unsaved steps, away.
 				return;
 			}
 			form = emptySuggestion();
-			toaster.success({
-				title: 'Suggestion sent',
-				description: 'Thank you! It was filed as a feature request for the project.'
-			});
+			toaster.success({ title: m.sent, description: m.sentDetails });
 			await close();
 		} catch {
-			await fail({ message: NETWORK_ERROR });
+			await fail({ message: networkError() });
 		} finally {
 			sending = false;
 		}
@@ -120,11 +120,8 @@ its unsaved steps, away.
 	>
 		<div class="flex flex-col items-start gap-x-4 gap-y-2 sm:flex-row sm:items-center">
 			<div class="min-w-0 flex-1 space-y-1">
-				<h3 class="font-semibold" id="{uid}-title">Missing a step?</h3>
-				<p class="text-sm text-surface-700-300">
-					Tell us which step you would like in your hiring journey: it is sent to the project as a
-					feature request.
-				</p>
+				<h3 class="font-semibold" id="{uid}-title">{m.title}</h3>
+				<p class="text-sm text-surface-700-300">{m.intro}</p>
 			</div>
 			{#if !open}
 				<button
@@ -135,7 +132,7 @@ its unsaved steps, away.
 					onclick={show}
 				>
 					<LightBulb size="18" aria-hidden="true" />
-					Suggest a step
+					{m.suggest}
 				</button>
 			{/if}
 		</div>
@@ -143,14 +140,14 @@ its unsaved steps, away.
 		{#if open}
 			<form class="space-y-3" novalidate onsubmit={send} bind:this={panel}>
 				<div class="space-y-1">
-					<label class="label-text" for="{uid}-name">Name of the step</label>
+					<label class="label-text" for="{uid}-name">{m.name}</label>
 					<input
 						id="{uid}-name"
 						name="name"
 						class="input"
 						type="text"
 						maxlength={STEP_SUGGESTION_LIMITS.name}
-						placeholder="e.g. Share the salary range"
+						placeholder={m.namePlaceholder}
 						autocomplete="off"
 						bind:value={form.name}
 						disabled={sending}
@@ -163,14 +160,14 @@ its unsaved steps, away.
 					{/if}
 				</div>
 				<div class="space-y-1">
-					<label class="label-text" for="{uid}-description">What would a recruiter do on it?</label>
+					<label class="label-text" for="{uid}-description">{m.description}</label>
 					<textarea
 						id="{uid}-description"
 						name="description"
 						class="textarea"
 						rows="4"
 						maxlength={STEP_SUGGESTION_LIMITS.description}
-						placeholder="e.g. They give the salary range of the job before they can book a meeting."
+						placeholder={m.descriptionPlaceholder}
 						bind:value={form.description}
 						disabled={sending}
 						aria-required="true"
@@ -178,7 +175,7 @@ its unsaved steps, away.
 						aria-describedby="{uid}-description-help"></textarea>
 					<p class="flex flex-wrap justify-between gap-x-4 text-xs" id="{uid}-description-help">
 						<span class={problemOf('description') ? 'text-error-700-300' : 'text-surface-700-300'}>
-							{problemOf('description') || 'What they see, what they answer or do.'}
+							{problemOf('description') || m.descriptionHelp}
 						</span>
 						<span class="text-surface-700-300">
 							{form.description.length}/{STEP_SUGGESTION_LIMITS.description}
@@ -187,7 +184,9 @@ its unsaved steps, away.
 				</div>
 				<div class="space-y-1">
 					<label class="label-text" for="{uid}-reason">
-						Why would it help you? <span class="font-normal opacity-75">(optional)</span>
+						<Rich text={m.reason}>
+							{#snippet note(text)}<span class="font-normal opacity-75">{text}</span>{/snippet}
+						</Rich>
 					</label>
 					<textarea
 						id="{uid}-reason"
@@ -201,17 +200,14 @@ its unsaved steps, away.
 						aria-describedby="{uid}-reason-help"></textarea>
 					<p class="flex flex-wrap justify-between gap-x-4 text-xs" id="{uid}-reason-help">
 						<span class={problemOf('reason') ? 'text-error-700-300' : 'text-surface-700-300'}>
-							{problemOf('reason') || 'It helps decide what to build first.'}
+							{problemOf('reason') || m.reasonHelp}
 						</span>
 						<span class="text-surface-700-300">
 							{form.reason.length}/{STEP_SUGGESTION_LIMITS.reason}
 						</span>
 					</p>
 				</div>
-				<p class="text-xs text-surface-700-300">
-					Your suggestion is posted without your name on the project's issue tracker on GitHub,
-					which others can read: leave out anything private.
-				</p>
+				<p class="text-xs text-surface-700-300">{m.publicNotice}</p>
 				{#if problem && !problem.field}
 					<p
 						class="text-sm text-error-700-300 outline-none"
@@ -224,10 +220,10 @@ its unsaved steps, away.
 				{/if}
 				<div class="flex flex-wrap gap-3">
 					<button type="submit" class="btn preset-filled-primary-700-300" disabled={sending}>
-						{sending ? 'Sending...' : 'Send suggestion'}
+						{sending ? m.sending : m.send}
 					</button>
 					<button type="button" class="btn preset-tonal" disabled={sending} onclick={close}>
-						Cancel
+						{common.cancel}
 					</button>
 				</div>
 			</form>

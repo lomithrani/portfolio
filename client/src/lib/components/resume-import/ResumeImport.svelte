@@ -24,6 +24,7 @@ taken into the review when it is loaded or the dialog opens.
 		LockClosed,
 		XMark
 	} from 'svelte-heros-v2';
+	import { intlLocale } from 'portfolio-common';
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
 	import { portfolioApi } from '#services';
 	import { clearAuthentication } from '#services/authentication.ts';
@@ -59,7 +60,10 @@ taken into the review when it is loaded or the dialog opens.
 		type ImportReview,
 		type ImportStatus
 	} from '#services/resumeImport.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
 	import DraftCard from './DraftCard.svelte';
+	import { m } from './ResumeImport.messages.ts';
 
 	let {
 		open,
@@ -105,15 +109,6 @@ taken into the review when it is loaded or the dialog opens.
 	} = $props();
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const NETWORK_ERROR =
-		'Could not reach the server. Check your connection and try again. If the import had started, it may still count toward your imports.';
-	const TIMED_OUT =
-		'The import took too long and was stopped. It may still count toward your imports: try again later, or with a shorter résumé.';
-	const STOPPED =
-		'Import stopped. If Claude had already started reading your résumé, it still counts toward your imports.';
-	const SAVE_SESSION_EXPIRED =
-		'Your session expired. Sign in again: your drafts are kept, and you can add the rest then.';
-	const NETWORK_SAVE_ERROR = 'Could not reach the server. Check your connection.';
 
 	const uid = $props.id();
 
@@ -136,10 +131,7 @@ taken into the review when it is loaded or the dialog opens.
 		if (changed.length === 0) return;
 		persist(storageKey);
 		for (const draftId of changed) clearDraft(editorStorageKey(draftId));
-		announcement =
-			changed.length === 1
-				? 'Your unsaved changes to a draft are kept in it.'
-				: `Your unsaved changes to ${changed.length} drafts are kept in them.`;
+		announcement = m.review.editedKept(changed.length);
 	}
 
 	$effect(() => {
@@ -244,7 +236,7 @@ taken into the review when it is loaded or the dialog opens.
 		file = uploadError ? null : picked;
 		if (uploadError) focusAlert();
 		else {
-			announcement = `${picked.name} selected.`;
+			announcement = m.upload.selected(picked.name);
 			if (refocus) tick().then(() => chooseButton?.focus());
 		}
 	}
@@ -281,13 +273,13 @@ taken into the review when it is loaded or the dialog opens.
 		try {
 			// The API checks it too: this answers at once, and costs no import
 			if (!hasPdfHeader(new Uint8Array(await picked.slice(0, 5).arrayBuffer()))) {
-				uploadError = 'This file is not a PDF, whatever its name. Choose a PDF résumé.';
+				uploadError = m.upload.notPdf;
 				file = null;
 				return focusAlert();
 			}
 			pdf = await readAsBase64(picked);
 		} catch {
-			uploadError = 'This file could not be read. Choose it again.';
+			uploadError = m.upload.unreadable;
 			file = null;
 			return focusAlert();
 		}
@@ -297,7 +289,7 @@ taken into the review when it is loaded or the dialog opens.
 		let timedOut = false;
 		reading = true;
 		elapsed = 0;
-		announcement = 'Reading your résumé. This can take up to 3 minutes.';
+		announcement = m.reading.started;
 		// "Import résumé" is gone: the focus moves to what replaces it
 		focusFooter('cancel-import');
 		const startedAt = Date.now();
@@ -319,7 +311,7 @@ taken into the review when it is loaded or the dialog opens.
 				const code = errorStatus(error);
 				if (code === 401) clearAuthentication();
 				quotaRefused = !timedOut && code === 429;
-				failure = timedOut ? TIMED_OUT : importErrorMessage(code, error?.value);
+				failure = timedOut ? m.reading.timedOut : importErrorMessage(code, error?.value);
 			} else {
 				onQuota(data.quota);
 				const next = reviewFromResult(data, {
@@ -329,19 +321,21 @@ taken into the review when it is loaded or the dialog opens.
 				});
 				file = null;
 				if (next.drafts.length === 0) {
+					// The API says it too, in the page's language: once is enough
+					const said = m.reading.nothingFoundWarning;
 					notice = {
-						text: `No experiences were found in ${picked.name}. Check that it is your résumé, or try another PDF.`,
-						details: data.warnings.filter((warning) => !/^No experiences were found/.test(warning))
+						text: m.reading.nothingFound(picked.name),
+						details: data.warnings.filter((warning) => !warning.startsWith(said))
 					};
 				} else {
 					saveImportReview(storageKey, next);
 					review = next;
-					announcement = `${next.drafts.length} ${next.drafts.length === 1 ? 'experience' : 'experiences'} found. Review them, then add the ones you want.`;
+					announcement = m.reading.found(next.drafts.length);
 				}
 			}
 		} catch {
 			if (controller !== current) return;
-			failure = timedOut ? TIMED_OUT : NETWORK_ERROR;
+			failure = timedOut ? m.reading.timedOut : m.reading.networkError;
 		}
 
 		controller = null;
@@ -368,7 +362,7 @@ taken into the review when it is loaded or the dialog opens.
 		clearTimers();
 		reading = false;
 		confirming = null;
-		notice = { text: STOPPED };
+		notice = { text: m.reading.stopped };
 		refreshStatus();
 		await focusAlert();
 	}
@@ -423,7 +417,7 @@ taken into the review when it is loaded or the dialog opens.
 		draft.status = 'added';
 		draft.selected = false;
 		delete draft.error;
-		announcement = `${draft.form.title} added.`;
+		announcement = m.review.added(draft.form.title);
 		if (allDraftsAdded(review)) {
 			finish();
 			return true;
@@ -464,11 +458,11 @@ taken into the review when it is loaded or the dialog opens.
 						const code = errorStatus(error);
 						if (code === 401) {
 							clearAuthentication();
-							stopped = SAVE_SESSION_EXPIRED;
+							stopped = m.review.sessionExpired;
 						} else if (code === 403) {
-							stopped = 'Only the owner of this portfolio can add experiences to it.';
+							stopped = m.review.notOwner;
 						} else if (code === 404) {
-							stopped = 'Claim a portfolio before adding experiences.';
+							stopped = m.review.noPortfolio;
 						} else {
 							draft.status = 'failed';
 							draft.error = saveErrorMessage(code, error?.value, form);
@@ -483,7 +477,7 @@ taken into the review when it is loaded or the dialog opens.
 					}
 				} catch {
 					draft.status = 'failed';
-					draft.error = NETWORK_SAVE_ERROR;
+					draft.error = m.review.networkError;
 					failed++;
 				}
 			}
@@ -561,17 +555,13 @@ taken into the review when it is loaded or the dialog opens.
 
 	let description = $derived(
 		step === 'upload'
-			? 'Turn a PDF résumé into experience drafts you review before adding them.'
+			? m.description.upload
 			: step === 'reading'
-				? (file?.name ?? 'Your résumé')
-				: `${review?.drafts.length ?? 0} ${review?.drafts.length === 1 ? 'experience' : 'experiences'} found in ${review?.fileName || 'your résumé'}. Tick the ones to add.`
+				? (file?.name ?? m.description.yourResume)
+				: m.description.review(review?.drafts.length ?? 0, review?.fileName ?? '')
 	);
 	let selectedCount = $derived(toAdd.length);
-	let addLabel = $derived(
-		selectedCount === 0
-			? 'Add experiences'
-			: `Add ${selectedCount} ${selectedCount === 1 ? 'experience' : 'experiences'}`
-	);
+	let addLabel = $derived(m.review.add(selectedCount));
 </script>
 
 <Dialog
@@ -598,7 +588,7 @@ taken into the review when it is loaded or the dialog opens.
 							<Dialog.Title>
 								{#snippet element(attributes)}
 									<h2 {...attributes} class="text-lg font-semibold sm:text-xl">
-										Import from résumé
+										{m.title}
 									</h2>
 								{/snippet}
 							</Dialog.Title>
@@ -613,7 +603,7 @@ taken into the review when it is loaded or the dialog opens.
 						<button
 							type="button"
 							class="btn-icon size-10 shrink-0 hover:preset-tonal"
-							aria-label="Close"
+							aria-label={common.close}
 							disabled={!!saving}
 							onclick={requestClose}
 						>
@@ -686,18 +676,18 @@ taken into the review when it is loaded or the dialog opens.
 												class="btn btn-sm preset-tonal min-h-10"
 												onclick={() => fileInput?.click()}
 											>
-												Choose another file
+												{m.upload.chooseAnother}
 											</button>
 											<button
 												type="button"
 												class="btn btn-sm min-h-10 hover:preset-tonal-error"
 												onclick={() => {
 													file = null;
-													announcement = 'File removed.';
+													announcement = m.upload.removed;
 													tick().then(() => chooseButton?.focus());
 												}}
 											>
-												Remove
+												{common.remove}
 											</button>
 										</div>
 									{:else}
@@ -708,10 +698,10 @@ taken into the review when it is loaded or the dialog opens.
 										</div>
 										<p id="{uid}-drop-label" class="space-y-0.5">
 											<span class="block font-semibold">
-												<span class="pointer-coarse:hidden">Drop your résumé here</span>
-												<span class="pointer-fine:hidden">Choose your résumé</span>
+												<span class="pointer-coarse:hidden">{m.upload.drop}</span>
+												<span class="pointer-fine:hidden">{m.upload.choose}</span>
 											</span>
-											<span class="block text-sm text-surface-700-300">PDF, up to 4 MB</span>
+											<span class="block text-sm text-surface-700-300">{m.upload.limits}</span>
 										</p>
 										<button
 											bind:this={chooseButton}
@@ -720,7 +710,7 @@ taken into the review when it is loaded or the dialog opens.
 											disabled={!canImport}
 											onclick={() => fileInput?.click()}
 										>
-											Choose a PDF
+											{m.upload.choosePdf}
 										</button>
 									{/if}
 								</div>
@@ -745,25 +735,23 @@ taken into the review when it is loaded or the dialog opens.
 										</p>
 									{:else}
 										<p class="rounded-base preset-tonal-warning p-3 text-sm">
-											<span class="font-semibold">You have no imports left for now.</span>
+											<span class="font-semibold">{m.upload.noImportsLeft}</span>
 											<!-- After a 429, its message above says when (once is enough) -->
 											{#if resetText && !quotaRefused}
-												You can import again from {resetText}.
+												{m.upload.importAgainFrom(resetText)}
 											{/if}
 										</p>
 									{/if}
 								{:else if status}
 									<p class="rounded-base preset-tonal-warning p-3 text-sm">
-										Résumé import is not available right now.
+										{m.upload.unavailable}
 									</p>
 								{/if}
 
 								<div class="flex items-start gap-3 rounded-base preset-tonal p-3 text-sm sm:p-4">
 									<LockClosed size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
 									<p class="text-surface-800-200">
-										Your PDF is sent to Anthropic’s Claude, which reads it to draft your
-										experiences. This portfolio does not store the file, and nothing is published
-										until you review the drafts and add them.
+										{m.upload.privacy}
 									</p>
 								</div>
 							</div>
@@ -778,29 +766,36 @@ taken into the review when it is loaded or the dialog opens.
 									<DocumentText size="28" class="motion-safe:animate-pulse" aria-hidden="true" />
 								</div>
 								<div class="space-y-1">
-									<p class="text-lg font-semibold">Reading your résumé…</p>
+									<p class="text-lg font-semibold">{m.reading.heading}</p>
 									<p class="text-sm text-surface-700-300">
-										Claude is finding your experiences, projects and skills.
+										{m.reading.detail}
 									</p>
 								</div>
-								<Progress value={null} class="w-full max-w-sm">
-									<Progress.Label class="sr-only">Reading your résumé</Progress.Label>
+								<Progress
+									value={null}
+									translations={{ value: () => m.reading.progressValue }}
+									class="w-full max-w-sm"
+								>
+									<Progress.Label class="sr-only">{m.reading.progress}</Progress.Label>
 									<Progress.Track>
 										<Progress.Range class="bg-primary-500 motion-reduce:animate-none" />
 									</Progress.Track>
 								</Progress>
 								<p class="text-sm text-surface-700-300">
-									<span class="font-semibold tabular-nums">{formatElapsed(elapsed)}</span>
-									elapsed · this can take up to 3 minutes
+									<Rich text={m.reading.elapsed(formatElapsed(elapsed))}>
+										{#snippet time(text)}
+											<span class="font-semibold tabular-nums">{text}</span>
+										{/snippet}
+									</Rich>
 								</p>
 								<p class="max-w-sm text-xs text-surface-700-300">
-									Keep this window open. Stopping now may still count toward your imports.
+									{m.reading.keepOpen}
 								</p>
 							</div>
 						{:else if review}
 							<div class="space-y-4 px-4 py-5 sm:px-6">
 								<h3 bind:this={reviewHeading} tabindex="-1" class="sr-only">
-									Review the experiences found
+									{m.review.heading}
 								</h3>
 
 								{#if saveOutcome}
@@ -813,10 +808,7 @@ taken into the review when it is loaded or the dialog opens.
 												class="mt-0.5 shrink-0 text-success-700-300"
 												aria-hidden="true"
 											/>
-											<span>
-												{saveOutcome.added}
-												{saveOutcome.added === 1 ? 'experience was' : 'experiences were'} added.
-											</span>
+											<span>{m.review.addedCount(saveOutcome.added)}</span>
 										</p>
 									{/if}
 									<div
@@ -844,7 +836,7 @@ taken into the review when it is loaded or the dialog opens.
 									>
 										<p id="{uid}-warnings" class="flex items-center gap-1.5 font-semibold">
 											<ExclamationTriangle size="16" class="shrink-0" aria-hidden="true" />
-											Check before adding
+											{m.review.warnings}
 										</p>
 										<ul class="list-disc space-y-0.5 ps-5">
 											{#each review.warnings as warning, index (index)}
@@ -857,7 +849,7 @@ taken into the review when it is loaded or the dialog opens.
 								{#if notAdded.length > 0}
 									<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 										<p class="text-sm text-surface-700-300" role="status">
-											{selectedCount} of {notAdded.length} selected
+											{m.review.selected(selectedCount, notAdded.length)}
 										</p>
 										<div class="flex gap-1">
 											<button
@@ -866,7 +858,7 @@ taken into the review when it is loaded or the dialog opens.
 												disabled={!!saving || selectedCount === notAdded.length}
 												onclick={() => selectAll(true)}
 											>
-												Select all
+												{m.review.selectAll}
 											</button>
 											<button
 												type="button"
@@ -874,13 +866,13 @@ taken into the review when it is loaded or the dialog opens.
 												disabled={!!saving || selectedCount === 0}
 												onclick={() => selectAll(false)}
 											>
-												Select none
+												{m.review.selectNone}
 											</button>
 										</div>
 									</div>
 								{/if}
 
-								<ul class="space-y-3" aria-label="Experiences found">
+								<ul class="space-y-3" aria-label={m.review.list}>
 									{#each review.drafts as draft (draft.id)}
 										<li>
 											<DraftCard
@@ -912,9 +904,9 @@ taken into the review when it is loaded or the dialog opens.
 							>
 								<p id="{uid}-confirm" class="me-auto min-w-0 font-medium">
 									{#if confirming === 'stop'}
-										Stop the import? It may still count toward your imports.
+										{m.confirm.stop}
 									{:else}
-										Discard these drafts? Importing the résumé again counts as a new import.
+										{m.confirm.discard}
 									{/if}
 								</p>
 								<div class="flex gap-2">
@@ -924,7 +916,7 @@ taken into the review when it is loaded or the dialog opens.
 										class="btn preset-tonal"
 										onclick={cancelConfirm}
 									>
-										{confirming === 'stop' ? 'Keep waiting' : 'Keep drafts'}
+										{confirming === 'stop' ? m.confirm.keepWaiting : m.confirm.keepDrafts}
 									</button>
 									<button
 										type="button"
@@ -933,19 +925,19 @@ taken into the review when it is loaded or the dialog opens.
 											if (confirming === 'stop') stopImport();
 											else {
 												finish();
-												announcement = 'Import discarded.';
+												announcement = m.review.discarded;
 												onClose();
 											}
 										}}
 									>
-										{confirming === 'stop' ? 'Stop import' : 'Discard'}
+										{confirming === 'stop' ? m.confirm.stopImport : m.review.discard}
 									</button>
 								</div>
 							</div>
 						{:else if step === 'upload'}
 							<div class="flex flex-wrap items-center justify-end gap-2">
 								<button type="button" class="btn preset-tonal" onclick={requestClose}>
-									Cancel
+									{common.cancel}
 								</button>
 								<button
 									type="button"
@@ -954,7 +946,7 @@ taken into the review when it is loaded or the dialog opens.
 									disabled={!file || !canImport}
 									onclick={startImport}
 								>
-									Import résumé
+									{m.upload.import}
 								</button>
 							</div>
 						{:else if step === 'reading'}
@@ -965,7 +957,7 @@ taken into the review when it is loaded or the dialog opens.
 									data-footer="cancel-import"
 									onclick={() => openConfirm('stop')}
 								>
-									Cancel import
+									{m.reading.cancel}
 								</button>
 							</div>
 						{:else}
@@ -978,9 +970,14 @@ taken into the review when it is loaded or the dialog opens.
 												class="animate-spin motion-reduce:animate-none"
 												aria-hidden="true"
 											/>
-											Adding {Math.min(saving.done + 1, saving.total)} of {saving.total}…
+											{m.review.addingOne(Math.min(saving.done + 1, saving.total), saving.total)}
 										</span>
-										<Progress value={saving.done} max={saving.total} class="max-w-60">
+										<Progress
+											value={saving.done}
+											max={saving.total}
+											locale={intlLocale(undefined)}
+											class="max-w-60"
+										>
 											<Progress.Track>
 												<Progress.Range class="bg-primary-500" />
 											</Progress.Track>
@@ -994,13 +991,13 @@ taken into the review when it is loaded or the dialog opens.
 										data-footer="discard"
 										onclick={() => openConfirm('discard')}
 									>
-										<span class="sm:hidden">Discard</span>
-										<span class="max-sm:hidden">Discard import</span>
+										<span class="sm:hidden">{m.review.discard}</span>
+										<span class="max-sm:hidden">{m.review.discardImport}</span>
 									</button>
 								{/if}
 								{#if !saving}
 									<button type="button" class="btn preset-tonal" onclick={requestClose}>
-										Close
+										{common.close}
 									</button>
 								{/if}
 								<!-- Kept focusable while adding (aria-disabled): disabling it would drop the focus -->
@@ -1018,7 +1015,7 @@ taken into the review when it is loaded or the dialog opens.
 											class="animate-spin motion-reduce:animate-none"
 											aria-hidden="true"
 										/>
-										Adding…
+										{m.review.adding}
 									{:else}
 										{addLabel}
 									{/if}

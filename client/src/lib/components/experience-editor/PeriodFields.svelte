@@ -2,6 +2,7 @@
 	import MonthInput from './MonthInput.svelte';
 	import FieldError from './FieldError.svelte';
 	import { getEditorContext } from './context';
+	import { m as formMessages } from '#services/experienceForm.messages.ts';
 
 	let {
 		start = $bindable(''),
@@ -31,7 +32,7 @@
 		<MonthInput
 			bind:value={start}
 			id={editor.fieldId(startField)}
-			label="Start"
+			label={formMessages.fields.start}
 			invalid={!!editor.error(startField)}
 			describedby={describedby(startField)}
 		/>
@@ -41,7 +42,7 @@
 		<MonthInput
 			bind:value={end}
 			id={editor.fieldId(endField)}
-			label="End"
+			label={formMessages.fields.end}
 			disabled={ongoing}
 			invalid={!!editor.error(endField)}
 			describedby={describedby(endField)}

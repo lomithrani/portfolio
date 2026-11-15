@@ -425,9 +425,15 @@ test.describe('the recruiter', () => {
 		await gotoHydrated(page, '/recruiter');
 
 		await expect(
-			page.getByRole('heading', { level: 2, name: 'Recruit through portfolios' })
+			page.getByRole('heading', {
+				level: 2,
+				name: 'Find talent with exactly the skills you need'
+			})
 		).toBeVisible();
-		await expect(page.getByText('Write clear job descriptions')).toBeVisible();
+		await expect(
+			page.getByRole('heading', { level: 3, name: 'Skills you can check, not just read' })
+		).toBeVisible();
+		await expect(page.getByText('Say exactly what you need')).toBeVisible();
 		await expect(page.getByRole('link', { name: 'Browse open jobs' })).toBeVisible();
 		await expect(page.getByRole('heading', { name: 'Your job descriptions' })).toHaveCount(0);
 		await expect(page.getByRole('link', { name: 'New job description' })).toHaveCount(0);

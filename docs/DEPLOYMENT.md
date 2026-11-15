@@ -226,7 +226,8 @@ Google Sign-In: add the web origin (e.g. `https://example.com`) to the **Authori
 origins** of the OAuth client in the Google Cloud console, or the sign-in button fails on the
 deployed site.
 
-The landing page's share tags (`canonical`, `og:url`, `og:image` = `/og-image.png`) are built from
+The landing page's share tags (`canonical`, `og:url`, the `hreflang` links of its English and
+French versions, `og:image` = `/og-image.png`, or `/og-image-fr.png` in French) are built from
 that same derived origin: after the first deploy, check they read `https://<your domain>/...`
 (`curl -s https://example.com/ | grep -o '<meta property="og:url"[^>]*>'`).
 

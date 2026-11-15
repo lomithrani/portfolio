@@ -8,8 +8,8 @@
 	import { portfolioTextApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
-	import { SESSION_EXPIRED_MESSAGE } from '#services/account.ts';
-	import { NETWORK_ERROR, failureText } from '#services/recruiter.ts';
+	import { accountMessages } from '#services/account.messages.ts';
+	import { networkError, failureText } from '#services/recruiter.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
@@ -25,6 +25,11 @@
 		type StepState
 	} from '#services/workflow.ts';
 	import { clientStep, type ClientStep, type SubmitResult } from '#components/hire/steps/index.ts';
+	import { m as bookingMessages } from '#components/hire/MeetingBooking.messages.ts';
+	import { m as datesMessages } from '#services/bookingDates.messages.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { m } from './page.messages.ts';
 	import type { PageData } from './$types';
 
 	// The Hire page: the portfolio's hiring journey (GET /workflow/domains/:domainName), as the
@@ -38,7 +43,6 @@
 	let ownerName = $derived(data.domain.headerTitle || data.domainName);
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const JOURNEY_FAILED = 'Could not load this hiring journey. Try again in a moment.';
 
 	// The address the last navigation went to: page.url keeps the last real navigation's (a shallow
 	// goto, as the job step's after a pick, does not change it, but still runs afterNavigate).
@@ -127,12 +131,12 @@
 				.get(withCredentials);
 			if (current !== request) return;
 			if (error || !answer) {
-				loaded = { state: 'error', message: failureText(error?.value, JOURNEY_FAILED) };
+				loaded = { state: 'error', message: failureText(error?.value, m.journeyFailed) };
 				return;
 			}
 			showJourney(answer);
 		} catch {
-			if (current === request) loaded = { state: 'error', message: NETWORK_ERROR };
+			if (current === request) loaded = { state: 'error', message: networkError() };
 		}
 	}
 
@@ -195,12 +199,12 @@
 			// Reloaded below: the account change must not start a second load
 			journeyViewer = '';
 			clearAuthentication();
-			toaster.error({ title: SESSION_EXPIRED_MESSAGE });
+			toaster.error({ title: accountMessages.sessionExpired });
 		} else {
 			// The owner added steps since the page was opened, or an earlier step does not hold anymore
 			toaster.warning({
-				title: reason === 'signed-out' ? 'Sign in to continue' : 'Complete the steps first',
-				description: `${ownerName} asks recruiters to complete the earlier steps first.`
+				title: reason === 'signed-out' ? m.locked.signIn : m.locked.stepsFirst,
+				description: m.locked.why(ownerName)
 			});
 		}
 		await loadJourney();
@@ -209,8 +213,8 @@
 </script>
 
 <svelte:head>
-	<title>Hire {ownerName}</title>
-	<meta name="description" content={`Book a meeting with ${ownerName}.`} />
+	<title>{m.title(ownerName)}</title>
+	<meta name="description" content={m.description(ownerName)} />
 </svelte:head>
 
 {#snippet visitor(entry: ClientStep, step: JourneyStep, shown: Journey)}
@@ -229,26 +233,24 @@
 
 <div class="max-w-3xl mx-auto p-6 space-y-8">
 	<section class="space-y-2">
-		<h1 class="h2">{goal ? goal.heading(ownerName) : `Hire ${ownerName}`}</h1>
+		<h1 class="h2">{goal ? goal.heading(ownerName) : m.title(ownerName)}</h1>
 		{#if journey}
 			<p class="opacity-75">{journeyIntro(ownerName, goal)}</p>
 		{/if}
 	</section>
 
 	{#if loaded.state === 'loading'}
-		<p class="text-sm opacity-50" role="status">Loading availability...</p>
+		<p class="text-sm opacity-50" role="status">{bookingMessages.loading}</p>
 	{:else if loaded.state === 'error'}
 		<div class="card preset-tonal-error space-y-3 p-4" role="alert">
 			<p class="text-sm">{loaded.message}</p>
 			<button type="button" class="btn btn-sm preset-tonal" onclick={() => loadJourney()}>
-				Try again
+				{common.retry}
 			</button>
 		</div>
 	{:else if journey && journey.steps.length === 0}
 		<section class="card p-6">
-			<p class="opacity-75">
-				Online booking is not available right now. Please reach out directly.
-			</p>
+			<p class="opacity-75">{datesMessages.bookingUnavailable}</p>
 		</section>
 	{:else if journey && bare}
 		{@render visitor(bare, journey.steps[0], journey)}
@@ -257,17 +259,16 @@
 			<div class="card preset-tonal flex items-start gap-3 p-4 text-sm" role="note">
 				<Eye size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
 				<p>
-					This is your hiring journey, as recruiters see it. Its steps never stop you.
-					<a
-						class="underline underline-offset-2"
-						href={resolve('/[domain]/admin', { domain: data.domainName })}
-					>
-						Change the steps
-					</a>
+					<Rich text={m.own}>
+						{#snippet admin(text)}<a
+								class="underline underline-offset-2"
+								href={resolve('/[domain]/admin', { domain: data.domainName })}>{text}</a
+							>{/snippet}
+					</Rich>
 				</p>
 			</div>
 		{/if}
-		<ol class="space-y-4" aria-label="Hiring journey">
+		<ol class="space-y-4" aria-label={m.journey}>
 			{#each journey.steps as step, index (step.id)}
 				{@const state = states[index]}
 				{@const entry = clientStep(step.type)}
@@ -309,11 +310,11 @@
 						</span>
 						<div class="min-w-0 flex-1 space-y-0.5">
 							<h2 class="h4 outline-none break-words" tabindex="-1" bind:this={stepHeadings[index]}>
-								<span class="sr-only">Step {index + 1}:</span>
+								<span class="sr-only">{m.step(index + 1)}</span>
 								{name}
-								{#if state === 'done'}<span class="sr-only">(done)</span>{/if}
-								{#if state === 'locked'}<span class="sr-only">(locked)</span>{/if}
-								{#if state === 'failed'}<span class="sr-only">(not passed)</span>{/if}
+								{#if state === 'done'}<span class="sr-only">{m.state.done}</span>{/if}
+								{#if state === 'locked'}<span class="sr-only">{m.state.locked}</span>{/if}
+								{#if state === 'failed'}<span class="sr-only">{m.state.failed}</span>{/if}
 							</h2>
 							<p class="text-sm text-surface-700-300 break-words">
 								{stepNote(journey, index, state, entry?.note, entry?.failedNote)}
@@ -328,7 +329,7 @@
 									void focusStep(index);
 								}}
 							>
-								{(state === 'done' && entry?.reopenLabel) || 'Open'}
+								{(state === 'done' && entry?.reopenLabel) || m.open}
 								<span class="sr-only">{name}</span>
 							</button>
 						{/if}

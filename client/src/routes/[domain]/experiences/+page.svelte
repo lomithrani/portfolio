@@ -35,6 +35,8 @@
 	} from '#services/timeline.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { collectKnownSkills } from '#components/experience-list/experienceList.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { m } from './page.messages.ts';
 
 	let { data }: { data: PageData } = $props();
 
@@ -218,12 +220,8 @@
 					importOpen = true;
 				} else {
 					// Not from inside the effect: the toaster updates its store synchronously (flushSync)
-					const description = importStatus?.enabled
-						? 'You used this month’s imports. Add your experiences by hand for now.'
-						: 'Add your experiences by hand.';
-					setTimeout(() =>
-						toaster.info({ title: 'Résumé import is not available right now', description })
-					);
+					const description = importStatus?.enabled ? m.resumeImport.usedUp : m.resumeImport.off;
+					setTimeout(() => toaster.info({ title: m.resumeImport.unavailable, description }));
 				}
 			}
 			const domain = page.params.domain;
@@ -332,7 +330,7 @@
 			toaster.success({
 				title,
 				description: hidden,
-				action: { label: 'Show it', onClick: () => void clearFiltersAndReveal(id) }
+				action: { label: m.toasts.show, onClick: () => void clearFiltersAndReveal(id) }
 			});
 		}
 	};
@@ -355,8 +353,8 @@
 		}
 		await announceSaved(
 			id,
-			mode === 'created' ? 'Experience added' : 'Changes saved',
-			'The current filters hide it.'
+			mode === 'created' ? m.toasts.added(1) : m.toasts.saved,
+			m.toasts.hidden(1)
 		);
 		await keepFocusInPage(id);
 	};
@@ -366,21 +364,16 @@
 		if (done) importOpen = false;
 		await invalidateAll();
 		await tick();
-		const title = ids.length === 1 ? 'Experience added' : `${ids.length} experiences added`;
 		// Still open: the review lists what failed, and the toast would sit under it
 		if (!done) return;
-		await announceSaved(
-			ids[0],
-			title,
-			ids.length === 1 ? 'The current filters hide it.' : 'The current filters hide them.'
-		);
+		await announceSaved(ids[0], m.toasts.added(ids.length), m.toasts.hidden(ids.length));
 		await keepFocusInPage(ids[0]);
 	};
 
 	const onDeleted = async () => {
 		editorOpen = false;
 		await invalidateAll();
-		toaster.success({ title: 'Experience deleted' });
+		toaster.success({ title: m.toasts.deleted });
 		await tick();
 		// The deleted card held the focus (its Edit button): keep it in the page
 		if (!document.activeElement || document.activeElement === document.body) {
@@ -406,11 +399,8 @@
 </script>
 
 <svelte:head>
-	<title>{ownerName} | Resume</title>
-	<meta
-		name="description"
-		content={`${ownerName}: professional experiences, personal and educational projects and courses.`}
-	/>
+	<title>{m.title(ownerName)}</title>
+	<meta name="description" content={m.description(ownerName)} />
 </svelte:head>
 
 <!-- The page's floating corner: the view switch, and next to it what this visitor is most likely
@@ -433,9 +423,13 @@
 					onclick={() => openEditor(null)}
 				>
 					<Plus size="20" aria-hidden="true" />
-					<!-- "Add" to fit the row; the space stays outside the inner span (Svelte trims those at
-						the edges of a tag) -->
-					<span>Add <span class="sr-only">experience</span></span>
+					<!-- "Add" to fit the row: the rest of its name is for screen readers alone (the message
+						keeps the space between the two) -->
+					<span
+						><Rich text={m.addExperienceShort}
+							>{#snippet hidden(text)}<span class="sr-only">{text}</span>{/snippet}</Rich
+						></span
+					>
 				</button>
 			{/if}
 		{:else if !maybeOwner}
@@ -445,7 +439,7 @@
 				data-hire-me
 			>
 				<Briefcase size="20" aria-hidden="true" />
-				Hire me
+				{m.hireMe}
 			</a>
 		{/if}
 	</div>
@@ -475,10 +469,10 @@
 						<Briefcase size="24" aria-hidden="true" />
 					</div>
 					<h2 id="empty-owner-title" class="text-xl font-bold">
-						Your portfolio has no experiences yet
+						{m.emptyOwner.title}
 					</h2>
 					<p class="mx-auto max-w-md text-surface-700-300">
-						Add your jobs, studies and projects. Visitors see them here, the most recent first.
+						{m.emptyOwner.text}
 					</p>
 					<div class="flex flex-wrap justify-center gap-3">
 						<button
@@ -488,7 +482,7 @@
 							bind:this={addButton}
 						>
 							<Plus size="18" aria-hidden="true" />
-							Add your first experience
+							{m.emptyOwner.add}
 						</button>
 						{#if importAvailable}
 							{@render importButton('min-h-11')}
@@ -506,16 +500,16 @@
 						<Briefcase size="24" aria-hidden="true" />
 					</div>
 					<h2 id="empty-visitor-title" class="text-xl font-bold">
-						No experiences have been published yet.
+						{m.emptyVisitor.title}
 					</h2>
 					<p class="mx-auto max-w-md text-surface-700-300">
-						This portfolio is still being written. Have a project in mind? Let’s talk.
+						{m.emptyVisitor.text}
 					</p>
 					<a
 						href={resolve('/[domain]/hire', { domain: data.domain.name })}
 						class="btn preset-tonal-primary min-h-11"
 					>
-						Get in touch
+						{m.emptyVisitor.contact}
 					</a>
 				</section>
 			{/if}
@@ -524,7 +518,7 @@
 				have neither: their page starts with the filters -->
 			{#if isAdmin}
 				<div class="flex flex-wrap items-center gap-3">
-					<h2 class="text-xl font-bold md:text-2xl">Experiences</h2>
+					<h2 class="text-xl font-bold md:text-2xl">{m.heading}</h2>
 					<div class="ml-auto flex flex-wrap gap-2 max-sm:w-full" bind:this={toolbar}>
 						{#if importAvailable}
 							{@render importButton('min-h-10 max-sm:flex-1')}
@@ -536,7 +530,7 @@
 							bind:this={addButton}
 						>
 							<Plus size="18" aria-hidden="true" />
-							Add experience
+							{m.addExperience}
 						</button>
 					</div>
 				</div>
@@ -559,13 +553,13 @@
 					/>
 				{:else}
 					<div class="card preset-outlined-surface-200-800 space-y-3 p-6 text-center">
-						<p class="text-surface-700-300">No experience matches these filters.</p>
+						<p class="text-surface-700-300">{m.noMatch}</p>
 						<button
 							type="button"
 							class="btn preset-tonal min-h-10"
 							onclick={() => (filters = emptyFilters())}
 						>
-							Clear filters
+							{m.clearFilters}
 						</button>
 					</div>
 				{/each}
@@ -618,11 +612,15 @@
 	>
 		<DocumentArrowUp size="18" aria-hidden="true" />
 		{#if importHasReview}
-			Continue import
+			{m.resumeImport.resume}
 		{:else}
-			<!-- "Import résumé" on phones, to fit next to "Add experience". The spaces stay outside
-				the inner span: Svelte trims those at the edges of a tag -->
-			<span>Import <span class="max-sm:hidden">from</span> résumé</span>
+			<!-- "Import résumé" on phones, to fit next to "Add experience" (the message keeps the
+				spaces around the passage left out) -->
+			<span
+				><Rich text={m.resumeImport.open}
+					>{#snippet wide(text)}<span class="max-sm:hidden">{text}</span>{/snippet}</Rich
+				></span
+			>
 		{/if}
 	</button>
 {/snippet}

@@ -2,6 +2,7 @@ import { Type } from '@sinclair/typebox'
 import type { Static } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
 import { ExperienceType } from 'portfolio-common'
+import { m } from './resumeExtraction.messages'
 
 // What Claude is asked to return for a résumé (structured outputs), and how
 // that becomes the drafts POST /experiences/import answers with. The model's
@@ -154,7 +155,7 @@ export interface ExtractedExperience {
 
 export interface ResumeExtraction {
   experiences: ExtractedExperience[]
-  /** What was dropped or changed, in plain English for the owner reviewing the drafts */
+  /** What was dropped or changed, in plain words for the owner reviewing the drafts (in the request's language) */
   warnings: string[]
 }
 
@@ -170,8 +171,6 @@ const cleanText = (value: string) =>
 /** One-line text: control characters and runs of spaces as one space, trimmed */
 export const cleanLine = (value: string) =>
   value.normalize('NFC').replace(LINE_BREAKING_CHARACTERS, ' ').replace(/\s+/g, ' ').trim()
-
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
 
 const MONTH = /^(\d{4})-(\d{2})$/
 
@@ -247,35 +246,19 @@ class Changes {
 
   warnings() {
     const warnings: string[] = []
-    if (this.malformed) {
-      warnings.push(`Skipped ${plural(this.malformed, 'entry', 'entries')} that came back in an unexpected shape`)
-    }
-    if (this.untitled) warnings.push(`Skipped ${plural(this.untitled, 'entry', 'entries')} without a title`)
-    if (this.experiencesOverCap) {
-      warnings.push(`Only the first ${EXTRACTION_LIMITS.experiences} experiences were kept`)
-    }
+    if (this.malformed) warnings.push(m.malformedEntries(this.malformed))
+    if (this.untitled) warnings.push(m.untitledEntries(this.untitled))
+    if (this.experiencesOverCap) warnings.push(m.experiencesOverCap(EXTRACTION_LIMITS.experiences))
     if (this.projectsOverCap) {
-      warnings.push(
-        `${plural(this.projectsOverCap, 'experience has', 'experiences have')} more than ${EXTRACTION_LIMITS.projectsPerExperience} projects: only the first ${EXTRACTION_LIMITS.projectsPerExperience} of each were kept`
-      )
+      warnings.push(m.projectsOverCap(this.projectsOverCap, EXTRACTION_LIMITS.projectsPerExperience))
     }
     if (this.skillListsOverCap) {
-      warnings.push(
-        `${plural(this.skillListsOverCap, 'skill list has', 'skill lists have')} more than ${EXTRACTION_LIMITS.skillsPerList} skills: only the first ${EXTRACTION_LIMITS.skillsPerList} of each were kept`
-      )
+      warnings.push(m.skillListsOverCap(this.skillListsOverCap, EXTRACTION_LIMITS.skillsPerList))
     }
-    if (this.truncated) warnings.push(`Shortened ${plural(this.truncated, 'text that was', 'texts that were')} too long`)
-    if (this.invalidDates) {
-      warnings.push(`Left out ${plural(this.invalidDates, 'date that is', 'dates that are')} not a valid month (YYYY-MM)`)
-    }
-    if (this.endsBeforeStart) {
-      warnings.push(`Left out ${plural(this.endsBeforeStart, 'end date', 'end dates')} before the start date`)
-    }
-    if (this.longSkillNames) {
-      warnings.push(
-        `Left out ${plural(this.longSkillNames, 'skill name', 'skill names')} longer than ${EXTRACTION_LIMITS.skillName} characters`
-      )
-    }
+    if (this.truncated) warnings.push(m.truncatedTexts(this.truncated))
+    if (this.invalidDates) warnings.push(m.invalidDates(this.invalidDates))
+    if (this.endsBeforeStart) warnings.push(m.endsBeforeStart(this.endsBeforeStart))
+    if (this.longSkillNames) warnings.push(m.longSkillNames(this.longSkillNames, EXTRACTION_LIMITS.skillName))
     return warnings
   }
 }
@@ -337,7 +320,7 @@ const unplacedSkillsWarning = (raw: unknown) => {
   if (names.size === 0) return undefined
   const listed = [...names.values()].slice(0, EXTRACTION_LIMITS.unplacedSkillsListed)
   const more = names.size - listed.length
-  return `Skills listed on the résumé but not tied to any experience were left out: ${listed.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+  return m.unplacedSkills(listed.join(', '), more)
 }
 
 /**
@@ -372,6 +355,6 @@ export function normalizeExtraction(output: unknown): ResumeExtraction {
   const warnings = changes.warnings()
   const unplaced = isRecord(output) ? unplacedSkillsWarning(output.unplacedSkills) : undefined
   if (unplaced) warnings.push(unplaced)
-  if (experiences.length === 0) warnings.push('No experiences were found in this file')
+  if (experiences.length === 0) warnings.push(m.noExperiences)
   return { experiences, warnings }
 }

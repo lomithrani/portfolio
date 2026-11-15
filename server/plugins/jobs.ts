@@ -21,7 +21,6 @@ import {
 } from '../models/elysia';
 import { requireRecruiterSpace } from '../services/recruiters';
 import {
-  JOB_CHANGED,
   JOB_NOT_FOUND,
   addApplication,
   applicantCounts,
@@ -45,6 +44,18 @@ import type {
   RecruiterJobPostingDto
 } from '../services/jobPostings';
 import { logger } from '../services/logger';
+import {
+  ALREADY_APPLICANT,
+  ALREADY_APPLIED,
+  DOMAIN_NOT_FOUND,
+  JOB_CHANGED,
+  JOB_NOT_TAKING_APPLICATIONS,
+  NOT_APPLIED,
+  OWN_JOB_POSTING,
+  OWN_PORTFOLIO,
+  PORTFOLIO_REQUIRED
+} from '../protocol';
+import { m } from '../services/jobPostings.messages';
 
 // Job postings of the recruiter space, their applicants and the public job
 // pages. Recruiter routes need a recruiter space (403 without one) and only
@@ -196,15 +207,15 @@ const jobsRecruiter = new Elysia()
   .post('/jobs/:id/applicants', async ({ userId, params: { id }, body }): Promise<ApplicantDto> => {
     const job = await findOwnJobPosting(userId, id);
     const domain = await Domain.findOne({ name: normalizeDomainName(body.domain) }, { admin: 1 }).lean();
-    if (!domain) throw new DomainDoesNotExistError('Domain not found');
-    if (String(domain.admin) === userId) throw new ForbiddenError('You cannot add your own portfolio');
+    if (!domain) throw new DomainDoesNotExistError(DOMAIN_NOT_FOUND);
+    if (String(domain.admin) === userId) throw new ForbiddenError(OWN_PORTFOLIO);
     const application = await addApplication(
       { job: job._id, candidate: String(domain.admin), domain: domain._id, source: 'added_by_recruiter' },
-      'Already an applicant'
+      ALREADY_APPLICANT
     );
     const [applicant] = await toApplicantDtos([application]);
     // The portfolio was just found: only a deletion meanwhile could get here
-    if (!applicant) throw new DomainDoesNotExistError('Domain not found');
+    if (!applicant) throw new DomainDoesNotExistError(DOMAIN_NOT_FOUND);
     return applicant;
   }, {
     params: objectIdParams,
@@ -214,7 +225,7 @@ const jobsRecruiter = new Elysia()
   .delete('/jobs/:id/applicants/:applicationId', async ({ userId, params: { id, applicationId } }) => {
     const job = await findOwnJobPosting(userId, id);
     const application = await JobApplication.findOneAndDelete({ _id: applicationId, job: job._id });
-    if (!application) throw new ResourceNotFoundError('Applicant not found');
+    if (!application) throw new ResourceNotFoundError(() => m.applicantNotFound);
     return { id: applicationId };
   }, {
     params: jobApplicantParams,
@@ -237,16 +248,16 @@ const jobsCandidate = new Elysia()
   .post('/jobs/:id/application', async ({ userId, params: { id } }): Promise<ApplicationStatusDto> => {
     const job = await findPublicJobPosting(id);
     if (job.status !== APPLICABLE_JOB_STATUS) {
-      throw new ConflictError('This job posting is not taking applications');
+      throw new ConflictError(JOB_NOT_TAKING_APPLICATIONS);
     }
     if (job.recruiter.toString() === userId) {
-      throw new ForbiddenError('You cannot apply to your own job posting');
+      throw new ForbiddenError(OWN_JOB_POSTING);
     }
     const domain = await Domain.findOne({ admin: userId }, { _id: 1 }).lean();
-    if (!domain) throw new ForbiddenError('Claim a portfolio before applying');
+    if (!domain) throw new ForbiddenError(PORTFOLIO_REQUIRED);
     const application = await addApplication(
       { job: job._id, candidate: userId, domain: domain._id, source: 'applied' },
-      'You already applied'
+      ALREADY_APPLIED
     );
     return { applied: true, appliedAt: application.createdAt, source: 'applied' };
   }, {
@@ -258,7 +269,7 @@ const jobsCandidate = new Elysia()
   .delete('/jobs/:id/application', async ({ userId, params: { id } }): Promise<ApplicationStatusDto> => {
     // Whatever the posting's status now, and whoever listed the caller
     const application = await JobApplication.findOneAndDelete({ job: id, candidate: userId });
-    if (!application) throw new ResourceNotFoundError('You have not applied to this job posting');
+    if (!application) throw new ResourceNotFoundError(NOT_APPLIED);
     return { applied: false };
   }, {
     params: objectIdParams,

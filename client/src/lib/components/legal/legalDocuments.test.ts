@@ -6,37 +6,11 @@ import {
 	SITE_NAME,
 	formatLegalDate,
 	isPlausibleEmail,
-	legalLanguage,
 	legalLastUpdated,
 	legalPageTitle,
 	legalPublisher,
-	mailtoHref,
-	withLegalLanguage
+	mailtoHref
 } from './legalDocuments.ts';
-
-describe('legalLanguage', () => {
-	it('reads French from ?lang=fr, in any case and with spaces', () => {
-		expect(legalLanguage('fr')).toBe('fr');
-		expect(legalLanguage('FR')).toBe('fr');
-		expect(legalLanguage(' fr ')).toBe('fr');
-	});
-
-	it('falls back to English for anything else', () => {
-		expect(legalLanguage(null)).toBe('en');
-		expect(legalLanguage(undefined)).toBe('en');
-		expect(legalLanguage('')).toBe('en');
-		expect(legalLanguage('en')).toBe('en');
-		expect(legalLanguage('de')).toBe('en');
-		expect(legalLanguage('fr-FR')).toBe('en');
-	});
-});
-
-describe('withLegalLanguage', () => {
-	it('adds ?lang=fr for French only', () => {
-		expect(withLegalLanguage('/legal/privacy', 'fr')).toBe('/legal/privacy?lang=fr');
-		expect(withLegalLanguage('/legal/privacy', 'en')).toBe('/legal/privacy');
-	});
-});
 
 describe('formatLegalDate', () => {
 	it('writes the date in words in each language, read in UTC', () => {

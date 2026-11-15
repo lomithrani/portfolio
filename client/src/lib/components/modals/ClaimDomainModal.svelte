@@ -10,12 +10,16 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { STALE_TERMS_MESSAGE, currentConsent } from 'portfolio-common';
+	import { legalMessages, currentConsent, getLocale } from 'portfolio-common';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { signIn } from '#services/authentication.ts';
 	import { claimPortfolio } from '#services/account.ts';
+	import { accountMessages } from '#services/account.messages.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { m } from './ClaimDomainModal.messages.ts';
 
 	let { domainName, onClose }: { domainName: string; onClose: () => void } = $props();
 
@@ -37,9 +41,9 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 
 	const claimError = (result: Awaited<ReturnType<typeof claimPortfolio>>): string => {
 		if (result.ok) return '';
-		if (result.reason === 'session-expired') return 'Sign-in failed. Please try again.';
-		if (result.cause === 'owns-domain') return 'Your Google account already owns a portfolio.';
-		if (result.cause === 'name') return 'This name is no longer available.';
+		if (result.reason === 'session-expired') return m.signInFailed;
+		if (result.cause === 'owns-domain') return m.ownsPortfolio;
+		if (result.cause === 'name') return m.nameGone;
 		return result.message;
 	};
 
@@ -47,7 +51,7 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 		errorMessage = '';
 		// Google's button may still be on screen after the box was unticked
 		if (!checked) {
-			consentProblem = 'Tick the box to confirm your age and accept the terms.';
+			consentProblem = accountMessages.claim.tickTheBox;
 			document.getElementById(consentId)?.focus();
 			return;
 		}
@@ -65,9 +69,7 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 			if (!signedIn.ok) {
 				// Terms changed since the page loaded: retrying sends the same version, only a reload helps
 				errorMessage =
-					signedIn.reason === 'stale-terms'
-						? STALE_TERMS_MESSAGE
-						: 'Sign-in failed. Please try again.';
+					signedIn.reason === 'stale-terms' ? legalMessages.staleTerms : m.signInFailed;
 				return;
 			}
 
@@ -78,8 +80,8 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 			}
 
 			toaster.success({
-				title: 'Portfolio claimed',
-				description: `${result.name} is yours. Add your first experience to it.`
+				title: accountMessages.claim.claimed,
+				description: accountMessages.claim.claimedFirstExperience(result.name)
 			});
 			await goto(resolve('/[domain]/experiences', { domain: result.name }), {
 				invalidateAll: true
@@ -106,7 +108,8 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 						size: 'large',
 						type: 'standard',
 						text: 'signin_with',
-						shape: 'pill'
+						shape: 'pill',
+						locale: getLocale()
 					});
 				}
 				gsiState = 'ready';
@@ -131,13 +134,13 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 </script>
 
 <div class={cBase}>
-	<header class={cHeader}>Claim {domainName}</header>
+	<header class={cHeader}>{m.title(domainName)}</header>
 	<p>
-		By signing in with your Google account, you will become the owner of <strong
-			>{domainName}</strong
-		>.
+		<Rich text={m.intro}>
+			{#snippet name()}<strong>{domainName}</strong>{/snippet}
+		</Rich>
 	</p>
-	<p class="text-sm text-surface-600-400">Each Google account can only own one domain.</p>
+	<p class="text-sm text-surface-600-400">{m.onePerAccount}</p>
 
 	<AgeTermsConsent bind:checked error={consentError} disabled={claiming} id={consentId} />
 
@@ -146,11 +149,11 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 	{/if}
 
 	{#if claiming}
-		<p class="text-center" role="status">Claiming domain...</p>
+		<p class="text-center" role="status">{m.claiming}</p>
 	{/if}
 	{#if !checked}
 		<p class="text-center text-sm text-surface-600-400">
-			Tick the box to show the Google sign-in button.
+			{m.tickToShow}
 		</p>
 	{:else if gsiState === 'loading'}
 		<div class="flex justify-center" aria-hidden="true">
@@ -160,12 +163,9 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 		</div>
 	{:else if gsiState === 'unavailable'}
 		<div class="space-y-2 text-center text-sm" role="alert">
-			<p>
-				Google sign-in could not load. Check your connection (or allow accounts.google.com) and try
-				again.
-			</p>
+			<p>{m.googleUnavailable}</p>
 			<button type="button" class="btn btn-sm preset-tonal" onclick={() => (gsiState = 'idle')}>
-				Try again
+				{common.retry}
 			</button>
 		</div>
 	{/if}
@@ -175,6 +175,6 @@ confirmation (portfolio-common currentConsent()) is sent with the sign-in and wi
 	></div>
 
 	<footer class="flex justify-end">
-		<button class="btn preset-tonal" onclick={onClose}>Cancel</button>
+		<button class="btn preset-tonal" onclick={onClose}>{common.cancel}</button>
 	</footer>
 </div>

@@ -4,6 +4,7 @@ import { TooManyRequestsError } from '../errors';
 import { rateLimitAddress } from './clientAddress';
 import { consumeRateLimit, rateLimitKey } from './rateLimit';
 import type { RateLimit } from './rateLimit';
+import { m } from './rateLimit.messages';
 
 // GET /domain/:name/availability: whether a portfolio name can still be
 // claimed, for the live hint of the claim forms. Advisory only: POST
@@ -37,7 +38,7 @@ export async function domainAvailability(rawName: string): Promise<DomainAvailab
 
 const waitText = (seconds: number) => {
   const minutes = Math.max(1, Math.ceil(seconds / 60));
-  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  return m.wait.minutes(minutes);
 };
 
 /** Counts an availability lookup from an IP; throws TooManyRequestsError (429) over the limit */
@@ -47,9 +48,6 @@ export async function limitDomainAvailabilityRequestsFromIp(ip: string | null) {
   const key = rateLimitKey('domain-availability:ip', rateLimitAddress(ip));
   const retryAfter = await consumeRateLimit(key, DOMAIN_AVAILABILITY_REQUESTS_PER_IP);
   if (retryAfter !== null) {
-    throw new TooManyRequestsError(
-      `Too many requests from your network. Try again in ${waitText(retryAfter)}`,
-      retryAfter
-    );
+    throw new TooManyRequestsError(() => m.tooManyRequestsFromNetwork(waitText(retryAfter)), retryAfter);
   }
 }

@@ -10,6 +10,7 @@ import {
 	SENIORITY_LABELS,
 	TRAVEL_LABELS,
 	WORK_MODE_LABELS,
+	intlLocale,
 	normalizeJobPosting,
 	validateJobPosting,
 	type ContractType,
@@ -23,6 +24,7 @@ import {
 	type WorkingTimeArrangement,
 	type JobFieldPath
 } from 'portfolio-common';
+import { m } from './jobPosting.messages.ts';
 
 // Pure helpers of the job posting editor and of every page showing a posting (recruiter
 // dashboard, public job page). The rules live in portfolio-common (normalizeJobPosting,
@@ -319,21 +321,21 @@ export const jobFormFieldOf = (path: string): JobFormField | undefined =>
 		? FIELD_OF_PATH[path as keyof typeof FIELD_OF_PATH]
 		: undefined;
 
-/** The number fields, with how they are named in messages */
-const NUMBER_FIELDS: [JobFormField, string][] = [
-	['openings', 'Openings'],
-	['remoteDaysPerWeek', 'Remote days per week'],
-	['durationMonths', 'Duration'],
-	['trialPeriodMonths', 'Trial period'],
-	['hoursPerWeek', 'Hours per week'],
-	['daysPerYear', 'Days per year'],
-	['rttDaysPerYear', 'RTT days'],
-	['payMin', 'Minimum pay'],
-	['payMax', 'Maximum pay'],
-	['directReports', 'Direct reports'],
-	['peers', 'Peers'],
-	['levelsToCeo', 'Levels to the CEO']
-];
+/** The number fields (how each is named in its message: `notANumber` of jobPosting.messages.ts) */
+const NUMBER_FIELDS = [
+	'openings',
+	'remoteDaysPerWeek',
+	'durationMonths',
+	'trialPeriodMonths',
+	'hoursPerWeek',
+	'daysPerYear',
+	'rttDaysPerYear',
+	'payMin',
+	'payMax',
+	'directReports',
+	'peers',
+	'levelsToCeo'
+] as const satisfies readonly JobFormField[];
 
 /**
  * Whether a field applies to the form as it is (the editor hides the others, and they are not
@@ -361,14 +363,14 @@ export const jobFieldApplies = (form: JobForm, field: JobFormField): boolean => 
  */
 export const jobFormErrors = (form: JobForm): Partial<Record<JobFormField, string>> => {
 	const errors: Partial<Record<JobFormField, string>> = {};
-	for (const [field, label] of NUMBER_FIELDS) {
+	for (const field of NUMBER_FIELDS) {
 		if (!jobFieldApplies(form, field)) continue;
-		if (Number.isNaN(parseFormNumber(form[field] as string))) {
-			errors[field] = `${label} must be a number`;
+		if (Number.isNaN(parseFormNumber(form[field]))) {
+			errors[field] = m.notANumber[field];
 		}
 	}
-	if (parseFormNumber(form.payMin) === undefined) errors.payMin ??= 'Minimum pay is required';
-	if (parseFormNumber(form.payMax) === undefined) errors.payMax ??= 'Maximum pay is required';
+	if (parseFormNumber(form.payMin) === undefined) errors.payMin ??= m.payMinRequired;
+	if (parseFormNumber(form.payMax) === undefined) errors.payMax ??= m.payMaxRequired;
 	const input = formToJobInput(form);
 	for (const problem of validateJobPosting(input)) {
 		const field = jobFieldOfProperty(problem.field);
@@ -423,41 +425,11 @@ export const JOB_FORM_FIELDS: readonly JobFormField[] = [
 	'travel'
 ];
 
-/** How the editor names each field (its label; the error summary's links) */
-export const JOB_FIELD_LABELS: Record<JobFormField, string> = {
-	title: 'Job title',
-	company: 'Company',
-	status: 'Status',
-	openings: 'Openings',
-	description: 'Description',
-	workMode: 'Work mode',
-	city: 'City',
-	postalCode: 'Postal code',
-	address: 'Address',
-	remoteDaysPerWeek: 'Remote days a week',
-	contractType: 'Contract type',
-	durationMonths: 'Duration',
-	startDate: 'Start date',
-	trialPeriodMonths: 'Trial period',
-	collectiveAgreement: 'Collective agreement',
-	arrangement: 'Working time',
-	hoursPerWeek: 'Hours per week',
-	daysPerYear: 'Days per year',
-	rttDaysPerYear: 'RTT days per year',
-	payMin: 'Minimum pay',
-	payMax: 'Maximum pay',
-	payPeriod: 'Pay period',
-	payVariable: 'Variable pay',
-	directReports: 'Direct reports',
-	peers: 'Peers under the same manager',
-	levelsToCeo: 'Levels to the CEO',
-	seniority: 'Seniority',
-	education: 'Education',
-	skills: 'Skills',
-	languages: 'Languages',
-	benefits: 'Benefits',
-	travel: 'Travel'
-};
+/**
+ * How the editor names each field (its label; the error summary's links), in the language in
+ * use when a label is read
+ */
+export const JOB_FIELD_LABELS: Record<JobFormField, string> = m.fieldLabels;
 
 export type JobFieldError = { field: JobFormField; label: string; message: string };
 
@@ -472,11 +444,12 @@ export const orderedJobFormErrors = (
 
 // --- Display ----------------------------------------------------------------------------
 
-const LOCALE = 'en-GB';
+/** The tag English numbers and dates are written with (French: fr-FR), read when formatting */
+const locale = () => intlLocale('en-GB');
 
 /** '€45,000', '€11.88' */
 export const formatAmount = (amount: number, currency = 'EUR'): string =>
-	new Intl.NumberFormat(LOCALE, {
+	new Intl.NumberFormat(locale(), {
 		style: 'currency',
 		currency,
 		minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
@@ -491,7 +464,7 @@ export const formatPay = (pay: JobPostingLike['pay']): string => {
 		pay.min === pay.max
 			? formatAmount(pay.min, currency)
 			: `${formatAmount(pay.min, currency)} – ${formatAmount(pay.max, currency)}`;
-	return `${range} gross${pay.period ? ` ${PAY_PERIOD_LABELS[pay.period]}` : ''}`;
+	return m.pay(range, pay.period ? PAY_PERIOD_LABELS[pay.period] : '');
 };
 
 /**
@@ -503,20 +476,13 @@ export const formatWorkingTime = (workingTime: JobPostingLike['workingTime']): s
 	const parts: string[] = [];
 	if (workingTime.arrangement === 'weekly_hours' && workingTime.hoursPerWeek !== undefined) {
 		const hours = workingTime.hoursPerWeek;
-		parts.push(`${hours} h/week${hours < FR_FULL_TIME_HOURS_PER_WEEK ? ' (part-time)' : ''}`);
+		parts.push(m.hoursPerWeek(hours, hours < FR_FULL_TIME_HOURS_PER_WEEK));
 	}
 	if (workingTime.arrangement === 'annual_days' && workingTime.daysPerYear !== undefined) {
-		parts.push(
-			`${workingTime.daysPerYear} days a year (forfait jours: counted in days worked, no weekly hours)`
-		);
+		parts.push(m.daysPerYear(workingTime.daysPerYear));
 	}
 	if (workingTime.rttDaysPerYear) {
-		const days = workingTime.rttDaysPerYear;
-		parts.push(
-			days === 1
-				? '1 RTT day (an extra day off a year)'
-				: `${days} RTT days (extra days off a year)`
-		);
+		parts.push(m.rttDays(workingTime.rttDaysPerYear));
 	}
 	return parts.join(' · ');
 };
@@ -539,16 +505,14 @@ export const formatWorkMode = (location: JobPostingLike['location']): string => 
 	if (!location?.workMode) return '';
 	const label = WORK_MODE_LABELS[location.workMode];
 	const days = location.remoteDaysPerWeek;
-	return location.workMode === 'hybrid' && days
-		? `${label} (${days} ${days === 1 ? 'day' : 'days'} remote a week)`
-		: label;
+	return location.workMode === 'hybrid' && days ? m.hybridDays(label, days) : label;
 };
 
 /** '1 Dec 2026' (a calendar date: no time zone shift) */
 export const formatStartDate = (value: string | Date | undefined): string => {
 	const key = startDateKey(value);
 	if (!key) return '';
-	return new Date(`${key}T00:00:00Z`).toLocaleDateString(LOCALE, {
+	return new Date(`${key}T00:00:00Z`).toLocaleDateString(locale(), {
 		day: 'numeric',
 		month: 'short',
 		year: 'numeric',
@@ -556,46 +520,34 @@ export const formatStartDate = (value: string | Date | undefined): string => {
 	});
 };
 
-const months = (count: number) => `${count} ${count === 1 ? 'month' : 'months'}`;
-
 /** 'CDD (fixed-term) · 6 months', 'CDI (permanent)' */
 export const formatContract = (contract: JobPostingLike['contract']): string => {
 	if (!contract?.type) return '';
 	const parts = [CONTRACT_TYPE_LABELS[contract.type]];
-	if (contract.durationMonths) parts.push(months(contract.durationMonths));
+	if (contract.durationMonths) parts.push(m.months(contract.durationMonths));
 	return parts.join(' · ');
 };
 
 /** 'Starts 1 Dec 2026', 'Starts as soon as possible' */
 export const formatStart = (contract: JobPostingLike['contract']): string => {
 	const date = formatStartDate(contract?.startDate);
-	return date ? `Starts ${date}` : 'Starts as soon as possible';
+	return date ? m.starts(date) : m.startsAsap;
 };
 
 export const formatTrialPeriod = (count: number | undefined): string =>
-	count ? `${months(count)} trial period` : '';
+	count ? m.trialPeriod(count) : '';
 
 /** 'Reports to the CEO', '3 levels below the CEO', 'Is the CEO' */
-export const formatLevelsToCeo = (levels: number | undefined): string => {
-	if (levels === undefined) return '';
-	if (levels === 0) return 'Is the CEO';
-	if (levels === 1) return 'Reports to the CEO';
-	return `${levels} levels below the CEO`;
-};
+export const formatLevelsToCeo = (levels: number | undefined): string =>
+	levels === undefined ? '' : m.levelsToCeo(levels);
 
 /** '4 direct reports', 'No direct reports' */
-export const formatDirectReports = (count: number | undefined): string => {
-	if (count === undefined) return '';
-	if (count === 0) return 'No direct reports';
-	return `${count} direct ${count === 1 ? 'report' : 'reports'}`;
-};
+export const formatDirectReports = (count: number | undefined): string =>
+	count === undefined ? '' : m.directReports(count);
 
 /** '5 peers (same manager)' */
-export const formatPeers = (count: number | undefined): string => {
-	if (count === undefined) return '';
-	if (count === 0) return 'No peers under the same manager';
-	return `${count} ${count === 1 ? 'peer' : 'peers'} under the same manager`;
-};
+export const formatPeers = (count: number | undefined): string =>
+	count === undefined ? '' : m.peers(count);
 
 export const statusLabel = (status: JobStatus): string => JOB_STATUS_LABELS[status];
 
@@ -618,37 +570,28 @@ export const educationLabel = (level: EducationLevel | undefined): string =>
 export const travelLabel = (travel: TravelFrequency | undefined): string =>
 	travel ? TRAVEL_LABELS[travel] : '';
 
-/** One-word contracts, for one-line summaries: 'CDI', 'CDD', 'Internship' */
-export const CONTRACT_SHORT_LABELS: Record<ContractType, string> = {
-	cdi: 'CDI',
-	cdd: 'CDD',
-	interim: 'Temporary',
-	apprenticeship: 'Apprenticeship',
-	professionalisation: 'Work-study',
-	internship: 'Internship',
-	freelance: 'Freelance'
-};
+/**
+ * One-word contracts, for one-line summaries: 'CDI', 'CDD', 'Internship', in the language in
+ * use when a label is read
+ */
+export const CONTRACT_SHORT_LABELS: Record<ContractType, string> = m.contractShort;
 
-/** What the French contract names mean, for candidates who do not know them */
-const CONTRACT_GLOSSES: Partial<Record<ContractType, string>> = {
-	cdi: 'permanent',
-	cdd: 'fixed-term'
-};
-
-/** 'CDI (permanent)', 'CDD (fixed-term, 6 months)', 'Internship (6 months)' */
+/**
+ * 'CDI (permanent)', 'CDD (fixed-term, 6 months)', 'Internship (6 months)': what the French
+ * contract names mean is said in English, for candidates who do not know them
+ */
 export const formatContractShort = (contract: JobPostingLike['contract']): string => {
 	if (!contract?.type) return '';
-	const label = CONTRACT_SHORT_LABELS[contract.type];
-	const details = [
-		CONTRACT_GLOSSES[contract.type],
-		contract.durationMonths ? months(contract.durationMonths) : ''
-	].filter(Boolean);
-	return details.length ? `${label} (${details.join(', ')})` : label;
+	return m.contractWithDetails(
+		CONTRACT_SHORT_LABELS[contract.type],
+		contract.type,
+		contract.durationMonths
+	);
 };
 
 /** '1 position', '3 positions' */
 export const formatOpenings = (count: number | undefined): string =>
-	count === undefined ? '' : `${count} ${count === 1 ? 'position' : 'positions'}`;
+	count === undefined ? '' : m.openings(count);
 
 /**
  * The parts of a posting's one-line summary (a list item): city (or the work mode alone when
@@ -690,33 +633,31 @@ export const jobFacts = (job: JobPostingLike): JobFact[] => {
 	const facts: JobFact[] = [
 		{
 			id: 'place',
-			label: 'Location',
+			label: m.facts.place,
 			lines: [formatPlace(location), formatWorkMode(location)]
 		},
 		{
 			id: 'contract',
-			label: 'Contract',
+			label: m.facts.contract,
 			lines: contract?.type
 				? [
 						formatContract(contract),
 						formatStart(contract),
 						formatTrialPeriod(contract.trialPeriodMonths),
-						contract.collectiveAgreement
-							? `Collective agreement: ${contract.collectiveAgreement}`
-							: ''
+						contract.collectiveAgreement ? m.collectiveAgreement(contract.collectiveAgreement) : ''
 					]
 				: []
 		},
-		{ id: 'workingTime', label: 'Working time', lines: [formatWorkingTime(workingTime)] },
+		{ id: 'workingTime', label: m.facts.workingTime, lines: [formatWorkingTime(workingTime)] },
 		{
 			id: 'pay',
-			label: 'Pay',
-			lines: [formatPay(pay), pay?.variable ? `Variable: ${pay.variable}` : '']
+			label: m.facts.pay,
+			lines: [formatPay(pay), pay?.variable ? m.variablePay(pay.variable) : '']
 		},
-		{ id: 'openings', label: 'Openings', lines: [formatOpenings(job.openings)] },
+		{ id: 'openings', label: m.facts.openings, lines: [formatOpenings(job.openings)] },
 		{
 			id: 'team',
-			label: 'Team',
+			label: m.facts.team,
 			lines: [
 				formatDirectReports(organization?.directReports),
 				formatPeers(organization?.peers),
@@ -725,13 +666,13 @@ export const jobFacts = (job: JobPostingLike): JobFact[] => {
 		},
 		{
 			id: 'profile',
-			label: 'Profile',
+			label: m.facts.profile,
 			lines: [seniorityLabel(requirements?.seniority), educationLabel(requirements?.education)]
 		},
-		{ id: 'skills', label: 'Skills', lines: [], items: requirements?.skills ?? [] },
-		{ id: 'languages', label: 'Languages', lines: [], items: requirements?.languages ?? [] },
-		{ id: 'benefits', label: 'Benefits', lines: [], items: job.benefits ?? [] },
-		{ id: 'travel', label: 'Travel', lines: [travelLabel(job.travel)] }
+		{ id: 'skills', label: m.facts.skills, lines: [], items: requirements?.skills ?? [] },
+		{ id: 'languages', label: m.facts.languages, lines: [], items: requirements?.languages ?? [] },
+		{ id: 'benefits', label: m.facts.benefits, lines: [], items: job.benefits ?? [] },
+		{ id: 'travel', label: m.facts.travel, lines: [travelLabel(job.travel)] }
 	];
 	return facts
 		.map((fact) => ({ ...fact, lines: fact.lines.filter(Boolean) }))
@@ -740,14 +681,11 @@ export const jobFacts = (job: JobPostingLike): JobFact[] => {
 
 // --- Editor helpers ---------------------------------------------------------------------
 
-/** What each status means for the posting's visibility (the editor's hint) */
-export const JOB_STATUS_DESCRIPTIONS: Record<JobStatus, string> = {
-	draft: 'Only you can see it.',
-	open: 'Public: candidates can apply.',
-	on_hold: 'Public, but not taking applications for now.',
-	filled: 'Public, marked as filled: no more applications.',
-	closed: 'Public, marked as closed: no more applications.'
-};
+/**
+ * What each status means for the posting's visibility (the editor's hint), in the language in
+ * use when a description is read
+ */
+export const JOB_STATUS_DESCRIPTIONS: Record<JobStatus, string> = m.statusDescriptions;
 
 export type ListAddProblem = 'duplicate' | 'full' | 'too_long';
 

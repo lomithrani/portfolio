@@ -8,6 +8,7 @@ line under it (applicant count, dates...); links or buttons in it stay clickable
 	import type { Snippet } from 'svelte';
 	import { jobSummaryParts, type JobPostingLike } from '#services/jobPosting.ts';
 	import JobStatusBadge from './JobStatusBadge.svelte';
+	import { m } from './jobs.messages.ts';
 
 	let {
 		job,
@@ -26,7 +27,7 @@ line under it (applicant count, dates...); links or buttons in it stay clickable
 	} = $props();
 
 	let titleTag = $derived(`h${headingLevel}`);
-	let title = $derived(job.title?.trim() || 'Untitled job description');
+	let title = $derived(job.title?.trim() || m.untitled);
 	let parts = $derived(jobSummaryParts(job));
 </script>
 

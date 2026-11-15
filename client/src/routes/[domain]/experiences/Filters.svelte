@@ -16,6 +16,7 @@
 		type ExperienceFilters,
 		type SkillOption
 	} from '#services/filters.ts';
+	import { m } from './Filters.messages.ts';
 
 	let {
 		experiences,
@@ -51,16 +52,13 @@
 	const matches = (option: SkillOption) =>
 		normalizeSkill(option.label).includes(normalizeSkill(query));
 	let sections = $derived([
-		{ kind: 'hard', label: 'Technical', options: skills.hard.filter(matches) },
-		{ kind: 'soft', label: 'Soft', options: skills.soft.filter(matches) }
+		{ kind: 'hard', label: m.kinds.hard, options: skills.hard.filter(matches) },
+		{ kind: 'soft', label: m.kinds.soft, options: skills.soft.filter(matches) }
 	]);
 	let noMatch = $derived(sections.every((section) => section.options.length === 0));
 
 	const total = $derived(experiences.length);
-	const plural = (count: number) => (count === 1 ? 'experience' : 'experiences');
-	let status = $derived(
-		isActive ? `${resultCount} of ${total} ${plural(total)}` : `${total} ${plural(total)}`
-	);
+	let status = $derived(isActive ? m.countOf(resultCount, total) : m.count(total));
 
 	const selectSkill = (key: string) => {
 		filters = toggleSkill(active, key);
@@ -123,7 +121,7 @@
 	<section
 		bind:this={container}
 		tabindex="-1"
-		aria-label="Filter experiences"
+		aria-label={m.filterExperiences}
 		class="card preset-outlined-surface-200-800 bg-surface-50-950 flex flex-col gap-3 p-3 shadow-sm outline-offset-2 md:p-4"
 	>
 		<button
@@ -133,9 +131,7 @@
 			aria-controls="{uid}-skills"
 			onclick={() => (skillsOpen = !skillsOpen)}
 		>
-			<span>
-				Filter skills{#if active.skills.length > 0}&nbsp;({active.skills.length}){/if}
-			</span>
+			<span>{m.filterSkills(active.skills.length)}</span>
 			<ChevronDown
 				size="18"
 				aria-hidden="true"
@@ -151,10 +147,10 @@
 		>
 			<!-- Labels, not headings: the page outline stays the experiences. The group names are
 				for screen readers; small screens also show Technical / Soft -->
-			<p id="{uid}-skills-title" class="sr-only">Skills</p>
+			<p id="{uid}-skills-title" class="sr-only">{m.skills}</p>
 			{#if skillCount > SEARCH_THRESHOLD}
 				<label class="relative block w-full md:hidden">
-					<span class="sr-only">Search skills</span>
+					<span class="sr-only">{m.searchSkills}</span>
 					<MagnifyingGlass
 						size="16"
 						aria-hidden="true"
@@ -163,7 +159,7 @@
 					<input
 						type="search"
 						class="input min-h-11 pl-9 text-base"
-						placeholder="Search skills"
+						placeholder={m.searchSkills}
 						autocomplete="off"
 						bind:value={query}
 					/>
@@ -202,7 +198,7 @@
 				{/if}
 			{/each}
 			{#if noMatch}
-				<p class="text-sm text-surface-700-300">No skill matches “{query.trim()}”.</p>
+				<p class="text-sm text-surface-700-300">{m.noSkillMatches(query.trim())}</p>
 			{/if}
 		</div>
 
@@ -218,14 +214,14 @@
 				<ul
 					bind:this={selectedList}
 					class="order-last flex w-full flex-wrap items-center gap-2 md:order-none md:w-auto"
-					aria-label="Selected skills"
+					aria-label={m.selectedSkills}
 				>
 					{#each active.skills as key (key)}
 						<li>
 							<button
 								type="button"
 								class="{chip(true)} pr-1.5"
-								aria-label="Remove {labels.get(key) ?? key} filter"
+								aria-label={m.removeFilter(labels.get(key) ?? key)}
 								onclick={() => removeSkill(key)}
 							>
 								{labels.get(key) ?? key}
@@ -241,7 +237,7 @@
 					class="btn btn-sm preset-tonal ml-auto min-h-11 md:min-h-8"
 					onclick={clearFilters}
 				>
-					Clear filters
+					{m.clearFilters}
 				</button>
 			{/if}
 		</div>

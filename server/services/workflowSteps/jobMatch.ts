@@ -4,6 +4,7 @@ import { commuteContext } from '../commute';
 import { perfectJobOf } from '../perfectJobs';
 import { pickedPosting } from './job';
 import type { ServerStep, StepContext } from './types';
+import { m } from './steps.messages';
 
 // Job match step: the job the visitor picked on the job step before it is
 // scored out of 100 against the owner's perfect job (portfolio-common's
@@ -90,6 +91,6 @@ export const jobMatchStep: ServerStep<JobMatchStepConfig, undefined, JobMatchVie
   visitorConfig: (config) => ({ minScore: minScoreOf(config) }),
   describe: async (ctx) => {
     const view = await scored(ctx);
-    return view ? [`Job match: ${view.score}/100`] : [];
+    return view ? [m.jobMatch.invitation(view.score)] : [];
   }
 };

@@ -5,17 +5,21 @@
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { clearAuthentication } from '#services/authentication.ts';
 	import { requestGoogleAuthorizationCode } from '#services/googleIdentity.ts';
+	import { intlLocale } from 'portfolio-common';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { m } from './AppointmentsTab.messages.ts';
 
 	const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 
-	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+	const DAY_NAMES = m.dayNames;
 	const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120];
 	const LOCATION_TYPES = [
 		{ value: 'google_meet', label: 'Google Meet' },
-		{ value: 'phone', label: 'Phone' },
-		{ value: 'in_person', label: 'In Person' },
-		{ value: 'custom', label: 'Custom' }
+		{ value: 'phone', label: m.locationTypes.phone },
+		{ value: 'in_person', label: m.locationTypes.inPerson },
+		{ value: 'custom', label: m.locationTypes.custom }
 	] as const;
 
 	type LocationType = (typeof LOCATION_TYPES)[number]['value'];
@@ -97,7 +101,7 @@
 		const status = errorStatus(error);
 		if (status === 401) {
 			clearAuthentication();
-			return 'Your session has expired. Please log in again.';
+			return m.sessionExpired;
 		}
 		// The API's 4xx bodies are short, user-facing messages
 		if (status !== undefined && status >= 400 && status < 500 && typeof error.value === 'string') {
@@ -166,7 +170,7 @@
 		connectionLoading = true;
 		const { data, error } = await portfolioApi.appointments['calendar-status'].get(withCredentials);
 		if (error) {
-			connectionMessage = failureMessage(error, 'Could not check the Google Calendar connection.');
+			connectionMessage = failureMessage(error, m.connectionCheckFailed);
 		} else if (data) {
 			configured = data.configured;
 			connected = data.connected;
@@ -180,7 +184,7 @@
 		calendarsLoading = true;
 		const { data, error } = await portfolioApi.appointments.calendars.get(withCredentials);
 		if (error) {
-			connectionMessage = await calendarFailureMessage(error, 'Could not load your calendars.');
+			connectionMessage = await calendarFailureMessage(error, m.calendarsLoadFailed);
 		} else if (data) {
 			calendars = data;
 		}
@@ -200,14 +204,14 @@
 			code = await requestGoogleAuthorizationCode(CALENDAR_SCOPE);
 		} catch {
 			connecting = false;
-			connectionMessage = 'Google authorization was cancelled or could not open.';
+			connectionMessage = m.authorizationCancelled;
 			return;
 		}
 
 		const { error } = await portfolioApi.appointments.connect.post({ code }, withCredentials);
 		connecting = false;
 		if (error) {
-			connectionMessage = failureMessage(error, 'Failed to connect Google Calendar.');
+			connectionMessage = failureMessage(error, m.connectFailed);
 			return;
 		}
 		await checkConnectionStatus();
@@ -217,7 +221,7 @@
 	async function disconnectCalendar() {
 		const { error } = await portfolioApi.appointments.disconnect.post({}, withCredentials);
 		if (error) {
-			connectionMessage = failureMessage(error, 'Failed to disconnect Google Calendar.');
+			connectionMessage = failureMessage(error, m.disconnectFailed);
 			return;
 		}
 		connected = false;
@@ -231,7 +235,7 @@
 		schedulesMessage = '';
 		const { data, error } = await portfolioApi.appointments.schedules.get(withCredentials);
 		if (error) {
-			schedulesMessage = failureMessage(error, 'Could not load your schedules.');
+			schedulesMessage = failureMessage(error, m.schedulesLoadFailed);
 		} else if (data) {
 			schedules = data as unknown as Schedule[];
 		}
@@ -266,9 +270,9 @@
 
 		savingSchedule = false;
 		if (error) {
-			scheduleMessage = failureMessage(error, 'Failed to save schedule.');
+			scheduleMessage = failureMessage(error, m.scheduleSaveFailed);
 		} else {
-			scheduleMessage = 'Schedule saved!';
+			scheduleMessage = m.scheduleSaved;
 			editingSchedule = null;
 			await loadSchedules();
 		}
@@ -279,7 +283,7 @@
 			.schedules({ id })
 			.delete(undefined, withCredentials);
 		if (error) {
-			scheduleMessage = failureMessage(error, 'Failed to delete schedule.');
+			scheduleMessage = failureMessage(error, m.scheduleDeleteFailed);
 			return;
 		}
 		schedules = schedules.filter((s) => s._id !== id);
@@ -290,7 +294,7 @@
 		bookingsMessage = '';
 		const { data, error } = await portfolioApi.appointments.upcoming.get(withCredentials);
 		if (error) {
-			bookingsMessage = await calendarFailureMessage(error, 'Could not load your bookings.');
+			bookingsMessage = await calendarFailureMessage(error, m.bookingsLoadFailed);
 		} else if (data) {
 			bookings = data;
 		}
@@ -304,7 +308,7 @@
 			.delete(undefined, { ...withCredentials, query: { calendarId: event.calendarId } });
 		cancellingEvent = null;
 		if (error) {
-			bookingsMessage = await calendarFailureMessage(error, 'Failed to cancel the appointment.');
+			bookingsMessage = await calendarFailureMessage(error, m.cancelFailed);
 			return;
 		}
 		bookings = bookings.filter((e) => e.id !== event.id);
@@ -312,7 +316,7 @@
 
 	function formatDateTime(iso: string | null): string {
 		if (!iso) return '';
-		return new Date(iso).toLocaleString(undefined, {
+		return new Date(iso).toLocaleString(intlLocale(undefined), {
 			weekday: 'short',
 			month: 'short',
 			day: 'numeric',
@@ -344,51 +348,43 @@
 <div class="space-y-8">
 	<!-- Section 1: Google Calendar Connection -->
 	<section class="card p-6 space-y-4">
-		<h2 class="h3">Google Calendar</h2>
-		<p class="opacity-75">
-			Connect your Google Calendar so visitors can book meetings on your available time slots. The
-			app will check your calendar for conflicts and create events automatically.
-		</p>
+		<h2 class="h3">{m.googleCalendar}</h2>
+		<p class="opacity-75">{m.connectionIntro}</p>
 
 		{#if connectionLoading}
-			<p class="text-sm opacity-50">Checking connection...</p>
+			<p class="text-sm opacity-50">{m.checkingConnection}</p>
 		{:else if !configured}
 			<p class="text-sm opacity-75">
-				Google Calendar is not configured on the server: set its <code>GOOGLE_CLIENT_SECRET</code>
-				to enable appointments.
+				<Rich text={m.notConfigured}>
+					{#snippet code(text)}<code>{text}</code>{/snippet}
+				</Rich>
 			</p>
 		{:else if connected}
 			<div class="flex items-center gap-3">
-				<span class="badge preset-filled-success-500 text-sm px-3 py-1">Connected</span>
+				<span class="badge preset-filled-success-500 text-sm px-3 py-1">{m.connected}</span>
 				{#if connectedAt}
 					<span class="text-sm opacity-50">
-						since {new Date(connectedAt).toLocaleDateString()}
+						{m.since(new Date(connectedAt).toLocaleDateString(intlLocale(undefined)))}
 					</span>
 				{/if}
 			</div>
-			<p class="text-sm opacity-50">
-				Your calendar permissions are active. Visitors can book available slots and events will be
-				added to your Google Calendar.
-			</p>
+			<p class="text-sm opacity-50">{m.permissionsActive}</p>
 			<button
 				type="button"
 				class="btn preset-outlined-error-500 text-sm"
 				onclick={disconnectCalendar}
 			>
-				Disconnect
+				{m.disconnect}
 			</button>
 		{:else}
 			{#if revokedAt}
 				<div class="flex items-center gap-3">
-					<span class="badge preset-filled-warning-500 text-sm px-3 py-1">Disconnected</span>
+					<span class="badge preset-filled-warning-500 text-sm px-3 py-1">{m.disconnected}</span>
 					<span class="text-sm opacity-50">
-						since {new Date(revokedAt).toLocaleDateString()}
+						{m.since(new Date(revokedAt).toLocaleDateString(intlLocale(undefined)))}
 					</span>
 				</div>
-				<p class="text-sm opacity-75" role="alert">
-					Google no longer accepts this app's access to your calendar: it was revoked or has
-					expired. Visitors cannot book meetings until you reconnect.
-				</p>
+				<p class="text-sm opacity-75" role="alert">{m.accessRefused}</p>
 			{/if}
 			<button
 				type="button"
@@ -396,11 +392,7 @@
 				disabled={connecting}
 				onclick={connectCalendar}
 			>
-				{connecting
-					? 'Connecting...'
-					: revokedAt
-						? 'Reconnect Google Calendar'
-						: 'Connect Google Calendar'}
+				{connecting ? m.connecting : revokedAt ? m.reconnect : m.connect}
 			</button>
 		{/if}
 		{#if connectionMessage}
@@ -413,11 +405,8 @@
 		<section class="card p-6 space-y-4">
 			<div class="flex items-center justify-between">
 				<div>
-					<h2 class="h3">Appointment Schedules</h2>
-					<p class="text-sm opacity-50 mt-1">
-						Define when visitors can book time with you. Each schedule sets the duration,
-						availability windows, and booking rules.
-					</p>
+					<h2 class="h3">{m.schedules}</h2>
+					<p class="text-sm opacity-50 mt-1">{m.schedulesIntro}</p>
 				</div>
 				{#if !editingSchedule}
 					<button
@@ -428,7 +417,7 @@
 							scheduleMessage = '';
 						}}
 					>
-						New Schedule
+						{m.newSchedule}
 					</button>
 				{/if}
 			</div>
@@ -439,41 +428,41 @@
 			{#if editingSchedule}
 				<!-- Schedule Form -->
 				<div class="space-y-4 border border-surface-300-700 rounded-lg p-4">
-					<h3 class="h4">{editingSchedule._id ? 'Edit' : 'New'} Schedule</h3>
+					<h3 class="h4">{editingSchedule._id ? m.editSchedule : m.newSchedule}</h3>
 
 					<label class="label">
-						<span>Title</span>
+						<span>{m.title}</span>
 						<input
 							class="input"
 							type="text"
 							maxlength="200"
-							placeholder="e.g. 30-min consultation"
+							placeholder={m.titlePlaceholder}
 							bind:value={editingSchedule.title}
 						/>
 					</label>
 
 					<label class="label">
-						<span>Description (optional)</span>
+						<span>{m.scheduleDescription}</span>
 						<textarea
 							class="textarea"
 							rows="2"
 							maxlength="2000"
-							placeholder="Shown to visitors when booking"
+							placeholder={m.descriptionPlaceholder}
 							bind:value={editingSchedule.description}></textarea>
 					</label>
 
 					<div class="grid grid-cols-2 gap-4">
 						<label class="label">
-							<span>Duration</span>
+							<span>{m.duration}</span>
 							<select class="select" bind:value={editingSchedule.durationMinutes}>
 								{#each DURATION_OPTIONS as d (d)}
-									<option value={d}>{d} min</option>
+									<option value={d}>{m.minutes(d)}</option>
 								{/each}
 							</select>
 						</label>
 
 						<label class="label">
-							<span>Buffer between meetings (min)</span>
+							<span>{m.buffer}</span>
 							<input
 								class="input"
 								type="number"
@@ -484,7 +473,7 @@
 						</label>
 
 						<label class="label">
-							<span>Min notice before booking (hours)</span>
+							<span>{m.minNotice}</span>
 							<input
 								class="input"
 								type="number"
@@ -494,7 +483,7 @@
 						</label>
 
 						<label class="label">
-							<span>Max days in advance</span>
+							<span>{m.maxAdvance}</span>
 							<input
 								class="input"
 								type="number"
@@ -506,14 +495,14 @@
 					</div>
 
 					<label class="label">
-						<span>Google Calendar</span>
+						<span>{m.googleCalendar}</span>
 						{#if calendarsLoading}
-							<p class="text-sm opacity-50">Loading calendars...</p>
+							<p class="text-sm opacity-50">{m.loadingCalendars}</p>
 						{:else}
 							<select class="select" bind:value={editingSchedule.calendarId}>
 								{#each calendars as cal (cal.id)}
 									<option value={cal.id}>
-										{cal.summary}{cal.primary ? ' (primary)' : ''}
+										{cal.primary ? m.primaryCalendar(cal.summary) : cal.summary}
 									</option>
 								{/each}
 							</select>
@@ -522,12 +511,12 @@
 
 					<div class="grid grid-cols-2 gap-4">
 						<label class="label">
-							<span>Timezone</span>
+							<span>{m.timezone}</span>
 							<input class="input" type="text" bind:value={editingSchedule.timezone} />
 						</label>
 
 						<label class="label">
-							<span>Meeting location</span>
+							<span>{m.meetingLocation}</span>
 							<select class="select" bind:value={editingSchedule.locationType}>
 								{#each LOCATION_TYPES as lt (lt.value)}
 									<option value={lt.value}>{lt.label}</option>
@@ -538,12 +527,12 @@
 
 					{#if editingSchedule.locationType !== 'google_meet'}
 						<label class="label">
-							<span>Location details</span>
+							<span>{m.locationDetails}</span>
 							<input
 								class="input"
 								type="text"
 								maxlength="500"
-								placeholder="e.g. 123 Main St or +33 6 12 34 56 78"
+								placeholder={m.locationPlaceholder}
 								bind:value={editingSchedule.locationDetails}
 							/>
 						</label>
@@ -562,17 +551,14 @@
 							<Switch.HiddenInput />
 						</Switch>
 						<span class="text-sm">
-							{editingSchedule.enabled ? 'Accepting bookings' : 'Paused'}
+							{editingSchedule.enabled ? m.acceptingBookings : m.paused}
 						</span>
 					</div>
 
 					<!-- Weekly Availability Grid -->
 					<div class="space-y-3">
-						<h4 class="font-semibold">Weekly Availability</h4>
-						<p class="text-xs opacity-50">
-							Set the time windows when visitors can book. Your actual Google Calendar events are
-							checked at booking time to avoid conflicts.
-						</p>
+						<h4 class="font-semibold">{m.weeklyAvailability}</h4>
+						<p class="text-xs opacity-50">{m.availabilityIntro}</p>
 						{#each DAY_NAMES as dayName, dayIndex (dayName)}
 							{@const dayWindows = editingSchedule.availability.filter(
 								(w) => w.dayOfWeek === dayIndex
@@ -585,25 +571,25 @@
 										class="btn btn-sm preset-outlined text-xs"
 										onclick={() => addWindow(dayIndex)}
 									>
-										+ Add
+										{m.addWindow}
 									</button>
 								</div>
 								{#if dayWindows.length === 0}
-									<p class="text-xs opacity-50">Unavailable</p>
+									<p class="text-xs opacity-50">{m.unavailable}</p>
 								{:else}
 									{#each dayWindows as window (window)}
 										<div class="flex items-center gap-2 mb-1">
 											<input
 												class="input text-sm"
 												type="time"
-												aria-label="{dayName} start"
+												aria-label={m.windowStart(dayName)}
 												bind:value={window.startTime}
 											/>
-											<span class="text-sm">to</span>
+											<span class="text-sm">{m.to}</span>
 											<input
 												class="input text-sm"
 												type="time"
-												aria-label="{dayName} end"
+												aria-label={m.windowEnd(dayName)}
 												bind:value={window.endTime}
 											/>
 											<button
@@ -611,7 +597,7 @@
 												class="btn btn-sm preset-outlined-error-500 text-xs"
 												onclick={() => removeWindow(window)}
 											>
-												Remove
+												{common.remove}
 											</button>
 										</div>
 									{/each}
@@ -627,7 +613,7 @@
 							disabled={savingSchedule || !editingSchedule.title}
 							onclick={saveSchedule}
 						>
-							{savingSchedule ? 'Saving...' : 'Save Schedule'}
+							{savingSchedule ? m.saving : m.saveSchedule}
 						</button>
 						<button
 							type="button"
@@ -637,7 +623,7 @@
 								scheduleMessage = '';
 							}}
 						>
-							Cancel
+							{common.cancel}
 						</button>
 						{#if scheduleMessage}
 							<span class="text-sm">{scheduleMessage}</span>
@@ -645,11 +631,9 @@
 					</div>
 				</div>
 			{:else if schedulesLoading}
-				<p class="text-sm opacity-50">Loading schedules...</p>
+				<p class="text-sm opacity-50">{m.loadingSchedules}</p>
 			{:else if schedules.length === 0}
-				<p class="text-sm opacity-50">
-					No schedules yet. Create one to define your available time slots.
-				</p>
+				<p class="text-sm opacity-50">{m.noSchedules}</p>
 			{:else}
 				{#if scheduleMessage}
 					<p class="text-sm">{scheduleMessage}</p>
@@ -661,13 +645,13 @@
 						>
 							<div>
 								<span class="font-medium">{schedule.title}</span>
-								<span class="text-sm opacity-50 ml-2">{schedule.durationMinutes} min</span>
+								<span class="text-sm opacity-50 ml-2">{m.minutes(schedule.durationMinutes)}</span>
 								<span class="text-sm opacity-50 ml-1">
 									· {calendars.find((c) => c.id === schedule.calendarId)?.summary ??
 										schedule.calendarId}
 								</span>
 								{#if !schedule.enabled}
-									<span class="badge preset-outlined-warning-500 text-xs ml-2">Paused</span>
+									<span class="badge preset-outlined-warning-500 text-xs ml-2">{m.paused}</span>
 								{/if}
 							</div>
 							<div class="flex gap-2">
@@ -676,14 +660,14 @@
 									class="btn btn-sm preset-outlined text-xs"
 									onclick={() => editSchedule(schedule)}
 								>
-									Edit
+									{common.edit}
 								</button>
 								<button
 									type="button"
 									class="btn btn-sm preset-outlined-error-500 text-xs"
 									onclick={() => deleteSchedule(schedule._id)}
 								>
-									Delete
+									{common.delete}
 								</button>
 							</div>
 						</div>
@@ -696,8 +680,8 @@
 		<section class="card p-6 space-y-4">
 			<div class="flex items-center justify-between">
 				<div>
-					<h2 class="h3">Booked Appointments</h2>
-					<p class="text-sm opacity-50 mt-1">Meetings booked by visitors through your portfolio.</p>
+					<h2 class="h3">{m.bookings}</h2>
+					<p class="text-sm opacity-50 mt-1">{m.bookingsIntro}</p>
 				</div>
 				<button
 					type="button"
@@ -705,7 +689,7 @@
 					disabled={bookingsLoading}
 					onclick={loadBookings}
 				>
-					{bookingsLoading ? 'Loading...' : 'Refresh'}
+					{bookingsLoading ? m.loading : m.refresh}
 				</button>
 			</div>
 
@@ -713,22 +697,22 @@
 				<p class="text-sm text-error-500">{bookingsMessage}</p>
 			{/if}
 			{#if bookingsLoading}
-				<p class="text-sm opacity-50">Loading bookings...</p>
+				<p class="text-sm opacity-50">{m.loadingBookings}</p>
 			{:else if bookings.length === 0}
-				<p class="text-sm opacity-50">No upcoming bookings yet.</p>
+				<p class="text-sm opacity-50">{m.noBookings}</p>
 			{:else}
 				<div class="space-y-3">
 					{#each bookings as event (event.id)}
 						<div class="border border-surface-300-700 rounded p-3 space-y-1">
 							<div class="flex items-center justify-between">
-								<span class="font-medium">{event.summary ?? 'Untitled'}</span>
+								<span class="font-medium">{event.summary ?? m.untitled}</span>
 								<button
 									type="button"
 									class="btn btn-sm preset-outlined-error-500 text-xs"
 									disabled={cancellingEvent === event.id}
 									onclick={() => cancelEvent(event)}
 								>
-									{cancellingEvent === event.id ? 'Cancelling...' : 'Cancel'}
+									{cancellingEvent === event.id ? m.cancelling : common.cancel}
 								</button>
 							</div>
 							<p class="text-sm opacity-75">
@@ -747,7 +731,7 @@
 									rel="noopener noreferrer"
 									class="text-sm anchor"
 								>
-									Join Google Meet
+									{m.joinMeet}
 								</a>
 								<!-- eslint-enable svelte/no-navigation-without-resolve -->
 							{/if}

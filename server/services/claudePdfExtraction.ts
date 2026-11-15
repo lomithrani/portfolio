@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { PayloadTooLargeError, ServiceUnavailableError, UnprocessableContentError } from '../errors'
 import { logger } from './logger'
+import { m } from './claudePdfExtraction.messages'
 
 // The machinery the PDF imports share (résumé: services/resumeImport.ts, job
 // description: services/jobImport.ts): reading the uploaded PDF, the Claude
@@ -30,20 +31,21 @@ const PRICING = {
   longPrompt: { input: 0.5, output: 2.5 }
 }
 
-/** How an import names itself in its log lines, and the 503s its callers get */
+/**
+ * How an import names itself in its log lines, and the 503s its callers get
+ * (read when the error is made: they are in the language of the request)
+ */
 export interface PdfImportLabels {
   /** Prefix of its log lines, e.g. 'Résumé import' */
   name: string
   /** Claude cannot be reached, or refuses the request: nothing counts */
-  unavailable: string
+  unavailable: () => string
   /** The paid call was cut off after it was sent: the import counts */
-  interrupted: string
+  interrupted: () => string
 }
 
-/** e.g. "2026-11-20 00:00 UTC" (windows end at midnight UTC) */
-export const utcText = (date: Date) => `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`
-
-export const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
+/** e.g. "2026-11-20 00:00 UTC" (windows end at midnight UTC), in the language in use */
+export const utcText = (date: Date) => m.utcDate(date.toISOString())
 
 // ── The file ────────────────────────────────────────────────
 
@@ -58,18 +60,18 @@ const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
  * MAX_PDF_BYTES. Only its first bytes are decoded: the base64 is what Claude
  * receives.
  */
-export function readPdfBase64(file: string, tooLarge: string): string {
+export function readPdfBase64(file: string, tooLarge: () => string): string {
   const header = DATA_URL_HEADER.exec(file.slice(0, 256))
   const base64 = header ? file.slice(header[0].length) : file
   if (base64.length % 4 !== 0 || !BASE64.test(base64)) {
-    throw new UnprocessableContentError('The file is not valid base64')
+    throw new UnprocessableContentError(() => m.notBase64)
   }
   const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
   if ((base64.length / 4) * 3 - padding > MAX_PDF_BYTES) {
     throw new PayloadTooLargeError(tooLarge)
   }
   if (Buffer.from(base64.slice(0, 8), 'base64').toString('latin1').slice(0, 5) !== '%PDF-') {
-    throw new UnprocessableContentError('Only PDF files can be imported')
+    throw new UnprocessableContentError(() => m.onlyPdf)
   }
   return base64
 }

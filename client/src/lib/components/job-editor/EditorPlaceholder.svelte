@@ -3,8 +3,12 @@
 What the job editor's pages show while the session is checked or the posting loads: the shape of
 the form, without content (no flash of a signed-out page).
 -->
+<script lang="ts">
+	import { common } from '#lib/i18n/common.messages.ts';
+</script>
+
 <div class="relative space-y-6" aria-busy="true">
-	<p class="sr-only" role="status">Loading…</p>
+	<p class="sr-only" role="status">{common.loading}</p>
 	<div class="space-y-2" aria-hidden="true">
 		<div class="placeholder h-8 w-2/3 animate-pulse motion-reduce:animate-none"></div>
 		<div class="placeholder h-4 w-1/2 animate-pulse motion-reduce:animate-none"></div>

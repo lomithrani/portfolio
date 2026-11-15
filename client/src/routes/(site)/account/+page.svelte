@@ -5,9 +5,12 @@
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
 	import DeleteAccountDialog from '#components/account/DeleteAccountDialog.svelte';
 	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
+	import Rich from '#lib/i18n/Rich.svelte';
 	import { isSessionValid } from '#services/authentication.ts';
 	import { refreshAccount, spaceLabel, userDisplayName } from '#services/account.ts';
+	import { accountMessages } from '#services/account.messages.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
+	import { m } from './page.messages.ts';
 
 	// /account: what the site keeps for the signed-in account, the terms it accepted, links to the
 	// legal pages, and deleting the account (DELETE /me). Its data is the account's, so it shows in
@@ -41,21 +44,21 @@
 </script>
 
 <svelte:head>
-	<title>Account & privacy | Portfolio</title>
+	<title>{accountMessages.accountPrivacy} | Portfolio</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
 <div class="p-4 md:p-6">
 	<div class="mx-auto w-full max-w-3xl space-y-6">
 		<div class="space-y-1">
-			<h2 class="text-2xl font-bold md:text-3xl">Account & privacy</h2>
+			<h2 class="text-2xl font-bold md:text-3xl">{accountMessages.accountPrivacy}</h2>
 			<p class="text-surface-700-300">
-				What this site keeps for your account, the terms you accepted, and how to delete everything.
+				{m.intro}
 			</p>
 		</div>
 
 		{#if !$sessionCheckedStore}
-			<div class="space-y-4" aria-busy="true" aria-label="Loading your account">
+			<div class="space-y-4" aria-busy="true" aria-label={m.loading}>
 				{#each [0, 1, 2] as index (index)}
 					<div class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-3 p-4 md:p-6">
 						<div class="placeholder h-5 w-40 animate-pulse motion-reduce:animate-none"></div>
@@ -65,20 +68,18 @@
 				{/each}
 			</div>
 		{:else if !user}
-			<PageNotice title="Sign in to see your account" icon={UserCircle}>
+			<PageNotice title={m.signedOut.title} icon={UserCircle}>
 				<p>
-					Your account page shows the data kept for your account and the terms you accepted, and
-					lets you delete it. Candidates sign in from the home page, recruiters from the recruiter
-					space.
+					{m.signedOut.text}
 				</p>
 				{#snippet actions()}
 					<a href="{resolve('/(site)')}#create" class="btn preset-filled-primary-700-300 min-h-11">
 						<UserCircle size="18" aria-hidden="true" />
-						<span>Sign in as a candidate</span>
+						<span>{m.signedOut.candidate}</span>
 					</a>
 					<a href={resolve('/(app)/recruiter')} class="btn preset-tonal min-h-11">
 						<Briefcase size="18" aria-hidden="true" />
-						<span>Sign in as a recruiter</span>
+						<span>{m.signedOut.recruiter}</span>
 					</a>
 				{/snippet}
 			</PageNotice>
@@ -96,38 +97,39 @@
 						<UserCircle size="20" />
 					</span>
 					<div class="min-w-0 flex-1 space-y-1">
-						<h3 id="account-details-title" class="text-lg font-semibold">Your account</h3>
-						<p class="text-sm text-surface-700-300">You sign in with your Google account.</p>
+						<h3 id="account-details-title" class="text-lg font-semibold">{m.details.title}</h3>
+						<p class="text-sm text-surface-700-300">{m.details.google}</p>
 					</div>
 				</div>
 				<dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[max-content_1fr]">
 					{#if name}
-						<dt class="font-medium text-surface-700-300">Name</dt>
+						<dt class="font-medium text-surface-700-300">{m.details.name}</dt>
 						<dd class="wrap-anywhere">{name}</dd>
 					{/if}
-					<dt class="font-medium text-surface-700-300">Email address</dt>
-					<dd class="wrap-anywhere" data-account-email>{user.email ?? 'Not known'}</dd>
-					<dt class="font-medium text-surface-700-300">Portfolio</dt>
+					<dt class="font-medium text-surface-700-300">{m.details.email}</dt>
+					<dd class="wrap-anywhere" data-account-email>{user.email ?? m.details.emailUnknown}</dd>
+					<dt class="font-medium text-surface-700-300">{m.details.portfolio}</dt>
 					<dd class="wrap-anywhere" data-account-portfolio>
 						{#if user.domain}
 							<a href={resolve('/[domain]/experiences', { domain: user.domain })} class={linkClass}
 								>{host}/{user.domain}</a
 							>
 						{:else}
-							<span>None yet.</span>
-							<a href="{resolve('/(site)')}#create" class={linkClass}>Create your portfolio</a>
+							<span>{m.details.noPortfolio}</span>
+							<a href="{resolve('/(site)')}#create" class={linkClass}>{m.details.createPortfolio}</a
+							>
 						{/if}
 					</dd>
-					<dt class="font-medium text-surface-700-300">Recruiter space</dt>
+					<dt class="font-medium text-surface-700-300">{m.details.recruiterSpace}</dt>
 					<dd>
 						{#if user.recruiter}
-							<a href={resolve('/(app)/recruiter')} class={linkClass}>Your job descriptions</a>
+							<a href={resolve('/(app)/recruiter')} class={linkClass}>{m.details.jobs}</a>
 						{:else}
-							Not created
+							{m.details.noRecruiterSpace}
 						{/if}
 					</dd>
 					{#if activeSpace}
-						<dt class="font-medium text-surface-700-300">Space in use</dt>
+						<dt class="font-medium text-surface-700-300">{m.details.spaceInUse}</dt>
 						<dd>{activeSpace}</dd>
 					{/if}
 				</dl>
@@ -147,47 +149,40 @@
 						<ShieldCheck size="20" />
 					</span>
 					<div class="min-w-0 flex-1 space-y-1">
-						<h3 id="account-data-title" class="text-lg font-semibold">Your data</h3>
+						<h3 id="account-data-title" class="text-lg font-semibold">{m.data.title}</h3>
 						<p class="text-sm text-surface-700-300">
-							Only what the site needs to work. Nothing is sold or used for advertising.
+							{m.data.intro}
 						</p>
 					</div>
 				</div>
 				<ul class="list-disc space-y-1.5 ps-5 text-sm text-surface-700-300">
-					<li>
-						From Google: your Google account id and your email address. Your picture is not kept.
-					</li>
-					<li>
-						Your portfolio and everything you publish on it, which anyone can read, and your hiring
-						journey.
-					</li>
-					<li>Your job descriptions, your applications and your meeting types.</li>
-					<li>
-						The terms you accepted: their version, the date and the wording of the age confirmation.
-						No birth date.
-					</li>
+					<li>{m.data.google}</li>
+					<li>{m.data.portfolio}</li>
+					<li>{m.data.jobs}</li>
+					<li>{m.data.terms}</li>
 				</ul>
 				<p class="text-sm text-surface-700-300">
-					You change most of it yourself on your portfolio and in the recruiter space. For a copy of
-					your data or any other request, write to the contact address in the
-					<a href={resolve('/(site)/legal')} class={linkClass}>legal notice</a>.
+					<Rich text={m.data.requests}>
+						{#snippet notice(text)}<a href={resolve('/(site)/legal')} class={linkClass}>{text}</a
+							>{/snippet}
+					</Rich>
 				</p>
 				<ul class="flex flex-wrap gap-2">
 					<li>
 						<a href={resolve('/(site)/legal/privacy')} class="btn btn-sm preset-tonal">
-							<span>Privacy policy</span>
+							<span>{m.data.privacy}</span>
 							<ArrowRight size="14" aria-hidden="true" />
 						</a>
 					</li>
 					<li>
 						<a href={resolve('/(site)/legal/cookies')} class="btn btn-sm preset-tonal">
-							<span>Cookies and local storage</span>
+							<span>{m.data.cookies}</span>
 							<ArrowRight size="14" aria-hidden="true" />
 						</a>
 					</li>
 					<li>
 						<a href={resolve('/(site)/legal/terms')} class="btn btn-sm preset-tonal">
-							<span>Terms of use</span>
+							<span>{m.data.termsOfUse}</span>
 							<ArrowRight size="14" aria-hidden="true" />
 						</a>
 					</li>
@@ -207,12 +202,9 @@
 						<Trash size="20" class="text-error-700-300" />
 					</span>
 					<div class="min-w-0 flex-1 space-y-1">
-						<h3 id="account-delete-title" class="text-lg font-semibold">Delete your account</h3>
+						<h3 id="account-delete-title" class="text-lg font-semibold">{m.delete.title}</h3>
 						<p class="text-sm text-surface-700-300">
-							Deletes your account and everything tied to it, at once:
-							{user.domain ? 'your portfolio (its address becomes available to others), ' : ''}your
-							hiring journey, job descriptions, applications and meeting types. Google is asked to
-							revoke its Calendar access. This cannot be undone.
+							{m.delete.text(!!user.domain)}
 						</p>
 					</div>
 				</div>
@@ -223,7 +215,7 @@
 					onclick={() => (deleting = true)}
 				>
 					<Trash size="18" aria-hidden="true" />
-					<span>Delete my account</span>
+					<span>{accountMessages.deleteMyAccount}</span>
 				</button>
 			</section>
 		{/if}

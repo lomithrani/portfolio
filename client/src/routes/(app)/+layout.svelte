@@ -12,11 +12,13 @@
 	import { browser } from '$app/env';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
+	import LanguageSwitch from '#lib/i18n/LanguageSwitch.svelte';
+	import { m } from './layout.messages.ts';
 
 	// Pages that belong to no portfolio: the recruiter space (/recruiter) and the public job pages
 	// (/jobs). Same header and toasts as a portfolio, without its rail: the account menu leads
 	// from one to the other (the spaces, Browse jobs), the header's logo to the landing page, and
-	// the light/dark switch closes the page, next to the legal links.
+	// the language and light/dark switches close the page, next to the legal links.
 	let { children }: { children: Snippet } = $props();
 
 	$effect(() => {
@@ -38,14 +40,7 @@
 		if ($sessionCheckedStore) untrack(recordShown);
 	});
 
-	let header = $derived(
-		inRecruiterSpace
-			? {
-					title: 'Recruiter space',
-					subtitle: 'Your job descriptions and the portfolios that apply'
-				}
-			: { title: 'Jobs', subtitle: 'Open job descriptions: apply with your portfolio' }
-	);
+	let header = $derived(inRecruiterSpace ? m.recruiter : m.jobs);
 </script>
 
 <div class="h-full flex flex-col">
@@ -57,13 +52,16 @@
 		<div class="flex-1">
 			{@render children()}
 		</div>
-		<!-- The legal pages, small, and the light/dark switch at the end of every page: they scroll
-		     with it -->
+		<!-- The legal pages, small, and the language and light/dark switches at the end of every
+		     page: they scroll with it -->
 		<footer
 			class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-surface-200-800 px-4 py-3 md:px-6"
 		>
 			<LegalLinks compact class="justify-center" />
-			<ThemeToggle />
+			<div class="flex items-center gap-2">
+				<LanguageSwitch />
+				<ThemeToggle />
+			</div>
 		</footer>
 	</main>
 </div>

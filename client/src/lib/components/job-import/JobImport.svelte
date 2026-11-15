@@ -25,6 +25,8 @@ says so, with a link back to it.
 		XMark
 	} from 'svelte-heros-v2';
 	import { resolve } from '$app/paths';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
 	import { portfolioApi } from '#services';
 	import { clearAuthentication } from '#services/authentication.ts';
 	import { errorStatus } from '#services/apiErrors.ts';
@@ -32,9 +34,6 @@ says so, with a link back to it.
 	import type { JobPostingLike } from '#services/jobPosting.ts';
 	import {
 		JOB_IMPORT_CLIENT_TIMEOUT_MS,
-		JOB_IMPORT_NETWORK_ERROR,
-		JOB_IMPORT_STOPPED,
-		JOB_IMPORT_TIMED_OUT,
 		base64OfDataUrl,
 		formatElapsed,
 		formatFileSize,
@@ -49,6 +48,8 @@ says so, with a link back to it.
 		type JobImportQuota,
 		type JobImportStatus
 	} from '#services/jobImport.ts';
+	import { jobImportMessages } from '#services/jobImport.messages.ts';
+	import { m } from './JobImport.messages.ts';
 
 	let {
 		open,
@@ -162,7 +163,7 @@ says so, with a link back to it.
 		file = uploadError ? null : picked;
 		if (uploadError) focusAlert();
 		else {
-			announcement = `${picked.name} selected.`;
+			announcement = m.selected(picked.name);
 			if (refocus) tick().then(() => chooseButton?.focus());
 		}
 	}
@@ -192,13 +193,11 @@ says so, with a link back to it.
 		try {
 			// The API checks it too: this answers at once, and costs no import
 			if (!hasPdfHeader(new Uint8Array(await picked.slice(0, 5).arrayBuffer()))) {
-				return {
-					problem: 'This file is not a PDF, whatever its name. Choose a PDF job description.'
-				};
+				return { problem: m.notPdf };
 			}
 			return { pdf: await readAsBase64(picked) };
 		} catch {
-			return { problem: 'This file could not be read. Choose it again.' };
+			return { problem: m.unreadable };
 		}
 	}
 
@@ -227,7 +226,7 @@ says so, with a link back to it.
 		let timedOut = false;
 		reading = true;
 		elapsed = 0;
-		announcement = 'Reading the job description. This can take up to 3 minutes.';
+		announcement = m.readingAnnouncement;
 		// "Import" is gone: the focus moves to what replaces it
 		focusFooter('cancel-import');
 		const startedAt = Date.now();
@@ -253,7 +252,7 @@ says so, with a link back to it.
 					clearAuthentication();
 				}
 				allowanceRefused = !timedOut && isAllowanceRefusal(code);
-				failure = timedOut ? JOB_IMPORT_TIMED_OUT : jobImportErrorMessage(code, error?.value);
+				failure = timedOut ? jobImportMessages.timedOut : jobImportErrorMessage(code, error?.value);
 			} else {
 				onQuota(data.quota);
 				const warnings = [...data.warnings];
@@ -266,13 +265,12 @@ says so, with a link back to it.
 					file = null;
 					imported = { fileName: picked.name, warnings };
 				} else {
-					failure =
-						'The job description was read, but this browser could not keep the draft (site data may be blocked or full). Allow site data, then import it again: this import counted.';
+					failure = m.notKept;
 				}
 			}
 		} catch {
 			if (controller !== current) return;
-			failure = timedOut ? JOB_IMPORT_TIMED_OUT : JOB_IMPORT_NETWORK_ERROR;
+			failure = timedOut ? jobImportMessages.timedOut : jobImportMessages.networkError;
 		}
 
 		controller = null;
@@ -280,7 +278,7 @@ says so, with a link back to it.
 		reading = false;
 		confirmingStop = false;
 		if (imported) {
-			announcement = 'Job description read. Opening the editor.';
+			announcement = m.readOpening;
 			onImported(imported);
 			return;
 		}
@@ -299,7 +297,7 @@ says so, with a link back to it.
 		clearTimers();
 		reading = false;
 		confirmingStop = false;
-		notice = JOB_IMPORT_STOPPED;
+		notice = jobImportMessages.stopped;
 		refreshStatus();
 		await focusAlert();
 	}
@@ -366,16 +364,14 @@ says so, with a link back to it.
 							<Dialog.Title>
 								{#snippet element(attributes)}
 									<h2 {...attributes} class="text-lg font-semibold sm:text-xl">
-										Import a job description
+										{m.title}
 									</h2>
 								{/snippet}
 							</Dialog.Title>
 							<Dialog.Description>
 								{#snippet element(attributes)}
 									<p {...attributes} class="text-sm text-surface-700-300 wrap-anywhere">
-										{reading
-											? (file?.name ?? 'Your PDF')
-											: 'Turn a PDF job description into a draft you complete in the editor.'}
+										{reading ? (file?.name ?? m.yourPdf) : m.intro}
 									</p>
 								{/snippet}
 							</Dialog.Description>
@@ -383,7 +379,7 @@ says so, with a link back to it.
 						<button
 							type="button"
 							class="btn-icon size-10 shrink-0 hover:preset-tonal"
-							aria-label="Close"
+							aria-label={common.close}
 							onclick={requestClose}
 						>
 							<XMark size="20" aria-hidden="true" />
@@ -420,6 +416,7 @@ says so, with a link back to it.
 								{/if}
 
 								{#if replacing}
+									{@const replacedFile = replacing.fileName}
 									<div
 										id="{uid}-replaces"
 										class="flex items-start gap-3 rounded-base preset-tonal-warning p-3 text-sm"
@@ -427,15 +424,16 @@ says so, with a link back to it.
 										<ExclamationTriangle size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
 										<div class="min-w-0 flex-1 space-y-2">
 											<p class="text-surface-950-50">
-												A new import replaces your unsaved import of
-												<span class="font-semibold wrap-anywhere"
-													>{replacing.fileName || 'a job description'}</span
-												>, and any changes you made to it.
+												<Rich text={replacedFile ? m.replacesFile : m.replacesUnnamed}>
+													{#snippet pdf(text: string)}<span class="font-semibold wrap-anywhere"
+															>{replacedFile || text}</span
+														>{/snippet}
+												</Rich>
 											</p>
 											<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d by its page -->
 											<a href={editorHref} class="btn btn-sm preset-tonal min-h-9">
 												<PencilSquare size="16" aria-hidden="true" />
-												Continue editing it instead
+												{m.continueEditing}
 											</a>
 										</div>
 									</div>
@@ -470,18 +468,18 @@ says so, with a link back to it.
 												class="btn btn-sm preset-tonal min-h-10"
 												onclick={() => fileInput?.click()}
 											>
-												Choose another file
+												{m.chooseAnother}
 											</button>
 											<button
 												type="button"
 												class="btn btn-sm min-h-10 hover:preset-tonal-error"
 												onclick={() => {
 													file = null;
-													announcement = 'File removed.';
+													announcement = m.fileRemoved;
 													tick().then(() => chooseButton?.focus());
 												}}
 											>
-												Remove
+												{common.remove}
 											</button>
 										</div>
 									{:else}
@@ -492,10 +490,10 @@ says so, with a link back to it.
 										</div>
 										<p id="{uid}-drop-label" class="space-y-0.5">
 											<span class="block font-semibold">
-												<span class="pointer-coarse:hidden">Drop the job description here</span>
-												<span class="pointer-fine:hidden">Choose the job description</span>
+												<span class="pointer-coarse:hidden">{m.dropHere}</span>
+												<span class="pointer-fine:hidden">{m.chooseHere}</span>
 											</span>
-											<span class="block text-sm text-surface-700-300">PDF, up to 4 MB</span>
+											<span class="block text-sm text-surface-700-300">{m.fileLimits}</span>
 										</p>
 										<button
 											bind:this={chooseButton}
@@ -504,7 +502,7 @@ says so, with a link back to it.
 											disabled={!canImport || preparing}
 											onclick={() => fileInput?.click()}
 										>
-											Choose a PDF
+											{m.choosePdf}
 										</button>
 									{/if}
 								</div>
@@ -540,17 +538,13 @@ says so, with a link back to it.
 									{/if}
 								{:else if status}
 									<p class="rounded-base preset-tonal-warning p-3 text-sm">
-										Job description import is not available right now.
+										{m.notAvailable}
 									</p>
 								{/if}
 
 								<div class="flex items-start gap-3 rounded-base preset-tonal p-3 text-sm sm:p-4">
 									<LockClosed size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
-									<p class="text-surface-800-200">
-										Your PDF is sent to Anthropic’s Claude, which reads it to draft the job
-										description. The file is not stored, and nothing is published: you complete the
-										draft in the editor, then save it.
-									</p>
+									<p class="text-surface-800-200">{m.privacy}</p>
 								</div>
 							</div>
 						{:else}
@@ -564,28 +558,27 @@ says so, with a link back to it.
 									<DocumentText size="28" class="motion-safe:animate-pulse" aria-hidden="true" />
 								</div>
 								<div class="space-y-1">
-									<p class="text-lg font-semibold">Reading the job description…</p>
-									<p class="text-sm text-surface-700-300">
-										Claude is finding the title, contract, working time, pay and requirements.
-									</p>
+									<p class="text-lg font-semibold">{m.reading}</p>
+									<p class="text-sm text-surface-700-300">{m.finding}</p>
 								</div>
 								<Progress value={null} class="w-full max-w-sm">
-									<Progress.Label class="sr-only">Reading the job description</Progress.Label>
+									<Progress.Label class="sr-only">{m.readingLabel}</Progress.Label>
 									<Progress.Track>
 										<Progress.Range class="bg-primary-500 motion-reduce:animate-none" />
 									</Progress.Track>
 								</Progress>
 								<p class="text-sm text-surface-700-300">
-									<span class="font-semibold tabular-nums">{formatElapsed(elapsed)}</span>
-									elapsed · this can take up to 3 minutes
+									<Rich text={m.elapsed}>
+										{#snippet time()}<span class="font-semibold tabular-nums"
+												>{formatElapsed(elapsed)}</span
+											>{/snippet}
+									</Rich>
 								</p>
 								<p
 									class="flex max-w-sm items-start gap-1.5 text-start text-xs text-surface-700-300"
 								>
 									<InformationCircle size="16" class="shrink-0" aria-hidden="true" />
-									<span>
-										Keep this window open. Stopping now may still count toward your free imports.
-									</span>
+									<span>{m.keepOpen}</span>
 								</p>
 							</div>
 						{/if}
@@ -603,7 +596,7 @@ says so, with a link back to it.
 								aria-labelledby="{uid}-confirm"
 							>
 								<p id="{uid}-confirm" class="me-auto min-w-0 font-medium">
-									Stop the import? It may still count toward your free imports.
+									{m.stopQuestion}
 								</p>
 								<div class="flex gap-2">
 									<button
@@ -612,14 +605,14 @@ says so, with a link back to it.
 										class="btn preset-tonal"
 										onclick={keepWaiting}
 									>
-										Keep waiting
+										{m.keepWaiting}
 									</button>
 									<button
 										type="button"
 										class="btn preset-filled-error-700-300"
 										onclick={stopImport}
 									>
-										Stop import
+										{m.stopImport}
 									</button>
 								</div>
 							</div>
@@ -631,13 +624,13 @@ says so, with a link back to it.
 									data-footer="cancel-import"
 									onclick={askToStop}
 								>
-									Cancel import
+									{m.cancelImport}
 								</button>
 							</div>
 						{:else}
 							<div class="flex flex-wrap items-center justify-end gap-2">
 								<button type="button" class="btn preset-tonal" onclick={requestClose}>
-									Cancel
+									{common.cancel}
 								</button>
 								<button
 									type="button"
@@ -647,7 +640,7 @@ says so, with a link back to it.
 									aria-describedby={replacing ? `${uid}-replaces` : undefined}
 									onclick={startImport}
 								>
-									Import
+									{m.import}
 								</button>
 							</div>
 						{/if}
