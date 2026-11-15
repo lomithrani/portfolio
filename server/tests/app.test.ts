@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, mock, spyOn } from 'bun:test';
 import mongoose from 'mongoose';
 import { metrics, trace, ProxyTracerProvider } from '@opentelemetry/api';
 import { logs } from '@opentelemetry/api-logs';
-import { createApp } from '../app';
+import { createApp, responseStatus } from '../app';
 import { env } from '../env';
 import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
 import { google } from '../services/google';
@@ -303,12 +303,33 @@ describe('HTTP metrics', () => {
     // The hook counts the request, then records its duration
     await waitUntil(() => record.mock.calls.some(([, attributes]) => attributes?.route === 'unmatched'));
 
-    expect(add).toHaveBeenCalledWith(1, { method: 'GET', route: 'unmatched' });
+    expect(add).toHaveBeenCalledWith(1, { method: 'GET', route: 'unmatched', status: 404 });
     const call = record.mock.calls.find(([, attributes]) => attributes?.route === 'unmatched');
     expect(call).toBeDefined();
     const duration = call![0];
     expect(Number.isFinite(duration)).toBe(true);
     expect(duration).toBeGreaterThanOrEqual(0);
+  });
+
+  it('counts a request with the status it was answered with', async () => {
+    await afterResponseHooks();
+    const add = spyOn(httpRequestCounter, 'add');
+    const routed = (route: string) => add.mock.calls.find(([, attributes]) => attributes?.route === route);
+
+    const app = createApp();
+    await makeRequest(app, '/isLogged');
+    await makeRequest(app, '/me');
+    await waitUntil(() => routed('/isLogged') !== undefined && routed('/me') !== undefined);
+
+    expect(routed('/isLogged')![1]).toEqual({ method: 'GET', route: '/isLogged', status: 200 });
+    expect(routed('/me')![1]).toEqual({ method: 'GET', route: '/me', status: 401 });
+  });
+
+  it('reads the status Elysia holds as a number or as a status name', () => {
+    expect(responseStatus(204)).toBe(204);
+    expect(responseStatus(undefined)).toBe(200);
+    expect(responseStatus('Not Found')).toBe(404);
+    expect(responseStatus('not a status')).toBe(0);
   });
 });
 

@@ -21,7 +21,7 @@ translated: [docs/I18N.md](docs/I18N.md).
 client/   SvelteKit web app (portfolio-client)
 server/   Elysia API (portfolio-api)
 common/   Shared code used by both (portfolio-common): ExperienceType, domain-name rules, ...
-docs/     Deployment runbook
+docs/     Deployment runbook, languages, Grafana dashboards (docs/grafana)
 ```
 
 ## Stack

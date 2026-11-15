@@ -1,0 +1,520 @@
+{
+	"uid": "portfolio-detail",
+	"title": "Portfolio · One portfolio",
+	"description": "What happened on one portfolio in the last day, from the API's traces.",
+	"tags": [
+		"portfolio"
+	],
+	"timezone": "browser",
+	"graphTooltip": 1,
+	"schemaVersion": 39,
+	"time": {
+		"from": "now-24h",
+		"to": "now"
+	},
+	"templating": {
+		"list": [
+			{
+				"type": "custom",
+				"name": "stage",
+				"label": "Stage",
+				"query": "Production : portfolio-(api|web)-production,Staging : portfolio-(server|client)",
+				"options": [
+					{
+						"text": "Production",
+						"value": "portfolio-(api|web)-production",
+						"selected": true
+					},
+					{
+						"text": "Staging",
+						"value": "portfolio-(server|client)",
+						"selected": false
+					}
+				],
+				"current": {
+					"text": "Production",
+					"value": "portfolio-(api|web)-production",
+					"selected": true
+				},
+				"multi": false,
+				"includeAll": false
+			},
+			{
+				"type": "textbox",
+				"name": "domain",
+				"label": "Portfolio",
+				"query": "louis.gentil",
+				"current": {
+					"text": "louis.gentil",
+					"value": "louis.gentil",
+					"selected": true
+				},
+				"options": [
+					{
+						"text": "louis.gentil",
+						"value": "louis.gentil",
+						"selected": true
+					}
+				]
+			}
+		]
+	},
+	"links": [
+		{
+			"type": "dashboards",
+			"title": "Portfolio dashboards",
+			"tags": [
+				"portfolio"
+			],
+			"asDropdown": true,
+			"includeVars": true,
+			"keepTime": false,
+			"icon": "external link"
+		}
+	],
+	"panels": [
+		{
+			"type": "text",
+			"title": "",
+			"transparent": true,
+			"options": {
+				"mode": "markdown",
+				"content": "Type a portfolio's address name in **Portfolio** above (for example `louis.gentil`), or click one in the *Portfolios loaded* table of the overview.\n\nEverything here is counted from the API's traces, which can only be counted over **25 hours at a time**: keep the time range to a day or less. Nothing tells a signed-in visitor from an anonymous one, and the owner's own visits are included."
+			},
+			"id": 1,
+			"gridPos": {
+				"x": 0,
+				"y": 0,
+				"w": 24,
+				"h": 4
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Page loads",
+			"description": "Times the portfolio was loaded to render one of its pages. Counted where the pages are rendered, so crawlers and link previews are included.",
+			"datasource": {
+				"type": "tempo",
+				"uid": "grafanacloud-traces"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/domain/:name\" && span.http.request.method=\"GET\" && span.url.path=\"/domain/${domain}\" && span.http.response.status_code<400} | count_over_time()",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "instant"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "green"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 2,
+			"gridPos": {
+				"x": 0,
+				"y": 4,
+				"w": 6,
+				"h": 4
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Hire page opened",
+			"description": "Times a browser opened the Hire page (it reads the hiring journey). Crawlers that run no JavaScript are not counted.",
+			"datasource": {
+				"type": "tempo",
+				"uid": "grafanacloud-traces"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/workflow/domains/:domainName\" && span.http.request.method=\"GET\" && span.url.path=\"/workflow/domains/${domain}\" && span.http.response.status_code<400} | count_over_time()",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "instant"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "blue"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 3,
+			"gridPos": {
+				"x": 6,
+				"y": 4,
+				"w": 6,
+				"h": 4
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Journey steps submitted",
+			"description": "Steps of the hiring journey a visitor submitted.",
+			"datasource": {
+				"type": "tempo",
+				"uid": "grafanacloud-traces"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/workflow/domains/:domainName/steps/:stepId\" && span.http.request.method=\"POST\" && span.url.path=~\"/workflow/domains/${domain}/steps/.+\" && span.http.response.status_code<400} | count_over_time()",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "instant"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "purple"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 4,
+			"gridPos": {
+				"x": 12,
+				"y": 4,
+				"w": 6,
+				"h": 4
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Booking calendar opened",
+			"description": "Times a browser read the meeting schedules, on the Hire page's booking step.",
+			"datasource": {
+				"type": "tempo",
+				"uid": "grafanacloud-traces"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/appointments/domains/:domainName/schedules\" && span.http.request.method=\"GET\" && span.url.path=\"/appointments/domains/${domain}/schedules\" && span.http.response.status_code<400} | count_over_time()",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "instant"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "orange"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 5,
+			"gridPos": {
+				"x": 18,
+				"y": 4,
+				"w": 6,
+				"h": 4
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Page loads over time",
+			"description": "Counted where the pages are rendered, so crawlers and link previews are included.",
+			"datasource": {
+				"type": "tempo",
+				"uid": "grafanacloud-traces"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/domain/:name\" && span.http.request.method=\"GET\" && span.url.path=\"/domain/${domain}\" && span.http.response.status_code<400} | count_over_time()",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "range"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "short",
+					"min": 0,
+					"custom": {
+						"drawStyle": "bars",
+						"fillOpacity": 60,
+						"lineWidth": 1,
+						"showPoints": "never",
+						"spanNulls": false,
+						"stacking": {
+							"mode": "none",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					},
+					"decimals": 0
+				},
+				"overrides": [
+					{
+						"matcher": {
+							"id": "byFrameRefID",
+							"options": "A"
+						},
+						"properties": [
+							{
+								"id": "displayName",
+								"value": "Page loads"
+							}
+						]
+					}
+				]
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"interval": "1h",
+			"id": 6,
+			"gridPos": {
+				"x": 0,
+				"y": 8,
+				"w": 12,
+				"h": 8
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Hiring journey over time",
+			"description": "What visitors did on the Hire page, per hour.",
+			"datasource": {
+				"type": "tempo",
+				"uid": "grafanacloud-traces"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/workflow/domains/:domainName\" && span.http.request.method=\"GET\" && span.url.path=\"/workflow/domains/${domain}\" && span.http.response.status_code<400} | count_over_time()",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "range"
+				},
+				{
+					"refId": "B",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/workflow/domains/:domainName/steps/:stepId\" && span.http.request.method=\"POST\" && span.url.path=~\"/workflow/domains/${domain}/steps/.+\" && span.http.response.status_code<400} | count_over_time()",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "range"
+				},
+				{
+					"refId": "C",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/appointments/domains/:domainName/schedules\" && span.http.request.method=\"GET\" && span.url.path=\"/appointments/domains/${domain}/schedules\" && span.http.response.status_code<400} | count_over_time()",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "range"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "short",
+					"min": 0,
+					"custom": {
+						"drawStyle": "bars",
+						"fillOpacity": 60,
+						"lineWidth": 1,
+						"showPoints": "never",
+						"spanNulls": false,
+						"stacking": {
+							"mode": "none",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					},
+					"decimals": 0
+				},
+				"overrides": [
+					{
+						"matcher": {
+							"id": "byFrameRefID",
+							"options": "A"
+						},
+						"properties": [
+							{
+								"id": "displayName",
+								"value": "Hire page opened"
+							}
+						]
+					},
+					{
+						"matcher": {
+							"id": "byFrameRefID",
+							"options": "B"
+						},
+						"properties": [
+							{
+								"id": "displayName",
+								"value": "Journey steps submitted"
+							}
+						]
+					},
+					{
+						"matcher": {
+							"id": "byFrameRefID",
+							"options": "C"
+						},
+						"properties": [
+							{
+								"id": "displayName",
+								"value": "Booking calendar opened"
+							}
+						]
+					}
+				]
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"interval": "1h",
+			"id": 7,
+			"gridPos": {
+				"x": 12,
+				"y": 8,
+				"w": 12,
+				"h": 8
+			}
+		},
+		{
+			"type": "table",
+			"title": "Latest requests about this portfolio",
+			"description": "The API calls that name this portfolio. Open a trace to see what it did and how long it took.",
+			"datasource": {
+				"type": "tempo",
+				"uid": "grafanacloud-traces"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.url.path=~\"/(domain|workflow/domains|appointments/domains)/${domain}(/.*)?\"} | select(span.http.request.method, span.http.route, span.http.response.status_code)",
+					"limit": 50,
+					"tableType": "traces"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"custom": {
+						"align": "auto"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"showHeader": true,
+				"cellHeight": "sm"
+			},
+			"id": 8,
+			"gridPos": {
+				"x": 0,
+				"y": 16,
+				"w": 24,
+				"h": 10
+			}
+		}
+	]
+}
