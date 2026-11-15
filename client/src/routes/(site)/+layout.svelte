@@ -1,7 +1,6 @@
 <script lang="ts">
 	import '../../app.css';
 	import Header from '#components/Header.svelte';
-	import ThemeToggle from '#components/ThemeToggle.svelte';
 	import LegalFooter from '#components/legal/LegalFooter.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
@@ -9,12 +8,13 @@
 	import type { Snippet } from 'svelte';
 	import { browser } from '$app/env';
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
 
 	// The site's own pages, which belong to no portfolio: the landing page (/), the legal pages
-	// (/legal...) and the account page (/account). Same header and toasts as the other layouts,
-	// with the legal footer. The header offers no Google sign-in here: the landing page signs in
-	// after its age and terms checkbox, and nothing else on these pages needs a session to read.
+	// (/legal...) and the account page (/account). Same header and toasts as the other layouts
+	// (its logo leads back to the landing page), with the site footer: the job board, the
+	// recruiter space, the light/dark switch and the legal pages. The header offers no Google
+	// sign-in here: the landing page signs in after its age and terms checkbox, and nothing else
+	// on these pages needs a session to read.
 	let { children }: { children: Snippet } = $props();
 
 	$effect(() => {
@@ -23,7 +23,6 @@
 	});
 
 	let pathname = $derived(page.url.pathname);
-	let onHome = $derived(pathname === resolve('/(site)'));
 
 	/** The French legal pages (`?lang=fr`): their header, site links and footer are in French */
 	let french = $derived(
@@ -47,9 +46,6 @@
 			subtitle: 'Your portfolio, your way. Hiring without the back-and-forth.'
 		};
 	});
-
-	const linkClass = (current: boolean) =>
-		`btn btn-sm ${current ? 'preset-tonal-primary font-semibold' : 'hover:preset-tonal'}`;
 </script>
 
 <div class="h-full flex flex-col">
@@ -58,33 +54,8 @@
 		headerSubtitle={header.subtitle}
 		headerLang={french ? 'fr' : undefined}
 		showSignIn={false}
+		homeLink
 	/>
-	<div
-		class="flex items-center gap-2 border-b border-surface-200-800 bg-surface-50-950 px-3 py-1.5 md:px-4"
-	>
-		<nav aria-label="Site" class="min-w-0 flex-1 overflow-x-auto" lang={french ? 'fr' : undefined}>
-			<ul class="flex items-center gap-1">
-				<li class="shrink-0">
-					<a
-						href={resolve('/(site)')}
-						class={linkClass(onHome)}
-						aria-current={onHome ? 'page' : undefined}>{french ? 'Accueil' : 'Home'}</a
-					>
-				</li>
-				<li class="shrink-0">
-					<a href={resolve('/(app)/jobs')} class={linkClass(false)}
-						>{french ? "Offres d'emploi" : 'Browse jobs'}</a
-					>
-				</li>
-				<li class="shrink-0">
-					<a href={resolve('/(app)/recruiter')} class={linkClass(false)}
-						>{french ? 'Pour les recruteurs' : 'For recruiters'}</a
-					>
-				</li>
-			</ul>
-		</nav>
-		<ThemeToggle />
-	</div>
 	<!-- relative: the page's absolutely positioned elements (sr-only text, live regions) are
 	     placed in this scroll container, not at the top of the document (see (app)/+layout.svelte).
 	     The footer scrolls with the page: it closes every page, it does not take room from it -->
