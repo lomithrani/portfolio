@@ -329,7 +329,10 @@ export type ImportReview = {
 	fileName: string;
 	/** ISO 8601 */
 	importedAt: string;
+	/** The API's remarks on the import, sentences in the language of `warningsLocale` */
 	warnings: string[];
+	/** The language the page had when the import was read (stored as `locale`) */
+	warningsLocale: string;
 	drafts: ImportDraft[];
 };
 
@@ -350,6 +353,7 @@ export function reviewFromResult(
 		fileName,
 		importedAt: now.toISOString(),
 		warnings: [...(result.warnings ?? [])],
+		warningsLocale: getLocale(),
 		drafts: (result.experiences ?? []).map((experience) => {
 			const form = extractedToForm(experience, knownSkills);
 			return {
@@ -427,9 +431,16 @@ export function parseImportReview(value: unknown): ImportReview | undefined {
 	const stored = value as Record<string, unknown>;
 	if (stored.version !== STORAGE_VERSION || !Array.isArray(stored.drafts)) return undefined;
 	// The API's warnings and a failed draft's error are sentences in the language the page had
-	// then (a review stored before languages existed is in English): in another language they
-	// are left out, and the draft goes back to pending (adding it says what is wrong again)
-	const sameLanguage = (typeof stored.locale === 'string' ? stored.locale : 'en') === getLocale();
+	// then (a review stored before languages existed is in English). The warnings are kept
+	// whatever the language, with the language they were written in (the review shows them only
+	// in that language, and a notice otherwise): they cannot be asked for again. A failure in
+	// another language is left out and the draft goes back to pending (adding it says what is
+	// wrong again). The errors are in the language of the page that stored the review, which
+	// can differ from the warnings' (`errorsLocale`, the warnings' before it existed).
+	const warningsLocale = typeof stored.locale === 'string' ? stored.locale : 'en';
+	const errorsLocale =
+		typeof stored.errorsLocale === 'string' ? stored.errorsLocale : warningsLocale;
+	const sameLanguage = errorsLocale === getLocale();
 	const ids = new Set<string>();
 	const drafts = stored.drafts.flatMap((entry): ImportDraft[] => {
 		if (!entry || typeof entry !== 'object') return [];
@@ -463,17 +474,29 @@ export function parseImportReview(value: unknown): ImportReview | undefined {
 	return {
 		fileName: typeof stored.fileName === 'string' ? stored.fileName : '',
 		importedAt,
-		warnings:
-			sameLanguage && Array.isArray(stored.warnings)
-				? stored.warnings.filter((warning): warning is string => typeof warning === 'string')
-				: [],
+		warnings: Array.isArray(stored.warnings)
+			? stored.warnings.filter((warning): warning is string => typeof warning === 'string')
+			: [],
+		warningsLocale,
 		drafts
 	};
 }
 
-/** The review as stored */
-export const serializeImportReview = (review: ImportReview): string =>
-	JSON.stringify({ version: STORAGE_VERSION, locale: getLocale(), ...review });
+/** Whether the review's warnings are in the page's language, so that it can show them */
+export const warningsReadable = (review: ImportReview): boolean =>
+	review.warningsLocale === getLocale();
+
+/**
+ * The review as stored: `locale` is the language of its warnings, `errorsLocale` that of its
+ * drafts' errors (the page's: an error read in another language was left out when it loaded)
+ */
+export const serializeImportReview = ({ warningsLocale, ...review }: ImportReview): string =>
+	JSON.stringify({
+		version: STORAGE_VERSION,
+		locale: warningsLocale,
+		errorsLocale: getLocale(),
+		...review
+	});
 
 type ReviewStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 

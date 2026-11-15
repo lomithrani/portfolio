@@ -8,17 +8,17 @@ import type { PageServerLoad } from './$types';
 // engines and link previews; whether the visitor can apply is decided in the browser (ApplyPanel).
 export const load: PageServerLoad = async ({ params }) => {
 	// Not a posting id at all: no need to ask the API (it would answer 422)
-	if (!isJobPostingId(params.id)) error(404, m.jobNotFound);
+	if (!isJobPostingId(params.id)) error(404, m.jobNotFound, { code: 'jobNotFound' });
 
 	// Path params arrive decoded: re-encoded, a crafted segment cannot change the API URL
 	const response = await portfolioApi
 		.jobs({ id: encodeURIComponent(params.id) })
 		.get()
 		.catch(() => null);
-	if (!response) error(503, m.jobsUnavailable);
-	if (isJobNotFound(response.error)) error(404, m.jobNotFound);
+	if (!response) error(503, m.jobsUnavailable, { code: 'jobsUnavailable' });
+	if (isJobNotFound(response.error)) error(404, m.jobNotFound, { code: 'jobNotFound' });
 	// API down, 5xx, or a 404 that is not the API's own (e.g. a wrong PUBLIC_PORTFOLIO_API_URL)
-	if (response.error || !response.data) error(503, m.jobsUnavailable);
+	if (response.error || !response.data) error(503, m.jobsUnavailable, { code: 'jobsUnavailable' });
 
 	return { job: response.data };
 };

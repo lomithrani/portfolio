@@ -95,21 +95,24 @@
 					>
 				{:else}
 					<!-- A portfolio whose owner set no title. Like a title they write, these words are
-					     not a message: they read the same in English and in French -->
-					<span
-						class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
-						>Problem Solver</span
-					>
+					     not a message: they are always English, also on a French page, so they are marked
+					     lang="en" for screen readers to pronounce them as English -->
+					<span lang="en">
+						<span
+							class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
+							>Problem Solver</span
+						>
 
-					<span
-						class="bg-gradient-to-br from-red-500 to-yellow-500 bg-clip-text text-transparent box-decoration-clone"
-						>Engineer</span
-					>
+						<span
+							class="bg-gradient-to-br from-red-500 to-yellow-500 bg-clip-text text-transparent box-decoration-clone"
+							>Engineer</span
+						>
 
-					<span
-						class="bg-gradient-to-br from-pink-500 to-violet-500 bg-clip-text text-transparent box-decoration-clone"
-						>Programmer</span
-					>
+						<span
+							class="bg-gradient-to-br from-pink-500 to-violet-500 bg-clip-text text-transparent box-decoration-clone"
+							>Programmer</span
+						>
+					</span>
 				{/if}
 			</h1>
 			{#if headerTitle && headerSubtitle}

@@ -58,7 +58,7 @@ export const m = defineMessages({
 		en: (name: string) =>
 			`Your account already owns <portfolio>${name}</portfolio>, so nothing else was claimed: an account has a single address. Apply with this one.`,
 		fr: (name: string) =>
-			`Votre compte possède déjà <portfolio>${name}</portfolio> : rien d'autre n'a donc été réservé, un compte n'a qu'une adresse. Postulez avec celui-ci.`
+			`Votre compte possède déjà <portfolio>${name}</portfolio> : rien d'autre n'a donc été réservé, un compte n'a qu'une adresse. Postulez avec ce portfolio.`
 	},
 	/** The same, read by screen readers */
 	alreadyOwnsAnnouncement: {

@@ -144,6 +144,11 @@ export const m = defineMessages({
 				`${count} ${plural(count, 'expérience a été ajoutée', 'expériences ont été ajoutées')}.`
 		},
 		warnings: { en: 'Check before adding', fr: "À vérifier avant d'ajouter" },
+		/** Instead of the warnings, when they were written in the site's other language */
+		warningsOtherLanguage: {
+			en: "This import has remarks in the site's other language. Switch back to read them, or check each draft before adding it.",
+			fr: "Cet import a des remarques dans l'autre langue du site : revenez-y pour les lire, ou vérifiez chaque brouillon avant de l'ajouter."
+		},
 		/** `selected` of the `total` drafts not added yet are ticked */
 		selected: {
 			en: (selected: number, total: number) => `${selected} of ${total} selected`,

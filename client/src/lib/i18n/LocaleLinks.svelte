@@ -3,8 +3,8 @@
 What a page that exists in both languages says of its two addresses, in its `<head>`: the
 canonical link of the language shown, one `hreflang` alternate per language (English is the
 address alone, French adds `?lang=fr`: `localeAlternate`), and the Open Graph URL and locale.
-Mounted once by a layout whose pages search engines read (the job pages, a portfolio); the
-landing page and the legal pages write their own, with their other share tags.
+Mounted once by a layout whose pages search engines read (the job pages, a portfolio), it writes
+nothing on an error page; the landing page and the legal pages write their own, with their other share tags.
 -->
 <script lang="ts">
 	import { page } from '$app/state';
@@ -15,12 +15,15 @@ landing page and the legal pages write their own, with their other share tags.
 	let canonical = $derived(localeAlternate(page.url, locale));
 </script>
 
+<!-- An error page (a job that is gone, the API out of reach) is no page of the site: no tags -->
 <svelte:head>
-	<link rel="canonical" href={canonical} />
-	{#each LOCALES as language (language)}
-		<link rel="alternate" hreflang={language} href={localeAlternate(page.url, language)} />
-	{/each}
-	<link rel="alternate" hreflang="x-default" href={localeAlternate(page.url, 'en')} />
-	<meta property="og:url" content={canonical} />
-	<meta property="og:locale" content={locale === 'fr' ? 'fr_FR' : 'en_GB'} />
+	{#if !page.error}
+		<link rel="canonical" href={canonical} />
+		{#each LOCALES as language (language)}
+			<link rel="alternate" hreflang={language} href={localeAlternate(page.url, language)} />
+		{/each}
+		<link rel="alternate" hreflang="x-default" href={localeAlternate(page.url, 'en')} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:locale" content={locale === 'fr' ? 'fr_FR' : 'en_GB'} />
+	{/if}
 </svelte:head>
