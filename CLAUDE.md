@@ -148,6 +148,8 @@ Node [subpath imports](https://svelte.dev/docs/kit/$lib) in the `imports` field 
 
 ## Pull Requests
 
+**Every pull request targets `develop`** (the default branch) and is squash-merged. The only pull requests into `main` are releases, from `develop` itself, merged with a merge commit (never squash: see "Deployment"). The `Release guard` workflow fails any other pull request into `main`.
+
 Follow `.github/pull_request_template.md` (Summary, Screenshots, Test plan, Deployment notes).
 
 **Every PR that changes something visible in the UI shows it with screenshots in the PR description**: desktop and mobile (390 px), light and dark when colours are involved, the notable states (loading, empty, error), and before/after when it changes existing UI. Capture them with Playwright against the real app running locally (seeded MongoDB; stub only external services such as Google), and look at each one before posting. A PR without UI changes says "No UI change" under Screenshots.
@@ -171,11 +173,11 @@ Health checks: API `GET /health` (200 when MongoDB is connected, 503 otherwise),
 
 ## Deployment
 
-Railway deploys the `develop` branch as two services from the repo root, both built with **Railpack** (it reads Bun 1.4.4 from `packageManager` and runs `bun install --frozen-lockfile`): API (start `bun run start:server`, healthcheck `/health`) and web (build `bun run build:client`, start `bun run start:client`, healthcheck `/healthz`). Settings live in the Railway dashboard; there is intentionally no `railway.json` (Config as Code is deprecated and stops being read on 2026-12-01) and no `nixpacks.toml`. Full runbook: `docs/DEPLOYMENT.md`.
+Two stages, each two services from the repo root: **staging** deploys every push to `develop` (`develop.portfolio.gentil.tech`, `develop.api.portfolio.gentil.tech`), **production** every push to `main` (`portfolio.gentil.tech`, `api.portfolio.gentil.tech`). `main` only receives `develop` through a release pull request (base `main`, compare `develop`), merged with **Create a merge commit** so `main` keeps `develop`'s history and the next release merges cleanly; `main` has no commits of its own. Both branches are protected by the rulesets in `.github/rulesets/` (applied on GitHub by importing them: pull request required, required CI checks, no force-push or deletion; squash only into `develop`, merge commit only into `main`; a PR into `develop` must be up to date with it, which `main` cannot require of a release): renaming a CI job means updating them. All services are built with **Railpack** (it reads Bun 1.4.4 from `packageManager` and runs `bun install --frozen-lockfile`): API (start `bun run start:server`, healthcheck `/health`) and web (build `bun run build:client`, start `bun run start:client`, healthcheck `/healthz`). Settings live in the Railway dashboard; there is intentionally no `railway.json` (Config as Code is deprecated and stops being read on 2026-12-01) and no `nixpacks.toml`. Full runbook: `docs/DEPLOYMENT.md`.
 
-Live layout (verified 2026-11-01): Railway project `personal-api`, environment `production`: web service `portfolio` (`develop.portfolio.gentil.tech`), API service `portfolio api develop` (`develop.api.portfolio.gentil.tech`), `MongoDB` (`mongo:7` with a volume), plus a legacy never-deployed `portfolio api` service on `main`. Both app services use the Railpack builder and Root Directory `/` (see the runbook for the full settings).
+Live layout (verified 2026-11-15): Railway project `personal-api`, environment `production` (holding both stages): production web `portfolio web` and API `portfolio api` (branch `main`), staging web `portfolio` and API `portfolio api develop` (branch `develop`), and `MongoDB` (`mongo:7` with a volume), shared by both stages with one database each (production's holds the real data). Each stage has its own `JWT_SECRET`, `ALLOWED_DOMAINS` and `PUBLIC_PORTFOLIO_API_URL`. All app services use the Railpack builder and Root Directory `/` (see the runbook for the full settings).
 
-CI (`.github/workflows/main.yml`) runs on push/PR to `develop` and `main`: quality (lint, svelte-check, server tsc, client build), tests (server + client unit against MongoDB 7, like production, and 9) and Playwright e2e. The `develop` branch is the main development branch.
+CI (`.github/workflows/main.yml`) runs on push/PR to `develop` and `main`: quality (lint, svelte-check, server tsc, client build), tests (server + client unit against MongoDB 7, like production, and 9) and Playwright e2e; `.github/workflows/release-guard.yml` ("Only develop merges into main") on PRs to `main`. The `develop` branch is the main development branch and the default branch.
 
 ## Claude Code Setup (new device)
 
