@@ -1,37 +1,138 @@
 name: Release
 
-# Publishes a GitHub Release (tag vX.Y.Z on main, notes generated from the pull requests merged
-# since the previous release) each time a release pull request from develop is merged into main.
-# The version is read from the pull request's title ("Release v1.2.0"), which the Release guard
-# workflow checks before the merge. It can also be run by hand (Actions, Release, Run workflow) to
-# publish a release of main's current commit, e.g. one merged before this workflow existed.
+# A release brings develop into main (production) and publishes a GitHub Release (see "Releases"
+# in docs/DEPLOYMENT.md). Run by hand (Actions, Release, Run workflow), it does the whole release:
+#
+#   1. "Open the release pull request" opens the pull request from develop into main, titled with
+#      the next version ("Release v1.2.0"), and turns on auto-merge: GitHub merges it, with a merge
+#      commit, once the required checks pass (CI and the Release guard).
+#   2. "Publish the release" then runs on that merge: it tags the merge commit vX.Y.Z and publishes
+#      the GitHub Release, with notes generated from the pull requests merged since the previous
+#      one. It runs the same way for a release pull request opened and merged by hand.
+#
+# Step 1 needs the RELEASE_TOKEN secret (a token of a maintainer, see the runbook), not the
+# workflow's own token: what that one opens and merges starts no other workflow, so CI would wait
+# for an approval, and the merge would neither publish the release nor run the CI on main that
+# the production deploy waits for.
+#
+# "Tag only" does not release develop: it publishes main's current commit, for a release that was
+# merged without its tag (its pull request named no version, or this workflow failed).
 on:
   pull_request:
     branches: [main]
     types: [closed]
   workflow_dispatch:
     inputs:
-      version:
-        description: Version to publish for main's current commit, e.g. v1.0.0
-        required: true
+      bump:
+        description: >-
+          What the release brings since the last one: patch for fixes only (v1.2.3 to v1.2.4),
+          minor for new features (v1.3.0), major for breaking changes (v2.0.0)
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      tag_only:
+        description: >-
+          Tag only: do NOT merge develop. Publishes main's current commit as that version, for a
+          release that was merged without its tag
+        type: boolean
+        default: false
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
+  open:
+    name: Open the release pull request
+    if: github.event_name == 'workflow_dispatch' && !inputs.tag_only
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open the pull request from develop into main, merged once its checks pass
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          REPO: ${{ github.repository }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::The RELEASE_TOKEN secret is not set: see \"Releases\" in docs/DEPLOYMENT.md. Until then, open the pull request from develop into main by hand, titled \"Release vX.Y.Z\"."
+            exit 1
+          fi
+          ahead=$(gh api "repos/$REPO/compare/main...develop" --jq .ahead_by)
+          if [ "$ahead" -eq 0 ]; then
+            echo "::error::main already has everything develop has: there is nothing to release."
+            exit 1
+          fi
+
+          # Semantic versioning: one step after the latest release (none yet: after v0.0.0)
+          latest=$(gh api "repos/$REPO/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
+            | sed 's#^refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          IFS=. read -r major minor patch <<< "${latest:-v0.0.0}"
+          major=${major#v}
+          case "$BUMP" in
+            patch) version="v$major.$minor.$((patch + 1))" ;;
+            minor) version="v$major.$((minor + 1)).0" ;;
+            major) version="v$((major + 1)).0.0" ;;
+            *)
+              echo "::error::Unknown bump \"$BUMP\": patch, minor or major."
+              exit 1
+              ;;
+          esac
+
+          # What the release brings, as its notes will list it (the list is only a preview: the
+          # notes are generated again when the release is published)
+          changes=$(gh api "repos/$REPO/releases/generate-notes" -f tag_name="$version" \
+            -f target_commitish=develop ${latest:+-f previous_tag_name="$latest"} --jq .body || true)
+          {
+            echo "Brings \`develop\` into \`main\` and deploys production${latest:+ (the latest release is $latest)}."
+            echo
+            echo "Opened by the \`Release\` workflow, which turned on auto-merge: this pull request is merged, with a merge commit, once its checks pass. The merge is then tagged \`$version\` and published as a GitHub Release. To hold the release back, turn auto-merge off (**Disable auto-merge**) or close this pull request."
+            if [ -n "$changes" ]; then
+              echo
+              echo "$changes"
+            fi
+          } > body.md
+
+          # One release at a time: an open pull request from develop into main becomes this one
+          number=$(gh pr list --repo "$REPO" --base main --head develop --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --repo "$REPO" --title "Release $version" --body-file body.md
+          else
+            url=$(gh pr create --repo "$REPO" --base main --head develop \
+              --title "Release $version" --body-file body.md)
+            number=${url##*/}
+          fi
+
+          # Auto-merge waits for the required checks. It cannot be turned on when there is nothing
+          # left to wait for (they all passed already): the pull request is then merged right away
+          if ! gh pr merge "$number" --repo "$REPO" --auto --merge; then
+            if ! gh pr merge "$number" --repo "$REPO" --merge; then
+              echo "::error::Pull request #$number is open, but auto-merge could not be turned on. Allow it in the repository's settings (General, Pull Requests, Allow auto-merge), then run this workflow again, or merge #$number by hand with \"Create a merge commit\" once its checks pass."
+              exit 1
+            fi
+          fi
+          {
+            echo "Release pull request #$number: \`develop\` into \`main\` as **$version**."
+            echo
+            echo "It is merged once its checks pass; the release is published then."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   publish:
     name: Publish the release
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.pull_request.merged == true &&
+      (github.event_name == 'workflow_dispatch' && inputs.tag_only) ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
        github.event.pull_request.head.ref == 'develop' &&
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
       - name: Publish
         env:
@@ -41,38 +142,62 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          INPUT_VERSION: ${{ inputs.version }}
+          BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
+          tags=$(gh api "repos/$REPO/git/matching-refs/tags/v" --paginate \
+            --jq '.[] | "\(.object.sha) \(.ref)"' | sed 's# refs/tags/# #')
+          latest=$(printf '%s\n' "$tags" | cut -d ' ' -f 2 \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          IFS=. read -r major minor patch <<< "${latest:-v0.0.0}"
+          major=${major#v}
+          fix="v$major.$minor.$((patch + 1))"
+          feature="v$major.$((minor + 1)).0"
+          breaking="v$((major + 1)).0.0"
+
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            source_text="$INPUT_VERSION"
+            # Tag only: main's current commit, as the next version
             target=$(gh api "repos/$REPO/commits/main" --jq .sha)
-          else
-            source_text="$PR_TITLE"
-            target="$MERGE_SHA"
-          fi
-          version=$(printf '%s' "$source_text" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)
-          if [ -z "$version" ]; then
-            echo "::error::No version vX.Y.Z in \"$source_text\": publish this release by hand (Actions, Release, Run workflow)."
-            exit 1
-          fi
-          if gh api "repos/$REPO/git/ref/tags/$version" > /dev/null 2>&1; then
-            echo "::error::$version already exists: publish this release by hand with a new version."
-            exit 1
-          fi
-          # Semantic versioning, as the Release guard checks it: one step after the latest release
-          latest=$(gh api "repos/$REPO/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
-            | sed 's#^refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
-          if [ -n "$latest" ]; then
-            IFS=. read -r major minor patch <<< "${latest#v}"
-            case "$version" in
-              "v$major.$minor.$((patch + 1))" | "v$major.$((minor + 1)).0" | "v$((major + 1)).0.0") ;;
+            case "$BUMP" in
+              patch) version="$fix" ;;
+              minor) version="$feature" ;;
+              major) version="$breaking" ;;
               *)
-                echo "::error::The latest release is $latest: $version is not the next version. Publish this release by hand with v$major.$minor.$((patch + 1)), v$major.$((minor + 1)).0 or v$((major + 1)).0.0."
+                echo "::error::Unknown bump \"$BUMP\": patch, minor or major."
                 exit 1
                 ;;
             esac
+            # A commit is released once: tagging it again would publish a release that brings
+            # nothing, while develop stays where it is
+            released=$(printf '%s\n' "$tags" | grep -E "^$target v[0-9]+\.[0-9]+\.[0-9]+\$" \
+              | cut -d ' ' -f 2 | sort -V | tail -n 1 || true)
+            if [ -n "$released" ]; then
+              echo "::error::main's current commit is already released as $released: there is nothing to tag. To release develop, run this workflow without \"Tag only\"."
+              exit 1
+            fi
+          else
+            target="$MERGE_SHA"
+            version=$(printf '%s' "$PR_TITLE" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)
+            if [ -z "$version" ]; then
+              echo "::error::No version vX.Y.Z in \"$PR_TITLE\": publish this release by hand (Actions, Release, Run workflow, with \"Tag only\")."
+              exit 1
+            fi
+            if printf '%s\n' "$tags" | cut -d ' ' -f 2 | grep -xF "$version" > /dev/null; then
+              echo "::error::$version already exists: publish this release by hand (Actions, Release, Run workflow, with \"Tag only\")."
+              exit 1
+            fi
+            # Semantic versioning, as the Release guard checks it: one step after the latest release
+            if [ -n "$latest" ]; then
+              case "$version" in
+                "$fix" | "$feature" | "$breaking") ;;
+                *)
+                  echo "::error::The latest release is $latest: $version is not the next version. Publish this release by hand (Actions, Release, Run workflow, with \"Tag only\"): $fix, $feature or $breaking."
+                  exit 1
+                  ;;
+              esac
+            fi
           fi
+
           notes_note=""
           if [ "$EVENT" != "workflow_dispatch" ]; then
             notes_note="Release pull request: #$PR_NUMBER"

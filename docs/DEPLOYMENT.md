@@ -576,12 +576,39 @@ Work goes to `develop`: every pull request targets it (`develop` is the reposito
 branch) and is squash-merged. A release brings `develop` into `main`:
 
 1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship.
-2. Open a pull request with base **`main`** and compare **`develop`**, titled with the new version:
-   `Release v1.2.0` ([semantic versioning](https://semver.org): the last number for fixes only,
-   the middle one for new features, the first for a change that breaks what users or other
-   services rely on).
-3. When CI is green, merge it with **Create a merge commit** (never squash or rebase: `main` must
-   contain `develop`'s commits, or the next release conflicts). The merge deploys production.
+2. Run the `Release` workflow: **Actions**, **Release**, **Run workflow** (branch `develop`), and
+   pick what the release brings since the last one ([semantic versioning](https://semver.org)):
+   **patch** for fixes only (`v1.2.3` to `v1.2.4`), **minor** for new features (`v1.3.0`),
+   **major** for a change that breaks what users or other services rely on (`v2.0.0`). Leave
+   **Tag only** unticked.
+
+That is the whole release. The workflow (`.github/workflows/release.yml`) opens the pull request
+from `develop` into `main`, titled with the new version (`Release v1.2.4`) and listing what it
+brings, and turns on auto-merge: once the required checks pass, GitHub merges it with a merge
+commit, which deploys production. On that merge the workflow runs again and publishes a **GitHub
+Release**: the tag `vX.Y.Z` on the merge commit, with notes generated from the pull requests merged
+since the previous release (the **Releases** page lists what each production deploy brought). To
+hold a release back, press **Disable auto-merge** on its pull request, or close it. A pull request
+from `develop` into `main` that is already open becomes the release: it is retitled, not doubled.
+What is merged is `develop` as it is when the checks pass: a pull request merged into `develop`
+in the meantime is part of the release, after the checks ran again.
+
+One-time setup, without which the workflow stops with a message saying what is missing:
+
+- **Settings**, **General**, **Pull Requests**: tick **Allow auto-merge**.
+- A token of a maintainer, as the repository secret **`RELEASE_TOKEN`** (**Settings**, **Secrets
+  and variables**, **Actions**): a fine-grained personal access token limited to this repository,
+  with **Contents**, **Pull requests** and **Workflows** set to *Read and write* (Workflows: a
+  release often carries changes to `.github/workflows`, which a token without it may not merge).
+  The workflow's own token cannot do this: what it opens and merges starts no other workflow, so
+  CI would wait for someone to approve it, and the merge would neither publish the release nor run
+  the CI on `main` that the production deploy waits for. Give the token an expiry date and renew
+  it then; it is used by this workflow only.
+
+A release can still be made by hand: open a pull request with base **`main`** and compare
+**`develop`**, titled `Release v1.2.0`, and when CI is green merge it with **Create a merge
+commit** (never squash or rebase: `main` must contain `develop`'s commits, or the next release
+conflicts). The release is published on the merge all the same.
 
 The `Release guard` workflow (`.github/workflows/release-guard.yml`) fails any pull request into
 `main` whose source branch is not `develop`, or whose title does not name the next version: one
@@ -591,12 +618,10 @@ for the first release; fix the title: the check runs again). A fix needed in pro
 `main` merged back after a release: GitHub shows `develop` as "behind" `main` by the release merge
 commits, while their files are the same.
 
-Once the release pull request is merged, the `Release` workflow (`.github/workflows/release.yml`)
-publishes a **GitHub Release**: the tag `vX.Y.Z` on the merge commit, with notes generated from the
-pull requests merged since the previous release (the **Releases** page lists what each production
-deploy brought). If it could not (no version, a tag that exists), publish it by hand: **Actions**,
-**Release**, **Run workflow** (branch `develop`), with the version; it tags `main`'s current
-commit. That is also how a release merged before the workflow existed gets its tag.
+**Tag only** is not a release of `develop`: it merges nothing. It publishes `main`'s current
+commit as the next version, for a release that was merged without its tag (a pull request merged
+by hand whose title named no version, or a publication that failed). It refuses a commit that is
+already released, since that would publish a release that brings nothing.
 
 ### Branch protection
 
