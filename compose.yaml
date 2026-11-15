@@ -1,0 +1,31 @@
+# Local MongoDB for development and the server tests. Railway does not use this file.
+#
+#   bun run db:up     start MongoDB and wait until it is healthy
+#   bun run db:seed   create the owner's user and the 'louis.gentil' domain (idempotent)
+#   bun run db:down   stop it; data stays in the 'mongo-data' volume
+#                     (`docker compose down -v` deletes the volume too)
+#
+# MONGO_PORT changes the host port (default 27017), e.g. `MONGO_PORT=27018 bun run db:up`;
+# then use mongodb://127.0.0.1:27018/portfolio as MONGO_URL.
+# Same major as production (Railway's MongoDB service runs mongo:7) and CI (.github/workflows).
+# Not mongo:8: that tag is MongoDB 8.3, which cannot start on Linux kernel 6.19+ (SERVER-121912).
+name: portfolio
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      # Loopback only: this instance has no authentication
+      - '127.0.0.1:${MONGO_PORT:-27017}:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.adminCommand({ ping: 1 }).ok']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  mongo-data:

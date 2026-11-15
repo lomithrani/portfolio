@@ -1,0 +1,26 @@
+<!--
+@component
+What a page that exists in both languages says of its two addresses, in its `<head>`: the
+canonical link of the language shown, one `hreflang` alternate per language (English is the
+address alone, French adds `?lang=fr`: `localeAlternate`), and the Open Graph URL and locale.
+Mounted once by a layout whose pages search engines read (the job pages, a portfolio); the
+landing page and the legal pages write their own, with their other share tags.
+-->
+<script lang="ts">
+	import { page } from '$app/state';
+	import { LOCALES, getLocale } from 'portfolio-common';
+	import { localeAlternate } from './urls.ts';
+
+	const locale = getLocale();
+	let canonical = $derived(localeAlternate(page.url, locale));
+</script>
+
+<svelte:head>
+	<link rel="canonical" href={canonical} />
+	{#each LOCALES as language (language)}
+		<link rel="alternate" hreflang={language} href={localeAlternate(page.url, language)} />
+	{/each}
+	<link rel="alternate" hreflang="x-default" href={localeAlternate(page.url, 'en')} />
+	<meta property="og:url" content={canonical} />
+	<meta property="og:locale" content={locale === 'fr' ? 'fr_FR' : 'en_GB'} />
+</svelte:head>

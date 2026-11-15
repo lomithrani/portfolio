@@ -1,0 +1,4 @@
+[test]
+# Runs before every test file: keeps telemetry off and lets TEST_MONGO_URL
+# replace MONGO_URL (see tests/setup.ts)
+preload = ["./tests/setup.ts"]

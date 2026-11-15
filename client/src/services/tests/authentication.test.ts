@@ -1,0 +1,450 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Mock } from 'vitest';
+import { get } from 'svelte/store';
+
+// vi.mock factories are hoisted — they cannot reference outer variables
+vi.mock('#services', () => ({
+	portfolioApi: {
+		login: { post: vi.fn() },
+		isLogged: { get: vi.fn() },
+		logout: { get: vi.fn() }
+	}
+}));
+
+vi.mock('../stores', async () => {
+	const { writable } = await import('svelte/store');
+	return {
+		authenticationStore: writable({ user: undefined, expires: undefined }),
+		sessionCheckedStore: writable(false)
+	};
+});
+
+vi.mock('../googleIdentity', () => ({
+	disableGoogleAutoSelect: vi.fn(() => Promise.resolve())
+}));
+
+import {
+	isDomainAdmin,
+	isLogged,
+	isSessionValid,
+	login,
+	logout,
+	readUser,
+	signIn,
+	termsVersionText,
+	watchSessionExpiry
+} from '../authentication';
+import { LEGAL_VERSION, currentConsent } from 'portfolio-common';
+import { authenticationStore, sessionCheckedStore } from '../stores';
+import { disableGoogleAutoSelect } from '../googleIdentity';
+import { portfolioApi } from '#services';
+
+const mockLoginPost = portfolioApi.login.post as unknown as Mock;
+const mockIsLoggedGet = portfolioApi.isLogged.get as unknown as Mock;
+const mockLogoutGet = portfolioApi.logout.get as unknown as Mock;
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+const user = { _id: 'user-123', email: 'test@test.com' };
+const validSession = () => ({ user, expires: nowSeconds() + 3600 });
+const expiredSession = () => ({ user, expires: nowSeconds() - 3600 });
+const loggedOut = { user: undefined, expires: undefined };
+
+const apiError = (status: number) => ({ data: null, error: { status, value: 'error' } });
+
+beforeEach(() => {
+	vi.clearAllMocks();
+	authenticationStore.set({ ...loggedOut });
+	sessionCheckedStore.set(false);
+	mockLogoutGet.mockResolvedValue({ data: null, error: null });
+});
+
+describe('isSessionValid', () => {
+	it('accepts a known user with an unexpired JWT', () => {
+		expect(isSessionValid(validSession())).toBe(true);
+	});
+
+	it('rejects expired sessions and sessions without a user', () => {
+		expect(isSessionValid(expiredSession())).toBe(false);
+		expect(isSessionValid({ expires: nowSeconds() + 3600 })).toBe(false);
+		expect(isSessionValid(loggedOut)).toBe(false);
+	});
+});
+
+describe('isDomainAdmin', () => {
+	it('is true when the valid session user is the domain admin', () => {
+		expect(isDomainAdmin(validSession(), { admin: 'user-123' })).toBe(true);
+	});
+
+	it('is false for another user', () => {
+		expect(isDomainAdmin(validSession(), { admin: 'admin-456' })).toBe(false);
+	});
+
+	it('is false once the session has expired, even for the admin', () => {
+		expect(isDomainAdmin(expiredSession(), { admin: 'user-123' })).toBe(false);
+	});
+
+	it('is false when nobody is logged in or the domain has no admin', () => {
+		expect(isDomainAdmin(loggedOut, { admin: 'user-123' })).toBe(false);
+		expect(isDomainAdmin(validSession(), {})).toBe(false);
+		expect(isDomainAdmin(validSession(), undefined)).toBe(false);
+	});
+});
+
+describe('isLogged', () => {
+	it('always reconciles with the API, even with a valid local session', async () => {
+		const session = validSession();
+		authenticationStore.set(session);
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(isLogged()).resolves.toBe(true);
+		expect(mockIsLoggedGet).toHaveBeenCalledWith({ fetch: { credentials: 'include' } });
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('stores the session returned by the API when the local store is empty', async () => {
+		const session = validSession();
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(isLogged()).resolves.toBe(true);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('clears a stale local session when the API says logged: false', async () => {
+		authenticationStore.set(validSession());
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: false, reason: 'Missing jwt' } });
+
+		await expect(isLogged()).resolves.toBe(false);
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('clears the local session when the API answers 401', async () => {
+		authenticationStore.set(validSession());
+		mockIsLoggedGet.mockResolvedValue(apiError(401));
+
+		await expect(isLogged()).resolves.toBe(false);
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('drops an expired local session even when the API cannot be reached', async () => {
+		authenticationStore.set(expiredSession());
+		mockIsLoggedGet.mockResolvedValue(apiError(503));
+
+		await expect(isLogged()).resolves.toBe(false);
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('keeps an unexpired local session when the API is unavailable', async () => {
+		const session = validSession();
+		authenticationStore.set(session);
+		mockIsLoggedGet.mockResolvedValue(apiError(503));
+
+		await expect(isLogged()).resolves.toBe(true);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('keeps an unexpired local session when the request throws', async () => {
+		const session = validSession();
+		authenticationStore.set(session);
+		mockIsLoggedGet.mockRejectedValue(new TypeError('Failed to fetch'));
+
+		await expect(isLogged()).resolves.toBe(true);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('rejects an API answer whose expiry is already in the past', async () => {
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...expiredSession() } });
+
+		await expect(isLogged()).resolves.toBe(false);
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('marks the session as checked only once a stale session has been cleared', async () => {
+		// Admin-only UI waits for sessionCheckedStore: it must never see the stale session
+		authenticationStore.set(validSession());
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: false, reason: 'No auth cookie' } });
+		const seenWhenChecked: unknown[] = [];
+		const unsubscribe = sessionCheckedStore.subscribe((checked) => {
+			if (checked) seenWhenChecked.push(get(authenticationStore));
+		});
+
+		const pending = isLogged();
+		expect(get(sessionCheckedStore)).toBe(false);
+		await pending;
+		unsubscribe();
+
+		expect(seenWhenChecked).toEqual([loggedOut]);
+	});
+
+	it('marks the session as checked even when the API cannot be reached', async () => {
+		mockIsLoggedGet.mockRejectedValue(new TypeError('Failed to fetch'));
+
+		await isLogged();
+		expect(get(sessionCheckedStore)).toBe(true);
+	});
+});
+
+describe('login', () => {
+	it('stores the session once the API set the cookie and it round-trips', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(login('google-cred-token')).resolves.toBe(true);
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'google-cred-token' },
+			{ fetch: { credentials: 'include' } }
+		);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('sends the chosen space and stores the account the API returned', async () => {
+		const session = {
+			user: { ...user, activeMode: 'recruiter', recruiter: true, domain: 'jane' },
+			expires: nowSeconds() + 3600
+		};
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(login('google-cred-token', 'recruiter')).resolves.toBe(true);
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'google-cred-token', mode: 'recruiter' },
+			{ fetch: { credentials: 'include' } }
+		);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('sends the age and terms confirmation with the chosen space when given', async () => {
+		const session = {
+			user: { ...user, activeMode: 'candidate', termsVersion: LEGAL_VERSION },
+			expires: nowSeconds() + 3600
+		};
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(login('google-cred-token', 'candidate', currentConsent())).resolves.toBe(true);
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{
+				token: 'google-cred-token',
+				mode: 'candidate',
+				consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true }
+			},
+			{ fetch: { credentials: 'include' } }
+		);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('sends the confirmation without a space', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await login('google-cred-token', undefined, currentConsent());
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'google-cred-token', consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } },
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it('stays signed out when the API refuses an outdated confirmation (422)', async () => {
+		mockLoginPost.mockResolvedValue(apiError(422));
+
+		await expect(
+			login('token', 'candidate', { termsVersion: '2025-01-01', ageConfirmed: true })
+		).resolves.toBe(false);
+		expect(mockIsLoggedGet).not.toHaveBeenCalled();
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('returns false when the API rejects the token (401)', async () => {
+		mockLoginPost.mockResolvedValue(apiError(401));
+
+		await expect(login('bad-token')).resolves.toBe(false);
+		expect(mockIsLoggedGet).not.toHaveBeenCalled();
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('returns false when the API fails (5xx / unreachable)', async () => {
+		mockLoginPost.mockResolvedValue(apiError(503));
+
+		await expect(login('token')).resolves.toBe(false);
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('returns false when the cookie is not sent back (blocked or not stored)', async () => {
+		mockLoginPost.mockResolvedValue({ data: validSession(), error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: false, reason: 'No auth cookie' } });
+
+		await expect(login('token')).resolves.toBe(false);
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('returns false when the request throws', async () => {
+		mockLoginPost.mockRejectedValue(new TypeError('Failed to fetch'));
+
+		await expect(login('token')).resolves.toBe(false);
+	});
+});
+
+describe('signIn', () => {
+	it('sends where the box was ticked with the confirmation, and succeeds', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(
+			signIn('cred', { mode: 'candidate', consent: currentConsent(), consentSource: 'claim' })
+		).resolves.toEqual({ ok: true });
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{
+				token: 'cred',
+				mode: 'candidate',
+				consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true },
+				consentSource: 'claim'
+			},
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it('sends no source without a confirmation', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await signIn('cred', { consentSource: 'claim' });
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'cred' },
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it("says 'stale-terms' when the API refuses the version of the terms (only a reload helps)", async () => {
+		mockLoginPost.mockResolvedValue({
+			data: null,
+			error: {
+				status: 422,
+				value: { type: 'validation', property: 'consent.termsVersion', message: 'changed' }
+			}
+		});
+
+		await expect(signIn('cred', { consent: currentConsent() })).resolves.toEqual({
+			ok: false,
+			reason: 'stale-terms'
+		});
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it("says 'error' for any other failure", async () => {
+		mockLoginPost.mockResolvedValue({
+			data: null,
+			error: { status: 422, value: { type: 'validation', property: 'consent.ageConfirmed' } }
+		});
+		await expect(signIn('cred')).resolves.toEqual({ ok: false, reason: 'error' });
+
+		mockLoginPost.mockResolvedValue(apiError(401));
+		await expect(signIn('cred')).resolves.toEqual({ ok: false, reason: 'error' });
+
+		mockLoginPost.mockRejectedValue(new TypeError('Failed to fetch'));
+		await expect(signIn('cred')).resolves.toEqual({ ok: false, reason: 'error' });
+	});
+});
+
+describe('logout', () => {
+	it('clears the store and disables Google One Tap auto-select', async () => {
+		authenticationStore.set(validSession());
+
+		await logout();
+
+		expect(mockLogoutGet).toHaveBeenCalledWith({ fetch: { credentials: 'include' } });
+		expect(get(authenticationStore)).toEqual(loggedOut);
+		expect(disableGoogleAutoSelect).toHaveBeenCalledTimes(1);
+	});
+
+	it('still ends the local session when the API call fails', async () => {
+		authenticationStore.set(validSession());
+		mockLogoutGet.mockRejectedValue(new TypeError('Failed to fetch'));
+
+		await logout();
+
+		expect(get(authenticationStore)).toEqual(loggedOut);
+		expect(disableGoogleAutoSelect).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('watchSessionExpiry', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('clears the session when its JWT expires', async () => {
+		authenticationStore.set({ user, expires: nowSeconds() + 2 });
+		const stop = watchSessionExpiry();
+
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(get(authenticationStore).user).toEqual(user);
+
+		await vi.advanceTimersByTimeAsync(3000);
+		expect(get(authenticationStore)).toEqual(loggedOut);
+		stop();
+	});
+
+	it('clears an already expired session right away', async () => {
+		authenticationStore.set(expiredSession());
+		const stop = watchSessionExpiry();
+
+		await vi.advanceTimersByTimeAsync(0);
+		expect(get(authenticationStore)).toEqual(loggedOut);
+		stop();
+	});
+});
+
+describe('termsVersionText', () => {
+	it('reads the version back as text, from a Date (Eden parses date-like strings) or its ISO string', () => {
+		expect(termsVersionText(LEGAL_VERSION)).toBe(LEGAL_VERSION);
+		expect(termsVersionText(new Date(`${LEGAL_VERSION}T00:00:00.000Z`))).toBe(LEGAL_VERSION);
+		expect(termsVersionText(`${LEGAL_VERSION}T00:00:00.000Z`)).toBe(LEGAL_VERSION);
+		expect(termsVersionText('2025-01-01')).toBe('2025-01-01');
+	});
+
+	it('is undefined without a version', () => {
+		expect(termsVersionText(undefined)).toBeUndefined();
+		expect(termsVersionText(null)).toBeUndefined();
+		expect(termsVersionText('')).toBeUndefined();
+		expect(termsVersionText(new Date('not a date'))).toBeUndefined();
+		expect(termsVersionText(20261114)).toBeUndefined();
+	});
+});
+
+describe('readUser', () => {
+	it('keeps the account with its terms version as text', () => {
+		const parsed = { ...user, termsVersion: new Date(`${LEGAL_VERSION}T00:00:00.000Z`) };
+		expect(readUser({ user: parsed })).toEqual({ ...user, termsVersion: LEGAL_VERSION });
+		expect(readUser({ user })).toEqual(user);
+		expect(readUser({ user: { ...user, termsVersion: null } })).toEqual(user);
+	});
+
+	it('is undefined without an account', () => {
+		expect(readUser(null)).toBeUndefined();
+		expect(readUser({})).toBeUndefined();
+		expect(readUser({ user: { email: 'no-id@example.com' } })).toBeUndefined();
+	});
+});
+
+describe('session with a parsed terms version', () => {
+	it('stores the version as text after login and isLogged', async () => {
+		const parsedUser = { ...user, termsVersion: new Date(`${LEGAL_VERSION}T00:00:00.000Z`) };
+		const session = { user: parsedUser, expires: nowSeconds() + 3600 };
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(login('google-jwt', 'candidate', currentConsent())).resolves.toBe(true);
+		expect(get(authenticationStore).user).toEqual({ ...user, termsVersion: LEGAL_VERSION });
+
+		authenticationStore.set({ ...loggedOut });
+		await expect(isLogged()).resolves.toBe(true);
+		expect(get(authenticationStore).user).toEqual({ ...user, termsVersion: LEGAL_VERSION });
+	});
+});

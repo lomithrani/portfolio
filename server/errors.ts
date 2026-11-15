@@ -1,0 +1,242 @@
+// Errors that map to an HTTP status. `status` is picked up by Elysia and by the
+// app's onError handler (services/errorHandler.ts); for 4xx statuses (and
+// ServiceUnavailableError) the message is sent to the client as a plain-text
+// body, so keep it free of internal details. Any other error becomes a generic
+// 500.
+//
+// The message is in the language of the request (services/locale.ts) when the
+// error is given a function reading a message (`() => m.scheduleNotFound`,
+// docs/I18N.md); the error then also keeps its English text, for the logs.
+import { DEFAULT_LOCALE, getLocale, withLocale } from 'portfolio-common'
+
+/**
+ * The text of an error: a function reading a message (called now, in the
+ * language of the request), or a plain string for a text that is the same in
+ * every language (a body the client matches, an HTTP reason phrase, what a
+ * portfolio-common validator already said in the request's language)
+ */
+export type ErrorText = string | (() => string)
+
+/** `read()` in the language in use, and in English: the same text when that is the language in use */
+export const inBothLanguages = (read: () => string): { text: string; english: string } => {
+  const text = read()
+  return { text, english: getLocale() === DEFAULT_LOCALE ? text : withLocale(DEFAULT_LOCALE, read) }
+}
+
+export class HttpError extends Error {
+  status = 500
+  /** The message in English, for the logs: `message`, sent to the client, is in the request's language */
+  english: string
+  constructor(message: ErrorText) {
+    const { text, english } =
+      typeof message === 'function' ? inBothLanguages(message) : { text: message, english: message }
+    super(text)
+    this.name = new.target.name
+    this.english = english
+  }
+}
+
+export class BadRequestError extends HttpError {
+  status = 400
+}
+
+export class InvalidDomainNameError extends HttpError {
+  status = 400
+}
+
+export class InvalidGoogleTokenError extends HttpError {
+  status = 401
+}
+
+export class MissingAuthCookieError extends HttpError {
+  status = 401
+}
+
+export class CouldntVerifyJwtError extends HttpError {
+  status = 401
+}
+
+export class SubMissingError extends HttpError {
+  status = 401
+}
+
+export class AuthExpiredError extends HttpError {
+  status = 401
+}
+
+export class ForbiddenError extends HttpError {
+  status = 403
+}
+
+export class ResourceNotFoundError extends HttpError {
+  status = 404
+}
+
+export class DomainDoesNotExistError extends HttpError {
+  status = 404
+}
+
+export class ConflictError extends HttpError {
+  status = 409
+}
+
+export class DomainAlreadyExistsError extends HttpError {
+  status = 409
+}
+
+export class UserAlreadyOwnsDomainError extends HttpError {
+  status = 409
+}
+
+/** A request body over the size its route accepts */
+export class PayloadTooLargeError extends HttpError {
+  status = 413
+}
+
+export class UnsupportedMediaTypeError extends HttpError {
+  status = 415
+}
+
+/**
+ * A request field fails a rule its TypeBox schema cannot express (e.g. an end
+ * date before the start). Answered like a schema validation error: 422 with
+ * `{ type: 'validation', on: 'body', property, message }`, where `property` is
+ * the field's dotted path (e.g. `projects.1.end`)
+ */
+export class FieldValidationError extends HttpError {
+  status = 422
+  constructor(
+    public property: string,
+    message: ErrorText
+  ) {
+    super(message)
+  }
+}
+
+/** Well-formed request whose content cannot be processed, e.g. a file that is not a PDF */
+export class UnprocessableContentError extends HttpError {
+  status = 422
+}
+
+/** A rate limit or quota was hit; `retryAfterSeconds` becomes the Retry-After header */
+export class TooManyRequestsError extends HttpError {
+  status = 429
+  constructor(
+    message: ErrorText,
+    public retryAfterSeconds?: number
+  ) {
+    super(message)
+  }
+}
+
+// Appointments (Google Calendar)
+
+/** The owner has not connected Google Calendar, or the API has no OAuth client secret */
+export class GoogleCalendarNotConnectedError extends HttpError {
+  status = 409
+}
+
+export class AppointmentScheduleNotFoundError extends HttpError {
+  status = 404
+}
+
+export class AppointmentEventNotFoundError extends HttpError {
+  status = 404
+}
+
+export class SlotUnavailableError extends HttpError {
+  status = 409
+}
+
+/** Google rejected the authorization code sent to /appointments/connect */
+export class GoogleCalendarAuthorizationError extends HttpError {
+  status = 400
+}
+
+/**
+ * Google refused the stored grant (refresh token revoked, expired or issued to
+ * another OAuth client): the connection was cleared and the owner must
+ * connect again. 409, not 401: the admin's own session is fine
+ */
+export class GoogleCalendarReconnectRequiredError extends HttpError {
+  status = 409
+}
+
+/**
+ * A service the request depends on failed in a way that is not the caller's
+ * fault (an upstream outage, the operator's spend limit). Unlike other 5xx,
+ * its message is sent to the client, so keep it free of internal details
+ */
+export class ServiceUnavailableError extends HttpError {
+  status = 503
+}
+
+// Résumé import (Claude)
+
+/** Résumé import is off: no ANTHROPIC_API_KEY, or a limit set to 0 */
+export class ResumeImportDisabledError extends HttpError {
+  status = 404
+}
+
+// Recruiter space and job postings
+
+/** A recruiter route called by an account without a recruiter space (PUT /me/mode creates it) */
+export class RecruiterSpaceRequiredError extends HttpError {
+  status = 403
+}
+
+/**
+ * The account's plan does not include more of something (job description
+ * imports on the free plan). 402: only a paid plan lifts it, waiting does not
+ */
+export class PlanLimitReachedError extends HttpError {
+  status = 402
+}
+
+/** Job description import is off: no ANTHROPIC_API_KEY, or a limit set to 0 */
+export class JobImportDisabledError extends HttpError {
+  status = 404
+}
+
+// Hiring journey (workflows)
+
+/**
+ * A step of a portfolio's hiring journey asked for before the steps that come
+ * before it are done (e.g. booking before picking a job)
+ */
+export class JourneyStepLockedError extends HttpError {
+  status = 403
+}
+
+export const errors = {
+  BadRequestError,
+  InvalidDomainNameError,
+  InvalidGoogleTokenError,
+  MissingAuthCookieError,
+  CouldntVerifyJwtError,
+  SubMissingError,
+  AuthExpiredError,
+  ForbiddenError,
+  ResourceNotFoundError,
+  DomainDoesNotExistError,
+  ConflictError,
+  DomainAlreadyExistsError,
+  UserAlreadyOwnsDomainError,
+  PayloadTooLargeError,
+  UnsupportedMediaTypeError,
+  FieldValidationError,
+  UnprocessableContentError,
+  TooManyRequestsError,
+  GoogleCalendarNotConnectedError,
+  AppointmentScheduleNotFoundError,
+  AppointmentEventNotFoundError,
+  SlotUnavailableError,
+  GoogleCalendarAuthorizationError,
+  GoogleCalendarReconnectRequiredError,
+  ServiceUnavailableError,
+  ResumeImportDisabledError,
+  RecruiterSpaceRequiredError,
+  PlanLimitReachedError,
+  JobImportDisabledError,
+  JourneyStepLockedError
+}
