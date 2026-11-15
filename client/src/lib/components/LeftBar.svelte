@@ -42,19 +42,38 @@
 
 	let isOpen = $state(false);
 	let pinned = $state(false);
-	// Wide screens show the rail for 3 s on page load, as a hint. Small screens never do: it would
-	// cover the content (the CSS also ignores it there, so the server render never flashes it).
+	// The rail shows for 3 s on page load, as a hint, where it fits in the margin beside the page.
+	// Elsewhere it never does: it is laid over the page, so it would cover the start of every line.
+	// The CSS decides where it fits (--peek-fits below, so the server render never flashes it).
 	let peeking = $state(true);
 	let open = $derived(isOpen || peeking);
+	let wrapper: HTMLElement | undefined = $state();
 
+	const peekFits = () =>
+		!!wrapper && getComputedStyle(wrapper).getPropertyValue('--peek-fits').trim() === '1';
+
+	// The peek ends after 3 s, or as soon as it stops fitting (a narrower window, a wider page:
+	// the timeline): the CSS has collapsed the rail then, and the handle must read "Open sidebar"
 	$effect(() => {
-		if (!browser) return;
-		if (!window.matchMedia('(min-width: 768px)').matches) {
+		if (!browser || !peeking) return;
+		if (!peekFits()) {
 			peeking = false;
 			return;
 		}
-		const timer = setTimeout(() => (peeking = false), 3000);
-		return () => clearTimeout(timer);
+		const end = () => (peeking = false);
+		const endUnlessFits = () => {
+			if (!peekFits()) end();
+		};
+		const timer = setTimeout(end, 3000);
+		window.addEventListener('resize', endUnlessFits);
+		// A page that becomes wide (data-page-wide) changes what fits without a resize
+		const observer = new MutationObserver(endUnlessFits);
+		observer.observe(document.body, { childList: true, subtree: true });
+		return () => {
+			clearTimeout(timer);
+			window.removeEventListener('resize', endUnlessFits);
+			observer.disconnect();
+		};
 	});
 
 	function onMouseEnter() {
@@ -89,14 +108,16 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
+	bind:this={wrapper}
 	class="drawer-wrapper"
 	class:drawer-open={isOpen}
 	class:drawer-peek={peeking && !isOpen}
 	onmouseenter={onMouseEnter}
 	onmouseleave={onMouseLeave}
 >
-	<!-- inert while collapsed: the off-screen links must not stay in the tab order -->
-	<div class="drawer-content" inert={!open}>
+	<!-- Hidden while collapsed (visibility, in the CSS below): the off-screen links must not stay in
+	     the tab order, before the page hydrates either -->
+	<div class="drawer-content">
 		<Navigation layout="rail">
 			<Navigation.Content>
 				{#each menuItems as item (item.path)}
@@ -111,7 +132,7 @@
 								{@const Icon = item.icon}
 								<Icon />
 							{/if}
-							<span>{item.label}</span>
+							<Navigation.TriggerText>{item.label}</Navigation.TriggerText>
 						</Navigation.TriggerAnchor>
 					{/if}
 				{/each}
@@ -145,26 +166,60 @@
 		transform: translateX(calc(-100% + var(--handle-w)));
 		transition: transform 0.3s ease;
 		--handle-w: 20px;
+		/* 1 where the rail and its handle (7.5rem) fit in the margin beside the page, 0 where they
+		   would cover it. A page's content is centred and at most 56rem wide (max-w-4xl), which
+		   leaves that margin from 72rem (1rem to spare for a scrollbar); what is wider is marked
+		   data-page-wide and is at most 80rem (max-w-7xl: the timeline), so from 96rem.
+		   --peek-visibility says the same for the links: a custom property cannot be computed
+		   into a keyword. */
+		--peek-fits: 0;
+		--peek-visibility: hidden;
+	}
+
+	@media (min-width: 72rem) {
+		.drawer-wrapper {
+			--peek-fits: 1;
+			--peek-visibility: visible;
+		}
+	}
+
+	@media (max-width: 95.999rem) {
+		:global(body:has([data-page-wide])) .drawer-wrapper {
+			--peek-fits: 0;
+			--peek-visibility: hidden;
+		}
 	}
 
 	.drawer-wrapper.drawer-open {
 		transform: translateX(0);
 	}
 
-	/* The load-time peek is for wide screens only */
-	@media (min-width: 768px) {
-		.drawer-wrapper.drawer-peek {
-			transform: translateX(0);
-		}
+	/* The load-time peek: shown where it fits, the handle alone elsewhere */
+	.drawer-wrapper.drawer-peek {
+		transform: translateX(calc((1 - var(--peek-fits)) * (-100% + var(--handle-w))));
+	}
 
-		.drawer-peek .handle-icon {
-			transform: rotate(180deg);
-		}
+	.drawer-peek .handle-icon {
+		transform: rotate(calc(var(--peek-fits) * 180deg));
 	}
 
 	.drawer-content {
 		height: 100%;
 		flex-shrink: 0;
+		/* Collapsed, the links are out of the tab order and of the accessibility tree, once the
+		   rail has slid away. In CSS rather than `inert`, so it holds before the page hydrates,
+		   when only the CSS knows whether the load-time peek shows */
+		visibility: hidden;
+		transition: visibility 0s 0.3s;
+	}
+
+	.drawer-open .drawer-content {
+		visibility: visible;
+		transition-delay: 0s;
+	}
+
+	.drawer-peek .drawer-content {
+		visibility: var(--peek-visibility);
 	}
 
 	/* Restore the Skeleton 4 rail look after the Skeleton 5 / Tailwind 4.3 upgrade: .btn now
@@ -180,6 +235,12 @@
 		:global([data-scope='navigation'][data-part='trigger-anchor'][data-layout='rail'] > svg) {
 		width: 1.5rem;
 		height: 1.5rem;
+	}
+
+	/* The labels fit the rail: "Experiences" at the page's text size is wider than its link */
+	.drawer-content :global([data-scope='navigation'][data-part='trigger-text'][data-layout='rail']) {
+		font-size: var(--text-xs);
+		line-height: var(--text-xs--line-height);
 	}
 
 	.drawer-handle {

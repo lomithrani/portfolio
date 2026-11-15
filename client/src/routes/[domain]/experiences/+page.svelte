@@ -574,9 +574,10 @@
 	</div>
 
 	{#if view === 'timeline' && allExperiences.length > 0}
-		<!-- Wider than the list: the years need the room. Every experience is on it: the filters
-			make their projects stand out instead of hiding the others -->
-		<div class="mx-auto mt-4 w-full max-w-7xl">
+		<!-- Wider than the list: the years need the room (data-page-wide: the rail of the layout
+			then needs a wider screen to show beside the page, see LeftBar.svelte). Every experience
+			is on it: the filters make their projects stand out instead of hiding the others -->
+		<div class="mx-auto mt-4 w-full max-w-7xl" data-page-wide>
 			<Timeline
 				experiences={allExperiences}
 				filters={active}

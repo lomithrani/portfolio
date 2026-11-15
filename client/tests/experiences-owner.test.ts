@@ -1027,3 +1027,135 @@ test.describe('hovering a skill tag', () => {
 		await context.close();
 	});
 });
+
+test.describe('the navigation rail', () => {
+	// The rail is laid over the page (LeftBar.svelte). On load it shows for 3 s, as a hint, only
+	// where it fits in the margin beside the page: from 1152 px for a page as wide as the list
+	// (56rem), from 1536 px for the timeline (80rem). Narrower, only its handle shows.
+	const LIST_FITS_FROM = 1152;
+	const TIMELINE_FITS_FROM = 1536;
+
+	// By its address: collapsed, the rail's links are hidden, so they have no role to be found by
+	const railLink = (page: Page) => page.locator('aside a[href$="/experiences"]');
+	const railLinks = (page: Page) => page.locator('aside').getByRole('link');
+	const handle = (page: Page) => page.getByRole('button', { name: /^(Open|Close) sidebar$/ });
+	const left = async (locator: Locator) => (await locator.boundingBox())!.x;
+	const right = async (locator: Locator) => {
+		const box = (await locator.boundingBox())!;
+		return box.x + box.width;
+	};
+
+	test('shows on load only where it fits beside the page, never over it', async ({ page }) => {
+		const title = `Staff Engineer ${tag}`;
+		await createExperience({ title, projects: [project('Platform', ['Kafka'])] });
+		const pages = [
+			{
+				path: `/${DOMAIN}/experiences`,
+				fitsFrom: LIST_FITS_FROM,
+				content: [page.getByRole('region', { name: 'Filter experiences' }), card(page, title)]
+			},
+			{
+				path: `/${DOMAIN}/experiences?view=timeline`,
+				fitsFrom: TIMELINE_FITS_FROM,
+				content: [page.getByRole('region', { name: 'Timeline' })]
+			},
+			{
+				path: `/${DOMAIN}/hire`,
+				fitsFrom: LIST_FITS_FROM,
+				content: [page.locator('#page').getByRole('heading', { level: 1 })]
+			}
+		];
+
+		for (const { path, fitsFrom, content } of pages) {
+			for (const width of [768, 880, 1100, fitsFrom - 1, fitsFrom, fitsFrom + 128]) {
+				const where = `${path} at ${width} px`;
+				await page.setViewportSize({ width, height: 700 });
+				// A full load each time: the rail only shows by itself on the page a visit begins on
+				await gotoHydrated(page, path);
+
+				const shown = (await right(railLink(page))) > 0;
+				expect(shown, where).toBe(width >= fitsFrom);
+				await expect(handle(page), where).toHaveAccessibleName(
+					shown ? 'Close sidebar' : 'Open sidebar'
+				);
+				// Shown or not, the page starts after the rail and its handle
+				const reach = await right(handle(page));
+				for (const part of content) {
+					expect(await left(part), where).toBeGreaterThanOrEqual(reach);
+				}
+			}
+		}
+	});
+
+	test('opens from its handle at the first press, with labels that fit their links', async ({
+		page
+	}) => {
+		await page.setViewportSize({ width: 880, height: 700 });
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await expect(railLink(page)).not.toBeInViewport();
+		// Collapsed, its links are out of the tab order and of the accessibility tree
+		await expect(railLinks(page)).toHaveCount(0);
+
+		// With the keyboard: the pointer over the handle would open the rail by itself
+		await page.getByRole('button', { name: 'Open sidebar' }).focus();
+		await page.keyboard.press('Enter');
+		await expect(railLink(page)).toBeInViewport({ ratio: 1 });
+		await expect(page.getByRole('button', { name: 'Close sidebar' })).toBeVisible();
+		await expect(railLinks(page)).toHaveCount(2);
+		for (const link of await railLinks(page).all()) {
+			const fits = await link.evaluate(
+				(element) =>
+					element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight
+			);
+			expect(fits, await link.innerText()).toBe(true);
+		}
+	});
+
+	test('stops showing as soon as it no longer fits: a narrower window, a wider page', async ({
+		page
+	}) => {
+		const title = `Staff Engineer ${tag}`;
+		await createExperience({ title, projects: [project('Platform', ['Kafka'])] });
+		// Within the 3 s it shows for (later, the rail is collapsed anyway)
+		const soon = { timeout: 1000 };
+
+		await page.setViewportSize({ width: 1280, height: 700 });
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await page.setViewportSize({ width: 880, height: 700 });
+		await expect(handle(page)).toHaveAccessibleName('Open sidebar', soon);
+		await expect(railLink(page)).not.toBeInViewport();
+
+		await page.setViewportSize({ width: 1280, height: 700 });
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await page
+			.getByRole('group', { name: 'View' })
+			.getByRole('button', { name: 'Timeline', exact: true })
+			.click();
+		await expect(handle(page)).toHaveAccessibleName('Open sidebar', soon);
+		await expect(railLink(page)).not.toBeInViewport();
+		expect(await left(page.getByRole('region', { name: 'Timeline' }))).toBeGreaterThanOrEqual(
+			await right(handle(page))
+		);
+	});
+
+	test('before the page hydrates, its links are in reach only where it shows', async ({
+		browser
+	}) => {
+		// Without JavaScript the page stays as the server rendered it
+		const context = await browser.newContext({ javaScriptEnabled: false });
+		const page = await context.newPage();
+		await blockGoogle(page);
+
+		await page.setViewportSize({ width: 880, height: 700 });
+		await page.goto(`/${DOMAIN}/experiences`);
+		// Hidden: not in the tab order either
+		await expect(railLink(page)).toBeHidden();
+		await expect(railLinks(page)).toHaveCount(0);
+
+		await page.setViewportSize({ width: 1280, height: 700 });
+		await page.goto(`/${DOMAIN}/experiences`);
+		await expect(railLink(page)).toBeInViewport({ ratio: 1 });
+		await expect(railLinks(page)).toHaveCount(2);
+		await context.close();
+	});
+});
