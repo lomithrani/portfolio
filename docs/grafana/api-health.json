@@ -1,0 +1,704 @@
+{
+	"uid": "portfolio-api",
+	"title": "Portfolio · API health",
+	"description": "Traffic, errors, response times and memory of the API, from its request metrics and logs.",
+	"tags": [
+		"portfolio"
+	],
+	"timezone": "browser",
+	"graphTooltip": 1,
+	"schemaVersion": 39,
+	"time": {
+		"from": "now-24h",
+		"to": "now"
+	},
+	"templating": {
+		"list": [
+			{
+				"type": "custom",
+				"name": "stage",
+				"label": "Stage",
+				"query": "Production : portfolio-(api|web)-production,Staging : portfolio-(server|client)",
+				"options": [
+					{
+						"text": "Production",
+						"value": "portfolio-(api|web)-production",
+						"selected": true
+					},
+					{
+						"text": "Staging",
+						"value": "portfolio-(server|client)",
+						"selected": false
+					}
+				],
+				"current": {
+					"text": "Production",
+					"value": "portfolio-(api|web)-production",
+					"selected": true
+				},
+				"multi": false,
+				"includeAll": false
+			}
+		]
+	},
+	"links": [
+		{
+			"type": "dashboards",
+			"title": "Portfolio dashboards",
+			"tags": [
+				"portfolio"
+			],
+			"asDropdown": true,
+			"includeVars": true,
+			"keepTime": false,
+			"icon": "external link"
+		}
+	],
+	"panels": [
+		{
+			"type": "stat",
+			"title": "Requests",
+			"description": "Requests the API answered in the period.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "blue"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 1,
+			"gridPos": {
+				"x": 0,
+				"y": 0,
+				"w": 6,
+				"h": 4
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Server errors",
+			"description": "Requests answered with a 5xx. Counted once the API reports the status of its answers.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", status=~\"5..\"}[$__range])) or vector(0))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "red"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 2,
+			"gridPos": {
+				"x": 6,
+				"y": 0,
+				"w": 6,
+				"h": 4
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Slowest 5% take at least",
+			"description": "95th percentile of the time the API took to answer, over the period.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "histogram_quantile(0.95, sum by (le) (increase(http_server_request_duration_milliseconds_bucket{service_name=~\"${stage:raw}\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "ms",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "orange"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 3,
+			"gridPos": {
+				"x": 12,
+				"y": 0,
+				"w": 6,
+				"h": 4
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Requests for unknown addresses",
+			"description": "Requests no route answers: mostly scanners looking for `/wp-login.php` and the like.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"unmatched\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "purple"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 4,
+			"gridPos": {
+				"x": 18,
+				"y": 0,
+				"w": 6,
+				"h": 4
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Requests per minute, by route",
+			"description": "The ten busiest routes.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "topk(10, sum by (method, route) (rate(http_server_requests_total{service_name=~\"${stage:raw}\"}[$__rate_interval])) * 60)",
+					"legendFormat": "{{method}} {{route}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "short",
+					"min": 0,
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"lineWidth": 1,
+						"showPoints": "auto",
+						"spanNulls": true,
+						"stacking": {
+							"mode": "none",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"id": 5,
+			"gridPos": {
+				"x": 0,
+				"y": 4,
+				"w": 12,
+				"h": 9
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Answers per minute, by status",
+			"description": "Shown once the API reports the status of its answers.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (status) (rate(http_server_requests_total{service_name=~\"${stage:raw}\", status!=\"\"}[$__rate_interval])) * 60",
+					"legendFormat": "{{status}}"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "short",
+					"min": 0,
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"lineWidth": 1,
+						"showPoints": "auto",
+						"spanNulls": true,
+						"stacking": {
+							"mode": "normal",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"id": 6,
+			"gridPos": {
+				"x": 12,
+				"y": 4,
+				"w": 12,
+				"h": 9
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Time to answer",
+			"description": "How long the API took to answer, all routes together.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_milliseconds_bucket{service_name=~\"${stage:raw}\"}[$__rate_interval])))",
+					"legendFormat": "Median"
+				},
+				{
+					"refId": "B",
+					"expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_milliseconds_bucket{service_name=~\"${stage:raw}\"}[$__rate_interval])))",
+					"legendFormat": "95th percentile"
+				},
+				{
+					"refId": "C",
+					"expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_milliseconds_bucket{service_name=~\"${stage:raw}\"}[$__rate_interval])))",
+					"legendFormat": "99th percentile"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "ms",
+					"min": 0,
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"lineWidth": 1,
+						"showPoints": "auto",
+						"spanNulls": true,
+						"stacking": {
+							"mode": "none",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"id": 7,
+			"gridPos": {
+				"x": 0,
+				"y": 13,
+				"w": 12,
+				"h": 9
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Warnings and errors logged",
+			"description": "Log records at warning or error level, by the API's error code.",
+			"datasource": {
+				"type": "loki",
+				"uid": "grafanacloud-logs"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (detected_level, code) (count_over_time({service_name=~\"${stage:raw}\"} | detected_level=~\"warn|error\" [$__auto]))",
+					"legendFormat": "{{detected_level}} {{code}}",
+					"queryType": "range"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "short",
+					"min": 0,
+					"custom": {
+						"drawStyle": "bars",
+						"fillOpacity": 60,
+						"lineWidth": 1,
+						"showPoints": "never",
+						"spanNulls": false,
+						"stacking": {
+							"mode": "normal",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					},
+					"decimals": 0
+				},
+				"overrides": []
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"interval": "1h",
+			"id": 8,
+			"gridPos": {
+				"x": 12,
+				"y": 13,
+				"w": 12,
+				"h": 9
+			}
+		},
+		{
+			"type": "table",
+			"title": "Routes",
+			"description": "Every route called in the period: how often, and how long it took.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum by (method, route) (increase(http_server_requests_total{service_name=~\"${stage:raw}\"}[$__range]))",
+					"instant": true,
+					"format": "table"
+				},
+				{
+					"refId": "B",
+					"expr": "sum by (method, route) (increase(http_server_request_duration_milliseconds_sum{service_name=~\"${stage:raw}\"}[$__range])) / sum by (method, route) (increase(http_server_request_duration_milliseconds_count{service_name=~\"${stage:raw}\"}[$__range]))",
+					"instant": true,
+					"format": "table"
+				},
+				{
+					"refId": "C",
+					"expr": "histogram_quantile(0.95, sum by (le, method, route) (increase(http_server_request_duration_milliseconds_bucket{service_name=~\"${stage:raw}\"}[$__range])))",
+					"instant": true,
+					"format": "table"
+				}
+			],
+			"transformations": [
+				{
+					"id": "merge",
+					"options": {}
+				},
+				{
+					"id": "organize",
+					"options": {
+						"excludeByName": {
+							"Time": true
+						},
+						"indexByName": {
+							"method": 0,
+							"route": 1,
+							"Value #A": 2,
+							"Value #B": 3,
+							"Value #C": 4
+						},
+						"renameByName": {
+							"method": "Method",
+							"route": "Route",
+							"Value #A": "Requests",
+							"Value #B": "Average",
+							"Value #C": "95th percentile"
+						}
+					}
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"custom": {
+						"align": "auto",
+						"filterable": true
+					},
+					"noValue": "–"
+				},
+				"overrides": [
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "Requests"
+						},
+						"properties": [
+							{
+								"id": "decimals",
+								"value": 0
+							}
+						]
+					},
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "Average"
+						},
+						"properties": [
+							{
+								"id": "unit",
+								"value": "ms"
+							},
+							{
+								"id": "decimals",
+								"value": 0
+							}
+						]
+					},
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "95th percentile"
+						},
+						"properties": [
+							{
+								"id": "unit",
+								"value": "ms"
+							},
+							{
+								"id": "decimals",
+								"value": 0
+							}
+						]
+					}
+				]
+			},
+			"options": {
+				"showHeader": true,
+				"cellHeight": "sm",
+				"sortBy": [
+					{
+						"displayName": "Requests",
+						"desc": true
+					}
+				]
+			},
+			"id": 9,
+			"gridPos": {
+				"x": 0,
+				"y": 22,
+				"w": 24,
+				"h": 11
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Memory",
+			"description": "From the API's `memory` log line, written every ten minutes.",
+			"datasource": {
+				"type": "loki",
+				"uid": "grafanacloud-logs"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max by (service_name) (max_over_time({service_name=~\"${stage:raw}\"} |= \"memory\" | unwrap rss [15m]))",
+					"legendFormat": "Resident memory",
+					"queryType": "range"
+				},
+				{
+					"refId": "B",
+					"expr": "max by (service_name) (max_over_time({service_name=~\"${stage:raw}\"} |= \"memory\" | unwrap heapUsed [15m]))",
+					"legendFormat": "JavaScript heap used",
+					"queryType": "range"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "decmbytes",
+					"min": 0,
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"lineWidth": 1,
+						"showPoints": "auto",
+						"spanNulls": true,
+						"stacking": {
+							"mode": "none",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"id": 10,
+			"gridPos": {
+				"x": 0,
+				"y": 33,
+				"w": 12,
+				"h": 9
+			}
+		},
+		{
+			"type": "logs",
+			"title": "Latest warnings and errors",
+			"datasource": {
+				"type": "loki",
+				"uid": "grafanacloud-logs"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "{service_name=~\"${stage:raw}\"} | detected_level=~\"warn|error\"",
+					"queryType": "range"
+				}
+			],
+			"options": {
+				"showTime": true,
+				"wrapLogMessage": true,
+				"enableLogDetails": true,
+				"sortOrder": "Descending",
+				"dedupStrategy": "none"
+			},
+			"id": 11,
+			"gridPos": {
+				"x": 12,
+				"y": 33,
+				"w": 12,
+				"h": 9
+			}
+		}
+	]
+}

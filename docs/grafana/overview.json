@@ -1,0 +1,1316 @@
+{
+	"uid": "portfolio-overview",
+	"title": "Portfolio · Overview",
+	"description": "How much the site holds and what happens on it. Built from the API's request metrics, its record counts and the traces of both services: no visitor is identified.",
+	"tags": [
+		"portfolio"
+	],
+	"timezone": "browser",
+	"graphTooltip": 1,
+	"schemaVersion": 39,
+	"time": {
+		"from": "now-7d",
+		"to": "now"
+	},
+	"templating": {
+		"list": [
+			{
+				"type": "custom",
+				"name": "stage",
+				"label": "Stage",
+				"query": "Production : portfolio-(api|web)-production,Staging : portfolio-(server|client)",
+				"options": [
+					{
+						"text": "Production",
+						"value": "portfolio-(api|web)-production",
+						"selected": true
+					},
+					{
+						"text": "Staging",
+						"value": "portfolio-(server|client)",
+						"selected": false
+					}
+				],
+				"current": {
+					"text": "Production",
+					"value": "portfolio-(api|web)-production",
+					"selected": true
+				},
+				"multi": false,
+				"includeAll": false
+			}
+		]
+	},
+	"links": [
+		{
+			"type": "dashboards",
+			"title": "Portfolio dashboards",
+			"tags": [
+				"portfolio"
+			],
+			"asDropdown": true,
+			"includeVars": true,
+			"keepTime": false,
+			"icon": "external link"
+		}
+	],
+	"panels": [
+		{
+			"type": "row",
+			"title": "What the site holds",
+			"collapsed": false,
+			"panels": [],
+			"id": 1,
+			"gridPos": {
+				"x": 0,
+				"y": 0,
+				"w": 24,
+				"h": 1
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Portfolios",
+			"description": "Portfolio addresses claimed.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"portfolios\"})"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "green"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "area",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 2,
+			"gridPos": {
+				"x": 0,
+				"y": 1,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Accounts",
+			"description": "Google accounts that signed in at least once and were not deleted.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"accounts\"})"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "blue"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "area",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 3,
+			"gridPos": {
+				"x": 6,
+				"y": 1,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Recruiters",
+			"description": "Accounts with a recruiter space.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"recruiters\"})"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "purple"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "area",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 4,
+			"gridPos": {
+				"x": 12,
+				"y": 1,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Experiences",
+			"description": "Experiences on all portfolios.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"experiences\"})"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "blue"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "area",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 5,
+			"gridPos": {
+				"x": 18,
+				"y": 1,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Open job postings",
+			"description": "Job postings open to applications.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"open_job_postings\"})"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "orange"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "area",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 6,
+			"gridPos": {
+				"x": 0,
+				"y": 4,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Job applications",
+			"description": "Candidates on the applicant lists of all postings.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"job_applications\"})"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "orange"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "area",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 7,
+			"gridPos": {
+				"x": 6,
+				"y": 4,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Journeys started",
+			"description": "Visitors who submitted at least one step of a portfolio's hiring journey.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"journeys_started\"})"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "purple"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "area",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 8,
+			"gridPos": {
+				"x": 12,
+				"y": 4,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Upcoming meetings",
+			"description": "Meetings booked whose slot is not over yet.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"upcoming_bookings\"})"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "green"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "area",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 9,
+			"gridPos": {
+				"x": 18,
+				"y": 4,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Portfolios, accounts and recruiters",
+			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"portfolios\"})",
+					"legendFormat": "Portfolios"
+				},
+				{
+					"refId": "B",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"accounts\"})",
+					"legendFormat": "Accounts"
+				},
+				{
+					"refId": "C",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"recruiters\"})",
+					"legendFormat": "Recruiters"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "short",
+					"min": 0,
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"lineWidth": 1,
+						"showPoints": "auto",
+						"spanNulls": true,
+						"stacking": {
+							"mode": "none",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					},
+					"decimals": 0
+				},
+				"overrides": []
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"id": 10,
+			"gridPos": {
+				"x": 0,
+				"y": 7,
+				"w": 12,
+				"h": 8
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Job postings, applications and journeys",
+			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"job_postings\"})",
+					"legendFormat": "Job postings (drafts included)"
+				},
+				{
+					"refId": "B",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"open_job_postings\"})",
+					"legendFormat": "Open job postings"
+				},
+				{
+					"refId": "C",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"job_applications\"})",
+					"legendFormat": "Job applications"
+				},
+				{
+					"refId": "D",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"journeys_started\"})",
+					"legendFormat": "Journeys started"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "short",
+					"min": 0,
+					"custom": {
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"lineWidth": 1,
+						"showPoints": "auto",
+						"spanNulls": true,
+						"stacking": {
+							"mode": "none",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					},
+					"decimals": 0
+				},
+				"overrides": []
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"id": 11,
+			"gridPos": {
+				"x": 12,
+				"y": 7,
+				"w": 12,
+				"h": 8
+			}
+		},
+		{
+			"type": "row",
+			"title": "Activity in the selected period (API calls)",
+			"collapsed": false,
+			"panels": [],
+			"id": 12,
+			"gridPos": {
+				"x": 0,
+				"y": 15,
+				"w": 24,
+				"h": 1
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Browser visits",
+			"description": "Pages opened in a browser, on any part of the site: each one checks the session once (`GET /isLogged`). Navigating inside the site does not count again, and crawlers that run no JavaScript are not counted. Signed-in and anonymous visits cannot be told apart.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/isLogged\", method=\"GET\", status!~\"[45]..\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "blue"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 13,
+			"gridPos": {
+				"x": 0,
+				"y": 16,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Portfolio loads",
+			"description": "Times a portfolio was loaded to render one of its pages. Counted where the pages are rendered, so crawlers and link previews are included. Until the API reports the status of its answers, addresses that are no portfolio are counted too.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/domain/:name\", method=\"GET\", status!~\"[45]..\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "green"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 14,
+			"gridPos": {
+				"x": 6,
+				"y": 16,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Sign-ins",
+			"description": "Successful sign-ins with Google.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/login\", method=\"POST\", status!~\"[45]..\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "purple"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 15,
+			"gridPos": {
+				"x": 12,
+				"y": 16,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Portfolios claimed",
+			"description": "New portfolio addresses.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/domain/claim\", method=\"POST\", status!~\"[45]..\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "green"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 16,
+			"gridPos": {
+				"x": 18,
+				"y": 16,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Résumé imports",
+			"description": "PDF résumés read into drafts.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/experiences/import\", method=\"POST\", status!~\"[45]..\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "orange"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 17,
+			"gridPos": {
+				"x": 0,
+				"y": 19,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Journey steps",
+			"description": "Steps of a hiring journey submitted by visitors.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/workflow/domains/:domainName/steps/:stepId\", method=\"POST\", status!~\"[45]..\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "purple"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 18,
+			"gridPos": {
+				"x": 6,
+				"y": 19,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Meetings booked",
+			"description": "Meetings booked on a portfolio.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/appointments/book\", method=\"POST\", status!~\"[45]..\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "green"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 19,
+			"gridPos": {
+				"x": 12,
+				"y": 19,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "stat",
+			"title": "Job applications",
+			"description": "Applications to a job posting.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/jobs/:id/application\", method=\"POST\", status!~\"[45]..\"}[$__range])))",
+					"instant": true
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "none",
+					"decimals": 0,
+					"noValue": "–",
+					"color": {
+						"mode": "fixed",
+						"fixedColor": "orange"
+					}
+				},
+				"overrides": []
+			},
+			"options": {
+				"reduceOptions": {
+					"calcs": [
+						"lastNotNull"
+					],
+					"fields": "",
+					"values": false
+				},
+				"colorMode": "value",
+				"graphMode": "none",
+				"textMode": "value",
+				"justifyMode": "center"
+			},
+			"id": 20,
+			"gridPos": {
+				"x": 18,
+				"y": 19,
+				"w": 6,
+				"h": 3
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "Visits and portfolio loads",
+			"description": "Per hour. See the two numbers above for what each counts.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/isLogged\", method=\"GET\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Browser visits"
+				},
+				{
+					"refId": "B",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/domain/:name\", method=\"GET\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Portfolio loads"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "short",
+					"min": 0,
+					"custom": {
+						"drawStyle": "bars",
+						"fillOpacity": 60,
+						"lineWidth": 1,
+						"showPoints": "never",
+						"spanNulls": false,
+						"stacking": {
+							"mode": "none",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					},
+					"decimals": 0
+				},
+				"overrides": []
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"interval": "1h",
+			"id": 21,
+			"gridPos": {
+				"x": 0,
+				"y": 22,
+				"w": 12,
+				"h": 8
+			}
+		},
+		{
+			"type": "timeseries",
+			"title": "What people did",
+			"description": "Successful calls per hour.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "grafanacloud-prom"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/login\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Sign-ins"
+				},
+				{
+					"refId": "B",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/domain/claim\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Portfolios claimed"
+				},
+				{
+					"refId": "C",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/experiences\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Experiences added"
+				},
+				{
+					"refId": "D",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/experiences/import\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Résumé imports"
+				},
+				{
+					"refId": "E",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/jobs\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Job postings created"
+				},
+				{
+					"refId": "F",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/jobs/:id/application\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Job applications"
+				},
+				{
+					"refId": "G",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/workflow/domains/:domainName/steps/:stepId\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Journey steps"
+				},
+				{
+					"refId": "H",
+					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/appointments/book\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
+					"legendFormat": "Meetings booked"
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"unit": "short",
+					"min": 0,
+					"custom": {
+						"drawStyle": "bars",
+						"fillOpacity": 60,
+						"lineWidth": 1,
+						"showPoints": "never",
+						"spanNulls": false,
+						"stacking": {
+							"mode": "normal",
+							"group": "A"
+						}
+					},
+					"color": {
+						"mode": "palette-classic"
+					},
+					"decimals": 0
+				},
+				"overrides": []
+			},
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "desc"
+				}
+			},
+			"interval": "1h",
+			"id": 22,
+			"gridPos": {
+				"x": 12,
+				"y": 22,
+				"w": 12,
+				"h": 8
+			}
+		},
+		{
+			"type": "row",
+			"title": "Pages and portfolios, last 24 hours (traces)",
+			"collapsed": false,
+			"panels": [],
+			"id": 23,
+			"gridPos": {
+				"x": 0,
+				"y": 30,
+				"w": 24,
+				"h": 1
+			}
+		},
+		{
+			"type": "table",
+			"title": "Pages rendered, by page",
+			"description": "Pages the web server rendered, by route. `/(site)` is the landing page, `/[domain]/…` the pages of a portfolio (`/[domain]` also catches one-word addresses that are no portfolio). Counted where the pages are rendered, so crawlers and link previews are included. Traces can only be counted over 25 hours at a time: this panel always shows the last 24 hours.",
+			"datasource": {
+				"type": "tempo",
+				"uid": "grafanacloud-traces"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && name=\"sveltekit.handle.root\" && span.sveltekit.is_data_request=false && span.http.route!=\"/healthz\" && span.http.route!=\"unknown\"} | count_over_time() by (span.http.route)",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "instant"
+				}
+			],
+			"transformations": [
+				{
+					"id": "reduce",
+					"options": {
+						"reducers": [
+							"lastNotNull"
+						],
+						"mode": "seriesToRows"
+					}
+				},
+				{
+					"id": "organize",
+					"options": {
+						"renameByName": {
+							"Field": "Page",
+							"Last *": "Renders"
+						}
+					}
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"custom": {
+						"align": "auto",
+						"filterable": true
+					},
+					"noValue": "–"
+				},
+				"overrides": []
+			},
+			"options": {
+				"showHeader": true,
+				"cellHeight": "sm",
+				"sortBy": [
+					{
+						"displayName": "Renders",
+						"desc": true
+					}
+				]
+			},
+			"timeFrom": "24h",
+			"id": 24,
+			"gridPos": {
+				"x": 0,
+				"y": 31,
+				"w": 12,
+				"h": 10
+			}
+		},
+		{
+			"type": "table",
+			"title": "Portfolios loaded",
+			"description": "Times each portfolio was loaded to render one of its pages. Click a portfolio to open its dashboard. Counted where the pages are rendered, so crawlers and link previews are included. Traces can only be counted over 25 hours at a time: this panel always shows the last 24 hours.",
+			"datasource": {
+				"type": "tempo",
+				"uid": "grafanacloud-traces"
+			},
+			"targets": [
+				{
+					"refId": "A",
+					"queryType": "traceql",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/domain/:name\" && span.http.response.status_code=200} | count_over_time() by (span.url.path)",
+					"limit": 50,
+					"tableType": "traces",
+					"metricsQueryType": "instant"
+				}
+			],
+			"transformations": [
+				{
+					"id": "reduce",
+					"options": {
+						"reducers": [
+							"lastNotNull"
+						],
+						"mode": "seriesToRows"
+					}
+				},
+				{
+					"id": "organize",
+					"options": {
+						"renameByName": {
+							"Field": "Portfolio",
+							"Last *": "Loads"
+						}
+					}
+				}
+			],
+			"fieldConfig": {
+				"defaults": {
+					"custom": {
+						"align": "auto",
+						"filterable": true
+					},
+					"noValue": "–"
+				},
+				"overrides": [
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "Portfolio"
+						},
+						"properties": [
+							{
+								"id": "mappings",
+								"value": [
+									{
+										"type": "regex",
+										"options": {
+											"pattern": "^/domain/(.*)$",
+											"result": {
+												"text": "$1",
+												"index": 0
+											}
+										}
+									}
+								]
+							},
+							{
+								"id": "links",
+								"value": [
+									{
+										"title": "Open this portfolio's dashboard",
+										"url": "/d/portfolio-detail?var-domain=${__value.text}&${stage:queryparam}"
+									}
+								]
+							}
+						]
+					}
+				]
+			},
+			"options": {
+				"showHeader": true,
+				"cellHeight": "sm",
+				"sortBy": [
+					{
+						"displayName": "Loads",
+						"desc": true
+					}
+				]
+			},
+			"timeFrom": "24h",
+			"id": 25,
+			"gridPos": {
+				"x": 12,
+				"y": 31,
+				"w": 12,
+				"h": 10
+			}
+		}
+	]
+}

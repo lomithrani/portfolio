@@ -12,6 +12,7 @@ import { describeResumeImport } from './services/resumeImport';
 import { describeJobImport } from './services/jobImport';
 import { describeCommute } from './services/commute';
 import { describeStepSuggestions } from './services/stepSuggestions';
+import { registerSiteMetrics } from './services/siteMetrics';
 
 export { app };
 export type { Portfolio } from './app';
@@ -53,6 +54,9 @@ logger.info(`Running at ${formatListenUrl(host, app.server!.port ?? env.PORT, !!
   stepSuggestions: describeStepSuggestions(env),
   travelTimes: describeCommute()
 });
+
+// The number of portfolios, accounts... as a metric (read at each export, only while metrics are on)
+registerSiteMetrics();
 
 // 'memory' log line at startup, then every MEMORY_LOG_INTERVAL_MS
 const stopMemoryDiagnostics = startMemoryDiagnostics(env.MEMORY_LOG_INTERVAL_MS);
