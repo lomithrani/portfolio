@@ -121,6 +121,5 @@ header then asks which space to use (SpaceChooser).
 	.google-btn :global(iframe) {
 		background: transparent !important;
 		border-radius: 50%;
-		color-scheme: auto;
 	}
 </style>

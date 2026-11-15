@@ -125,7 +125,7 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 			{ hidden: status === 'signing-in' || status === 'unavailable' || status === 'idle' }
 		]}
 	>
-		<div bind:this={buttonContainer} class="google-button flex min-h-11 items-center"></div>
+		<div bind:this={buttonContainer} class="flex min-h-11 items-center"></div>
 		{#if status === 'loading'}
 			<div
 				class="placeholder absolute inset-y-0 left-0 w-56 animate-pulse rounded-full motion-reduce:animate-none"
@@ -150,9 +150,3 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 		<p class="text-sm text-error-700-300" role="alert">{errorMessage}</p>
 	{/if}
 </div>
-
-<style>
-	.google-button :global(iframe) {
-		color-scheme: auto;
-	}
-</style>

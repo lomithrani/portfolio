@@ -36,6 +36,16 @@ body {
 }
 
 /*
+ * Google's sign-in frames (its button, its One Tap prompt) are light documents: on a dark page
+ * (`color-scheme: dark` on <html>) a frame of another scheme is painted on an opaque white canvas,
+ * a white box around the button. Declaring the frame light keeps it transparent; the button's own
+ * colours come from the `theme` given to renderButton
+ */
+iframe[src^='https://accounts.google.com/gsi/'] {
+	color-scheme: light;
+}
+
+/*
  * Links in running text of the legal pages, the consent notices and the account page: the theme's
  * `anchor` is primary-500 (3.4:1 on a light surface with the default theme, below AA for the small
  * text of a notice); primary-700 in light mode and primary-300 in dark mode, underlined
