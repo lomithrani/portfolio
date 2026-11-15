@@ -1,4 +1,4 @@
-import { Elysia } from 'elysia'
+import { Elysia, StatusMap } from 'elysia'
 import mongoose from 'mongoose'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
@@ -99,6 +99,13 @@ const hasNonJsonBody = (request: Request) => {
   return contentType.split(';')[0].trim().toLowerCase() !== 'application/json'
 }
 
+/** The status of a response as Elysia holds it: a number, or a status name ('Not Found') */
+export const responseStatus = (status: number | string | undefined): number => {
+  if (typeof status === 'number') return status
+  if (status === undefined) return 200
+  return (StatusMap as Record<string, number>)[status] ?? 0
+}
+
 // Request start times, keyed by request. Filled in onRequest, which (unlike
 // derive) also runs for unmatched routes, so 404s get a real duration too.
 const requestStarts = new WeakMap<Request, number>()
@@ -125,12 +132,13 @@ export const createApp = () =>
     .onRequest(({ request }) => {
       requestStarts.set(request, performance.now())
     })
-    .onAfterResponse(({ request, route }) => {
+    .onAfterResponse(({ request, route, set }) => {
       const start = requestStarts.get(request)
       // Matched route pattern only (e.g. /experiences/:id) — raw pathnames are
       // unbounded (scanner bots) and each unique value is a metric series kept
-      // in memory forever
-      const attrs = { method: request.method, route: route || 'unmatched' }
+      // in memory forever. The status tells a portfolio that was loaded from a
+      // scan for /domain/wp-login.php (docs/grafana)
+      const attrs = { method: request.method, route: route || 'unmatched', status: responseStatus(set.status) }
       httpRequestCounter.add(1, attrs)
       if (start !== undefined) httpRequestDuration.record(performance.now() - start, attrs)
     })

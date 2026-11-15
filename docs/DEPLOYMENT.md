@@ -696,6 +696,30 @@ with a free name) and tell its owner before deploying.
    **Admin, Appointments** shows the calendar as connected (or offers to connect it).
 5. **Rollback** if needed: the previous deployment's menu has **Rollback**.
 
+## Grafana dashboards
+
+With `OTEL_EXPORTER_OTLP_ENDPOINT` set, both services send traces, metrics and logs to Grafana
+Cloud. Three dashboards read them, in the **Portfolio** folder of the stack: an overview (what the
+site holds, visits and activity, pages and portfolios loaded), one portfolio (chosen by its address
+name) and the API's health. Their JSON, what each panel reads and their limits:
+[docs/grafana](grafana/README.md).
+
+The API feeds them with two metrics of its own, exported every 60 s:
+
+| Metric (Prometheus name)                                                              | Attributes                  | What                                                                                                                                              |
+| ------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `http.server.requests` (`http_server_requests_total`), `http.server.request.duration` | `method`, `route`, `status` | Every request answered: the matched route pattern (never the raw path) and the status of the answer                                                |
+| `portfolio.records` (`portfolio_records`)                                             | `kind`                      | The number of portfolios, accounts, recruiters, experiences, job postings... (`server/services/siteMetrics.ts`), read from MongoDB at most every 5 minutes |
+
+Both stages report to the same stack and are told apart by `OTEL_SERVICE_NAME`: the dashboards'
+**Stage** variable lists the names in use (`portfolio-api-production` and `portfolio-web-production`
+for production, the defaults `portfolio-server` and `portfolio-client` for staging). Changing a
+service's `OTEL_SERVICE_NAME` means changing that variable.
+
+The dashboards identify no visitor and the site has no view counter in the browser (the privacy
+policy says "no analytics"): what they show of a portfolio's audience is the number of times its
+pages were rendered, crawlers included, over the last day.
+
 ## Diagnosing memory growth
 
 If the API's memory keeps climbing on Railway, find the cause with service variables alone, no
@@ -737,7 +761,7 @@ the ones from the previous steps. Stop at the first step whose memory stays flat
 | Step | Add                          | What it switches off                                                                                   |
 | ---- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
 | 1    | nothing (deploy this version) | Baseline: watch the `memory` lines with telemetry fully on                                            |
-| 2    | `OTEL_METRICS_EXPORTER=none` | The metric reader and OTLP metric exporter: the export to Grafana every 60 s (while idle, the only other OTLP traffic is the `memory` log record every 10 min, until step 3). The HTTP request counter and duration histogram become no-ops |
+| 2    | `OTEL_METRICS_EXPORTER=none` | The metric reader and OTLP metric exporter: the export to Grafana every 60 s (while idle, the only other OTLP traffic is the `memory` log record every 10 min, until step 3). The HTTP request counter, the duration histogram and the record counts (`portfolio.records`, no MongoDB count runs) become no-ops |
 | 3    | `OTEL_LOGS_EXPORTER=none`    | The log record processor and OTLP log exporter. Logs still reach Railway's deploy logs                 |
 | 4    | `OTEL_TRACES_EXPORTER=none`  | The Elysia tracing plugin (no spans at all), the span processor and the OTLP trace exporter            |
 | 5    | `OTEL_SDK_DISABLED=true`     | The OpenTelemetry SDK itself (context manager, propagator, the empty logger provider): same as no endpoint |
