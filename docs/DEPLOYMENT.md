@@ -576,8 +576,9 @@ Work goes to `develop`: every pull request targets it (`develop` is the reposito
 branch) and is squash-merged. A release brings `develop` into `main`:
 
 1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship.
-2. Run the `Release` workflow: **Actions**, **Release**, **Run workflow** (branch `develop`), and
-   pick what the release brings since the last one ([semantic versioning](https://semver.org)):
+2. Run the `Release` workflow (after its one-time setup, below): **Actions**, **Release**, **Run
+   workflow** (branch `develop`), and pick what the release brings since the last one
+   ([semantic versioning](https://semver.org)):
    **patch** for fixes only (`v1.2.3` to `v1.2.4`), **minor** for new features (`v1.3.0`),
    **major** for a change that breaks what users or other services rely on (`v2.0.0`). Leave
    **Tag only** unticked.
@@ -589,21 +590,35 @@ commit, which deploys production. On that merge the workflow runs again and publ
 Release**: the tag `vX.Y.Z` on the merge commit, with notes generated from the pull requests merged
 since the previous release (the **Releases** page lists what each production deploy brought). To
 hold a release back, press **Disable auto-merge** on its pull request, or close it. A pull request
-from `develop` into `main` that is already open becomes the release: it is retitled, not doubled.
-What is merged is `develop` as it is when the checks pass: a pull request merged into `develop`
-in the meantime is part of the release, after the checks ran again.
+from `develop` into `main` that is already open becomes the release: it is retitled and its
+description replaced, not doubled. What is merged is `develop` as it is when the checks pass: a
+pull request merged into `develop` in the meantime is part of the release, after the checks ran
+again.
 
-One-time setup, without which the workflow stops with a message saying what is missing:
+A failing check does not end the release: its pull request stays open with auto-merge on, and is
+merged as soon as the checks pass, after a re-run or the next merge into `develop`. Fix `develop`,
+or close the pull request to give the release up. If the pull request is still open a few minutes
+after all its checks passed (auto-merge has been reported not to fire on some repositories
+protected by rulesets), merge it by hand with **Create a merge commit**: the release is published
+on that merge all the same.
+
+One-time setup, before the first run (without it the workflow stops with a message saying what is
+missing, and merges nothing):
 
 - **Settings**, **General**, **Pull Requests**: tick **Allow auto-merge**.
 - A token of a maintainer, as the repository secret **`RELEASE_TOKEN`** (**Settings**, **Secrets
-  and variables**, **Actions**): a fine-grained personal access token limited to this repository,
-  with **Contents**, **Pull requests** and **Workflows** set to *Read and write* (Workflows: a
-  release often carries changes to `.github/workflows`, which a token without it may not merge).
-  The workflow's own token cannot do this: what it opens and merges starts no other workflow, so
-  CI would wait for someone to approve it, and the merge would neither publish the release nor run
-  the CI on `main` that the production deploy waits for. Give the token an expiry date and renew
-  it then; it is used by this workflow only.
+  and variables**, **Actions**): a fine-grained personal access token (your account's
+  **Settings**, **Developer settings**, **Personal access tokens**, **Fine-grained tokens**,
+  **Generate new token**), with **Repository access** set to **Only select repositories** and
+  this repository, and under **Permissions** **Contents**, **Pull requests** and **Workflows** set
+  to *Read and write* (Workflows: a release often carries changes to `.github/workflows`, which a
+  token without it may not merge). The token merges as you, an admin whom the ruleset of `main`
+  lets merge a pull request whose checks have not passed: the workflow only ever asks for
+  auto-merge, which waits for them, and any workflow of the repository can read the secret, so
+  keep the token to this use. The workflow's own token cannot do this: the CI of a pull request
+  it opens waits for someone to approve it, and a merge made with it starts no workflow, so it
+  would neither publish the release nor run the CI on `main` that the production deploy waits
+  for. Give the token an expiry date and renew it then.
 
 A release can still be made by hand: open a pull request with base **`main`** and compare
 **`develop`**, titled `Release v1.2.0`, and when CI is green merge it with **Create a merge
