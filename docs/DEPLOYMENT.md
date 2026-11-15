@@ -1,21 +1,34 @@
 # Deploying to Railway
 
 The portfolio runs on [Railway](https://railway.com) as **two services built from this one
-repository**: the Elysia API (`server/`) and the SvelteKit web app (`client/`). Both deploy every
-push to the **`develop`** branch.
+repository**: the Elysia API (`server/`) and the SvelteKit web app (`client/`), deployed twice:
 
-### Live layout (verified 2026-11-01 with the Railway connector)
+- **Staging**: every push to **`develop`** (each merged pull request) deploys
+  `develop.portfolio.gentil.tech` and `develop.api.portfolio.gentil.tech`.
+- **Production**: every push to **`main`** deploys `portfolio.gentil.tech` and
+  `api.portfolio.gentil.tech`. `main` only receives `develop`, through a release pull request (see
+  [Releases](#releases)).
 
-Project **`personal-api`**, environment **`production`** (region `us-west2`):
+### Live layout (verified 2026-11-15 with the Railway connector)
 
-| Railway service          | Role                         | Branch    | Domains                                                                   |
-| ------------------------ | ---------------------------- | --------- | ------------------------------------------------------------------------- |
-| `portfolio`              | Web (SvelteKit)              | `develop` | `develop.portfolio.gentil.tech`, `portfolio-production-7dbf.up.railway.app` |
-| `portfolio api develop`  | API (Elysia)                 | `develop` | `develop.api.portfolio.gentil.tech`, `portfolio-develop-production.up.railway.app` |
-| `MongoDB`                | Database (`mongo:7`, volume `mongo data`) | — | private network only                                                  |
-| `portfolio api`          | Legacy API, never deployed in this environment | `main` | `api.portfolio.gentil.tech`                                    |
+Project **`personal-api`**, Railway environment **`production`** (region `us-west2`), which holds
+both stages:
 
-Both app services use Root Directory `/`. Until this change they built with the legacy
+| Railway service          | Stage      | Role                         | Branch    | Domains                                                                   |
+| ------------------------ | ---------- | ---------------------------- | --------- | ------------------------------------------------------------------------- |
+| `portfolio web`          | production | Web (SvelteKit)              | `main`    | `portfolio.gentil.tech`                                                   |
+| `portfolio api`          | production | API (Elysia)                 | `main`    | `api.portfolio.gentil.tech`, `server-production-1015.up.railway.app`      |
+| `portfolio`              | staging    | Web (SvelteKit)              | `develop` | `develop.portfolio.gentil.tech`, `portfolio-production-7dbf.up.railway.app` |
+| `portfolio api develop`  | staging    | API (Elysia)                 | `develop` | `develop.api.portfolio.gentil.tech`, `portfolio-develop-production.up.railway.app` |
+| `MongoDB`                | both       | Database (`mongo:7`, volume `mongo data`) | — | private network only                                                  |
+
+The two stages share the `MongoDB` service but not a database: production's `MONGO_URL` points at
+the database that holds the real data, staging's at a database of its own (`portfolio-develop`),
+so code on `develop` never touches production data. Each stage has its own `JWT_SECRET` (a staging
+session is not valid in production) and its own `ALLOWED_DOMAINS` and `PUBLIC_PORTFOLIO_API_URL`.
+Both web origins must be **Authorized JavaScript origins** of the Google OAuth client.
+
+All four app services use Root Directory `/`. Until this change they built with the legacy
 **Nixpacks** builder and had no healthcheck. The web and API custom domains share the registrable
 domain `gentil.tech`, so the `SameSite=Strict` auth cookie works (see
 [Custom domains are required for login](#custom-domains-are-required-for-login)). Production
@@ -50,7 +63,7 @@ on the first deployment.
 
 | Setting            | API service                                           | Web service                                           |
 | ------------------ | ----------------------------------------------------- | ----------------------------------------------------- |
-| Source             | `lomithrani/portfolio`, branch `develop`              | `lomithrani/portfolio`, branch `develop`              |
+| Source             | `lomithrani/portfolio`, branch `main` (production) or `develop` (staging) | same                         |
 | Root Directory     | `/`                                                   | `/`                                                   |
 | Builder            | Railpack                                              | Railpack                                              |
 | Build Command      | _(empty)_                                             | `bun run build:client`                                |
@@ -259,7 +272,7 @@ code with the OAuth client's secret, so the feature is **off until `GOOGLE_CLIEN
 the API boots without it, the tab says Google Calendar is not configured, and `/hire` offers no
 slots.
 
-To enable it on Railway (service `portfolio api develop`, and any other API service):
+To enable it on Railway (services `portfolio api` and `portfolio api develop`):
 
 1. In the Google Cloud console, project of the sign-in OAuth client (the `GOOGLE_CLIENT_ID` /
    `PUBLIC_GOOGLE_CLIENT_ID` client, `DEFAULT_GOOGLE_CLIENT_ID` from `common/` unless overridden):
@@ -343,7 +356,7 @@ the drafts the owner accepts are saved (through `POST /experiences`). Every impo
 the operator's Anthropic API key, so the feature is **off until `ANTHROPIC_API_KEY` is set**: the
 API boots without it, `GET /experiences/import` answers `enabled: false` and `POST` answers 404.
 
-To enable it on Railway (service `portfolio api develop`, and any other API service):
+To enable it on Railway (services `portfolio api` and `portfolio api develop`):
 
 1. In the [Claude Console](https://platform.claude.com), **Settings, Workspaces**: create a
    workspace for this site (e.g. `portfolio`) and give it a **monthly spend limit** (e.g. $5).
@@ -554,20 +567,54 @@ exposure.
 
 ### Branch
 
-Both services deploy from **`develop`** (service **Settings**, **Source**, branch). `main` is an
-old branch, far behind `develop`; CI still runs on it, but nothing deploys from it.
+The production services deploy from **`main`**, the staging services from **`develop`** (service
+**Settings**, **Source**, branch). CI runs on pushes and pull requests to both.
+
+### Releases
+
+Work goes to `develop`: every pull request targets it (`develop` is the repository's default
+branch) and is squash-merged. A release brings `develop` into `main`:
+
+1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship.
+2. Open a pull request with base **`main`** and compare **`develop`**, titled `Release: ...`.
+3. When CI is green, merge it with **Create a merge commit** (never squash or rebase: `main` must
+   contain `develop`'s commits, or the next release conflicts). The merge deploys production.
+
+The `Release guard` workflow (`.github/workflows/release-guard.yml`) fails any pull request into
+`main` whose source branch is not `develop`. A fix needed in production goes through `develop`
+first, then a release. `main` never gets commits of its own, so `develop` does not need `main`
+merged back after a release.
+
+### Branch protection
+
+Both branches are protected by repository rulesets, kept in `.github/rulesets/` (`develop.json`,
+`main.json`). They are applied on GitHub, not read from the repository: after changing one, import
+it again (**Settings**, **Rules**, **Rulesets**, **New ruleset**, **Import a ruleset**, and delete
+the old one). Each ruleset:
+
+- forbids deleting the branch and force-pushing to it;
+- requires a pull request (no approval: the repository has one maintainer), merged by squash into
+  `develop`, by merge commit into `main`;
+- requires the CI jobs to pass (`Lint, type-check, build`, both `Server and client unit tests`,
+  `Playwright end-to-end tests`), and on `main` also `Only develop merges into main`;
+- lets a repository admin bypass it only when merging a pull request (an emergency merge with a
+  failing check), never by pushing directly.
+
+The repository's **General** settings must allow both merge commits and squash merging. When a CI
+job is renamed, update the required checks in both files and import them again: a required check
+that no longer runs blocks every merge.
 
 ### Wait for CI
 
 With **Wait for CI** on (a toggle in the service **Settings**), a new deployment waits in
 `WAITING` until every GitHub Actions workflow run on the commit has finished, and is skipped if
 one fails. The CI workflow (`.github/workflows/main.yml`) qualifies: it runs on `push` to
-`develop`.
+`develop` and `main`.
 
-Enable it on both services **once CI is green on `develop`**: while any job fails, every deploy
+Enable it on the services of a stage **once CI is green on its branch**: while any job fails, every deploy
 would be skipped. A cancelled run also blocks the deployment of its commit, unless another
 workflow on the same commit succeeded. CI therefore only cancels superseded runs of pull
-requests: each push run has a concurrency group of its own, so pushes to `develop` neither wait
+requests: each push run has a concurrency group of its own, so pushes to a branch neither wait
 for each other nor get cancelled while pending (GitHub cancels a pending run when a newer one
 joins its group, even with `cancel-in-progress: false`). Runs not finished after two hours skip
 the deploy.
@@ -755,13 +802,14 @@ service) is planned as a **deletion**.
    import { defineRailway, github, preserve, project, service } from 'railway/iac';
 
    const repo = 'lomithrani/portfolio';
-   const branch = 'develop';
+   // One file per stage, or two calls with 'main' (production) and 'develop' (staging)
+   const branch = 'main';
    // Deploy a service only when its own code, the shared package or the workspace manifests change
    const watchPatterns = (dir: string) => [`/${dir}/**`, '/common/**', '/package.json', '/bun.lock'];
 
    export default defineRailway(() => {
    	const api = service('<api service name>', {
-   		// checkSuites = "Wait for CI": enable only once CI is green on develop
+   		// checkSuites = "Wait for CI": enable only once CI is green on this branch
    		source: github(repo, { branch, checkSuites: true }),
    		build: { builder: 'RAILPACK', watchPatterns: watchPatterns('server') },
    		start: 'bun run start:server',

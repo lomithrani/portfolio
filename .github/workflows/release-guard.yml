@@ -1,0 +1,30 @@
+name: Release guard
+
+# main is production: it only receives develop, through a release PR (see "Releases" in
+# docs/DEPLOYMENT.md). This check fails any other pull request into main. It is a required status
+# check of the main ruleset (.github/rulesets/main.json), so such a PR cannot be merged.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  develop-only:
+    name: Only develop merges into main
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check the source branch
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REF" = "develop" ] && [ "$HEAD_REPO" = "$BASE_REPO" ]; then
+            echo "Release PR from develop: allowed."
+            exit 0
+          fi
+          echo "::error::Only develop can be merged into main. Open this PR against develop (Edit, next to the title, to change its base); it reaches main with the next release."
+          exit 1
