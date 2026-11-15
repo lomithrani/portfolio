@@ -38,7 +38,11 @@
 
 <div class="h-full flex flex-col">
 	<!-- Header renders the page's <header> (AppBar) -->
-	<Header headerTitle={data.domain.headerTitle} headerSubtitle={data.domain.headerSubtitle} />
+	<!-- A portfolio whose owner set no title is headed by its address name ('jane.doe') -->
+	<Header
+		headerTitle={data.domain.headerTitle?.trim() || data.domain.name}
+		headerSubtitle={data.domain.headerSubtitle}
+	/>
 	<div class="relative flex-1 overflow-hidden">
 		<aside>
 			<LeftBar domain={data.domain} />

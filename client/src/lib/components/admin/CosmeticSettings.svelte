@@ -35,6 +35,8 @@
 	];
 
 	let domain = $derived(page.data.domain);
+	const uid = $props.id();
+	const titleHintId = `${uid}-title-hint`;
 
 	let theme = $state(page.data.domain?.theme ?? 'wintry');
 	let headerTitle = $state(page.data.domain?.headerTitle ?? '');
@@ -64,8 +66,9 @@
 		const { error } = await portfolioApi.domain({ name: domain.name }).put(
 			{
 				theme,
-				headerTitle: headerTitle || undefined,
-				headerSubtitle: headerSubtitle || undefined,
+				// Sent empty to clear them: the header then shows the address name, without a subtitle
+				headerTitle: headerTitle.trim(),
+				headerSubtitle: headerSubtitle.trim(),
 				defaultDarkMode
 			},
 			{ fetch: { credentials: 'include' } }
@@ -106,7 +109,14 @@
 		<h2 class="h3">{m.header}</h2>
 		<label class="label">
 			<span>{m.title}</span>
-			<input class="input" type="text" placeholder={m.titlePlaceholder} bind:value={headerTitle} />
+			<input
+				class="input"
+				type="text"
+				placeholder={domain.name}
+				aria-describedby={titleHintId}
+				bind:value={headerTitle}
+			/>
+			<span id={titleHintId} class="block text-xs opacity-75">{m.titleHint}</span>
 		</label>
 		<label class="label">
 			<span>{m.subtitle}</span>

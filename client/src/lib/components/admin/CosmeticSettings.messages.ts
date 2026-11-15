@@ -14,7 +14,10 @@ export const m = defineMessages({
 	},
 	header: { en: 'Header', fr: 'En-tête' },
 	title: { en: 'Title', fr: 'Titre' },
-	titlePlaceholder: { en: 'e.g. John Doe', fr: 'ex. : Jeanne Dupont' },
+	titleHint: {
+		en: "Left empty, your header shows the name in your portfolio's address.",
+		fr: "Laissé vide, l'en-tête affiche le nom de l'adresse de votre portfolio."
+	},
 	subtitle: { en: 'Subtitle', fr: 'Sous-titre' },
 	subtitlePlaceholder: {
 		en: 'e.g. Full Stack Developer & Problem Solver',
