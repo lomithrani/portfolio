@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { onMount, tick, untrack } from 'svelte';
+	import { getLocale } from 'portfolio-common';
 	import { Briefcase, DocumentArrowUp, Plus } from 'svelte-heros-v2';
 	import Experience from '#components/Experience.svelte';
 	import ExperienceEditor from '#components/experience-editor/ExperienceEditor.svelte';
@@ -39,6 +40,9 @@
 	import { m } from './page.messages.ts';
 
 	let { data }: { data: PageData } = $props();
+
+	/** Hides the end of « Ajouter une expérience » on phones, where the toolbar's row is full */
+	const frenchPhone = getLocale() === 'fr' ? 'max-sm:sr-only' : undefined;
 
 	// Admin-only UI appears once the session has been checked with the API (in the browser,
 	// after hydration): never for a stale local session, and the SSR markup stays the same
@@ -530,7 +534,13 @@
 							bind:this={addButton}
 						>
 							<Plus size="18" aria-hidden="true" />
-							{m.addExperience}
+							<!-- French phones: « Ajouter » alone, so the two buttons keep sharing a row (the
+								rest of its name is then for screen readers) -->
+							<span
+								><Rich text={m.addExperienceShort}
+									>{#snippet hidden(text)}<span class={frenchPhone}>{text}</span>{/snippet}</Rich
+								></span
+							>
 						</button>
 					</div>
 				</div>

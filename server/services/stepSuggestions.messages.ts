@@ -14,8 +14,8 @@ export const m = defineMessages({
     fr: "Votre suggestion n'a pas pu être envoyée pour le moment, réessayez plus tard"
   },
   ownersOnly: {
-    en: 'Only the owner of a portfolio can suggest a step',
-    fr: "Seul le propriétaire d'un portfolio peut suggérer une étape"
+    en: 'Claim your portfolio to suggest a step',
+    fr: 'Réservez votre portfolio pour suggérer une étape'
   },
   ownerLimit: {
     en: (limit: number) => `You can send ${limit} suggestions a day: try again tomorrow`,

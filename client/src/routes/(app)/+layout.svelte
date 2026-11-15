@@ -5,6 +5,7 @@
 	import LegalLinks from '#components/legal/LegalLinks.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { isCurrentSection, recordSpaceShown } from '#services/account.ts';
 	import { sessionCheckedStore } from '#services/stores/index.ts';
 	import { untrack, type Snippet } from 'svelte';
@@ -13,6 +14,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import LanguageSwitch from '#lib/i18n/LanguageSwitch.svelte';
+	import LocaleLinks from '#lib/i18n/LocaleLinks.svelte';
 	import { m } from './layout.messages.ts';
 
 	// Pages that belong to no portfolio: the recruiter space (/recruiter) and the public job pages
@@ -42,6 +44,8 @@
 
 	let header = $derived(inRecruiterSpace ? m.recruiter : m.jobs);
 </script>
+
+<LocaleLinks />
 
 <div class="h-full flex flex-col">
 	<Header headerTitle={header.title} headerSubtitle={header.subtitle} homeLink />
@@ -78,7 +82,7 @@
 			{#if toast.action}
 				<Toast.ActionTrigger>{toast.action.label}</Toast.ActionTrigger>
 			{/if}
-			<Toast.CloseTrigger />
+			<Toast.CloseTrigger aria-label={common.dismissNotification} />
 		</Toast>
 	{/snippet}
 </Toast.Group>

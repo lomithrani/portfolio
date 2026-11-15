@@ -33,7 +33,7 @@ export const m = defineMessages({
 			},
 			tooDetailed: {
 				en: 'This image is too detailed to fit. Try a simpler one.',
-				fr: 'Cette image est trop détaillée pour tenir. Essayez-en une plus simple.'
+				fr: 'Cette image est trop détaillée pour servir de logo. Essayez-en une plus simple.'
 			},
 			unreadable: {
 				en: 'This image could not be read. Try another file.',

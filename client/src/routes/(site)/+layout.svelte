@@ -4,6 +4,7 @@
 	import LegalFooter from '#components/legal/LegalFooter.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { isCurrentSection } from '#services/account.ts';
 	import type { Snippet } from 'svelte';
 	import { browser } from '$app/env';
@@ -61,7 +62,7 @@
 			{#if toast.action}
 				<Toast.ActionTrigger>{toast.action.label}</Toast.ActionTrigger>
 			{/if}
-			<Toast.CloseTrigger />
+			<Toast.CloseTrigger aria-label={common.dismissNotification} />
 		</Toast>
 	{/snippet}
 </Toast.Group>

@@ -72,13 +72,13 @@ export const m = defineMessages({
 		count: { en: 'Count:', fr: 'Nombre :' },
 		/** No applicant, on an open posting */
 		noneOpen: {
-			en: 'No applicants yet. Candidates apply from the public page with their portfolio. You can also add a portfolio you found.',
-			fr: 'Aucun candidat pour le moment. Les candidats postulent depuis la page publique avec leur portfolio. Vous pouvez aussi ajouter un portfolio que vous avez trouvé.'
+			en: 'No applicants yet. Candidates apply from the public page with their portfolio. You can also add a candidate you found.',
+			fr: 'Aucun candidat pour le moment. Les candidats postulent depuis la page publique avec leur portfolio. Vous pouvez aussi ajouter un candidat que vous avez trouvé.'
 		},
 		/** No applicant, on a posting that takes no applications */
 		noneNotOpen: {
-			en: 'No applicants yet. Candidates can apply once the job description is Open. You can also add a portfolio you found.',
-			fr: "Aucun candidat pour le moment. Les candidats pourront postuler une fois l'offre d'emploi au statut « Ouverte ». Vous pouvez aussi ajouter un portfolio que vous avez trouvé."
+			en: 'No applicants yet. Candidates can apply once the job description is Open. You can also add a candidate you found.',
+			fr: "Aucun candidat pour le moment. Les candidats pourront postuler une fois l'offre d'emploi au statut « Ouverte ». Vous pouvez aussi ajouter un candidat que vous avez trouvé."
 		},
 		/** Toasts (`name`: how the applicant is listed) */
 		added: {

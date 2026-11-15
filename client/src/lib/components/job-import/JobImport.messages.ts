@@ -6,7 +6,7 @@ export const m = defineMessages({
 	title: { en: 'Import a job description', fr: "Importer une offre d'emploi" },
 	intro: {
 		en: 'Turn a PDF job description into a draft you complete in the editor.',
-		fr: "Transformez une offre d'emploi en PDF en un brouillon à compléter dans l'éditeur."
+		fr: "Transformez une offre d'emploi au format PDF en un brouillon à compléter dans l'éditeur."
 	},
 	/** In place of the file's name while it is read, should it have none */
 	yourPdf: { en: 'Your PDF', fr: 'Votre PDF' },
@@ -69,6 +69,8 @@ export const m = defineMessages({
 	reading: { en: 'Reading the job description…', fr: "Lecture de l'offre d'emploi…" },
 	/** Name of the progress bar */
 	readingLabel: { en: 'Reading the job description', fr: "Lecture de l'offre d'emploi" },
+	/** Value text of the progress bar while it has no value (the library's is English) */
+	readingValue: { en: 'loading...', fr: 'chargement…' },
 	finding: {
 		en: 'Claude is finding the title, contract, working time, pay and requirements.',
 		fr: "Claude repère l'intitulé, le contrat, le temps de travail, la rémunération et le profil recherché."

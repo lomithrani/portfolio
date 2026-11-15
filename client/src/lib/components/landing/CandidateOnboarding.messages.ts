@@ -33,7 +33,7 @@ export const m = defineMessages({
 			available: { en: 'Available', fr: 'Disponible' },
 			taken: { en: 'Taken', fr: 'Déjà prise' },
 			invalid: { en: 'Not valid', fr: 'Non valide' },
-			reserved: { en: 'Reserved', fr: 'Réservée' },
+			reserved: { en: 'Reserved', fr: 'Indisponible' },
 			notChecked: { en: 'Not checked', fr: 'Non vérifiée' }
 		},
 		/** What a screen reader hears once the address was checked: the address, then its pill */
@@ -60,14 +60,14 @@ export const m = defineMessages({
 		},
 		signedIn: { en: 'Signed in.', fr: 'Connecté.' },
 		returning: {
-			en: 'Already have a portfolio? Sign in the same way: you go straight to it.',
-			fr: 'Vous avez déjà un portfolio ? Connectez-vous de la même façon : vous y arrivez directement.'
+			en: 'Already on Portfolio? Sign in the same way: you go straight to your portfolio.',
+			fr: 'Déjà sur Portfolio ? Connectez-vous de la même façon : vous arrivez directement sur votre portfolio.'
 		},
 		tickToSignIn: { en: 'Tick the box to sign in.', fr: 'Cochez la case pour vous connecter.' },
 		tickToContinue: { en: 'Tick the box to continue', fr: 'Cochez la case pour continuer' },
 		googleUnavailable: {
 			en: 'Google sign-in could not load. Check your connection (or allow accounts.google.com if a blocker is on), then reload the page.',
-			fr: "La connexion avec Google n'a pas pu se charger. Vérifiez votre connexion (ou autorisez accounts.google.com si un bloqueur est actif), puis rechargez la page."
+			fr: "La connexion avec Google n'a pas pu se charger. Vérifiez votre connexion internet (ou autorisez accounts.google.com si un bloqueur est actif), puis rechargez la page."
 		},
 		dataKept: {
 			en: 'From your Google account we keep its id and your email address, nothing else.',
@@ -103,8 +103,8 @@ export const m = defineMessages({
 		},
 		submit: { en: 'Claim this address', fr: 'Réserver cette adresse' },
 		onePerAccount: {
-			en: 'One portfolio per account. Its address stays yours until you delete your account.',
-			fr: 'Un portfolio par compte. Son adresse reste la vôtre tant que vous ne supprimez pas votre compte.'
+			en: 'One address per account. It stays yours until you delete your account.',
+			fr: 'Une seule adresse par compte. Elle reste la vôtre tant que vous ne supprimez pas votre compte.'
 		},
 		/** Under the toast that says the portfolio was claimed */
 		claimed: {

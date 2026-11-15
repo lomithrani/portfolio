@@ -95,11 +95,11 @@ export const m = defineMessages({
 		},
 		filled: {
 			en: 'Public, marked as filled: no more applications.',
-			fr: 'Publique, marquée comme pourvue : plus de candidatures.'
+			fr: "Publique, marquée comme pourvue : elle n'accepte plus de candidatures."
 		},
 		closed: {
 			en: 'Public, marked as closed: no more applications.',
-			fr: 'Publique, marquée comme fermée : plus de candidatures.'
+			fr: "Publique, marquée comme fermée : elle n'accepte plus de candidatures."
 		}
 	},
 

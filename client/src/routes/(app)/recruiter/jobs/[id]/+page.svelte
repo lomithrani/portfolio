@@ -424,7 +424,7 @@
 									class="btn btn-sm preset-tonal min-h-9 flex-1"
 								>
 									<ArrowTopRightOnSquare size="16" aria-hidden="true" />
-									{m.publicPage.open}<span class="sr-only"> {m.publicPage.openSuffix}</span>
+									{m.publicPage.open}<span class="sr-only">{` ${m.publicPage.openSuffix}`}</span>
 								</a>
 							</div>
 							<p class="sr-only" aria-live="polite">{copied ? m.publicPage.linkCopied : ''}</p>

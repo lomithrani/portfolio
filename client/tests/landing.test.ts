@@ -110,7 +110,7 @@ test.describe('landing page, signed out', () => {
 		const response = await gotoHydrated(page, '/');
 
 		expect(response?.status()).toBe(200);
-		await expect(page).toHaveTitle('The portfolio that screens jobs for you | Portfolio');
+		await expect(page).toHaveTitle('Your portfolio screens jobs for you | Portfolio');
 		await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
 			'content',
 			/\/og-image\.png$/
@@ -293,7 +293,7 @@ test.describe('landing page, signed out', () => {
 		await page.emulateMedia({ reducedMotion: 'reduce' });
 		await gotoHydrated(page, '/');
 
-		const demo = page.getByLabel(/^Recording: the experiences page/);
+		const demo = page.getByLabel(/^Recording: an experiences page/);
 		const figure = page.locator('[data-demo]', { has: demo });
 		await demo.scrollIntoViewIfNeeded();
 		await expect(figure.getByRole('button', { name: 'Play the demo' })).toBeVisible();
@@ -406,7 +406,7 @@ test.describe('landing page, candidate steps', () => {
 		await gotoHydrated(page, '/');
 		// A returning owner is told this is also how to sign back in
 		await expect(page.getByTestId('returning-owner')).toHaveText(
-			'Already have a portfolio? Sign in the same way: you go straight to it.'
+			'Already on Portfolio? Sign in the same way: you go straight to your portfolio.'
 		);
 		await card(page)
 			.getByRole('checkbox', { name: /at least 16 years old/ })
@@ -441,7 +441,7 @@ test.describe('landing page, candidate steps', () => {
 		await addressField(page).fill(name);
 		await card(page).getByRole('button', { name: 'Claim this address' }).click();
 		await expect(
-			card(page).getByText('Confirm your age and accept the terms of use to create a portfolio.')
+			card(page).getByText('Confirm your age and accept the terms of use to create your portfolio.')
 		).toBeVisible();
 		expect(claims).toHaveLength(0);
 

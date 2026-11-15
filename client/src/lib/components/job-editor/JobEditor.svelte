@@ -631,6 +631,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								<li>{warning}</li>
 							{/each}
 						</ul>
+					{:else if initialImport.warningsHidden}
+						<p>{m.warningsOtherLanguage}</p>
 					{:else}
 						<p>{m.nothingLeftOut}</p>
 					{/if}
@@ -888,7 +890,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						<SegmentedControl.Indicator />
 						{#each WORK_MODES as value (value)}
 							<SegmentedControl.Item {value} class="min-h-10 px-2">
-								<SegmentedControl.ItemText>{WORK_MODE_LABELS[value]}</SegmentedControl.ItemText>
+								<!-- May take two lines: « Télétravail complet » at 390 px -->
+								<SegmentedControl.ItemText class="text-center whitespace-normal">
+									{WORK_MODE_LABELS[value]}
+								</SegmentedControl.ItemText>
 								<SegmentedControl.ItemHiddenInput />
 							</SegmentedControl.Item>
 						{/each}

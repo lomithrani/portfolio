@@ -83,7 +83,7 @@ export const m = defineMessages({
 		en: (name: string) => `Restored “${name}”.`,
 		fr: (name: string) => `« ${name} » rétabli.`
 	},
-	undo: { en: 'Undo', fr: 'Annuler' },
+	undo: { en: 'Undo', fr: 'Rétablir' },
 	dismiss: { en: 'Dismiss', fr: 'Masquer' },
 	confirm: {
 		close: { en: 'Discard your changes?', fr: 'Abandonner vos modifications ?' },
@@ -120,7 +120,7 @@ export const m = defineMessages({
 			fr: "Cette expérience n'existe plus : elle a peut-être été supprimée dans un autre onglet."
 		},
 		noPortfolio: {
-			en: 'Claim a portfolio before adding experiences.',
+			en: 'Claim your portfolio before adding experiences.',
 			fr: "Réservez l'adresse de votre portfolio avant d'ajouter des expériences."
 		},
 		tooLarge: {

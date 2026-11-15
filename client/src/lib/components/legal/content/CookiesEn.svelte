@@ -68,8 +68,9 @@ French loi Informatique et Libertés art. 82), how to clear them.
 					Remembers the language you chose (<code>en</code> or <code>fr</code>, nothing else), so
 					the pages open in it. Set only when you choose a language, with the language switch or a
 					link that asks for one (<code>?lang=fr</code>); until then the pages follow your browser's
-					language and no cookie is set. It cannot be read by scripts on the page (HttpOnly).
-					Strictly necessary for a setting you ask for.
+					language and no cookie is set. A link from elsewhere never replaces the language you
+					chose. It cannot be read by scripts on the page (HttpOnly). Strictly necessary for a
+					setting you ask for.
 				</td>
 				<td>{LANGUAGE_COOKIE_DAYS} days, renewed each time you choose</td>
 			</tr>

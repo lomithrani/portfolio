@@ -7,7 +7,8 @@ import {
 	SENIORITY_LEVELS,
 	TRAVEL_FREQUENCIES,
 	WORKING_TIME_ARRANGEMENTS,
-	WORK_MODES
+	WORK_MODES,
+	getLocale
 } from 'portfolio-common';
 import {
 	emptyJobForm,
@@ -304,6 +305,11 @@ export type ImportedJobDraft = {
 	draft: JobPostingLike;
 	/** What the import left out, changed or could not find: shown above the form */
 	warnings: string[];
+	/**
+	 * Set when it is read back: the warnings are the API's sentences, in the language the page had
+	 * at the import; kept from another language, they are left out and the editor says so
+	 */
+	warningsHidden?: true;
 	/** Name of the imported PDF */
 	fileName: string;
 };
@@ -321,7 +327,12 @@ export function saveImportedDraft(
 	storage: DraftStorage | undefined = browserStorage()
 ): void {
 	remove(importEditsStorageKey(userId), storage);
-	write(importedDraftStorageKey(userId), imported, storage);
+	const { draft, warnings, fileName } = imported;
+	write(
+		importedDraftStorageKey(userId),
+		{ draft, warnings, fileName, locale: getLocale() },
+		storage
+	);
 }
 
 /** The import kept for this user; undefined when there is none (or it cannot be read) */
@@ -332,11 +343,18 @@ export function loadImportedDraft(
 	const stored = read(importedDraftStorageKey(userId), storage);
 	if (!isRecord(stored) || !isRecord(stored.draft)) return undefined;
 	if (!importedForm(stored.draft as JobPostingLike)) return undefined;
-	const warnings = Array.isArray(stored.warnings)
+	const kept = Array.isArray(stored.warnings)
 		? stored.warnings.filter((warning): warning is string => typeof warning === 'string')
 		: [];
+	// An import kept before languages existed is in English
+	const sameLanguage = (typeof stored.locale === 'string' ? stored.locale : 'en') === getLocale();
 	const fileName = typeof stored.fileName === 'string' ? stored.fileName : '';
-	return { draft: stored.draft as JobPostingLike, warnings, fileName };
+	return {
+		draft: stored.draft as JobPostingLike,
+		warnings: sameLanguage ? kept : [],
+		fileName,
+		...(!sameLanguage && kept.length > 0 ? { warningsHidden: true as const } : {})
+	};
 }
 
 /** Removes the import kept for this user, and the changes made to it */

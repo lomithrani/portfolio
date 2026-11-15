@@ -128,7 +128,7 @@ and the reason is said.
 			}}
 		>
 			<Plus size="18" aria-hidden="true" />
-			{common.add}<span class="sr-only"> {names.add}</span>
+			{common.add}<span class="sr-only">{` ${names.add}`}</span>
 		</button>
 	</div>
 	{#if problem}

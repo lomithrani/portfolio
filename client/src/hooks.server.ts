@@ -28,8 +28,14 @@ export const handle: Handle = ({ event, resolve }) => {
 		acceptLanguage: event.request.headers.get('accept-language')
 	});
 	// Only a language someone asked for is saved (the language switch is a link with `?lang=`):
-	// a visitor who never chose keeps following their browser, with no cookie
-	if (asked && saved !== asked) {
+	// a visitor who never chose keeps following their browser, with no cookie. Each choice renews
+	// it for a year, as the cookies page says. A link opened from elsewhere (a shared address, a
+	// search result) is rendered in the language it asks for, and saved for a visitor who had
+	// not chosen, but never replaces a choice: only this site's own switch, a same-origin
+	// navigation, does (a browser that sends no Sec-Fetch-Site is taken at its word)
+	const fetchSite = event.request.headers.get('sec-fetch-site');
+	const fromThisSite = fetchSite === null || fetchSite === 'same-origin';
+	if (asked && (fromThisSite || !parseLocale(saved))) {
 		event.cookies.set(LOCALE_COOKIE, asked, {
 			path: '/',
 			maxAge: LOCALE_COOKIE_MAX_AGE,

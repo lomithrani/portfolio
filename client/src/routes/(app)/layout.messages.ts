@@ -5,8 +5,8 @@ export const m = defineMessages({
 	recruiter: {
 		title: { en: 'Recruiter space', fr: 'Espace recruteur' },
 		subtitle: {
-			en: 'Your job descriptions and the portfolios that apply',
-			fr: "Vos offres d'emploi et les portfolios qui postulent"
+			en: 'Your job descriptions and the candidates who apply',
+			fr: "Vos offres d'emploi et les candidats qui postulent"
 		}
 	},
 	jobs: {

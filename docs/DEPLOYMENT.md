@@ -484,6 +484,12 @@ until `COMMUTE_TIMES=true`**: `GET /perfect-job` then answers `commute: { enable
 admin tab does not let the criterion be switched on, and a commute already saved does not count
 in a job's score.
 
+The landing page, its share images and the signed-out recruiter page present the commute as one of
+the criteria a job is scored against (`client/src/routes/(site)/page.messages.ts`: the
+description, the hero's lead, the first "Calls you can stop taking" card;
+`client/scripts/og-image/render.mjs`; `RecruiterLanding.messages.ts`). Run the production API with
+`COMMUTE_TIMES=true`, or take those mentions out.
+
 | Service | Used for | Key | What it receives |
 | --- | --- | --- | --- |
 | Géoplateforme, IGN (`data.geopf.fr`) | Finding addresses; the way by car and on foot (the time by bike is estimated from the distance on foot, at 15 km/h) | none | The owner's address as typed, the address of a job posting, and pairs of points |
@@ -623,7 +629,7 @@ with a free name) and tell its owner before deploying.
    curl -i https://api.example.com/health      # 200 OK
    curl -i https://example.com/healthz         # 200 ok
    curl -s -o /dev/null -w '%{http_code}\n' https://example.com/   # 200 (the landing page, no redirect)
-   curl -s https://example.com/ | grep -o '<title>[^<]*</title>'    # <title>Your portfolio, your way | Portfolio</title>
+   curl -s https://example.com/ | grep -o '<title>[^<]*</title>'    # <title>Your portfolio screens jobs for you | Portfolio</title>
    curl -s https://example.com/legal | grep -c 'Publisher details are not configured yet'   # 0 once LEGAL_* are set
    curl -s https://api.example.com/domain/louis.gentil/availability   # {"name":"louis.gentil","available":false,"reason":"taken"}
    curl -si -H 'Origin: https://example.com' https://api.example.com/domain/louis.gentil \

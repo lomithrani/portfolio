@@ -19,7 +19,9 @@ page hydrates and without JavaScript. One per page, like the light/dark switch.
 
 	const current = getLocale();
 	const other = LOCALES.find((locale) => locale !== current) ?? current;
-	let href = $derived(localeHref(page.url, other));
+	// page.url is the last real navigation's: a shallow one (the experiences page's filters and
+	// view, kept in the URL with replaceState) only shows in page.shallow
+	let href = $derived(localeHref(page.shallow?.url ?? page.url, other));
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- this page's own URL, with ?lang= -->

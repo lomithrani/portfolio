@@ -60,7 +60,12 @@ export const m = defineMessages({
     travel: { en: 'travel frequency', fr: 'fréquence de déplacement' }
   },
 
-  // `label`: one of the fields above; `quoted`: what the file gave, in quotation marks
+  /** What the file gave, in the quotation marks of the language */
+  quoted: {
+    en: (line: string) => JSON.stringify(line),
+    fr: (line: string) => `« ${line} »`
+  },
+  // `label`: one of the fields above; `quoted`: what the file gave, in quotation marks (above)
   shortened: {
     en: (label: string, max: number) => `Shortened the ${label} to ${max} characters`,
     fr: (label: string, max: number) => `${capital(label)} : texte raccourci à ${max} caractères`
@@ -152,6 +157,6 @@ export const m = defineMessages({
   /** `fields`: the fields above that POST /jobs requires, separated by commas */
   missing: {
     en: (fields: string) => `Not found in this file, needed to save the posting: ${fields}`,
-    fr: (fields: string) => `Introuvable dans ce fichier et nécessaire pour enregistrer l'offre : ${fields}`
+    fr: (fields: string) => `Il manque dans ce fichier, pour enregistrer l'offre : ${fields}`
   }
 })

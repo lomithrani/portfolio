@@ -8,7 +8,7 @@ export const m = defineMessages({
 	description: {
 		claim: {
 			en: 'Choose the address of your portfolio. Each account owns one.',
-			fr: "Choisissez l'adresse de votre portfolio. Un seul portfolio par compte."
+			fr: "Choisissez l'adresse de votre portfolio. Une seule adresse par compte."
 		},
 		choose: {
 			en: 'You can switch spaces at any time from your account menu.',
@@ -22,15 +22,15 @@ export const m = defineMessages({
 			fr: (domain: string) => `Accédez à votre portfolio ${domain}.`
 		},
 		claimPortfolio: {
-			en: 'Claim a portfolio to show your experience and apply to job descriptions.',
-			fr: "Réservez un portfolio pour présenter votre expérience et postuler à des offres d'emploi."
+			en: 'Claim your portfolio to show your experience and apply to job descriptions.',
+			fr: "Réservez votre portfolio pour présenter votre expérience et postuler à des offres d'emploi."
 		}
 	},
 	recruiter: {
 		title: { en: 'Recruiter', fr: 'Recruteur' },
 		description: {
-			en: 'Post job descriptions and review the portfolios that apply.',
-			fr: "Publiez des offres d'emploi et consultez les portfolios des candidats."
+			en: 'Post job descriptions and review the candidates who apply.',
+			fr: "Publiez des offres d'emploi et consultez les candidats qui postulent."
 		}
 	},
 	lastUsed: { en: 'Last used', fr: 'Dernier utilisé' },
@@ -43,6 +43,6 @@ export const m = defineMessages({
 		en: (message: string, domain: string) => `${message} Choose Candidate to open ${domain}.`,
 		fr: (message: string, domain: string) => `${message} Choisissez Candidat pour ouvrir ${domain}.`
 	},
-	claim: { en: 'Claim portfolio', fr: 'Réserver le portfolio' },
+	claim: { en: 'Claim your portfolio', fr: 'Réserver mon portfolio' },
 	notNow: { en: 'Not now', fr: 'Plus tard' }
 });

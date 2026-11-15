@@ -181,7 +181,7 @@ describe('domainFromInput', () => {
 	});
 
 	it('says what is wrong with what was typed', () => {
-		expect(applicantDomainProblem('')).toMatch(/Enter the name of a portfolio/);
+		expect(applicantDomainProblem('')).toMatch(/Enter the name of a candidate's portfolio/);
 		expect(applicantDomainProblem('not a name!')).toMatch(/not a portfolio name/);
 		expect(applicantDomainProblem('louis.gentil')).toBe(null);
 		expect(applicantDomainProblem('https://site.test/louis.gentil/experiences')).toBe(null);
@@ -201,7 +201,7 @@ describe('isJobPostingGone', () => {
 describe('addApplicantError', () => {
 	it('puts the problems of the name under the field', () => {
 		expect(addApplicantError(404, 'Domain not found', 'ada')).toEqual({
-			message: 'No portfolio is named “ada”. Check how it is spelled.',
+			message: '“ada” is not on Portfolio. Check how it is spelled.',
 			field: true
 		});
 		expect(addApplicantError(409, 'Already an applicant', 'ada')).toEqual({

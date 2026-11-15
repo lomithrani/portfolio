@@ -2,7 +2,7 @@
 @component
 The age and terms confirmation of the sign-in and claim forms: an unticked, required checkbox
 labelled with portfolio-common's legalMessages.ageConfirmation (the exact wording the API records with
-the acceptance, AGE_CONFIRMATION_KEY), and under it the notice linking the Terms of use and the
+the acceptance, ageConfirmationKey()), and under it the notice linking the Terms of use and the
 Privacy policy (opened in a new tab, so the form keeps what was typed). Once ticked, the form
 sends portfolio-common's currentConsent() with its request.
 
@@ -59,13 +59,13 @@ sends portfolio-common's currentConsent() with its request.
 					class="link-text"
 					href={resolve('/(site)/legal/terms')}
 					target="_blank"
-					rel="noopener noreferrer">{text}<span class="sr-only"> {m.consent.newTab}</span></a
+					rel="noopener noreferrer">{text}<span class="sr-only">{` ${m.consent.newTab}`}</span></a
 				>{/snippet}
 			{#snippet privacy(text: string)}<a
 					class="link-text"
 					href={resolve('/(site)/legal/privacy')}
 					target="_blank"
-					rel="noopener noreferrer">{text}<span class="sr-only"> {m.consent.newTab}</span></a
+					rel="noopener noreferrer">{text}<span class="sr-only">{` ${m.consent.newTab}`}</span></a
 				>{/snippet}
 		</Rich>
 	</p>

@@ -18,6 +18,11 @@ export const m = defineMessages({
 		en: 'Nothing was left out, but the reading can still be wrong.',
 		fr: "Rien n'a été laissé de côté, mais la lecture peut tout de même être inexacte."
 	},
+	/** The import's remarks are the API's sentences, kept in the language the page had then */
+	warningsOtherLanguage: {
+		en: "This import's remarks were written in the site's other language and are not shown.",
+		fr: "Les remarques de cet import ont été rédigées dans l'autre langue du site et ne sont pas affichées."
+	},
 	discardImportQuestion: {
 		en: 'Discard this import? It still counts as one of your imports.',
 		fr: 'Abandonner cet import ? Il compte tout de même parmi vos imports.'
@@ -69,10 +74,13 @@ export const m = defineMessages({
 		fr: (count: number) =>
 			`Corrigez ${count} ${plural(count, 'problème', 'problèmes')} avant d'enregistrer :`
 	},
-	/** A line of the error summary: the field's name, then what is wrong with it */
+	/**
+	 * A line of the error summary. English: the field's name, then what is wrong with it. French:
+	 * the message alone, since every French rule names its field ("Durée : indiquez...")
+	 */
 	fieldProblem: {
 		en: (label: string, message: string) => `${label}: ${message}`,
-		fr: (label: string, message: string) => `${label} : ${message}`
+		fr: (_label: string, message: string) => message
 	},
 	networkError: {
 		en: 'Could not reach the server. Check your connection and try again.',

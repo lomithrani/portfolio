@@ -77,7 +77,7 @@ export const jobImportMessages = defineMessages({
 	/** The recruiter stopped the import */
 	stopped: {
 		en: 'Import stopped. If Claude had already started reading the PDF, it still counts toward your free imports.',
-		fr: 'Import arrêté. Si Claude avait déjà commencé à lire le PDF, il compte tout de même dans vos imports gratuits.'
+		fr: 'Import arrêté. Si Claude avait déjà commencé à lire le PDF, cet import compte tout de même dans vos imports gratuits.'
 	},
 	/** POST /jobs/import failed, and the API gave no message of its own */
 	errors: {

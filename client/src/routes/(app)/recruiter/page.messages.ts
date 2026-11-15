@@ -4,16 +4,16 @@ export const m = defineMessages({
 	pageTitle: { en: 'Your job descriptions | Recruiter', fr: "Vos offres d'emploi | Recruteur" },
 	title: { en: 'Your job descriptions', fr: "Vos offres d'emploi" },
 	lead: {
-		en: 'Publish them, then see the portfolios that apply.',
-		fr: 'Publiez-les, puis voyez les portfolios qui postulent.'
+		en: 'Publish them, then see the candidates who apply.',
+		fr: 'Publiez-les, puis voyez les candidats qui postulent.'
 	},
 
 	/** Signed in without a recruiter space */
 	space: {
 		title: { en: 'Create your recruiter space', fr: 'Créez votre espace recruteur' },
 		text: {
-			en: 'Your account has a candidate space. Add a recruiter space to write job descriptions and see the portfolios that apply. You can switch between both from the account menu.',
-			fr: "Votre compte a un espace candidat. Ajoutez un espace recruteur pour rédiger des offres d'emploi et voir les portfolios qui postulent. Vous pouvez passer de l'un à l'autre depuis le menu du compte."
+			en: 'Your account has a candidate space. Add a recruiter space to write job descriptions and see the candidates who apply. You can switch between both from the account menu.',
+			fr: "Votre compte a un espace candidat. Ajoutez un espace recruteur pour rédiger des offres d'emploi et voir les candidats qui postulent. Vous pouvez passer de l'un à l'autre depuis le menu du compte."
 		},
 		create: { en: 'Create my recruiter space', fr: 'Créer mon espace recruteur' },
 		creating: { en: 'Creating your space…', fr: 'Création de votre espace…' },
@@ -33,7 +33,7 @@ export const m = defineMessages({
 	 */
 	pendingImport: {
 		en: 'You imported <file>a job description</file> but have not created the posting yet.',
-		fr: "Vous avez importé <file>une offre d'emploi</file> mais n'avez pas encore créé l'offre."
+		fr: "Vous avez importé <file>un PDF</file> mais n'avez pas encore créé l'offre."
 	},
 	continueEditing: { en: 'Continue editing', fr: 'Continuer la rédaction' },
 	importFromPdf: { en: 'Import from PDF', fr: 'Importer un PDF' },

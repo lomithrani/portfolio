@@ -5,6 +5,7 @@
 	import LegalLinks from '#components/legal/LegalLinks.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { recordSpaceShown } from '#services/account.ts';
 	import { sessionCheckedStore } from '#services/stores/index.ts';
 	import type { LayoutData } from './$types';
@@ -13,6 +14,7 @@
 	import { browser } from '$app/env';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
+	import LocaleLinks from '#lib/i18n/LocaleLinks.svelte';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -31,6 +33,8 @@
 		document.documentElement.dataset.theme = data.domain.theme ?? 'wintry';
 	});
 </script>
+
+<LocaleLinks />
 
 <div class="h-full flex flex-col">
 	<!-- Header renders the page's <header> (AppBar) -->
@@ -64,7 +68,7 @@
 			{#if toast.action}
 				<Toast.ActionTrigger>{toast.action.label}</Toast.ActionTrigger>
 			{/if}
-			<Toast.CloseTrigger />
+			<Toast.CloseTrigger aria-label={common.dismissNotification} />
 		</Toast>
 	{/snippet}
 </Toast.Group>

@@ -8,7 +8,7 @@ export const m = defineMessages({
 	notFound: { en: 'Not found', fr: 'Page introuvable' },
 	/** The API did not answer, or not with a portfolio */
 	unavailable: {
-		en: 'The portfolio service is temporarily unavailable. Please retry shortly.',
-		fr: 'Le service est temporairement indisponible. Réessayez dans un instant.'
+		en: 'Portfolio is temporarily unavailable. Please retry shortly.',
+		fr: 'Portfolio est temporairement indisponible. Réessayez dans un instant.'
 	}
 });

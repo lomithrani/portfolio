@@ -126,7 +126,7 @@ export const m = defineMessages({
 			en: (ownerName: string) =>
 				`The commute is ${ownerName}'s travel time to your job's address, there and back, over a week.`,
 			fr: (ownerName: string) =>
-				`Le trajet est le temps de trajet de ${ownerName} jusqu'à l'adresse de votre offre, aller et retour, sur une semaine.`
+				`Le trajet est le temps que ${ownerName} mettrait pour aller à l'adresse de votre offre et en revenir, sur une semaine.`
 		},
 		commuteSources: {
 			en: 'Travel times: <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> and <osm>OpenStreetMap contributors</osm>.',
@@ -136,7 +136,7 @@ export const m = defineMessages({
 			en: (ownerName: string) =>
 				`A job that does not match a deal-breaker of ${ownerName}'s scores 0, whatever the rest.`,
 			fr: (ownerName: string) =>
-				`Une offre qui ne correspond pas à un critère éliminatoire de ${ownerName} obtient 0, quel que soit le reste.`
+				`Une offre qui ne correspond pas à un critère que ${ownerName} juge éliminatoire obtient 0, quel que soit le reste.`
 		},
 		raiseWithDetails: {
 			en: 'What your job description does not state counts as not matching: completing it can raise the score.',

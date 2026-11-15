@@ -89,7 +89,7 @@ export const m = defineMessages({
 		cancel: { en: 'Cancel import', fr: "Annuler l'import" },
 		stopped: {
 			en: 'Import stopped. If Claude had already started reading your résumé, it still counts toward your imports.',
-			fr: 'Import arrêté. Si Claude avait déjà commencé à lire votre CV, il est tout de même décompté de vos imports.'
+			fr: 'Import arrêté. Si Claude avait déjà commencé à lire votre CV, cet import est tout de même décompté.'
 		},
 		timedOut: {
 			en: 'The import took too long and was stopped. It may still count toward your imports: try again later, or with a shorter résumé.',
@@ -182,7 +182,7 @@ export const m = defineMessages({
 			fr: 'Seul le propriétaire de ce portfolio peut y ajouter des expériences.'
 		},
 		noPortfolio: {
-			en: 'Claim a portfolio before adding experiences.',
+			en: 'Claim your portfolio before adding experiences.',
 			fr: "Réservez l'adresse de votre portfolio avant d'ajouter des expériences."
 		},
 		networkError: {

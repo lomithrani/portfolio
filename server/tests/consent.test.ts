@@ -320,7 +320,7 @@ describe('POST /domain/claim and the terms', () => {
       type: 'validation',
       on: 'body',
       property: 'consent',
-      message: 'Confirm your age and accept the terms of use to create a portfolio.'
+      message: 'Confirm your age and accept the terms of use to create your portfolio.'
     });
     expect(await Domain.exists({ name })).toBeNull();
     expect((await me(cookie)).json().user.domain).toBeUndefined();

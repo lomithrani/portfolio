@@ -229,7 +229,7 @@ test.describe('applying to a job posting', () => {
 			panel.getByRole('heading', { name: 'Sign in to apply with your portfolio' })
 		).toBeVisible();
 		await expect(
-			panel.getByText(/No portfolio yet\? You can claim one once signed in\./)
+			panel.getByText(/Not on Portfolio yet\? You can claim yours once signed in\./)
 		).toBeVisible();
 		await expect(panel.getByRole('button', { name: /^Apply/ })).toHaveCount(0);
 	});

@@ -24,12 +24,13 @@ export const m = defineMessages({
    */
   invitation: {
     bookedBy: {
-      en: (name: string, email: string) => `Booked via portfolio by ${name} (${email})`,
-      fr: (name: string, email: string) => `Réservé depuis le portfolio par ${name} (${email})`
+      en: (name: string, email: string) => `Booked via Portfolio by ${name} (${email})`,
+      fr: (name: string, email: string) => `Réservé sur Portfolio par ${name} (${email})`
     },
-    notes: {
-      en: (notes: string) => `Notes:\n${notes}`,
-      fr: (notes: string) => `Notes :\n${notes}`
-    }
+    /**
+     * Heading of the notes the visitor wrote, which follow on the next line as they typed them:
+     * not through a message, whose French typography would rewrite their spaces
+     */
+    notesLabel: { en: 'Notes:', fr: 'Notes :' }
   }
 })

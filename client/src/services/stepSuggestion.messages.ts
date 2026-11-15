@@ -10,8 +10,8 @@ export const m = defineMessages({
 		fr: 'Votre session a expiré. Copiez ce que vous avez écrit, puis rechargez la page et reconnectez-vous.'
 	},
 	ownerOnly: {
-		en: 'Only the owner of a portfolio can suggest a step.',
-		fr: "Seul le propriétaire d'un portfolio peut suggérer une étape."
+		en: 'Claim your portfolio to suggest a step.',
+		fr: 'Réservez votre portfolio pour suggérer une étape.'
 	},
 	unavailable: {
 		en: 'Suggestions are not available right now.',

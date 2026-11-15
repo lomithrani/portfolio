@@ -46,7 +46,7 @@ export const userSchema = new Schema({
       /** portfolio-common LEGAL_VERSION at the time */
       version: { type: String, required: true },
       acceptedAt: { type: Date, required: true },
-      /** portfolio-common AGE_CONFIRMATION_KEY: the exact wording ticked */
+      /** portfolio-common's ageConfirmationKey(): the exact wording ticked, in the language it was read in */
       ageConfirmationKey: { type: String, required: true },
       source: { type: String, enum: CONSENT_SOURCES, required: true }
     }, { _id: false })],

@@ -14,7 +14,7 @@ export const m = defineMessages({
 		apply: { en: 'Apply', fr: 'Postuler' }
 	},
 
-	checking: { en: 'Checking whether you applied…', fr: 'Vérification de votre candidature…' },
+	checking: { en: 'Checking whether you applied…', fr: 'Nous vérifions si vous avez postulé…' },
 	/** Under "The recruiter added your portfolio on…" (`name`: the viewer's portfolio, a link) */
 	addedNote: {
 		en: (name: string) =>
@@ -45,8 +45,8 @@ export const m = defineMessages({
 	manage: { en: 'Manage it', fr: "Gérer l'offre" },
 
 	signedOut: {
-		en: 'The recruiter sees your name and your portfolio: your experience, skills and projects. Never your email. No portfolio yet? You can claim one once signed in.',
-		fr: 'Le recruteur voit votre nom et votre portfolio : votre expérience, vos compétences et vos projets. Jamais votre adresse e-mail. Pas encore de portfolio ? Vous pourrez en réserver un une fois connecté.'
+		en: 'The recruiter sees your name and your portfolio: your experience, skills and projects. Never your email. Not on Portfolio yet? You can claim yours once signed in.',
+		fr: 'Le recruteur voit votre nom et votre portfolio : votre expérience, vos compétences et vos projets. Jamais votre adresse e-mail. Pas encore sur Portfolio ? Vous pourrez réserver le vôtre une fois connecté.'
 	},
 	noPortfolio: {
 		en: 'Claim one first: it is free, and it is what the recruiter sees when you apply.',
@@ -56,16 +56,16 @@ export const m = defineMessages({
 	/** Nothing was claimed: the account turned out to own a portfolio (`name`, a link) already */
 	alreadyOwns: {
 		en: (name: string) =>
-			`Your account already owns <portfolio>${name}</portfolio>, so no other portfolio was claimed: an account has one portfolio. Apply with this one.`,
+			`Your account already owns <portfolio>${name}</portfolio>, so nothing else was claimed: an account has a single address. Apply with this one.`,
 		fr: (name: string) =>
-			`Votre compte possède déjà <portfolio>${name}</portfolio> : aucun autre portfolio n'a donc été réservé, un compte n'en a qu'un. Postulez avec celui-ci.`
+			`Votre compte possède déjà <portfolio>${name}</portfolio> : rien d'autre n'a donc été réservé, un compte n'a qu'une adresse. Postulez avec celui-ci.`
 	},
 	/** The same, read by screen readers */
 	alreadyOwnsAnnouncement: {
 		en: (name: string) =>
-			`Your account already owns the portfolio ${name}: no other portfolio was claimed. You can apply with ${name}.`,
+			`Your account already owns ${name}: nothing else was claimed. You can apply with ${name}.`,
 		fr: (name: string) =>
-			`Votre compte possède déjà le portfolio ${name} : aucun autre portfolio n'a été réservé. Vous pouvez postuler avec ${name}.`
+			`Votre compte possède déjà ${name} : rien d'autre n'a été réservé. Vous pouvez postuler avec ${name}.`
 	},
 	/** The portfolio was claimed here, a moment ago */
 	newPortfolio: {

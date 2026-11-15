@@ -74,8 +74,9 @@ Libertés art. 82), comment les effacer.
 					choisissez une langue, avec le sélecteur de langue ou un lien qui en demande une (<code
 						>?lang=fr</code
 					>) ; jusque-là, les pages suivent la langue de votre navigateur et aucun cookie n'est
-					déposé. Il ne peut pas être lu par les scripts de la page (HttpOnly). Strictement
-					nécessaire à un réglage que vous demandez.
+					déposé. Un lien venu d'ailleurs ne remplace jamais la langue que vous avez choisie. Il ne
+					peut pas être lu par les scripts de la page (HttpOnly). Strictement nécessaire à un
+					réglage que vous demandez.
 				</td>
 				<td>{LANGUAGE_COOKIE_DAYS} jours, renouvelés à chaque choix</td>
 			</tr>

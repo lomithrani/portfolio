@@ -154,7 +154,7 @@ label and the error summary point to it.
 			}}
 		>
 			<Plus size="18" aria-hidden="true" />
-			{common.add}<span class="sr-only"> {m.addWhat(field)}</span>
+			{common.add}<span class="sr-only">{` ${m.addWhat(field)}`}</span>
 		</button>
 	</div>
 	{#if problem}

@@ -85,17 +85,17 @@ export const m = defineMessages({
 		fr: "Google n'accepte plus l'accès de cette application à votre agenda : il a été révoqué ou a expiré. Les visiteurs ne peuvent plus réserver de rendez-vous tant que vous ne l'avez pas reconnecté."
 	},
 	connecting: { en: 'Connecting...', fr: 'Connexion…' },
-	reconnect: { en: 'Reconnect Google Calendar', fr: 'Reconnecter Google Calendar' },
-	connect: { en: 'Connect Google Calendar', fr: 'Connecter Google Calendar' },
+	reconnect: { en: 'Reconnect Google Calendar', fr: 'Reconnecter Google Agenda' },
+	connect: { en: 'Connect Google Calendar', fr: 'Connecter Google Agenda' },
 
 	// --- Schedules ---
 	schedules: { en: 'Appointment Schedules', fr: 'Agendas de rendez-vous' },
 	schedulesIntro: {
 		en: 'Define when visitors can book time with you. Each schedule sets the duration, availability windows, and booking rules.',
-		fr: 'Définissez quand les visiteurs peuvent réserver un rendez-vous avec vous. Chaque agenda fixe la durée, les plages de disponibilité et les règles de réservation.'
+		fr: 'Définissez quand les visiteurs peuvent réserver un rendez-vous avec vous. Chaque agenda de rendez-vous fixe la durée, les plages de disponibilité et les règles de réservation.'
 	},
 	newSchedule: { en: 'New Schedule', fr: 'Nouvel agenda' },
-	editSchedule: { en: 'Edit Schedule', fr: "Modifier l'agenda" },
+	editSchedule: { en: 'Edit Schedule', fr: "Modifier l'agenda de rendez-vous" },
 	title: { en: 'Title', fr: 'Titre' },
 	titlePlaceholder: { en: 'e.g. 30-min consultation', fr: 'ex. : consultation de 30 min' },
 	scheduleDescription: { en: 'Description (optional)', fr: 'Description (facultatif)' },

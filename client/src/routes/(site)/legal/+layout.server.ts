@@ -11,10 +11,9 @@ import { legalPublisher } from '#components/legal/legalDocuments.ts';
 import type { LayoutServerLoad } from './$types';
 
 // The legal pages are rendered on the server: the publisher's details come from the web
-// service's private LEGAL_* variables (src/env.ts), the language is the request's
-// (hooks.server.ts: `?lang=fr`, the saved choice, the browser's preference)
-export const load: LayoutServerLoad = ({ locals }) => ({
-	lang: locals.locale,
+// service's private LEGAL_* variables (src/env.ts). Their language is the page's (getLocale(),
+// read by each page), not this load's: a later data request could come with another cookie
+export const load: LayoutServerLoad = () => ({
 	publisher: legalPublisher({
 		name: LEGAL_PUBLISHER_NAME,
 		email: LEGAL_CONTACT_EMAIL,

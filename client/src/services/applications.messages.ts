@@ -165,7 +165,7 @@ export const m = defineMessages({
 		fr: "Vous ne pouvez pas postuler à votre propre offre d'emploi."
 	},
 	noPortfolio: {
-		en: 'Claim a portfolio before applying.',
+		en: 'Claim your portfolio before applying.',
 		fr: 'Réservez votre portfolio avant de postuler.'
 	},
 	alreadyApplied: {

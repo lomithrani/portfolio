@@ -67,8 +67,8 @@ export const m = defineMessages({
 	/** Why "Add a portfolio" cannot send what was typed */
 	domainProblem: {
 		empty: {
-			en: 'Enter the name of a portfolio, e.g. louis.gentil.',
-			fr: "Saisissez le nom d'un portfolio, par exemple louis.gentil."
+			en: "Enter the name of a candidate's portfolio, e.g. louis.gentil.",
+			fr: "Saisissez le nom du portfolio d'un candidat, par exemple louis.gentil."
 		},
 		invalid: {
 			en: 'This is not a portfolio name. Check how it is spelled.',
@@ -78,8 +78,8 @@ export const m = defineMessages({
 	/** Why POST /jobs/:id/applicants failed */
 	addApplicant: {
 		sessionExpired: {
-			en: 'Your session expired. Sign in again to add a portfolio.',
-			fr: 'Votre session a expiré. Reconnectez-vous pour ajouter un portfolio.'
+			en: 'Your session expired. Sign in again to add a candidate.',
+			fr: 'Votre session a expiré. Reconnectez-vous pour ajouter un candidat.'
 		},
 		ownPortfolio: {
 			en: 'This is your own portfolio: you cannot add it.',
@@ -90,9 +90,8 @@ export const m = defineMessages({
 			fr: "Votre compte n'a pas encore d'espace recruteur. Créez-le pour gérer les candidats."
 		},
 		unknownPortfolio: {
-			en: (domain: string) => `No portfolio is named “${domain}”. Check how it is spelled.`,
-			fr: (domain: string) =>
-				`Aucun portfolio ne s'appelle « ${domain} ». Vérifiez son orthographe.`
+			en: (domain: string) => `“${domain}” is not on Portfolio. Check how it is spelled.`,
+			fr: (domain: string) => `« ${domain} » n'est pas sur Portfolio. Vérifiez son orthographe.`
 		},
 		jobGone: {
 			en: 'This job description no longer exists: it may have been deleted.',
@@ -117,7 +116,7 @@ export const m = defineMessages({
 			en: (name: string) =>
 				`${name} applied with their portfolio. They are no longer listed for this job description, and can apply again while it is open.`,
 			fr: (name: string) =>
-				`${name} a postulé avec son portfolio. Son nom ne figurera plus sur cette offre d'emploi, et une nouvelle candidature reste possible tant qu'elle est ouverte.`
+				`${name} a postulé avec son portfolio. Son nom ne figurera plus sur cette offre d'emploi, et une nouvelle candidature reste possible tant que l'offre est ouverte.`
 		},
 		added: {
 			en: (name: string) =>

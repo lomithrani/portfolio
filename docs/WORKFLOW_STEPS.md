@@ -211,7 +211,7 @@ export const noteStep: ServerStep<NoteStepConfig, NoteStepData> = {
   visitorConfig: (config) => ({ title: text(config.title), text: text(config.text) }),
   submit: async ({ input }) => {
     if (inputFields(input)?.acknowledged !== true) {
-      throw new FieldValidationError('input.acknowledged', 'Confirm that you have read the note');
+      throw new FieldValidationError('input.acknowledged', () => m.note.confirmRead);
     }
     return { acknowledgedAt: new Date() };
   }
@@ -240,7 +240,9 @@ the page can show it. Put there only what this visitor may know.
 (404), that the caller is not its owner (403), that the journey has this step (409 "This hiring
 journey changed: reload the page") and that the step is open to the visitor (403). `input` is
 `unknown`: use `inputFields(input)` (in `types.ts`) to read it as an object, check each field, and
-throw a `FieldValidationError('input.<field>', message)` for a 422 that names the field. Other
+throw a `FieldValidationError('input.<field>', () => m.<step>.<message>)` for a 422 that names the
+field: the message is read from `server/services/workflowSteps/steps.messages.ts` when the error
+is answered, so the visitor gets it in their language (`docs/I18N.md`, rule 8). Other
 refusals use the error classes of `server/errors.ts` (the job step answers 404 for a posting that
 is not the visitor's and 409 for one that is not open). A visitor can submit again: the latest
 `data` replaces the previous one.

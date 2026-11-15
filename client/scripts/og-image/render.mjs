@@ -22,17 +22,20 @@ const TEXT = {
 		file: 'og-image.png',
 		steps: ['Note', 'Job', 'Match'],
 		last: 'Book a meeting',
-		side: ['Free for talent', 'Pay · Remote · Commute · Skills', 'Only a match books a meeting']
+		side: ['Free for talent', 'Pay · Remote · Commute · Skills', 'Only a match books a meeting'],
+		size: { headline: 60, journey: 19, side: 21, gap: 14 }
 	},
 	fr: {
 		file: 'og-image-fr.png',
-		steps: ['Note', 'Offre', 'Score'],
+		// The glossary's words (docs/I18N.md), longer than the English: smaller, to fit the row
+		steps: ['Note', 'Offre', 'Correspondance'],
 		last: 'Rendez-vous',
 		side: [
 			'Gratuit pour les talents',
-			'Salaire · Télétravail · Trajet',
-			'Seule une bonne offre réserve'
-		]
+			'Rémunération · Télétravail · Trajet',
+			'Rendez-vous pour les bonnes offres'
+		],
+		size: { headline: 54, journey: 16, side: 18, gap: 10 }
 	}
 };
 
@@ -71,13 +74,13 @@ const html = (locale) => {
 	}
 	.brand { display: flex; align-items: center; gap: 18px; font-size: 24px; font-weight: 700; }
 	.brand svg { width: 56px; height: 56px; }
-	h1 { margin-top: auto; font-size: ${locale === 'fr' ? 54 : 60}px; line-height: 1.16; font-weight: 800; letter-spacing: -0.02em; }
+	h1 { margin-top: auto; font-size: ${t.size.headline}px; line-height: 1.16; font-weight: 800; letter-spacing: -0.02em; }
 	h1 span { display: block; background: linear-gradient(90deg, #60a5fa, #a5b4fc 70%, #c4b5fd); -webkit-background-clip: text; color: transparent; }
 	.row { margin-top: 64px; display: flex; align-items: center; justify-content: space-between; gap: 40px; }
 	.journey {
-		display: flex; align-items: center; gap: 14px; padding: 18px 20px; white-space: nowrap;
+		display: flex; align-items: center; gap: ${t.size.gap}px; padding: 18px 20px; white-space: nowrap;
 		border: 1px solid rgb(255 255 255 / 0.16); border-radius: 22px; background: rgb(255 255 255 / 0.05);
-		font-size: 19px; font-weight: 600;
+		font-size: ${t.size.journey}px; font-weight: 600;
 	}
 	.step { display: inline-flex; align-items: center; gap: 10px; }
 	.step b { color: #86efac; font-weight: 700; }
@@ -85,7 +88,7 @@ const html = (locale) => {
 	.arrow { color: rgb(255 255 255 / 0.45); font-weight: 400; }
 	.last { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px 10px 10px; border-radius: 999px; background: #1d4ed8; }
 	.last i { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #fff; color: #1d4ed8; align-items: center; justify-content: center; font-style: normal; font-size: 16px; font-weight: 700; }
-	.side { text-align: right; font-size: 21px; line-height: 1.65; color: rgb(255 255 255 / 0.78); white-space: nowrap; }
+	.side { text-align: right; font-size: ${t.size.side}px; line-height: 1.65; color: rgb(255 255 255 / 0.78); white-space: nowrap; }
 </style>
 <body>
 	<div class="brand">${logo}Portfolio</div>

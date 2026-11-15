@@ -22,7 +22,7 @@ export const accountMessages = defineMessages({
 		empty: { en: 'Enter a name for your portfolio.', fr: 'Saisissez un nom pour votre portfolio.' },
 		reserved: {
 			en: (name: string) => `“${name}” is reserved. Choose another name.`,
-			fr: (name: string) => `« ${name} » est réservé. Choisissez un autre nom.`
+			fr: (name: string) => `« ${name} » est un nom réservé au site. Choisissez un autre nom.`
 		},
 		tooLong: {
 			en: (max: number) => `Use at most ${max} characters.`,
@@ -64,12 +64,12 @@ export const accountMessages = defineMessages({
 	claim: {
 		/** The claim form's message when the API asks for the age and terms confirmation */
 		consent: {
-			en: 'Confirm your age and accept the terms of use to create a portfolio.',
-			fr: "Confirmez votre âge et acceptez les conditions d'utilisation pour créer un portfolio."
+			en: 'Confirm your age and accept the terms of use to create your portfolio.',
+			fr: "Confirmez votre âge et acceptez les conditions d'utilisation pour créer votre portfolio."
 		},
 		ownsPortfolio: {
-			en: 'Your account already owns a portfolio.',
-			fr: 'Votre compte possède déjà un portfolio.'
+			en: 'Your account already has its portfolio.',
+			fr: 'Votre compte a déjà son portfolio.'
 		},
 		failed: {
 			en: 'Could not claim this portfolio. Try again.',

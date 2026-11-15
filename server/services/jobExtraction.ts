@@ -12,6 +12,7 @@ import {
   TRAVEL_FREQUENCIES,
   WORKING_TIME_ARRANGEMENTS,
   WORK_MODES,
+  intlLocale,
   isCalendarDate,
   isJobStartDate,
   normalizeList
@@ -370,7 +371,7 @@ class DraftReader {
   /** A value quoted in a warning: one line, short */
   private quote(value: string) {
     const line = cleanLine(value)
-    return JSON.stringify(line.length > 30 ? `${cut(line, 30)}…` : line)
+    return m.quoted(line.length > 30 ? `${cut(line, 30)}…` : line)
   }
 
   /** One-line text, at most `max` characters (shortened with a warning) */
@@ -560,7 +561,10 @@ export function normalizeJobExtraction(output: unknown): JobExtraction {
   // converted (the amount could be right)
   const amounts = [payMin, payMax].filter((amount): amount is number => amount !== undefined)
   if (payPeriod && amounts.length && Math.min(...amounts) < PLAUSIBLE_PAY_FLOOR[payPeriod]) {
-    const range = payMin === undefined || payMax === undefined || payMin === payMax ? `${amounts[0]}` : `${payMin}-${payMax}`
+    // Decimals as the recruiter's language writes them (42.5, 42,5), without grouping
+    const amount = (value: number) =>
+      value.toLocaleString(intlLocale('en-US'), { useGrouping: false, maximumFractionDigits: 2 })
+    const range = payMin === undefined || payMax === undefined || payMin === payMax ? amount(amounts[0]) : `${amount(payMin)}-${amount(payMax)}`
     read.warnings.push(m.checkPay(range, PAY_PERIOD_LABELS[payPeriod]))
   }
   const payVariable = read.line('payVariable', fields.payVariable, JOB_LIMITS.variablePay)

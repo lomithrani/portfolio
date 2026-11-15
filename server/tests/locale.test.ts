@@ -219,7 +219,7 @@ describe('texts of a successful answer', () => {
       'Left out the contract type ("forever"): it is not one of the accepted values'
     );
     expect(runWithLocale('fr', () => normalizeJobExtraction(output)).warnings[0]).toBe(
-      'Type de contrat ("forever")\u00a0: valeur ignorée, ce n\'est pas l\'une des valeurs acceptées'
+      'Type de contrat («\u00a0forever\u00a0»)\u00a0: valeur ignorée, ce n\'est pas l\'une des valeurs acceptées'
     );
   });
 });

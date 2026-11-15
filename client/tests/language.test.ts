@@ -23,7 +23,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		expect(response?.status()).toBe(200);
 		expect(response?.headers()['content-language']).toBe('fr');
 		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
-		await expect(page).toHaveTitle('Le portfolio qui trie les offres pour vous | Portfolio');
+		await expect(page).toHaveTitle('Votre portfolio trie les offres pour vous | Portfolio');
 		await expect(
 			page.getByRole('heading', {
 				level: 2,
@@ -102,6 +102,21 @@ test.describe('a visitor whose browser prefers French', () => {
 		await page.goto('/legal/terms');
 		await expect(page.locator('article[data-legal-document]')).toHaveAttribute('lang', 'en');
 	});
+
+	test('a language the site does not have falls back to the browser', async ({ page }) => {
+		const response = await page.goto('/?lang=de');
+		expect(response?.status()).toBe(200);
+		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+		expect(await languageCookie(page)).toBeUndefined();
+	});
+
+	test('reads an address that matches no page in French', async ({ page }) => {
+		// SvelteKit's own "Not Found", which it only has in English
+		const response = await page.goto('/louis.gentil/nothing-here');
+		expect(response?.status()).toBe(404);
+		await expect(page).toHaveTitle('Introuvable');
+		await expect(page.getByText('Page introuvable')).toBeVisible();
+	});
 });
 
 test.describe('a visitor whose browser prefers English', () => {
@@ -138,6 +153,26 @@ test.describe('a visitor whose browser prefers English', () => {
 		await expect(toFrench).toHaveAttribute(
 			'href',
 			'/louis.gentil/experiences?view=timeline&lang=fr'
+		);
+	});
+
+	test('a link from elsewhere is read in its language without replacing a saved choice', async ({
+		page,
+		context,
+		baseURL
+	}) => {
+		await context.addCookies([{ name: 'lang', value: 'en', url: baseURL! }]);
+		// A shared address, opened from another site
+		await page.setExtraHTTPHeaders({ 'sec-fetch-site': 'cross-site' });
+		await page.goto('/jobs?lang=fr');
+		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+		expect((await languageCookie(page))?.value).toBe('en');
+
+		// The job pages tell search engines where each language is
+		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/jobs\?lang=fr$/);
+		await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute(
+			'href',
+			/\/jobs$/
 		);
 	});
 

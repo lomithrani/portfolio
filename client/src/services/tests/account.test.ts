@@ -253,8 +253,10 @@ describe('recordSpaceShown', () => {
 describe('claimErrorMessage', () => {
 	it('tells a taken name from an account that already owns a portfolio', () => {
 		expect(claimErrorMessage(409, 'Domain already exists')).toMatch(/already taken/);
-		expect(claimErrorMessage(409, 'You already own a domain')).toMatch(/already owns/);
-		expect(claimErrorMessage(409, { message: 'You already own a domain' })).toMatch(/already owns/);
+		expect(claimErrorMessage(409, 'You already own a domain')).toMatch(/already has its portfolio/);
+		expect(claimErrorMessage(409, { message: 'You already own a domain' })).toMatch(
+			/already has its portfolio/
+		);
 	});
 
 	it('covers invalid names, expired sessions and other failures', () => {
@@ -440,7 +442,7 @@ describe('claimPortfolio', () => {
 				type: 'validation',
 				on: 'body',
 				property: 'consent',
-				message: 'Confirm your age and accept the terms of use to create a portfolio.'
+				message: 'Confirm your age and accept the terms of use to create your portfolio.'
 			})
 		);
 

@@ -16,10 +16,10 @@ export const m = defineMessages({
 	hireMe: { en: 'Hire me', fr: 'Me recruter' },
 	/** The owner's heading above their buttons */
 	heading: { en: 'Experiences', fr: 'Expériences' },
-	addExperience: { en: 'Add experience', fr: 'Ajouter une expérience' },
 	/**
-	 * The same button in the floating corner, short to fit the row: the passage marked `hidden`
-	 * is only read by screen readers (the button's name stays "Add experience")
+	 * The owner's "Add experience" button. In the floating corner it is short to fit the row: the
+	 * passage marked `hidden` is only read by screen readers (the button's name stays "Add
+	 * experience"). The owner's toolbar hides that passage on French phones only
 	 */
 	addExperienceShort: {
 		en: 'Add <hidden>experience</hidden>',
@@ -91,7 +91,11 @@ export const m = defineMessages({
 			en: (count: number) =>
 				plural(count, 'The current filters hide it.', 'The current filters hide them.'),
 			fr: (count: number) =>
-				plural(count, 'Les filtres actuels la masquent.', 'Les filtres actuels les masquent.')
+				plural(
+					count,
+					'Les filtres actuels masquent cette expérience.',
+					'Les filtres actuels masquent ces expériences.'
+				)
 		},
 		/** The toast's button: clears the filters and scrolls to what was saved */
 		show: { en: 'Show it', fr: 'Afficher' }

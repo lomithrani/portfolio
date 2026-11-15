@@ -35,8 +35,8 @@ export const m = defineMessages({
 		fr: "L'offre d'emploi importée n'est plus dans ce navigateur : elle a été enregistrée ou abandonnée. Partez de ce formulaire vide, ou importez de nouveau le PDF depuis <jobs>vos offres d'emploi</jobs>."
 	},
 	signInText: {
-		en: 'Sign in to write job descriptions and see the portfolios that apply.',
-		fr: "Connectez-vous pour rédiger des offres d'emploi et voir les portfolios qui postulent."
+		en: 'Sign in to write job descriptions and see the candidates who apply.',
+		fr: "Connectez-vous pour rédiger des offres d'emploi et voir les candidats qui postulent."
 	},
 
 	// --- Toasts -------------------------------------------------------------------------------
@@ -46,7 +46,7 @@ export const m = defineMessages({
 	createdDraft: {
 		en: (open: string) => `It is a draft: only you can see it until you set its status to ${open}.`,
 		fr: (open: string) =>
-			`C'est un brouillon : vous seul pouvez la voir tant que son statut n'est pas « ${open} ».`
+			`Elle est encore un brouillon : vous seul pouvez la voir tant que son statut n'est pas « ${open} ».`
 	},
 	createdPublic: {
 		en: 'It is public on its job page.',

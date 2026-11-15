@@ -19,8 +19,8 @@ export const m = defineMessages({
 		fr: 'La connexion a échoué. Veuillez réessayer.'
 	},
 	ownsPortfolio: {
-		en: 'Your Google account already owns a portfolio.',
-		fr: 'Votre compte Google possède déjà un portfolio.'
+		en: 'Your Google account already has its portfolio.',
+		fr: 'Votre compte Google a déjà son portfolio.'
 	},
 	nameGone: { en: 'This name is no longer available.', fr: "Ce nom n'est plus disponible." },
 	claiming: { en: 'Claiming domain...', fr: "Réservation de l'adresse…" },
@@ -30,6 +30,6 @@ export const m = defineMessages({
 	},
 	googleUnavailable: {
 		en: 'Google sign-in could not load. Check your connection (or allow accounts.google.com) and try again.',
-		fr: "La connexion avec Google n'a pas pu se charger. Vérifiez votre connexion (ou autorisez accounts.google.com) et réessayez."
+		fr: "La connexion avec Google n'a pas pu se charger. Vérifiez votre connexion internet (ou autorisez accounts.google.com) et réessayez."
 	}
 });

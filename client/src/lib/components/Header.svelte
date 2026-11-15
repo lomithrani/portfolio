@@ -94,19 +94,21 @@
 						>{headerTitle}</span
 					>
 				{:else}
+					<!-- A portfolio whose owner set no title. Like a title they write, these words are
+					     not a message: they read the same in English and in French -->
 					<span
 						class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
-						>{m.tagline.solver}</span
+						>Problem Solver</span
 					>
 
 					<span
 						class="bg-gradient-to-br from-red-500 to-yellow-500 bg-clip-text text-transparent box-decoration-clone"
-						>{m.tagline.engineer}</span
+						>Engineer</span
 					>
 
 					<span
 						class="bg-gradient-to-br from-pink-500 to-violet-500 bg-clip-text text-transparent box-decoration-clone"
-						>{m.tagline.programmer}</span
+						>Programmer</span
 					>
 				{/if}
 			</h1>

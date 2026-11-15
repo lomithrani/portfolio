@@ -19,9 +19,9 @@ export const m = defineMessages({
 		},
 		withoutPortfolio: {
 			en: (accepted: string, current: string) =>
-				`You accepted the version of <date>${accepted}</date>. The terms changed on <date>${current}</date>: read the <terms>Terms of use</terms> and accept them to create a portfolio.`,
+				`You accepted the version of <date>${accepted}</date>. The terms changed on <date>${current}</date>: read the <terms>Terms of use</terms> and accept them to create your portfolio.`,
 			fr: (accepted: string, current: string) =>
-				`Vous avez accepté la version du <date>${accepted}</date>. Les conditions ont changé le <date>${current}</date> : lisez les <terms>conditions d'utilisation</terms> et acceptez-les pour créer un portfolio.`
+				`Vous avez accepté la version du <date>${accepted}</date>. Les conditions ont changé le <date>${current}</date> : lisez les <terms>conditions d'utilisation</terms> et acceptez-les pour créer votre portfolio.`
 		}
 	},
 	notAccepted: {
@@ -30,8 +30,8 @@ export const m = defineMessages({
 			fr: "Vous n'avez pas encore accepté les conditions d'utilisation en vigueur. Les accepter enregistre votre confirmation pour votre portfolio."
 		},
 		withoutPortfolio: {
-			en: 'You have not accepted the Terms of use yet. You need to before you create a portfolio.',
-			fr: "Vous n'avez pas encore accepté les conditions d'utilisation. Vous devez le faire avant de créer un portfolio."
+			en: 'You have not accepted the Terms of use yet. You need to before you create your portfolio.',
+			fr: "Vous n'avez pas encore accepté les conditions d'utilisation. Vous devez le faire avant de créer votre portfolio."
 		}
 	},
 	accept: { en: 'Accept the terms', fr: 'Accepter les conditions' },

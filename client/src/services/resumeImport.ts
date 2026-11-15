@@ -1,4 +1,9 @@
-import { ExperienceType, RESUME_IMPORT_CLIENT_TIMEOUT_MS, intlLocale } from 'portfolio-common';
+import {
+	ExperienceType,
+	RESUME_IMPORT_CLIENT_TIMEOUT_MS,
+	getLocale,
+	intlLocale
+} from 'portfolio-common';
 import type { portfolioApi } from '#services';
 import {
 	draftToForm,
@@ -421,6 +426,10 @@ export function parseImportReview(value: unknown): ImportReview | undefined {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
 	const stored = value as Record<string, unknown>;
 	if (stored.version !== STORAGE_VERSION || !Array.isArray(stored.drafts)) return undefined;
+	// The API's warnings and a failed draft's error are sentences in the language the page had
+	// then (a review stored before languages existed is in English): in another language they
+	// are left out, and the draft goes back to pending (adding it says what is wrong again)
+	const sameLanguage = (typeof stored.locale === 'string' ? stored.locale : 'en') === getLocale();
 	const ids = new Set<string>();
 	const drafts = stored.drafts.flatMap((entry): ImportDraft[] => {
 		if (!entry || typeof entry !== 'object') return [];
@@ -430,9 +439,10 @@ export function parseImportReview(value: unknown): ImportReview | undefined {
 		let id = typeof draft.id === 'string' && draft.id ? draft.id : newClientId();
 		if (ids.has(id)) id = newClientId();
 		ids.add(id);
-		const status = STATUSES.includes(draft.status as ImportDraftStatus)
+		const stored = STATUSES.includes(draft.status as ImportDraftStatus)
 			? (draft.status as ImportDraftStatus)
 			: 'pending';
+		const status = stored === 'failed' && !sameLanguage ? 'pending' : stored;
 		return [
 			{
 				id,
@@ -453,16 +463,17 @@ export function parseImportReview(value: unknown): ImportReview | undefined {
 	return {
 		fileName: typeof stored.fileName === 'string' ? stored.fileName : '',
 		importedAt,
-		warnings: Array.isArray(stored.warnings)
-			? stored.warnings.filter((warning): warning is string => typeof warning === 'string')
-			: [],
+		warnings:
+			sameLanguage && Array.isArray(stored.warnings)
+				? stored.warnings.filter((warning): warning is string => typeof warning === 'string')
+				: [],
 		drafts
 	};
 }
 
 /** The review as stored */
 export const serializeImportReview = (review: ImportReview): string =>
-	JSON.stringify({ version: STORAGE_VERSION, ...review });
+	JSON.stringify({ version: STORAGE_VERSION, locale: getLocale(), ...review });
 
 type ReviewStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 

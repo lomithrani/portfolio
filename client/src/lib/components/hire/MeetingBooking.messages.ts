@@ -51,7 +51,7 @@ export const m = defineMessages({
 		en: (ownerName: string, timezone: string) =>
 			`Dates follow ${ownerName}'s time zone (${timezone}); times are shown in yours.`,
 		fr: (ownerName: string, timezone: string) =>
-			`Les dates suivent le fuseau horaire de ${ownerName} (${timezone}) ; les horaires sont affichés dans le vôtre.`
+			`Les dates suivent le fuseau horaire que ${ownerName} a choisi (${timezone}) ; les horaires sont affichés dans le vôtre.`
 	},
 	/**
 	 * What the date picker says of its own (aria-labels). The English is the date picker's:

@@ -10,12 +10,12 @@ export const m = defineMessages({
 		fr: 'Trouvez des talents qui ont exactement les compétences recherchées'
 	},
 	lead: {
-		en: 'On a portfolio, a skill is not a keyword: it comes with the projects it was used in, and for how long. Publish your job, and meet the people it matches.',
-		fr: "Sur un portfolio, une compétence n'est pas un mot-clé : elle vient avec les projets où elle a servi, et leur durée. Publiez votre offre, et rencontrez les personnes à qui elle correspond."
+		en: 'On Portfolio, a skill is not a keyword: it comes with the projects it was used in, and for how long. Publish your job, and meet the people it matches.',
+		fr: "Sur Portfolio, une compétence n'est pas un mot-clé : elle vient avec les projets où elle a servi, et leur durée. Publiez votre offre, et rencontrez les personnes à qui elle correspond."
 	},
 	free: {
-		en: 'Free to use. The same Google account can also keep a candidate portfolio: switch spaces from the account menu.',
-		fr: "Gratuit. Le même compte Google peut aussi avoir un portfolio de candidat : changez d'espace depuis le menu du compte."
+		en: 'Free to use. The same Google account can also hold your own portfolio, as a candidate: switch spaces from the account menu.',
+		fr: "Gratuit. Le même compte Google peut aussi porter votre propre portfolio, en tant que candidat : changez d'espace depuis le menu du compte."
 	},
 	welcome: {
 		title: { en: 'Welcome to your recruiter space', fr: 'Bienvenue dans votre espace recruteur' },
@@ -33,8 +33,8 @@ export const m = defineMessages({
 		where: {
 			title: { en: 'Where it was used', fr: 'Où elle a servi' },
 			text: {
-				en: 'Pick a skill on a portfolio: the projects that used it stand out, each with its company and its dates.',
-				fr: 'Choisissez une compétence sur un portfolio : les projets qui y ont fait appel ressortent, chacun avec son entreprise et ses dates.'
+				en: "Pick a skill on a candidate's portfolio: the projects that used it stand out, each with its company and its dates.",
+				fr: "Choisissez une compétence sur le portfolio d'un candidat : les projets qui y ont fait appel ressortent, chacun avec son entreprise et ses dates."
 			}
 		},
 		howLong: {
@@ -52,8 +52,8 @@ export const m = defineMessages({
 			}
 		},
 		example: {
-			en: 'See it on <example>an example portfolio</example>.',
-			fr: "Voyez-le sur <example>un portfolio d'exemple</example>."
+			en: 'See it on <example>an example</example>.',
+			fr: 'Voyez-le sur <example>un exemple</example>.'
 		}
 	},
 	features: {
@@ -77,8 +77,8 @@ export const m = defineMessages({
 				fr: 'Rencontrez les candidats par leur portfolio'
 			},
 			text: {
-				en: 'See who applies, open their portfolio, and add the portfolios you found yourself.',
-				fr: 'Voyez qui postule, ouvrez leur portfolio, et ajoutez les portfolios que vous avez trouvés vous-même.'
+				en: 'See who applies, open their portfolio, and add the candidates you found yourself.',
+				fr: 'Voyez qui postule, ouvrez leur portfolio, et ajoutez les candidats que vous avez trouvés vous-même.'
 			}
 		},
 		pdf: {
@@ -87,7 +87,7 @@ export const m = defineMessages({
 				en: (imports: number) =>
 					`Where PDF import is offered, Claude drafts the job description from your file for you to complete. The free plan includes ${imports} imports.`,
 				fr: (imports: number) =>
-					`Lorsque l'import de PDF est proposé, Claude rédige un brouillon de l'offre à partir de votre fichier, que vous complétez. L'offre gratuite comprend ${imports} imports.`
+					`Lorsque l'import de PDF est proposé, Claude rédige à partir de votre fichier un brouillon de l'offre, que vous complétez. La formule gratuite comprend ${imports} imports.`
 			}
 		}
 	},

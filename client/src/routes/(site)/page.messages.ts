@@ -6,16 +6,16 @@ import { defineMessages } from 'portfolio-common';
 export const m = defineMessages({
 	meta: {
 		title: {
-			en: 'The portfolio that screens jobs for you | Portfolio',
-			fr: 'Le portfolio qui trie les offres pour vous | Portfolio'
+			en: 'Your portfolio screens jobs for you | Portfolio',
+			fr: 'Votre portfolio trie les offres pour vous | Portfolio'
 		},
 		description: {
-			en: 'A free portfolio that works as your job matchmaker: say what you want (pay, remote days, commute, skills) and every job a recruiter brings is scored against it before they can book a meeting with you.',
-			fr: "Un portfolio gratuit qui vous met en relation avec les bons postes : dites ce que vous cherchez (rémunération, télétravail, trajet, compétences) et chaque offre apportée par un recruteur est notée avant qu'il puisse réserver un rendez-vous avec vous."
+			en: 'Portfolio is free and works as your job matchmaker: say what you want (pay, remote days, commute, skills), set the steps recruiters follow, and the job they bring is scored against it before they can book a meeting with you.',
+			fr: "Portfolio est gratuit et vous met en relation avec les bons postes : dites ce que vous cherchez (rémunération, télétravail, trajet, compétences), définissez les étapes que suivent les recruteurs, et l'offre qu'ils apportent est notée avant qu'ils puissent réserver un rendez-vous avec vous."
 		},
 		imageAlt: {
 			en: 'Your portfolio, your way. No more calls about the wrong job. The steps of a hiring journey: note, job, match 86 out of 100, book a meeting.',
-			fr: "Votre portfolio, à votre image. Fini les appels pour le mauvais poste. Les étapes d'un parcours de recrutement : note, offre, correspondance 86 sur 100, réserver un rendez-vous."
+			fr: "Votre portfolio, à votre image. Fini les appels pour le mauvais poste. Les étapes d'un parcours de recrutement : note, offre, correspondance 86 sur 100, rendez-vous."
 		}
 	},
 	hero: {
@@ -27,8 +27,8 @@ export const m = defineMessages({
 			fr: 'Fini les appels pour le <nowrap>mauvais poste.</nowrap>'
 		},
 		lead: {
-			en: 'Say once what you are looking for: pay, remote days, commute, skills. Every job a recruiter brings is scored against it, and only the ones that match get time in your calendar.',
-			fr: 'Dites une fois ce que vous cherchez : rémunération, télétravail, trajet, compétences. Chaque offre apportée par un recruteur est notée, et seules celles qui correspondent obtiennent un créneau dans votre agenda.'
+			en: 'Say what you are looking for (pay, remote days, commute, skills) and choose the steps recruiters follow: the job they bring is scored against it, and only a match gets time in your calendar.',
+			fr: "Dites ce que vous cherchez (rémunération, télétravail, trajet, compétences) et choisissez les étapes que suivent les recruteurs : l'offre qu'ils apportent est notée, et seule une offre qui correspond obtient un créneau dans votre agenda."
 		},
 		create: { en: 'Create your portfolio', fr: 'Créer mon portfolio' },
 		open: { en: 'Open my portfolio', fr: 'Ouvrir mon portfolio' },
@@ -54,8 +54,8 @@ export const m = defineMessages({
 			commute: {
 				title: { en: 'The job two hours from home', fr: 'Le poste à deux heures de chez vous' },
 				text: {
-					en: 'Set the travel time you accept each week. A job too far away does not get through.',
-					fr: 'Indiquez le temps de trajet que vous acceptez par semaine. Une offre trop éloignée ne passe pas.'
+					en: 'Set the travel time you accept each week. A job too far away scores lower, down to zero when it is a deal-breaker.',
+					fr: "Indiquez le temps de trajet que vous acceptez par semaine. Une offre trop éloignée perd des points, jusqu'à zéro si c'est un critère éliminatoire."
 				}
 			},
 			pay: {
@@ -111,8 +111,8 @@ export const m = defineMessages({
 			}
 		},
 		keep: {
-			en: 'Keep the steps you want: a portfolio starts with the meeting alone.',
-			fr: 'Gardez les étapes que vous voulez : un portfolio commence avec le rendez-vous seul.'
+			en: 'Keep the steps you want: your portfolio starts with the meeting alone.',
+			fr: 'Gardez les étapes que vous voulez : votre portfolio commence avec le rendez-vous seul.'
 		},
 		demo: {
 			label: {
@@ -140,7 +140,7 @@ export const m = defineMessages({
 		}
 	},
 	yours: {
-		title: { en: 'Make it yours', fr: 'Un portfolio à votre image' },
+		title: { en: 'Make it yours', fr: 'Donnez-lui votre style' },
 		intro: {
 			en: "Your portfolio does not have to look like everyone else's. You choose how your career is shown, and you can change it whenever you like.",
 			fr: "Votre portfolio n'a pas à ressembler à celui des autres. Vous choisissez comment montrer votre parcours, et vous pouvez en changer quand vous voulez."
@@ -149,7 +149,7 @@ export const m = defineMessages({
 			title: { en: 'Your look', fr: 'Votre style' },
 			text: {
 				en: 'Pick one of more than twenty themes, your title and your tagline, and whether visitors first see it light or dark.',
-				fr: "Choisissez parmi plus de vingt thèmes, votre titre et votre accroche, et l'affichage clair ou sombre que vos visiteurs voient en premier."
+				fr: "Choisissez un thème parmi plus de vingt, votre titre et votre accroche, ainsi que l'affichage clair ou sombre que vos visiteurs voient en premier."
 			}
 		},
 		views: {
@@ -162,7 +162,7 @@ export const m = defineMessages({
 		skills: {
 			title: {
 				en: 'Skills backed by your projects',
-				fr: 'Des compétences prouvées par vos projets'
+				fr: 'Des compétences étayées par vos projets'
 			},
 			text: {
 				en: 'Visitors pick a skill and see the projects where you used it, and for how long.',
@@ -170,25 +170,25 @@ export const m = defineMessages({
 			}
 		},
 		example: {
-			en: 'Want to see a real one? <example>Open an example portfolio</example>.',
-			fr: "Envie d'en voir un vrai ? <example>Ouvrir un portfolio d'exemple</example>."
+			en: 'Want to see a real one? <example>Open an example</example>.',
+			fr: "Envie d'en voir un vrai ? <example>Ouvrez un exemple</example>."
 		},
 		demo: {
 			label: {
-				en: 'Recording: the experiences page of an example portfolio, shown in five colour themes, light and dark, first as a list of cards, then as a timeline.',
-				fr: "Enregistrement : la page des expériences d'un portfolio d'exemple, dans cinq thèmes de couleurs, clairs et sombres, d'abord en liste de cartes, puis en frise chronologique."
+				en: 'Recording: an experiences page on Portfolio, shown in five colour themes, light and dark, first as a list of cards, then as a timeline.',
+				fr: "Enregistrement : une page d'expériences sur Portfolio, dans cinq thèmes de couleurs, clairs et sombres, d'abord en liste de cartes, puis en frise chronologique."
 			},
 			caption: {
-				en: 'One portfolio in five themes, as a list and as a timeline.',
-				fr: 'Un même portfolio dans cinq thèmes, en liste et en frise.'
+				en: 'The same page in five themes, as a list and as a timeline.',
+				fr: 'La même page dans cinq thèmes, en liste et en frise.'
 			}
 		}
 	},
 	how: {
 		title: { en: 'How it works', fr: 'Comment ça marche' },
 		intro: {
-			en: 'A few minutes from here to a portfolio you can share. Free to use.',
-			fr: "Quelques minutes suffisent pour avoir un portfolio à partager. C'est gratuit."
+			en: 'A few minutes from here to your portfolio, ready to share. Free to use.',
+			fr: "Quelques minutes suffisent pour avoir votre portfolio, prêt à partager. C'est gratuit."
 		},
 		step: {
 			en: (number: number) => `Step ${number}:`,
@@ -221,8 +221,8 @@ export const m = defineMessages({
 		free: {
 			question: { en: 'Is it free?', fr: 'Est-ce gratuit ?' },
 			answer: {
-				en: 'Yes. Creating and keeping a portfolio is free, and so is the résumé import, within a monthly limit.',
-				fr: "Oui. Créer et conserver un portfolio est gratuit, tout comme l'import de CV, dans une limite mensuelle."
+				en: 'Yes. Creating and keeping your portfolio is free, and so is the résumé import, within a monthly limit.',
+				fr: "Oui. Créer et conserver votre portfolio est gratuit, tout comme l'import de CV, dans une limite mensuelle."
 			}
 		},
 		resume: {
@@ -235,8 +235,8 @@ export const m = defineMessages({
 		visibility: {
 			question: { en: 'Who can see my portfolio?', fr: 'Qui peut voir mon portfolio ?' },
 			answer: {
-				en: 'Anyone with its address: a portfolio is public, and search engines may list it. Write only what you want to be public. Your email address is not shown on it.',
-				fr: "Toute personne qui a son adresse : un portfolio est public, et les moteurs de recherche peuvent le référencer. N'y écrivez que ce que vous voulez rendre public. Votre adresse e-mail n'y figure pas."
+				en: 'Anyone with its address: your portfolio is public, and search engines may list it. Write only what you want to be public. Your email address is not shown on it.',
+				fr: "Toute personne qui a son adresse : votre portfolio est public, et les moteurs de recherche peuvent le référencer. N'y écrivez que ce que vous voulez rendre public. Votre adresse e-mail n'y figure pas."
 			}
 		},
 		recruiters: {
@@ -267,8 +267,8 @@ export const m = defineMessages({
 		age: {
 			question: { en: 'Why do you ask my age?', fr: 'Pourquoi demandez-vous mon âge ?' },
 			answer: {
-				en: 'Portfolios are for people who can work: you must be at least 16 and have reached the minimum legal working age in your country. We record that you confirmed it, with the date and the version of the terms, never your date of birth.',
-				fr: "Les portfolios s'adressent aux personnes qui peuvent travailler : vous devez avoir au moins 16 ans et avoir atteint l'âge minimum légal pour travailler dans votre pays. Nous enregistrons que vous l'avez confirmé, avec la date et la version des conditions, jamais votre date de naissance."
+				en: 'Portfolio is for people who can work: you must be at least 16 and have reached the minimum legal working age in your country. We record that you confirmed it, with the date and the version of the terms, never your date of birth.',
+				fr: "Portfolio s'adresse aux personnes qui peuvent travailler : vous devez avoir au moins 16 ans et avoir atteint l'âge minimum légal pour travailler dans votre pays. Nous enregistrons que vous l'avez confirmé, avec la date et la version des conditions, jamais votre date de naissance."
 			}
 		},
 		data: {

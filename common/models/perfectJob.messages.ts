@@ -1,15 +1,18 @@
 import { defineMessages } from '../i18n';
 
-/** A number that is not a whole one, or out of its range: the setting's name comes first */
+/**
+ * A number that is not a whole one, or out of its range. English names the setting first; French
+ * says what is counted (`fr`: "de jours"), since the tab's summary puts the criterion's name first
+ */
 const wholeNumber = (en: string, fr: string) => ({
 	en: (min: number, max: number) => `${en} must be a whole number from ${min} to ${max}.`,
-	fr: (min: number, max: number) => `${fr} : indiquez un nombre entier de ${min} à ${max}.`
+	fr: (min: number, max: number) => `Indiquez un nombre entier ${fr}, de ${min} à ${max}.`
 });
 
 /** A pay asked that is not a whole number of euros */
 const euros = (en: string, fr: string) => ({
 	en: `${en} must be a whole number of euros, above 0.`,
-	fr: `${fr} : indiquez un nombre entier d'euros, supérieur à 0.`
+	fr: `Indiquez un nombre entier d'euros ${fr}, supérieur à 0.`
 });
 
 export const perfectJobMessages = defineMessages({
@@ -108,7 +111,7 @@ export const perfectJobMessages = defineMessages({
 			en: 'Pick at least one work mode.',
 			fr: 'Choisissez au moins un mode de travail.'
 		},
-		minRemoteDays: wholeNumber('Remote days a week', 'Jours de télétravail par semaine'),
+		minRemoteDays: wholeNumber('Remote days a week', 'de jours de télétravail par semaine'),
 		commuteFromRequired: {
 			en: 'Give the address you would travel from.',
 			fr: "Indiquez l'adresse d'où vous partiriez."
@@ -133,10 +136,10 @@ export const perfectJobMessages = defineMessages({
 			en: 'Pick at least one way of counting working time.',
 			fr: 'Choisissez au moins un décompte du temps de travail.'
 		},
-		maxHoursPerWeek: wholeNumber('Hours per week', 'Heures par semaine'),
-		rttDays: wholeNumber('RTT days', 'Jours de RTT'),
-		payPerYear: euros('Pay per year', 'Rémunération par an'),
-		payPerDay: euros('Pay per day', 'Rémunération par jour'),
+		maxHoursPerWeek: wholeNumber('Hours per week', "d'heures par semaine"),
+		rttDays: wholeNumber('RTT days', 'de jours de RTT'),
+		payPerYear: euros('Pay per year', 'par an'),
+		payPerDay: euros('Pay per day', 'par jour'),
 		payRequired: {
 			en: 'Give the pay you ask for: per year, per day, or both.',
 			fr: 'Indiquez la rémunération que vous demandez : par an, par jour, ou les deux.'

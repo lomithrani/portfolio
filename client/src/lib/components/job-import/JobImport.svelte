@@ -561,7 +561,11 @@ says so, with a link back to it.
 									<p class="text-lg font-semibold">{m.reading}</p>
 									<p class="text-sm text-surface-700-300">{m.finding}</p>
 								</div>
-								<Progress value={null} class="w-full max-w-sm">
+								<Progress
+									value={null}
+									translations={{ value: () => m.readingValue }}
+									class="w-full max-w-sm"
+								>
 									<Progress.Label class="sr-only">{m.readingLabel}</Progress.Label>
 									<Progress.Track>
 										<Progress.Range class="bg-primary-500 motion-reduce:animate-none" />

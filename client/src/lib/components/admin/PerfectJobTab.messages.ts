@@ -17,7 +17,7 @@ export const m = defineMessages({
 	title: { en: 'Perfect job', fr: 'Poste idéal' },
 	intro: {
 		en: 'Say what you look for in a job and how much each point matters. The job a recruiter picks in your hiring journey is scored against it, out of 100.',
-		fr: "Dites ce que vous attendez d'un poste et l'importance de chaque point. L'offre qu'un recruteur choisit dans votre parcours de recrutement est notée par rapport à lui, sur 100."
+		fr: "Dites ce que vous attendez d'un poste et l'importance de chaque point. L'offre qu'un recruteur choisit dans votre parcours de recrutement est notée sur 100 par rapport à votre poste idéal."
 	},
 	loading: { en: 'Loading your perfect job...', fr: 'Chargement de votre poste idéal…' },
 
@@ -190,7 +190,7 @@ export const m = defineMessages({
 			en: (tolerance: number) =>
 				`A job over it matches less with each hour, and not at all ${tolerance} hours over.`,
 			fr: (tolerance: number) =>
-				`Au-delà, l'offre correspond moins à chaque heure, et plus du tout à ${tolerance} heures de plus.`
+				`Au-delà, l'offre correspond un peu moins pour chaque heure supplémentaire, et plus du tout à ${tolerance} heures de plus.`
 		}
 	},
 	rttDays: {
@@ -261,7 +261,7 @@ export const m = defineMessages({
 			},
 			frequent: {
 				en: 'Frequent travel is fine',
-				fr: 'Des déplacements fréquents me conviennent'
+				fr: 'Des déplacements fréquents, sans problème'
 			}
 		}
 	},

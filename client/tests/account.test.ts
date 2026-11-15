@@ -134,7 +134,7 @@ test.describe('account page, signed in', () => {
 		await expect(status).toHaveText(
 			'You have not accepted the current Terms of use yet. Accepting them records your confirmation for your portfolio.'
 		);
-		await expect(page.getByText('before you create a portfolio')).toHaveCount(0);
+		await expect(page.getByText('before you create your portfolio')).toHaveCount(0);
 	});
 
 	test('accepting the terms asks for the box, then records them (PUT /me/consent)', async ({

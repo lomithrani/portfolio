@@ -18,8 +18,8 @@ export const m = defineMessages({
 			fr: "Vos offres d'emploi et leurs listes de candidats."
 		},
 		applications: {
-			en: "Your job applications and your progress in other portfolios' hiring journeys.",
-			fr: "Vos candidatures et votre progression dans les parcours de recrutement d'autres portfolios."
+			en: "Your job applications and your progress in other people's hiring journeys.",
+			fr: "Vos candidatures et votre progression dans les parcours de recrutement d'autres personnes."
 		},
 		meetings: {
 			en: 'Your meeting types and bookings. If you connected Google Calendar, its tokens are deleted and Google is asked to revoke its access.',

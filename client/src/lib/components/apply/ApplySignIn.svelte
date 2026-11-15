@@ -12,7 +12,7 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { UserMode } from 'portfolio-common';
+	import { getLocale, type UserMode } from 'portfolio-common';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { login } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
@@ -76,6 +76,8 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 				text: 'signin_with',
 				shape: 'pill',
 				logo_alignment: 'left',
+				// Google's button, in the page's language
+				locale: getLocale(),
 				click_listener: () => {
 					clickedAt = Date.now();
 					// This button's credential comes back here (the page's callback until the

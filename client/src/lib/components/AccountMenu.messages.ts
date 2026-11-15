@@ -22,7 +22,7 @@ export const m = defineMessages({
 		en: (domain: string) => `Your portfolio: ${domain}`,
 		fr: (domain: string) => `Votre portfolio : ${domain}`
 	},
-	claimPortfolio: { en: 'Claim a portfolio', fr: 'Réserver un portfolio' },
+	claimPortfolio: { en: 'Claim your portfolio', fr: 'Réserver mon portfolio' },
 	recruiterSpace: { en: 'Recruiter space', fr: 'Espace recruteur' },
 	yourJobs: { en: 'Your job descriptions', fr: "Vos offres d'emploi" },
 	postJobs: { en: 'Post job descriptions', fr: "Publier des offres d'emploi" },

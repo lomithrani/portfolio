@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, Briefcase, CheckCircle, PaperAirplane } from 'svelte-heros-v2';
 	import { APPLICABLE_JOB_STATUS } from 'portfolio-common';
@@ -37,7 +36,6 @@
 	<meta property="og:type" content="website" />
 	<meta property="og:title" content={pageTitle} />
 	<meta property="og:description" content={description} />
-	<meta property="og:url" content={page.url.href} />
 </svelte:head>
 
 <div class="p-4 md:p-6">

@@ -7,6 +7,8 @@ export const common = defineMessages({
 	saving: { en: 'Saving…', fr: 'Enregistrement…' },
 	cancel: { en: 'Cancel', fr: 'Annuler' },
 	close: { en: 'Close', fr: 'Fermer' },
+	/** Name of a toast's close button (the library's is English) */
+	dismissNotification: { en: 'Dismiss notification', fr: 'Fermer la notification' },
 	delete: { en: 'Delete', fr: 'Supprimer' },
 	deleting: { en: 'Deleting…', fr: 'Suppression…' },
 	edit: { en: 'Edit', fr: 'Modifier' },
@@ -25,7 +27,7 @@ export const common = defineMessages({
 	signInFailed: { en: 'Sign-in failed. Try again.', fr: 'La connexion a échoué. Réessayez.' },
 	googleUnavailable: {
 		en: 'Google sign-in could not load. Check your connection (or allow accounts.google.com if a blocker is on), then try again.',
-		fr: "La connexion avec Google n'a pas pu se charger. Vérifiez votre connexion (ou autorisez accounts.google.com si un bloqueur est actif), puis réessayez."
+		fr: "La connexion avec Google n'a pas pu se charger. Vérifiez votre connexion internet (ou autorisez accounts.google.com si un bloqueur est actif), puis réessayez."
 	},
 	/** Name of the language switch, and of the link to the other language */
 	language: { en: 'Language', fr: 'Langue' }

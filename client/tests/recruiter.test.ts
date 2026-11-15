@@ -343,7 +343,7 @@ test.describe('the recruiter', () => {
 		await openAsRecruiter(page, `/recruiter/jobs/${job._id}`);
 		await expect(page.getByText(/^No applicants yet\./)).toBeVisible();
 
-		const field = page.getByRole('textbox', { name: 'Add a portfolio' });
+		const field = page.getByRole('textbox', { name: 'Add a candidate' });
 		const add = page.getByRole('button', { name: 'Add', exact: true });
 		const applicants = page.getByRole('list', { name: 'Applicants' });
 
@@ -352,7 +352,7 @@ test.describe('the recruiter', () => {
 		await add.click();
 		await expect(field).toHaveAttribute('aria-invalid', 'true');
 		await expect(field).toHaveAccessibleDescription(
-			/No portfolio is named “nobody-.+”\. Check how it is spelled\.$/
+			/“nobody-.+” is not on Portfolio\. Check how it is spelled\.$/
 		);
 		await expect(applicants).toHaveCount(0);
 
@@ -407,7 +407,7 @@ test.describe('the recruiter', () => {
 		await expect(page.getByRole('menuitemradio', { name: /^Candidate space/ })).not.toBeChecked();
 		// No portfolio: the candidate space offers to claim one
 		await expect(page.getByRole('menuitemradio', { name: /^Candidate space/ })).toContainText(
-			'Claim a portfolio'
+			'Claim your portfolio'
 		);
 
 		await page.getByRole('menuitem', { name: 'Browse jobs' }).click();

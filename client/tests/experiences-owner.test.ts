@@ -815,6 +815,11 @@ test.describe('the floating corner of the page', () => {
 		await page.setViewportSize({ width: 1280, height: 720 });
 		await views.getByRole('button', { name: 'Timeline', exact: true }).click();
 		await expect(hire).toBeVisible();
+		// The view went into the address without a navigation: the language switch follows it
+		await expect(page.locator('a[data-language-switch]')).toHaveAttribute(
+			'href',
+			`/${DOMAIN}/experiences?view=timeline&lang=fr`
+		);
 		await hire.click();
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire$`));
 

@@ -412,7 +412,7 @@ const appointmentsPublic = new Elysia()
       const description = [
         m.invitation.bookedBy(name, email),
         ...journeyLines.map((line) => `\n${line}`),
-        notes ? `\n${m.invitation.notes(notes)}` : ''
+        notes ? `\n${m.invitation.notesLabel}\n${notes}` : ''
       ].join('')
       let event: calendar_v3.Schema$Event
       try {

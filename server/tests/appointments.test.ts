@@ -1086,7 +1086,7 @@ describe('hiring journey gate', () => {
     expect(booked.status).toBe(200);
     const [event] = [...google.state.events.values()];
     expect(event.description).toBe(
-      `Booked via portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
+      `Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
     );
     const instance = await WorkflowInstance.findOne({ owner: owner.userId, visitor: other.userId }).lean();
     expect(instance?.steps?.meeting.data).toEqual({ bookedAt: expect.any(Date) });
@@ -1110,7 +1110,7 @@ describe('hiring journey gate', () => {
     });
     expect(booked.status).toBe(200);
     const [event] = [...google.state.events.values()];
-    expect(event.description).toBe(`Booked via portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme`);
+    expect(event.description).toBe(`Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme`);
   });
 
   it('opens the meeting step after a note and a job, in the order the owner chose', async () => {
@@ -1131,7 +1131,7 @@ describe('hiring journey gate', () => {
     // The note adds nothing to the invitation
     const [event] = [...google.state.events.values()];
     expect(event.description).toBe(
-      `Booked via portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
+      `Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
     );
   });
 
