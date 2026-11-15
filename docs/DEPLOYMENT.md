@@ -576,14 +576,27 @@ Work goes to `develop`: every pull request targets it (`develop` is the reposito
 branch) and is squash-merged. A release brings `develop` into `main`:
 
 1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship.
-2. Open a pull request with base **`main`** and compare **`develop`**, titled `Release: ...`.
+2. Open a pull request with base **`main`** and compare **`develop`**, titled with the new version:
+   `Release v1.2.0` ([semantic versioning](https://semver.org): the last number for fixes only,
+   the middle one for new features, the first for a change that breaks what users or other
+   services rely on).
 3. When CI is green, merge it with **Create a merge commit** (never squash or rebase: `main` must
    contain `develop`'s commits, or the next release conflicts). The merge deploys production.
 
 The `Release guard` workflow (`.github/workflows/release-guard.yml`) fails any pull request into
-`main` whose source branch is not `develop`. A fix needed in production goes through `develop`
-first, then a release. `main` never gets commits of its own, so `develop` does not need `main`
-merged back after a release.
+`main` whose source branch is not `develop`, or whose title does not name the next version: one
+step after the latest release, so after `v1.2.3` only `v1.2.4`, `v1.3.0` or `v2.0.0` (any version
+for the first release; fix the title: the check runs again). A fix needed in production goes through
+`develop` first, then a release. `main` never gets commits of its own, so `develop` does not need
+`main` merged back after a release: GitHub shows `develop` as "behind" `main` by the release merge
+commits, while their files are the same.
+
+Once the release pull request is merged, the `Release` workflow (`.github/workflows/release.yml`)
+publishes a **GitHub Release**: the tag `vX.Y.Z` on the merge commit, with notes generated from the
+pull requests merged since the previous release (the **Releases** page lists what each production
+deploy brought). If it could not (no version, a tag that exists), publish it by hand: **Actions**,
+**Release**, **Run workflow** (branch `develop`), with the version; it tags `main`'s current
+commit. That is also how a release merged before the workflow existed gets its tag.
 
 ### Branch protection
 

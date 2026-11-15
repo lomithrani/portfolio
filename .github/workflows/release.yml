@@ -1,0 +1,87 @@
+name: Release
+
+# Publishes a GitHub Release (tag vX.Y.Z on main, notes generated from the pull requests merged
+# since the previous release) each time a release pull request from develop is merged into main.
+# The version is read from the pull request's title ("Release v1.2.0"), which the Release guard
+# workflow checks before the merge. It can also be run by hand (Actions, Release, Run workflow) to
+# publish a release of main's current commit, e.g. one merged before this workflow existed.
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish for main's current commit, e.g. v1.0.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.ref == 'develop' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            source_text="$INPUT_VERSION"
+            target=$(gh api "repos/$REPO/commits/main" --jq .sha)
+          else
+            source_text="$PR_TITLE"
+            target="$MERGE_SHA"
+          fi
+          version=$(printf '%s' "$source_text" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true)
+          if [ -z "$version" ]; then
+            echo "::error::No version vX.Y.Z in \"$source_text\": publish this release by hand (Actions, Release, Run workflow)."
+            exit 1
+          fi
+          if gh api "repos/$REPO/git/ref/tags/$version" > /dev/null 2>&1; then
+            echo "::error::$version already exists: publish this release by hand with a new version."
+            exit 1
+          fi
+          # Semantic versioning, as the Release guard checks it: one step after the latest release
+          latest=$(gh api "repos/$REPO/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
+            | sed 's#^refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          if [ -n "$latest" ]; then
+            IFS=. read -r major minor patch <<< "${latest#v}"
+            case "$version" in
+              "v$major.$minor.$((patch + 1))" | "v$major.$((minor + 1)).0" | "v$((major + 1)).0.0") ;;
+              *)
+                echo "::error::The latest release is $latest: $version is not the next version. Publish this release by hand with v$major.$minor.$((patch + 1)), v$major.$((minor + 1)).0 or v$((major + 1)).0.0."
+                exit 1
+                ;;
+            esac
+          fi
+          notes_note=""
+          if [ "$EVENT" != "workflow_dispatch" ]; then
+            notes_note="Release pull request: #$PR_NUMBER"
+          fi
+          gh release create "$version" \
+            --repo "$REPO" \
+            --target "$target" \
+            --title "$version" \
+            --notes "$notes_note" \
+            --generate-notes \
+            --latest
+          echo "Published $version at $target" >> "$GITHUB_STEP_SUMMARY"
