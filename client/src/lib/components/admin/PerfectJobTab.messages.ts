@@ -9,6 +9,11 @@ export const m = defineMessages({
 		en: 'Could not save your perfect job. Try again.',
 		fr: "Impossible d'enregistrer votre poste idéal. Réessayez."
 	},
+	/** A save refused for an expired session: the page stays as it is, with what was typed */
+	sessionExpired: {
+		en: 'Your session expired. Your changes are still here: sign in again in another tab, then save.',
+		fr: 'Votre session a expiré. Vos modifications sont toujours là : reconnectez-vous dans un autre onglet, puis enregistrez.'
+	},
 	leaveUnsaved: {
 		en: 'Leave without saving your perfect job? Your changes will be lost.',
 		fr: 'Quitter sans enregistrer votre poste idéal ? Vos modifications seront perdues.'
