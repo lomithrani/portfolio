@@ -10,6 +10,8 @@
 	} from '#components/experience-list/experienceList.ts';
 	import { experiencePeriod } from '#services/experienceDates.ts';
 	import { projectMatchesFilters } from '#services/filters.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import { m } from './Experience.messages.ts';
 
 	const typeIcons: Record<ExperienceType, typeof Briefcase> = {
 		[ExperienceType.Professional]: Briefcase,
@@ -131,12 +133,12 @@
 			<button
 				type="button"
 				class="btn preset-tonal min-h-10 min-w-10 shrink-0 px-2.5 sm:px-3"
-				aria-label="Edit {experience.title}"
+				aria-label={m.edit(experience.title)}
 				data-edit-experience
 				onclick={() => onEdit?.()}
 			>
 				<PencilSquare size="18" aria-hidden="true" />
-				<span class="hidden sm:inline">Edit</span>
+				<span class="hidden sm:inline">{common.edit}</span>
 			</button>
 		{/if}
 	</div>
@@ -161,7 +163,7 @@
 					onclick={toggleSummary}
 					bind:this={toggleButton}
 				>
-					{expanded ? 'Show less' : 'Show more'}
+					{expanded ? m.showLess : m.showMore}
 				</button>
 			{/if}
 		</div>

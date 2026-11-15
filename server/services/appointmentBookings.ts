@@ -8,6 +8,9 @@ import { logger } from './logger'
 import { isDuplicateKeyError } from './mongoErrors'
 import { consumeRateLimit, hashValue, rateLimitKey } from './rateLimit'
 import type { RateLimit } from './rateLimit'
+import { SLOT_UNAVAILABLE } from '../protocol'
+import { m } from './appointmentBookings.messages'
+import { m as limits } from './rateLimit.messages'
 
 // Protection of the public POST /appointments/book. A booking makes Google send
 // an invitation from the owner's calendar to any address the visitor types, so
@@ -42,7 +45,8 @@ const PENDING_BOOKING_TIMEOUT_MS = 4 * EVENT_INSERT_TIMEOUT_MS
 /** Pending bookings held since this instant hold their slot without asking Google */
 const liveHoldsSince = () => new Date(Date.now() - PENDING_BOOKING_TIMEOUT_MS)
 
-const SLOT_TAKEN = 'This slot is no longer available'
+// Not a message: the client matches it (protocol.ts)
+const SLOT_TAKEN = SLOT_UNAVAILABLE
 
 /**
  * Id of the Google event of a booking: the booking's id, in Google's base32hex
@@ -67,8 +71,8 @@ export function normalizeEmail(email: string) {
 
 const waitText = (seconds: number) => {
   const minutes = Math.max(1, Math.ceil(seconds / 60))
-  if (minutes < 90) return `${minutes} minute${minutes === 1 ? '' : 's'}`
-  return `${Math.round(minutes / 60)} hours`
+  if (minutes < 90) return limits.wait.minutes(minutes)
+  return limits.wait.hours(Math.round(minutes / 60))
 }
 
 /** Counts a booking request from an IP; throws TooManyRequestsError (429) over the limit */
@@ -77,10 +81,7 @@ export async function limitBookingRequestsFromIp(ip: string | null) {
   if (!ip) return
   const retryAfter = await consumeRateLimit(rateLimitKey('book:ip', rateLimitAddress(ip)), BOOKING_REQUESTS_PER_IP)
   if (retryAfter !== null) {
-    throw new TooManyRequestsError(
-      `Too many booking requests from your network. Try again in ${waitText(retryAfter)}`,
-      retryAfter
-    )
+    throw new TooManyRequestsError(() => m.tooManyBookingsFromNetwork(waitText(retryAfter)), retryAfter)
   }
 }
 
@@ -91,10 +92,7 @@ export async function limitAvailabilityRequestsFromIp(ip: string | null) {
   const key = rateLimitKey('availability:ip', rateLimitAddress(ip))
   const retryAfter = await consumeRateLimit(key, AVAILABILITY_REQUESTS_PER_IP)
   if (retryAfter !== null) {
-    throw new TooManyRequestsError(
-      `Too many requests from your network. Try again in ${waitText(retryAfter)}`,
-      retryAfter
-    )
+    throw new TooManyRequestsError(() => limits.tooManyRequestsFromNetwork(waitText(retryAfter)), retryAfter)
   }
 }
 
@@ -106,10 +104,7 @@ export async function limitBookingRequestsForEmail(email: string) {
   const key = rateLimitKey('book:email', normalizeEmail(email))
   const retryAfter = await consumeRateLimit(key, BOOKING_REQUESTS_PER_EMAIL)
   if (retryAfter !== null) {
-    throw new TooManyRequestsError(
-      `Too many booking requests for this email address. Try again in ${waitText(retryAfter)}`,
-      retryAfter
-    )
+    throw new TooManyRequestsError(() => m.tooManyBookingsForEmail(waitText(retryAfter)), retryAfter)
   }
 }
 
@@ -237,9 +232,7 @@ export async function reserveSlot({
       for (const booking of others) if (!(await dropIfStale(calendar, booking))) held++
     }
     if (held >= MAX_UPCOMING_BOOKINGS_PER_EMAIL) {
-      throw new TooManyRequestsError(
-        'This email address already has the maximum number of upcoming bookings for this meeting'
-      )
+      throw new TooManyRequestsError(() => m.maxUpcomingBookings)
     }
 
     // Another schedule (whatever its calendar, or the alias it names it by:

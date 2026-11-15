@@ -2,6 +2,7 @@ import { createRemoteJWKSet, decodeProtectedHeader, errors as joseErrors, jwtVer
 import type { JWTVerifyGetKey } from 'jose';
 import { env } from '../env';
 import { InvalidGoogleTokenError } from '../errors';
+import { m } from './google.messages';
 
 // Google Sign-In ID tokens are verified locally against Google's published
 // signing keys: signature, issuer, audience (our OAuth client ID) and expiry.
@@ -57,7 +58,7 @@ export const createGoogleIdTokenVerifier = ({ audience, keySet }: GoogleIdTokenV
   return async (idToken: string): Promise<GoogleIdentity> => {
     // Without a kid, jose cannot choose between Google's keys while it
     // publishes two (key rotation) and throws JWKSMultipleMatchingKeys
-    if (!hasKeyId(idToken)) throw new InvalidGoogleTokenError('Invalid Google token');
+    if (!hasKeyId(idToken)) throw new InvalidGoogleTokenError(() => m.invalidToken);
 
     keys ??= createRemoteJWKSet(GOOGLE_JWKS_URL);
 
@@ -70,7 +71,7 @@ export const createGoogleIdTokenVerifier = ({ audience, keySet }: GoogleIdTokenV
         clockTolerance: 30
       }));
     } catch (error) {
-      if (isInvalidTokenError(error)) throw new InvalidGoogleTokenError('Invalid Google token');
+      if (isInvalidTokenError(error)) throw new InvalidGoogleTokenError(() => m.invalidToken);
       // Anything else, e.g. Google's key endpoint timing out, answering
       // non-200 or invalid JSON (a plain JOSEError), is not the caller's fault
       throw error;
@@ -78,13 +79,13 @@ export const createGoogleIdTokenVerifier = ({ audience, keySet }: GoogleIdTokenV
 
     // Must be the JSON boolean true: a string such as "false" is truthy
     if (payload.email_verified !== true) {
-      throw new InvalidGoogleTokenError('Google account email is not verified');
+      throw new InvalidGoogleTokenError(() => m.emailNotVerified);
     }
     if (typeof payload.sub !== 'string' || !payload.sub) {
-      throw new InvalidGoogleTokenError('Invalid Google token');
+      throw new InvalidGoogleTokenError(() => m.invalidToken);
     }
     if (typeof payload.email !== 'string' || !payload.email) {
-      throw new InvalidGoogleTokenError('Invalid Google token');
+      throw new InvalidGoogleTokenError(() => m.invalidToken);
     }
 
     return { sub: payload.sub, email: payload.email };

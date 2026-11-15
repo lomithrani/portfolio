@@ -63,19 +63,21 @@ import {
   wallClockToUTC
 } from '../services/slotComputation'
 import type { Slot } from '../services/slotComputation'
+import { DOMAIN_NOT_FOUND, SLOT_UNAVAILABLE } from '../protocol'
+import { m } from './appointments.messages'
 
 type ScheduleRequest = typeof appointmentScheduleRequest.static
 type ScheduleDocument = AppointmentSchedule & { _id: Types.ObjectId }
 
 // Checks TypeBox cannot express: a real IANA zone, windows that end after they start
 const assertValidSchedule = (body: ScheduleRequest) => {
-  if (!isValidTimeZone(body.timezone)) throw new BadRequestError('Unknown time zone')
+  if (!isValidTimeZone(body.timezone)) throw new BadRequestError(() => m.unknownTimeZone)
   const windows = [
     ...body.availability,
     ...(body.dateOverrides ?? []).flatMap((override) => override.windows ?? [])
   ]
   if (windows.some((window) => window.startTime >= window.endTime)) {
-    throw new BadRequestError('Availability windows must end after they start')
+    throw new BadRequestError(() => m.windowsEndAfterStart)
   }
 }
 
@@ -123,7 +125,7 @@ const appointmentsAdmin = new Elysia()
     async ({ body, userId, params: { id } }) => {
       assertValidSchedule(body)
       const schedule = await AppointmentSchedule.findOne({ _id: id, user: userId })
-      if (!schedule) throw new AppointmentScheduleNotFoundError('Schedule not found')
+      if (!schedule) throw new AppointmentScheduleNotFoundError(() => m.scheduleNotFound)
 
       schedule.set(body)
       await schedule.save()
@@ -138,7 +140,7 @@ const appointmentsAdmin = new Elysia()
     '/appointments/schedules/:id',
     async ({ userId, params: { id } }) => {
       const schedule = await AppointmentSchedule.findOneAndDelete({ _id: id, user: userId })
-      if (!schedule) throw new AppointmentScheduleNotFoundError('Schedule not found')
+      if (!schedule) throw new AppointmentScheduleNotFoundError(() => m.scheduleNotFound)
       return { deleted: true }
     },
     {
@@ -181,7 +183,7 @@ const appointmentsAdmin = new Elysia()
       // Only events created by the app: never the owner's other events
       const event = await getEvent(calendar, calendarId, eventId)
       if (!isAppointmentEvent(event)) {
-        throw new AppointmentEventNotFoundError('Appointment not found')
+        throw new AppointmentEventNotFoundError(() => m.appointmentNotFound)
       }
       await deleteEvent(calendar, calendarId, eventId)
       // The slot is bookable again
@@ -214,7 +216,7 @@ const publicScheduleFields = (schedule: ScheduleDocument) => ({
   }))
 })
 
-const scheduleNotFound = () => new AppointmentScheduleNotFoundError('Schedule not found')
+const scheduleNotFound = () => new AppointmentScheduleNotFoundError(() => m.scheduleNotFound)
 
 const findEnabledSchedule = async (id: string) => {
   const schedule = await AppointmentSchedule.findById(id)
@@ -247,7 +249,7 @@ const webOrigin = (request: Request) => {
 // The YYYY-MM-DD pattern lets 2026-02-30 through
 const assertCalendarDates = (...dates: (string | undefined)[]) => {
   if (!dates.every((date) => date === undefined || isCalendarDate(date))) {
-    throw new BadRequestError('Invalid date')
+    throw new BadRequestError(() => m.invalidDate)
   }
 }
 
@@ -291,7 +293,7 @@ const getAvailableSlotsForDate = async (
 const appointmentsPublic = new Elysia()
   .get('/appointments/domains/:domainName/schedules', async ({ params: { domainName } }) => {
     const domain = await Domain.findOne({ name: normalizeDomainName(domainName) })
-    if (!domain) throw new DomainDoesNotExistError('Domain not found')
+    if (!domain) throw new DomainDoesNotExistError(DOMAIN_NOT_FOUND)
     const ownerId = domain.admin.toString()
 
     // Nothing is bookable while the owner's calendar is not connected
@@ -344,9 +346,9 @@ const appointmentsPublic = new Elysia()
       const first = from ?? horizon.first
       const last = to ?? addDays(first, MAX_AVAILABLE_DATES_RANGE - 1)
       const dates = daysBetween(first, last) + 1
-      if (dates < 1) throw new BadRequestError('The range must not end before it starts')
+      if (dates < 1) throw new BadRequestError(() => m.rangeEndsBeforeStart)
       if (dates > MAX_AVAILABLE_DATES_RANGE) {
-        throw new BadRequestError(`At most ${MAX_AVAILABLE_DATES_RANGE} dates per request`)
+        throw new BadRequestError(() => m.tooManyDates(MAX_AVAILABLE_DATES_RANGE))
       }
 
       // Throws GoogleCalendarNotConnectedError (409) when the owner disconnected
@@ -375,7 +377,7 @@ const appointmentsPublic = new Elysia()
 
       const slotStart = new Date(startTime)
       if (isNaN(slotStart.getTime())) {
-        throw new BadRequestError('Invalid start time')
+        throw new BadRequestError(() => m.invalidStartTime)
       }
 
       // Recompute availability server-side: the slot must still be free, within
@@ -385,7 +387,7 @@ const appointmentsPublic = new Elysia()
       const slots = await getAvailableSlotsForDate(calendar, schedule, date)
       const slot = slots.find((s) => new Date(s.start).getTime() === slotStart.getTime())
       if (!slot) {
-        throw new SlotUnavailableError('This slot is no longer available')
+        throw new SlotUnavailableError(SLOT_UNAVAILABLE)
       }
 
       // What the visitor did on the steps before the meeting (the job they
@@ -406,10 +408,11 @@ const appointmentsPublic = new Elysia()
         email
       })
 
+      // Read by the owner and by the person who books: in the language of this request
       const description = [
-        `Booked via portfolio by ${name} (${email})`,
+        m.invitation.bookedBy(name, email),
         ...journeyLines.map((line) => `\n${line}`),
-        notes ? `\nNotes:\n${notes}` : ''
+        notes ? `\n${m.invitation.notesLabel}\n${notes}` : ''
       ].join('')
       let event: calendar_v3.Schema$Event
       try {

@@ -2,6 +2,7 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import ClaimDomainModal from '#components/modals/ClaimDomainModal.svelte';
+	import { m } from './ClaimDomain.messages.ts';
 
 	let { domainName }: { domainName: string } = $props();
 
@@ -16,9 +17,9 @@
 
 <div class="h-full flex flex-col items-center justify-center gap-6 p-8">
 	<h1 class="text-4xl font-bold">{domainName}</h1>
-	<p class="text-lg text-surface-600-400">This domain is not yet claimed.</p>
+	<p class="text-lg text-surface-600-400">{m.notClaimed}</p>
 	<button class="btn preset-filled text-lg" onclick={() => (showModal = true)}>
-		Claim this domain
+		{m.claim}
 	</button>
 </div>
 

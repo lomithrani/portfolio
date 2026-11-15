@@ -24,12 +24,13 @@ the page what its link next to the title offers (jobPageAction).
 		UserCircle
 	} from 'svelte-heros-v2';
 	import type { JobStatus } from 'portfolio-common';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { portfolioApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { refreshAccount } from '#services/account.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
 	import {
-		APPLICATION_NETWORK_MESSAGE,
 		applicationFailure,
 		applicationSummary,
 		applyView,
@@ -43,10 +44,12 @@ the page what its link next to the title offers (jobPageAction).
 		type ApplicationStatus,
 		type JobPageAction
 	} from '#services/applications.ts';
+	import { m as applicationMessages } from '#services/applications.messages.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
 	import ApplySignIn from './ApplySignIn.svelte';
 	import ClaimPortfolioForm from './ClaimPortfolioForm.svelte';
+	import { m } from './ApplyPanel.messages.ts';
 
 	let {
 		job,
@@ -163,7 +166,7 @@ the page what its link next to the title offers (jobPageAction).
 				: { key, state: 'error', message: applicationFailure('status', 500).message };
 		} catch {
 			if (requested === key) {
-				application = { key, state: 'error', message: APPLICATION_NETWORK_MESSAGE };
+				application = { key, state: 'error', message: applicationMessages.network };
 			}
 		}
 	}
@@ -248,8 +251,8 @@ the page what its link next to the title offers (jobPageAction).
 			// Said once: the toast (a polite live region) announces it, and focus moves to the
 			// summary ("You applied on…"), which the panel's heading now says too
 			toaster.success({
-				title: 'Application sent',
-				description: `The recruiter can now see your portfolio, ${portfolio}.`
+				title: m.sent.title,
+				description: m.sent.description(portfolio)
 			});
 			await focusAfterUpdate(() => summaryElement);
 		} catch {
@@ -323,9 +326,7 @@ the page what its link next to the title offers (jobPageAction).
 		notice = null;
 		claimed = { name, existing };
 		// A new portfolio is announced by the claim form's toast alone
-		announcement = existing
-			? `Your account already owns the portfolio ${name}: no other portfolio was claimed. You can apply with ${name}.`
-			: '';
+		announcement = existing ? m.alreadyOwnsAnnouncement(name) : '';
 		focusAfterUpdate(() => headingElement);
 	};
 
@@ -337,20 +338,18 @@ the page what its link next to the title offers (jobPageAction).
 			case 'not-open':
 				return closed.title;
 			case 'own-posting':
-				return 'This is your job description';
+				return m.title.ownPosting;
 			case 'signed-out':
-				return 'Sign in to apply with your portfolio';
+				return m.title.signedOut;
 			case 'can-apply':
 				if (current?.state === 'loaded' && current.status.applied) {
-					return current.status.source === 'added_by_recruiter'
-						? 'On the applicant list'
-						: 'Application sent';
+					return current.status.source === 'added_by_recruiter' ? m.title.onList : m.title.sent;
 				}
-				return 'Apply with your portfolio';
+				return m.title.applyWithPortfolio;
 			case 'no-portfolio':
-				return 'Apply with your portfolio';
+				return m.title.applyWithPortfolio;
 			default:
-				return 'Apply';
+				return m.title.apply;
 		}
 	});
 
@@ -396,7 +395,7 @@ the page what its link next to the title offers (jobPageAction).
 				></div>
 			{/if}
 		</div>
-		<p class="sr-only">Checking whether you applied…</p>
+		<p class="sr-only">{m.checking}</p>
 	{:else if current?.state === 'error'}
 		<div class="space-y-3 rounded-base preset-tonal-error p-3 text-sm" role="alert">
 			<p>{current.message}</p>
@@ -405,7 +404,7 @@ the page what its link next to the title offers (jobPageAction).
 				class="btn btn-sm preset-filled-error-700-300 min-h-11"
 				onclick={retryStatus}
 			>
-				Try again
+				{common.retry}
 			</button>
 		</div>
 	{:else if current?.state === 'loaded' && current.status.applied}
@@ -420,11 +419,9 @@ the page what its link next to the title offers (jobPageAction).
 			</p>
 			<p class="text-sm text-surface-700-300">
 				{#if current.status.source === 'added_by_recruiter'}
-					They see your portfolio, {@render portfolioLink(domain)}. You can remove yourself from the
-					list.
+					<Rich text={m.addedNote(domain)} portfolio={portfolioLink} />
 				{:else}
-					The recruiter sees your name and your portfolio, {@render portfolioLink(domain)}. Keep it
-					up to date.
+					<Rich text={m.appliedNote(domain)} portfolio={portfolioLink} />
 				{/if}
 			</p>
 			{#if confirmingWithdraw}
@@ -460,7 +457,7 @@ the page what its link next to the title offers (jobPageAction).
 							onclick={cancelWithdraw}
 							onkeydown={onConfirmKeydown}
 						>
-							Keep it
+							{m.keep}
 						</button>
 					</div>
 				</div>
@@ -511,13 +508,10 @@ the page what its link next to the title offers (jobPageAction).
 			<ApplySignIn {onSignedIn} />
 		{:else if ownPosting}
 			<div class="space-y-3 border-t border-surface-200-800 pt-4">
-				<p class="text-sm text-surface-700-300">
-					This is your job description. Reopen it from your recruiter space to take applications
-					again.
-				</p>
+				<p class="text-sm text-surface-700-300">{m.ownClosed}</p>
 				<a
 					href={resolve('/(app)/recruiter/jobs/[id]', { id: job._id })}
-					class="btn preset-filled-primary-700-300 min-h-11 w-full">Manage it</a
+					class="btn preset-filled-primary-700-300 min-h-11 w-full">{m.manage}</a
 				>
 			</div>
 		{:else if user?.domain && current && (current.state !== 'loaded' || current.status.applied)}
@@ -531,53 +525,43 @@ the page what its link next to the title offers (jobPageAction).
 				class="placeholder h-11 w-full animate-pulse rounded-base motion-reduce:animate-none"
 			></div>
 		</div>
-		<p class="sr-only">Loading…</p>
+		<p class="sr-only">{common.loading}</p>
 	{:else if view === 'own-posting'}
-		<p class="text-surface-700-300">
-			Candidates apply to it from this page. You see who applied, and change the posting, in your
-			recruiter space.
-		</p>
+		<p class="text-surface-700-300">{m.ownOpen}</p>
 		<a
 			href={resolve('/(app)/recruiter/jobs/[id]', { id: job._id })}
-			class="btn preset-filled-primary-700-300 min-h-11 w-full">Manage it</a
+			class="btn preset-filled-primary-700-300 min-h-11 w-full">{m.manage}</a
 		>
 	{:else if view === 'signed-out'}
 		{#if noticeText}
 			<p class="rounded-base preset-tonal-warning p-3 text-sm" role="alert">{noticeText}</p>
 		{/if}
-		<p class="text-surface-700-300">
-			The recruiter sees your name and your portfolio: your experience, skills and projects. Never
-			your email. No portfolio yet? You can claim one once signed in.
-		</p>
+		<p class="text-surface-700-300">{m.signedOut}</p>
 		<ApplySignIn {onSignedIn} />
 	{:else if view === 'no-portfolio' && user}
 		{#if noticeText}
 			<p class="rounded-base preset-tonal-warning p-3 text-sm" role="alert">{noticeText}</p>
 		{/if}
-		<p class="text-surface-700-300">
-			Claim one first: it is free, and it is what the recruiter sees when you apply.
-		</p>
+		<p class="text-surface-700-300">{m.noPortfolio}</p>
 		<ClaimPortfolioForm {user} {onClaimed} onSessionExpired={(message) => expireSession(message)} />
 	{:else if view === 'can-apply'}
 		{#if current?.state === 'loaded' && !current.status.applied}
 			<div class="space-y-3">
 				{#if claimedNote?.existing}
 					<p class="rounded-base preset-tonal-primary p-3 text-sm">
-						Your account already owns {@render portfolioLink(domain)}, so no other portfolio was
-						claimed: an account has one portfolio. Apply with this one.
+						<Rich text={m.alreadyOwns(domain)} portfolio={portfolioLink} />
 					</p>
 				{:else if claimedNote}
 					<p class="rounded-base preset-tonal-primary p-3 text-sm">
-						Your new portfolio is empty for now.
-						<a href={resolve('/[domain]/experiences', { domain })} class={linkClass}
-							>Add your experience</a
-						>
-						first, so the recruiter sees more than your name.
+						<Rich text={m.newPortfolio}>
+							{#snippet add(text)}
+								<a href={resolve('/[domain]/experiences', { domain })} class={linkClass}>{text}</a>
+							{/snippet}
+						</Rich>
 					</p>
 				{/if}
 				<p class="text-surface-700-300">
-					The recruiter will see your name and your portfolio, {@render portfolioLink(domain)}.
-					Never your email.
+					<Rich text={m.willSee(domain)} portfolio={portfolioLink} />
 				</p>
 				<button
 					bind:this={applyButton}
@@ -591,10 +575,10 @@ the page what its link next to the title offers (jobPageAction).
 							class="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
 							aria-hidden="true"
 						></span>
-						<span>Sending your application…</span>
+						<span>{m.sending}</span>
 					{:else}
 						<PaperAirplane size="18" class="shrink-0" aria-hidden="true" />
-						<span class="min-w-0 truncate">Apply with {domain}</span>
+						<span class="min-w-0 truncate">{m.applyWith(domain)}</span>
 					{/if}
 				</button>
 			</div>

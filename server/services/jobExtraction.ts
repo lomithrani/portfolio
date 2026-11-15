@@ -12,6 +12,7 @@ import {
   TRAVEL_FREQUENCIES,
   WORKING_TIME_ARRANGEMENTS,
   WORK_MODES,
+  intlLocale,
   isCalendarDate,
   isJobStartDate,
   normalizeList
@@ -28,6 +29,7 @@ import type {
   WorkMode,
   WorkingTimeArrangement
 } from 'portfolio-common'
+import { m } from './jobExtraction.messages'
 
 // What Claude is asked to return for a job description (structured outputs),
 // and how that becomes the draft POST /jobs/import answers with. The model's
@@ -195,7 +197,7 @@ export interface JobPostingDraft {
 
 export interface JobExtraction {
   draft: JobPostingDraft
-  /** What was left out, changed or not found, in plain English for the recruiter reviewing the draft */
+  /** What was left out, changed or not found, in plain words for the recruiter reviewing the draft (in the request's language) */
   warnings: string[]
 }
 
@@ -237,8 +239,6 @@ export const withoutHtml = (markdown: string) =>
 /** One-line text: control characters and runs of spaces as one space, trimmed */
 export const cleanLine = (value: string) =>
   value.normalize('NFC').replace(LINE_BREAKING_CHARACTERS, ' ').replace(/\s+/g, ' ').trim()
-
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
 
 /** `value` cut to `max` UTF-16 code units (never half a surrogate pair) */
 const cut = (value: string, max: number) => {
@@ -340,7 +340,13 @@ const PLAUSIBLE_PAY_FLOOR: Record<PayPeriod, number> = { year: 1000, month: 100,
 // validateJobPosting's rule for postal codes
 const POSTAL_CODE = /^[0-9A-Za-z -]{2,10}$/
 
-/** Reads the fields of the model's output, collecting warnings for what it leaves out or changes */
+/** What the warnings about a list say (m.lists) */
+type ListTexts = (typeof m.lists)[keyof typeof m.lists]
+
+/**
+ * Reads the fields of the model's output, collecting warnings for what it leaves out or changes.
+ * `label`: the field as the warnings name it (m.fields), in the language in use
+ */
 class DraftReader {
   readonly warnings: string[] = []
 
@@ -365,7 +371,7 @@ class DraftReader {
   /** A value quoted in a warning: one line, short */
   private quote(value: string) {
     const line = cleanLine(value)
-    return JSON.stringify(line.length > 30 ? `${cut(line, 30)}…` : line)
+    return m.quoted(line.length > 30 ? `${cut(line, 30)}…` : line)
   }
 
   /** One-line text, at most `max` characters (shortened with a warning) */
@@ -373,7 +379,7 @@ class DraftReader {
     const value = cleanLine(this.textOf(key))
     if (!value) return undefined
     if (value.length <= max) return value
-    this.warnings.push(`Shortened the ${label} to ${max} characters`)
+    this.warnings.push(m.shortened(label, max))
     return cut(value, max)
   }
 
@@ -381,10 +387,10 @@ class DraftReader {
   markdown(key: keyof JobOutput, label: string, max: number): string | undefined {
     const text = cleanText(this.textOf(key))
     const value = cleanText(withoutHtml(text))
-    if (value !== text) this.warnings.push(`Removed HTML markup from the ${label}`)
+    if (value !== text) this.warnings.push(m.htmlRemoved(label))
     if (!value) return undefined
     if (value.length <= max) return value
-    this.warnings.push(`Shortened the ${label} to ${max} characters`)
+    this.warnings.push(m.shortened(label, max))
     return cut(value, max)
   }
 
@@ -394,7 +400,7 @@ class DraftReader {
     const value = raw.trim().toLowerCase().replace(/[\s-]+/g, '_')
     if (!value) return undefined
     if ((values as readonly string[]).includes(value)) return value as T
-    this.warnings.push(`Left out the ${label} (${this.quote(raw)}): it is not one of the accepted values`)
+    this.warnings.push(m.notAccepted(label, this.quote(raw)))
     return undefined
   }
 
@@ -404,7 +410,7 @@ class DraftReader {
     let value = parseNumber(raw)
     if (value === undefined) return undefined
     if (Number.isNaN(value)) {
-      this.warnings.push(`Left out the ${label} (${this.quote(raw)}): it is not a number`)
+      this.warnings.push(m.notANumber(label, this.quote(raw)))
       return undefined
     }
     if (kind === 'cents') value = Math.round(value * 100) / 100
@@ -413,13 +419,8 @@ class DraftReader {
       value <= range.max &&
       (kind === 'whole' ? Number.isInteger(value) : kind === 'half' ? Number.isInteger(value * 2) : true)
     if (fits) return value
-    const rule =
-      kind === 'whole'
-        ? `a whole number from ${range.min} to ${range.max}`
-        : kind === 'half'
-          ? `from ${range.min} to ${range.max} (half hours allowed)`
-          : `an amount from ${range.min} to ${range.max}`
-    this.warnings.push(`Left out the ${label} (${this.quote(raw)}): it must be ${rule}`)
+    const rule = kind === 'whole' ? m.mustBeWhole : kind === 'half' ? m.mustBeHalf : m.mustBeAmount
+    this.warnings.push(rule(label, this.quote(raw), range.min, range.max))
     return undefined
   }
 
@@ -432,8 +433,8 @@ class DraftReader {
     const { min, max } = JOB_LIMITS.startDateYear
     this.warnings.push(
       isCalendarDate(value)
-        ? `Left out the ${label} (${this.quote(raw)}): it must be from ${min} to ${max}`
-        : `Left out the ${label} (${this.quote(raw)}): it is not a date (YYYY-MM-DD)`
+        ? m.dateOutOfRange(label, this.quote(raw), min, max)
+        : m.notADate(label, this.quote(raw))
     )
     return undefined
   }
@@ -443,7 +444,7 @@ class DraftReader {
     const value = cleanLine(raw)
     if (!value) return undefined
     if (POSTAL_CODE.test(value)) return value
-    this.warnings.push(`Left out the postal code (${this.quote(raw)}): it is not a valid postal code`)
+    this.warnings.push(m.invalidPostalCode(this.quote(raw)))
     return undefined
   }
 
@@ -451,7 +452,7 @@ class DraftReader {
    * A list of short texts: one line each, at most JOB_LIMITS.listItem
    * characters (shortened with a warning), each once, at most `max`
    */
-  list(key: keyof JobOutput, [one, many]: [string, string], max: number): string[] | undefined {
+  list(key: keyof JobOutput, texts: ListTexts, max: number): string[] | undefined {
     const raw = this.raw[key]
     const items = Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : []
     let shortened = 0
@@ -463,11 +464,9 @@ class DraftReader {
         return cut(value, JOB_LIMITS.listItem)
       })
     )
-    if (shortened) {
-      this.warnings.push(`Shortened ${plural(shortened, one, many)} longer than ${JOB_LIMITS.listItem} characters`)
-    }
+    if (shortened) this.warnings.push(texts.shortened(shortened, JOB_LIMITS.listItem))
     if (list.length > max) {
-      this.warnings.push(`Only the first ${max} ${many} were kept`)
+      this.warnings.push(texts.firstKept(max))
       list.length = max
     }
     return list.length ? list : undefined
@@ -491,44 +490,46 @@ export const draftFieldCount = (draft: JobPostingDraft): number => {
  */
 export function normalizeJobExtraction(output: unknown): JobExtraction {
   const read = new DraftReader(isRecord(output) ? output : {})
+  // Read here, for each import: the names are in the language of its request
+  const fields = m.fields
 
-  const title = read.line('title', 'title', JOB_LIMITS.title)
-  const company = read.line('company', 'company', JOB_LIMITS.company)
-  const description = read.markdown('description', 'description', JOB_LIMITS.description)
-  const openings = read.number('openings', 'number of openings', JOB_LIMITS.openings)
+  const title = read.line('title', fields.title, JOB_LIMITS.title)
+  const company = read.line('company', fields.company, JOB_LIMITS.company)
+  const description = read.markdown('description', fields.description, JOB_LIMITS.description)
+  const openings = read.number('openings', fields.openings, JOB_LIMITS.openings)
 
   // Location: always in France, the only country handled; another one is
   // left for the recruiter to check, not guessed
-  const city = read.line('city', 'city', JOB_LIMITS.city)
+  const city = read.line('city', fields.city, JOB_LIMITS.city)
   const postalCode = read.postalCode('postalCode')
-  const address = read.line('address', 'address', JOB_LIMITS.address)
+  const address = read.line('address', fields.address, JOB_LIMITS.address)
   const country = read.plain('country')
   if (country && !isFrance(country)) {
-    read.warnings.push('Only jobs in France are handled: check the location and the contract')
+    read.warnings.push(m.onlyFrance)
   }
-  let workMode = read.choice('workMode', WORK_MODES, 'work mode')
-  let remoteDaysPerWeek = read.number('remoteDaysPerWeek', 'remote days per week', JOB_LIMITS.remoteDaysPerWeek)
+  let workMode = read.choice('workMode', WORK_MODES, fields.workMode)
+  let remoteDaysPerWeek = read.number('remoteDaysPerWeek', fields.remoteDaysPerWeek, JOB_LIMITS.remoteDaysPerWeek)
   // Remote days a week make a hybrid job; they mean nothing for another one
   if (!workMode && remoteDaysPerWeek !== undefined) workMode = 'hybrid'
   if (workMode !== 'hybrid') remoteDaysPerWeek = undefined
 
   // Contract: a CDI has no duration
-  const contractType = read.choice('contractType', FR_CONTRACT_TYPES, 'contract type')
-  let durationMonths = read.number('durationMonths', 'contract duration (months)', JOB_LIMITS.durationMonths)
+  const contractType = read.choice('contractType', FR_CONTRACT_TYPES, fields.contractType)
+  let durationMonths = read.number('durationMonths', fields.durationMonths, JOB_LIMITS.durationMonths)
   if (contractType && !CONTRACT_TYPES_WITH_DURATION.includes(contractType)) durationMonths = undefined
   const contract = compact({
     type: contractType,
     durationMonths,
-    startDate: read.date('startDate', 'start date'),
-    trialPeriodMonths: read.number('trialPeriodMonths', 'trial period (months)', JOB_LIMITS.trialPeriodMonths),
-    collectiveAgreement: read.line('collectiveAgreement', 'collective agreement', JOB_LIMITS.collectiveAgreement)
+    startDate: read.date('startDate', fields.startDate),
+    trialPeriodMonths: read.number('trialPeriodMonths', fields.trialPeriodMonths, JOB_LIMITS.trialPeriodMonths),
+    collectiveAgreement: read.line('collectiveAgreement', fields.collectiveAgreement, JOB_LIMITS.collectiveAgreement)
   })
 
   // Working time: hours a week or days a year, whichever the arrangement
   // counts (or the only one found)
-  let arrangement = read.choice('workingTimeArrangement', WORKING_TIME_ARRANGEMENTS, 'working time arrangement')
-  let hoursPerWeek = read.number('hoursPerWeek', 'hours per week', JOB_LIMITS.hoursPerWeek, 'half')
-  let daysPerYear = read.number('daysPerYear', 'days per year', JOB_LIMITS.daysPerYear)
+  let arrangement = read.choice('workingTimeArrangement', WORKING_TIME_ARRANGEMENTS, fields.workingTimeArrangement)
+  let hoursPerWeek = read.number('hoursPerWeek', fields.hoursPerWeek, JOB_LIMITS.hoursPerWeek, 'half')
+  let daysPerYear = read.number('daysPerYear', fields.daysPerYear, JOB_LIMITS.daysPerYear)
   if (!arrangement && hoursPerWeek !== undefined && daysPerYear === undefined) arrangement = 'weekly_hours'
   if (!arrangement && daysPerYear !== undefined && hoursPerWeek === undefined) arrangement = 'annual_days'
   if (arrangement === 'weekly_hours') daysPerYear = undefined
@@ -537,48 +538,51 @@ export function normalizeJobExtraction(output: unknown): JobExtraction {
   // Both are kept for the recruiter to choose
   const arrangementUnclear = !arrangement && hoursPerWeek !== undefined && daysPerYear !== undefined
   if (arrangementUnclear) {
-    read.warnings.push('Both hours per week and days per year were found: choose the working time arrangement')
+    read.warnings.push(m.bothWorkingTimes)
   }
   const workingTime = compact({
     arrangement,
     hoursPerWeek,
     daysPerYear,
-    rttDaysPerYear: read.number('rttDaysPerYear', 'RTT days per year', JOB_LIMITS.rttDaysPerYear)
+    rttDaysPerYear: read.number('rttDaysPerYear', fields.rttDaysPerYear, JOB_LIMITS.rttDaysPerYear)
   })
 
   // Pay, in euros: a single amount is a fixed pay (min = max); an amount
   // left out is not replaced by the other
-  let payMin = read.number('payMin', 'minimum pay', JOB_LIMITS.pay, 'cents')
-  let payMax = read.number('payMax', 'maximum pay', JOB_LIMITS.pay, 'cents')
+  let payMin = read.number('payMin', fields.payMin, JOB_LIMITS.pay, 'cents')
+  let payMax = read.number('payMax', fields.payMax, JOB_LIMITS.pay, 'cents')
   if (payMin === undefined && payMax !== undefined && read.statesNoNumber('payMin')) payMin = payMax
   if (payMax === undefined && payMin !== undefined && read.statesNoNumber('payMax')) payMax = payMin
   if (payMin !== undefined && payMax !== undefined && payMin > payMax) {
-    read.warnings.push('The minimum pay is above the maximum: check the pay range')
+    read.warnings.push(m.payMinAboveMax)
   }
-  const payPeriod = read.choice('payPeriod', PAY_PERIODS, 'pay period')
+  const payPeriod = read.choice('payPeriod', PAY_PERIODS, fields.payPeriod)
   // The model may drop a "k" it was told to multiply out: flagged, not
   // converted (the amount could be right)
   const amounts = [payMin, payMax].filter((amount): amount is number => amount !== undefined)
   if (payPeriod && amounts.length && Math.min(...amounts) < PLAUSIBLE_PAY_FLOOR[payPeriod]) {
-    const range = payMin === undefined || payMax === undefined || payMin === payMax ? `${amounts[0]}` : `${payMin}-${payMax}`
-    read.warnings.push(`Check the pay: ${range} € ${PAY_PERIOD_LABELS[payPeriod]} looks too low (amounts in k€?)`)
+    // Decimals as the recruiter's language writes them (42.5, 42,5), without grouping
+    const amount = (value: number) =>
+      value.toLocaleString(intlLocale('en-US'), { useGrouping: false, maximumFractionDigits: 2 })
+    const range = payMin === undefined || payMax === undefined || payMin === payMax ? amount(amounts[0]) : `${amount(payMin)}-${amount(payMax)}`
+    read.warnings.push(m.checkPay(range, PAY_PERIOD_LABELS[payPeriod]))
   }
-  const payVariable = read.line('payVariable', 'variable pay', JOB_LIMITS.variablePay)
+  const payVariable = read.line('payVariable', fields.payVariable, JOB_LIMITS.variablePay)
   const payFound = [payMin, payMax, payPeriod, payVariable].some((value) => value !== undefined)
 
   const organization = compact({
-    directReports: read.number('directReports', 'number of direct reports', JOB_LIMITS.directReports),
-    peers: read.number('peers', 'number of peers', JOB_LIMITS.peers),
-    levelsToCeo: read.number('levelsToCeo', 'levels to the CEO', JOB_LIMITS.levelsToCeo)
+    directReports: read.number('directReports', fields.directReports, JOB_LIMITS.directReports),
+    peers: read.number('peers', fields.peers, JOB_LIMITS.peers),
+    levelsToCeo: read.number('levelsToCeo', fields.levelsToCeo, JOB_LIMITS.levelsToCeo)
   })
   const requirements = compact({
-    seniority: read.choice('seniority', SENIORITY_LEVELS, 'seniority'),
-    education: read.choice('education', EDUCATION_LEVELS, 'education level'),
-    skills: read.list('skills', ['skill', 'skills'], JOB_LIMITS.skills),
-    languages: read.list('languages', ['language', 'languages'], JOB_LIMITS.languages)
+    seniority: read.choice('seniority', SENIORITY_LEVELS, fields.seniority),
+    education: read.choice('education', EDUCATION_LEVELS, fields.education),
+    skills: read.list('skills', m.lists.skills, JOB_LIMITS.skills),
+    languages: read.list('languages', m.lists.languages, JOB_LIMITS.languages)
   })
-  const benefits = read.list('benefits', ['benefit', 'benefits'], JOB_LIMITS.benefits)
-  const travel = read.choice('travel', TRAVEL_FREQUENCIES, 'travel frequency')
+  const benefits = read.list('benefits', m.lists.benefits, JOB_LIMITS.benefits)
+  const travel = read.choice('travel', TRAVEL_FREQUENCIES, fields.travel)
 
   const draft = compact({
     title,
@@ -600,26 +604,26 @@ export function normalizeJobExtraction(output: unknown): JobExtraction {
 
   const warnings = read.warnings
   if (draftFieldCount(draft) === 0) {
-    warnings.push('No job description was found in this file')
+    warnings.push(m.noJobDescription)
     return { draft, warnings }
   }
 
   // What POST /jobs requires and the file did not give
   const missing = [
-    !title && 'title',
-    !description && 'description',
-    !workMode && 'work mode',
-    workMode !== 'remote' && !city && 'city',
-    !contractType && 'contract type',
-    contractType && FIXED_TERM_CONTRACT_TYPES.includes(contractType) && durationMonths === undefined && 'contract duration',
-    !arrangement && !arrangementUnclear && 'working time (hours per week or days per year)',
-    arrangement === 'weekly_hours' && hoursPerWeek === undefined && 'hours per week',
-    arrangement === 'annual_days' && daysPerYear === undefined && 'days per year',
-    payMin === undefined && payMax === undefined && 'pay range',
-    payMin === undefined && payMax !== undefined && 'minimum pay',
-    payMax === undefined && payMin !== undefined && 'maximum pay',
-    !payPeriod && 'pay period'
+    !title && fields.title,
+    !description && fields.description,
+    !workMode && fields.workMode,
+    workMode !== 'remote' && !city && fields.city,
+    !contractType && fields.contractType,
+    contractType && FIXED_TERM_CONTRACT_TYPES.includes(contractType) && durationMonths === undefined && fields.contractDuration,
+    !arrangement && !arrangementUnclear && fields.workingTime,
+    arrangement === 'weekly_hours' && hoursPerWeek === undefined && fields.hoursPerWeek,
+    arrangement === 'annual_days' && daysPerYear === undefined && fields.daysPerYear,
+    payMin === undefined && payMax === undefined && fields.payRange,
+    payMin === undefined && payMax !== undefined && fields.payMin,
+    payMax === undefined && payMin !== undefined && fields.payMax,
+    !payPeriod && fields.payPeriod
   ].filter((field): field is string => typeof field === 'string')
-  if (missing.length) warnings.push(`Not found in this file, needed to save the posting: ${missing.join(', ')}`)
+  if (missing.length) warnings.push(m.missing(missing.join(', ')))
   return { draft, warnings }
 }

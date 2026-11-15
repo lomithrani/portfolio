@@ -20,6 +20,7 @@ import { instrumentation, httpRequestCounter, httpRequestDuration } from './inst
 import { logger } from './services/logger'
 import { resolveError } from './services/errorHandler'
 import { sessionUserId } from './services/session'
+import { locale } from './services/locale'
 
 // Hard cap on request bodies, enforced by Bun itself (it answers 413, without
 // CORS headers, before the app runs). Sized for the large routes: a 4 MB PDF
@@ -119,6 +120,8 @@ const apiDocs = () =>
 export const createApp = () =>
   new Elysia({ serve: { maxRequestBodySize: MAX_REQUEST_BODY_SIZE } })
     .use(instrumentation)
+    // The request's language, for every text the API answers with (services/locale.ts)
+    .use(locale)
     .onRequest(({ request }) => {
       requestStarts.set(request, performance.now())
     })
@@ -149,7 +152,7 @@ export const createApp = () =>
     .use(apiDocs())
     .error(errors)
     .onError(({ code, error, set, request, route, path }) => {
-      const { status, body, level, headers } = resolveError(code, error)
+      const { status, body, level, headers, logMessage } = resolveError(code, error)
       const attributes = {
         code: String(code),
         status,
@@ -165,7 +168,8 @@ export const createApp = () =>
           stack: error instanceof Error ? error.stack : undefined
         })
       } else if (level === 'warn') {
-        const message = typeof body === 'string' ? body : 'Request validation failed'
+        // In English whatever the request's language: the body's own English when it is a text
+        const message = logMessage ?? (typeof body === 'string' ? body : 'Request validation failed')
         logger.warn(message, attributes)
       }
 

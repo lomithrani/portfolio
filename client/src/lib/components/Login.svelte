@@ -14,10 +14,13 @@ header then asks which space to use (SpaceChooser).
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
+	import { getLocale } from 'portfolio-common';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { login } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { ArrowPath, ArrowRightOnRectangle } from 'svelte-heros-v2';
 	import { authenticationStore, type AuthUser } from '#services/stores/index.ts';
+	import { m } from './Login.messages.ts';
 
 	let { onLogin }: { onLogin?: (user: AuthUser) => void } = $props();
 
@@ -44,7 +47,7 @@ header then asks which space to use (SpaceChooser).
 				// Read before signing in: this component unmounts as soon as the session is stored
 				const notify = onLogin;
 				if (!(await login(credential))) {
-					errorMessage = 'Sign-in failed. Try again.';
+					errorMessage = common.signInFailed;
 					return;
 				}
 				const user = get(authenticationStore).user;
@@ -62,7 +65,8 @@ header then asks which space to use (SpaceChooser).
 					theme: isDark() ? 'filled_black' : 'outline',
 					size: 'medium',
 					type: 'icon',
-					shape: 'circle'
+					shape: 'circle',
+					locale: getLocale()
 				});
 			}
 			// The clicked button is gone: the focus stays in the sign-in
@@ -86,13 +90,13 @@ header then asks which space to use (SpaceChooser).
 	id={SIGN_IN_ID}
 	class="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
 	role="group"
-	aria-label="Sign in"
+	aria-label={m.signIn}
 	tabindex="-1"
 >
 	{#if errorMessage}
 		<span class="text-xs text-error-700-300" role="alert">{errorMessage}</span>
 	{:else if gsiState === 'unavailable'}
-		<span class="text-xs text-error-700-300" role="alert">Google sign-in could not load.</span>
+		<span class="text-xs text-error-700-300" role="alert">{m.unavailable}</span>
 	{/if}
 	{#if gsiState === 'ready'}
 		<div bind:this={buttonContainer} class="google-btn"></div>
@@ -111,7 +115,9 @@ header then asks which space to use (SpaceChooser).
 			{:else}
 				<ArrowRightOnRectangle size="18" class="sm:hidden" aria-hidden="true" />
 			{/if}
-			<span class="sr-only sm:not-sr-only">{gsiState === 'loading' ? 'Loading…' : 'Sign in'}</span>
+			<span class="sr-only sm:not-sr-only"
+				>{gsiState === 'loading' ? common.loading : m.signIn}</span
+			>
 		</button>
 	{/if}
 </div>

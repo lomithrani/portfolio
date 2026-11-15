@@ -11,6 +11,7 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 	import { page } from '$app/state';
 	import { currentConsent, normalizeDomainName } from 'portfolio-common';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
+	import Rich from '#lib/i18n/Rich.svelte';
 	import {
 		DOMAIN_NAME_MAX_LENGTH,
 		PORTFOLIO_NAME_PLACEHOLDER,
@@ -22,7 +23,9 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 		switchMode
 	} from '#services/account.ts';
 	import type { AuthUser } from '#services/stores/index.ts';
+	import { accountMessages } from '#services/account.messages.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { m } from './ClaimPortfolioForm.messages.ts';
 
 	let {
 		user,
@@ -85,7 +88,7 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 			return;
 		}
 		if (showConsent && !consentChecked) {
-			consentProblem = 'Tick the box to confirm your age and accept the terms.';
+			consentProblem = accountMessages.claim.tickTheBox;
 			document.getElementById(consentId)?.focus();
 			return;
 		}
@@ -103,8 +106,8 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 					return;
 				}
 				toaster.success({
-					title: 'Portfolio claimed',
-					description: `${result.name} is yours. Add your experience so recruiters see it.`
+					title: accountMessages.claim.claimed,
+					description: m.claimed(result.name)
 				});
 				onClaimed(result.name);
 				return;
@@ -142,7 +145,7 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 <form class="space-y-3" novalidate onsubmit={claim} aria-busy={busy}>
 	<div class="space-y-1.5">
 		<label class="label" for="{uid}-name">
-			<span class="label-text font-medium">Portfolio name</span>
+			<span class="label-text font-medium">{accountMessages.claim.portfolioName}</span>
 		</label>
 		<input
 			bind:this={nameInput}
@@ -165,10 +168,11 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 			<p id="{uid}-error" class="text-sm text-error-700-300">{nameError}</p>
 		{/if}
 		<p id="{uid}-hint" class="text-sm wrap-anywhere text-surface-700-300">
-			Lowercase letters, digits, dots and hyphens. Your portfolio will be at
-			<span class="font-medium text-surface-950-50"
-				>{host}/{normalizedName || PORTFOLIO_NAME_PLACEHOLDER}</span
-			>.
+			<Rich text={accountMessages.claim.nameHint}>
+				{#snippet address()}<span class="font-medium text-surface-950-50"
+						>{host}/{normalizedName || PORTFOLIO_NAME_PLACEHOLDER}</span
+					>{/snippet}
+			</Rich>
 		</p>
 	</div>
 	{#if showConsent}
@@ -195,9 +199,9 @@ An account that has not accepted the Terms of use in force ticks the age and ter
 				class="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
 				aria-hidden="true"
 			></span>
-			<span>Claiming…</span>
+			<span>{accountMessages.claim.claiming}</span>
 		{:else}
-			<span>Claim this portfolio</span>
+			<span>{m.submit}</span>
 		{/if}
 	</button>
 </form>

@@ -3,6 +3,7 @@
 	import Skill from './Skill.svelte';
 	import Markdown from './Markdown.svelte';
 	import { formatProjectMonths, type ExperiencePeriod } from '#services/experienceDates.ts';
+	import { m } from './Project.messages.ts';
 
 	let {
 		project,
@@ -57,7 +58,7 @@
 >
 	<div class="flex flex-wrap items-baseline justify-between gap-x-3">
 		<h3 class="font-semibold" id={headingId}>
-			{project.name}{#if matches}<span class="sr-only">&nbsp;(uses the selected skills)</span>{/if}
+			{project.name}{#if matches}<span class="sr-only">&nbsp;{m.usesSelectedSkills}</span>{/if}
 		</h3>
 		{#if period}
 			<p class="text-xs text-surface-700-300 whitespace-nowrap">{period}</p>
@@ -73,7 +74,7 @@
 			the order and the names tell them apart -->
 		<div class="space-y-1.5 pt-1">
 			{#if hardSkills.length > 0}
-				<ul class="flex flex-wrap gap-1.5" aria-label="Technical skills">
+				<ul class="flex flex-wrap gap-1.5" aria-label={m.technicalSkills}>
 					{#each hardSkills as skill, index (index)}
 						<li>
 							<Skill {skill} variant="hard" highlighted={highlightSkill(skill.displayName)} />
@@ -82,7 +83,7 @@
 				</ul>
 			{/if}
 			{#if softSkills.length > 0}
-				<ul class="flex flex-wrap gap-1.5" aria-label="Soft skills">
+				<ul class="flex flex-wrap gap-1.5" aria-label={m.softSkills}>
 					{#each softSkills as skill, index (index)}
 						<li>
 							<Skill {skill} variant="soft" highlighted={highlightSkill(skill.displayName)} />

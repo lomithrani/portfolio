@@ -9,6 +9,7 @@ it (this form does not, to say it once).
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { ArrowPath, ExclamationTriangle, UserPlus } from 'svelte-heros-v2';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { portfolioApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { clearAuthentication } from '#services/authentication.ts';
@@ -17,8 +18,10 @@ it (this form does not, to say it once).
 		addApplicantError,
 		applicantDomainProblem,
 		domainFromInput,
+		networkError,
 		type Applicant
 	} from '#services/recruiter.ts';
+	import { m } from './AddApplicantForm.messages.ts';
 
 	let { jobId, onAdded }: { jobId: string; onAdded: (applicant: Applicant) => void } = $props();
 
@@ -90,7 +93,7 @@ it (this form does not, to say it once).
 			onAdded(data);
 			input?.focus();
 		} catch {
-			alertMessage = 'Could not reach the server. Check your connection and try again.';
+			alertMessage = networkError();
 			await tick();
 			alertElement?.focus();
 		} finally {
@@ -100,10 +103,8 @@ it (this form does not, to say it once).
 </script>
 
 <form class="space-y-2" onsubmit={submit} novalidate aria-busy={busy ? 'true' : undefined}>
-	<label for="{uid}-domain" class="block text-sm font-semibold">Add a portfolio</label>
-	<p id="{uid}-hint" class="text-xs text-surface-700-300">
-		A portfolio name, e.g. louis.gentil, or its address.
-	</p>
+	<label for="{uid}-domain" class="block text-sm font-semibold">{m.label}</label>
+	<p id="{uid}-hint" class="text-xs text-surface-700-300">{m.hint}</p>
 	<div class="flex gap-2">
 		<input
 			bind:this={input}
@@ -126,10 +127,10 @@ it (this form does not, to say it once).
 		>
 			{#if busy}
 				<ArrowPath size="18" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-				Adding…
+				{m.adding}
 			{:else}
 				<UserPlus size="18" aria-hidden="true" />
-				Add
+				{common.add}
 			{/if}
 		</button>
 	</div>

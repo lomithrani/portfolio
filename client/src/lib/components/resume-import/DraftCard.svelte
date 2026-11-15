@@ -16,6 +16,8 @@ company already in the portfolio, fields the editor would refuse, a failed attem
 		type ImportDraft
 	} from '#services/resumeImport.ts';
 	import { experienceTypeLabels } from '#components/experience-list/experienceList.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import { m } from './DraftCard.messages.ts';
 
 	let {
 		draft,
@@ -42,7 +44,7 @@ company already in the portfolio, fields the editor would refuse, a failed attem
 	const uid = $props.id();
 
 	let added = $derived(draft.status === 'added');
-	let title = $derived(draft.form.title.trim() || 'Untitled experience');
+	let title = $derived(draft.form.title.trim() || m.untitled);
 	let subtitle = $derived(
 		[
 			draft.form.company.name.trim(),
@@ -77,7 +79,7 @@ company already in the portfolio, fields the editor would refuse, a failed attem
 					class="checkbox size-5"
 					checked={draft.selected}
 					{disabled}
-					aria-label="Include {title}"
+					aria-label={m.include(title)}
 					onchange={(event) => onselect(event.currentTarget.checked)}
 				/>
 			</label>
@@ -97,7 +99,7 @@ company already in the portfolio, fields the editor would refuse, a failed attem
 					<span
 						class="rounded-full px-2 py-0.5 text-xs font-medium preset-tonal-success whitespace-nowrap"
 					>
-						Added
+						{m.added}
 					</span>
 				{/if}
 			</div>
@@ -119,17 +121,18 @@ company already in the portfolio, fields the editor would refuse, a failed attem
 					<div class="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
 						{#if projectCount > 0}
 							<span class="me-1 font-medium text-surface-700-300">
-								{projectCount}
-								{projectCount === 1 ? 'project' : 'projects'}
+								{m.projects(projectCount)}
 							</span>
 						{/if}
 						{#if skills.length > 0}
-							<span class="sr-only">Skills:</span>
+							<span class="sr-only">{m.skills}</span>
 							{#each skills.slice(0, SKILLS_SHOWN) as skill (skill)}
 								<span class="rounded-full preset-tonal px-2 py-0.5">{skill}</span>
 							{/each}
 							{#if skills.length > SKILLS_SHOWN}
-								<span class="text-surface-700-300">+{skills.length - SKILLS_SHOWN} more</span>
+								<span class="text-surface-700-300">
+									{m.moreSkills(skills.length - SKILLS_SHOWN)}
+								</span>
 							{/if}
 						{/if}
 					</div>
@@ -138,18 +141,18 @@ company already in the portfolio, fields the editor would refuse, a failed attem
 				{#if duplicate}
 					<p class="flex items-start gap-1.5 text-sm text-warning-800-200">
 						<ExclamationTriangle size="16" class="mt-0.5 shrink-0" aria-hidden="true" />
-						<span>Already in your portfolio: an experience has the same title and company.</span>
+						<span>{m.duplicate}</span>
 					</p>
 				{/if}
 				{#if draft.status === 'failed' && draft.error}
 					<p class="flex items-start gap-1.5 text-sm text-error-700-300">
 						<XCircle size="16" class="mt-0.5 shrink-0" aria-hidden="true" />
-						<span>Not added: {draft.error}</span>
+						<span>{m.notAdded(draft.error)}</span>
 					</p>
 				{:else if problems.length > 0}
 					<p class="flex items-start gap-1.5 text-sm text-warning-800-200">
 						<ExclamationTriangle size="16" class="mt-0.5 shrink-0" aria-hidden="true" />
-						<span>Edit before adding · {problemsText(problems)}</span>
+						<span>{m.editFirst(problemsText(problems))}</span>
 					</p>
 				{/if}
 			{/if}
@@ -163,12 +166,12 @@ company already in the portfolio, fields the editor would refuse, a failed attem
 					? 'preset-tonal-primary'
 					: 'preset-tonal'}"
 				{disabled}
-				aria-label="Edit {title}"
+				aria-label={m.edit(title)}
 				data-edit-draft
 				onclick={onedit}
 			>
 				<PencilSquare size="16" aria-hidden="true" />
-				<span class="max-sm:sr-only">Edit</span>
+				<span class="max-sm:sr-only">{common.edit}</span>
 			</button>
 		{/if}
 	</div>

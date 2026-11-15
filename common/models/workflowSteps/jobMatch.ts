@@ -1,4 +1,5 @@
 import type { StepConfigResult, WorkflowStepManifest } from '../workflow';
+import { workflowStepMessages as m } from './workflowSteps.messages';
 
 /**
  * The job the recruiter picked in the job step is scored out of 100 against the owner's perfect
@@ -29,11 +30,7 @@ const parseConfig = (raw: unknown): StepConfigResult<JobMatchStepConfig> => {
 		minScore < min ||
 		minScore > max
 	) {
-		return {
-			ok: false,
-			field: 'minScore',
-			message: `The minimum score is a whole number from ${min} to ${max}.`
-		};
+		return { ok: false, field: 'minScore', message: m.jobMatch.minScore(min, max) };
 	}
 	return { ok: true, config: { minScore, showDetails: source.showDetails === true } };
 };
@@ -41,9 +38,12 @@ const parseConfig = (raw: unknown): StepConfigResult<JobMatchStepConfig> => {
 export const jobMatchStep: WorkflowStepManifest<JobMatchStepConfig> = {
 	type: 'job-match',
 	kind: 'requirement',
-	label: 'Match the perfect job',
-	description:
-		'The job the recruiter picked is scored out of 100 against your perfect job (the Perfect job tab). Under the minimum you set, they cannot go further.',
+	get label() {
+		return m.jobMatch.label;
+	},
+	get description() {
+		return m.jobMatch.description;
+	},
 	max: 1,
 	needs: ['job'],
 	defaultConfig: () => ({ minScore: DEFAULT_JOB_MATCH_MIN_SCORE, showDetails: false }),

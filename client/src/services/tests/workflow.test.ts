@@ -7,9 +7,8 @@ import {
 	type WorkflowStep,
 	type WorkflowStepStatus
 } from 'portfolio-common';
-import { NETWORK_ERROR } from '../recruiter';
+import { networkError } from '../recruiter';
 import {
-	STEP_UNAVAILABLE,
 	activeStepIndex,
 	addStep,
 	addStepProblem,
@@ -46,6 +45,7 @@ import {
 	withStepConfig,
 	type Journey
 } from '../workflow';
+import { m } from '../workflow.messages';
 
 const JOB = {
 	_id: 'a'.repeat(24),
@@ -342,9 +342,9 @@ describe("the visitor's journey", () => {
 			/^Recruiters book a slot/
 		);
 		// A step type this version does not show
-		expect(stepNote(journey(['pending', 'pending']), 0, 'open', undefined)).toBe(STEP_UNAVAILABLE);
+		expect(stepNote(journey(['pending', 'pending']), 0, 'open', undefined)).toBe(m.stepUnavailable);
 		expect(stepNote(journey(['pending', 'pending'], { own: true }), 0, 'open', undefined)).toBe(
-			STEP_UNAVAILABLE
+			m.stepUnavailable
 		);
 	});
 
@@ -377,10 +377,10 @@ describe("the visitor's journey", () => {
 			})
 		).toEqual({ message: 'Confirm that you have read the note', kind: 'error' });
 		expect(submitFailure(503, new TypeError('Failed to fetch'))).toEqual({
-			message: NETWORK_ERROR,
+			message: networkError(),
 			kind: 'error'
 		});
-		expect(submitFailure(undefined, new TypeError('Failed to fetch')).message).toBe(NETWORK_ERROR);
+		expect(submitFailure(undefined, new TypeError('Failed to fetch')).message).toBe(networkError());
 	});
 });
 
@@ -453,7 +453,7 @@ describe('the job step', () => {
 			'changed'
 		);
 		expect(pickJobFailure(503, new TypeError('Failed to fetch'))).toEqual({
-			message: NETWORK_ERROR,
+			message: networkError(),
 			kind: 'error'
 		});
 		expect(pickJobFailure(500, 'Internal Server Error')).toEqual({

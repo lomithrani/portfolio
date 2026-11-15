@@ -3,14 +3,9 @@ import { parsePerfectJob, storedPerfectJob } from 'portfolio-common';
 import type { PerfectJob as PerfectJobCriteria } from 'portfolio-common';
 import { PerfectJob } from '../models/database';
 import { FieldValidationError, ServiceUnavailableError } from '../errors';
-import {
-  ADDRESS_LOOKUP_FAILED,
-  ADDRESS_NOT_FOUND,
-  COMMUTE_UNAVAILABLE,
-  commuteAvailability,
-  locateOwnerAddress
-} from './commute';
+import { commuteAvailability, locateOwnerAddress } from './commute';
 import type { CommuteAvailability } from './commute';
+import { m } from './commute.messages';
 
 // The perfect job of an account (plugins/perfectJob.ts): the criteria its
 // owner rated, which a recruiter's job is scored against in the hiring
@@ -68,9 +63,9 @@ async function withPlace(userId: string, commute: Commute): Promise<Commute> {
   const { place: _sent, ...criterion } = commute;
   const stored = (await perfectJobOf(userId)).commute;
   if (stored?.place && stored.from === criterion.from) return { ...criterion, place: stored.place };
-  if (!commuteAvailability().enabled) throw new FieldValidationError('criteria.commute.from', COMMUTE_UNAVAILABLE);
+  if (!commuteAvailability().enabled) throw new FieldValidationError('criteria.commute.from', () => m.commuteUnavailable);
   const place = await locateOwnerAddress(criterion.from);
-  if (place === undefined) throw new ServiceUnavailableError(ADDRESS_LOOKUP_FAILED);
-  if (place === null) throw new FieldValidationError('criteria.commute.from', ADDRESS_NOT_FOUND);
+  if (place === undefined) throw new ServiceUnavailableError(() => m.addressLookupFailed);
+  if (place === null) throw new FieldValidationError('criteria.commute.from', () => m.addressNotFound);
   return { ...criterion, place };
 }

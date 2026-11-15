@@ -9,6 +9,7 @@ import {
   GoogleCalendarReconnectRequiredError
 } from '../errors'
 import { logger } from './logger'
+import { m } from './googleCalendar.messages'
 
 // The Google OAuth tokens are `select: false` on the User schema: this module
 // is the only place that loads them, and it never returns them.
@@ -29,12 +30,9 @@ const EVENT_GET_TIMEOUT_MS = 10_000
 
 type UserId = string | Types.ObjectId
 
-export const RECONNECT_REQUIRED_MESSAGE =
-  'Google Calendar access was revoked or has expired. Reconnect Google Calendar'
-
 export function createOAuth2Client() {
   if (!env.GOOGLE_CLIENT_SECRET) {
-    throw new GoogleCalendarNotConnectedError('Google Calendar is not configured on this server')
+    throw new GoogleCalendarNotConnectedError(() => m.notConfigured)
   }
   // 'postmessage': the redirect URI of codes obtained with the Google Identity
   // Services popup code flow (AppointmentsTab.svelte)
@@ -90,7 +88,7 @@ async function exchangeCode(code: string) {
     // 4xx: invalid, expired or reused code (invalid_grant), wrong client...
     if (status !== undefined && status >= 400 && status < 500) {
       logger.warn('Google Calendar authorization code rejected', { status })
-      throw new GoogleCalendarAuthorizationError('Google rejected the authorization code')
+      throw new GoogleCalendarAuthorizationError(() => m.codeRejected)
     }
     throw error
   }
@@ -106,7 +104,7 @@ export async function connectGoogleCalendar(userId: UserId, code: string) {
 
   const grantedScopes = tokens.scope?.split(' ') ?? []
   if (!grantedScopes.includes(CALENDAR_SCOPE)) {
-    throw new GoogleCalendarAuthorizationError('Calendar access was not granted')
+    throw new GoogleCalendarAuthorizationError(() => m.accessNotGranted)
   }
 
   const update: Record<string, unknown> = {
@@ -128,9 +126,7 @@ export async function connectGoogleCalendar(userId: UserId, code: string) {
     { $set: update, $unset: clearRevoked }
   )
   if (result.matchedCount === 0) {
-    throw new GoogleCalendarAuthorizationError(
-      'Google did not grant offline access. Remove this app from your Google account permissions, then connect again'
-    )
+    throw new GoogleCalendarAuthorizationError(() => m.noOfflineAccess)
   }
 }
 
@@ -287,7 +283,7 @@ async function callGoogle<T>(calendar: calendar_v3.Calendar, request: () => Prom
     const grant = grants.get(calendar)
     if (reason === null || !grant) throw error
     await clearRefusedGrant(grant, reason)
-    throw new GoogleCalendarReconnectRequiredError(RECONNECT_REQUIRED_MESSAGE)
+    throw new GoogleCalendarReconnectRequiredError(() => m.reconnectRequired)
   }
 }
 
@@ -296,7 +292,7 @@ export async function getCalendarClient(userId: UserId): Promise<calendar_v3.Cal
   const tokens = user?.googleCalendar
 
   if (!tokens?.refreshToken) {
-    throw new GoogleCalendarNotConnectedError('Google Calendar not connected')
+    throw new GoogleCalendarNotConnectedError(() => m.notConnected)
   }
 
   const client = createOAuth2Client()

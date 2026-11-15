@@ -25,6 +25,7 @@
 	import { projectMatchesFilters, type ExperienceFilters } from '#services/filters.ts';
 	import { previewTarget } from '#services/projectPreview.ts';
 	import { experienceTypeLabels } from '#components/experience-list/experienceList.ts';
+	import { m } from './Timeline.messages.ts';
 
 	let {
 		experiences,
@@ -270,7 +271,7 @@
 
 <section
 	class="card preset-outlined-surface-200-800 bg-surface-50-950 shadow-sm"
-	aria-label="Timeline"
+	aria-label={m.timeline}
 	data-timeline
 >
 	{#if timeline.items.length > 0}
@@ -367,11 +368,14 @@
 										>{/if}
 								</span>
 								<span class="sr-only">
-									, {experienceTypeLabels[experience.type]}, {periodOf(experience)}
+									{m.experienceDetails(
+										experienceTypeLabels[experience.type] ?? '',
+										periodOf(experience)
+									)}
 								</span>
 							</button>
 							{#if item.projects.length > 0}
-								<ul class="lanes grid gap-y-1" aria-label="Projects of {experience.title}">
+								<ul class="lanes grid gap-y-1" aria-label={m.projectsOf(experience.title)}>
 									{#each item.projects as entry (entry.index)}
 										{@const place = placeSpan(entry.span, item.extent)}
 										{@const matched = projectMatchesFilters(entry.project, filters)}
@@ -401,8 +405,10 @@
 											>
 												<span class="bar-label">{entry.project.name}</span>
 												<span class="sr-only">
-													, {formatProjectMonths(entry.project, experiencePeriod(experience)) ||
-														'no dates'}{#if matched}, uses the selected skills{/if}
+													{m.projectDetails(
+														formatProjectMonths(entry.project, experiencePeriod(experience)),
+														matched
+													)}
 												</span>
 											</button>
 										</li>
@@ -418,13 +424,13 @@
 		<div
 			class="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-surface-200-800 px-3 py-2 text-xs text-surface-700-300 md:px-4"
 		>
-			<p>Select a bar to read about it. Scroll or pinch over the timeline to zoom.</p>
-			<div class="flex gap-1" role="group" aria-label="Zoom">
+			<p>{m.hint}</p>
+			<div class="flex gap-1" role="group" aria-label={m.zoom}>
 				<button
 					type="button"
 					class="btn-icon btn-icon-sm size-8 hover:preset-tonal"
-					aria-label="Zoom out"
-					title="Zoom out"
+					aria-label={m.zoomOut}
+					title={m.zoomOut}
 					disabled={!canZoomOut}
 					onclick={() => zoomBy(1 / 1.6)}
 				>
@@ -433,8 +439,8 @@
 				<button
 					type="button"
 					class="btn-icon btn-icon-sm size-8 hover:preset-tonal"
-					aria-label="Zoom in"
-					title="Zoom in"
+					aria-label={m.zoomIn}
+					title={m.zoomIn}
 					disabled={!canZoomIn}
 					onclick={() => zoomBy(1.6)}
 				>
@@ -442,7 +448,7 @@
 				</button>
 			</div>
 			{#if types.length > 1}
-				<ul class="ml-auto flex flex-wrap gap-x-3 gap-y-1" aria-label="Types of experience">
+				<ul class="ml-auto flex flex-wrap gap-x-3 gap-y-1" aria-label={m.typesOfExperience}>
 					{#each types as type (type)}
 						{@const TypeIcon = typeIcons[type]}
 						<li class="flex items-center gap-1.5">
@@ -461,16 +467,14 @@
 			{/if}
 		</div>
 	{:else}
-		<p class="p-6 text-center text-surface-700-300">
-			None of these experiences has dates yet: there is nothing to place on a timeline.
-		</p>
+		<p class="p-6 text-center text-surface-700-300">{m.nothingDated}</p>
 	{/if}
 
 	{#if timeline.undated.length > 0}
 		<div
 			class="flex flex-wrap items-center gap-2 border-t border-surface-200-800 px-3 py-2 text-sm md:px-4"
 		>
-			<p id="{uid}-undated" class="text-xs text-surface-700-300">Without dates</p>
+			<p id="{uid}-undated" class="text-xs text-surface-700-300">{m.withoutDates}</p>
 			<ul class="flex flex-wrap gap-2" aria-labelledby="{uid}-undated">
 				{#each timeline.undated as experience (String(experience._id))}
 					{@const id = String(experience._id)}

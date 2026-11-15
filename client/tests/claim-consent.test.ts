@@ -32,7 +32,7 @@ const CONSENT_REFUSED = {
 	type: 'validation',
 	on: 'body',
 	property: 'consent',
-	message: 'Confirm your age and accept the terms of use to create a portfolio.'
+	message: 'Confirm your age and accept the terms of use to create your portfolio.'
 };
 
 let api: APIRequestContext;
@@ -141,7 +141,7 @@ const FORMS: ClaimForm[] = [
 			await expect(dialog).toBeVisible();
 			return dialog;
 		},
-		submit: 'Claim portfolio'
+		submit: 'Claim your portfolio'
 	},
 	{
 		name: 'a job page',

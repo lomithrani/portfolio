@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { ArrowDown, ArrowUp, ChevronRight, ExclamationCircle, Trash } from 'svelte-heros-v2';
 	import { EXPERIENCE_LIMITS } from 'portfolio-common';
-	import type { FormProject } from '#services/experienceForm.ts';
+	import { projectOngoingLabel, type FormProject } from '#services/experienceForm.ts';
+	import { m as formMessages } from '#services/experienceForm.messages.ts';
 	import { formatMonthRange, fromMonthKey } from '#services/experienceDates.ts';
 	import FieldError from './FieldError.svelte';
 	import MarkdownField from './MarkdownField.svelte';
 	import PeriodFields from './PeriodFields.svelte';
 	import SkillsInput from './SkillsInput.svelte';
 	import { getEditorContext } from './context';
+	import { m } from './editor.messages.ts';
 
 	let {
 		project = $bindable(),
@@ -42,11 +44,11 @@
 	const headerId = $derived(`${editor.fieldId(prefix)}header`);
 	const panelId = $derived(`${editor.fieldId(prefix)}panel`);
 
-	let displayName = $derived(project.name.trim() || 'Untitled project');
+	let displayName = $derived(project.name.trim() || m.project.untitled);
 
 	const isMonth = (value: string) => /^\d{4}-\d{2}$/.test(value);
 	let period = $derived.by(() => {
-		if (!isMonth(project.start)) return 'No dates';
+		if (!isMonth(project.start)) return m.project.noDates;
 		const start = fromMonthKey(project.start);
 		if (project.ongoing) return formatMonthRange(start);
 		if (!isMonth(project.end)) return `${formatMonthRange(start, start)} – …`;
@@ -79,22 +81,20 @@
 					{displayName}
 				</span>
 				<span class="block truncate text-xs text-surface-700-300">
-					{period} · {skillCount === 0
-						? 'No skills'
-						: `${skillCount} skill${skillCount > 1 ? 's' : ''}`}
+					{period} · {m.project.skills(skillCount)}
 				</span>
 			</span>
 			{#if hasErrors}
 				<span class="flex shrink-0 items-center gap-1 text-xs text-error-700-300">
 					<ExclamationCircle size="16" aria-hidden="true" />
-					<span class="sr-only sm:not-sr-only">Needs attention</span>
+					<span class="sr-only sm:not-sr-only">{m.project.needsAttention}</span>
 				</span>
 			{/if}
 		</button>
 		<button
 			type="button"
 			class="btn-icon size-10 hover:preset-tonal"
-			aria-label="Move “{displayName}” up"
+			aria-label={m.project.moveUp(displayName)}
 			disabled={index === 0}
 			data-move="up"
 			onclick={() => onmove(-1)}
@@ -104,7 +104,7 @@
 		<button
 			type="button"
 			class="btn-icon size-10 hover:preset-tonal"
-			aria-label="Move “{displayName}” down"
+			aria-label={m.project.moveDown(displayName)}
 			disabled={index === count - 1}
 			data-move="down"
 			onclick={() => onmove(1)}
@@ -114,7 +114,7 @@
 		<button
 			type="button"
 			class="btn-icon size-10 hover:preset-tonal-error"
-			aria-label="Remove “{displayName}”"
+			aria-label={m.project.remove(displayName)}
 			onclick={onremove}
 		>
 			<Trash size="18" aria-hidden="true" />
@@ -125,7 +125,8 @@
 		<div id={panelId} role="region" aria-labelledby={headerId} class="space-y-4 pt-3 pb-4 sm:ps-7">
 			<div class="space-y-1">
 				<label for={editor.fieldId(nameField)} class="label-text">
-					Name <span class="text-error-700-300" aria-hidden="true">*</span>
+					{formMessages.fields.name}
+					<span class="text-error-700-300" aria-hidden="true">*</span>
 				</label>
 				<input
 					id={editor.fieldId(nameField)}
@@ -134,7 +135,7 @@
 					autocomplete="off"
 					required
 					maxlength={EXPERIENCE_LIMITS.projectName}
-					placeholder="e.g. Internal developer portal"
+					placeholder={m.project.namePlaceholder}
 					bind:value={project.name}
 					aria-invalid={editor.error(nameField) ? true : undefined}
 					aria-describedby={editor.error(nameField) ? editor.errorId(nameField) : undefined}
@@ -146,21 +147,21 @@
 				bind:start={project.start}
 				bind:end={project.end}
 				bind:ongoing={project.ongoing}
-				ongoingLabel="Ongoing"
+				ongoingLabel={projectOngoingLabel()}
 				fieldPrefix={prefix}
 			/>
 
 			<MarkdownField
 				bind:value={project.summary}
 				field="{prefix}summary"
-				label="Summary"
+				label={formMessages.fields.summary}
 				minRows={4}
-				placeholder="What you did, for whom, and the outcome."
+				placeholder={m.project.summaryPlaceholder}
 			/>
 
 			<SkillsInput
 				field="{prefix}hardSkills"
-				label="Technical skills"
+				label={formMessages.fields.hardSkills}
 				variant="hard"
 				value={project.hardSkills}
 				{known}
@@ -169,7 +170,7 @@
 			/>
 			<SkillsInput
 				field="{prefix}softSkills"
-				label="Soft skills"
+				label={formMessages.fields.softSkills}
 				variant="soft"
 				value={project.softSkills}
 				{known}

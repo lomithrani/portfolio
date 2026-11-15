@@ -9,13 +9,14 @@ choice); Escape and the backdrop cancel, except while the request runs.
 	import { tick } from 'svelte';
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { ArrowPath, ExclamationTriangle } from 'svelte-heros-v2';
+	import { common } from '#lib/i18n/common.messages.ts';
 
 	let {
 		open,
 		title,
 		description,
 		confirmLabel,
-		busyLabel = 'Deleting…',
+		busyLabel = common.deleting,
 		busy = false,
 		error = '',
 		onConfirm,
@@ -90,7 +91,7 @@ choice); Escape and the backdrop cancel, except while the request runs.
 						disabled={busy}
 						onclick={onCancel}
 					>
-						Cancel
+						{common.cancel}
 					</button>
 					<!-- Kept focusable while busy (aria-disabled): disabling it would drop the focus -->
 					<button
@@ -109,7 +110,7 @@ choice); Escape and the backdrop cancel, except while the request runs.
 							/>
 							{busyLabel}
 						{:else}
-							{error ? 'Try again' : confirmLabel}
+							{error ? common.retry : confirmLabel}
 						{/if}
 					</button>
 				</div>

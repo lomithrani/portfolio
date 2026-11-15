@@ -2,6 +2,7 @@ import type { NoteStepConfig } from 'portfolio-common';
 import { FieldValidationError } from '../../errors';
 import type { ServerStep } from './types';
 import { inputFields, storedDate } from './types';
+import { m } from './steps.messages';
 
 // Note step: the owner wrote a note, the visitor reads it and confirms.
 
@@ -18,7 +19,7 @@ export const noteStep: ServerStep<NoteStepConfig, NoteStepData> = {
   visitorConfig: (config) => ({ title: text(config.title), text: text(config.text) }),
   submit: async ({ input }) => {
     if (inputFields(input)?.acknowledged !== true) {
-      throw new FieldValidationError('input.acknowledged', 'Confirm that you have read the note');
+      throw new FieldValidationError('input.acknowledged', () => m.note.confirmRead);
     }
     return { acknowledgedAt: new Date() };
   }

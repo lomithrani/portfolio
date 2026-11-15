@@ -33,7 +33,8 @@ import {
   normalizeEmail
 } from '../services/appointmentBookings';
 import { rateLimitAddress } from '../services/clientAddress';
-import { CALENDAR_SCOPE, RECONNECT_REQUIRED_MESSAGE } from '../services/googleCalendar';
+import { CALENDAR_SCOPE } from '../services/googleCalendar';
+import { m as calendarMessages } from '../services/googleCalendar.messages';
 import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
 import { jobImportAttemptsKey, jobImportCounters } from '../services/jobImport';
@@ -1085,7 +1086,7 @@ describe('hiring journey gate', () => {
     expect(booked.status).toBe(200);
     const [event] = [...google.state.events.values()];
     expect(event.description).toBe(
-      `Booked via portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
+      `Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
     );
     const instance = await WorkflowInstance.findOne({ owner: owner.userId, visitor: other.userId }).lean();
     expect(instance?.steps?.meeting.data).toEqual({ bookedAt: expect.any(Date) });
@@ -1109,7 +1110,7 @@ describe('hiring journey gate', () => {
     });
     expect(booked.status).toBe(200);
     const [event] = [...google.state.events.values()];
-    expect(event.description).toBe(`Booked via portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme`);
+    expect(event.description).toBe(`Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme`);
   });
 
   it('opens the meeting step after a note and a job, in the order the owner chose', async () => {
@@ -1130,7 +1131,7 @@ describe('hiring journey gate', () => {
     // The note adds nothing to the invitation
     const [event] = [...google.state.events.values()];
     expect(event.description).toBe(
-      `Booked via portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
+      `Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
     );
   });
 
@@ -1481,7 +1482,7 @@ describe('a grant Google refuses', () => {
   const expectWarnOnly = (logs: ReturnType<typeof spyLogs>, reason: string, route: string) => {
     expect(logs.error).not.toHaveBeenCalled();
     expect(logs.warn).toHaveBeenCalledWith('Google refused the stored Google Calendar grant: connection cleared', { reason });
-    expect(logs.warn).toHaveBeenCalledWith(RECONNECT_REQUIRED_MESSAGE, expect.objectContaining({ status: 409, route }));
+    expect(logs.warn).toHaveBeenCalledWith(calendarMessages.reconnectRequired, expect.objectContaining({ status: 409, route }));
     for (const [, attributes] of logs.warn.mock.calls) expect(attributes).not.toHaveProperty('stack');
   };
 
@@ -1500,7 +1501,7 @@ describe('a grant Google refuses', () => {
 
     const calendars = await call('GET', '/appointments/calendars', { cookie: owner.cookie });
     expect(calendars.status).toBe(409);
-    expect(calendars.text).toBe(RECONNECT_REQUIRED_MESSAGE);
+    expect(calendars.text).toBe(calendarMessages.reconnectRequired);
     // Refused at the refresh: the Calendar API was never called
     expect(refreshRequests()).toHaveLength(1);
     expect(google.state.requests.some((request) => request.url.pathname.startsWith('/calendar/'))).toBe(false);
@@ -1553,7 +1554,7 @@ describe('a grant Google refuses', () => {
 
     const upcoming = await call('GET', '/appointments/upcoming', { cookie: owner.cookie });
     expect(upcoming.status).toBe(409);
-    expect(upcoming.text).toBe(RECONNECT_REQUIRED_MESSAGE);
+    expect(upcoming.text).toBe(calendarMessages.reconnectRequired);
     expect(refreshRequests()).toHaveLength(0);
 
     expectWarnOnly(logs, 'unauthenticated', '/appointments/upcoming');

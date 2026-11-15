@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-	APPLICATION_NETWORK_MESSAGE,
 	JOB_NOT_FOUND_MESSAGE,
 	applicationFailure,
 	applicationSummary,
@@ -20,6 +19,7 @@ import {
 	readApplicationStatus,
 	truncateText
 } from '../applications';
+import { m } from '../applications.messages';
 import type { JobPostingLike } from '../jobPosting';
 
 const job: JobPostingLike = {
@@ -374,7 +374,7 @@ describe('applicationFailure', () => {
 		);
 		expect(applicationFailure('apply', undefined)).toEqual({
 			kind: 'network',
-			message: APPLICATION_NETWORK_MESSAGE
+			message: m.network
 		});
 	});
 });

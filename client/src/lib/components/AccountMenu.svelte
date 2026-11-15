@@ -39,7 +39,9 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 		userInitials
 	} from '#services/account.ts';
 	import type { AuthUser } from '#services/stores/index.ts';
+	import { accountMessages } from '#services/account.messages.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { m } from './AccountMenu.messages.ts';
 
 	let {
 		user,
@@ -58,16 +60,8 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 	let name = $derived(userDisplayName(user));
 	let initials = $derived(userInitials(user));
 	let currentLabel = $derived(spaceLabel(user.activeMode));
-	let triggerLabel = $derived(
-		`Account menu: ${name}${currentLabel ? `, ${currentLabel} space` : ''}`
-	);
-	let statusText = $derived(
-		pending === 'recruiter'
-			? 'Opening your recruiter space…'
-			: pending === 'candidate'
-				? 'Opening your portfolio…'
-				: ''
-	);
+	let triggerLabel = $derived(m.trigger[user.activeMode ?? 'none'](name));
+	let statusText = $derived(pending ? accountMessages.opening[pending] : '');
 
 	async function openCandidateSpace() {
 		const domain = user.domain;
@@ -156,11 +150,11 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 					{/if}
 				</div>
 				<Menu.ItemGroup>
-					<Menu.ItemGroupLabel>Spaces</Menu.ItemGroupLabel>
+					<Menu.ItemGroupLabel>{m.spaces}</Menu.ItemGroupLabel>
 					<Menu.OptionItem
 						type="radio"
 						value="candidate"
-						valueText="Candidate space"
+						valueText={m.candidateSpace}
 						checked={user.activeMode === 'candidate'}
 						class={itemClass}
 					>
@@ -168,9 +162,9 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 							<UserCircle size="18" />
 						</span>
 						<Menu.ItemText class="min-w-0 flex-1">
-							<span class="block font-medium">Candidate space</span>
+							<span class="block font-medium">{m.candidateSpace}</span>
 							<span class="block truncate text-xs text-surface-700-300">
-								{user.domain ? `Your portfolio: ${user.domain}` : 'Claim a portfolio'}
+								{user.domain ? m.yourPortfolio(user.domain) : m.claimPortfolio}
 							</span>
 						</Menu.ItemText>
 						<Menu.ItemIndicator class="text-primary-700-300">
@@ -180,7 +174,7 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 					<Menu.OptionItem
 						type="radio"
 						value="recruiter"
-						valueText="Recruiter space"
+						valueText={m.recruiterSpace}
 						checked={user.activeMode === 'recruiter'}
 						class={itemClass}
 					>
@@ -188,9 +182,9 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 							<Briefcase size="18" />
 						</span>
 						<Menu.ItemText class="min-w-0 flex-1">
-							<span class="block font-medium">Recruiter space</span>
+							<span class="block font-medium">{m.recruiterSpace}</span>
 							<span class="block truncate text-xs text-surface-700-300">
-								{user.recruiter ? 'Your job descriptions' : 'Post job descriptions'}
+								{user.recruiter ? m.yourJobs : m.postJobs}
 							</span>
 						</Menu.ItemText>
 						<Menu.ItemIndicator class="text-primary-700-300">
@@ -199,7 +193,7 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 					</Menu.OptionItem>
 				</Menu.ItemGroup>
 				<Menu.Separator />
-				<Menu.Item value="jobs" valueText="Browse jobs">
+				<Menu.Item value="jobs" valueText={m.browseJobs}>
 					{#snippet element(attributes)}
 						<a
 							{...attributes as HTMLAttributes<HTMLAnchorElement>}
@@ -209,11 +203,11 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 							<span class="{iconClass} preset-tonal" aria-hidden="true">
 								<MagnifyingGlass size="18" />
 							</span>
-							<span class="font-medium">Browse jobs</span>
+							<span class="font-medium">{m.browseJobs}</span>
 						</a>
 					{/snippet}
 				</Menu.Item>
-				<Menu.Item value="account" valueText="Account & privacy">
+				<Menu.Item value="account" valueText={accountMessages.accountPrivacy}>
 					{#snippet element(attributes)}
 						<a
 							{...attributes as HTMLAttributes<HTMLAnchorElement>}
@@ -223,15 +217,15 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 							<span class="{iconClass} preset-tonal" aria-hidden="true">
 								<ShieldCheck size="18" />
 							</span>
-							<span class="font-medium">Account & privacy</span>
+							<span class="font-medium">{accountMessages.accountPrivacy}</span>
 						</a>
 					{/snippet}
 				</Menu.Item>
-				<Menu.Item value="logout" valueText="Log out" class="{itemClass} justify-start">
+				<Menu.Item value="logout" valueText={m.logOut} class="{itemClass} justify-start">
 					<span class="{iconClass} preset-tonal" aria-hidden="true">
 						<ArrowRightStartOnRectangle size="18" />
 					</span>
-					<span class="font-medium">Log out</span>
+					<span class="font-medium">{m.logOut}</span>
 				</Menu.Item>
 			</Menu.Content>
 		</Menu.Positioner>

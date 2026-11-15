@@ -17,7 +17,6 @@ import {
   giveBack,
   outputJson,
   pdfExtractionRequest,
-  plural,
   readPdfBase64,
   streamPaidCall,
   utcText
@@ -34,6 +33,8 @@ import {
   normalizeExtraction
 } from './resumeExtraction'
 import type { ExtractedExperience } from './resumeExtraction'
+import { m as shared } from './claudePdfExtraction.messages'
+import { m } from './resumeImport.messages'
 
 // Résumé import: a portfolio owner uploads a PDF résumé, Claude Haiku extracts
 // its experiences, and the API answers with drafts the client shows for
@@ -93,9 +94,8 @@ export const resumeImportCounters = { globalKey: 'resume-import:global' }
 
 const LABELS: PdfImportLabels = {
   name: 'Résumé import',
-  unavailable: 'Résumé import is temporarily unavailable, try again later',
-  interrupted:
-    'The import did not finish. It still counts toward your imports (the résumé may already have been read): try again later, or with a shorter résumé'
+  unavailable: () => m.unavailable,
+  interrupted: () => m.interrupted
 }
 
 interface ResumeImportSettings {
@@ -134,7 +134,7 @@ export const describeResumeImport = (
 }
 
 export function assertResumeImportEnabled() {
-  if (!currentSettings()) throw new ResumeImportDisabledError('Résumé import is not enabled on this server')
+  if (!currentSettings()) throw new ResumeImportDisabledError(() => m.disabled)
 }
 
 // ── Quotas ──────────────────────────────────────────────────
@@ -203,7 +203,7 @@ export async function getResumeImportStatus(userId: string): Promise<ResumeImpor
  * Only its first bytes are decoded: the base64 is what Claude receives.
  */
 export function readResumePdf(file: string): string {
-  return readPdfBase64(file, 'The file is too large: résumé import takes PDFs of up to 4 MB')
+  return readPdfBase64(file, () => m.fileTooLarge)
 }
 
 // ── Import ──────────────────────────────────────────────────
@@ -228,7 +228,7 @@ const refund = (taken: RateLimitTaken[]) =>
  */
 export async function importResume(userId: string, file: string, fileName?: string): Promise<ResumeImportResult> {
   const settings = currentSettings()
-  if (!settings) throw new ResumeImportDisabledError('Résumé import is not enabled on this server')
+  if (!settings) throw new ResumeImportDisabledError(() => m.disabled)
   const pdf = readResumePdf(file)
 
   // The import's counters, given back unless it counts. The attempt is not
@@ -241,7 +241,7 @@ export async function importResume(userId: string, file: string, fileName?: stri
     taken.push(user)
     if (user.retryAfterSeconds !== null) {
       throw new TooManyRequestsError(
-        `You have used your ${plural(settings.perUser.limit, 'résumé import', 'résumé imports')} for this period. You can import again from ${utcText(user.resetsAt)}`,
+        () => m.importsUsed(settings.perUser.limit, utcText(user.resetsAt)),
         user.retryAfterSeconds
       )
     }
@@ -249,7 +249,7 @@ export async function importResume(userId: string, file: string, fileName?: stri
     taken.push(site)
     if (site.retryAfterSeconds !== null) {
       throw new TooManyRequestsError(
-        `Résumé import has reached its daily limit on this site. Try again after ${utcText(site.resetsAt)}`,
+        () => m.dailyLimitReached(utcText(site.resetsAt)),
         site.retryAfterSeconds
       )
     }
@@ -257,7 +257,7 @@ export async function importResume(userId: string, file: string, fileName?: stri
     const attempts = await takeRateLimit(resumeImportAttemptsKey(userId), settings.attempts)
     if (attempts.retryAfterSeconds !== null) {
       throw new TooManyRequestsError(
-        `You have used your ${plural(settings.attempts.limit, 'résumé import attempt', 'résumé import attempts')} for today. Try again after ${utcText(attempts.resetsAt)}`,
+        () => m.attemptsUsed(settings.attempts.limit, utcText(attempts.resetsAt)),
         attempts.retryAfterSeconds
       )
     }
@@ -278,7 +278,7 @@ export async function importResume(userId: string, file: string, fileName?: stri
       deadlineMs: resumeImportTimeouts.countMs
     })
     if (inputTokens > MAX_RESUME_INPUT_TOKENS) {
-      throw new UnprocessableContentError('This PDF is too long for an import (more than ~10 pages)')
+      throw new UnprocessableContentError(() => shared.pdfTooLong)
     }
 
     const message = await streamPaidCall(client, request, {
@@ -315,13 +315,11 @@ const readExtraction = (message: Anthropic.Message) => {
   // Before reading the content: neither answer follows the schema
   if (message.stop_reason === 'refusal') {
     logCall(0)
-    throw new UnprocessableContentError('This file could not be read as a résumé')
+    throw new UnprocessableContentError(() => m.notAResume)
   }
   if (message.stop_reason === 'max_tokens' || message.stop_reason === 'model_context_window_exceeded') {
     logCall(0)
-    throw new UnprocessableContentError(
-      'This résumé has too much content to import at once. Try a shorter version'
-    )
+    throw new UnprocessableContentError(() => m.tooMuchContent)
   }
 
   // Structured outputs make an answer that is not JSON unlikely; the drafts

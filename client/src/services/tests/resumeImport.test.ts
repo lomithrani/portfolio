@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ExperienceType, RESUME_IMPORT_TIMEOUTS } from 'portfolio-common';
+import { ExperienceType, RESUME_IMPORT_TIMEOUTS, withLocale } from 'portfolio-common';
 import { emptyExperienceForm, emptyProject, type FormData } from '../experienceForm';
 import {
 	IMPORT_CLIENT_TIMEOUT_MS,
@@ -372,6 +372,31 @@ describe('stored review', () => {
 		]);
 		expect(review.drafts[0].form).toEqual(form());
 		expect(review.warnings).toEqual(['A warning']);
+	});
+
+	it('leaves out what was worded in another language', () => {
+		// Stored by a French page: the warnings and the failure are French sentences
+		const review = parseImportReview(stored())!;
+		const french = JSON.parse(withLocale('fr', () => serializeImportReview(review)));
+		expect(french.locale).toBe('fr');
+		expect(french.drafts[2]).toMatchObject({ status: 'failed', error: 'Nope' });
+
+		const inEnglish = parseImportReview(french)!;
+		expect(inEnglish.warnings).toEqual([]);
+		expect(
+			inEnglish.drafts.map(({ id, selected, status, error }) => ({ id, selected, status, error }))
+		).toEqual([
+			{ id: 'a', selected: true, status: 'pending', error: undefined },
+			{ id: 'b', selected: false, status: 'added', error: undefined },
+			// To add again: the page says what is wrong in its own language
+			{ id: 'c', selected: true, status: 'pending', error: undefined }
+		]);
+
+		// The same language keeps both, and so does a review stored before languages (English)
+		const inFrench = withLocale('fr', () => parseImportReview(french)!);
+		expect(inFrench.warnings).toEqual(['A warning']);
+		expect(inFrench.drafts[2]).toMatchObject({ status: 'failed', error: 'Nope' });
+		expect(withLocale('fr', () => parseImportReview(stored())!).warnings).toEqual([]);
 	});
 
 	it('repairs what it can of a damaged review', () => {

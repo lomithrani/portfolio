@@ -1,6 +1,7 @@
 import { MAX_AVAILABLE_DATES_RANGE, addDays, splitDateRange } from 'portfolio-common';
 import type { BookingHorizon, DateRange } from 'portfolio-common';
 import { errorStatus } from './apiErrors';
+import { m } from './bookingDates.messages';
 
 // The dates the booking page (/[domain]/hire) offers: those GET
 // /appointments/available-dates lists, fetched for the schedule's whole booking
@@ -113,7 +114,7 @@ export function availabilityFailure(error: ApiError, fallback: string): Availabi
 	// The owner's calendar is not connected anymore, or Google refused its access
 	if (status === 409) {
 		return {
-			message: 'Online booking is not available right now. Please reach out directly.',
+			message: m.bookingUnavailable,
 			reloadSchedules: true,
 			retry: false
 		};
@@ -121,17 +122,14 @@ export function availabilityFailure(error: ApiError, fallback: string): Availabi
 	// The schedule was paused or deleted meanwhile
 	if (status === 404) {
 		return {
-			message: 'This meeting type is not available anymore.',
+			message: m.scheduleGone,
 			reloadSchedules: true,
 			retry: false
 		};
 	}
 	if (status === 401 || status === 403) {
 		return {
-			message:
-				status === 401
-					? 'Sign in to continue the hiring journey.'
-					: 'Complete the steps above first.',
+			message: status === 401 ? m.signIn : m.completeStepsAbove,
 			reloadSchedules: false,
 			retry: false,
 			reloadJourney: true
@@ -143,6 +141,3 @@ export function availabilityFailure(error: ApiError, fallback: string): Availabi
 	}
 	return { message: fallback, reloadSchedules: false, retry: true };
 }
-
-export const DATES_FAILED = "We couldn't load the available dates. Please try again.";
-export const SLOTS_FAILED = "We couldn't load the free times of this date. Please try again.";

@@ -7,6 +7,7 @@
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { Switch } from '@skeletonlabs/skeleton-svelte';
 	import { browser } from '$app/env';
+	import { m } from './CosmeticSettings.messages.ts';
 
 	const SKELETON_THEMES = [
 		'catppuccin',
@@ -75,11 +76,9 @@
 		if (error) {
 			const expired = errorStatus(error) === 401;
 			if (expired) clearAuthentication();
-			message = expired
-				? 'Your session has expired. Please log in again.'
-				: 'Failed to save settings.';
+			message = expired ? m.sessionExpired : m.saveFailed;
 		} else {
-			message = 'Settings saved!';
+			message = m.saved;
 			// Refresh the layout data (header title/subtitle, theme, default dark mode)
 			await invalidateAll();
 		}
@@ -88,8 +87,8 @@
 
 <div class="space-y-8">
 	<section class="card p-6 space-y-4">
-		<h2 class="h3">Theme</h2>
-		<p class="opacity-75">Select a Skeleton theme for your portfolio. Changes preview instantly.</p>
+		<h2 class="h3">{m.theme}</h2>
+		<p class="opacity-75">{m.themeIntro}</p>
 		<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
 			{#each SKELETON_THEMES as t (t)}
 				<button
@@ -104,25 +103,25 @@
 	</section>
 
 	<section class="card p-6 space-y-4">
-		<h2 class="h3">Header</h2>
+		<h2 class="h3">{m.header}</h2>
 		<label class="label">
-			<span>Title</span>
-			<input class="input" type="text" placeholder="e.g. John Doe" bind:value={headerTitle} />
+			<span>{m.title}</span>
+			<input class="input" type="text" placeholder={m.titlePlaceholder} bind:value={headerTitle} />
 		</label>
 		<label class="label">
-			<span>Subtitle</span>
+			<span>{m.subtitle}</span>
 			<input
 				class="input"
 				type="text"
-				placeholder="e.g. Full Stack Developer & Problem Solver"
+				placeholder={m.subtitlePlaceholder}
 				bind:value={headerSubtitle}
 			/>
 		</label>
 	</section>
 
 	<section class="card p-6 space-y-4">
-		<h2 class="h3">Default Dark Mode</h2>
-		<p class="opacity-75">Set the default dark mode preference for first-time visitors.</p>
+		<h2 class="h3">{m.darkMode}</h2>
+		<p class="opacity-75">{m.darkModeIntro}</p>
 		<div class="flex items-center gap-3">
 			<Switch
 				checked={defaultDarkMode}
@@ -133,7 +132,7 @@
 				</Switch.Control>
 				<Switch.HiddenInput />
 			</Switch>
-			<span>{defaultDarkMode ? 'Dark' : 'Light'}</span>
+			<span>{defaultDarkMode ? m.dark : m.light}</span>
 		</div>
 	</section>
 
@@ -144,7 +143,7 @@
 			disabled={saving}
 			onclick={save}
 		>
-			{saving ? 'Saving...' : 'Save Settings'}
+			{saving ? m.saving : m.save}
 		</button>
 		{#if message}
 			<span class="text-sm">{message}</span>

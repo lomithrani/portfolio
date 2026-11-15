@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Request, type Route } from '@playwright/test';
-import { LEGAL_VERSION, STALE_TERMS_MESSAGE } from 'portfolio-common';
+import { LEGAL_VERSION, legalMessages } from 'portfolio-common';
 import { API_URL, JWT_SECRET, gotoHydrated, ownerSession, signIn } from './support/owner';
 
 // The landing page (/) and its onboarding card. Google is never reached: its script is stubbed
@@ -110,7 +110,7 @@ test.describe('landing page, signed out', () => {
 		const response = await gotoHydrated(page, '/');
 
 		expect(response?.status()).toBe(200);
-		await expect(page).toHaveTitle('Your portfolio, your way | Portfolio');
+		await expect(page).toHaveTitle('Your portfolio screens jobs for you | Portfolio');
 		await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
 			'content',
 			/\/og-image\.png$/
@@ -121,7 +121,13 @@ test.describe('landing page, signed out', () => {
 		);
 		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/$/);
 		await expect(
-			page.getByRole('heading', { level: 2, name: /Your portfolio, your way/ })
+			page.getByRole('heading', {
+				level: 2,
+				name: 'Your portfolio, your way. No more calls about the wrong job.'
+			})
+		).toBeVisible();
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'First the match, then the call' })
 		).toBeVisible();
 		await expect(page.getByRole('link', { name: 'See an example' })).toHaveAttribute(
 			'href',
@@ -287,7 +293,7 @@ test.describe('landing page, signed out', () => {
 		await page.emulateMedia({ reducedMotion: 'reduce' });
 		await gotoHydrated(page, '/');
 
-		const demo = page.getByLabel(/^Recording: the experiences page/);
+		const demo = page.getByLabel(/^Recording: an experiences page/);
 		const figure = page.locator('[data-demo]', { has: demo });
 		await demo.scrollIntoViewIfNeeded();
 		await expect(figure.getByRole('button', { name: 'Play the demo' })).toBeVisible();
@@ -393,21 +399,21 @@ test.describe('landing page, candidate steps', () => {
 				type: 'validation',
 				on: 'body',
 				property: 'consent.termsVersion',
-				message: STALE_TERMS_MESSAGE
+				message: legalMessages.staleTerms
 			}
 		}));
 
 		await gotoHydrated(page, '/');
 		// A returning owner is told this is also how to sign back in
 		await expect(page.getByTestId('returning-owner')).toHaveText(
-			'Already have a portfolio? Sign in the same way: you go straight to it.'
+			'Already on Portfolio? Sign in the same way: you go straight to your portfolio.'
 		);
 		await card(page)
 			.getByRole('checkbox', { name: /at least 16 years old/ })
 			.check();
 		await card(page).getByRole('button', { name: 'Stub Google sign-in' }).click();
 
-		await expect(card(page).getByRole('alert')).toHaveText(STALE_TERMS_MESSAGE);
+		await expect(card(page).getByRole('alert')).toHaveText(legalMessages.staleTerms);
 		expect(logins).toHaveLength(1);
 		await expect(currentStep(page)).toContainText('Sign in with Google');
 	});
@@ -435,7 +441,7 @@ test.describe('landing page, candidate steps', () => {
 		await addressField(page).fill(name);
 		await card(page).getByRole('button', { name: 'Claim this address' }).click();
 		await expect(
-			card(page).getByText('Confirm your age and accept the terms of use to create a portfolio.')
+			card(page).getByText('Confirm your age and accept the terms of use to create your portfolio.')
 		).toBeVisible();
 		expect(claims).toHaveLength(0);
 

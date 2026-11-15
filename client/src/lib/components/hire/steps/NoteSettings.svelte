@@ -7,6 +7,7 @@ the editor passes what it says is wrong, shown under the field it is about.
 <script lang="ts">
 	import { NOTE_STEP_LIMITS } from 'portfolio-common';
 	import { noteContent } from '#services/workflow.ts';
+	import { m } from './steps.messages';
 	import type { SettingsProps } from './types';
 
 	let { config, onChange, problem, disabled, idPrefix }: SettingsProps = $props();
@@ -18,13 +19,13 @@ the editor passes what it says is wrong, shown under the field it is about.
 
 <div class="space-y-3">
 	<div class="space-y-1">
-		<label class="label-text" for="{idPrefix}-title">Title</label>
+		<label class="label-text" for="{idPrefix}-title">{m.note.settings.title}</label>
 		<input
 			id="{idPrefix}-title"
 			class="input"
 			type="text"
 			maxlength={NOTE_STEP_LIMITS.title}
-			placeholder="e.g. Before you book"
+			placeholder={m.note.settings.titlePlaceholder}
 			value={note.title}
 			{disabled}
 			aria-invalid={titleProblem ? true : undefined}
@@ -35,18 +36,18 @@ the editor passes what it says is wrong, shown under the field it is about.
 			{#if titleProblem}
 				<span class="text-error-700-300">{titleProblem}</span>
 			{:else}
-				<span class="text-surface-700-300">The step's name on your Hire page.</span>
+				<span class="text-surface-700-300">{m.note.settings.titleHelp}</span>
 			{/if}
 		</p>
 	</div>
 	<div class="space-y-1">
-		<label class="label-text" for="{idPrefix}-text">Note</label>
+		<label class="label-text" for="{idPrefix}-text">{m.note.settings.text}</label>
 		<textarea
 			id="{idPrefix}-text"
 			class="textarea"
 			rows="5"
 			maxlength={NOTE_STEP_LIMITS.text}
-			placeholder="What you are looking for, your conditions…"
+			placeholder={m.note.settings.textPlaceholder}
 			value={note.text}
 			{disabled}
 			aria-invalid={textProblem ? true : undefined}
@@ -56,9 +57,7 @@ the editor passes what it says is wrong, shown under the field it is about.
 			{#if textProblem}
 				<span class="text-error-700-300">{textProblem}</span>
 			{:else}
-				<span class="text-surface-700-300">
-					Recruiters read it and confirm before going further. Markdown is supported.
-				</span>
+				<span class="text-surface-700-300">{m.note.settings.textHelp}</span>
 			{/if}
 			<span class="text-surface-700-300">{note.text.length}/{NOTE_STEP_LIMITS.text}</span>
 		</p>

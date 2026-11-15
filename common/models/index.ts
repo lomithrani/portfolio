@@ -66,6 +66,7 @@ export type {
 	JobPostingProblem,
 	JobFieldPath
 } from './jobPosting';
+export { jobPostingMessages } from './jobPosting.messages';
 export {
 	USER_MODES,
 	USER_MODE_LABELS,
@@ -73,6 +74,7 @@ export {
 	DEFAULT_RECRUITER_PLAN
 } from './account';
 export type { UserMode, RecruiterPlan } from './account';
+export { accountMessages } from './account.messages';
 export {
 	WORKFLOW_STEP_STATUSES,
 	WORKFLOW_LIMITS,
@@ -93,12 +95,14 @@ export type {
 	WorkflowProblem,
 	WorkflowResult
 } from './workflow';
+export { workflowMessages } from './workflow.messages';
 export {
 	NOTE_STEP_LIMITS,
 	JOB_MATCH_STEP_LIMITS,
 	DEFAULT_JOB_MATCH_MIN_SCORE
 } from './workflowSteps';
 export type { NoteStepConfig, JobMatchStepConfig } from './workflowSteps';
+export { workflowStepMessages } from './workflowSteps/workflowSteps.messages';
 export {
 	PERFECT_JOB_CRITERIA,
 	IMPORTANCE_LEVELS,
@@ -139,6 +143,7 @@ export type {
 	CriterionScore,
 	PerfectJobScore
 } from './perfectJob';
+export { perfectJobMessages } from './perfectJob.messages';
 export {
 	STEP_SUGGESTION_LIMITS,
 	cleanStepSuggestionText,
@@ -149,18 +154,19 @@ export type {
 	StepSuggestionField,
 	StepSuggestionResult
 } from './stepSuggestion';
+export { stepSuggestionMessages } from './stepSuggestion.messages';
 export {
 	LEGAL_VERSION,
 	MINIMUM_AGE,
 	AGE_CONFIRMATION_KEY,
-	AGE_CONFIRMATION_TEXT,
+	AGE_CONFIRMATION_KEYS,
+	ageConfirmationKey,
 	CONSENT_SOURCES,
 	TERMS_VERSION_MAX_LENGTH,
-	CONSENT_REQUIRED_MESSAGE,
-	STALE_TERMS_MESSAGE,
 	isCurrentTermsVersion,
 	parseConsent,
 	consentProblem,
 	currentConsent
 } from './legal';
 export type { ConsentInput, ConsentSource, ConsentProblemProperty, ConsentResult } from './legal';
+export { legalMessages } from './legal.messages';

@@ -15,6 +15,8 @@ export interface RecruiterSpace {
   jobImportsUsed: number;
 }
 
+// Not a message: the client tells this 403 from its text (/recruiter space/ in pickJobFailure of
+// client/src/services/workflow.ts) and says it in its own words: it stays in English (protocol.ts)
 const RECRUITER_REQUIRED = 'Create your recruiter space first';
 
 /** The account's recruiter space; null without one (or when the account is gone) */

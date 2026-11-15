@@ -12,6 +12,7 @@ import {
   WorkflowInstance
 } from '../models/database';
 import { CouldntVerifyJwtError } from '../errors';
+import { UNKNOWN_USER } from '../protocol';
 import { carryOverAccountQuotas } from './accountQuotas';
 import { revokeGoogleCalendarAccess } from './googleCalendar';
 import { logger } from './logger';
@@ -60,7 +61,7 @@ export interface AccountDeletionSummary {
 /** Collection of the old /workflows API (`{ user, name, description, enabled, steps }`), still stored, never read */
 export const LEGACY_WORKFLOWS_COLLECTION = 'workflows';
 
-const unknownUser = () => new CouldntVerifyJwtError('Unauthorized: unknown user');
+const unknownUser = () => new CouldntVerifyJwtError(UNKNOWN_USER);
 
 /**
  * Deletes the account `userId` and everything tied to it. 401 when the

@@ -6,7 +6,7 @@
 // removes them after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
-import { AGE_CONFIRMATION_KEY, LEGAL_VERSION, STALE_TERMS_MESSAGE } from 'portfolio-common';
+import { AGE_CONFIRMATION_KEY, AGE_CONFIRMATION_KEYS, LEGAL_VERSION, legalMessages } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import { Domain, User } from '../models/database';
@@ -51,9 +51,14 @@ afterEach(async () => {
   await User.deleteMany({ _id: { $in: users } });
 });
 
-const call = async (method: string, path: string, { body, cookie }: { body?: unknown; cookie?: string } = {}) => {
+const call = async (
+  method: string,
+  path: string,
+  { body, cookie, language }: { body?: unknown; cookie?: string; language?: string } = {}
+) => {
   const headers: Record<string, string> = {};
   if (cookie) headers.Cookie = cookie;
+  if (language) headers['Accept-Language'] = language;
   const text = body === undefined ? undefined : JSON.stringify(body);
   if (text !== undefined) {
     headers['Content-Type'] = 'application/json';
@@ -154,7 +159,7 @@ describe('POST /login with the age and terms confirmation', () => {
       type: 'validation',
       on: 'body',
       property: 'consent.termsVersion',
-      message: STALE_TERMS_MESSAGE
+      message: legalMessages.staleTerms
     });
     expect(sessionIssued(result.headers)).toBe(false);
     expect(await User.exists({ email: t.email('stale') })).toBeNull();
@@ -222,6 +227,18 @@ describe('PUT /me/consent', () => {
     ]);
   });
 
+  it('records the wording ticked: the French one for a page in French', async () => {
+    const { cookie, userId } = await login('french');
+
+    const result = await call('PUT', '/me/consent', { body: CONSENT, cookie, language: 'fr' });
+
+    expect(result.status).toBe(200);
+    expect(AGE_CONFIRMATION_KEYS.fr).not.toBe(AGE_CONFIRMATION_KEYS.en);
+    expect(await acceptances(userId)).toEqual([
+      expect.objectContaining({ version: LEGAL_VERSION, ageConfirmationKey: AGE_CONFIRMATION_KEYS.fr })
+    ]);
+  });
+
   it('records where it was given', async () => {
     const { cookie, userId } = await login('claim-form');
 
@@ -261,7 +278,7 @@ describe('PUT /me/consent', () => {
     const result = await accept(cookie, { termsVersion: '2025-01-01', ageConfirmed: true });
 
     expect(result.status).toBe(422);
-    expect(result.json()).toMatchObject({ property: 'consent.termsVersion', message: STALE_TERMS_MESSAGE });
+    expect(result.json()).toMatchObject({ property: 'consent.termsVersion', message: legalMessages.staleTerms });
     expect((await stored(userId))?.legalAcceptances).toBeUndefined();
   });
 
@@ -303,7 +320,7 @@ describe('POST /domain/claim and the terms', () => {
       type: 'validation',
       on: 'body',
       property: 'consent',
-      message: 'Confirm your age and accept the terms of use to create a portfolio.'
+      message: 'Confirm your age and accept the terms of use to create your portfolio.'
     });
     expect(await Domain.exists({ name })).toBeNull();
     expect((await me(cookie)).json().user.domain).toBeUndefined();
@@ -353,7 +370,7 @@ describe('POST /domain/claim and the terms', () => {
     const result = await claim(cookie, { name, consent: { termsVersion: '2025-01-01', ageConfirmed: true } });
 
     expect(result.status).toBe(422);
-    expect(result.json()).toMatchObject({ property: 'consent.termsVersion', message: STALE_TERMS_MESSAGE });
+    expect(result.json()).toMatchObject({ property: 'consent.termsVersion', message: legalMessages.staleTerms });
     expect(await Domain.exists({ name })).toBeNull();
   });
 

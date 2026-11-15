@@ -4,6 +4,7 @@ import { userLogged } from './userLogged';
 import { DomainDoesNotExistError } from '../errors';
 import { resumeImportRequest } from '../models/elysia';
 import { assertResumeImportEnabled, getResumeImportStatus, importResume } from '../services/resumeImport';
+import { m } from './experiences.messages';
 
 // Résumé import (services/resumeImport.ts): Claude extracts experience drafts
 // from a PDF résumé; nothing is saved here. Off (404) without ANTHROPIC_API_KEY.
@@ -18,7 +19,7 @@ export const resumeImport = new Elysia()
     assertResumeImportEnabled();
 
     // Same rule as POST /experiences, which saves the drafts
-    if (!(await Domain.exists({ admin: userId }))) throw new DomainDoesNotExistError('You do not own a domain');
+    if (!(await Domain.exists({ admin: userId }))) throw new DomainDoesNotExistError(() => m.noDomain);
 
     const { file, fileName } = body;
     // The tracing plugin copies the parsed body into the request span again

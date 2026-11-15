@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import {
 	RESERVED_DOMAIN_NAMES,
-	STALE_TERMS_MESSAGE,
+	legalMessages,
 	USER_MODE_LABELS,
 	currentConsent,
 	isCurrentTermsVersion,
@@ -15,16 +15,13 @@ import { authenticationStore, type AuthUser } from './stores';
 import { clearAuthentication, isSessionValid, readUser, termsVersionText } from './authentication';
 import { disableGoogleAutoSelect } from './googleIdentity';
 import { errorStatus } from './apiErrors';
+import { accountMessages } from './account.messages';
 
 // The account's spaces (portfolio-common USER_MODES): the candidate space is the portfolio of the
 // domain it owns, the recruiter space its job descriptions (/recruiter). The active mode only
 // decides what the client shows: the API authorises on what the account has.
 
 const withCredentials = { fetch: { credentials: 'include' } } as const;
-
-export const SESSION_EXPIRED_MESSAGE = 'Your session expired. Sign in again.';
-export const NETWORK_ERROR_MESSAGE =
-	'Could not reach the server. Check your connection and try again.';
 
 /** Why an account request failed; 'session-expired' (401) has already cleared the session */
 export type AccountFailureReason = 'session-expired' | 'network' | 'error';
@@ -60,7 +57,7 @@ export const userDisplayName = (
 	user: Pick<AuthUser, 'name' | 'surname' | 'email'> | null | undefined
 ): string => {
 	const name = [...words(user?.name), ...words(user?.surname)].join(' ');
-	return name || user?.email?.trim() || 'Your account';
+	return name || user?.email?.trim() || accountMessages.yourAccount;
 };
 
 const initial = (value: string) => Array.from(value)[0]?.toLocaleUpperCase() ?? '';
@@ -92,21 +89,21 @@ export const DOMAIN_NAME_MAX_LENGTH = 63;
  */
 export const domainNameProblem = (raw: string): string | null => {
 	const name = normalizeDomainName(raw);
-	if (!name) return 'Enter a name for your portfolio.';
+	if (!name) return accountMessages.name.empty;
 	if (isValidDomainName(name)) return null;
-	if (RESERVED_DOMAIN_NAMES.has(name)) return `“${name}” is reserved. Choose another name.`;
+	if (RESERVED_DOMAIN_NAMES.has(name)) return accountMessages.name.reserved(name);
 	if (name.length > DOMAIN_NAME_MAX_LENGTH) {
-		return `Use at most ${DOMAIN_NAME_MAX_LENGTH} characters.`;
+		return accountMessages.name.tooLong(DOMAIN_NAME_MAX_LENGTH);
 	}
 	if (!DOMAIN_NAME_CHARACTERS.test(name)) {
-		return 'Use only lowercase letters, digits, dots and hyphens.';
+		return accountMessages.name.characters;
 	}
 	if (!/^[a-z0-9]/.test(name) || !/[a-z0-9]$/.test(name)) {
-		return 'Start and end with a letter or a digit.';
+		return accountMessages.name.edges;
 	}
-	if (name.includes('..')) return 'Do not use two dots in a row.';
-	if (FILE_LIKE_NAME.test(name)) return 'This name looks like a file name. Choose another one.';
-	return 'This name cannot be used. Choose another one.';
+	if (name.includes('..')) return accountMessages.name.doubleDot;
+	if (FILE_LIKE_NAME.test(name)) return accountMessages.name.fileLike;
+	return accountMessages.name.unusable;
 };
 
 const slug = (value: string) =>
@@ -212,10 +209,6 @@ const bodyProperty = (value: unknown): string =>
 const isConsentProblem = (status: number | undefined, body: unknown): boolean =>
 	status === 422 && /^consent(\.|$)/.test(bodyProperty(body));
 
-/** The claim form's message when the API asks for the age and terms confirmation */
-export const CLAIM_CONSENT_MESSAGE =
-	'Confirm your age and accept the terms of use to create a portfolio.';
-
 /**
  * What a failed POST /domain/claim was about: 'name' (invalid or already taken: the person picks
  * another one), 'owns-domain' (the account already owns a portfolio), 'consent' (the account has
@@ -237,26 +230,26 @@ export const claimFailureCause = (
 /** The claim form's message for a failed POST /domain/claim */
 export const claimErrorMessage = (status: number | undefined, body: unknown): string => {
 	const text = bodyText(body);
-	if (status === 401) return SESSION_EXPIRED_MESSAGE;
+	if (status === 401) return accountMessages.sessionExpired;
 	if (isConsentProblem(status, body)) {
 		// The client always sends the version it was built with: a refused one is outdated
 		return bodyProperty(body) === 'consent.termsVersion'
-			? STALE_TERMS_MESSAGE
-			: CLAIM_CONSENT_MESSAGE;
+			? legalMessages.staleTerms
+			: accountMessages.claim.consent;
 	}
 	if (status === 409 && /already own/i.test(text)) {
-		return 'Your account already owns a portfolio.';
+		return accountMessages.claim.ownsPortfolio;
 	}
-	if (status === 409) return 'This name is already taken. Choose another one.';
-	if (status === 400 || status === 422) return 'This name cannot be used. Choose another one.';
-	return 'Could not claim this portfolio. Try again.';
+	if (status === 409) return accountMessages.name.taken;
+	if (status === 400 || status === 422) return accountMessages.name.unusable;
+	return accountMessages.claim.failed;
 };
 
 /** The message shown when choosing a space failed for another reason than the session or network */
 export const switchErrorMessage = (mode: UserMode): string =>
 	mode === 'recruiter'
-		? 'Could not open your recruiter space. Try again.'
-		: 'Could not switch to your candidate space. Try again.';
+		? accountMessages.switchFailed.recruiter
+		: accountMessages.switchFailed.candidate;
 
 // --- API calls -----------------------------------------------------------------------------
 
@@ -284,7 +277,7 @@ const accountRequest = async (
 		if (error) {
 			if (errorStatus(error) === 401) {
 				clearAuthentication();
-				return failure('session-expired', SESSION_EXPIRED_MESSAGE);
+				return failure('session-expired', accountMessages.sessionExpired);
 			}
 			return failure('error', errorMessage);
 		}
@@ -293,7 +286,7 @@ const accountRequest = async (
 		storeUser(user);
 		return { ok: true, user };
 	} catch {
-		return failure('network', NETWORK_ERROR_MESSAGE);
+		return failure('network', accountMessages.networkError);
 	}
 };
 
@@ -332,7 +325,7 @@ export const recordSpaceShown = async (pathname: string): Promise<void> => {
 
 /** Reloads the signed-in account (GET /me), e.g. once it claimed a domain */
 export const refreshAccount = (): Promise<AccountResult> =>
-	accountRequest(() => portfolioApi.me.get(withCredentials), 'Could not load your account.');
+	accountRequest(() => portfolioApi.me.get(withCredentials), accountMessages.loadFailed);
 
 export type ClaimFailure = AccountFailure & { cause?: ClaimFailureCause };
 export type ClaimResult = { ok: true; name: string } | ClaimFailure;
@@ -361,7 +354,7 @@ export const claimPortfolio = async (
 			const status = errorStatus(error);
 			if (status === 401) {
 				clearAuthentication();
-				return failure('session-expired', SESSION_EXPIRED_MESSAGE);
+				return failure('session-expired', accountMessages.sessionExpired);
 			}
 			const cause = claimFailureCause(status, error.value);
 			return {
@@ -379,7 +372,7 @@ export const claimPortfolio = async (
 		}
 		return { ok: true, name };
 	} catch {
-		return failure('network', NETWORK_ERROR_MESSAGE);
+		return failure('network', accountMessages.networkError);
 	}
 };
 
@@ -433,14 +426,14 @@ export const domainAvailabilityMessage = (
 		case 'available':
 			return null;
 		case 'taken':
-			return 'This name is already taken. Choose another one.';
+			return accountMessages.name.taken;
 		case 'invalid':
 		case 'reserved':
-			return domainNameProblem(rawName) ?? 'This name cannot be used. Choose another one.';
+			return domainNameProblem(rawName) ?? accountMessages.name.unusable;
 		case 'rate-limited':
-			return 'Too many checks for now: the name will be checked when you claim it.';
+			return accountMessages.name.tooManyChecks;
 		case 'error':
-			return 'Could not check this name: it will be checked when you claim it.';
+			return accountMessages.name.notChecked;
 	}
 };
 
@@ -461,17 +454,17 @@ export const acceptTerms = async (
 			const status = errorStatus(error);
 			if (status === 401) {
 				clearAuthentication();
-				return failure('session-expired', SESSION_EXPIRED_MESSAGE);
+				return failure('session-expired', accountMessages.sessionExpired);
 			}
-			if (isConsentProblem(status, error.value)) return failure('error', STALE_TERMS_MESSAGE);
-			return failure('error', 'Could not record your acceptance. Try again.');
+			if (isConsentProblem(status, error.value)) return failure('error', legalMessages.staleTerms);
+			return failure('error', accountMessages.acceptanceFailed);
 		}
 		const user = readUser(data);
-		if (!user) return failure('error', 'Could not record your acceptance. Try again.');
+		if (!user) return failure('error', accountMessages.acceptanceFailed);
 		storeUser(user);
 		return { ok: true, user };
 	} catch {
-		return failure('network', NETWORK_ERROR_MESSAGE);
+		return failure('network', accountMessages.networkError);
 	}
 };
 
@@ -519,8 +512,6 @@ export const clearUserBrowserData = (
 	}
 };
 
-export const DELETE_ACCOUNT_ERROR_MESSAGE = 'Could not delete your account. Try again.';
-
 /** How long deleteAccount waits for Google's automatic sign-in to be turned off */
 export const GOOGLE_AUTO_SELECT_TIMEOUT_MS = 3000;
 
@@ -546,12 +537,12 @@ export const deleteAccount = async (): Promise<{ ok: true } | AccountFailure> =>
 		if (error && !isUnknownUser(error)) {
 			if (errorStatus(error) === 401) {
 				clearAuthentication();
-				return failure('session-expired', SESSION_EXPIRED_MESSAGE);
+				return failure('session-expired', accountMessages.sessionExpired);
 			}
-			return failure('error', DELETE_ACCOUNT_ERROR_MESSAGE);
+			return failure('error', accountMessages.deleteFailed);
 		}
 	} catch {
-		return failure('network', NETWORK_ERROR_MESSAGE);
+		return failure('network', accountMessages.networkError);
 	}
 	if (userId) clearUserBrowserData(String(userId));
 	clearAuthentication();

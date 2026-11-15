@@ -23,6 +23,8 @@
 		type FormData,
 		type FormProject
 	} from '#services/experienceForm.ts';
+	import { m as formMessages } from '#services/experienceForm.messages.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import FieldError from './FieldError.svelte';
 	import LogoInput from './LogoInput.svelte';
 	import MarkdownField from './MarkdownField.svelte';
@@ -38,6 +40,8 @@
 		saveDraft,
 		startingForms
 	} from './drafts';
+	import { m } from './EditorForm.messages.ts';
+	import { m as editorMessages } from './editor.messages.ts';
 
 	type EditorFormProps = {
 		experience?: ExperienceModel | null;
@@ -61,16 +65,13 @@
 	}: EditorFormProps = $props();
 
 	const TYPES = [
-		{ value: ExperienceType.Professional, label: 'Professional' },
-		{ value: ExperienceType.Personal, label: 'Personal' },
-		{ value: ExperienceType.Educational, label: 'Education' },
-		{ value: ExperienceType.Leisure, label: 'Leisure' }
+		{ value: ExperienceType.Professional, label: m.types.professional },
+		{ value: ExperienceType.Personal, label: m.types.personal },
+		{ value: ExperienceType.Educational, label: m.types.educational },
+		{ value: ExperienceType.Leisure, label: m.types.leisure }
 	];
 	const MONTH = /^\d{4}-\d{2}$/;
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const SESSION_EXPIRED =
-		'Your session expired. Sign in again (your changes are kept), then save. Closing this window keeps them as a draft.';
-	const NETWORK_ERROR = 'Could not reach the server. Check your connection and try again.';
 
 	// The editor works on the experience as it was when opened: the parent remounts it for
 	// another experience or a new opening
@@ -205,18 +206,14 @@
 		if (code === 401) {
 			clearAuthentication();
 			sessionExpired = true;
-			return showSubmitError(SESSION_EXPIRED);
+			return showSubmitError(m.errors.sessionExpired);
 		}
-		if (code === 403) return showSubmitError('Only the owner of this portfolio can change it.');
+		if (code === 403) return showSubmitError(m.errors.notOwner);
 		if (code === 404) {
-			return showSubmitError(
-				mode === 'edit'
-					? 'This experience no longer exists: it may have been deleted in another tab.'
-					: 'Claim a portfolio before adding experiences.'
-			);
+			return showSubmitError(mode === 'edit' ? m.errors.gone : m.errors.noPortfolio);
 		}
 		if (code === 413) {
-			return showSubmitError('This experience is too large. Use a smaller logo or shorter texts.');
+			return showSubmitError(m.errors.tooLarge);
 		}
 		if (code === 400 || code === 422) {
 			const body = validationBody(error.value);
@@ -224,9 +221,9 @@
 			if (field && body.message) {
 				return showErrors([{ field, label: fieldLabel(form, field), message: body.message }]);
 			}
-			return showSubmitError(body.message ?? 'Some fields are invalid. Check them and try again.');
+			return showSubmitError(body.message ?? m.errors.invalid);
 		}
-		return showSubmitError('Could not save the experience. Try again in a moment.');
+		return showSubmitError(m.errors.saveFailed);
 	}
 
 	async function save() {
@@ -253,7 +250,7 @@
 			onSaved(data as ExperienceModel, mode === 'add' ? 'created' : 'updated');
 		} catch {
 			status = 'idle';
-			await showSubmitError(NETWORK_ERROR);
+			await showSubmitError(m.errors.network);
 		}
 	}
 
@@ -276,10 +273,10 @@
 				confirming = null;
 				return showSubmitError(
 					code === 401
-						? 'Your session expired. Sign in again, then delete the experience.'
+						? m.errors.sessionExpiredDelete
 						: code === 403
-							? 'Only the owner of this portfolio can change it.'
-							: 'Could not delete the experience. Try again in a moment.'
+							? m.errors.notOwner
+							: m.errors.deleteFailed
 				);
 			}
 			finished = true;
@@ -288,7 +285,7 @@
 		} catch {
 			status = 'idle';
 			confirming = null;
-			await showSubmitError(NETWORK_ERROR);
+			await showSubmitError(m.errors.network);
 		}
 	}
 
@@ -336,7 +333,7 @@
 		shownErrors = [];
 		submitError = '';
 		clearDraft(storageKey);
-		announcement = mode === 'add' ? 'Draft discarded.' : 'Changes discarded.';
+		announcement = mode === 'add' ? m.discarded.draft : m.discarded.changes;
 		await tick();
 		document.getElementById(fieldId('title'))?.focus();
 	}
@@ -349,14 +346,15 @@
 		document.getElementById(fieldId(`projects.${project.id}.name`))?.focus();
 	}
 
-	const projectName = (project: FormProject) => project.name.trim() || 'Untitled project';
+	const projectName = (project: FormProject) =>
+		project.name.trim() || editorMessages.project.untitled;
 
 	async function moveProject(index: number, offset: -1 | 1) {
 		const target = index + offset;
 		if (target < 0 || target >= form.projects.length) return;
 		const [project] = form.projects.splice(index, 1);
 		form.projects.splice(target, 0, project);
-		announcement = `Moved “${projectName(project)}” to position ${target + 1} of ${form.projects.length}.`;
+		announcement = m.moved(projectName(project), target + 1, form.projects.length);
 		await tick();
 		// Moving the node loses focus: put it back on the same arrow, or the other one at an end
 		const item = document.querySelector(`[data-project-item="${project.id}"]`);
@@ -385,18 +383,18 @@
 		form.projects.splice(Math.min(index, form.projects.length), 0, project);
 		expanded[project.id] = removed.expanded;
 		removed = null;
-		announcement = `Restored “${projectName(project)}”.`;
+		announcement = m.restoredProject(projectName(project));
 		await tick();
 		document.querySelector<HTMLElement>(`[data-project-toggle="${project.id}"]`)?.focus();
 	}
 
 	let statusText = $derived(
 		status === 'saving'
-			? 'Saving…'
+			? common.saving
 			: status === 'deleting'
-				? 'Deleting…'
+				? common.deleting
 				: dirty
-					? 'Unsaved changes'
+					? m.unsaved
 					: ''
 	);
 	let busy = $derived(status !== 'idle');
@@ -425,7 +423,7 @@
 		<Dialog.Title>
 			{#snippet element(attributes)}
 				<h2 {...attributes} class="truncate text-lg font-semibold sm:text-xl">
-					{mode === 'add' ? 'New experience' : `Edit · ${savedTitle}`}
+					{mode === 'add' ? m.title.add : m.title.edit(savedTitle)}
 				</h2>
 			{/snippet}
 		</Dialog.Title>
@@ -433,7 +431,7 @@
 			<Dialog.Description>
 				{#snippet element(attributes)}
 					<p {...attributes} class={statusText ? 'max-sm:sr-only' : ''}>
-						Fields marked * are required.
+						{m.required}
 					</p>
 				{/snippet}
 			</Dialog.Description>
@@ -458,7 +456,7 @@
 	<button
 		type="button"
 		class="btn-icon size-10 shrink-0 hover:preset-tonal"
-		aria-label="Close"
+		aria-label={common.close}
 		disabled={busy}
 		onclick={requestClose}
 	>
@@ -482,9 +480,9 @@
 				class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-base preset-tonal-warning px-3 py-2 text-sm"
 				role="status"
 			>
-				<span>Restored unsaved changes.</span>
+				<span>{m.restored}</span>
 				<button type="button" class="btn btn-sm px-2 underline" onclick={resetForm}>
-					Discard
+					{m.discard}
 				</button>
 			</div>
 		{/if}
@@ -503,9 +501,7 @@
 				{/if}
 				{#if visibleErrors.length > 0}
 					<p id={submitError ? undefined : `${uid}-summary-title`} class="font-semibold">
-						{visibleErrors.length === 1
-							? 'Fix 1 problem before saving:'
-							: `Fix ${visibleErrors.length} problems before saving:`}
+						{m.fix(visibleErrors.length)}
 					</p>
 					<ul class="list-disc space-y-1 ps-5">
 						{#each visibleErrors as error (error.field)}
@@ -516,7 +512,7 @@
 									onclick={(event) => {
 										event.preventDefault();
 										focusField(error.field);
-									}}>{error.label}: {error.message}</a
+									}}>{formMessages.fieldProblem(error.label, error.message)}</a
 								>
 							</li>
 						{/each}
@@ -526,10 +522,11 @@
 		{/if}
 
 		<section class="space-y-4" aria-labelledby="{uid}-basics">
-			<h3 id="{uid}-basics" class="text-base font-semibold">Basics</h3>
+			<h3 id="{uid}-basics" class="text-base font-semibold">{m.basics}</h3>
 			<div class="space-y-1">
 				<label for={fieldId('title')} class="label-text">
-					Title <span class="text-error-700-300" aria-hidden="true">*</span>
+					{formMessages.fields.title}
+					<span class="text-error-700-300" aria-hidden="true">*</span>
 				</label>
 				<input
 					id={fieldId('title')}
@@ -538,7 +535,7 @@
 					autocomplete="off"
 					required
 					maxlength={EXPERIENCE_LIMITS.title}
-					placeholder="e.g. Senior Software Engineer"
+					placeholder={m.titlePlaceholder}
 					bind:value={form.title}
 					aria-invalid={errorByField.has('title') || undefined}
 					aria-describedby={errorByField.has('title') ? errorId('title') : undefined}
@@ -548,14 +545,14 @@
 			</div>
 			<div class="grid gap-4 sm:grid-cols-2">
 				<div class="space-y-1">
-					<label for={fieldId('company.name')} class="label-text">Company or school</label>
+					<label for={fieldId('company.name')} class="label-text">{m.company}</label>
 					<input
 						id={fieldId('company.name')}
 						class="input"
 						type="text"
 						autocomplete="organization"
 						maxlength={EXPERIENCE_LIMITS.companyName}
-						placeholder="e.g. Acme Inc."
+						placeholder={m.companyPlaceholder}
 						bind:value={form.company.name}
 						aria-invalid={errorByField.has('company.name') || undefined}
 						aria-describedby={errorByField.has('company.name')
@@ -565,14 +562,16 @@
 					<FieldError field="company.name" />
 				</div>
 				<div class="space-y-1">
-					<label for={fieldId('location')} class="label-text">Location</label>
+					<label for={fieldId('location')} class="label-text">
+						{formMessages.fields.location}
+					</label>
 					<input
 						id={fieldId('location')}
 						class="input"
 						type="text"
 						autocomplete="off"
 						maxlength={EXPERIENCE_LIMITS.location}
-						placeholder="e.g. Paris, France · Remote"
+						placeholder={m.locationPlaceholder}
 						bind:value={form.location}
 						aria-invalid={errorByField.has('location') || undefined}
 						aria-describedby={errorByField.has('location') ? errorId('location') : undefined}
@@ -589,7 +588,7 @@
 				name="{uid}-type"
 				class="gap-1"
 			>
-				<SegmentedControl.Label>Type</SegmentedControl.Label>
+				<SegmentedControl.Label>{m.type}</SegmentedControl.Label>
 				<SegmentedControl.Control class="grid w-full grid-cols-2 gap-1 p-1 sm:flex">
 					<SegmentedControl.Indicator />
 					{#each TYPES as type (type.value)}
@@ -609,14 +608,14 @@
 				/>
 				{#if projectsPeriod && !form.start && !form.end && !form.ongoing}
 					<p class="text-xs text-surface-700-300">
-						Left empty, the period of the projects is shown: {projectsPeriod}.
+						{m.projectsPeriod(projectsPeriod)}
 					</p>
 				{/if}
 			</div>
 		</section>
 
 		<section class="space-y-3" aria-labelledby="{uid}-logo">
-			<h3 id="{uid}-logo" class="text-base font-semibold">Logo</h3>
+			<h3 id="{uid}-logo" class="text-base font-semibold">{formMessages.fields.icon}</h3>
 			<LogoInput value={form.icon} onchange={(icon) => (form.icon = icon)} />
 		</section>
 
@@ -624,16 +623,16 @@
 			<MarkdownField
 				bind:value={form.summary}
 				field="summary"
-				label="Summary"
+				label={formMessages.fields.summary}
 				labelClass="text-base font-semibold"
-				placeholder="Your role, the context and what you achieved."
+				placeholder={m.summaryPlaceholder}
 			/>
 		</section>
 
 		<section class="space-y-3" aria-labelledby="{uid}-projects">
 			<div>
 				<h3 id="{uid}-projects" class="text-base font-semibold">
-					Projects
+					{formMessages.fields.projects}
 					{#if form.projects.length > 0}
 						<span class="ms-1 text-sm font-normal text-surface-700-300">
 							({form.projects.length})
@@ -641,7 +640,7 @@
 					{/if}
 				</h3>
 				<p class="text-sm text-surface-700-300">
-					Missions, products or courses of this experience, each with its own skills.
+					{m.projectsHint}
 				</p>
 			</div>
 			<FieldError field="projects" />
@@ -671,7 +670,7 @@
 					class="flex flex-wrap items-center gap-2 rounded-base preset-tonal px-3 py-2 text-sm"
 					role="status"
 				>
-					<span class="min-w-0 flex-1">Removed “{projectName(removed.project)}”.</span>
+					<span class="min-w-0 flex-1">{m.removed(projectName(removed.project))}</span>
 					<button
 						bind:this={undoButton}
 						type="button"
@@ -679,12 +678,12 @@
 						onclick={undoRemove}
 					>
 						<ArrowUturnLeft size="16" aria-hidden="true" />
-						Undo
+						{m.undo}
 					</button>
 					<button
 						type="button"
 						class="btn-icon size-8 hover:preset-tonal"
-						aria-label="Dismiss"
+						aria-label={m.dismiss}
 						onclick={() => (removed = null)}
 					>
 						<XMark size="16" aria-hidden="true" />
@@ -699,7 +698,7 @@
 				onclick={addProject}
 			>
 				<Plus size="18" aria-hidden="true" />
-				Add project
+				{m.addProject}
 			</button>
 		</section>
 	</div>
@@ -718,11 +717,11 @@
 		>
 			<p id="{uid}-confirm" class="me-auto min-w-0 font-medium">
 				{#if confirming === 'close'}
-					Discard your changes?
+					{m.confirm.close}
 				{:else if confirming === 'reset'}
-					Discard this draft?
+					{m.confirm.reset}
 				{:else}
-					Delete “{savedTitle}”? This cannot be undone.
+					{m.confirm.delete(savedTitle)}
 				{/if}
 			</p>
 			<div class="flex gap-2">
@@ -734,18 +733,18 @@
 					onclick={cancelConfirm}
 				>
 					{confirming === 'close'
-						? 'Keep editing'
+						? m.confirm.keepEditing
 						: confirming === 'reset'
-							? 'Keep draft'
-							: 'Cancel'}
+							? m.confirm.keepDraft
+							: common.cancel}
 				</button>
 				{#if confirming === 'close'}
 					<button type="button" class="btn preset-filled-error-500" onclick={discardAndClose}>
-						Discard
+						{m.discard}
 					</button>
 				{:else if confirming === 'reset'}
 					<button type="button" class="btn preset-filled-error-500" onclick={resetForm}>
-						Discard
+						{m.discard}
 					</button>
 				{:else}
 					<button
@@ -760,9 +759,9 @@
 								class="animate-spin motion-reduce:animate-none"
 								aria-hidden="true"
 							/>
-							Deleting…
+							{common.deleting}
 						{:else}
-							Delete
+							{common.delete}
 						{/if}
 					</button>
 				{/if}
@@ -779,7 +778,7 @@
 					onclick={() => openConfirm('delete')}
 				>
 					<Trash size="18" aria-hidden="true" />
-					Delete
+					{common.delete}
 				</button>
 			{:else if dirty}
 				<button
@@ -789,8 +788,8 @@
 					disabled={busy}
 					onclick={() => openConfirm('reset')}
 				>
-					<span class="sm:hidden">Discard</span>
-					<span class="max-sm:hidden">Discard draft</span>
+					<span class="sm:hidden">{m.discard}</span>
+					<span class="max-sm:hidden">{m.discardDraft}</span>
 				</button>
 			{/if}
 			<button
@@ -800,7 +799,7 @@
 				disabled={busy}
 				onclick={requestClose}
 			>
-				Cancel
+				{common.cancel}
 			</button>
 			<button
 				type="submit"
@@ -812,9 +811,9 @@
 			>
 				{#if status === 'saving'}
 					<ArrowPath size="18" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-					Saving…
+					{common.saving}
 				{:else}
-					{mode === 'add' ? 'Add experience' : 'Save changes'}
+					{mode === 'add' ? m.addExperience : m.saveChanges}
 				{/if}
 			</button>
 		</div>

@@ -16,6 +16,8 @@
 		Trash
 	} from 'svelte-heros-v2';
 	import type { JobStatus } from 'portfolio-common';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { SIGN_IN_ID } from '#components/Login.svelte';
 	import JobDetails from '#components/jobs/JobDetails.svelte';
 	import EditorPlaceholder from '#components/job-editor/EditorPlaceholder.svelte';
@@ -31,7 +33,7 @@
 	import { clearJobDraft, jobDraftStorageKey } from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
-		NETWORK_ERROR,
+		networkError,
 		applicantName,
 		deleteJobText,
 		failureText,
@@ -44,6 +46,8 @@
 		type Applicant,
 		type RecruiterJobDetail
 	} from '#services/recruiter.ts';
+	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
+	import { m } from './page.messages.ts';
 
 	// One of the recruiter's job descriptions (GET /recruiter/jobs/:id): the posting as candidates
 	// read it, its status (PUT /jobs/:id/status), its public page, its applicants (added with
@@ -59,7 +63,7 @@
 		| { kind: 'error' };
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const SESSION_EXPIRED = 'Your session expired. Sign in again.';
+	const SESSION_EXPIRED = recruiterMessages.sessionExpired;
 
 	let jobId = $derived(page.params.id ?? '');
 
@@ -165,7 +169,7 @@
 				else if (code === 404) loadState = { kind: 'not-found' };
 				else {
 					toaster.error({
-						title: failureText(error?.value, 'Could not change the status. Try again in a moment.')
+						title: failureText(error?.value, m.statusFailed)
 					});
 				}
 				return;
@@ -174,7 +178,7 @@
 			updateJob((current) => ({ ...current, ...data, applicants: current.applicants }));
 			toaster.success(statusChangedText(data.status));
 		} catch {
-			toaster.error({ title: NETWORK_ERROR });
+			toaster.error({ title: networkError() });
 		} finally {
 			changingStatus = false;
 		}
@@ -197,8 +201,8 @@
 			copiedTimer = setTimeout(() => (copied = false), 2500);
 		} catch {
 			toaster.error({
-				title: 'Could not copy the link',
-				description: 'Select the address and copy it.'
+				title: m.publicPage.copyFailed,
+				description: m.publicPage.copyFailedDescription
 			});
 		}
 	}
@@ -222,7 +226,7 @@
 				} else {
 					deleting = {
 						busy: false,
-						error: failureText(error.value, 'Could not delete it. Try again in a moment.')
+						error: failureText(error.value, recruiterMessages.deleteJobFailed)
 					};
 				}
 				return;
@@ -230,10 +234,10 @@
 			// 404: already deleted (in another tab): the same outcome
 			clearJobDraft(jobDraftStorageKey(userId, id));
 			deleting = null;
-			toaster.success({ title: 'Job description deleted', description: title });
+			toaster.success({ title: recruiterMessages.jobDeleted, description: title });
 			await goto(recruiterHref);
 		} catch {
-			deleting = { busy: false, error: NETWORK_ERROR };
+			deleting = { busy: false, error: networkError() };
 		}
 	}
 
@@ -249,7 +253,7 @@
 				? current
 				: { ...current, applicants: [...current.applicants, applicant] }
 		);
-		toaster.success({ title: `${applicantName(applicant)} added to the applicants` });
+		toaster.success({ title: m.applicants.added(applicantName(applicant)) });
 	}
 
 	function askRemove(applicant: Applicant) {
@@ -295,10 +299,7 @@
 					removing = {
 						applicant,
 						busy: false,
-						error: failureText(
-							error.value,
-							'Could not remove this applicant. Try again in a moment.'
-						)
+						error: failureText(error.value, m.applicants.removeFailed)
 					};
 				}
 				return;
@@ -306,9 +307,9 @@
 			// Another 404: the applicant was already removed (or withdrew): the same outcome
 			dropApplicant(applicant._id);
 			removing = null;
-			toaster.success({ title: `${applicantName(applicant)} removed from the applicants` });
+			toaster.success({ title: m.applicants.removed(applicantName(applicant)) });
 		} catch {
-			removing = { applicant, busy: false, error: NETWORK_ERROR };
+			removing = { applicant, busy: false, error: networkError() };
 		}
 	}
 
@@ -323,14 +324,14 @@
 </script>
 
 <svelte:head>
-	<title>{job ? job.title : 'Job description'} | Recruiter</title>
+	<title>{m.pageTitle(job ? job.title : m.jobDescription)}</title>
 </svelte:head>
 
 <div class="p-4 md:p-6">
 	<div class="mx-auto w-full max-w-6xl space-y-6">
 		<a href={recruiterHref} class="btn btn-sm -ms-2 px-2 text-surface-700-300 hover:preset-tonal">
 			<ArrowLeft size="16" aria-hidden="true" />
-			Your job descriptions
+			{m.yourJobs}
 		</a>
 
 		{#if job}
@@ -342,7 +343,7 @@
 							class="btn preset-tonal min-h-10 max-sm:flex-1"
 						>
 							<PencilSquare size="18" aria-hidden="true" />
-							Edit
+							{common.edit}
 						</a>
 						<button
 							type="button"
@@ -350,51 +351,56 @@
 							onclick={() => (deleting = { busy: false, error: '' })}
 						>
 							<Trash size="18" aria-hidden="true" />
-							Delete
+							{common.delete}
 						</button>
 					{/snippet}
 					{#snippet meta()}
 						<p class="flex flex-wrap gap-x-4 gap-y-1">
 							<span>
-								Updated <time datetime={isoDate(job.updatedAt)}>{formatDay(job.updatedAt)}</time>
+								<Rich text={m.updated(formatDay(job.updatedAt))}>
+									{#snippet time(day)}<time datetime={isoDate(job.updatedAt)}>{day}</time>{/snippet}
+								</Rich>
 							</span>
 							<span>
-								Created <time datetime={isoDate(job.createdAt)}>{formatDay(job.createdAt)}</time>
+								<Rich text={m.created(formatDay(job.createdAt))}>
+									{#snippet time(day)}<time datetime={isoDate(job.createdAt)}>{day}</time>{/snippet}
+								</Rich>
 							</span>
 							{#if job.publishedAt}
 								<span>
-									Published
-									<time datetime={isoDate(job.publishedAt)}>{formatDay(job.publishedAt)}</time>
+									<Rich text={m.published(formatDay(job.publishedAt))}>
+										{#snippet time(day)}
+											<time datetime={isoDate(job.publishedAt)}>{day}</time>
+										{/snippet}
+									</Rich>
 								</span>
 							{/if}
 						</p>
 						<!-- Small screens: the management panel comes after the description -->
 						<a href="#manage" class="mt-2 inline-block font-medium underline lg:hidden">
-							Status, public page and applicants ({job.applicants.length})
+							{m.manageLink(job.applicants.length)}
 						</a>
 					{/snippet}
 				</JobDetails>
 
-				<aside id="manage" class="space-y-4" aria-label="Manage this job description">
+				<aside id="manage" class="space-y-4" aria-label={m.manage}>
 					<StatusControl status={job.status} busy={changingStatus} onChange={changeStatus} />
 
 					<section
 						class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-3 p-4"
 						aria-labelledby="public-page-title"
 					>
-						<h3 id="public-page-title" class="font-semibold">Public page</h3>
+						<h3 id="public-page-title" class="font-semibold">{m.publicPage.title}</h3>
 						{#if hasPublicPage(job.status)}
 							<p class="text-sm text-surface-700-300">
-								{job.status === 'open'
-									? 'Share this address: candidates read the job description there and apply with their portfolio.'
-									: 'Anyone with this address can read the job description, but cannot apply.'}
+								{job.status === 'open' ? m.publicPage.whenOpen : m.publicPage.whenNotOpen}
 							</p>
 							<input
 								type="text"
 								readonly
 								value={publicUrl}
 								class="input text-sm"
-								aria-label="Address of the public page"
+								aria-label={m.publicPage.address}
 								onfocus={(event) => event.currentTarget.select()}
 							/>
 							<div class="flex flex-wrap gap-2">
@@ -405,10 +411,10 @@
 								>
 									{#if copied}
 										<Check size="16" aria-hidden="true" />
-										Copied
+										{m.publicPage.copied}
 									{:else}
 										<Link size="16" aria-hidden="true" />
-										Copy link
+										{m.publicPage.copyLink}
 									{/if}
 								</button>
 								<a
@@ -418,15 +424,12 @@
 									class="btn btn-sm preset-tonal min-h-9 flex-1"
 								>
 									<ArrowTopRightOnSquare size="16" aria-hidden="true" />
-									Open<span class="sr-only">the public page (new tab)</span>
+									{m.publicPage.open}<span class="sr-only">{` ${m.publicPage.openSuffix}`}</span>
 								</a>
 							</div>
-							<p class="sr-only" aria-live="polite">{copied ? 'Link copied.' : ''}</p>
+							<p class="sr-only" aria-live="polite">{copied ? m.publicPage.linkCopied : ''}</p>
 						{:else}
-							<p class="text-sm text-surface-700-300">
-								Drafts have no public page. Change the status to Open to publish it and take
-								applications.
-							</p>
+							<p class="text-sm text-surface-700-300">{m.publicPage.whenDraft}</p>
 						{/if}
 					</section>
 
@@ -442,19 +445,16 @@
 								tabindex="-1"
 								class="font-semibold outline-none"
 							>
-								Applicants
+								{m.applicants.title}
 							</h3>
 							<span class="badge preset-tonal text-xs tabular-nums">
-								<span class="sr-only">Count:</span>
+								<span class="sr-only">{m.applicants.count}</span>
 								{job.applicants.length}
 							</span>
 						</div>
 						{#if job.applicants.length === 0}
 							<p class="text-sm text-surface-700-300">
-								{job.status === 'open'
-									? 'No applicants yet. Candidates apply from the public page with their portfolio.'
-									: 'No applicants yet. Candidates can apply once the job description is Open.'}
-								You can also add a portfolio you found.
+								{job.status === 'open' ? m.applicants.noneOpen : m.applicants.noneNotOpen}
 							</p>
 						{:else}
 							<ApplicantList
@@ -474,55 +474,44 @@
 		{:else}
 			<div class="mx-auto max-w-3xl">
 				{#if !user}
-					<PageNotice title="Sign in as a recruiter" icon={LockClosed}>
-						<p>Sign in to see this job description and its applicants.</p>
+					<PageNotice title={m.signedOut.title} icon={LockClosed}>
+						<p>{m.signedOut.text}</p>
 						{#snippet actions()}
 							<a href={recruiterHref} class="btn preset-filled-primary-700-300 min-h-11">
-								Sign in as a recruiter
+								{m.signedOut.action}
 							</a>
 						{/snippet}
 					</PageNotice>
 				{:else if user.recruiter === false || loadState.kind === 'no-space'}
-					<PageNotice title="Create your recruiter space first" icon={Briefcase}>
-						<p>Your account has no recruiter space yet. Create it to write job descriptions.</p>
+					<PageNotice title={m.noSpace.title} icon={Briefcase}>
+						<p>{m.noSpace.text}</p>
 						{#snippet actions()}
 							<a href={recruiterHref} class="btn preset-filled-primary-700-300 min-h-11">
-								Open the recruiter space
+								{m.noSpace.action}
 							</a>
 						{/snippet}
 					</PageNotice>
 				{:else if loadState.kind === 'not-found'}
-					<PageNotice title="Job description not found" icon={DocumentMagnifyingGlass}>
-						<p>
-							It may have been deleted, or it belongs to another recruiter account. Your job
-							descriptions are listed in your recruiter space.
-						</p>
+					<PageNotice title={m.notFound.title} icon={DocumentMagnifyingGlass}>
+						<p>{m.notFound.text}</p>
 						{#snippet actions()}
 							<a href={recruiterHref} class="btn preset-filled-primary-700-300 min-h-11">
-								Back to your job descriptions
+								{m.backToJobs}
 							</a>
 						{/snippet}
 					</PageNotice>
 				{:else}
-					<PageNotice
-						title="Could not load this job description"
-						icon={ExclamationTriangle}
-						tone="error"
-					>
-						<p>
-							The server could not be reached, or it failed. Check your connection and try again.
-						</p>
+					<PageNotice title={m.loadFailed} icon={ExclamationTriangle} tone="error">
+						<p>{recruiterMessages.loadFailed}</p>
 						{#snippet actions()}
 							<button
 								type="button"
 								class="btn preset-filled-primary-700-300 min-h-11"
 								onclick={retry}
 							>
-								Try again
+								{common.retry}
 							</button>
-							<a href={recruiterHref} class="btn preset-tonal min-h-11"
-								>Back to your job descriptions</a
-							>
+							<a href={recruiterHref} class="btn preset-tonal min-h-11">{m.backToJobs}</a>
 						{/snippet}
 					</PageNotice>
 				{/if}
@@ -533,9 +522,9 @@
 
 <ConfirmDialog
 	open={!!deleting && !!job}
-	title={job ? `Delete “${job.title}”?` : ''}
+	title={job ? recruiterMessages.deleteJobTitle(job.title) : ''}
 	description={job ? deleteJobText(job.applicants.length) : ''}
-	confirmLabel="Delete"
+	confirmLabel={common.delete}
 	busy={deleting?.busy ?? false}
 	error={deleting?.error ?? ''}
 	onConfirm={confirmDelete}
@@ -545,10 +534,10 @@
 
 <ConfirmDialog
 	open={!!removing && !!job}
-	title={removing ? `Remove ${applicantName(removing.applicant)}?` : ''}
+	title={removing ? m.applicants.removeTitle(applicantName(removing.applicant)) : ''}
 	description={removing ? removeApplicantText(removing.applicant) : ''}
-	confirmLabel="Remove"
-	busyLabel="Removing…"
+	confirmLabel={common.remove}
+	busyLabel={m.applicants.removing}
 	busy={removing?.busy ?? false}
 	error={removing?.error ?? ''}
 	onConfirm={confirmRemove}

@@ -2,12 +2,14 @@ import {
 	JOB_LIMITS,
 	JOB_STATUSES,
 	JOB_STATUS_LABELS,
+	intlLocale,
 	isValidDomainName,
 	normalizeDomainName,
 	type JobStatus
 } from 'portfolio-common';
 import type { portfolioApi } from '#services';
 import { JOB_STATUS_DESCRIPTIONS } from './jobPosting';
+import { m } from './recruiter.messages';
 
 // Pure helpers of the recruiter's pages: the dashboard (/recruiter: the job descriptions, their
 // status filters) and a job description's page (/recruiter/jobs/:id: status, applicants). The
@@ -54,7 +56,7 @@ const asDate = (value: Date | string | null | undefined): Date | undefined => {
 export const formatDay = (value: Date | string | null | undefined, timeZone?: string): string => {
 	const date = asDate(value);
 	if (!date) return '';
-	return date.toLocaleDateString(LOCALE, {
+	return date.toLocaleDateString(intlLocale(LOCALE), {
 		day: 'numeric',
 		month: 'short',
 		year: 'numeric',
@@ -70,16 +72,6 @@ export const isoDate = (value: Date | string | null | undefined): string =>
 
 /** 'All', or one status: the dashboard's filters */
 export type StatusFilter = 'all' | JobStatus;
-
-/** How the filters name each status (plural where it reads as a group: "Drafts") */
-export const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
-	all: 'All',
-	draft: 'Drafts',
-	open: 'Open',
-	on_hold: 'On hold',
-	filled: 'Filled',
-	closed: 'Closed'
-};
 
 /** Postings per status */
 export const countByStatus = (
@@ -104,10 +96,10 @@ export const statusFilters = (
 	const used = JOB_STATUSES.filter((status) => counts[status] > 0);
 	if (used.length < 2) return [];
 	return [
-		{ value: 'all', label: STATUS_FILTER_LABELS.all, count: jobs.length },
+		{ value: 'all', label: m.statusFilter.all, count: jobs.length },
 		...used.map((status) => ({
 			value: status,
-			label: STATUS_FILTER_LABELS[status],
+			label: m.statusFilter[status],
 			count: counts[status]
 		}))
 	];
@@ -118,26 +110,23 @@ export const filterJobs = <T extends { status: JobStatus }>(
 	filter: StatusFilter
 ): T[] => (filter === 'all' ? [...jobs] : jobs.filter((job) => job.status === filter));
 
-const jobDescriptions = (count: number) =>
-	`${count} ${count === 1 ? 'job description' : 'job descriptions'}`;
-
 /**
  * What a filter shows, for screen readers: '6 job descriptions', 'Open: 2 of 6 job descriptions'
  */
 export const shownJobsText = (shown: number, total: number, filter: StatusFilter): string =>
 	filter === 'all'
-		? jobDescriptions(total)
-		: `${JOB_STATUS_LABELS[filter]}: ${shown} of ${jobDescriptions(total)}`;
+		? m.jobDescriptions(total)
+		: m.shownJobs(JOB_STATUS_LABELS[filter], shown, total);
 
 /** 'No applicants yet', '1 applicant', '12 applicants' */
 export const applicantCountText = (count: number): string =>
-	count === 0 ? 'No applicants yet' : `${count} ${count === 1 ? 'applicant' : 'applicants'}`;
+	count === 0 ? m.noApplicants : m.applicantCount(count);
 
 // --- Status -----------------------------------------------------------------------------
 
 /** 'Status changed to Open' and what it means for the posting (the toast) */
 export const statusChangedText = (status: JobStatus): { title: string; description: string } => ({
-	title: `Status changed to ${JOB_STATUS_LABELS[status]}`,
+	title: m.statusChanged(JOB_STATUS_LABELS[status]),
 	description: JOB_STATUS_DESCRIPTIONS[status]
 });
 
@@ -172,11 +161,6 @@ export const applicantInitials = (applicant: ApplicantLike): string => {
 	);
 };
 
-export const APPLICANT_SOURCE_LABELS: Record<ApplicantLike['source'], string> = {
-	applied: 'Applied',
-	added_by_recruiter: 'Added by you'
-};
-
 /** 'Applied 3 Nov 2026', 'Added 3 Nov 2026' */
 export const applicantDateText = (
 	applicant: Pick<ApplicantLike, 'source'> & { appliedAt: Date | string },
@@ -184,7 +168,7 @@ export const applicantDateText = (
 ): string => {
 	const day = formatDay(applicant.appliedAt, timeZone);
 	if (!day) return '';
-	return `${applicant.source === 'applied' ? 'Applied' : 'Added'} ${day}`;
+	return applicant.source === 'applied' ? m.appliedOn(day) : m.addedOn(day);
 };
 
 /**
@@ -218,13 +202,13 @@ const safeUrl = (text: string): URL | undefined => {
 /** Why "Add a portfolio" cannot send what was typed (null when it can) */
 export const applicantDomainProblem = (raw: string): string | null => {
 	const name = domainFromInput(raw);
-	if (!name) return 'Enter the name of a portfolio, e.g. louis.gentil.';
-	if (!isValidDomainName(name)) return 'This is not a portfolio name. Check how it is spelled.';
+	if (!name) return m.domainProblem.empty;
+	if (!isValidDomainName(name)) return m.domainProblem.invalid;
 	return null;
 };
 
 /** What the pages say when the API could not be reached */
-export const NETWORK_ERROR = 'Could not reach the server. Check your connection and try again.';
+export const networkError = (): string => m.networkError;
 
 /**
  * Whether a request got no answer at all: Eden Treaty turns a fetch that failed (offline, the
@@ -234,7 +218,7 @@ export const isNetworkFailure = (value: unknown): boolean => value instanceof Er
 
 /** `fallback` (what failed), or the connection's problem when the request got no answer */
 export const failureText = (value: unknown, fallback: string): string =>
-	isNetworkFailure(value) ? NETWORK_ERROR : fallback;
+	isNetworkFailure(value) ? networkError() : fallback;
 
 const bodyText = (value: unknown): string =>
 	typeof value === 'string'
@@ -254,37 +238,28 @@ export const addApplicantError = (
 	value: unknown,
 	domain: string
 ): { message: string; field: boolean } => {
-	if (isNetworkFailure(value)) return { message: NETWORK_ERROR, field: false };
+	if (isNetworkFailure(value)) return { message: networkError(), field: false };
 	const text = bodyText(value);
 	switch (status) {
 		case 401:
-			return { message: 'Your session expired. Sign in again to add a portfolio.', field: false };
+			return { message: m.addApplicant.sessionExpired, field: false };
 		case 403:
 			return /own portfolio/i.test(text)
-				? { message: 'This is your own portfolio: you cannot add it.', field: true }
-				: {
-						message: 'Your account has no recruiter space yet. Create it to manage applicants.',
-						field: false
-					};
+				? { message: m.addApplicant.ownPortfolio, field: true }
+				: { message: m.addApplicant.noRecruiterSpace, field: false };
 		case 404:
 			return /domain/i.test(text)
-				? { message: `No portfolio is named “${domain}”. Check how it is spelled.`, field: true }
-				: {
-						message: 'This job description no longer exists: it may have been deleted.',
-						field: false
-					};
+				? { message: m.addApplicant.unknownPortfolio(domain), field: true }
+				: { message: m.addApplicant.jobGone, field: false };
 		case 409:
 			return /already/i.test(text)
-				? { message: `“${domain}” is already an applicant.`, field: true }
-				: {
-						message: `This job description has reached its limit of ${JOB_LIMITS.applicantsPerJob} applicants.`,
-						field: false
-					};
+				? { message: m.addApplicant.alreadyApplicant(domain), field: true }
+				: { message: m.addApplicant.full(JOB_LIMITS.applicantsPerJob), field: false };
 		case 400:
 		case 422:
-			return { message: 'This is not a portfolio name. Check how it is spelled.', field: true };
+			return { message: m.domainProblem.invalid, field: true };
 		default:
-			return { message: 'Could not add this portfolio. Try again in a moment.', field: false };
+			return { message: m.addApplicant.failed, field: false };
 	}
 };
 
@@ -298,11 +273,9 @@ export const isJobPostingGone = (status: number | undefined, value: unknown): bo
 /** What the confirmation says before an applicant is removed */
 export const removeApplicantText = (applicant: ApplicantLike): string =>
 	applicant.source === 'applied'
-		? `${applicantName(applicant)} applied with their portfolio. They are no longer listed for this job description, and can apply again while it is open.`
-		: `${applicantName(applicant)} is no longer listed for this job description. You can add the portfolio again later.`;
+		? m.removeApplicant.applied(applicantName(applicant))
+		: m.removeApplicant.added(applicantName(applicant));
 
 /** What the confirmation says before a posting is deleted */
 export const deleteJobText = (applicantCount: number): string =>
-	applicantCount === 0
-		? 'This cannot be undone.'
-		: `Its list of ${applicantCount === 1 ? '1 applicant' : `${applicantCount} applicants`} is deleted with it. This cannot be undone.`;
+	applicantCount === 0 ? m.deleteJob.noApplicants : m.deleteJob.withApplicants(applicantCount);

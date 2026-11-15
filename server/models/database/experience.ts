@@ -8,6 +8,7 @@ import { experienceRequest } from '../elysia';
 import type { Static } from 'elysia';
 import { Skill } from './skill';
 import { FieldValidationError } from '../../errors';
+import { m } from './experience.messages';
 
 export interface Experience extends Document {
   type: ExperienceType;
@@ -66,19 +67,16 @@ const endsBeforeStart = (start: Date | undefined, end: Date | undefined) =>
  * Runs before anything is written (skills included).
  */
 const assertValidExperienceRequest = (request: ExperienceRequest) => {
-  if (!request.title.trim()) throw new FieldValidationError('title', 'Title is required');
+  if (!request.title.trim()) throw new FieldValidationError('title', () => m.titleRequired);
   if (endsBeforeStart(request.start, request.end)) {
-    throw new FieldValidationError('end', 'End date must not be before the start date');
+    throw new FieldValidationError('end', () => m.endBeforeStart);
   }
   request.projects.forEach((project, index) => {
     if (!project.name.trim()) {
-      throw new FieldValidationError(`projects.${index}.name`, 'Project name is required');
+      throw new FieldValidationError(`projects.${index}.name`, () => m.projectNameRequired);
     }
     if (endsBeforeStart(project.start, project.end)) {
-      throw new FieldValidationError(
-        `projects.${index}.end`,
-        'Project end date must not be before its start date'
-      );
+      throw new FieldValidationError(`projects.${index}.end`, () => m.projectEndBeforeStart);
     }
   });
 };

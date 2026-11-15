@@ -19,6 +19,7 @@ import type { JobPosting as StoredJobPosting } from '../models/database/jobPosti
 import type { JobApplication as StoredJobApplication } from '../models/database/jobApplication';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../errors';
 import { isDuplicateKeyError } from './mongoErrors';
+import { m } from './jobPostings.messages';
 
 // Job postings of the recruiter space (plugins/jobs.ts): what the API returns
 // for a posting and its applicants (explicit mappings: no internal field, no
@@ -77,10 +78,12 @@ export interface ApplicationStatusDto {
   own?: true;
 }
 
+/**
+ * 404 for a posting that does not exist, is not the caller's, or is a draft. Not a message: the
+ * client matches it (isJobNotFound of client/src/services/applications.ts, isJobPostingGone of
+ * recruiter.ts, pickJobFailure of workflow.ts), so it stays in English (see protocol.ts)
+ */
 export const JOB_NOT_FOUND = 'Job posting not found';
-
-/** 409 of an edit that started from an older version of the posting */
-export const JOB_CHANGED = 'This job posting was changed since you opened it';
 
 /** `value` without its unset keys (null or undefined, as MongoDB and Mongoose leave them) */
 const withoutUnset = <T extends Record<string, unknown>>(value: T) =>
@@ -202,7 +205,7 @@ export const jobPostingFields = (job: JobPostingInput) => ({
 export const publishedAtFor = (status: JobStatus, publishedAt: Date | null | undefined) =>
   publishedAt ?? (status === 'draft' ? undefined : new Date());
 
-const TOO_MANY_JOBS = `You can keep at most ${JOB_LIMITS.jobsPerRecruiter} job postings: delete one to add another`;
+const tooManyJobs = () => m.tooManyJobs(JOB_LIMITS.jobsPerRecruiter);
 
 /**
  * Stores a new posting of the recruiter, who keeps at most
@@ -214,7 +217,7 @@ const TOO_MANY_JOBS = `You can keep at most ${JOB_LIMITS.jobsPerRecruiter} job p
  */
 export async function createJobPosting(recruiterId: string, fields: JobPostingInput) {
   if ((await JobPosting.countDocuments({ recruiter: recruiterId })) >= JOB_LIMITS.jobsPerRecruiter) {
-    throw new ConflictError(TOO_MANY_JOBS);
+    throw new ConflictError(tooManyJobs);
   }
   const job = await JobPosting.create({
     ...jobPostingFields(fields),
@@ -223,7 +226,7 @@ export async function createJobPosting(recruiterId: string, fields: JobPostingIn
   });
   if ((await JobPosting.countDocuments({ recruiter: recruiterId })) > JOB_LIMITS.jobsPerRecruiter) {
     await JobPosting.deleteOne({ _id: job._id });
-    throw new ConflictError(TOO_MANY_JOBS);
+    throw new ConflictError(tooManyJobs);
   }
   return job.toObject<StoredJobPosting>();
 }
@@ -303,11 +306,13 @@ export interface NewApplication {
   source: JobApplicationSource;
 }
 
+// Not a message: the client tells a full list from this text (/limit/ in applicationFailure of
+// client/src/services/applications.ts) and says it in its own words: it stays in English
 const FULL_JOB = `This job posting has reached its limit of ${JOB_LIMITS.applicantsPerJob} applicants`;
 
 /**
  * Lists a candidate on a posting. `duplicate` is the 409's message when they
- * already are (checked first, then by the unique index: concurrent requests
+ * already are (one the client matches, protocol.ts; checked first, then by the unique index: concurrent requests
  * list them once). Refuses a full list (409), counted before and again after
  * the insert, like the postings of createJobPosting: applications arriving
  * at once never go over the limit. Answers 404 when the posting was deleted

@@ -278,7 +278,7 @@ describe('POST /domain/claim', () => {
       type: 'validation',
       on: 'body',
       property: 'consent',
-      message: 'Confirm your age and accept the terms of use to create a portfolio.'
+      message: 'Confirm your age and accept the terms of use to create your portfolio.'
     });
     expect(findOne).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();

@@ -1,25 +1,23 @@
 <!--
 @component
 The page of a legal document (legal notice, privacy policy, terms of use, cookies) in English or
-French: its <title>, description, canonical and hreflang alternate links, the language switch, the
-"last updated" date (LEGAL_VERSION), a table of contents when the document has more than three
-sections, the text (children) and links to the other documents. The whole article carries the
-`lang` of its language.
+French, the site's language (`lang`): its <title>, description, canonical and hreflang alternate
+links, the links to the document in each language (they change the site's language, like the
+footer's switch), the "last updated" date (LEGAL_VERSION), a table of contents when the document
+has more than three sections, the text (children) and links to the other documents.
 -->
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Snippet } from 'svelte';
 	import LegalDocLink from './LegalDocLink.svelte';
-	import { LEGAL_VERSION } from 'portfolio-common';
+	import { LEGAL_VERSION, LOCALES, LOCALE_NAMES } from 'portfolio-common';
+	import { localeAlternate, localeHref } from '#lib/i18n/urls.ts';
+	import { m } from './legal.messages.ts';
 	import {
-		LANGUAGE_NAMES,
 		LEGAL_DOCUMENTS,
 		LEGAL_DOCUMENT_ORDER,
-		LEGAL_LANGUAGES,
 		legalLastUpdated,
 		legalPageTitle,
-		withLegalLanguage,
 		type LegalDocumentId,
 		type LegalLanguage,
 		type LegalSection
@@ -37,28 +35,10 @@ sections, the text (children) and links to the other documents. The whole articl
 		children: Snippet;
 	} = $props();
 
-	const TEXT = {
-		en: {
-			language: 'Language',
-			lastUpdated: 'Last updated:',
-			contents: 'Contents',
-			others: 'Other legal documents',
-			locale: 'en_GB'
-		},
-		fr: {
-			language: 'Langue',
-			lastUpdated: 'Dernière mise à jour :',
-			contents: 'Sommaire',
-			others: 'Autres documents légaux',
-			locale: 'fr_FR'
-		}
-	} as const;
-
-	let t = $derived(TEXT[lang]);
+	const t = m.document;
 	let meta = $derived(LEGAL_DOCUMENTS[doc]);
-	let path = $derived(resolve(meta.route));
-	const hrefIn = (language: LegalLanguage) => withLegalLanguage(path, language);
-	const absoluteIn = (language: LegalLanguage) => new URL(hrefIn(language), page.url.origin).href;
+	/** The document's address in a language: bare in English, `?lang=fr` in French */
+	const absoluteIn = (language: LegalLanguage) => localeAlternate(page.url, language);
 	let others = $derived(LEGAL_DOCUMENT_ORDER.filter((id) => id !== doc));
 </script>
 
@@ -66,7 +46,7 @@ sections, the text (children) and links to the other documents. The whole articl
 	<title>{legalPageTitle(doc, lang)}</title>
 	<meta name="description" content={meta.description[lang]} />
 	<link rel="canonical" href={absoluteIn(lang)} />
-	{#each LEGAL_LANGUAGES as language (language)}
+	{#each LOCALES as language (language)}
 		<link rel="alternate" hreflang={language} href={absoluteIn(language)} />
 	{/each}
 	<link rel="alternate" hreflang="x-default" href={absoluteIn('en')} />
@@ -86,18 +66,19 @@ sections, the text (children) and links to the other documents. The whole articl
 	<header class="space-y-3 border-b border-surface-200-800 pb-6">
 		<nav aria-label={t.language}>
 			<ul class="flex justify-end gap-1 text-sm">
-				{#each LEGAL_LANGUAGES as language (language)}
+				{#each LOCALES as language (language)}
 					{@const current = language === lang}
 					<li>
-						<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve()d, with ?lang= -->
+						<!-- eslint-disable svelte/no-navigation-without-resolve -- this page, with ?lang= -->
 						<a
-							href={hrefIn(language)}
+							href={localeHref(page.url, language)}
 							hreflang={language}
 							lang={language}
+							data-sveltekit-reload
 							class="btn btn-sm {current
 								? 'preset-tonal-primary font-semibold'
 								: 'hover:preset-tonal'}"
-							aria-current={current ? 'page' : undefined}>{LANGUAGE_NAMES[language]}</a
+							aria-current={current ? 'page' : undefined}>{LOCALE_NAMES[language]}</a
 						>
 						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					</li>

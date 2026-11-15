@@ -19,6 +19,8 @@ import {
 } from '../errors';
 import { serverStep } from './workflowSteps';
 import type { ServerStep, StepContext } from './workflowSteps';
+import { DOMAIN_NOT_FOUND } from '../protocol';
+import { m } from './workflows.messages';
 
 // The hiring journey of a portfolio (plugins/workflows.ts): the steps its
 // owner chose (Workflow), and what each step stored for each visitor
@@ -137,7 +139,7 @@ export async function saveJourneySteps(ownerId: string, input: readonly Workflow
 /** The owner of the portfolio `domainName`; 404 when there is none */
 export async function portfolioOwner(domainName: string): Promise<string> {
   const domain = await Domain.findOne({ name: normalizeDomainName(domainName) }, { admin: 1 }).lean();
-  if (!domain) throw new DomainDoesNotExistError('Domain not found');
+  if (!domain) throw new DomainDoesNotExistError(DOMAIN_NOT_FOUND);
   return String(domain.admin);
 }
 
@@ -228,7 +230,9 @@ export async function journeyFor(ownerId: string, visitorId: string | undefined)
 
 // ── Locks ───────────────────────────────────────────────────
 
-export const SIGN_IN_TO_CONTINUE = 'Sign in to continue the hiring journey';
+// Not messages: the client tells the journey's own refusals from their text (submitFailure of
+// client/src/services/workflow.ts: /earlier steps/, /journey changed/) and says them in its own
+// words, in the visitor's language. They stay in English (see protocol.ts)
 export const EARLIER_STEPS_FIRST = 'Complete the earlier steps of the hiring journey first';
 export const JOURNEY_CHANGED = 'This hiring journey changed: reload the page';
 
@@ -247,7 +251,7 @@ async function access(journey: Journey, index: number): Promise<{ before: StepSt
 const lockedError = (journey: Journey) =>
   journey.visitor
     ? new JourneyStepLockedError(EARLIER_STEPS_FIRST)
-    : new MissingAuthCookieError(SIGN_IN_TO_CONTINUE);
+    : new MissingAuthCookieError(() => m.signInToContinue);
 
 /** The position of the step `stepId`; 409 when the journey has none (it changed since the page loaded it) */
 const stepIndex = (journey: Journey, stepId: string) => {
@@ -316,6 +320,7 @@ export async function openStepOfType(
 
 // ── What a step stores ──────────────────────────────────────
 
+// Not messages either: /your own hiring journey/ and /nothing can be submitted/ in submitFailure
 export const OWN_JOURNEY = 'You cannot go through your own hiring journey';
 export const STEP_NOT_SUBMITTABLE = 'Nothing can be submitted on this step';
 

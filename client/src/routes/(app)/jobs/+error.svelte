@@ -2,18 +2,18 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, DocumentMagnifyingGlass, ExclamationTriangle } from 'svelte-heros-v2';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import { m } from './error.messages.ts';
 
 	// Errors of the job pages (/jobs, /jobs/[id]), inside the jobs layout (header, navigation): a
 	// posting that is not published (or no longer), or the API out of reach.
 	let notFound = $derived(page.status === 404);
-	let title = $derived(
-		notFound ? 'Job description not found' : 'The job board is temporarily unavailable'
-	);
+	let title = $derived(notFound ? m.notFound.title : m.unavailable.title);
 	let onListPage = $derived(page.url.pathname.replace(/\/+$/, '') === resolve('/(app)/jobs'));
 </script>
 
 <svelte:head>
-	<title>{notFound ? 'Not found' : 'Unavailable'} | Jobs</title>
+	<title>{notFound ? m.notFound.pageTitle : m.unavailable.pageTitle}</title>
 </svelte:head>
 
 <div class="p-4 md:p-6">
@@ -24,7 +24,7 @@
 				class="btn btn-sm -ms-2 px-2 text-surface-700-300 hover:preset-tonal"
 			>
 				<ArrowLeft size="16" aria-hidden="true" />
-				All jobs
+				{m.allJobs}
 			</a>
 		{/if}
 		<section
@@ -45,9 +45,9 @@
 			<h2 id="job-error-title" class="text-xl font-bold">{title}</h2>
 			<p class="mx-auto max-w-md text-surface-700-300">
 				{#if notFound}
-					This job description may have been removed by its recruiter, or the link is wrong.
+					{m.notFound.text}
 				{:else}
-					The server could not be reached, or it failed. Try again in a moment.
+					{m.unavailable.text}
 				{/if}
 			</p>
 			<div class="flex flex-wrap justify-center gap-3">
@@ -57,7 +57,7 @@
 						class="btn preset-filled-primary-700-300 min-h-11"
 						onclick={() => location.reload()}
 					>
-						Try again
+						{common.retry}
 					</button>
 				{/if}
 				{#if notFound || !onListPage}
@@ -65,7 +65,7 @@
 						href={resolve('/(app)/jobs')}
 						class="btn min-h-11 {notFound ? 'preset-filled-primary-700-300' : 'preset-tonal'}"
 					>
-						See the open positions
+						{m.seeOpenPositions}
 					</a>
 				{/if}
 			</div>

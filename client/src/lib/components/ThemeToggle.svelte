@@ -8,6 +8,7 @@ defaultDarkMode), else on the system preference.
 <script lang="ts">
 	import { Sun, Moon } from 'svelte-heros-v2';
 	import { browser } from '$app/env';
+	import { m } from './ThemeToggle.messages.ts';
 
 	let { defaultDark }: { defaultDark?: boolean | null } = $props();
 
@@ -57,7 +58,7 @@ defaultDarkMode), else on the system preference.
 	class="theme-toggle"
 	class:is-dark={darkMode}
 	onclick={toggleDarkMode}
-	aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+	aria-label={darkMode ? m.toLight : m.toDark}
 >
 	<span class="toggle-track">
 		<span class="toggle-icon sun-icon">

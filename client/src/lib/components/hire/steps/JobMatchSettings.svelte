@@ -12,6 +12,7 @@ warns when it has none (every job then scores 100).
 	import { JOB_MATCH_STEP_LIMITS, ratedCriteria } from 'portfolio-common';
 	import { portfolioTextApi } from '#services';
 	import { jobMatchSettings } from '#services/workflow.ts';
+	import { m } from './steps.messages';
 	import type { SettingsProps } from './types';
 
 	let { config, onChange, problem, disabled, idPrefix }: SettingsProps = $props();
@@ -37,7 +38,7 @@ warns when it has none (every job then scores 100).
 
 <div class="space-y-3">
 	<div class="space-y-1">
-		<label class="label-text" for="{idPrefix}-min-score">Minimum score</label>
+		<label class="label-text" for="{idPrefix}-min-score">{m.jobMatch.settings.minScore}</label>
 		<div class="flex items-center gap-2">
 			<input
 				id="{idPrefix}-min-score"
@@ -62,9 +63,7 @@ warns when it has none (every job then scores 100).
 			{#if minScoreProblem}
 				<span class="text-error-700-300">{minScoreProblem}</span>
 			{:else}
-				<span class="text-surface-700-300">
-					A job that scores less cannot go further. {min} lets every job through.
-				</span>
+				<span class="text-surface-700-300">{m.jobMatch.settings.minScoreHelp(min)}</span>
 			{/if}
 		</p>
 	</div>
@@ -78,22 +77,15 @@ warns when it has none (every job then scores 100).
 			onchange={(event) => onChange({ ...settings, showDetails: event.currentTarget.checked })}
 		/>
 		<span class="space-y-0.5">
-			<span class="block text-sm">Show recruiters how their job does on each criterion</span>
+			<span class="block text-sm">{m.jobMatch.settings.showDetails}</span>
 			<span class="block text-xs text-surface-700-300" id="{idPrefix}-details-help">
-				They see each criterion's name and whether their job matches it, never what you ask for or
-				how much it matters. Without it, they see their score and your minimum only.
+				{m.jobMatch.settings.showDetailsHelp}
 			</span>
 		</span>
 	</label>
 	{#if criteriaCount === 0}
-		<p class="card preset-tonal-warning p-3 text-sm">
-			Your perfect job has no criterion yet: every job scores 100 until you rate some in the Perfect
-			job tab.
-		</p>
+		<p class="card preset-tonal-warning p-3 text-sm">{m.jobMatch.settings.noCriterion}</p>
 	{:else if criteriaCount !== null}
-		<p class="text-xs text-surface-700-300">
-			Scored on the {criteriaCount === 1 ? 'criterion' : `${criteriaCount} criteria`} of your perfect
-			job (the Perfect job tab).
-		</p>
+		<p class="text-xs text-surface-700-300">{m.jobMatch.settings.scoredOn(criteriaCount)}</p>
 	{/if}
 </div>

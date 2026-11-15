@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { ArrowLeft, Briefcase, CheckCircle, PaperAirplane } from 'svelte-heros-v2';
 	import { APPLICABLE_JOB_STATUS } from 'portfolio-common';
@@ -12,6 +11,7 @@
 		type JobPageAction
 	} from '#services/applications.ts';
 	import type { PageProps } from './$types';
+	import { m } from './page.messages.ts';
 
 	// A public job posting (rendered on the server: search engines, link previews) and how to
 	// apply to it (ApplyPanel, in the browser once the session is checked).
@@ -31,12 +31,11 @@
 </script>
 
 <svelte:head>
-	<title>{pageTitle} | Jobs</title>
+	<title>{m.pageTitle(pageTitle)}</title>
 	<meta name="description" content={description} />
 	<meta property="og:type" content="website" />
 	<meta property="og:title" content={pageTitle} />
 	<meta property="og:description" content={description} />
-	<meta property="og:url" content={page.url.href} />
 </svelte:head>
 
 <div class="p-4 md:p-6">
@@ -46,7 +45,7 @@
 			class="btn btn-sm -ms-2 px-2 text-surface-700-300 hover:preset-tonal"
 		>
 			<ArrowLeft size="16" aria-hidden="true" />
-			All jobs
+			{m.allJobs}
 		</a>
 
 		<!-- Shrinkable columns on every screen: a long portfolio name in the panel (truncated in its
@@ -65,7 +64,7 @@
 							class="btn preset-tonal min-h-11 max-sm:w-full lg:hidden"
 						>
 							<Briefcase size="18" aria-hidden="true" />
-							Manage it
+							{m.manage}
 						</a>
 					{:else if action === 'pending'}
 						<span
@@ -81,17 +80,17 @@
 						>
 							{#if action === 'application'}
 								<CheckCircle size="18" class="text-success-700-300" aria-hidden="true" />
-								Your application
+								{m.yourApplication}
 							{:else}
 								<PaperAirplane size="18" aria-hidden="true" />
-								Apply
+								{m.apply}
 							{/if}
 						</a>
 					{/if}
 				{/snippet}
 			</JobDetails>
 
-			<aside class="min-w-0 lg:sticky lg:top-4" aria-label="Apply">
+			<aside class="min-w-0 lg:sticky lg:top-4" aria-label={m.apply}>
 				{#key job._id}
 					<ApplyPanel {job} id="apply" onActionChange={(value) => (action = value)} />
 				{/key}

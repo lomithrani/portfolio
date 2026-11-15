@@ -11,9 +11,12 @@ label and the error summary point to it.
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { Plus, XMark } from 'svelte-heros-v2';
-	import { addListItems, type JobFormField } from '#services/jobPosting.ts';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import type { JobListField } from '#services/jobDrafts.ts';
+	import { addListItems } from '#services/jobPosting.ts';
 	import FieldError from './FieldError.svelte';
 	import { getJobEditorContext } from './context';
+	import { m } from './ListInput.messages.ts';
 
 	let {
 		field,
@@ -22,11 +25,11 @@ label and the error summary point to it.
 		text = $bindable(''),
 		max,
 		maxLength,
-		itemName,
 		placeholder = '',
 		hint = ''
 	}: {
-		field: JobFormField;
+		/** The list: what one item is called in messages depends on it (a skill, a language, a benefit) */
+		field: JobListField;
 		label: string;
 		value?: string[];
 		/** What is typed in the field and not added yet */
@@ -35,8 +38,6 @@ label and the error summary point to it.
 		max: number;
 		/** Characters per item */
 		maxLength: number;
-		/** What one item is called in messages: 'skill', 'language', 'benefit' */
-		itemName: string;
 		placeholder?: string;
 		hint?: string;
 	} = $props();
@@ -54,18 +55,16 @@ label and the error summary point to it.
 	let list: HTMLUListElement | undefined = $state();
 	let full = $derived(value.length >= max);
 
-	const quoted = (items: string[]) => items.map((item) => `“${item}”`).join(', ');
-
 	let problems = $derived({
-		duplicate: `Already in the list.`,
-		full: `The list is full: ${max} ${itemName}s at most.`,
-		too_long: `Each ${itemName} must be at most ${maxLength} characters.`
+		duplicate: m.duplicate,
+		full: m.full(field, max),
+		too_long: m.tooLong(field, maxLength)
 	});
 
 	function add(raw: string) {
 		const result = addListItems(value, raw, { max, maxLength });
 		if (result.added.length > 0) value = result.list;
-		const added = result.added.length > 0 ? `Added ${quoted(result.added)}.` : '';
+		const added = result.added.length > 0 ? m.added(result.added) : '';
 		problem = result.problem ? problems[result.problem] : '';
 		message = [added, problem].filter(Boolean).join(' ');
 		// Keep what could not be added in the field, to fix it; clear it otherwise
@@ -84,12 +83,12 @@ label and the error summary point to it.
 		problem = '';
 		if (!result.problem || result.problem === 'duplicate') {
 			text = '';
-			message = result.added.length > 0 ? `Added ${quoted(result.added)}.` : '';
+			message = result.added.length > 0 ? m.added(result.added) : '';
 			return undefined;
 		}
 		return result.problem === 'full'
-			? `Not added: the list is full (${max} ${itemName}s at most). Remove one, or clear the text.`
-			: `Not added: each ${itemName} must be at most ${maxLength} characters. Shorten it, or clear it.`;
+			? m.notAddedFull(field, max)
+			: m.notAddedTooLong(field, maxLength);
 	}
 
 	$effect(() => editor.registerPendingText(field, commit));
@@ -112,7 +111,7 @@ label and the error summary point to it.
 		const item = value[index];
 		value = value.filter((_, position) => position !== index);
 		problem = '';
-		message = `Removed “${item}”.`;
+		message = m.removed(item);
 		editor.pendingTextChanged(field);
 		await tick();
 		// The next chip's remove button, else the previous one, else the text field
@@ -139,7 +138,7 @@ label and the error summary point to it.
 			enterkeyhint="done"
 			maxlength={maxLength}
 			disabled={full && !text}
-			placeholder={full ? `${max} ${itemName}s at most` : placeholder}
+			placeholder={full ? m.atMost(field, max) : placeholder}
 			aria-invalid={error ? true : undefined}
 			aria-describedby={[hintId, error ? editor.errorId(field) : ''].filter(Boolean).join(' ')}
 			{onkeydown}
@@ -155,24 +154,24 @@ label and the error summary point to it.
 			}}
 		>
 			<Plus size="18" aria-hidden="true" />
-			Add<span class="sr-only"> {itemName}</span>
+			{common.add}<span class="sr-only">{` ${m.addWhat(field)}`}</span>
 		</button>
 	</div>
 	{#if problem}
 		<p class="text-sm text-warning-800-200" aria-hidden="true">{problem}</p>
 	{/if}
 	<p id={hintId} class="text-xs text-surface-700-300">
-		{hint ? `${hint} ` : ''}Press Enter to add. {value.length} of {max}.
+		{hint ? `${hint} ` : ''}{m.pressEnter(value.length, max)}
 	</p>
 	{#if value.length > 0}
-		<ul bind:this={list} class="flex flex-wrap gap-2" aria-label="{label} added">
+		<ul bind:this={list} class="flex flex-wrap gap-2" aria-label={m.addedItems(field, label)}>
 			{#each value as item, index (item)}
 				<li class="chip preset-tonal-primary max-w-full gap-1 py-1 ps-3 pe-1 text-sm">
 					<span class="min-w-0 break-words whitespace-normal">{item}</span>
 					<button
 						type="button"
 						class="btn-icon size-7 shrink-0 rounded-full hover:preset-tonal"
-						aria-label="Remove {itemName} {item}"
+						aria-label={m.removeItem(field, item)}
 						data-remove-item
 						onclick={() => remove(index)}
 					>

@@ -5,15 +5,16 @@ import { userLogged } from './userLogged';
 import { DomainDoesNotExistError, ResourceNotFoundError } from '../errors';
 import { experienceRequest, objectIdParams } from '../models/elysia';
 import { logger } from '../services/logger';
+import { m } from './experiences.messages';
 
 /** The caller's domain, if `id` is one of its experiences (404 otherwise) */
 const findDomainWithExperience = async (userId: string, id: string) => {
   const domain = await Domain.findOne({ admin: userId });
 
-  if (!domain) throw new DomainDoesNotExistError('You do not own a domain');
+  if (!domain) throw new DomainDoesNotExistError(() => m.noDomain);
 
   if (!domain.experiences.some((expId) => expId.toString() === id)) {
-    throw new ResourceNotFoundError('Experience not found in your domain')
+    throw new ResourceNotFoundError(() => m.experienceNotInDomain)
   }
   return domain;
 };
@@ -23,7 +24,7 @@ export const experiences = new Elysia()
   .post('/experiences', async ({ body, userId }) => {
     const domain = await Domain.findOne({ admin: userId });
 
-    if (!domain) throw new DomainDoesNotExistError('You do not own a domain');
+    if (!domain) throw new DomainDoesNotExistError(() => m.noDomain);
 
     const experience = await Experience.fromRequest(body);
 
@@ -36,7 +37,7 @@ export const experiences = new Elysia()
         { _id: domain._id },
         { $push: { experiences: result._id } }
       );
-      if (matchedCount === 0) throw new DomainDoesNotExistError('You do not own a domain');
+      if (matchedCount === 0) throw new DomainDoesNotExistError(() => m.noDomain);
     } catch (error) {
       await Experience.deleteOne({ _id: result._id }).catch((cleanupError: unknown) => {
         logger.error('Could not remove an experience its domain did not take', {
@@ -62,7 +63,7 @@ export const experiences = new Elysia()
 
     const experience = await Experience.findById(id);
 
-    if (!experience) throw new ResourceNotFoundError('Experience not found')
+    if (!experience) throw new ResourceNotFoundError(() => m.experienceNotFound)
 
     experience.set(await experienceFieldsFromRequest(body));
 
@@ -88,7 +89,7 @@ export const experiences = new Elysia()
       { $pull: { experiences: id } }
     );
     // Removed by a concurrent request in the meantime
-    if (modifiedCount === 0) throw new ResourceNotFoundError('Experience not found in your domain');
+    if (modifiedCount === 0) throw new ResourceNotFoundError(() => m.experienceNotInDomain);
 
     await Experience.deleteOne({ _id: id });
 

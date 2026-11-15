@@ -7,14 +7,15 @@ the editor focuses the field while the preview shows, it switches back to Write 
 -->
 <script lang="ts">
 	import { Tabs } from '@skeletonlabs/skeleton-svelte';
-	import { JOB_LIMITS } from 'portfolio-common';
+	import { JOB_LIMITS, intlLocale } from 'portfolio-common';
 	import Markdown from '#components/Markdown.svelte';
 	import FieldError from './FieldError.svelte';
 	import { getJobEditorContext } from './context';
+	import { m } from './DescriptionField.messages.ts';
 
 	let {
 		value = $bindable(''),
-		label = 'Job description',
+		label = m.label,
 		required = false,
 		placeholder = '',
 		minRows = 10
@@ -37,7 +38,7 @@ the editor focuses the field while the preview shows, it switches back to Write 
 
 	// Shown once the text nears the limit (the textarea stops there)
 	let countShown = $derived(value.length > JOB_LIMITS.description * 0.9);
-	const formatCount = (count: number) => count.toLocaleString('en-GB');
+	const formatCount = (count: number) => count.toLocaleString(intlLocale('en-GB'));
 
 	// Grow with the content (the page scrolls, not the textarea). While it is not laid out yet
 	// (scrollHeight 0) it keeps its rows, and is measured again on the next frame.
@@ -68,9 +69,11 @@ the editor focuses the field while the preview shows, it switches back to Write 
 		</label>
 		<Tabs.List class="mb-0 gap-1 border-0 pb-0">
 			<Tabs.Trigger value="write" class="btn-sm data-selected:preset-tonal" data-write-tab>
-				Write
+				{m.write}
 			</Tabs.Trigger>
-			<Tabs.Trigger value="preview" class="btn-sm data-selected:preset-tonal">Preview</Tabs.Trigger>
+			<Tabs.Trigger value="preview" class="btn-sm data-selected:preset-tonal">
+				{m.preview}
+			</Tabs.Trigger>
 		</Tabs.List>
 	</div>
 	<Tabs.Content value="write">
@@ -91,7 +94,7 @@ the editor focuses the field while the preview shows, it switches back to Write 
 	<Tabs.Content value="preview">
 		<div
 			class="min-h-40 rounded-base border border-surface-200-800 p-3 text-sm sm:p-4"
-			aria-label="{label} preview"
+			aria-label={m.previewOf(label)}
 			role="region"
 		>
 			{#if value.trim()}
@@ -99,17 +102,15 @@ the editor focuses the field while the preview shows, it switches back to Write 
 				     section's h3 -->
 				<Markdown content={value} topHeadingLevel={4} html={false} compact />
 			{:else}
-				<p class="text-surface-700-300">Nothing to preview yet.</p>
+				<p class="text-surface-700-300">{m.nothingToPreview}</p>
 			{/if}
 		</div>
 	</Tabs.Content>
 	<div class="flex flex-wrap justify-between gap-x-3 text-xs text-surface-700-300">
-		<p id={hintId}>
-			Markdown: ## headings, **bold**, _italic_, lists with “-”, [links](https://…).
-		</p>
+		<p id={hintId}>{m.markdownHint}</p>
 		{#if countShown}
 			<p class={value.length >= JOB_LIMITS.description ? 'text-warning-800-200' : ''}>
-				{formatCount(value.length)} / {formatCount(JOB_LIMITS.description)} characters
+				{m.characters(formatCount(value.length), formatCount(JOB_LIMITS.description))}
 			</p>
 		{/if}
 	</div>

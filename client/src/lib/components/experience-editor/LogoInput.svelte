@@ -3,6 +3,9 @@
 	import FieldError from './FieldError.svelte';
 	import { getEditorContext } from './context';
 	import { ICON_ACCEPT, ICON_SIZE, readIcon } from './icon';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import { m as formMessages } from '#services/experienceForm.messages.ts';
+	import { m } from './editor.messages.ts';
 
 	let {
 		value,
@@ -64,19 +67,19 @@
 		ondragleave={() => (dragging = false)}
 		ondrop={onDrop}
 	>
-		<span id="{buttonId}-label" class="sr-only">Logo</span>
+		<span id="{buttonId}-label" class="sr-only">{formMessages.fields.icon}</span>
 		<div
 			class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-base bg-surface-100-900"
 		>
 			{#if value}
-				<img src={value} alt="Current logo" class="size-full object-contain" />
+				<img src={value} alt={m.logo.current} class="size-full object-contain" />
 			{:else}
 				<Photo size="28" class="text-surface-500" aria-hidden="true" />
 			{/if}
 		</div>
 		<div class="min-w-0 flex-1 space-y-2">
 			<p class="text-sm">
-				{value ? 'Drop another image here to replace it, or' : 'Drop an image here, or'}
+				{value ? m.logo.dropAnother : m.logo.drop}
 			</p>
 			<div class="flex flex-wrap gap-2">
 				<button
@@ -93,9 +96,9 @@
 							class="animate-spin motion-reduce:animate-none"
 							aria-hidden="true"
 						/>
-						Processing…
+						{m.logo.processing}
 					{:else}
-						{value ? 'Choose another file' : 'Choose a file'}
+						{value ? m.logo.chooseAnother : m.logo.choose}
 					{/if}
 				</button>
 				{#if value}
@@ -107,7 +110,7 @@
 							onchange(undefined);
 						}}
 					>
-						Remove
+						{common.remove}
 					</button>
 				{/if}
 			</div>
@@ -126,7 +129,7 @@
 		}}
 	/>
 	<p id={hintId} class="text-xs text-surface-700-300">
-		PNG, JPEG, WebP, SVG or ICO. Large images are resized to {ICON_SIZE} px.
+		{m.logo.hint(ICON_SIZE)}
 	</p>
 	{#if localError}
 		<p id={localErrorId} class="text-sm text-error-700-300" role="alert">{localError}</p>

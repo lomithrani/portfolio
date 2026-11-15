@@ -5,14 +5,13 @@
 // the first time the account chooses it; the account then switches freely between the two. The
 // active mode only decides what the client shows: the API authorises each route on what the
 // account has (a domain, a recruiter space), never on the active mode.
+import { accountMessages } from './account.messages';
 
 export const USER_MODES = ['candidate', 'recruiter'] as const;
 export type UserMode = (typeof USER_MODES)[number];
 
-export const USER_MODE_LABELS: Record<UserMode, string> = {
-	candidate: 'Candidate',
-	recruiter: 'Recruiter'
-};
+/** Read a label when it is shown (`USER_MODE_LABELS[mode]`): it is in the language in use */
+export const USER_MODE_LABELS: Record<UserMode, string> = accountMessages.modes;
 
 /** Plans of the recruiter space. Everyone is on the free plan until subscriptions exist */
 export const RECRUITER_PLANS = {

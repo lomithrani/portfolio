@@ -1,4 +1,5 @@
 import { EXPERIENCE_LIMITS } from 'portfolio-common';
+import { m } from './editor.messages.ts';
 
 // Experience logos are stored as data URLs (at most EXPERIENCE_LIMITS.icon characters).
 // Raster images are downscaled in the browser and re-encoded; SVG and ICO files are kept as
@@ -112,8 +113,8 @@ function rasterize(image: HTMLImageElement): string | undefined {
 /** Reads a picked or dropped file into a logo data URL */
 export async function readIcon(file: File): Promise<IconResult> {
 	const kind = iconKind(file);
-	if (!kind) return { error: 'Use a PNG, JPEG, WebP, SVG or ICO image.' };
-	if (file.size > MAX_ICON_FILE_BYTES) return { error: 'Choose an image under 10 MB.' };
+	if (!kind) return { error: m.logo.errors.type };
+	if (file.size > MAX_ICON_FILE_BYTES) return { error: m.logo.errors.fileTooLarge };
 
 	// A file the browser gave no type would become an application/octet-stream data URL
 	const blob = file.type ? file : new Blob([file], { type: kind.type });
@@ -127,8 +128,8 @@ export async function readIcon(file: File): Promise<IconResult> {
 			return { icon: original };
 		}
 		const icon = rasterize(image);
-		return icon ? { icon } : { error: 'This image is too detailed to fit. Try a simpler one.' };
+		return icon ? { icon } : { error: m.logo.errors.tooDetailed };
 	} catch {
-		return { error: 'This image could not be read. Try another file.' };
+		return { error: m.logo.errors.unreadable };
 	}
 }

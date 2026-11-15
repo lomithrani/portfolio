@@ -2,6 +2,7 @@ import { EXPERIENCE_LIMITS, ExperienceType } from 'portfolio-common';
 import type { Experience, Skill } from 'portfolio-api/models/database';
 import type { portfolioApi } from '#services';
 import { fromMonthKey, toMonthKey } from './experienceDates';
+import { m } from './experienceForm.messages.ts';
 
 // Pure state helpers of the experience editor. They know nothing of the UI, so a prefilled
 // form (e.g. from an imported résumé) goes through the same conversion and validation.
@@ -330,7 +331,7 @@ const L = EXPERIENCE_LIMITS;
 
 const tooLong = (value: string, max: number) => value.length > max;
 
-const maxMessage = (max: number) => `Use ${max.toLocaleString('en-US')} characters or fewer.`;
+const maxMessage = (max: number) => m.errors.maxLength(max);
 
 /** Errors of a start/end/ongoing triple, keyed 'start' / 'end' under a prefix */
 const periodErrors = (
@@ -342,27 +343,28 @@ const periodErrors = (
 	const endComplete = MONTH_KEY.test(period.end);
 
 	if (period.start && !startComplete) {
-		errors.push({ key: 'start', message: 'Choose both a month and a year.' });
+		errors.push({ key: 'start', message: m.errors.monthIncomplete });
 	} else if (!period.start && (period.ongoing || period.end)) {
-		errors.push({ key: 'start', message: 'Choose the start month.' });
+		errors.push({ key: 'start', message: m.errors.startRequired });
 	}
 
 	if (period.ongoing) return errors;
 	if (period.end && !endComplete) {
-		errors.push({ key: 'end', message: 'Choose both a month and a year.' });
+		errors.push({ key: 'end', message: m.errors.monthIncomplete });
 	} else if (startComplete && !period.end) {
-		errors.push({ key: 'end', message: `Choose the end month, or tick “${ongoingLabel}”.` });
+		errors.push({ key: 'end', message: m.errors.endRequired(ongoingLabel) });
 	} else if (startComplete && endComplete && period.end < period.start) {
-		errors.push({ key: 'end', message: 'The end month must not be before the start month.' });
+		errors.push({ key: 'end', message: m.errors.endBeforeStart });
 	}
 	return errors;
 };
 
 /** Label of the "ongoing" checkbox of an experience, worded for its type */
 export const ongoingLabel = (type: ExperienceType): string =>
-	type === ExperienceType.Professional ? 'I currently work here' : 'Ongoing';
+	type === ExperienceType.Professional ? m.ongoing.professional : m.ongoing.other;
 
-const PERIOD_LABELS = { start: 'Start', end: 'End' } as const;
+/** Label of the "ongoing" checkbox of a project */
+export const projectOngoingLabel = (): string => m.ongoing.other;
 
 /** Every problem of the form, in the order of the fields; empty when it can be sent */
 export const validateExperienceForm = (form: FormData): FieldError[] => {
@@ -370,83 +372,68 @@ export const validateExperienceForm = (form: FormData): FieldError[] => {
 	const add = (field: FieldKey, label: string, message: string) =>
 		errors.push({ field, label, message });
 
-	if (!form.title.trim()) add('title', 'Title', 'Enter a title.');
-	else if (tooLong(form.title.trim(), L.title)) add('title', 'Title', maxMessage(L.title));
+	if (!form.title.trim()) add('title', m.fields.title, m.errors.titleRequired);
+	else if (tooLong(form.title.trim(), L.title)) add('title', m.fields.title, maxMessage(L.title));
 	if (tooLong(form.company.name.trim(), L.companyName)) {
-		add('company.name', 'Company', maxMessage(L.companyName));
+		add('company.name', m.fields['company.name'], maxMessage(L.companyName));
 	}
 	if (tooLong(form.location.trim(), L.location)) {
-		add('location', 'Location', maxMessage(L.location));
+		add('location', m.fields.location, maxMessage(L.location));
 	}
 	for (const { key, message } of periodErrors(form, ongoingLabel(form.type))) {
-		add(key, PERIOD_LABELS[key], message);
+		add(key, m.fields[key], message);
 	}
 	if (form.icon && tooLong(form.icon, L.icon)) {
-		add('icon', 'Logo', 'This image is too large: choose a smaller one.');
+		add('icon', m.fields.icon, m.errors.iconTooLarge);
 	}
-	if (tooLong(form.summary, L.text)) add('summary', 'Summary', maxMessage(L.text));
+	if (tooLong(form.summary, L.text)) add('summary', m.fields.summary, maxMessage(L.text));
 
 	const projects = sentProjects(form);
 	if (projects.length > L.projects) {
-		add('projects', 'Projects', `Keep ${L.projects} projects or fewer.`);
+		add('projects', m.fields.projects, m.errors.tooManyProjects(L.projects));
 	}
 	form.projects.forEach((project, index) => {
 		if (isBlankProject(project)) return;
 		const field = (name: string) => `projects.${project.id}.${name}`;
-		const label = (name: string) => `Project ${index + 1} · ${name}`;
+		const label = (name: string) => m.projectField(index + 1, name);
 
-		if (!project.name.trim()) add(field('name'), label('Name'), 'Enter a project name.');
-		else if (tooLong(project.name.trim(), L.projectName)) {
-			add(field('name'), label('Name'), maxMessage(L.projectName));
+		if (!project.name.trim()) {
+			add(field('name'), label(m.fields.name), m.errors.projectNameRequired);
+		} else if (tooLong(project.name.trim(), L.projectName)) {
+			add(field('name'), label(m.fields.name), maxMessage(L.projectName));
 		}
-		for (const { key, message } of periodErrors(project, 'Ongoing')) {
-			add(field(key), label(PERIOD_LABELS[key]), message);
+		for (const { key, message } of periodErrors(project, projectOngoingLabel())) {
+			add(field(key), label(m.fields[key]), message);
 		}
 		if (tooLong(project.summary, L.text))
-			add(field('summary'), label('Summary'), maxMessage(L.text));
-		for (const [kind, name] of [
-			['hardSkills', 'Technical skills'],
-			['softSkills', 'Soft skills']
-		] as const) {
+			add(field('summary'), label(m.fields.summary), maxMessage(L.text));
+		for (const kind of ['hardSkills', 'softSkills'] as const) {
+			const name = m.fields[kind];
 			const skills = normalizeSkillNames(project[kind]);
 			const long = skills.find((skill) => tooLong(skill, L.skillName));
 			if (skills.length > L.skillsPerProject) {
-				add(field(kind), label(name), `Keep ${L.skillsPerProject} skills or fewer.`);
+				add(field(kind), label(name), m.errors.tooManySkills(L.skillsPerProject));
 			} else if (long) {
-				add(
-					field(kind),
-					label(name),
-					`“${long.slice(0, 30)}…” is too long: ${maxMessage(L.skillName)}`
-				);
+				add(field(kind), label(name), m.errors.skillTooLong(long.slice(0, 30), L.skillName));
 			}
 		}
 	});
 	return errors;
 };
 
-const FIELD_LABELS: Record<string, string> = {
-	title: 'Title',
-	'company.name': 'Company',
-	location: 'Location',
-	start: 'Start',
-	end: 'End',
-	summary: 'Summary',
-	icon: 'Logo',
-	projects: 'Projects',
-	name: 'Name',
-	hardSkills: 'Technical skills',
-	softSkills: 'Soft skills'
-};
+/** The name of a field (m.fields), read when it is shown; undefined when it has none */
+const fieldName = (key: string): string | undefined =>
+	Object.hasOwn(m.fields, key) ? (m.fields as Record<string, string>)[key] : undefined;
 
 /** Names a field in the error summary: 'Title', 'Project 2 · Name' */
 export const fieldLabel = (form: FormData, field: FieldKey): string => {
 	const parts = field.split('.');
 	if (parts[0] === 'projects' && parts.length >= 3) {
 		const index = form.projects.findIndex((project) => project.id === parts[1]);
-		const name = FIELD_LABELS[parts[2]] ?? parts[2];
-		return index < 0 ? name : `Project ${index + 1} · ${name}`;
+		const name = fieldName(parts[2]) ?? parts[2];
+		return index < 0 ? name : m.projectField(index + 1, name);
 	}
-	return FIELD_LABELS[field] ?? field;
+	return fieldName(field) ?? field;
 };
 
 /**

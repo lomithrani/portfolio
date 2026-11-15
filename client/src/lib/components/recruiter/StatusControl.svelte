@@ -9,8 +9,10 @@ radio buttons: moving through the choices with the arrow keys changes nothing un
 	import { Menu, Portal } from '@skeletonlabs/skeleton-svelte';
 	import { ArrowPath, Check, ChevronDown, InformationCircle } from 'svelte-heros-v2';
 	import { JOB_STATUSES, type JobStatus } from 'portfolio-common';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { JOB_STATUS_DESCRIPTIONS, statusLabel } from '#services/jobPosting.ts';
 	import JobStatusBadge from '#components/jobs/JobStatusBadge.svelte';
+	import { m } from './StatusControl.messages.ts';
 
 	let {
 		status,
@@ -35,7 +37,7 @@ radio buttons: moving through the choices with the arrow keys changes nothing un
 	aria-labelledby="{uid}-title"
 >
 	<div class="flex flex-wrap items-center justify-between gap-2">
-		<h3 id="{uid}-title" class="font-semibold">Status</h3>
+		<h3 id="{uid}-title" class="font-semibold">{m.title}</h3>
 		<JobStatusBadge {status} />
 	</div>
 	<p class="text-sm text-surface-700-300">{JOB_STATUS_DESCRIPTIONS[status]}</p>
@@ -56,10 +58,10 @@ radio buttons: moving through the choices with the arrow keys changes nothing un
 			{#if busy}
 				<span class="flex items-center gap-2">
 					<ArrowPath size="16" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-					Saving…
+					{common.saving}
 				</span>
 			{:else}
-				<span>Change status</span>
+				<span>{m.change}</span>
 				<ChevronDown size="16" aria-hidden="true" />
 			{/if}
 		</Menu.Trigger>
@@ -67,7 +69,7 @@ radio buttons: moving through the choices with the arrow keys changes nothing un
 			<Menu.Positioner class="z-50">
 				<Menu.Content class="w-80 max-w-[calc(100vw-1rem)] text-surface-950-50 outline-none">
 					<Menu.ItemGroup>
-						<Menu.ItemGroupLabel>Status</Menu.ItemGroupLabel>
+						<Menu.ItemGroupLabel>{m.title}</Menu.ItemGroupLabel>
 						{#each JOB_STATUSES as option (option)}
 							<Menu.OptionItem
 								type="radio"
@@ -95,6 +97,6 @@ radio buttons: moving through the choices with the arrow keys changes nothing un
 
 	<p class="flex items-start gap-1.5 text-xs text-surface-700-300">
 		<InformationCircle size="16" class="shrink-0" aria-hidden="true" />
-		<span>Only Open job descriptions take applications. Drafts are hidden from the public.</span>
+		<span>{m.note}</span>
 	</p>
 </section>

@@ -3,11 +3,36 @@
 // ServiceUnavailableError) the message is sent to the client as a plain-text
 // body, so keep it free of internal details. Any other error becomes a generic
 // 500.
+//
+// The message is in the language of the request (services/locale.ts) when the
+// error is given a function reading a message (`() => m.scheduleNotFound`,
+// docs/I18N.md); the error then also keeps its English text, for the logs.
+import { DEFAULT_LOCALE, getLocale, withLocale } from 'portfolio-common'
+
+/**
+ * The text of an error: a function reading a message (called now, in the
+ * language of the request), or a plain string for a text that is the same in
+ * every language (a body the client matches, an HTTP reason phrase, what a
+ * portfolio-common validator already said in the request's language)
+ */
+export type ErrorText = string | (() => string)
+
+/** `read()` in the language in use, and in English: the same text when that is the language in use */
+export const inBothLanguages = (read: () => string): { text: string; english: string } => {
+  const text = read()
+  return { text, english: getLocale() === DEFAULT_LOCALE ? text : withLocale(DEFAULT_LOCALE, read) }
+}
+
 export class HttpError extends Error {
   status = 500
-  constructor(public message: string) {
-    super(message)
+  /** The message in English, for the logs: `message`, sent to the client, is in the request's language */
+  english: string
+  constructor(message: ErrorText) {
+    const { text, english } =
+      typeof message === 'function' ? inBothLanguages(message) : { text: message, english: message }
+    super(text)
     this.name = new.target.name
+    this.english = english
   }
 }
 
@@ -82,7 +107,7 @@ export class FieldValidationError extends HttpError {
   status = 422
   constructor(
     public property: string,
-    message: string
+    message: ErrorText
   ) {
     super(message)
   }
@@ -97,7 +122,7 @@ export class UnprocessableContentError extends HttpError {
 export class TooManyRequestsError extends HttpError {
   status = 429
   constructor(
-    message: string,
+    message: ErrorText,
     public retryAfterSeconds?: number
   ) {
     super(message)

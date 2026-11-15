@@ -4,14 +4,13 @@ import type { Portfolio } from 'portfolio-api';
 import { MAX_AVAILABLE_DATES_RANGE, addDays, daysBetween } from 'portfolio-common';
 import type { DateRange } from 'portfolio-common';
 import {
-	DATES_FAILED,
-	SLOTS_FAILED,
 	availabilityFailure,
 	firstShownDate,
 	isUnbookable,
 	loadBookableDates,
 	toIsoDate
 } from '../bookingDates';
+import { m } from '../bookingDates.messages';
 
 // The API's booking horizon of a Paris schedule bookable 30 days ahead, on Monday 7 June 2027
 const HORIZON = { first: '2027-06-07', last: '2027-07-07' };
@@ -166,7 +165,7 @@ describe('availabilityFailure', () => {
 		expect(
 			availabilityFailure(
 				{ status: 401, value: 'Sign in to continue the hiring journey' },
-				DATES_FAILED
+				m.datesFailed
 			)
 		).toEqual({
 			message: 'Sign in to continue the hiring journey.',
@@ -177,7 +176,7 @@ describe('availabilityFailure', () => {
 		expect(
 			availabilityFailure(
 				{ status: 403, value: 'Complete the earlier steps of the hiring journey first' },
-				SLOTS_FAILED
+				m.slotsFailed
 			)
 		).toEqual({
 			message: 'Complete the steps above first.',
@@ -189,7 +188,7 @@ describe('availabilityFailure', () => {
 
 	it('tells the visitor booking is off when the owner calendar cannot take bookings', () => {
 		expect(
-			availabilityFailure({ status: 409, value: 'Google Calendar not connected' }, DATES_FAILED)
+			availabilityFailure({ status: 409, value: 'Google Calendar not connected' }, m.datesFailed)
 		).toEqual({
 			message: 'Online booking is not available right now. Please reach out directly.',
 			reloadSchedules: true,
@@ -198,13 +197,13 @@ describe('availabilityFailure', () => {
 	});
 
 	it('reloads the schedules when this one is gone', () => {
-		expect(availabilityFailure({ status: 404, value: 'Schedule not found' }, SLOTS_FAILED)).toEqual(
-			{
-				message: 'This meeting type is not available anymore.',
-				reloadSchedules: true,
-				retry: false
-			}
-		);
+		expect(
+			availabilityFailure({ status: 404, value: 'Schedule not found' }, m.slotsFailed)
+		).toEqual({
+			message: 'This meeting type is not available anymore.',
+			reloadSchedules: true,
+			retry: false
+		});
 	});
 
 	it("passes on the API's rate limit message, which says how long to wait", () => {
@@ -212,7 +211,7 @@ describe('availabilityFailure', () => {
 			status: 429,
 			value: 'Too many requests from your network. Try again in 12 minutes'
 		};
-		expect(availabilityFailure(limited, DATES_FAILED)).toEqual({
+		expect(availabilityFailure(limited, m.datesFailed)).toEqual({
 			message: limited.value,
 			reloadSchedules: false,
 			retry: true
@@ -225,11 +224,11 @@ describe('availabilityFailure', () => {
 		['a validation error', { status: 422, value: {} }],
 		['a rate limit without its message', { status: 429, value: {} }]
 	])('offers to try again after %s', (_, error) => {
-		expect(availabilityFailure(error, DATES_FAILED)).toEqual({
-			message: DATES_FAILED,
+		expect(availabilityFailure(error, m.datesFailed)).toEqual({
+			message: m.datesFailed,
 			reloadSchedules: false,
 			retry: true
 		});
-		expect(availabilityFailure(error, SLOTS_FAILED).message).toBe(SLOTS_FAILED);
+		expect(availabilityFailure(error, m.slotsFailed).message).toBe(m.slotsFailed);
 	});
 });

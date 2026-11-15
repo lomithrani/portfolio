@@ -1,4 +1,9 @@
-import { ExperienceType, RESUME_IMPORT_CLIENT_TIMEOUT_MS } from 'portfolio-common';
+import {
+	ExperienceType,
+	RESUME_IMPORT_CLIENT_TIMEOUT_MS,
+	getLocale,
+	intlLocale
+} from 'portfolio-common';
 import type { portfolioApi } from '#services';
 import {
 	draftToForm,
@@ -14,6 +19,8 @@ import {
 	type FormData
 } from './experienceForm';
 import { experiencePeriod, formatMonth, formatMonthRange, fromMonthKey } from './experienceDates';
+import { m as formMessages } from './experienceForm.messages.ts';
+import { m } from './resumeImport.messages.ts';
 
 // Pure helpers of the résumé import (GET / POST /experiences/import): the API reads a PDF
 // résumé with Claude and answers with experience drafts, which the owner reviews and adds
@@ -44,11 +51,11 @@ export const IMPORT_CLIENT_TIMEOUT_MS = RESUME_IMPORT_CLIENT_TIMEOUT_MS;
 
 // --- The file -------------------------------------------------------------------------
 
-/** '820 KB', '3.4 MB' */
+/** '820 KB', '3.4 MB' ('820 Ko', '3,4 Mo' in French) */
 export const formatFileSize = (bytes: number): string =>
 	bytes < 1024 * 1024
-		? `${Math.max(1, Math.round(bytes / 1024))} KB`
-		: `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB`;
+		? m.kilobytes(Math.max(1, Math.round(bytes / 1024)))
+		: m.megabytes((bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, ''));
 
 /** What is wrong with a file picked for import, before reading it; undefined when it can go */
 export function resumeFileProblem(file: {
@@ -57,11 +64,9 @@ export function resumeFileProblem(file: {
 	size: number;
 }): string | undefined {
 	const looksLikePdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-	if (!looksLikePdf) return 'Choose a PDF file: the import only reads PDF résumés.';
-	if (file.size === 0) return 'This file is empty. Choose another PDF.';
-	if (file.size > MAX_RESUME_PDF_BYTES) {
-		return `This PDF is ${formatFileSize(file.size)}: the import takes files of up to 4 MB. Export a lighter version (fewer images) and try again.`;
-	}
+	if (!looksLikePdf) return m.file.notPdf;
+	if (file.size === 0) return m.file.empty;
+	if (file.size > MAX_RESUME_PDF_BYTES) return m.file.tooLarge(formatFileSize(file.size));
 	return undefined;
 }
 
@@ -76,17 +81,17 @@ export const base64OfDataUrl = (dataUrl: string): string => dataUrl.slice(dataUr
 
 /** '2 of 3 imports left this month' */
 export const quotaText = ({ limit, remaining }: { limit: number; remaining: number }): string =>
-	`${remaining} of ${limit} ${limit === 1 ? 'import' : 'imports'} left this month`;
+	m.quota(remaining, limit);
 
 /**
- * 'Nov 20, 2:05 PM GMT+1' (in the given time zone, the browser's by default, named: the API's
- * messages give times in UTC); '' when invalid
+ * 'Nov 20, 2:05 PM GMT+1' (in the page's language and the given time zone, the browser's by
+ * default, named: the API's messages give times in UTC); '' when invalid
  */
 export function formatResetDate(iso: string | null | undefined, timeZone?: string): string {
 	if (!iso) return '';
 	const date = new Date(iso);
 	if (Number.isNaN(date.getTime())) return '';
-	return date.toLocaleString('en-US', {
+	return date.toLocaleString(intlLocale('en-US'), {
 		month: 'short',
 		day: 'numeric',
 		hour: 'numeric',
@@ -103,9 +108,6 @@ export const formatElapsed = (seconds: number): string => {
 };
 
 // --- Errors ---------------------------------------------------------------------------
-
-export const IMPORT_SESSION_EXPIRED =
-	'Your session expired. Sign in again, then import your résumé.';
 
 /** The text of an API error body: plain text, or the message of a validation error */
 const apiMessage = (value: unknown): string | undefined => {
@@ -128,22 +130,22 @@ const apiMessage = (value: unknown): string | undefined => {
  * next import is possible.
  */
 export function importErrorMessage(status: number | undefined, value: unknown): string {
-	if (status === 401) return IMPORT_SESSION_EXPIRED;
+	if (status === 401) return m.importErrors.sessionExpired;
 	// A validation error of the request itself (an object) is not about the résumé
 	const text = typeof value === 'string' ? apiMessage(value) : undefined;
 	switch (status) {
 		case 404:
-			return text ?? 'Résumé import is not available on this portfolio.';
+			return text ?? m.importErrors.unavailable;
 		case 413:
-			return text ?? 'This PDF is too large: the import takes files of up to 4 MB.';
+			return text ?? m.importErrors.tooLarge;
 		case 422:
-			return text ?? 'This file could not be read as a résumé. Choose another PDF.';
+			return text ?? m.importErrors.unreadable;
 		case 429:
-			return text ?? 'You have used all your imports for now. Try again later.';
+			return text ?? m.importErrors.noImportsLeft;
 		case 503:
-			return text ?? 'Résumé import is temporarily unavailable, try again later.';
+			return text ?? m.importErrors.temporarilyUnavailable;
 		default:
-			return 'The import failed. Try again in a moment.';
+			return m.importErrors.failed;
 	}
 }
 
@@ -156,7 +158,7 @@ export function saveErrorMessage(
 	value: unknown,
 	form: FormData
 ): string {
-	if (status === 413) return 'This experience is too large: shorten its texts.';
+	if (status === 413) return m.saveErrors.tooLarge;
 	if (status === 400 || status === 422) {
 		const message = apiMessage(value);
 		const property =
@@ -169,10 +171,10 @@ export function saveErrorMessage(
 			property,
 			sentProjects(form).map((project) => project.id)
 		);
-		if (message && field) return `${fieldLabel(form, field)}: ${message}`;
-		return message ?? 'Some fields are invalid: edit it to fix them.';
+		if (message && field) return formMessages.fieldProblem(fieldLabel(form, field), message);
+		return message ?? m.saveErrors.invalid;
 	}
-	return 'Could not add it. Try again in a moment.';
+	return m.saveErrors.failed;
 }
 
 /** Whether POST /experiences refused a draft for its content: editing it can fix that */
@@ -184,22 +186,14 @@ export const saveErrorNeedsEdit = (status: number | undefined): boolean =>
  * its content (`toEdit` of them), to add again later when the server or the connection failed
  */
 export function failedDraftsText(failed: number, toEdit: number): string {
-	const one = failed === 1;
-	const count = one
-		? '1 experience could not be added.'
-		: `${failed} experiences could not be added.`;
-	if (toEdit >= failed) {
-		return `${count} Edit ${one ? 'it' : 'them'} to fix the problem, then add ${one ? 'it' : 'them'} again.`;
-	}
-	if (toEdit === 0) return `${count} Try adding ${one ? 'it' : 'them'} again in a moment.`;
-	return `${count} Edit the ones marked with a problem, then add them again.`;
+	return m.failedDrafts(failed, toEdit);
 }
 
 /** Problems of a draft, in a line: 'End: Choose the end month, or tick …' (+ 'and 2 more') */
 export const problemsText = (errors: FieldError[]): string => {
 	if (errors.length === 0) return '';
-	const first = `${errors[0].label}: ${errors[0].message}`;
-	return errors.length === 1 ? first : `${first} (and ${errors.length - 1} more)`;
+	const first = formMessages.fieldProblem(errors[0].label, errors[0].message);
+	return errors.length === 1 ? first : m.moreProblems(first, errors.length - 1);
 };
 
 // --- Drafts ---------------------------------------------------------------------------
@@ -276,9 +270,9 @@ export function draftPeriodText(form: FormData): string {
 	const end = MONTH_KEY.test(form.end) ? fromMonthKey(form.end) : undefined;
 	if (start) {
 		if (form.ongoing) return formatMonthRange(start);
-		return end ? formatMonthRange(start, end) : `From ${formatMonth(start)}`;
+		return end ? formatMonthRange(start, end) : m.from(formatMonth(start));
 	}
-	if (end) return `Until ${formatMonth(end)}`;
+	if (end) return m.until(formatMonth(end));
 	const period = experiencePeriod({
 		projects: form.projects.map((project) => ({
 			start: MONTH_KEY.test(project.start) ? fromMonthKey(project.start) : undefined,
@@ -432,6 +426,10 @@ export function parseImportReview(value: unknown): ImportReview | undefined {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
 	const stored = value as Record<string, unknown>;
 	if (stored.version !== STORAGE_VERSION || !Array.isArray(stored.drafts)) return undefined;
+	// The API's warnings and a failed draft's error are sentences in the language the page had
+	// then (a review stored before languages existed is in English): in another language they
+	// are left out, and the draft goes back to pending (adding it says what is wrong again)
+	const sameLanguage = (typeof stored.locale === 'string' ? stored.locale : 'en') === getLocale();
 	const ids = new Set<string>();
 	const drafts = stored.drafts.flatMap((entry): ImportDraft[] => {
 		if (!entry || typeof entry !== 'object') return [];
@@ -441,9 +439,10 @@ export function parseImportReview(value: unknown): ImportReview | undefined {
 		let id = typeof draft.id === 'string' && draft.id ? draft.id : newClientId();
 		if (ids.has(id)) id = newClientId();
 		ids.add(id);
-		const status = STATUSES.includes(draft.status as ImportDraftStatus)
+		const stored = STATUSES.includes(draft.status as ImportDraftStatus)
 			? (draft.status as ImportDraftStatus)
 			: 'pending';
+		const status = stored === 'failed' && !sameLanguage ? 'pending' : stored;
 		return [
 			{
 				id,
@@ -464,16 +463,17 @@ export function parseImportReview(value: unknown): ImportReview | undefined {
 	return {
 		fileName: typeof stored.fileName === 'string' ? stored.fileName : '',
 		importedAt,
-		warnings: Array.isArray(stored.warnings)
-			? stored.warnings.filter((warning): warning is string => typeof warning === 'string')
-			: [],
+		warnings:
+			sameLanguage && Array.isArray(stored.warnings)
+				? stored.warnings.filter((warning): warning is string => typeof warning === 'string')
+				: [],
 		drafts
 	};
 }
 
 /** The review as stored */
 export const serializeImportReview = (review: ImportReview): string =>
-	JSON.stringify({ version: STORAGE_VERSION, ...review });
+	JSON.stringify({ version: STORAGE_VERSION, locale: getLocale(), ...review });
 
 type ReviewStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 

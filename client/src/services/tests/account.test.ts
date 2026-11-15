@@ -28,13 +28,9 @@ vi.mock('../googleIdentity', () => ({
 	disableGoogleAutoSelect: vi.fn(() => Promise.resolve())
 }));
 
-import { LEGAL_VERSION, STALE_TERMS_MESSAGE, currentConsent } from 'portfolio-common';
+import { LEGAL_VERSION, legalMessages, currentConsent } from 'portfolio-common';
 import {
-	CLAIM_CONSENT_MESSAGE,
-	DELETE_ACCOUNT_ERROR_MESSAGE,
 	GOOGLE_AUTO_SELECT_TIMEOUT_MS,
-	NETWORK_ERROR_MESSAGE,
-	SESSION_EXPIRED_MESSAGE,
 	acceptTerms,
 	checkDomainAvailability,
 	claimErrorMessage,
@@ -58,6 +54,7 @@ import {
 	userDisplayName,
 	userInitials
 } from '../account';
+import { accountMessages } from '../account.messages';
 import { authenticationStore } from '../stores';
 import { disableGoogleAutoSelect } from '../googleIdentity';
 import { portfolioApi } from '#services';
@@ -256,13 +253,15 @@ describe('recordSpaceShown', () => {
 describe('claimErrorMessage', () => {
 	it('tells a taken name from an account that already owns a portfolio', () => {
 		expect(claimErrorMessage(409, 'Domain already exists')).toMatch(/already taken/);
-		expect(claimErrorMessage(409, 'You already own a domain')).toMatch(/already owns/);
-		expect(claimErrorMessage(409, { message: 'You already own a domain' })).toMatch(/already owns/);
+		expect(claimErrorMessage(409, 'You already own a domain')).toMatch(/already has its portfolio/);
+		expect(claimErrorMessage(409, { message: 'You already own a domain' })).toMatch(
+			/already has its portfolio/
+		);
 	});
 
 	it('covers invalid names, expired sessions and other failures', () => {
 		expect(claimErrorMessage(400, 'Invalid domain name')).toMatch(/cannot be used/);
-		expect(claimErrorMessage(401, 'Unauthorized')).toBe(SESSION_EXPIRED_MESSAGE);
+		expect(claimErrorMessage(401, 'Unauthorized')).toBe(accountMessages.sessionExpired);
 		expect(claimErrorMessage(500, 'Internal')).toMatch(/Try again/);
 		expect(claimErrorMessage(undefined, null)).toMatch(/Try again/);
 	});
@@ -274,9 +273,13 @@ describe('claimErrorMessage', () => {
 			property,
 			message
 		});
-		expect(claimErrorMessage(422, validation('consent'))).toBe(CLAIM_CONSENT_MESSAGE);
-		expect(claimErrorMessage(422, validation('consent.ageConfirmed'))).toBe(CLAIM_CONSENT_MESSAGE);
-		expect(claimErrorMessage(422, validation('consent.termsVersion'))).toBe(STALE_TERMS_MESSAGE);
+		expect(claimErrorMessage(422, validation('consent'))).toBe(accountMessages.claim.consent);
+		expect(claimErrorMessage(422, validation('consent.ageConfirmed'))).toBe(
+			accountMessages.claim.consent
+		);
+		expect(claimErrorMessage(422, validation('consent.termsVersion'))).toBe(
+			legalMessages.staleTerms
+		);
 	});
 });
 
@@ -321,7 +324,7 @@ describe('switchMode', () => {
 		await expect(switchMode('candidate')).resolves.toEqual({
 			ok: false,
 			reason: 'session-expired',
-			message: SESSION_EXPIRED_MESSAGE
+			message: accountMessages.sessionExpired
 		});
 		expect(get(authenticationStore)).toEqual(loggedOut);
 	});
@@ -341,7 +344,7 @@ describe('switchMode', () => {
 		await expect(switchMode('candidate')).resolves.toEqual({
 			ok: false,
 			reason: 'network',
-			message: NETWORK_ERROR_MESSAGE
+			message: accountMessages.networkError
 		});
 	});
 
@@ -439,14 +442,14 @@ describe('claimPortfolio', () => {
 				type: 'validation',
 				on: 'body',
 				property: 'consent',
-				message: 'Confirm your age and accept the terms of use to create a portfolio.'
+				message: 'Confirm your age and accept the terms of use to create your portfolio.'
 			})
 		);
 
 		await expect(claimPortfolio('rita')).resolves.toEqual({
 			ok: false,
 			reason: 'error',
-			message: CLAIM_CONSENT_MESSAGE,
+			message: accountMessages.claim.consent,
 			cause: 'consent'
 		});
 		expect(mockClaimPost).toHaveBeenCalledWith({ name: 'rita' }, withCredentials);
@@ -612,7 +615,7 @@ describe('acceptTerms', () => {
 		await expect(acceptTerms()).resolves.toEqual({
 			ok: false,
 			reason: 'error',
-			message: STALE_TERMS_MESSAGE
+			message: legalMessages.staleTerms
 		});
 
 		mockConsentPut.mockResolvedValue(apiError(503));
@@ -732,14 +735,14 @@ describe('deleteAccount', () => {
 		await expect(deleteAccount()).resolves.toEqual({
 			ok: false,
 			reason: 'error',
-			message: DELETE_ACCOUNT_ERROR_MESSAGE
+			message: accountMessages.deleteFailed
 		});
 
 		mockMeDelete.mockRejectedValue(new TypeError('Failed to fetch'));
 		await expect(deleteAccount()).resolves.toEqual({
 			ok: false,
 			reason: 'network',
-			message: NETWORK_ERROR_MESSAGE
+			message: accountMessages.networkError
 		});
 
 		expect(get(authenticationStore).user).toEqual(user);

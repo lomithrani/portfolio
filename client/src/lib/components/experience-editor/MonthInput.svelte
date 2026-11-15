@@ -2,21 +2,9 @@
 	// A month picker that works in every browser (no <input type="month">): a month and a year
 	// select. The value is 'YYYY-MM', '' when empty, or half-filled ('YYYY-' / '-MM') while only
 	// one of the two is chosen, which the form validation reports.
+	import { m } from './editor.messages.ts';
 
-	const MONTHS = [
-		'January',
-		'February',
-		'March',
-		'April',
-		'May',
-		'June',
-		'July',
-		'August',
-		'September',
-		'October',
-		'November',
-		'December'
-	];
+	const MONTHS = m.month.names;
 	const FIRST_YEAR = 1950;
 
 	let {
@@ -59,26 +47,26 @@
 		<select
 			{id}
 			class="select min-w-0 flex-1 ps-2"
-			aria-label="{label} month"
+			aria-label={m.month.monthOf(label)}
 			aria-invalid={invalid || undefined}
 			aria-describedby={describedby}
 			value={month}
 			onchange={(event) => set(year, event.currentTarget.value)}
 		>
-			<option value="">Month</option>
+			<option value="">{m.month.month}</option>
 			{#each MONTHS as name, index (name)}
 				<option value={String(index + 1).padStart(2, '0')}>{name}</option>
 			{/each}
 		</select>
 		<select
 			class="select w-26 shrink-0 ps-2"
-			aria-label="{label} year"
+			aria-label={m.month.yearOf(label)}
 			aria-invalid={invalid || undefined}
 			aria-describedby={describedby}
 			value={year}
 			onchange={(event) => set(event.currentTarget.value, month)}
 		>
-			<option value="">Year</option>
+			<option value="">{m.month.year}</option>
 			{#each years as option (option)}
 				<option value={option}>{option}</option>
 			{/each}

@@ -17,7 +17,8 @@ import {
 	type WorkflowStepManifest,
 	type WorkflowStepStatus
 } from 'portfolio-common';
-import { isNetworkFailure, NETWORK_ERROR } from './recruiter';
+import { isNetworkFailure, networkError } from './recruiter';
+import { m } from './workflow.messages';
 
 // The hiring journey of a portfolio (portfolio-common's workflow.ts): the steps its owner
 // chooses in the admin tab (GET/PUT /workflow), and the visitor's way through them on the Hire
@@ -96,14 +97,12 @@ export const addStepProblem = (
 	manifest: Pick<WorkflowStepManifest<object>, 'type' | 'max'>
 ): string | null => {
 	if (steps.length >= WORKFLOW_LIMITS.steps) {
-		return `A journey has at most ${WORKFLOW_LIMITS.steps} steps.`;
+		return m.addStep.journeyFull(WORKFLOW_LIMITS.steps);
 	}
 	if (manifest.max === undefined) return null;
 	const used = steps.filter((step) => step.type === manifest.type).length;
 	if (used < manifest.max) return null;
-	return manifest.max === 1
-		? 'Already in your journey: it can be used only once.'
-		: `Already ${manifest.max} times in your journey.`;
+	return manifest.max === 1 ? m.addStep.usedOnce : m.addStep.usedMax(manifest.max);
 };
 
 /** Same value, whatever the order of an object's keys (settings are small plain data) */
@@ -132,14 +131,12 @@ export const sameSteps = (a: readonly WorkflowStep[], b: readonly WorkflowStep[]
 			sameValue(step.config, b[index].config)
 	);
 
-export const UNKNOWN_STEP_NAME = 'Unavailable step';
-
 /**
  * How a step is called: the name of its own when it has one (`title`: a note's), else its
  * type's label
  */
 export const stepName = (step: { type: string }, title?: string): string =>
-	title || (stepManifest(step.type)?.label ?? UNKNOWN_STEP_NAME);
+	title || (stepManifest(step.type)?.label ?? m.unknownStepName);
 
 /**
  * What recruiters will go through, in one sentence (the editor's summary). `title`: the name
@@ -149,17 +146,14 @@ export const journeySummary = <Step extends { type: string }>(
 	steps: readonly Step[],
 	title: (step: Step) => string | undefined = () => undefined
 ): string => {
-	if (steps.length === 0) {
-		return 'Your Hire page offers nothing: recruiters are asked to reach out directly.';
-	}
+	if (steps.length === 0) return m.summary.empty;
 	const phrases = steps.map((step) => {
 		const label = stepName(step);
 		const phrase = label.charAt(0).toLowerCase() + label.slice(1);
 		const own = title(step);
-		return own ? `${phrase} (“${own}”)` : phrase;
+		return own ? m.summary.titled(phrase, own) : phrase;
 	});
-	if (phrases.length === 1) return `Recruiters can ${phrases[0]} right away.`;
-	return `Recruiters ${phrases.slice(0, -1).join(', ')}, then ${phrases.at(-1)}.`;
+	return phrases.length === 1 ? m.summary.one(phrases[0]) : m.summary.many(phrases);
 };
 
 /**
@@ -233,13 +227,10 @@ export const journeyIntro = (
 	ownerName: string,
 	goal: { before: number; alone: string; after: string } | undefined
 ): string => {
-	if (!goal) return `${ownerName} does not take meeting requests online right now.`;
+	if (!goal) return m.intro.noGoal(ownerName);
 	if (goal.before === 0) return goal.alone;
-	const count = goal.before === 1 ? 'one step' : `${goal.before} steps`;
-	return `${ownerName} asks recruiters to complete ${count} first. ${goal.after}`;
+	return m.intro.stepsFirst(ownerName, goal.before, goal.after);
 };
-
-export const STEP_UNAVAILABLE = 'This step is not available.';
 
 /**
  * The line under a step's name. `describe`: what the step's type says to a visitor it is open
@@ -254,13 +245,11 @@ export const stepNote = (
 	describeFailed?: (step: JourneyStep) => string
 ): string => {
 	const step = journey.steps[index];
-	if (!describe) return STEP_UNAVAILABLE;
+	if (!describe) return m.stepUnavailable;
 	// The owner reads what the step asks of recruiters
 	if (journey.own) return stepManifest(step.type)?.description ?? '';
-	if (state === 'locked') {
-		return index === 1 ? 'Complete the step above first.' : 'Complete the steps above first.';
-	}
-	if (state === 'failed') return describeFailed?.(step) ?? 'Not passed.';
+	if (state === 'locked') return index === 1 ? m.completeStepAbove : m.completeStepsAbove;
+	if (state === 'failed') return describeFailed?.(step) ?? m.notPassed;
 	return describe(step, state);
 };
 
@@ -276,45 +265,40 @@ export interface StepFailure<Kind extends string = never> {
 	kind: 'signed-out' | 'locked' | 'changed' | 'error' | Kind;
 }
 
-const SUBMIT_FAILED = 'Could not save this step. Try again in a moment.';
-
 /**
  * The journey's own refusals are told from their text (the API's messages, whose status a step's
  * refusal can share): anything else a step's type refused is shown as the API says it (its 4xx
  * messages are written for the visitor; a 422 names what is wrong with the input)
  */
 export const submitFailure = (status: number | undefined, value: unknown): StepFailure => {
-	if (isNetworkFailure(value)) return { message: NETWORK_ERROR, kind: 'error' };
+	if (isNetworkFailure(value)) return { message: networkError(), kind: 'error' };
 	const text =
 		bodyText(value) ||
 		(value && typeof value === 'object' && 'message' in value ? bodyText(value.message) : '');
-	const asTold: StepFailure = { message: text || SUBMIT_FAILED, kind: 'error' };
+	const asTold: StepFailure = { message: text || m.submit.failed, kind: 'error' };
 	switch (status) {
 		case 401:
-			return { message: 'Your session expired. Sign in again to continue.', kind: 'signed-out' };
+			return { message: m.submit.signedOut, kind: 'signed-out' };
 		case 403:
 			if (/your own hiring journey/i.test(text)) {
-				return {
-					message: 'This is your own portfolio: its journey is for recruiters.',
-					kind: 'error'
-				};
+				return { message: m.submit.ownJourney, kind: 'error' };
 			}
 			return /earlier steps/i.test(text)
-				? { message: 'Complete the steps above first.', kind: 'locked' }
+				? { message: m.completeStepsAbove, kind: 'locked' }
 				: asTold;
 		case 404:
 			return /^domain not found$/i.test(text)
-				? { message: 'This portfolio no longer exists.', kind: 'error' }
+				? { message: m.submit.noPortfolio, kind: 'error' }
 				: asTold;
 		case 409:
 			return /journey changed|nothing can be submitted/i.test(text)
-				? { message: 'This hiring journey changed.', kind: 'changed' }
+				? { message: m.submit.journeyChanged, kind: 'changed' }
 				: asTold;
 		case 400:
 		case 422:
 			return asTold;
 		default:
-			return { message: SUBMIT_FAILED, kind: 'error' };
+			return { message: m.submit.failed, kind: 'error' };
 	}
 };
 
@@ -378,10 +362,8 @@ export const jobLine = (job: { title: string; company?: string }): string =>
 export const jobStepNote = (view: unknown, state: 'open' | 'done'): string => {
 	const job = pickedJob(view);
 	if (state === 'done' && job) return jobLine(job);
-	if (job) {
-		return `${job.title} is ${JOB_STATUS_LABELS[job.status].toLowerCase()} now: pick an open job description.`;
-	}
-	return 'Pick the job you are hiring for, or write it.';
+	if (job) return m.job.notOpen(job.title, JOB_STATUS_LABELS[job.status]);
+	return m.job.ask;
 };
 
 /**
@@ -396,30 +378,21 @@ export const pickJobFailure = (
 	const text = bodyText(value);
 	switch (status) {
 		case 401:
-			return { message: 'Your session expired. Sign in again to pick a job.', kind: 'signed-out' };
+			return { message: m.job.pick.signedOut, kind: 'signed-out' };
 		case 403:
 			return /recruiter space/i.test(text)
-				? { message: 'Create your recruiter space to pick a job.', kind: 'reload-jobs' }
+				? { message: m.job.pick.noSpace, kind: 'reload-jobs' }
 				: submitFailure(status, value);
 		case 404:
 			return /job posting/i.test(text)
-				? {
-						message: 'This job description no longer exists. Pick another one.',
-						kind: 'reload-jobs'
-					}
+				? { message: m.job.pick.gone, kind: 'reload-jobs' }
 				: submitFailure(status, value);
 		case 409:
 			return /open job/i.test(text)
-				? {
-						message: 'Only an open job description can be picked. Set its status to Open first.',
-						kind: 'reload-jobs'
-					}
-				: {
-						message: 'This hiring journey changed: it no longer asks for a job here.',
-						kind: 'changed'
-					};
+				? { message: m.job.pick.notOpen, kind: 'reload-jobs' }
+				: { message: m.job.pick.journeyChanged, kind: 'changed' };
 		default:
-			return { message: 'Could not pick this job. Try again in a moment.', kind: 'error' };
+			return { message: m.job.pick.failed, kind: 'error' };
 	}
 };
 
@@ -549,19 +522,16 @@ export const jobMatchNote = (step: { config?: unknown; view?: unknown }): string
 	const match = jobMatch(step.view);
 	if (match) {
 		return passesJobMatch(match)
-			? `${match.job.title} scores ${match.score} out of 100.`
-			: `${match.job.title} scores ${match.score} out of 100: at least ${match.minScore} is needed.`;
+			? m.jobMatch.passed(match.job.title, match.score)
+			: m.jobMatch.under(match.job.title, match.score, match.minScore);
 	}
 	const minScore = jobMatchMinScore(step.config);
-	return minScore === undefined
-		? 'The job you picked is scored out of 100.'
-		: `The job you picked is scored out of 100: at least ${minScore} is needed.`;
+	return minScore === undefined ? m.jobMatch.ask : m.jobMatch.askMin(minScore);
 };
 
 /** How a criterion's outcome reads in the details of a score */
 export const jobMatchOutcomeText = (entry: JobMatchCriterion): string => {
-	if (entry.outcome === 'unknown') return 'Could not be computed right now: not counted';
-	if (entry.notStated) return 'Not stated in your job description';
-	if (entry.outcome === 'match') return 'Matches';
-	return entry.outcome === 'partial' ? 'Partly matches' : 'Does not match';
+	if (entry.outcome === 'unknown') return m.jobMatch.outcome.unknown;
+	if (entry.notStated) return m.jobMatch.outcome.notStated;
+	return m.jobMatch.outcome[entry.outcome];
 };

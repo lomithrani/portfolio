@@ -14,6 +14,8 @@ import { clientAddress } from '../services/clientAddress';
 import { domainAvailability, limitDomainAvailabilityRequestsFromIp } from '../services/domainAvailability';
 import { requireCurrentTerms } from '../services/legal';
 import { isDuplicateKeyError } from '../services/mongoErrors';
+import { ALREADY_OWNS_DOMAIN, DOMAIN_NOT_FOUND } from '../protocol';
+import { m } from './domain.messages';
 
 /** Finds a domain by name, ignoring case: names are stored lowercase */
 const findDomainByName = (name: string) => Domain.findOne({ name: normalizeDomainName(name) });
@@ -21,7 +23,7 @@ const findDomainByName = (name: string) => Domain.findOne({ name: normalizeDomai
 const domainPublic = new Elysia()
   .get('/domain/:name', async ({ params: { name } }) => {
     const domain = await findDomainByName(name);
-    if (!domain) throw new DomainDoesNotExistError('Domain not found');
+    if (!domain) throw new DomainDoesNotExistError(DOMAIN_NOT_FOUND);
     const populatedDomain = await domain.populate<{ experiences: Experience[] }>({
       path: 'experiences',
       populate: EXPERIENCE_POPULATE
@@ -47,10 +49,10 @@ const domainAdmin = new Elysia()
   .use(userLogged)
   .put('/domain/:name', async ({ params: { name }, body, userId }) => {
     const domain = await findDomainByName(name);
-    if (!domain) throw new DomainDoesNotExistError('Domain not found');
+    if (!domain) throw new DomainDoesNotExistError(DOMAIN_NOT_FOUND);
 
     if (domain.admin.toString() !== userId) {
-      throw new ForbiddenError('Forbidden: not the domain admin');
+      throw new ForbiddenError(() => m.notDomainAdmin);
     }
 
     if (body.theme !== undefined) domain.theme = body.theme;
@@ -75,7 +77,7 @@ const domainClaim = new Elysia()
   .post('/domain/claim', async ({ body, userId }) => {
     const name = normalizeDomainName(body.name);
     // Same rules as the client: no reserved route names, no file-like names
-    if (!isValidDomainName(name)) throw new InvalidDomainNameError('Invalid domain name');
+    if (!isValidDomainName(name)) throw new InvalidDomainNameError(() => m.invalidDomainName);
 
     // A portfolio is published under the Terms of use in force: an account
     // that has not accepted them sends its confirmation with the claim
@@ -84,17 +86,17 @@ const domainClaim = new Elysia()
     await requireCurrentTerms(userId, body.consent, 'claim');
 
     const existing = await Domain.findOne({ name });
-    if (existing) throw new DomainAlreadyExistsError('Domain already exists');
+    if (existing) throw new DomainAlreadyExistsError(() => m.domainAlreadyExists);
 
     const ownedDomain = await Domain.findOne({ admin: userId });
-    if (ownedDomain) throw new UserAlreadyOwnsDomainError('You already own a domain');
+    if (ownedDomain) throw new UserAlreadyOwnsDomainError(ALREADY_OWNS_DOMAIN);
 
     try {
       const domain = await Domain.create({ name, admin: userId, experiences: [] });
       return domain.toObject();
     } catch (error) {
       // Lost a race against another claim of the same name
-      if (isDuplicateKeyError(error)) throw new DomainAlreadyExistsError('Domain already exists');
+      if (isDuplicateKeyError(error)) throw new DomainAlreadyExistsError(() => m.domainAlreadyExists);
       throw error;
     }
   }, {

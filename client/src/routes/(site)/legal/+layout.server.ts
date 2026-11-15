@@ -7,17 +7,13 @@ import {
 	LEGAL_PUBLISHER_SIREN,
 	LEGAL_PUBLISHER_VAT
 } from '$app/env/private';
-import {
-	LEGAL_LANGUAGE_PARAM,
-	legalLanguage,
-	legalPublisher
-} from '#components/legal/legalDocuments.ts';
+import { legalPublisher } from '#components/legal/legalDocuments.ts';
 import type { LayoutServerLoad } from './$types';
 
 // The legal pages are rendered on the server: the publisher's details come from the web
-// service's private LEGAL_* variables (src/env.ts), the language from `?lang=fr`
-export const load: LayoutServerLoad = ({ url }) => ({
-	lang: legalLanguage(url.searchParams.get(LEGAL_LANGUAGE_PARAM)),
+// service's private LEGAL_* variables (src/env.ts). Their language is the page's (getLocale(),
+// read by each page), not this load's: a later data request could come with another cookie
+export const load: LayoutServerLoad = () => ({
 	publisher: legalPublisher({
 		name: LEGAL_PUBLISHER_NAME,
 		email: LEGAL_CONTACT_EMAIL,

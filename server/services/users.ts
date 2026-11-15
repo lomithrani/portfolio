@@ -3,11 +3,13 @@ import { USER_MODES } from 'portfolio-common';
 import type { UserMode } from 'portfolio-common';
 import { Domain, User } from '../models/database';
 import { ConflictError, CouldntVerifyJwtError } from '../errors';
+import { UNKNOWN_USER } from '../protocol';
 import { restoreAccountQuotas } from './accountQuotas';
 import type { GoogleIdentity } from './google';
 import { latestTermsVersion } from './legal';
 import { isDuplicateKeyError } from './mongoErrors';
 import { enableRecruiterSpace } from './recruiters';
+import { m } from './google.messages';
 
 /** Public view of a user, as returned by /login, /isLogged, GET /me and PUT /me/mode */
 export interface UserDto {
@@ -67,7 +69,7 @@ export const accountDto = async (user: Parameters<typeof toUserDto>[0]) =>
 
 // A valid session whose account no longer exists: what /isLogged answers as
 // "Unknown user", as a 401 for the routes that need the account
-const unknownUser = () => new CouldntVerifyJwtError('Unauthorized: unknown user');
+const unknownUser = () => new CouldntVerifyJwtError(UNKNOWN_USER);
 
 /** The account of a session; 401 when it no longer exists */
 export const findAccount = async (userId: string) => {
@@ -120,7 +122,7 @@ export const findOrCreateGoogleUser = async ({ sub, email }: GoogleIdentity) => 
     // Concurrent first login with the same Google account
     const concurrent = await User.findOne({ googleId: sub });
     if (concurrent) return concurrent;
-    throw new ConflictError('This email is linked to a different Google account');
+    throw new ConflictError(() => m.emailLinkedElsewhere);
   }
   // A Google identity whose account was deleted starts from the quotas it used
   await restoreAccountQuotas(created.id, sub);

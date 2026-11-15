@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { previewedSkill, resolvePreview, skillTimeline } from '#services/projectPreview.ts';
 	import { placeSpan, type ExperienceView } from '#services/timeline.ts';
+	import { m } from './ProjectPreview.messages.ts';
 
 	// The short card shown next to a skill tag, or a bar of the timeline, while it is hovered or
 	// focused with the keyboard: only the projects concerned (see projectPreview.ts). One for the
@@ -270,7 +271,7 @@
 			{/if}
 		</div>
 		{#if preview.skills.hard.length > 0 || preview.skills.soft.length > 0}
-			<ul class="flex flex-wrap gap-1" aria-label="Skills">
+			<ul class="flex flex-wrap gap-1" aria-label={m.skills}>
 				{#each preview.skills.hard as name (name)}
 					<li class="chip preset-tonal-primary px-1.5 py-0.5 text-xs">{name}</li>
 				{/each}
@@ -316,7 +317,7 @@
 							{/if}
 						{/each}
 					</div>
-					<ul class="relative space-y-2 pt-1 pb-0.5" aria-label="Projects">
+					<ul class="relative space-y-2 pt-1 pb-0.5" aria-label={m.projects}>
 						{#each chart.bars as bar, index (index)}
 							{@const place = placeSpan(bar.span, chart)}
 							<li>
@@ -345,14 +346,14 @@
 				</div>
 				{#if chart.undated.length > 0}
 					<p class="pt-2 text-xs text-surface-700-300">
-						Without dates: {chart.undated.map((entry) => entry.name).join(', ')}
+						{m.withoutDates(chart.undated.map((entry) => entry.name))}
 					</p>
 				{/if}
 			</div>
 		{:else if preview.entries.length > 0}
 			<ul
 				class="max-h-60 space-y-1.5 overflow-y-auto border-t border-surface-200-800 pt-2"
-				aria-label="Projects"
+				aria-label={m.projects}
 			>
 				{#each preview.entries as entry, index (index)}
 					<li>

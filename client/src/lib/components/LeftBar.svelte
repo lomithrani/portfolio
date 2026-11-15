@@ -6,7 +6,9 @@
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { isDomainAdmin } from '#services/authentication.ts';
 	import ThemeToggle from '#components/ThemeToggle.svelte';
+	import LanguageSwitch from '#lib/i18n/LanguageSwitch.svelte';
 	import { browser } from '$app/env';
+	import { m } from './LeftBar.messages.ts';
 
 	let { domain }: { domain: Omit<Domain, 'experiences'> & { experiences: Experience[] } } =
 		$props();
@@ -20,18 +22,18 @@
 	let menuItems = [
 		{
 			path: '/experiences',
-			label: 'Experiences',
+			label: m.links.experiences,
 			icon: ComputerDesktop
 		},
 		{
 			path: '/hire',
-			label: 'Hire',
+			label: m.links.hire,
 			selected: pathStartsWith,
 			icon: AcademicCap
 		},
 		{
 			path: '/admin',
-			label: 'Admin',
+			label: m.links.admin,
 			display: () => isAdmin,
 			selected: pathStartsWith,
 			icon: WrenchScrewdriver
@@ -137,7 +139,9 @@
 					{/if}
 				{/each}
 			</Navigation.Content>
-			<Navigation.Footer class="mt-auto flex justify-center">
+			<!-- One under the other: side by side they would take the rail's whole width -->
+			<Navigation.Footer class="mt-auto flex flex-col items-center gap-2">
+				<LanguageSwitch iconOnly />
 				<ThemeToggle defaultDark={domain?.defaultDarkMode} />
 			</Navigation.Footer>
 		</Navigation>
@@ -146,7 +150,7 @@
 	<button
 		class="drawer-handle"
 		onclick={handleToggle}
-		aria-label={open ? 'Close sidebar' : 'Open sidebar'}
+		aria-label={open ? m.closeSidebar : m.openSidebar}
 	>
 		<span class="handle-icon" class:rotated={isOpen}>
 			<ChevronRight size="14" />

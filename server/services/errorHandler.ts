@@ -1,6 +1,14 @@
 import { ValidationError } from 'elysia';
 import mongoose from 'mongoose';
-import { FieldValidationError, HttpError, PayloadTooLargeError, ServiceUnavailableError, TooManyRequestsError } from '../errors';
+import {
+  FieldValidationError,
+  HttpError,
+  PayloadTooLargeError,
+  ServiceUnavailableError,
+  TooManyRequestsError,
+  inBothLanguages
+} from '../errors';
+import { m } from './errorHandler.messages';
 import { isDuplicateKeyError } from './mongoErrors';
 
 export type ErrorBody = string | { type: 'validation'; on: string; property: string; message: string };
@@ -15,7 +23,21 @@ export interface ResolvedError {
   level: 'error' | 'warn' | 'silent';
   /** Extra response headers, e.g. Retry-After on a 429 */
   headers?: Record<string, string>;
+  /**
+   * The body in English, for the log line, when the body is a text in another
+   * language (the request's): logs are in English whoever asks
+   */
+  logMessage?: string;
 }
+
+/** A text body in the request's language, with its English for the log when that is another one */
+const textBody = ({ text, english }: { text: string; english: string }) => ({
+  body: text,
+  ...(english === text ? {} : { logMessage: english })
+});
+
+/** The message of an error as a body: in the request's language, its English kept for the log */
+const messageBody = (error: HttpError) => textBody({ text: error.message, english: error.english });
 
 const INTERNAL_SERVER_ERROR: ResolvedError = {
   status: 500,
@@ -42,7 +64,7 @@ const validationBody = (error: ValidationError): ErrorBody => {
     type: 'validation',
     on: String(error.type),
     property: dottedPath(valueError?.path ?? '') || 'root',
-    message: valueError?.message ?? 'Invalid request'
+    message: valueError?.message ?? m.invalidRequest
   };
 };
 
@@ -61,7 +83,7 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
       body:
         error instanceof ValidationError
           ? validationBody(error)
-          : { type: 'validation', on: 'request', property: 'root', message: 'Invalid request' },
+          : { type: 'validation', on: 'request', property: 'root', message: m.invalidRequest },
       level: 'warn'
     };
   }
@@ -70,11 +92,13 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
     // app.ts's bounded body reader stops at its cap inside Elysia's parse
     // step, which wraps whatever it throws in a ParseError
     const cause = error instanceof Error ? error.cause : undefined;
-    if (cause instanceof PayloadTooLargeError) return { status: cause.status, body: cause.message, level: 'warn' };
+    if (cause instanceof PayloadTooLargeError) return { status: cause.status, ...messageBody(cause), level: 'warn' };
     return { status: 400, body: 'Bad Request', level: 'warn' };
   }
   if (code === 'INVALID_COOKIE_SIGNATURE') return { status: 400, body: 'Bad Request', level: 'warn' };
-  if (code === 'INVALID_FILE_TYPE') return { status: 422, body: 'Invalid file type', level: 'warn' };
+  if (code === 'INVALID_FILE_TYPE') {
+    return { status: 422, ...textBody(inBothLanguages(() => m.invalidFileType)), level: 'warn' };
+  }
 
   if (error instanceof FieldValidationError) {
     return {
@@ -87,24 +111,24 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
   if (error instanceof TooManyRequestsError && error.retryAfterSeconds !== undefined) {
     return {
       status: error.status,
-      body: error.message,
+      ...messageBody(error),
       level: 'warn',
       headers: { 'retry-after': String(Math.max(1, Math.ceil(error.retryAfterSeconds))) }
     };
   }
 
   if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
-    return { status: error.status, body: error.message, level: 'warn' };
+    return { status: error.status, ...messageBody(error), level: 'warn' };
   }
 
   // An upstream failure the code that threw it already logged with its cause
   // (e.g. the Claude API during a résumé import): only its message goes out
   if (error instanceof ServiceUnavailableError) {
-    return { status: error.status, body: error.message, level: 'warn' };
+    return { status: error.status, ...messageBody(error), level: 'warn' };
   }
 
   if (error instanceof mongoose.Error.CastError) {
-    return { status: 400, body: `Invalid value for ${error.path}`, level: 'warn' };
+    return { status: 400, ...textBody(inBothLanguages(() => m.invalidValueFor(error.path))), level: 'warn' };
   }
 
   // save() of a document deleted meanwhile, e.g. an experience edited in one
@@ -120,7 +144,9 @@ export const resolveError = (code: string | number, error: unknown): ResolvedErr
         type: 'validation',
         on: 'body',
         property: Object.keys(error.errors)[0] ?? 'root',
-        message: `Invalid value for ${Object.keys(error.errors).join(', ') || 'request'}`
+        message: Object.keys(error.errors).length
+          ? m.invalidValueFor(Object.keys(error.errors).join(', '))
+          : m.invalidValueForRequest
       },
       level: 'warn'
     };

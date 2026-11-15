@@ -22,8 +22,8 @@ cannot be saved until it is fixed.
 	import { portfolioTextApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { clearAuthentication } from '#services/authentication.ts';
-	import { SESSION_EXPIRED_MESSAGE } from '#services/account.ts';
-	import { NETWORK_ERROR, failureText } from '#services/recruiter.ts';
+	import { accountMessages } from '#services/account.messages.ts';
+	import { networkError, failureText } from '#services/recruiter.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
 		addStep,
@@ -38,13 +38,13 @@ cannot be saved until it is fixed.
 	} from '#services/workflow.ts';
 	import { clientStep } from '#components/hire/steps/index.ts';
 	import StepSuggestion from './StepSuggestion.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import { m } from './WorkflowsTab.messages.ts';
 
 	let { domainName }: { domainName: string } = $props();
 
 	const uid = $props.id();
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const LOAD_FAILED = 'Could not load your hiring journey.';
-	const SAVE_FAILED = 'Could not save your hiring journey. Try again.';
 
 	let status = $state<'loading' | 'ready' | 'error'>('loading');
 	let loadError = $state('');
@@ -76,7 +76,7 @@ cannot be saved until it is fixed.
 			if (changed) navigation.cancel();
 			return;
 		}
-		if (!confirm('Leave without saving your hiring journey? Your changes will be lost.')) {
+		if (!confirm(m.leaveUnsaved)) {
 			navigation.cancel();
 		}
 	});
@@ -86,13 +86,13 @@ cannot be saved until it is fixed.
 	/** A step as the buttons name it: its type's label, and its own name to tell two of a type apart */
 	const fullName = (step: WorkflowStep) => {
 		const title = ownTitle(step);
-		return title ? `${stepName(step)}: ${title}` : stepName(step);
+		return title ? m.named(stepName(step), title) : stepName(step);
 	};
 
 	const failure = (error: { status: unknown; value?: unknown }, fallback: string) => {
 		if (errorStatus(error) === 401) {
 			clearAuthentication();
-			return SESSION_EXPIRED_MESSAGE;
+			return accountMessages.sessionExpired;
 		}
 		return failureText(error.value, fallback);
 	};
@@ -102,7 +102,7 @@ cannot be saved until it is fixed.
 		try {
 			const { data, error } = await portfolioTextApi.workflow.get(withCredentials);
 			if (error || !data) {
-				loadError = error ? failure(error, LOAD_FAILED) : LOAD_FAILED;
+				loadError = error ? failure(error, m.loadFailed) : m.loadFailed;
 				status = 'error';
 				return;
 			}
@@ -111,7 +111,7 @@ cannot be saved until it is fixed.
 			refused = null;
 			status = 'ready';
 		} catch {
-			loadError = NETWORK_ERROR;
+			loadError = networkError();
 			status = 'error';
 		}
 	}
@@ -131,7 +131,7 @@ cannot be saved until it is fixed.
 		const added = next.find((step) => !steps.includes(step));
 		edit(next);
 		if (!added) return;
-		announcement = `${stepName(added)} added as step ${next.indexOf(added) + 1} of ${next.length}.`;
+		announcement = m.added(stepName(added), next.indexOf(added) + 1, next.length);
 		await tick();
 		inStep(added.id, '[data-heading]')?.focus();
 	}
@@ -139,7 +139,7 @@ cannot be saved until it is fixed.
 	async function move(step: WorkflowStep, by: -1 | 1) {
 		const next = moveStep(steps, step.id, by);
 		edit(next);
-		announcement = `${fullName(step)} moved to step ${next.indexOf(step) + 1} of ${next.length}.`;
+		announcement = m.moved(fullName(step), next.indexOf(step) + 1, next.length);
 		await tick();
 		// The focus stays on the step moved: on the other button once it reached an end
 		const [same, other] = by === -1 ? ['up', 'down'] : ['down', 'up'];
@@ -151,7 +151,7 @@ cannot be saved until it is fixed.
 		const index = steps.indexOf(step);
 		const next = removeStep(steps, step.id);
 		edit(next);
-		announcement = `${fullName(step)} removed.`;
+		announcement = m.removed(fullName(step));
 		await tick();
 		// Its button went with it: on to the step that took its place, else the one before
 		const neighbour = next[index] ?? next[index - 1];
@@ -171,17 +171,17 @@ cannot be saved until it is fixed.
 			if (error || !data) {
 				// The rules are checked here first: the API only refuses what this page does not know yet
 				refused = errorStatus(error) === 422 ? savedWorkflowProblem(error?.value, sent) : null;
-				if (!refused) saveError = error ? failure(error, SAVE_FAILED) : SAVE_FAILED;
+				if (!refused) saveError = error ? failure(error, m.saveFailed) : m.saveFailed;
 				return;
 			}
 			saved = data.steps;
 			steps = saved;
 			toaster.success({
-				title: 'Hiring journey saved',
+				title: m.saved,
 				description: journeySummary(saved, ownTitle)
 			});
 		} catch {
-			saveError = NETWORK_ERROR;
+			saveError = networkError();
 		} finally {
 			saving = false;
 		}
@@ -192,27 +192,24 @@ cannot be saved until it is fixed.
 
 <div class="space-y-6">
 	<section class="space-y-2">
-		<h2 class="h3">Hiring journey</h2>
-		<p class="opacity-75">
-			Choose the steps recruiters go through on your Hire page, in order. Each step opens once the
-			ones before it are done.
-		</p>
+		<h2 class="h3">{m.title}</h2>
+		<p class="opacity-75">{m.intro}</p>
 	</section>
 
 	{#if status === 'loading'}
-		<p class="text-sm opacity-50" role="status">Loading your hiring journey...</p>
+		<p class="text-sm opacity-50" role="status">{m.loading}</p>
 	{:else if status === 'error'}
 		<div class="card preset-tonal-error space-y-3 p-4" role="alert">
 			<p class="text-sm">{loadError}</p>
-			<button type="button" class="btn btn-sm preset-tonal" onclick={load}>Try again</button>
+			<button type="button" class="btn btn-sm preset-tonal" onclick={load}>{common.retry}</button>
 		</div>
 	{:else}
 		{#if steps.length === 0}
 			<p class="card border border-surface-200-800 p-4 text-sm text-surface-700-300">
-				Your journey has no step. Add one below.
+				{m.noStep}
 			</p>
 		{/if}
-		<ol class="space-y-3" aria-label="Steps" bind:this={list}>
+		<ol class="space-y-3" aria-label={m.steps} bind:this={list}>
 			{#each steps as step, index (step.id)}
 				{@const manifest = stepManifest(step.type)}
 				{@const entry = clientStep(step.type)}
@@ -236,15 +233,13 @@ cannot be saved until it is fixed.
 					<div class="min-w-0 flex-1 space-y-3">
 						<div class="space-y-1">
 							<h3 class="font-semibold outline-none" tabindex="-1" data-heading>
-								<span class="sr-only">Step {index + 1}:</span>
+								<span class="sr-only">{m.stepNumber(index + 1)}</span>
 								{stepName(step)}
 							</h3>
 							{#if manifest}
 								<p class="text-sm text-surface-700-300">{manifest.description}</p>
 								<p class="text-xs opacity-60">
-									{manifest.kind === 'access'
-										? 'What the journey leads to.'
-										: 'Asked before the steps it opens.'}
+									{manifest.kind === 'access' ? m.leadsTo : m.askedBefore}
 								</p>
 							{/if}
 							{#if stepProblem && !inSettings}
@@ -269,7 +264,7 @@ cannot be saved until it is fixed.
 								onclick={() => move(step, -1)}
 							>
 								<ChevronUp size="16" aria-hidden="true" />
-								Move up
+								{m.moveUp}
 								<span class="sr-only">{name}</span>
 							</button>
 							<button
@@ -280,7 +275,7 @@ cannot be saved until it is fixed.
 								onclick={() => move(step, 1)}
 							>
 								<ChevronDown size="16" aria-hidden="true" />
-								Move down
+								{m.moveDown}
 								<span class="sr-only">{name}</span>
 							</button>
 							<button
@@ -290,7 +285,7 @@ cannot be saved until it is fixed.
 								onclick={() => remove(step)}
 							>
 								<Trash size="16" aria-hidden="true" />
-								Remove
+								{common.remove}
 								<span class="sr-only">{name}</span>
 							</button>
 						</div>
@@ -301,7 +296,7 @@ cannot be saved until it is fixed.
 
 		<section class="space-y-3" aria-labelledby="{uid}-add">
 			<h3 class="font-semibold outline-none" id="{uid}-add" tabindex="-1" bind:this={addHeading}>
-				Add a step
+				{m.addStep}
 			</h3>
 			<ul class="space-y-3">
 				{#each stepManifests() as manifest (manifest.type)}
@@ -315,7 +310,7 @@ cannot be saved until it is fixed.
 							onclick={() => add(manifest.type)}
 						>
 							<PlusCircle size="18" aria-hidden="true" />
-							<span class="sr-only">Add step:</span>
+							<span class="sr-only">{m.addStepNamed}</span>
 							{manifest.label}
 						</button>
 						<p class="text-sm text-surface-700-300" id="{uid}-add-{manifest.type}">
@@ -336,7 +331,7 @@ cannot be saved until it is fixed.
 			{#if problem}
 				<p class="card preset-tonal-warning p-3 text-sm">
 					{#if problemIndex !== -1}
-						Step {problemIndex + 1} ({stepName(steps[problemIndex])}):
+						{m.problemAt(problemIndex + 1, stepName(steps[problemIndex]))}
 					{/if}
 					{problem.message}
 				</p>
@@ -353,7 +348,7 @@ cannot be saved until it is fixed.
 				disabled={!changed || !!problem || saving}
 				onclick={save}
 			>
-				{saving ? 'Saving...' : 'Save journey'}
+				{saving ? m.saving : m.save}
 			</button>
 			{#if changed}
 				<button
@@ -362,12 +357,12 @@ cannot be saved until it is fixed.
 					disabled={saving}
 					onclick={() => edit(saved)}
 				>
-					Undo changes
+					{m.undo}
 				</button>
 			{/if}
 			<a class="btn hover:preset-tonal" href={resolve('/[domain]/hire', { domain: domainName })}>
 				<Eye size="18" aria-hidden="true" />
-				See your Hire page
+				{m.seeHirePage}
 			</a>
 		</div>
 		{#if saveError}

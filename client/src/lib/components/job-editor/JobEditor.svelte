@@ -4,8 +4,6 @@
 	const headingClass = 'text-lg font-semibold';
 	const introClass = 'text-sm text-surface-700-300';
 	const optionalClass = 'text-sm font-normal text-surface-700-300';
-	const DESCRIPTION_PLACEHOLDER =
-		'## The job\n\nWhat the role is about, the team, the stack…\n\n## Your missions\n\n- …';
 </script>
 
 <!--
@@ -61,10 +59,13 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		type WorkMode,
 		type WorkingTimeArrangement
 	} from 'portfolio-common';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
 	import { portfolioApi } from '#services';
 	import { clearAuthentication } from '#services/authentication.ts';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import {
+		JOB_FIELD_LABELS,
 		JOB_STATUS_DESCRIPTIONS,
 		contractHasDuration,
 		contractNeedsDuration,
@@ -97,6 +98,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	import LeaveDialog from './LeaveDialog.svelte';
 	import ListInput from './ListInput.svelte';
 	import { setJobEditorContext } from './context';
+	import { m } from './JobEditor.messages.ts';
 
 	type SavedJob = NonNullable<Awaited<ReturnType<(typeof portfolioApi)['jobs']['post']>>['data']>;
 
@@ -149,7 +151,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	} = $props();
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const NETWORK_ERROR = 'Could not reach the server. Check your connection and try again.';
+	// How each field is named: its label here, and in the error summary
+	const labels = JOB_FIELD_LABELS;
+	// The API's 403 of an account without a recruiter space: matched, not shown (the API sends it
+	// in English whatever the language)
 	const RECRUITER_SPACE_REQUIRED = 'Create your recruiter space first';
 	/** The API's 409 when the posting changed since the editor loaded it (PUT /jobs/:id) */
 	const JOB_CHANGED = 'This job posting was changed since you opened it';
@@ -332,13 +337,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	 */
 	function saveFailedAfterLeaving(code: number | undefined, editorUrl: string) {
 		toaster.error({
-			title: mode === 'add' ? 'The job description was not created' : 'Your changes were not saved',
-			description:
-				code === 401
-					? 'Your session expired: sign in again, then open the editor to save. Your changes are kept in this browser.'
-					: 'Open the editor again to see why and save: your changes are kept in this browser.',
+			title: mode === 'add' ? m.leftToast.notCreated : m.leftToast.notSaved,
+			description: code === 401 ? m.leftToast.sessionExpired : m.leftToast.failed,
 			action: {
-				label: 'Open the editor',
+				label: m.leftToast.openEditor,
 				// eslint-disable-next-line svelte/no-navigation-without-resolve -- this editor's own URL
 				onClick: () => goto(editorUrl)
 			}
@@ -355,44 +357,35 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		if (code === 401) {
 			onSessionExpired?.();
 			clearAuthentication();
-			return showSubmitError({
-				message:
-					'Your session expired. Sign in again (top of the page), then save: your changes are kept in this browser.'
-			});
+			return showSubmitError({ message: m.sessionExpired });
 		}
 		if (code === 403) {
 			return showSubmitError(
 				text === RECRUITER_SPACE_REQUIRED
 					? {
-							message:
-								'This account has no recruiter space yet. Open the recruiter space to create it, then come back to save: your changes are kept in this browser.',
-							link: { href: recruiterHref, label: 'Open the recruiter space' }
+							message: m.noRecruiterSpace,
+							link: { href: recruiterHref, label: m.openRecruiterSpace }
 						}
-					: { message: text ?? 'You cannot save this job description.' }
+					: { message: text ?? m.cannotSave }
 			);
 		}
 		if (code === 404 && mode === 'edit') {
 			return showSubmitError({
-				message: 'This job description no longer exists: it may have been deleted in another tab.',
-				link: { href: recruiterHref, label: 'Back to your job descriptions' }
+				message: m.gone,
+				link: { href: recruiterHref, label: m.backToJobs }
 			});
 		}
 		if (code === 409 && mode === 'edit' && text === JOB_CHANGED) {
 			return showSubmitError({
-				message:
-					'This job description was changed since you opened it (in another tab, or its status from its page). Your changes are kept in this browser: reload to see the saved version, with your changes over it to check.',
-				action: { label: 'Reload', run: reloadEditor }
+				message: m.changedSince,
+				action: { label: m.reload, run: reloadEditor }
 			});
 		}
 		if (code === 409) {
-			return showSubmitError({
-				message: text ?? 'You have too many job descriptions: delete one to add another.'
-			});
+			return showSubmitError({ message: text ?? m.tooManyJobs });
 		}
 		if (code === 413) {
-			return showSubmitError({
-				message: 'This job description is too large: shorten the description and try again.'
-			});
+			return showSubmitError({ message: m.tooLarge });
 		}
 		if (code === 400 || code === 422) {
 			const field = jobFieldOfProperty(validationProperty(error.value));
@@ -402,13 +395,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				await tick();
 				return focusField(field);
 			}
-			return showSubmitError({
-				message: text ?? 'Some fields are invalid. Check them and try again.'
-			});
+			return showSubmitError({ message: text ?? m.invalidFields });
 		}
-		return showSubmitError({
-			message: 'Could not save the job description. Try again in a moment.'
-		});
+		return showSubmitError({ message: m.saveFailed });
 	}
 
 	// --- Saving ---------------------------------------------------------------------------
@@ -421,17 +410,14 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		pendingTextErrors = commitPendingText();
 		const found = orderedJobFormErrors({ ...jobFormErrors(form), ...pendingTextErrors });
 		if (found.length > 0) {
-			announcement =
-				found.length === 1
-					? '1 field needs fixing before saving.'
-					: `${found.length} fields need fixing before saving.`;
+			announcement = m.fieldsToFix(found.length);
 			await tick();
 			return focusField(found[0].field);
 		}
 
 		// The fields are disabled while saving (see the form): what is sent is all there is
 		status = 'saving';
-		announcement = 'Saving…';
+		announcement = common.saving;
 		const body = formToJobInput($state.snapshot(form) as JobForm);
 		// Where to come back to, should the recruiter leave before the answer and it fail
 		const editorUrl = `${location.pathname}${location.search}`;
@@ -452,13 +438,13 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			status = 'idle';
 			announcement = '';
 			if (destroyed) return saveFailedAfterLeaving(undefined, editorUrl);
-			return showSubmitError({ message: NETWORK_ERROR });
+			return showSubmitError({ message: m.networkError });
 		}
 
 		// Saved: from here on, nothing may offer to save it again (a second posting)
 		finished = true;
 		status = 'saved';
-		announcement = 'Saved.';
+		announcement = m.savedAnnouncement;
 		clearJobDraft(storageKey);
 		if (initialImport) clearImportedDraft(owner);
 		const savedMode = mode === 'add' ? 'created' : 'updated';
@@ -468,8 +454,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			await onSaved(saved, savedMode, { left: false });
 		} catch {
 			await showSubmitError({
-				message: 'The job description is saved, but its page could not be opened.',
-				link: { href: recruiterHref, label: 'Go to your job descriptions' }
+				message: m.savedPageNotOpened,
+				link: { href: recruiterHref, label: m.goToJobs }
 			});
 		}
 	}
@@ -502,7 +488,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	/** "Discard draft": back to where the editor started */
 	async function resetForm() {
 		startOver();
-		announcement = 'Draft discarded.';
+		announcement = m.draftDiscarded;
 		await tick();
 		document.getElementById(fieldId('title'))?.focus();
 	}
@@ -612,13 +598,13 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	let busy = $derived(status !== 'idle');
 	let statusText = $derived(
 		status === 'saving'
-			? 'Saving…'
+			? common.saving
 			: status === 'saved'
-				? 'Saved'
+				? m.saved
 				: dirty
-					? 'Unsaved changes'
+					? m.unsavedChanges
 					: mode === 'edit'
-						? 'No changes yet'
+						? m.noChanges
 						: ''
 	);
 	const formId = `${uid}-form`;
@@ -637,7 +623,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				<DocumentArrowUp size="20" class="mt-0.5 shrink-0" aria-hidden="true" />
 				<div class="min-w-0 flex-1 space-y-2">
 					<h3 id="{uid}-import-title" class="font-semibold break-words">
-						Imported from {initialImport.fileName || 'your PDF'}: check every field before saving.
+						{m.importedFrom(initialImport.fileName)}
 					</h3>
 					{#if initialImport.warnings.length > 0}
 						<ul class="list-disc space-y-1 ps-5">
@@ -645,8 +631,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								<li>{warning}</li>
 							{/each}
 						</ul>
+					{:else if initialImport.warningsHidden}
+						<p>{m.warningsOtherLanguage}</p>
 					{:else}
-						<p>Nothing was left out, but the reading can still be wrong.</p>
+						<p>{m.nothingLeftOut}</p>
 					{/if}
 				</div>
 			</div>
@@ -658,7 +646,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					data-confirm="import"
 				>
 					<p id="{uid}-confirm-import" class="me-auto font-medium">
-						Discard this import? It still counts as one of your imports.
+						{m.discardImportQuestion}
 					</p>
 					<button
 						type="button"
@@ -666,14 +654,14 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						data-cancel
 						onclick={() => cancelConfirm('import')}
 					>
-						Keep it
+						{m.keepIt}
 					</button>
 					<button
 						type="button"
 						class="btn btn-sm preset-filled-error-700-300"
 						onclick={discardImport}
 					>
-						Discard import
+						{m.discardImport}
 					</button>
 				</div>
 			{:else}
@@ -684,7 +672,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						data-ask="import"
 						onclick={() => openConfirm('import')}
 					>
-						Discard import
+						{m.discardImport}
 					</button>
 				</div>
 			{/if}
@@ -699,9 +687,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			<div class="flex items-start gap-2">
 				<InformationCircle size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
 				<p class="min-w-0 flex-1">
-					Restored your unsaved changes from this browser.
+					{m.restored}
 					{#if start.stale}
-						This job description was saved since you made them: check them before saving.
+						{m.restoredStale}
 					{/if}
 				</p>
 			</div>
@@ -713,9 +701,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					data-confirm="reset"
 				>
 					<p id="{uid}-confirm-reset" class="me-auto font-medium">
-						{mode === 'edit'
-							? 'Discard your changes and go back to the saved job description?'
-							: 'Discard this draft?'}
+						{mode === 'edit' ? m.discardChangesQuestion : m.discardDraftQuestion}
 					</p>
 					<button
 						type="button"
@@ -723,10 +709,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						data-cancel
 						onclick={() => cancelConfirm('reset')}
 					>
-						Keep it
+						{m.keepIt}
 					</button>
 					<button type="button" class="btn btn-sm preset-filled-error-700-300" onclick={resetForm}>
-						Discard
+						{m.discard}
 					</button>
 				</div>
 			{:else}
@@ -737,7 +723,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						data-ask="reset"
 						onclick={() => openConfirm('reset')}
 					>
-						Discard draft
+						{m.discardDraft}
 					</button>
 				</div>
 			{/if}
@@ -776,9 +762,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			{/if}
 			{#if errorList.length > 0}
 				<p id={submitError ? undefined : `${uid}-summary-title`} class="font-semibold">
-					{errorList.length === 1
-						? 'Fix 1 problem before saving:'
-						: `Fix ${errorList.length} problems before saving:`}
+					{m.problemsToFix(errorList.length)}
 				</p>
 				<ul class="list-disc space-y-1 ps-5">
 					{#each errorList as error (error.field)}
@@ -789,7 +773,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								onclick={(event) => {
 									event.preventDefault();
 									focusField(error.field);
-								}}>{error.label}: {error.message}</a
+								}}>{m.fieldProblem(error.label, error.message)}</a
 							>
 						</li>
 					{/each}
@@ -799,9 +783,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	{/if}
 
 	<p class="text-sm text-surface-700-300">
-		Fields marked <span class="text-error-700-300" aria-hidden="true">*</span><span class="sr-only"
-			>with a star</span
-		> are required.
+		<Rich text={m.requiredNote}>
+			{#snippet star(text: string)}<span class="text-error-700-300" aria-hidden="true">{text}</span
+				>{/snippet}
+			{#snippet spoken(text: string)}<span class="sr-only">{text}</span>{/snippet}
+		</Rich>
 	</p>
 
 	<form
@@ -820,8 +806,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		<fieldset class="min-w-0 space-y-6" disabled={busy}>
 			<!-- Basics -->
 			<section class={sectionClass} aria-labelledby="{uid}-section-basics">
-				<h3 id="{uid}-section-basics" class={headingClass}>Basics</h3>
-				<Field field="title" label="Job title" required>
+				<h3 id="{uid}-section-basics" class={headingClass}>{m.sections.basics}</h3>
+				<Field field="title" label={labels.title} required>
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
@@ -829,12 +815,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							type="text"
 							autocomplete="off"
 							maxlength={JOB_LIMITS.title}
-							placeholder="e.g. Senior backend engineer"
+							placeholder={m.titlePlaceholder}
 							bind:value={form.title}
 						/>
 					{/snippet}
 				</Field>
-				<Field field="company" label="Company" hint="Leave it empty to keep the company anonymous.">
+				<Field field="company" label={labels.company} hint={m.companyHint}>
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
@@ -842,13 +828,13 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							type="text"
 							autocomplete="organization"
 							maxlength={JOB_LIMITS.company}
-							placeholder="e.g. Acme"
+							placeholder={m.example('Acme')}
 							bind:value={form.company}
 						/>
 					{/snippet}
 				</Field>
 				<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
-					<Field field="status" label="Status" hint={JOB_STATUS_DESCRIPTIONS[form.status]}>
+					<Field field="status" label={labels.status} hint={JOB_STATUS_DESCRIPTIONS[form.status]}>
 						{#snippet control(attributes)}
 							<select {...attributes} class="select" bind:value={form.status}>
 								{#each JOB_STATUSES as value (value)}
@@ -857,7 +843,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							</select>
 						{/snippet}
 					</Field>
-					<Field field="openings" label="Openings" unit="positions">
+					<Field field="openings" label={labels.openings} unit={m.positions}>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -875,21 +861,19 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			<!-- Description -->
 			<section class={sectionClass} aria-labelledby="{uid}-section-description">
 				<div>
-					<h3 id="{uid}-section-description" class={headingClass}>Description</h3>
-					<p class={introClass}>
-						The job, its team and its missions, as candidates will read them on the job page.
-					</p>
+					<h3 id="{uid}-section-description" class={headingClass}>{m.sections.description}</h3>
+					<p class={introClass}>{m.descriptionIntro}</p>
 				</div>
 				<DescriptionField
 					bind:value={form.description}
 					required
-					placeholder={DESCRIPTION_PLACEHOLDER}
+					placeholder={m.descriptionPlaceholder}
 				/>
 			</section>
 
 			<!-- Location -->
 			<section class={sectionClass} aria-labelledby="{uid}-section-location">
-				<h3 id="{uid}-section-location" class={headingClass}>Location</h3>
+				<h3 id="{uid}-section-location" class={headingClass}>{m.sections.location}</h3>
 				<SegmentedControl
 					value={form.workMode}
 					onValueChange={(details) => {
@@ -900,13 +884,16 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					class="gap-1"
 				>
 					<SegmentedControl.Label class="label-text text-sm">
-						Work mode <span class="text-error-700-300" aria-hidden="true">*</span>
+						{labels.workMode} <span class="text-error-700-300" aria-hidden="true">*</span>
 					</SegmentedControl.Label>
 					<SegmentedControl.Control class="grid w-full grid-cols-3 gap-1 p-1">
 						<SegmentedControl.Indicator />
 						{#each WORK_MODES as value (value)}
 							<SegmentedControl.Item {value} class="min-h-10 px-2">
-								<SegmentedControl.ItemText>{WORK_MODE_LABELS[value]}</SegmentedControl.ItemText>
+								<!-- May take two lines: « Télétravail complet » at 390 px -->
+								<SegmentedControl.ItemText class="text-center whitespace-normal">
+									{WORK_MODE_LABELS[value]}
+								</SegmentedControl.ItemText>
 								<SegmentedControl.ItemHiddenInput />
 							</SegmentedControl.Item>
 						{/each}
@@ -915,9 +902,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				<div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
 					<Field
 						field="city"
-						label="City"
+						label={labels.city}
 						required={form.workMode !== 'remote'}
-						hint={form.workMode === 'remote' ? 'Optional for a fully remote job.' : ''}
+						hint={form.workMode === 'remote' ? m.cityOptional : ''}
 					>
 						{#snippet control(attributes)}
 							<input
@@ -926,12 +913,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								autocomplete="address-level2"
 								maxlength={JOB_LIMITS.city}
-								placeholder="e.g. Lyon"
+								placeholder={m.example('Lyon')}
 								bind:value={form.city}
 							/>
 						{/snippet}
 					</Field>
-					<Field field="postalCode" label="Postal code">
+					<Field field="postalCode" label={labels.postalCode}>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -940,17 +927,13 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								inputmode="numeric"
 								autocomplete="postal-code"
 								maxlength={JOB_LIMITS.postalCode}
-								placeholder="e.g. 69003"
+								placeholder={m.example('69003')}
 								bind:value={form.postalCode}
 							/>
 						{/snippet}
 					</Field>
 				</div>
-				<Field
-					field="address"
-					label="Address"
-					hint="The office's street and number, if you can share it. A candidate's travel time is counted to it, or to the city's centre without it."
-				>
+				<Field field="address" label={labels.address} hint={m.addressHint}>
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
@@ -958,39 +941,39 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							type="text"
 							autocomplete="street-address"
 							maxlength={JOB_LIMITS.address}
-							placeholder="e.g. 12 rue de la République"
+							placeholder={m.example('12 rue de la République')}
 							bind:value={form.address}
 						/>
 					{/snippet}
 				</Field>
 				{#if form.workMode === 'hybrid'}
-					<Field field="remoteDaysPerWeek" label="Remote days a week" class="sm:max-w-xs">
+					<Field field="remoteDaysPerWeek" label={labels.remoteDaysPerWeek} class="sm:max-w-xs">
 						{#snippet control(attributes)}
 							<select {...attributes} class="select" bind:value={form.remoteDaysPerWeek}>
-								<option value="">Not specified</option>
+								<option value="">{m.notSpecified}</option>
 								{#each daysOptions as days (days)}
-									<option value={String(days)}>{days} {days === 1 ? 'day' : 'days'} a week</option>
+									<option value={String(days)}>{m.daysAWeek(days)}</option>
 								{/each}
 							</select>
 						{/snippet}
 					</Field>
 				{/if}
 				<div class="space-y-1">
-					<p class="label-text text-sm" id="{uid}-country-label">Country</p>
+					<p class="label-text text-sm" id="{uid}-country-label">{m.country}</p>
 					<p class="font-medium" aria-describedby="{uid}-country-hint">
 						{COUNTRY_LABELS.FR}
 					</p>
 					<p id="{uid}-country-hint" class="text-xs text-surface-700-300">
-						Only jobs in France for now.
+						{m.countryHint}
 					</p>
 				</div>
 			</section>
 
 			<!-- Contract -->
 			<section class={sectionClass} aria-labelledby="{uid}-section-contract">
-				<h3 id="{uid}-section-contract" class={headingClass}>Contract</h3>
+				<h3 id="{uid}-section-contract" class={headingClass}>{m.sections.contract}</h3>
 				<div class="grid gap-4 sm:grid-cols-2">
-					<Field field="contractType" label="Contract type" required>
+					<Field field="contractType" label={labels.contractType} required>
 						{#snippet control(attributes)}
 							<select {...attributes} class="select" bind:value={form.contractType}>
 								{#each FR_CONTRACT_TYPES as value (value)}
@@ -1002,12 +985,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					{#if contractHasDuration(form.contractType)}
 						<Field
 							field="durationMonths"
-							label="Duration"
-							unit="months"
+							label={labels.durationMonths}
+							unit={m.months}
 							required={contractNeedsDuration(form.contractType)}
-							hint={contractNeedsDuration(form.contractType)
-								? ''
-								: 'Optional for a freelance mission.'}
+							hint={contractNeedsDuration(form.contractType) ? '' : m.durationOptional}
 						>
 							{#snippet control(attributes)}
 								<input
@@ -1016,7 +997,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 									type="text"
 									inputmode="numeric"
 									autocomplete="off"
-									placeholder="e.g. 6"
+									placeholder={m.example('6')}
 									bind:value={form.durationMonths}
 								/>
 							{/snippet}
@@ -1024,8 +1005,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					{/if}
 					<Field
 						field="startDate"
-						label="Start date"
-						hint={form.startDate ? '' : 'Leave it empty for as soon as possible.'}
+						label={labels.startDate}
+						hint={form.startDate ? '' : m.startDateHint}
 					>
 						{#snippet control(attributes)}
 							<div class="flex gap-2">
@@ -1046,13 +1027,15 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 											document.getElementById(fieldId('startDate'))?.focus();
 										}}
 									>
-										Clear<span class="sr-only"> the start date (as soon as possible)</span>
+										<Rich text={m.clearStartDate}>
+											{#snippet spoken(text: string)}<span class="sr-only">{text}</span>{/snippet}
+										</Rich>
 									</button>
 								{/if}
 							</div>
 						{/snippet}
 					</Field>
-					<Field field="trialPeriodMonths" label="Trial period" unit="months">
+					<Field field="trialPeriodMonths" label={labels.trialPeriodMonths} unit={m.months}>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1060,12 +1043,16 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder="e.g. 3"
+								placeholder={m.example('3')}
 								bind:value={form.trialPeriodMonths}
 							/>
 						{/snippet}
 					</Field>
-					<Field field="collectiveAgreement" label="Collective agreement" class="sm:col-span-2">
+					<Field
+						field="collectiveAgreement"
+						label={labels.collectiveAgreement}
+						class="sm:col-span-2"
+					>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1073,7 +1060,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								autocomplete="off"
 								maxlength={JOB_LIMITS.collectiveAgreement}
-								placeholder="e.g. Syntec"
+								placeholder={m.example('Syntec')}
 								bind:value={form.collectiveAgreement}
 							/>
 						{/snippet}
@@ -1083,7 +1070,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 
 			<!-- Working time -->
 			<section class={sectionClass} aria-labelledby="{uid}-section-working-time">
-				<h3 id="{uid}-section-working-time" class={headingClass}>Working time</h3>
+				<h3 id="{uid}-section-working-time" class={headingClass}>{m.sections.workingTime}</h3>
 				<SegmentedControl
 					value={form.arrangement}
 					onValueChange={(details) => {
@@ -1094,7 +1081,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					class="gap-1"
 				>
 					<SegmentedControl.Label class="label-text text-sm">
-						Counted in <span class="text-error-700-300" aria-hidden="true">*</span>
+						{m.countedIn} <span class="text-error-700-300" aria-hidden="true">*</span>
 					</SegmentedControl.Label>
 					<SegmentedControl.Control class="grid w-full grid-cols-2 gap-1 p-1">
 						<SegmentedControl.Indicator />
@@ -1112,11 +1099,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					{#if form.arrangement === 'weekly_hours'}
 						<Field
 							field="hoursPerWeek"
-							label="Hours per week"
-							unit="h / week"
+							label={labels.hoursPerWeek}
+							unit={m.hoursUnit}
 							unitLabel=""
 							required
-							hint="35 h is full time in France; less is part-time."
+							hint={m.hoursHint}
 						>
 							{#snippet control(attributes)}
 								<input
@@ -1132,11 +1119,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					{:else}
 						<Field
 							field="daysPerYear"
-							label="Days per year"
-							unit="days / year"
+							label={labels.daysPerYear}
+							unit={m.daysPerYearUnit}
 							unitLabel=""
 							required
-							hint="{FR_FORFAIT_JOURS_STANDARD_DAYS} days is the standard forfait jours. Candidates read it as counted in days worked, with no weekly hours."
+							hint={m.forfaitHint(FR_FORFAIT_JOURS_STANDARD_DAYS)}
 						>
 							{#snippet control(attributes)}
 								<input
@@ -1152,10 +1139,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					{/if}
 					<Field
 						field="rttDaysPerYear"
-						label="RTT days"
-						unit="days / year"
-						unitLabel="days per year"
-						hint="Reduced working time days, if any. Candidates read them as extra days off a year."
+						label={m.rttDays}
+						unit={m.daysPerYearUnit}
+						unitLabel={m.daysPerYearSpoken}
+						hint={m.rttHint}
 					>
 						{#snippet control(attributes)}
 							<input
@@ -1164,7 +1151,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder="e.g. 10"
+								placeholder={m.example('10')}
 								bind:value={form.rttDaysPerYear}
 							/>
 						{/snippet}
@@ -1176,14 +1163,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			<section class={sectionClass} aria-labelledby="{uid}-section-pay">
 				<div>
 					<h3 id="{uid}-section-pay" class={headingClass}>
-						Pay <span class="text-error-700-300" aria-hidden="true">*</span>
+						{m.sections.pay} <span class="text-error-700-300" aria-hidden="true">*</span>
 					</h3>
-					<p class={introClass}>
-						Gross amounts (brut) in euros. The same minimum and maximum for a fixed pay.
-					</p>
+					<p class={introClass}>{m.payIntro}</p>
 				</div>
 				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-					<Field field="payMin" label="Minimum pay" unit="€" unitLabel="euros, gross" required>
+					<Field field="payMin" label={labels.payMin} unit="€" unitLabel={m.eurosGross} required>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1191,12 +1176,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="decimal"
 								autocomplete="off"
-								placeholder="e.g. 45 000"
+								placeholder={m.example('45 000')}
 								bind:value={form.payMin}
 							/>
 						{/snippet}
 					</Field>
-					<Field field="payMax" label="Maximum pay" unit="€" unitLabel="euros, gross" required>
+					<Field field="payMax" label={labels.payMax} unit="€" unitLabel={m.eurosGross} required>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1204,12 +1189,17 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="decimal"
 								autocomplete="off"
-								placeholder="e.g. 55 000"
+								placeholder={m.example('55 000')}
 								bind:value={form.payMax}
 							/>
 						{/snippet}
 					</Field>
-					<Field field="payPeriod" label="Pay period" required class="col-span-2 sm:col-span-1">
+					<Field
+						field="payPeriod"
+						label={labels.payPeriod}
+						required
+						class="col-span-2 sm:col-span-1"
+					>
 						{#snippet control(attributes)}
 							<select {...attributes} class="select" bind:value={form.payPeriod}>
 								{#each PAY_PERIODS as value (value)}
@@ -1221,14 +1211,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				</div>
 				{#if payPreview}
 					<p class="text-sm text-surface-700-300">
-						Candidates see: <span class="font-medium text-surface-950-50">{payPreview}</span>
+						{m.candidatesSee} <span class="font-medium text-surface-950-50">{payPreview}</span>
 					</p>
 				{/if}
-				<Field
-					field="payVariable"
-					label="Variable pay"
-					hint="Bonus, commission, profit-sharing… in a few words."
-				>
+				<Field field="payVariable" label={labels.payVariable} hint={m.variablePayHint}>
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
@@ -1236,7 +1222,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							type="text"
 							autocomplete="off"
 							maxlength={JOB_LIMITS.variablePay}
-							placeholder="e.g. Up to 10% annual bonus"
+							placeholder={m.variablePayPlaceholder}
 							bind:value={form.payVariable}
 						/>
 					{/snippet}
@@ -1247,12 +1233,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			<section class={sectionClass} aria-labelledby="{uid}-section-team">
 				<div>
 					<h3 id="{uid}-section-team" class={headingClass}>
-						Team &amp; organisation <span class={optionalClass}>(optional)</span>
+						{m.sections.team} <span class={optionalClass}>({common.optional})</span>
 					</h3>
-					<p class={introClass}>Where the job sits: candidates often ask.</p>
+					<p class={introClass}>{m.teamIntro}</p>
 				</div>
 				<div class="grid gap-4 sm:grid-cols-3">
-					<Field field="directReports" label="Direct reports" hint="People reporting to this job.">
+					<Field field="directReports" label={labels.directReports} hint={m.directReportsHint}>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1260,12 +1246,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder="e.g. 0"
+								placeholder={m.example('0')}
 								bind:value={form.directReports}
 							/>
 						{/snippet}
 					</Field>
-					<Field field="peers" label="Peers" hint="Colleagues under the same manager.">
+					<Field field="peers" label={m.peers} hint={m.peersHint}>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1273,12 +1259,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder="e.g. 5"
+								placeholder={m.example('5')}
 								bind:value={form.peers}
 							/>
 						{/snippet}
 					</Field>
-					<Field field="levelsToCeo" label="Levels to the CEO" hint="1 = reports to the CEO.">
+					<Field field="levelsToCeo" label={labels.levelsToCeo} hint={m.levelsHint}>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1286,7 +1272,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder="e.g. 3"
+								placeholder={m.example('3')}
 								bind:value={form.levelsToCeo}
 							/>
 						{/snippet}
@@ -1297,23 +1283,23 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			<!-- Requirements -->
 			<section class={sectionClass} aria-labelledby="{uid}-section-requirements">
 				<h3 id="{uid}-section-requirements" class={headingClass}>
-					Requirements <span class={optionalClass}>(optional)</span>
+					{m.sections.requirements} <span class={optionalClass}>({common.optional})</span>
 				</h3>
 				<div class="grid gap-4 sm:grid-cols-2">
-					<Field field="seniority" label="Seniority">
+					<Field field="seniority" label={labels.seniority}>
 						{#snippet control(attributes)}
 							<select {...attributes} class="select" bind:value={form.seniority}>
-								<option value="">Not specified</option>
+								<option value="">{m.notSpecified}</option>
 								{#each SENIORITY_LEVELS as value (value)}
 									<option {value}>{SENIORITY_LABELS[value]}</option>
 								{/each}
 							</select>
 						{/snippet}
 					</Field>
-					<Field field="education" label="Education">
+					<Field field="education" label={labels.education}>
 						{#snippet control(attributes)}
 							<select {...attributes} class="select" bind:value={form.education}>
-								<option value="">Not specified</option>
+								<option value="">{m.notSpecified}</option>
 								{#each EDUCATION_LEVELS as value (value)}
 									<option {value}>{EDUCATION_LABELS[value]}</option>
 								{/each}
@@ -1323,45 +1309,42 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				</div>
 				<ListInput
 					field="skills"
-					label="Skills"
-					itemName="skill"
+					label={labels.skills}
 					bind:value={form.skills}
 					bind:text={pendingText.skills}
 					max={JOB_LIMITS.skills}
 					maxLength={JOB_LIMITS.listItem}
-					placeholder="e.g. TypeScript"
+					placeholder={m.example('TypeScript')}
 				/>
 				<ListInput
 					field="languages"
-					label="Languages"
-					itemName="language"
+					label={labels.languages}
 					bind:value={form.languages}
 					bind:text={pendingText.languages}
 					max={JOB_LIMITS.languages}
 					maxLength={JOB_LIMITS.listItem}
-					placeholder="e.g. English (C1)"
+					placeholder={m.languagePlaceholder}
 				/>
 			</section>
 
 			<!-- Conditions -->
 			<section class={sectionClass} aria-labelledby="{uid}-section-conditions">
 				<h3 id="{uid}-section-conditions" class={headingClass}>
-					Conditions <span class={optionalClass}>(optional)</span>
+					{m.sections.conditions} <span class={optionalClass}>({common.optional})</span>
 				</h3>
 				<ListInput
 					field="benefits"
-					label="Benefits"
-					itemName="benefit"
+					label={labels.benefits}
 					bind:value={form.benefits}
 					bind:text={pendingText.benefits}
 					max={JOB_LIMITS.benefits}
 					maxLength={JOB_LIMITS.listItem}
-					placeholder="e.g. Meal vouchers"
+					placeholder={m.benefitPlaceholder}
 				/>
-				<Field field="travel" label="Travel" class="sm:max-w-xs">
+				<Field field="travel" label={labels.travel} class="sm:max-w-xs">
 					{#snippet control(attributes)}
 						<select {...attributes} class="select" bind:value={form.travel}>
-							<option value="">Not specified</option>
+							<option value="">{m.notSpecified}</option>
 							{#each TRAVEL_FREQUENCIES as value (value)}
 								<option {value}>{TRAVEL_LABELS[value]}</option>
 							{/each}
@@ -1385,16 +1368,18 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				{/if}
 				<span>{statusText}</span>
 				{#if dirty && status === 'idle'}
-					<span class="max-sm:hidden">· kept in this browser</span>
+					<span class="max-sm:hidden">{m.keptInBrowser}</span>
 				{/if}
 			</p>
 			<div class="flex gap-2 max-sm:w-full">
 				{#if busy}
 					<!-- Saving: Cancel would leave a save behind it -->
-					<button type="button" class="btn preset-tonal max-sm:flex-1" disabled>Cancel</button>
+					<button type="button" class="btn preset-tonal max-sm:flex-1" disabled>
+						{common.cancel}
+					</button>
 				{:else}
 					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by the page -->
-					<a href={cancelHref} class="btn preset-tonal max-sm:flex-1">Cancel</a>
+					<a href={cancelHref} class="btn preset-tonal max-sm:flex-1">{common.cancel}</a>
 				{/if}
 				<button
 					type="submit"
@@ -1409,9 +1394,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							class="animate-spin motion-reduce:animate-none"
 							aria-hidden="true"
 						/>
-						Saving…
+						{common.saving}
 					{:else}
-						{mode === 'add' ? 'Create job description' : 'Save changes'}
+						{mode === 'add' ? m.create : m.saveChanges}
 					{/if}
 				</button>
 			</div>

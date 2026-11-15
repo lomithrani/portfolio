@@ -1,6 +1,7 @@
 // A step a portfolio owner suggests for the hiring journey, from their step editor: the API files
 // it as an issue in the project's GitHub repository (POST /workflow/step-suggestions). The rules
 // are shared by the form (which shows them) and the API (which enforces them).
+import { stepSuggestionMessages as m } from './stepSuggestion.messages';
 
 export const STEP_SUGGESTION_LIMITS = { name: 80, description: 1500, reason: 1500 } as const;
 
@@ -45,33 +46,33 @@ export function parseStepSuggestion(input: {
 	const name = text(input.name).replace(/\s+/g, ' ');
 	const description = text(input.description);
 	const reason = text(input.reason);
-	if (!name) return { ok: false, field: 'name', message: 'Give the step a name.' };
+	if (!name) return { ok: false, field: 'name', message: m.nameRequired };
 	if (name.length > STEP_SUGGESTION_LIMITS.name) {
 		return {
 			ok: false,
 			field: 'name',
-			message: `The name is at most ${STEP_SUGGESTION_LIMITS.name} characters.`
+			message: m.nameTooLong(STEP_SUGGESTION_LIMITS.name)
 		};
 	}
 	if (!description) {
 		return {
 			ok: false,
 			field: 'description',
-			message: 'Say what a recruiter would do on this step.'
+			message: m.descriptionRequired
 		};
 	}
 	if (description.length > STEP_SUGGESTION_LIMITS.description) {
 		return {
 			ok: false,
 			field: 'description',
-			message: `This is at most ${STEP_SUGGESTION_LIMITS.description} characters.`
+			message: m.textTooLong(STEP_SUGGESTION_LIMITS.description)
 		};
 	}
 	if (reason.length > STEP_SUGGESTION_LIMITS.reason) {
 		return {
 			ok: false,
 			field: 'reason',
-			message: `This is at most ${STEP_SUGGESTION_LIMITS.reason} characters.`
+			message: m.textTooLong(STEP_SUGGESTION_LIMITS.reason)
 		};
 	}
 	return { ok: true, suggestion: { name, description, ...(reason ? { reason } : {}) } };

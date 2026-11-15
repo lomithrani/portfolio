@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { withLocale } from 'portfolio-common';
 import {
 	clearImportedDraft,
 	clearJobDraft,
@@ -144,6 +145,25 @@ describe('imported drafts', () => {
 		expect(loadImportedDraft('u2', storage)).toBeUndefined();
 		clearImportedDraft('u1', storage);
 		expect(loadImportedDraft('u1', storage)).toBeUndefined();
+	});
+
+	it('leaves out the warnings of an import made in the other language, and says so', () => {
+		const storage = new MemoryStorage();
+		withLocale('fr', () => saveImportedDraft('u1', imported, storage));
+		expect(JSON.parse(storage.getItem(importedDraftStorageKey('u1'))!).locale).toBe('fr');
+
+		const inEnglish = loadImportedDraft('u1', storage)!;
+		expect(inEnglish.warnings).toEqual([]);
+		expect(inEnglish.warningsHidden).toBe(true);
+		expect(inEnglish.fileName).toBe('designer.pdf');
+
+		const inFrench = withLocale('fr', () => loadImportedDraft('u1', storage)!);
+		expect(inFrench.warnings).toEqual(['The pay was not found']);
+		expect(inFrench.warningsHidden).toBeUndefined();
+
+		// Nothing to leave out: nothing to say
+		withLocale('fr', () => saveImportedDraft('u1', { ...imported, warnings: [] }, storage));
+		expect(loadImportedDraft('u1', storage)!.warningsHidden).toBeUndefined();
 	});
 
 	it('removes the changes made to an import with it, never the draft of a blank form', () => {

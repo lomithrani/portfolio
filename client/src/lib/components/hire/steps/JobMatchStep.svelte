@@ -26,6 +26,8 @@ Not for the portfolio's owner: the page shows them the step's description instea
 		jobMatchOutcomeText,
 		passesJobMatch
 	} from '#services/workflow.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { m } from './steps.messages';
 	import type { StepProps } from './types';
 
 	let { step, ownerName, reload }: StepProps = $props();
@@ -40,10 +42,7 @@ Not for the portfolio's owner: the page shows them the step's description instea
 
 {#if !match}
 	<p class="text-sm">
-		The job you pick is scored out of 100 against what {ownerName} is looking for{minScore ===
-		undefined
-			? '.'
-			: `: at least ${minScore} opens the next step.`}
+		{minScore === undefined ? m.jobMatch.ask(ownerName) : m.jobMatch.askMin(ownerName, minScore)}
 	</p>
 {:else}
 	<div class="space-y-4">
@@ -55,21 +54,21 @@ Not for the portfolio's owner: the page shows them the step's description instea
 				]}
 				id="{uid}-score"
 			>
-				<span class="sr-only">Score:</span>
+				<span class="sr-only">{m.jobMatch.score}</span>
 				<span class="text-4xl font-bold tabular-nums">{match.score}</span>
 				<span class="text-sm" aria-hidden="true">/ 100</span>
-				<span class="sr-only">out of 100</span>
+				<span class="sr-only">{m.jobMatch.outOf100}</span>
 			</p>
 			<div class="min-w-0 flex-1 basis-56 space-y-1">
 				<p class="font-semibold break-words">
 					{#if passed}
-						{match.job.title} is close enough to what {ownerName} is looking for.
+						{m.jobMatch.closeEnough(match.job.title, ownerName)}
 					{:else}
-						{match.job.title} is not close enough to what {ownerName} is looking for.
+						{m.jobMatch.notCloseEnough(match.job.title, ownerName)}
 					{/if}
 				</p>
 				<p class="text-sm text-surface-700-300">
-					{ownerName} asks for at least {match.minScore} out of 100.
+					{m.jobMatch.asksFor(ownerName, match.minScore)}
 				</p>
 			</div>
 		</div>
@@ -93,14 +92,14 @@ Not for the portfolio's owner: the page shows them the step's description instea
 				]}
 				style:left={match.minScore > 85 || match.minScore < 15 ? undefined : `${match.minScore}%`}
 			>
-				Minimum {match.minScore}
+				{m.jobMatch.minimum(match.minScore)}
 			</span>
 		</div>
 
 		{#if match.criteria && match.criteria.length > 0}
 			<section class="space-y-2" aria-labelledby="{uid}-criteria">
 				<h3 class="text-sm font-semibold" id="{uid}-criteria">
-					How your job does on what matters to {ownerName}
+					{m.jobMatch.criteria(ownerName)}
 				</h3>
 				<ul class="divide-y divide-surface-200-800 rounded-container border border-surface-200-800">
 					{#each match.criteria as entry (entry.criterion)}
@@ -133,40 +132,38 @@ Not for the portfolio's owner: the page shows them the step's description instea
 								<span class="text-surface-700-300">· {jobMatchOutcomeText(entry)}</span>
 							</span>
 							{#if entry.dealBreaker}
-								<span class="badge preset-filled-error-500 shrink-0">Deal-breaker</span>
+								<span class="badge preset-filled-error-500 shrink-0">{m.jobMatch.dealBreaker}</span>
 							{/if}
 						</li>
 					{/each}
 				</ul>
 				{#if match.criteria.some((entry) => entry.criterion === 'commute')}
 					<p class="text-xs text-surface-700-300">
-						The commute is {ownerName}'s travel time to your job's address, there and back, over a
-						week. Travel times:
-						<a
-							class="underline underline-offset-2"
-							href="https://geoservices.ign.fr/"
-							target="_blank"
-							rel="noreferrer">Géoplateforme (IGN)</a
-						>,
-						<a
-							class="underline underline-offset-2"
-							href="https://transitous.org/sources/"
-							target="_blank"
-							rel="noreferrer">Transitous</a
-						>
-						and
-						<a
-							class="underline underline-offset-2"
-							href="https://www.openstreetmap.org/copyright"
-							target="_blank"
-							rel="noreferrer">OpenStreetMap contributors</a
-						>.
+						{m.jobMatch.commute(ownerName)}
+						<Rich text={m.jobMatch.commuteSources}>
+							{#snippet ign(text)}<a
+									class="underline underline-offset-2"
+									href="https://geoservices.ign.fr/"
+									target="_blank"
+									rel="noreferrer">{text}</a
+								>{/snippet}
+							{#snippet transitous(text)}<a
+									class="underline underline-offset-2"
+									href="https://transitous.org/sources/"
+									target="_blank"
+									rel="noreferrer">{text}</a
+								>{/snippet}
+							{#snippet osm(text)}<a
+									class="underline underline-offset-2"
+									href="https://www.openstreetmap.org/copyright"
+									target="_blank"
+									rel="noreferrer">{text}</a
+								>{/snippet}
+						</Rich>
 					</p>
 				{/if}
 				{#if dealBreaker}
-					<p class="text-sm">
-						A job that does not match a deal-breaker of {ownerName}'s scores 0, whatever the rest.
-					</p>
+					<p class="text-sm">{m.jobMatch.dealBreakerMissed(ownerName)}</p>
 				{/if}
 			</section>
 		{/if}
@@ -175,14 +172,11 @@ Not for the portfolio's owner: the page shows them the step's description instea
 			<div class="space-y-3">
 				<p class="text-sm">
 					{#if match.criteria && match.criteria.length > 0}
-						What your job description does not state counts as not matching: completing it can raise
-						the score.
+						{m.jobMatch.raiseWithDetails}
 					{:else}
-						{ownerName} does not share what they are looking for here. A job description that says more
-						(seniority, skills, remote days, travel…) can score higher: what it leaves out counts as not
-						matching.
+						{m.jobMatch.raiseWithoutDetails(ownerName)}
 					{/if}
-					You can also pick another job in the step above.
+					{m.jobMatch.pickAnother}
 				</p>
 				<div class="flex flex-wrap gap-2">
 					<a
@@ -190,11 +184,11 @@ Not for the portfolio's owner: the page shows them the step's description instea
 						href={resolve('/(app)/recruiter/jobs/[id]/edit', { id: match.job._id })}
 					>
 						<PencilSquare size="18" aria-hidden="true" />
-						Edit this job description
+						{m.jobMatch.edit}
 					</a>
 					<button type="button" class="btn preset-tonal min-h-11" onclick={() => reload()}>
 						<ArrowPath size="18" aria-hidden="true" />
-						Check again
+						{m.jobMatch.checkAgain}
 					</button>
 				</div>
 			</div>

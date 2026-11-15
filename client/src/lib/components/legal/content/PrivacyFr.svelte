@@ -73,9 +73,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			pas vous-même.
 		</li>
 		<li>
-			Pas de publicité, pas de mesure d'audience, pas de vente de données. Notre seul cookie vous
-			garde connecté ; la connexion avec Google, chargée seulement à votre demande, dépose ses
-			propres cookies.
+			Pas de publicité, pas de mesure d'audience, pas de vente de données. Nos seuls cookies vous
+			gardent connecté et retiennent la langue que vous avez choisie ; la connexion avec Google,
+			chargée seulement à votre demande, dépose ses propres cookies.
 		</li>
 		<li>
 			Vous pouvez supprimer votre compte et tout son contenu à tout moment depuis
@@ -236,9 +236,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 <h4 id="data-device">Sur votre appareil</h4>
 <p>
-	Le site dépose un cookie qui lui est propre, pour vous garder connecté, et enregistre certaines
-	données dans votre navigateur (thème, brouillons non enregistrés). La connexion avec Google, quand
-	vous la demandez, dépose ses propres cookies. Voir
+	Le site dépose deux cookies qui lui sont propres, l'un pour vous garder connecté, l'autre pour
+	retenir la langue que vous avez choisie, et enregistre certaines données dans votre navigateur
+	(thème, brouillons non enregistrés). La connexion avec Google, quand vous la demandez, dépose ses
+	propres cookies. Voir
 	<LegalDocLink doc="cookies" {lang}>cookies et stockage local</LegalDocLink>.
 </p>
 
@@ -616,12 +617,13 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 <h3 id="cookies">Cookies et stockage local</h3>
 <p>
-	Le site dépose un cookie qui lui est propre, qui vous garde connecté, et utilise le stockage de
-	votre navigateur pour vos préférences et vos brouillons non enregistrés. La connexion avec Google
-	n'est chargée que lorsque vous la demandez ; elle dépose alors son cookie <code>g_state</code> sur
-	le domaine de ce site et ses propres cookies sur accounts.google.com. Il n'y a aucun cookie de
-	mesure d'audience ni de publicité : aucun bandeau de consentement n'est donc nécessaire. La liste
-	complète figure sur la page
+	Le site dépose deux cookies qui lui sont propres, l'un qui vous garde connecté, l'autre qui
+	retient la langue que vous avez choisie, et utilise le stockage de votre navigateur pour vos
+	préférences et vos brouillons non enregistrés. La connexion avec Google n'est chargée que lorsque
+	vous la demandez ; elle dépose alors son cookie <code>g_state</code> sur le domaine de ce site et
+	ses propres cookies sur accounts.google.com. Il n'y a aucun cookie de mesure d'audience ni de
+	publicité : aucun bandeau de consentement n'est donc nécessaire. La liste complète figure sur la
+	page
 	<LegalDocLink doc="cookies" {lang}>cookies et stockage local</LegalDocLink>.
 </p>
 

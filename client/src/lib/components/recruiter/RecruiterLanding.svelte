@@ -1,8 +1,9 @@
 <!--
 @component
-/recruiter for a visitor who is not signed in: what the recruiter space does, and a "Sign in with
-Google" button that signs in straight into it (POST /login with mode 'recruiter': the space is
-created the first time). `onSignedIn` runs once the session is stored.
+/recruiter for a visitor who is not signed in: what the recruiter space is for (finding people
+by what a portfolio shows of each skill: the projects it was used in and for how long), and a
+"Sign in with Google" button that signs in straight into it (POST /login with mode 'recruiter':
+the space is created the first time). `onSignedIn` runs once the session is stored.
 
 Google's sign-in is loaded only once the visitor asks for it: a local "Sign in with Google" button
 first (nothing reaches accounts.google.com before), then Google's button and its One Tap prompt.
@@ -18,16 +19,26 @@ without choosing a space.
 	import { resolve } from '$app/paths';
 	import {
 		ArrowPath,
-		Briefcase,
+		CalendarDays,
+		ChartBar,
+		Clock,
 		DocumentArrowUp,
 		DocumentText,
 		ExclamationTriangle,
+		Funnel,
+		Sparkles,
 		Users
 	} from 'svelte-heros-v2';
+	import { getLocale } from 'portfolio-common';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { login } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { FREE_PLAN_IMPORTS } from '#services/jobImport.ts';
+	import { m } from './RecruiterLanding.messages.ts';
+
+	const EXAMPLE_DOMAIN = 'louis.gentil';
 
 	let { onSignedIn }: { onSignedIn?: () => void } = $props();
 
@@ -39,21 +50,21 @@ without choosing a space.
 	let signingIn = $state(false);
 	let errorMessage = $state('');
 
+	/** What a portfolio shows of a skill (the experiences page's filters, previews and timeline) */
+	const skills = [
+		{ icon: Funnel, ...m.skills.where },
+		{ icon: Clock, ...m.skills.howLong },
+		{ icon: CalendarDays, ...m.skills.when }
+	];
+
 	const features = [
-		{
-			icon: DocumentText,
-			title: 'Write clear job descriptions',
-			text: 'Contract, working time, pay range, team: the facts candidates look for, in one place.'
-		},
+		{ icon: DocumentText, ...m.features.job },
+		{ icon: ChartBar, ...m.features.match },
+		{ icon: Users, ...m.features.applicants },
 		{
 			icon: DocumentArrowUp,
-			title: 'Start from a PDF',
-			text: `Where PDF import is offered, Claude drafts the job description from your file for you to complete. The free plan includes ${FREE_PLAN_IMPORTS} imports.`
-		},
-		{
-			icon: Users,
-			title: 'Meet candidates through their portfolio',
-			text: 'See who applies, open their portfolio, and add the portfolios you found yourself.'
+			title: m.features.pdf.title,
+			text: m.features.pdf.text(FREE_PLAN_IMPORTS)
 		}
 	];
 
@@ -65,7 +76,7 @@ without choosing a space.
 		const onCredential = async ({ credential }: google.accounts.id.CredentialResponse) => {
 			if (!mounted) {
 				// This page is gone, and its handler was the last registered (see above)
-				if (!(await login(credential))) toaster.error({ title: 'Sign-in failed. Try again.' });
+				if (!(await login(credential))) toaster.error({ title: common.signInFailed });
 				return;
 			}
 			errorMessage = '';
@@ -75,13 +86,10 @@ without choosing a space.
 			const ok = await login(credential, 'recruiter');
 			signingIn = false;
 			if (!ok) {
-				errorMessage = 'Sign-in failed. Try again.';
+				errorMessage = common.signInFailed;
 				return;
 			}
-			toaster.success({
-				title: 'Welcome to your recruiter space',
-				description: 'Write your first job description.'
-			});
+			toaster.success({ title: m.welcome.title, description: m.welcome.description });
 			notify?.();
 		};
 
@@ -99,6 +107,8 @@ without choosing a space.
 						text: 'signin_with',
 						shape: 'pill',
 						logo_alignment: 'left',
+						// Google's button, in the page's language
+						locale: getLocale(),
 						width: Math.min(320, Math.max(200, buttonContainer.clientWidth)),
 						// Clicked after the header's sign-in took the callback back: here again
 						click_listener: () => void setupGoogleIdentity(onCredential).catch(() => {})
@@ -117,16 +127,13 @@ without choosing a space.
 	});
 </script>
 
-<section class="mx-auto max-w-3xl space-y-8" aria-labelledby="{uid}-title">
+<section class="mx-auto max-w-4xl space-y-10" aria-labelledby="{uid}-title">
 	<div class="space-y-4 text-center">
 		<div class="mx-auto flex size-14 items-center justify-center rounded-full preset-tonal-primary">
-			<Briefcase size="28" aria-hidden="true" />
+			<Sparkles size="28" aria-hidden="true" />
 		</div>
-		<h2 id="{uid}-title" class="text-2xl font-bold md:text-3xl">Recruit through portfolios</h2>
-		<p class="mx-auto max-w-xl text-surface-700-300">
-			The recruiter space keeps your job descriptions in one place. Publish them, and see the
-			candidates who apply with their portfolio.
-		</p>
+		<h2 id="{uid}-title" class="text-2xl font-bold text-balance md:text-4xl">{m.title}</h2>
+		<p class="mx-auto max-w-2xl text-surface-700-300 md:text-lg">{m.lead}</p>
 	</div>
 
 	<div class="flex flex-col items-center gap-3 text-center">
@@ -146,7 +153,7 @@ without choosing a space.
 		{#if signingIn}
 			<p class="flex items-center gap-2 text-sm font-medium" role="status">
 				<ArrowPath size="16" class="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-				Signing in…
+				{common.signingIn}
 			</p>
 		{/if}
 		{#if gsiState === 'idle' || gsiState === 'unavailable'}
@@ -155,7 +162,7 @@ without choosing a space.
 				class="btn preset-filled-primary-700-300 min-h-11 w-full max-w-80 rounded-full"
 				onclick={() => start()}
 			>
-				Sign in with Google
+				{common.signInWithGoogle}
 			</button>
 		{/if}
 		<!-- Google renders its button in there; a placeholder of its size until it does -->
@@ -174,18 +181,43 @@ without choosing a space.
 			{/if}
 		</div>
 		{#if gsiState === 'unavailable'}
-			<p class="max-w-md text-sm text-error-700-300" role="alert">
-				Google sign-in could not load. Check your connection (or allow accounts.google.com if a
-				blocker is on), then try again.
-			</p>
+			<p class="max-w-md text-sm text-error-700-300" role="alert">{common.googleUnavailable}</p>
 		{/if}
-		<p class="max-w-md text-sm text-surface-700-300">
-			Free to use. The same Google account can also keep a candidate portfolio: switch spaces from
-			the account menu.
+		<p class="max-w-md text-sm text-surface-700-300">{m.free}</p>
+	</div>
+
+	<!-- What a portfolio says about a skill: the reason to recruit here -->
+	<div
+		class="card space-y-5 bg-gradient-to-br from-primary-500/10 via-surface-50-950 to-tertiary-500/10 p-5 preset-outlined-surface-200-800 md:p-8"
+		role="group"
+		aria-labelledby="{uid}-skills"
+	>
+		<h3 id="{uid}-skills" class="text-center text-xl font-bold text-balance md:text-2xl">
+			{m.skills.title}
+		</h3>
+		<ul class="grid gap-5 sm:grid-cols-3">
+			{#each skills as skill (skill.title)}
+				<li class="space-y-2">
+					<span class="flex size-10 items-center justify-center rounded-full preset-tonal-primary">
+						<skill.icon size="20" aria-hidden="true" />
+					</span>
+					<p class="font-semibold">{skill.title}</p>
+					<p class="text-sm text-surface-700-300">{skill.text}</p>
+				</li>
+			{/each}
+		</ul>
+		<p class="text-center text-sm text-surface-700-300">
+			<Rich text={m.skills.example}>
+				{#snippet example(text: string)}<a
+						href={resolve('/[domain]/experiences', { domain: EXAMPLE_DOMAIN })}
+						class="font-medium text-primary-700-300 underline underline-offset-2 hover:decoration-2"
+						>{text}</a
+					>{/snippet}
+			</Rich>
 		</p>
 	</div>
 
-	<ul class="grid gap-3 sm:grid-cols-3">
+	<ul class="grid gap-3 sm:grid-cols-2">
 		{#each features as feature (feature.title)}
 			<li class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-2 p-4">
 				<feature.icon size="22" class="text-primary-700-300" aria-hidden="true" />
@@ -197,7 +229,7 @@ without choosing a space.
 
 	<p class="text-center">
 		<a href={resolve('/(app)/jobs')} class="btn btn-sm hover:preset-tonal underline">
-			Browse open jobs
+			{m.browse}
 		</a>
 	</p>
 </section>

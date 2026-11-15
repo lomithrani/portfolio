@@ -12,10 +12,12 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { UserMode } from 'portfolio-common';
+	import { getLocale, type UserMode } from 'portfolio-common';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import { login } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { m } from './ApplySignIn.messages.ts';
 
 	let {
 		onSignedIn,
@@ -36,7 +38,7 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 
 	/** A click on this button is followed by its credential within this delay (Google's popup) */
 	const CLICK_WINDOW_MS = 10 * 60_000;
-	const FAILED_MESSAGE = 'Sign-in failed. Try again.';
+	const FAILED_MESSAGE = common.signInFailed;
 
 	onMount(() => {
 		let destroyed = false;
@@ -74,6 +76,8 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 				text: 'signin_with',
 				shape: 'pill',
 				logo_alignment: 'left',
+				// Google's button, in the page's language
+				locale: getLocale(),
 				click_listener: () => {
 					clickedAt = Date.now();
 					// This button's credential comes back here (the page's callback until the
@@ -116,7 +120,7 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 			class="btn preset-outlined-surface-300-700 min-h-11 rounded-full px-5 hover:preset-tonal"
 			onclick={() => start()}
 		>
-			Sign in with Google
+			{common.signInWithGoogle}
 		</button>
 	{/if}
 	<div
@@ -139,12 +143,10 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 				class="size-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
 				aria-hidden="true"
 			></span>
-			Signing in…
+			{common.signingIn}
 		</p>
 	{:else if status === 'unavailable'}
-		<p class="text-sm text-surface-700-300" role="alert">
-			Google sign-in could not be loaded. Check your connection, then try again.
-		</p>
+		<p class="text-sm text-surface-700-300" role="alert">{m.unavailable}</p>
 	{/if}
 	{#if errorMessage}
 		<p class="text-sm text-error-700-300" role="alert">{errorMessage}</p>

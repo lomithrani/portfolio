@@ -3,8 +3,6 @@ import { RESUME_IMPORT_CLIENT_TIMEOUT_MS } from 'portfolio-common';
 import {
 	FREE_PLAN_IMPORTS,
 	JOB_IMPORT_CLIENT_TIMEOUT_MS,
-	JOB_IMPORT_NETWORK_ERROR,
-	JOB_IMPORT_SESSION_EXPIRED,
 	MAX_JOB_PDF_BYTES,
 	base64OfDataUrl,
 	formatElapsed,
@@ -20,6 +18,7 @@ import {
 	planImportsLeft,
 	planUsedText
 } from '../jobImport';
+import { jobImportMessages } from '../jobImport.messages.ts';
 
 const allowance = (used: number, remaining: number, resetsAt: Date | null = null) => ({
 	limit: 3,
@@ -149,7 +148,7 @@ describe('allowance', () => {
 
 describe('jobImportErrorMessage', () => {
 	it('asks to sign in again after a 401', () => {
-		expect(jobImportErrorMessage(401, 'Unauthorized')).toBe(JOB_IMPORT_SESSION_EXPIRED);
+		expect(jobImportErrorMessage(401, 'Unauthorized')).toBe(jobImportMessages.sessionExpired);
 	});
 
 	it("shows the API's message for the statuses it explains", () => {
@@ -189,7 +188,7 @@ describe('jobImportErrorMessage', () => {
 
 	it('blames the connection when no answer came (Eden: a 503 holding the fetch error)', () => {
 		expect(jobImportErrorMessage(503, new TypeError('Failed to fetch'))).toBe(
-			JOB_IMPORT_NETWORK_ERROR
+			jobImportMessages.networkError
 		);
 		expect(jobImportErrorMessage(503, 'The import did not finish')).toBe(
 			'The import did not finish'

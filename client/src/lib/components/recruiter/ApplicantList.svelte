@@ -9,14 +9,16 @@ the page (`onRemove`), which confirms first. Each Remove button carries
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { ArrowTopRightOnSquare, Trash } from 'svelte-heros-v2';
+	import { common } from '#lib/i18n/common.messages.ts';
 	import {
-		APPLICANT_SOURCE_LABELS,
 		applicantDateText,
 		applicantInitials,
 		applicantName,
 		isoDate,
 		type Applicant
 	} from '#services/recruiter.ts';
+	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
+	import { m } from './ApplicantList.messages.ts';
 
 	let {
 		applicants,
@@ -30,7 +32,7 @@ the page (`onRemove`), which confirms first. Each Remove button carries
 	} = $props();
 </script>
 
-<ul class="divide-y divide-surface-200-800" aria-label="Applicants">
+<ul class="divide-y divide-surface-200-800" aria-label={m.label}>
 	{#each applicants as applicant (applicant._id)}
 		{@const name = applicantName(applicant)}
 		<li class="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
@@ -48,7 +50,7 @@ the page (`onRemove`), which confirms first. Each Remove button carries
 							? 'preset-tonal-success'
 							: 'preset-filled-surface-200-800'}"
 					>
-						{APPLICANT_SOURCE_LABELS[applicant.source]}
+						{recruiterMessages.applicantSource[applicant.source]}
 					</span>
 				</div>
 				<a
@@ -59,7 +61,7 @@ the page (`onRemove`), which confirms first. Each Remove button carries
 				>
 					<span class="truncate">{applicant.domain.name}</span>
 					<ArrowTopRightOnSquare size="14" class="shrink-0" aria-hidden="true" />
-					<span class="sr-only">(portfolio of {name}, opens in a new tab)</span>
+					<span class="sr-only">{m.portfolioOf(name)}</span>
 				</a>
 				<p class="text-xs text-surface-700-300">
 					<time datetime={isoDate(applicant.appliedAt)}>{applicantDateText(applicant)}</time>
@@ -75,7 +77,7 @@ the page (`onRemove`), which confirms first. Each Remove button carries
 				}}
 			>
 				<Trash size="16" aria-hidden="true" />
-				<span class="max-sm:sr-only">Remove</span>
+				<span class="max-sm:sr-only">{common.remove}</span>
 				<span class="sr-only">{name}</span>
 			</button>
 		</li>

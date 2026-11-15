@@ -352,7 +352,7 @@ describe('step suggestions', () => {
     const visitor = await createUser('visitor', { domain: false });
     const refused = await suggest(visitor);
     expect(refused.status).toBe(403);
-    expect(refused.text).toBe('Only the owner of a portfolio can suggest a step');
+    expect(refused.text).toBe('Claim your portfolio to suggest a step');
     expect(github.requests).toEqual([]);
     expect(await ownerCount(visitor)).toBe(0);
   });

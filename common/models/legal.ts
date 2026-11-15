@@ -1,7 +1,11 @@
 // The Terms of use and Privacy policy in force, and the confirmation a person gives when they
 // accept them: an unticked checkbox (AgeTermsConsent.svelte in the client) whose exact wording is
-// AGE_CONFIRMATION_TEXT. The API records each acceptance on the account (version, date, wording
-// key, where it was given), never a birth date: the age is only declared.
+// legalMessages.ageConfirmation, in the language of the page. The API records each acceptance on
+// the account (version, date, wording key, where it was given), never a birth date: the age is
+// only declared.
+
+import { localized, type Localized } from '../i18n';
+import { legalMessages } from './legal.messages';
 
 /** Version (date) of the Terms of use and Privacy policy in force; bump when either changes materially */
 export const LEGAL_VERSION = '2026-11-14';
@@ -9,11 +13,20 @@ export const LEGAL_VERSION = '2026-11-14';
 /** Fixed age floor of the confirmation (GDPR art. 8 max threshold, above COPPA 13, French working age 16) */
 export const MINIMUM_AGE = 16;
 
-/** Key of the exact wording of the age confirmation the user ticked (stored with the acceptance) */
-export const AGE_CONFIRMATION_KEY = 'age-16-working-age-v1';
+/**
+ * Key of the exact wording of the age confirmation the user ticked (stored with the acceptance),
+ * one per language: the wordings are legalMessages.ageConfirmation
+ */
+export const AGE_CONFIRMATION_KEYS: Localized<string> = {
+	en: 'age-16-working-age-v1',
+	fr: 'age-16-working-age-v1-fr'
+};
 
-export const AGE_CONFIRMATION_TEXT =
-	'I confirm that I am at least 16 years old and have reached the minimum legal working age in my country.';
+/** Key of the English wording */
+export const AGE_CONFIRMATION_KEY = AGE_CONFIRMATION_KEYS.en;
+
+/** Key of the wording shown in the language in use */
+export const ageConfirmationKey = (): string => localized(AGE_CONFIRMATION_KEYS);
 
 /** What a client sends when the person ticked the confirmation (POST /login, PUT /me/consent, POST /domain/claim) */
 export type ConsentInput = { termsVersion: string; ageConfirmed: true };
@@ -24,13 +37,6 @@ export type ConsentSource = (typeof CONSENT_SOURCES)[number];
 
 /** Longest termsVersion the API reads (a version is a date: 10 characters) */
 export const TERMS_VERSION_MAX_LENGTH = 32;
-
-/** No confirmation at all (no object, or not ticked) */
-export const CONSENT_REQUIRED_MESSAGE =
-	'Confirm your age and accept the terms of use to continue.';
-/** The confirmation was given for an older version of the terms (a page loaded before they changed) */
-export const STALE_TERMS_MESSAGE =
-	'The terms of use have changed since this page was loaded. Reload the page and accept them again.';
 
 /** The field of a refused confirmation, as the API names it in a 422 (`property`) */
 export type ConsentProblemProperty = 'consent' | 'consent.ageConfirmed' | 'consent.termsVersion';
@@ -51,12 +57,12 @@ export const isCurrentTermsVersion = (version: unknown): boolean => version === 
  * fields.
  */
 export const parseConsent = (input: unknown): ConsentResult => {
-	if (!isRecord(input)) return { ok: false, property: 'consent', message: CONSENT_REQUIRED_MESSAGE };
+	if (!isRecord(input)) return { ok: false, property: 'consent', message: legalMessages.consentRequired };
 	if (input.ageConfirmed !== true) {
-		return { ok: false, property: 'consent.ageConfirmed', message: CONSENT_REQUIRED_MESSAGE };
+		return { ok: false, property: 'consent.ageConfirmed', message: legalMessages.consentRequired };
 	}
 	if (!isCurrentTermsVersion(input.termsVersion)) {
-		return { ok: false, property: 'consent.termsVersion', message: STALE_TERMS_MESSAGE };
+		return { ok: false, property: 'consent.termsVersion', message: legalMessages.staleTerms };
 	}
 	return { ok: true, consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } };
 };

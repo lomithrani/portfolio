@@ -1,5 +1,6 @@
-import { ExperienceType } from 'portfolio-common';
+import type { ExperienceType } from 'portfolio-common';
 import { experiencePeriod, formatDuration, formatMonthRange } from '#services/experienceDates.ts';
+import { m } from '#components/experience-list/experienceList.messages.ts';
 
 type Dated = { start?: Date | string | null; end?: Date | string | null };
 type SkillEntry = { skill?: unknown };
@@ -10,13 +11,11 @@ type ListedExperience = Dated & {
 	projects?: ListedProject[];
 };
 
-/** Badge labels of the experience types */
-export const experienceTypeLabels: Record<ExperienceType, string> = {
-	[ExperienceType.Professional]: 'Professional',
-	[ExperienceType.Personal]: 'Personal',
-	[ExperienceType.Educational]: 'Education',
-	[ExperienceType.Leisure]: 'Leisure'
-};
+/**
+ * Badge labels of the experience types, in the page's language: the messages themselves, read
+ * when a label is shown (`experienceTypeLabels[type]`)
+ */
+export const experienceTypeLabels: Readonly<Record<ExperienceType, string>> = m.types;
 
 export type SubtitlePart = { kind: 'company' | 'location' | 'period' | 'duration'; text: string };
 

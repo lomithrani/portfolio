@@ -26,7 +26,7 @@ description instead.
 		jobImportQuotaText,
 		type JobImportStatus
 	} from '#services/jobImport.ts';
-	import { NETWORK_ERROR, failureText } from '#services/recruiter.ts';
+	import { networkError, failureText } from '#services/recruiter.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
@@ -42,13 +42,15 @@ description instead.
 	import ApplySignIn from '#components/apply/ApplySignIn.svelte';
 	import JobImport from '#components/job-import/JobImport.svelte';
 	import JobStatusBadge from '#components/jobs/JobStatusBadge.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { m } from './steps.messages';
 	import type { StepProps } from './types';
 
 	let { step, domainName, ownerName, address, submit, reload, locked }: StepProps = $props();
 
 	const uid = $props.id();
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
-	const JOBS_FAILED = 'Could not load your job descriptions.';
 
 	type JobChoice = { _id: string; title: string; company?: string; status: JobStatus };
 	type JobsState =
@@ -149,7 +151,7 @@ description instead.
 	async function onImported({ fileName, warnings }: { fileName: string; warnings: string[] }) {
 		importOpen = false;
 		toaster.success({
-			title: 'Job description imported',
+			title: m.job.imported,
 			description: importedToastText(fileName, warnings)
 		});
 		await tick();
@@ -176,7 +178,7 @@ description instead.
 					jobs = { key, state: 'no-space' };
 					return;
 				}
-				jobs = { key, state: 'error', message: failureText(error?.value, JOBS_FAILED) };
+				jobs = { key, state: 'error', message: failureText(error?.value, m.job.jobsFailed) };
 				return;
 			}
 			const list = sortJobChoices(
@@ -190,7 +192,7 @@ description instead.
 			jobs = { key, state: 'loaded', jobs: list };
 			selected = initialJobChoice(list, listedFor, pickedJob(step.view)?._id);
 		} catch {
-			if (requested === key) jobs = { key, state: 'error', message: NETWORK_ERROR };
+			if (requested === key) jobs = { key, state: 'error', message: networkError() };
 		}
 	}
 
@@ -235,7 +237,7 @@ description instead.
 			if (failure.kind === 'reload-jobs' && jobsKey) await loadJobs(jobsKey);
 			return;
 		}
-		toaster.success({ title: 'Job picked' });
+		toaster.success({ title: m.job.picked });
 		// The pick settles what the address asked for: it selects nothing any more. The browser's
 		// address: page.url still has ?job= after an earlier shallow goto
 		if (new URLSearchParams(location.search).has(JOB_PARAM)) {
@@ -254,20 +256,14 @@ description instead.
 	></div>
 {:else if !user}
 	<div class="space-y-3">
-		<p class="text-sm">
-			Sign in to pick the job you are hiring for. Your job descriptions are kept in a free recruiter
-			space: you create it next if your account has none.
-		</p>
+		<p class="text-sm">{m.job.signIn}</p>
 		<!-- No space chosen: an account keeps the one it had (the portfolio's owner, checking their
 		     page signed out, must not end up in a recruiter space) -->
 		<ApplySignIn mode={null} />
 	</div>
 {:else if !user.recruiter || shown?.state === 'no-space'}
 	<div class="space-y-3">
-		<p class="text-sm">
-			Your job descriptions live in a recruiter space. Create yours (it is free) to pick one or
-			write a new one.
-		</p>
+		<p class="text-sm">{m.job.noSpace}</p>
 		<button
 			type="button"
 			class="btn preset-filled-primary-700-300 min-h-11"
@@ -275,14 +271,14 @@ description instead.
 			onclick={createRecruiterSpace}
 		>
 			<Briefcase size="18" aria-hidden="true" />
-			{creatingSpace ? 'Creating…' : 'Create my recruiter space'}
+			{creatingSpace ? m.job.creatingSpace : m.job.createSpace}
 		</button>
 		{#if spaceError}
 			<p class="text-sm text-error-700-300" role="alert">{spaceError}</p>
 		{/if}
 	</div>
 {:else if !shown || shown.state === 'loading'}
-	<p class="text-sm opacity-60" role="status">Loading your job descriptions…</p>
+	<p class="text-sm opacity-60" role="status">{m.job.loadingJobs}</p>
 {:else if shown.state === 'error'}
 	<div class="space-y-2" role="alert">
 		<p class="text-sm text-error-700-300">{shown.message}</p>
@@ -291,19 +287,16 @@ description instead.
 			class="btn btn-sm preset-tonal"
 			onclick={() => jobsKey && loadJobs(jobsKey)}
 		>
-			Try again
+			{common.retry}
 		</button>
 	</div>
 {:else if shown.state === 'loaded'}
 	<form class="space-y-4" onsubmit={pick}>
 		{#if shown.jobs.length === 0}
-			<p class="text-sm">
-				You have no job description yet. Write the one you are hiring for: you come back here to
-				pick it.
-			</p>
+			<p class="text-sm">{m.job.noJob}</p>
 		{:else}
 			<fieldset class="space-y-2">
-				<legend class="mb-2 text-sm font-semibold">Your job descriptions</legend>
+				<legend class="mb-2 text-sm font-semibold">{m.job.yourJobs}</legend>
 				{#each shown.jobs as job (job._id)}
 					{@const pickable = isPickable(job)}
 					<label
@@ -331,13 +324,12 @@ description instead.
 							{/if}
 							{#if !pickable}
 								<span class="block text-xs" id="{uid}-{job._id}-why">
-									Only an open job description can be picked.
-									<a
-										class="underline underline-offset-2"
-										href={resolve('/(app)/recruiter/jobs/[id]', { id: job._id })}
-									>
-										Change its status
-									</a>
+									<Rich text={m.job.notPickable}>
+										{#snippet status(text)}<a
+												class="underline underline-offset-2"
+												href={resolve('/(app)/recruiter/jobs/[id]', { id: job._id })}>{text}</a
+											>{/snippet}
+									</Rich>
 								</span>
 							{/if}
 						</span>
@@ -347,9 +339,7 @@ description instead.
 			</fieldset>
 		{/if}
 
-		<p class="text-sm text-surface-700-300">
-			{ownerName} sees the job you pick in the meeting invitation.
-		</p>
+		<p class="text-sm text-surface-700-300">{m.job.ownerSees(ownerName)}</p>
 
 		<div class="flex flex-wrap gap-2">
 			{#if shown.jobs.some(isPickable)}
@@ -358,13 +348,13 @@ description instead.
 					class="btn preset-filled-primary-700-300 min-h-11"
 					disabled={!selected || picking}
 				>
-					{picking ? 'Saving…' : 'Continue with this job'}
+					{picking ? common.saving : m.job.continueWith}
 				</button>
 			{/if}
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() with a query -->
 			<a href={newJobHref} class="btn preset-tonal min-h-11">
 				<PlusCircle size="18" aria-hidden="true" />
-				Write a new job description
+				{m.job.write}
 			</a>
 			{#if canImport && importStatus}
 				<button
@@ -375,15 +365,13 @@ description instead.
 					onclick={openImport}
 				>
 					<DocumentArrowUp size="18" aria-hidden="true" />
-					Import from PDF
+					{m.job.importPdf}
 				</button>
 			{/if}
 		</div>
 		{#if canImport && importStatus}
 			<p class="text-xs text-surface-700-300" id="{uid}-import-quota">
-				Import from PDF: Claude reads your job description into the form. {jobImportQuotaText(
-					importStatus
-				)}.
+				{m.job.importHelp(jobImportQuotaText(importStatus))}
 			</p>
 		{/if}
 		{#if pickError}
