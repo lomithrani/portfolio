@@ -2,13 +2,14 @@
 @component
 The footer of the site's own pages (the landing page, the legal pages, the account page): the site's
 links (the job board, the recruiter space: these pages have no other way there for a visitor who is
-not signed in), the language switch and the light/dark switch, then the links to the legal notice,
+not signed in; "Send feedback" for a signed-in account), the language switch and the light/dark switch, then the links to the legal notice,
 the privacy policy, the terms of use and the cookies page, and the copyright line.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import ThemeToggle from '#components/ThemeToggle.svelte';
 	import LanguageSwitch from '#lib/i18n/LanguageSwitch.svelte';
+	import FeedbackButton from '#components/feedback/FeedbackButton.svelte';
 	import LegalLinks from './LegalLinks.svelte';
 	import { SITE_NAME } from './legalDocuments.ts';
 	import { m } from './legal.messages.ts';
@@ -30,6 +31,8 @@ the privacy policy, the terms of use and the cookies page, and the copyright lin
 					<li>
 						<a href={resolve('/(app)/recruiter')} class={linkClass}>{m.footer.recruiters}</a>
 					</li>
+					<!-- Signed in, and the server takes feedback: nothing otherwise -->
+					<li class="empty:hidden"><FeedbackButton /></li>
 				</ul>
 			</nav>
 			<div class="flex shrink-0 items-center gap-2">

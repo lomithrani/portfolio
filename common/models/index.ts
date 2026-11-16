@@ -157,6 +157,26 @@ export type {
 	StepSuggestionResult
 } from './stepSuggestion';
 export { stepSuggestionMessages } from './stepSuggestion.messages';
+export { cleanIssueText } from './issueText';
+export {
+	FEEDBACK_LIMITS,
+	FEEDBACK_KINDS,
+	FEEDBACK_ISSUE_TYPES,
+	FEEDBACK_THEMES,
+	isFeedbackRoute,
+	parseFeedbackContext,
+	cleanFeedbackText,
+	parseFeedback
+} from './feedback';
+export type {
+	FeedbackKind,
+	FeedbackTheme,
+	FeedbackContext,
+	FeedbackInput,
+	FeedbackField,
+	FeedbackResult
+} from './feedback';
+export { feedbackMessages } from './feedback.messages';
 export {
 	LEGAL_VERSION,
 	MINIMUM_AGE,

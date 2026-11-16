@@ -27,5 +27,6 @@ export const m = defineMessages({
 	yourJobs: { en: 'Your job descriptions', fr: "Vos offres d'emploi" },
 	postJobs: { en: 'Post job descriptions', fr: "Publier des offres d'emploi" },
 	browseJobs: { en: 'Browse jobs', fr: "Offres d'emploi" },
+	sendFeedback: { en: 'Send feedback', fr: 'Donner votre avis' },
 	logOut: { en: 'Log out', fr: 'Se déconnecter' }
 });

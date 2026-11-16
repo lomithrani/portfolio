@@ -73,6 +73,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			pas vous-même.
 		</li>
 		<li>
+			Les avis que vous nous donnez sont publiés sous forme de ticket public sur GitHub, sans votre
+			nom. Lorsque ce site l'active, Claude d'Anthropic (États-Unis) les trie d'abord.
+		</li>
+		<li>
 			Pas de publicité, pas de mesure d'audience, pas de vente de données. Nos seuls cookies vous
 			gardent connecté et retiennent la langue que vous avez choisie ; la connexion avec Google,
 			chargée seulement à votre demande, dépose ses propres cookies.
@@ -222,6 +226,32 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	votre compte n'est écrit que dans le journal de notre serveur.
 </p>
 
+<h4 id="data-feedback">Vos avis</h4>
+<p>
+	Une fois connecté, chacun peut nous donner son avis (un problème, une idée) avec « Donner votre
+	avis », dans le menu du compte ou en bas de chaque page. Il est publié sous forme de
+	<strong>ticket public sur GitHub</strong>, dans le dépôt du projet, sans votre nom ni aucun
+	identifiant : n'y écrivez rien que vous ne voudriez pas rendre public, ni les données personnelles
+	de quelqu'un d'autre. Avec votre texte, le ticket indique le type de page où vous étiez (sa route
+	dans le site, comme <code>/[domain]/experiences</code>, jamais l'adresse d'un portfolio), le nom
+	et la version majeure de votre navigateur et votre système d'exploitation (déduits de ce qu'envoie
+	votre navigateur, jamais déposés tels quels), la taille de la fenêtre de votre navigateur, le
+	thème clair ou sombre et la langue du site.
+</p>
+<p>
+	Lorsque ce site l'active, votre texte est d'abord envoyé au modèle Claude d'Anthropic
+	(États-Unis), qui le classe comme bug, demande de fonctionnalité ou tâche et rédige un titre et un
+	court résumé en anglais, publiés eux aussi dans le ticket. Sinon, ou si Claude échoue, il est
+	déposé comme tâche. Nous ne conservons pas vos avis dans notre base de données : l'identifiant de
+	votre compte, le numéro du ticket et son type ne sont écrits que dans le journal de notre serveur
+	({logRetention}). Pour limiter le nombre d'avis envoyés par chaque compte et par jour, nous les
+	comptons avec des compteurs identifiés par une empreinte de l'identifiant de votre compte. La
+	suppression de votre compte ne retire pas un ticket déjà publié : pour le faire retirer, écrivez à <ContactEmail
+		{publisher}
+		{lang}
+	/>.
+</p>
+
 <h4 id="data-technical">Données techniques</h4>
 <p>
 	Pour protéger le site contre les abus, nous comptons certaines requêtes (réservations de
@@ -298,6 +328,16 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				<td>Contrat, art. 6(1)(b)</td>
 			</tr>
 			<tr>
+				<td>
+					Déposer vos avis sur GitHub et, lorsque ce site l'active, les faire trier par un modèle
+					d'IA
+				</td>
+				<td>
+					Contrat, art. 6(1)(b), pour leur dépôt à votre demande ; intérêt légitime, art. 6(1)(f),
+					pour leur tri : traiter rapidement les avis
+				</td>
+			</tr>
+			<tr>
 				<td
 					>Conserver une trace de votre acceptation des conditions et de votre confirmation d'âge</td
 				>
@@ -337,7 +377,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <ul>
 	<li>
 		<strong>Le public</strong> : le contenu des portfolios, les offres d'emploi publiées (sans l'identité
-		du recruteur), les notes des parcours et la partie publique des agendas de rendez-vous.
+		du recruteur), les notes des parcours et la partie publique des agendas de rendez-vous ; sur GitHub,
+		les suggestions d'étapes et les avis que vous envoyez (sans votre nom).
 	</li>
 	<li>
 		<strong>Les recruteurs</strong> : l'adresse et le titre de l'en-tête des portfolios figurant dans
@@ -360,8 +401,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				>) ;
 			</li>
 			<li>
-				Anthropic PBC (États-Unis) : lecture des PDF de CV et d'offres d'emploi que vous importez.
-				Selon les <a
+				Anthropic PBC (États-Unis) : lecture des PDF de CV et d'offres d'emploi que vous importez,
+				et tri des avis que vous envoyez, lorsque ce site l'active. Selon les <a
 					class="link-text"
 					href={LINKS.anthropicCommercialTerms}
 					rel="noopener noreferrer">conditions commerciales</a
@@ -385,8 +426,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				>) ;
 			</li>
 			<li>
-				GitHub, Inc. (États-Unis) : les suggestions d'étapes, publiées sous forme de tickets publics
-				(<a class="link-text" href={LINKS.githubPrivacy} rel="noopener noreferrer"
+				GitHub, Inc. (États-Unis) : les suggestions d'étapes et les avis, publiés sous forme de
+				tickets publics (<a class="link-text" href={LINKS.githubPrivacy} rel="noopener noreferrer"
 					>déclaration de confidentialité de GitHub</a
 				>) ;
 			</li>
@@ -473,6 +514,14 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				</td>
 			</tr>
 			<tr>
+				<td>Suggestions d'étapes et avis</td>
+				<td>
+					Non conservés dans notre base de données. Publiés sur GitHub jusqu'à la suppression du
+					ticket : écrivez-nous pour en faire retirer un. Le texte d'un avis trié par Claude n'est
+					gardé par Anthropic que pendant une durée limitée, selon ses conditions commerciales
+				</td>
+			</tr>
+			<tr>
 				<td>Réservations de créneaux</td>
 				<td>
 					Supprimées automatiquement à la fin du créneau ou à l'annulation du rendez-vous
@@ -492,10 +541,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				<td>
 					Supprimés automatiquement à la fin de leur période : d'une heure à 30 jours. Quand vous
 					supprimez votre compte, les quotas que vous avez utilisés (imports de CV et d'offres,
-					suggestions d'étapes, et imports d'offres de votre offre recruteur) sont reportés sur des
-					compteurs identifiés par une empreinte de l'identifiant de votre compte Google, conservés
-					jusqu'à la fin de leur période (30 jours au plus), pour que supprimer puis recréer un
-					compte ne les remette pas à zéro
+					suggestions d'étapes, avis, et imports d'offres de votre offre recruteur) sont reportés
+					sur des compteurs identifiés par une empreinte de l'identifiant de votre compte Google,
+					conservés jusqu'à la fin de leur période (30 jours au plus), pour que supprimer puis
+					recréer un compte ne les remette pas à zéro
 				</td>
 			</tr>
 			<tr>
@@ -535,11 +584,12 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 		>autorisations de votre compte Google</a
 	>), et l'adresse de votre portfolio redevient disponible. Ce qui reste : les noms de compétences
-	du catalogue partagé (ils ne sont liés à personne), les suggestions d'étapes déjà publiées sur
-	GitHub, les créneaux que vous avez réservés comme invité d'autres portfolios (jusqu'à la fin du
-	créneau), les compteurs contre les abus et de quotas (empreintes, supprimées à la fin de leur
-	période, 30 jours au plus ; les quotas utilisés sont reportés sur une empreinte de l'identifiant
-	de votre compte Google, comme indiqué ci-dessus), et les journaux jusqu'à leur expiration.
+	du catalogue partagé (ils ne sont liés à personne), les suggestions d'étapes et les avis déjà
+	publiés sur GitHub (écrivez-nous pour en faire retirer un), les créneaux que vous avez réservés
+	comme invité d'autres portfolios (jusqu'à la fin du créneau), les compteurs contre les abus et de
+	quotas (empreintes, supprimées à la fin de leur période, 30 jours au plus ; les quotas utilisés
+	sont reportés sur une empreinte de l'identifiant de votre compte Google, comme indiqué ci-dessus),
+	et les journaux jusqu'à leur expiration.
 </p>
 
 <h3 id="rights">Vos droits</h3>
@@ -553,7 +603,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	<li>
 		les <strong>effacer</strong> : supprimez vous-même votre compte depuis
 		<a class="link-text" href={resolve('/(site)/account')}>la page de votre compte</a>, ou
-		demandez-le-nous ;
+		demandez-le-nous ; les suggestions d'étapes et les avis publiés sur GitHub ne sont pas retirés
+		avec votre compte : demandez-le-nous pour ceux-là ;
 	</li>
 	<li>en <strong>limiter</strong> le traitement ;</li>
 	<li>
@@ -593,6 +644,12 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	publié tant que vous ne l'ajoutez pas. Aucune décision produisant des effets juridiques ou vous
 	affectant de manière significative n'est prise par des moyens automatisés : le site ne note, ne
 	classe ni ne filtre les candidats, et les recruteurs voient les candidatures telles qu'elles sont.
+</p>
+<p>
+	Lorsque ce site l'active, Claude trie aussi les avis que vous envoyez (bug, demande de
+	fonctionnalité ou tâche) et rédige leur titre et leur résumé. Ils sont publiés dans le ticket avec
+	votre texte, où vous pouvez les voir, et ne décident que de la façon dont les mainteneurs le
+	classent : rien qui vous concerne.
 </p>
 <p>
 	Un parcours de recrutement peut noter l'offre choisie par un recruteur au regard du poste idéal du

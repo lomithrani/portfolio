@@ -4,6 +4,7 @@
 	import Login, { SIGN_IN_ID } from '#components/Login.svelte';
 	import AccountMenu, { ACCOUNT_MENU_TRIGGER_ID } from '#components/AccountMenu.svelte';
 	import SpaceChooser from '#components/SpaceChooser.svelte';
+	import FeedbackDialog from '#components/feedback/FeedbackDialog.svelte';
 	import { AppBar } from '@skeletonlabs/skeleton-svelte';
 	import Logo from '#images/logo.svelte';
 	import { onMount } from 'svelte';
@@ -121,6 +122,9 @@
 	onClose={() => (chooserOpen = false)}
 	finalFocusEl={chooserFinalFocus}
 />
+
+<!-- The page's one "Send feedback" dialog, opened from the account menu or the footer -->
+<FeedbackDialog {signedIn} />
 
 <style>
 	.logo :global(svg) {

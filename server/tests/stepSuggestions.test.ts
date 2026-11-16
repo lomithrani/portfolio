@@ -287,6 +287,10 @@ describe('stepSuggestionIssue', () => {
     expect(stepSuggestionIssue({ name: 'High-5 the candidate', description: 'x' }).title).toBe(
       'Step suggestion: High-5 the candidate'
     );
+    // A link is no link once its scheme is apart
+    expect(
+      stepSuggestionIssue({ name: 'See https://github.com/o/r/issues/12', description: 'x' }).title
+    ).toBe('Step suggestion: See https: //github.com/o/r/issues/12');
     // A name that only looks odd stays readable
     expect(stepSuggestionIssue({ name: 'C# and email @ work', description: 'x' }).title).toBe('Step suggestion: C# and email @ work');
   });
