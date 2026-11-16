@@ -7,6 +7,7 @@
 // suffix unique to that test, and removes them after: tests pass in any order
 // (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
+import { connect } from 'node:net';
 import mongoose from 'mongoose';
 import { RESUME_IMPORT_CLIENT_TIMEOUT_MS } from 'portfolio-common';
 import { env } from '../env';
@@ -44,6 +45,9 @@ const testNames = () => {
   const id = (name: string) => `ri-${name}-${suffix}`;
   return { suffix, id, email: (name: string) => `${id(name)}@example.com` };
 };
+
+/** The real fetch, for the requests a test sends to the API over a socket (the fake below only knows Claude) */
+const realFetch = globalThis.fetch;
 
 /** Never a real key: tests/setup.ts removes ANTHROPIC_API_KEY, and fetch is faked */
 const TEST_API_KEY = 'sk-ant-api03-resume-import-test-key-0123456789';
@@ -704,6 +708,57 @@ describe('a successful import', () => {
     expect(result.json()).toMatchObject({ experiences: [], warnings: ['No experiences were found in this file'] });
     expect(await userCount(owner.userId)).toBe(1);
   });
+});
+
+describe('over a real connection', () => {
+  // Bun closes a connection that sends nothing for its idleTimeout (Elysia sets
+  // 30 s), and an import waits for Claude in silence for up to 3.5 minutes. Bun
+  // (1.4.4) does not apply that timeout while it handles a request that has a
+  // body, as both imports do: only body-less requests (a GET, a POST with
+  // Content-Length: 0) are cut. This pins it: the server listens with a 1 s
+  // idleTimeout (Bun checks it every 4 s or so, so it cuts at about 4 s),
+  // Claude answers after 6 s, and the answer must still arrive. If a Bun
+  // upgrade breaks this, the imports need a longer timeout of their own
+  // (server.timeout(request, seconds)), above countMs + extractMs
+  it('answers an import that waits for Claude longer than the idle timeout', async () => {
+    const answer = extraction(ONE_EXPERIENCE);
+    claude.state.messages.push(async (signal) => {
+      await Bun.sleep(6_000);
+      return answer(signal);
+    });
+    const server = app.listen({ hostname: '127.0.0.1', port: 0, idleTimeout: 1 }).server!;
+    try {
+      // The control: the 1 s idleTimeout is on, a kept-alive connection silent
+      // after its answer (GET /health) is closed within a few seconds
+      const silentFor = new Promise<number>((resolve) => {
+        let answeredAt = 0;
+        const socket = connect(server.port!, '127.0.0.1');
+        socket.on('data', () => (answeredAt ||= performance.now()));
+        socket.on('close', () => resolve(answeredAt ? performance.now() - answeredAt : Infinity));
+        socket.on('error', () => {});
+        socket.write('GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n');
+      });
+
+      const body = JSON.stringify({ file: pdf });
+      const started = performance.now();
+      const response = await realFetch(`http://127.0.0.1:${server.port}/experiences/import`, {
+        method: 'POST',
+        headers: { Cookie: owner.cookie, 'Content-Type': 'application/json', 'Content-Length': String(body.length) },
+        body
+      });
+      const text = await response.text();
+      responses.push({
+        label: 'POST /experiences/import (socket)',
+        text: `${response.status} ${JSON.stringify([...response.headers])}\n${text}`
+      });
+      expect(performance.now() - started).toBeGreaterThan(6_000);
+      expect(response.status).toBe(200);
+      expect(JSON.parse(text).experiences).toHaveLength(1);
+      expect(await silentFor).toBeLessThan(6_000);
+    } finally {
+      await app.stop(true);
+    }
+  }, 20_000);
 });
 
 describe('answers Claude did not finish', () => {
