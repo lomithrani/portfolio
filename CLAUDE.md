@@ -22,7 +22,7 @@ All from the repo root (`bun run --cwd <workspace> <script>` runs a workspace sc
 ### Development
 ```bash
 bun install                       # Install all workspaces (CI and Railway use --frozen-lockfile)
-bun run db:up                     # Local MongoDB 7 (as in production) via Docker (compose.yaml), waits until healthy
+bun run db:up                     # Local MongoDB 7 (as in production): Docker (compose.yaml) when it runs, else a local mongod (scripts/db.ts)
 bun run db:seed                   # Seed owner user + 'louis.gentil' domain (idempotent)
 bun run dev                       # API (port 3000, watch) + SvelteKit dev server (port 5173) in parallel
 bun run dev:server                # API only
@@ -185,6 +185,10 @@ Two stages, each two services from the repo root: **staging** deploys every push
 Live layout (verified 2026-11-15): Railway project `personal-api`, environment `production` (holding both stages): production web `portfolio web` and API `portfolio api` (branch `main`), staging web `portfolio` and API `portfolio api develop` (branch `develop`), and `MongoDB` (`mongo:7` with a volume), shared by both stages with one database each (production's holds the real data). Each stage has its own `JWT_SECRET`, `ALLOWED_DOMAINS` and `PUBLIC_PORTFOLIO_API_URL`. All app services use the Railpack builder and Root Directory `/` (see the runbook for the full settings).
 
 CI (`.github/workflows/main.yml`) runs on push/PR to `develop` and `main`: quality (lint, svelte-check, server tsc, client build), tests (server + client unit against MongoDB 7, like production, and 9) and Playwright e2e; `.github/workflows/release-guard.yml` ("Only develop merges into main": the source branch, and the next semantic version in the title, one step after the latest `vX.Y.Z` tag) on PRs to `main`; `.github/workflows/release.yml` makes a release when run by hand (`workflow_dispatch`, with patch, minor or major): it opens the release PR from `develop` into `main`, titled with the next version, with auto-merge on (it needs the repository secret `RELEASE_TOKEN`, a maintainer's token: the CI of a pull request opened with the workflow's own token waits for someone to approve it, and a merge made with it starts neither the publication nor the CI on `main` that the production deploy waits for; it only ever asks for auto-merge, never a plain merge, which an admin's token would be let through before the checks), and when a release PR is merged, opened by it or by hand, it publishes the GitHub Release (tag `vX.Y.Z` on the merge commit, generated notes). Its "Tag only" input merges nothing: it publishes `main`'s current commit, for a release merged without its tag. The `develop` branch is the main development branch and the default branch.
+
+## Cloud sessions
+
+Claude Code cloud sessions run in a container without Docker. The cloud environment `portfolio` (Claude Code's environment settings, not this repo) has a setup script that runs before each new session: it installs `mongod` (MongoDB 7, from MongoDB's Ubuntu 22.04 apt repository: 7.0 has no 24.04 one, and the 22.04 package installs), runs `bun install`, copies each `.env.example` missing its `.env`, installs the Chromium of the project's Playwright version (the image's is older) and seeds the database once (`db:seed`, `seed:e2e`), leaving `mongod` stopped. In a session, `bun run db:up` starts that `mongod` in about a second (`scripts/db.ts`: without a Docker daemon it runs `mongod --fork` on 127.0.0.1, data in the gitignored `.mongo/`), then `bun run dev`, the server tests or the e2e flow work as described above. Change the script in the environment's settings when the setup changes (a new seed, another MongoDB version).
 
 ## Claude Code Setup (new device)
 
