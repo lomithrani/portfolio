@@ -156,3 +156,38 @@ export function sortExperiences<T extends Parameters<typeof experiencePeriod>[0]
 	});
 	return keyed.map(({ experience }) => experience);
 }
+
+type WithDates = { start?: DateInput; end?: DateInput };
+type WithProjects = WithDates & { projects?: WithDates[] | null };
+
+/** The same object with its start and end as Dates (left out when absent or not a date) */
+const withDates = <T extends WithDates>(dated: T): T => {
+	const { start, end, ...rest } = dated;
+	const revived: WithDates = rest;
+	const from = toDate(start);
+	const to = toDate(end);
+	if (from) revived.start = from;
+	if (to) revived.end = to;
+	return revived as T;
+};
+
+/**
+ * A portfolio as the API sent it, read without Eden Treaty's date parsing (every text stays as
+ * its owner wrote it, even '2027-01-01'), with only its real dates turned into Dates: the start
+ * and end of each experience and of each of its projects
+ */
+export function reviveExperienceDates<D extends { experiences?: WithProjects[] | null }>(
+	domain: D
+): D {
+	if (!Array.isArray(domain.experiences)) return domain;
+	return {
+		...domain,
+		experiences: domain.experiences.map((experience) => {
+			const revived = withDates(experience);
+			if (Array.isArray(experience.projects)) {
+				revived.projects = experience.projects.map((project) => withDates(project));
+			}
+			return revived;
+		})
+	};
+}

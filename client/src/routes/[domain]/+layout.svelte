@@ -28,11 +28,7 @@
 		if ($sessionCheckedStore) untrack(recordShown);
 	});
 
-	// Text only: the API client turns a date-like string ('2027-01-01') into a Date, which has no
-	// trim() and would take every page of the portfolio down with it
-	let headerTitle = $derived(
-		typeof data.domain.headerTitle === 'string' ? data.domain.headerTitle.trim() : ''
-	);
+	let headerTitle = $derived(data.domain.headerTitle?.trim() ?? '');
 
 	$effect(() => {
 		if (!browser) return;

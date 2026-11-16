@@ -8,6 +8,7 @@ import {
 	formatProjectMonths,
 	fromMonthKey,
 	projectEnd,
+	reviveExperienceDates,
 	sortExperiences,
 	toMonthKey
 } from '../experienceDates';
@@ -246,5 +247,93 @@ describe('formatMonthCount', () => {
 		expect(formatMonthCount(0)).toBe('');
 		expect(formatMonthCount(-4)).toBe('');
 		expect(formatMonthCount(NaN)).toBe('');
+	});
+});
+
+describe('reviveExperienceDates', () => {
+	// What GET /domain/:name sends, read without Eden Treaty's date parsing
+	const answer = () => ({
+		name: 'jane.doe',
+		headerTitle: '2027-01-01',
+		headerSubtitle: '01-09-2024',
+		experiences: [
+			{
+				_id: 'e1',
+				title: '2020-03',
+				summary: '2024 05 12',
+				location: '2021-06-01',
+				company: { name: '2019-01-01' },
+				start: '2020-03-01T00:00:00.000Z',
+				end: '2021-06-01T00:00:00.000Z',
+				projects: [
+					{
+						name: '2020-04',
+						summary: 'Shipped on 2020-05-01',
+						start: '2020-04-01T00:00:00.000Z',
+						hardSkills: [{ skill: { displayName: '2020' }, level: -1 }],
+						softSkills: []
+					}
+				]
+			},
+			{ _id: 'e2', title: 'Undated', summary: '', projects: [] }
+		]
+	});
+
+	it('turns only the start and end of experiences and projects into Dates', () => {
+		const domain = reviveExperienceDates(answer());
+		const [dated, undated] = domain.experiences;
+
+		expect(dated.start).toEqual(utc('2020-03'));
+		expect(dated.end).toEqual(utc('2021-06'));
+		expect(dated.projects[0].start).toEqual(utc('2020-04'));
+		expect(dated.projects[0]).not.toHaveProperty('end');
+		expect(undated).not.toHaveProperty('start');
+		expect(undated).not.toHaveProperty('end');
+	});
+
+	it('leaves every text as its owner wrote it, even one that looks like a date', () => {
+		const domain = reviveExperienceDates(answer());
+		const [experience] = domain.experiences;
+
+		expect(domain.headerTitle).toBe('2027-01-01');
+		expect(domain.headerSubtitle).toBe('01-09-2024');
+		expect(experience.title).toBe('2020-03');
+		expect(experience.summary).toBe('2024 05 12');
+		expect(experience.location).toBe('2021-06-01');
+		expect(experience.company).toEqual({ name: '2019-01-01' });
+		expect(experience.projects[0].name).toBe('2020-04');
+		expect(experience.projects[0].summary).toBe('Shipped on 2020-05-01');
+		expect(experience.projects[0].hardSkills[0].skill.displayName).toBe('2020');
+	});
+
+	it('gives dates the pages read and sort as before', () => {
+		const domain = reviveExperienceDates(answer());
+		const [first, second] = sortExperiences(domain.experiences);
+
+		expect(first.title).toBe('2020-03');
+		expect(second.title).toBe('Undated');
+		expect(formatMonthRange(first.start, first.end)).toBe('Mar 2020 – Jun 2021');
+	});
+
+	it('drops a date that cannot be read, and keeps Dates already parsed', () => {
+		const start = utc('2022-02');
+		const domain = reviveExperienceDates({
+			experiences: [{ start, end: 'not a date', projects: [{ start: null, end: '' }] }]
+		});
+
+		expect(domain.experiences[0].start).toBe(start);
+		expect(domain.experiences[0]).not.toHaveProperty('end');
+		expect(domain.experiences[0].projects[0]).toEqual({});
+	});
+
+	it('does not change what it was given', () => {
+		const original = answer();
+		reviveExperienceDates(original);
+		expect(original).toEqual(answer());
+	});
+
+	it('returns a portfolio without experiences as it is', () => {
+		const domain = { name: 'empty', experiences: null };
+		expect(reviveExperienceDates(domain)).toBe(domain);
 	});
 });

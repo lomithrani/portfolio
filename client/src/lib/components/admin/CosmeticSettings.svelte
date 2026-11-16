@@ -39,10 +39,8 @@
 	const titleHintId = `${uid}-title-hint`;
 
 	let theme = $state(page.data.domain?.theme ?? 'wintry');
-	// Text only: the API client turns a date-like string ('2027-01-01') into a Date
-	const text = (value: unknown) => (typeof value === 'string' ? value : '');
-	let headerTitle = $state(text(page.data.domain?.headerTitle));
-	let headerSubtitle = $state(text(page.data.domain?.headerSubtitle));
+	let headerTitle = $state(page.data.domain?.headerTitle ?? '');
+	let headerSubtitle = $state(page.data.domain?.headerSubtitle ?? '');
 	let defaultDarkMode = $state(page.data.domain?.defaultDarkMode ?? false);
 	let saving = $state(false);
 	let message = $state('');
