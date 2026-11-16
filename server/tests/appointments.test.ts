@@ -33,7 +33,7 @@ import {
   normalizeEmail
 } from '../services/appointmentBookings';
 import { rateLimitAddress } from '../services/clientAddress';
-import { CALENDAR_SCOPE } from '../services/googleCalendar';
+import { BOOKING_POPUP_REMINDER_MINUTES, CALENDAR_SCOPE, MAX_REMINDER_MINUTES, bookingReminders } from '../services/googleCalendar';
 import { m as calendarMessages } from '../services/googleCalendar.messages';
 import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
@@ -74,7 +74,8 @@ interface FakeEvent {
   description?: string;
   start?: { dateTime?: string };
   end?: { dateTime?: string };
-  attendees?: { email?: string }[];
+  attendees?: { email?: string; responseStatus?: string }[];
+  reminders?: { useDefault?: boolean; overrides?: { method?: string; minutes?: number }[] };
   extendedProperties?: { private?: Record<string, string> };
   hangoutLink?: string;
   htmlLink?: string;
@@ -708,11 +709,20 @@ describe('public booking', () => {
     expect(event).toMatchObject({
       calendarId: PRIMARY_CALENDAR,
       summary: 'Intro call — Jane Recruiter',
-      attendees: [{ email: t.email('jane') }],
+      // The owner too: Google never emails an event's organizer
+      attendees: [{ email: t.email('jane') }, { email: t.email('owner'), responseStatus: 'accepted' }],
       extendedProperties: { private: { portfolio_appointment: 'true' } }
     });
     const insert = google.state.requests.find((request) => request.method === 'POST' && request.url.pathname.endsWith('/events'));
     expect(insert?.url.searchParams.get('sendUpdates')).toBe('all');
+    // Google never emails the organizer: an email reminder about a minute after the booking does
+    const [email, popup] = event.reminders?.overrides ?? [];
+    expect(event.reminders?.useDefault).toBe(false);
+    expect(popup).toEqual({ method: 'popup', minutes: BOOKING_POPUP_REMINDER_MINUTES });
+    expect(email?.method).toBe('email');
+    const firesAt = new Date(at('09:00')).getTime() - (email?.minutes ?? 0) * 60_000;
+    expect(firesAt - Date.now()).toBeGreaterThan(0);
+    expect(firesAt - Date.now()).toBeLessThanOrEqual(2 * 60_000);
 
     // Google now reports the slot busy
     google.state.busy = [{ start: at('09:00'), end: at('10:00') }];
@@ -722,6 +732,27 @@ describe('public booking', () => {
     expect((await book(new Date(Date.now() + 3_600_000).toISOString())).status).toBe(409);
     expect((await book('not a date')).status).toBe(400);
     expect(google.state.events.size).toBe(1);
+  });
+
+  it('emails the owner a reminder right after the booking, at most 4 weeks ahead', () => {
+    const now = new Date('2026-03-02T10:00:30Z');
+    const emailMinutes = (start: string) => bookingReminders(new Date(start), now).overrides?.[0];
+    // Fires a minute after the booking
+    expect(emailMinutes('2026-03-03T10:00:00Z')).toEqual({ method: 'email', minutes: 24 * 60 - 1 - 1 });
+    // Google refuses more than 4 weeks: it fires 4 weeks before
+    expect(emailMinutes('2026-06-01T10:00:00Z')).toEqual({ method: 'email', minutes: MAX_REMINDER_MINUTES });
+    // A meeting about to start: at once, never a negative reminder
+    expect(emailMinutes('2026-03-02T10:01:00Z')).toEqual({ method: 'email', minutes: 0 });
+  });
+
+  it('invites the owner once when the visitor types their address', async () => {
+    google.state.busy = [];
+    const booked = await call('POST', '/appointments/book', {
+      body: { scheduleId, startTime: at('09:00'), name: 'Owner', email: t.email('owner').toUpperCase() }
+    });
+    expect(booked.status).toBe(200);
+    const [event] = [...google.state.events.values()];
+    expect(event.attendees).toEqual([{ email: t.email('owner').toUpperCase() }]);
   });
 
   it('lists upcoming bookings and cancels only events the app created', async () => {
@@ -734,6 +765,7 @@ describe('public booking', () => {
     const upcoming = await call('GET', '/appointments/upcoming', { cookie: owner.cookie });
     expect(upcoming.status).toBe(200);
     const [booking] = upcoming.json<{ id: string; calendarId: string; attendees: string[] }[]>();
+    // Who booked: the owner, also a guest, is not listed
     expect(booking).toMatchObject({ calendarId: PRIMARY_CALENDAR, attendees: [t.email('jane')] });
 
     // One of the owner's own events, on the same calendar
