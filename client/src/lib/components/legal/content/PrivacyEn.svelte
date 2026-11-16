@@ -72,6 +72,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			not store the PDF, and nothing is published until you add it yourself.
 		</li>
 		<li>
+			Feedback you send is published as a public issue on GitHub, without your name. Where this site
+			enables it, Anthropic's Claude (USA) sorts it first.
+		</li>
+		<li>
 			No advertising, no analytics, no sale of data. Our only cookies keep you signed in and
 			remember the language you chose; Google's sign-in, loaded only when you ask for it, sets
 			cookies of its own.
@@ -214,6 +218,31 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	>, without your name or any identifier. Your account identifier is written only in our server log.
 </p>
 
+<h4 id="data-feedback">Feedback</h4>
+<p>
+	Once signed in, anyone can send us feedback (a problem, an idea) with "Send feedback", in the
+	account menu or at the bottom of each page. It is published as a <strong
+		>public issue on GitHub</strong
+	>, in the project's repository, without your name or any identifier: write nothing in it that you
+	would not want public, and no one else's personal data. With your text, the issue gives the kind
+	of page you were on (its route in the site, such as <code>/[domain]/experiences</code>, never the
+	address of a portfolio), your browser's name and major version and your operating system (worked
+	out from what your browser sends, never filed as it is), the size of your browser window, the
+	light or dark theme and the site's language.
+</p>
+<p>
+	Where this site enables it, your text is first sent to Anthropic's Claude model (USA), which sorts
+	it as a bug, a feature request or a task and writes a title and a short summary in English; they
+	are published in the issue too. Otherwise, or if Claude fails, it is filed as a task. We do not
+	store your feedback in our database: your account identifier, the issue's number and its kind are
+	written only in our server log ({logRetention}). To limit how much feedback each account sends a
+	day, we count it with counters keyed by a hash of your account identifier. Deleting your account
+	does not remove an issue already published: to have it removed, write to <ContactEmail
+		{publisher}
+		{lang}
+	/>.
+</p>
+
 <h4 id="data-technical">Technical data</h4>
 <p>
 	To protect the site against abuse, we count some requests (meeting bookings, availability checks,
@@ -288,6 +317,15 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				<td>Contract, art. 6(1)(b)</td>
 			</tr>
 			<tr>
+				<td>
+					File your feedback on GitHub and, where this site enables it, have an AI model sort it
+				</td>
+				<td>
+					Contract, art. 6(1)(b), for filing it at your request; legitimate interest, art. 6(1)(f),
+					for sorting it: handling feedback quickly
+				</td>
+			</tr>
+			<tr>
 				<td>Keep a record of your acceptance of the terms and of your age confirmation</td>
 				<td>
 					Legitimate interest, art. 6(1)(f): being able to show which terms you accepted and that
@@ -318,7 +356,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <ul>
 	<li>
 		<strong>The public</strong>: the content of portfolios, published job descriptions (without the
-		recruiter's identity), journey notes and the public part of booking schedules.
+		recruiter's identity), journey notes and the public part of booking schedules; on GitHub, the
+		step suggestions and feedback you send (without your name).
 	</li>
 	<li>
 		<strong>Recruiters</strong>: the address and header title of the portfolios on the applicant
@@ -338,8 +377,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				>);
 			</li>
 			<li>
-				Anthropic PBC (USA): reading the résumé and job description PDFs you import. Under
-				Anthropic's <a
+				Anthropic PBC (USA): reading the résumé and job description PDFs you import, and sorting the
+				feedback you send, where this site enables it. Under Anthropic's <a
 					class="link-text"
 					href={LINKS.anthropicCommercialTerms}
 					rel="noopener noreferrer">commercial terms</a
@@ -360,7 +399,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				>);
 			</li>
 			<li>
-				GitHub, Inc. (USA): the step suggestions, published as public issues (<a
+				GitHub, Inc. (USA): the step suggestions and feedback, published as public issues (<a
 					class="link-text"
 					href={LINKS.githubPrivacy}
 					rel="noopener noreferrer">GitHub privacy statement</a
@@ -445,6 +484,14 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				</td>
 			</tr>
 			<tr>
+				<td>Step suggestions and feedback</td>
+				<td>
+					Not stored in our database. Published on GitHub until the issue is deleted: write to us to
+					have one removed. The text of a feedback sorted by Claude is kept by Anthropic only for a
+					limited period under its commercial terms
+				</td>
+			</tr>
+			<tr>
 				<td>Meeting slot reservations</td>
 				<td>
 					Deleted automatically when the slot ends or the meeting is cancelled (the invitation stays
@@ -463,9 +510,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				<td>
 					Deleted automatically at the end of their window: one hour to 30 days. When you delete
 					your account, the quotas you used (résumé and job description imports, step suggestions,
-					and the job description imports of your recruiter plan) are carried over to counters keyed
-					by a hash of your Google account identifier, kept until the end of their window (at most
-					30 days), so that deleting and re-creating an account does not reset them
+					feedback, and the job description imports of your recruiter plan) are carried over to
+					counters keyed by a hash of your Google account identifier, kept until the end of their
+					window (at most 30 days), so that deleting and re-creating an account does not reset them
 				</td>
 			</tr>
 			<tr>
@@ -502,11 +549,11 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 		>Google account permissions</a
 	>), and your portfolio address becomes available to others. What stays: skill names in the shared
-	catalogue (they are not linked to anyone), step suggestions already published on GitHub, the
-	meeting slots you reserved as a guest of other portfolios (until the slot ends), the abuse and
-	quota counters (keyed hashes, deleted at the end of their window, at most 30 days; the quotas you
-	used are carried over to a hash of your Google account identifier, as described above), and logs
-	until they expire.
+	catalogue (they are not linked to anyone), step suggestions and feedback already published on
+	GitHub (write to us to have one removed), the meeting slots you reserved as a guest of other
+	portfolios (until the slot ends), the abuse and quota counters (keyed hashes, deleted at the end
+	of their window, at most 30 days; the quotas you used are carried over to a hash of your Google
+	account identifier, as described above), and logs until they expire.
 </p>
 
 <h3 id="rights">Your rights</h3>
@@ -519,7 +566,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	</li>
 	<li>
 		<strong>erase</strong> it: delete your account yourself from
-		<a class="link-text" href={resolve('/(site)/account')}>your account page</a>, or ask us;
+		<a class="link-text" href={resolve('/(site)/account')}>your account page</a>, or ask us; the
+		step suggestions and feedback published on GitHub are not removed with your account, so ask us
+		for those;
 	</li>
 	<li><strong>restrict</strong> its processing;</li>
 	<li>
@@ -559,6 +608,11 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	be incomplete or wrong: you review and edit them, and nothing is published until you add it. No
 	decision with legal or similarly significant effects on you is made by automated means: the site
 	does not score, rank or filter candidates, and recruiters see applications as they are.
+</p>
+<p>
+	Where this site enables it, Claude also sorts the feedback you send as a bug, a feature request or
+	a task, and writes its title and summary. They are published in the issue with your text, where
+	you can see them, and they only decide how the maintainers file it: nothing about you.
 </p>
 <p>
 	A hiring journey can score the job description a recruiter picks against the owner's perfect job,

@@ -112,6 +112,15 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 		health data, religious or political views, identity numbers or a home address.
 	</li>
 </ul>
+<p>
+	The step suggestions and feedback you send are published as public issues on GitHub, in the
+	project's repository, without your name (see the
+	<LegalDocLink doc="privacy" {lang} hash="data-feedback">privacy policy</LegalDocLink>). You grant
+	the publisher the same licence to publish them there and to use them to improve the site; it does
+	not end with your account, but you can ask us to remove an issue. Write in them nothing you want
+	to keep private, no one else's personal data and nothing unlawful: we may remove an issue that
+	breaks these terms.
+</p>
 
 <h3 id="prohibited">What is not allowed</h3>
 <p>You must not use the site to:</p>

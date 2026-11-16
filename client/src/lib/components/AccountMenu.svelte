@@ -2,7 +2,8 @@
 @component
 The signed-in account's menu in the header: its initials and current space on the trigger, then
 the two spaces (radio items: the active one is checked), Browse jobs, Account & privacy (/account:
-the account's data, the terms it accepted, deleting it) and Log out. Choosing a space
+the account's data, the terms it accepted, deleting it), Send feedback (the page's feedback dialog,
+when the server takes feedback) and Log out. Choosing a space
 opens its home, and the space is recorded once its page shows (recordSpaceShown, PUT /me/mode): a
 page that keeps the visitor (unsaved changes) leaves the space as it was. The recruiter space is
 created first, the first time. A candidate without a portfolio is sent to the claim form instead
@@ -22,6 +23,7 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 		ArrowPath,
 		ArrowRightStartOnRectangle,
 		Briefcase,
+		ChatBubbleLeftEllipsis,
 		Check,
 		ChevronDown,
 		MagnifyingGlass,
@@ -41,6 +43,7 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 	import type { AuthUser } from '#services/stores/index.ts';
 	import { accountMessages } from '#services/account.messages.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { feedbackAvailability, openFeedback } from '#services/feedback.ts';
 	import { m } from './AccountMenu.messages.ts';
 
 	let {
@@ -62,6 +65,18 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 	let currentLabel = $derived(spaceLabel(user.activeMode));
 	let triggerLabel = $derived(m.trigger[user.activeMode ?? 'none'](name));
 	let statusText = $derived(pending ? accountMessages.opening[pending] : '');
+
+	/** Whether the server takes feedback: "Send feedback" shows once it says so */
+	let feedbackEnabled = $state(false);
+	$effect(() => {
+		let current = true;
+		void feedbackAvailability().then((answer) => {
+			if (current) feedbackEnabled = answer.enabled;
+		});
+		return () => {
+			current = false;
+		};
+	});
 
 	async function openCandidateSpace() {
 		const domain = user.domain;
@@ -103,6 +118,9 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 		if (value === 'candidate') void openCandidateSpace();
 		else if (value === 'recruiter') void openRecruiterSpace();
 		else if (value === 'logout') void logout();
+		// The menu gives the focus back to its trigger as it closes: the dialog's too, once closed
+		else if (value === 'feedback')
+			openFeedback(() => document.getElementById(ACCOUNT_MENU_TRIGGER_ID));
 		// 'jobs' and 'account' are links: the browser follows them
 	}
 
@@ -221,6 +239,14 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 						</a>
 					{/snippet}
 				</Menu.Item>
+				{#if feedbackEnabled}
+					<Menu.Item value="feedback" valueText={m.sendFeedback} class="{itemClass} justify-start">
+						<span class="{iconClass} preset-tonal" aria-hidden="true">
+							<ChatBubbleLeftEllipsis size="18" />
+						</span>
+						<span class="font-medium">{m.sendFeedback}</span>
+					</Menu.Item>
+				{/if}
 				<Menu.Item value="logout" valueText={m.logOut} class="{itemClass} justify-start">
 					<span class="{iconClass} preset-tonal" aria-hidden="true">
 						<ArrowRightStartOnRectangle size="18" />

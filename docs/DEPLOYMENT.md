@@ -179,14 +179,14 @@ local development.
 | `GOOGLE_CLIENT_SECRET`         | for appointments | Client secret of that same OAuth client; sealed. Enables Google Calendar appointments (see [Google Calendar appointments](#google-calendar-appointments)) |
 | `AUTH_COOKIE_SAMESITE`         | no       | Leave unset (`strict`); see [Custom domains](#custom-domains-are-required-for-login)               |
 | `CLIENT_IP_HEADER`             | no       | Leave unset: on Railway it defaults to `X-Real-IP`. Set it only behind another proxy (see [Booking protection](#booking-protection)) |
-| `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé import (see [Résumé import](#résumé-import)) |
-| `GITHUB_ISSUES_TOKEN`          | for step suggestions | Fine-grained GitHub token with Issues write on one repository; sealed. Enables step suggestions (see [Step suggestions](#step-suggestions)) |
+| `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé and job description imports (see [Résumé import](#résumé-import)) and sorts feedback (see [Feedback](#feedback)) |
+| `GITHUB_ISSUES_TOKEN`          | for step suggestions and feedback | Fine-grained GitHub token with Issues write on one repository; sealed. Enables step suggestions and feedback (see [Step suggestions](#step-suggestions), [Feedback](#feedback)) |
 | `COMMUTE_TIMES`                | for the commute criterion | `true` turns travel times on (see [Travel times](#travel-times)); addresses then go to the Géoplateforme |
 | `COMMUTE_TRANSIT`              | for public transport | `here` or `transitous`: the service asked for public transport times (see [Travel times](#travel-times)) |
 | `HERE_API_KEY`                 | with `COMMUTE_TRANSIT=here` | API key of an app of your HERE platform account; sealed. Billed per journey asked beyond the free monthly allowance |
 | `COMMUTE_CONTACT`              | with `COMMUTE_TRANSIT=transitous` | An email address or a web page, sent as the User-Agent of the requests to Transitous |
 | `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off |
-| `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions are filed in, `owner/name`; leave unset (`lomithrani/portfolio`)         |
+| `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions and feedback are filed in, `owner/name`; leave unset (`lomithrani/portfolio`) |
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
 | `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
 | `RESUME_IMPORT_ATTEMPTS_PER_DAY` | no     | Import attempts per user per UTC day, failed ones included; leave unset (`10`); `0` turns résumé import off |
@@ -490,6 +490,49 @@ being sent after 10 requests in a UTC day. If the repository is renamed or trans
 answers with a redirect, which is not followed: update `GITHUB_ISSUES_REPO` (the log line shows
 `"status":301` or `307`). The token is sent to `api.github.com` only, never follows a redirect,
 and never appears in a response or a log line (`tests/stepSuggestions.test.ts` fails if it does).
+
+## Feedback
+
+Any signed-in person (a candidate, a recruiter, or an account with neither) can send feedback
+from "Send feedback" in the account menu or in the footer of every page: the API
+(`POST /feedback`) files it as an issue in the same repository as the step suggestions, with the
+same `GITHUB_ISSUES_TOKEN`, so it is **off until the token is set** (`GET /feedback` answers
+`enabled: false`, `POST` answers 404, and the entry points are not shown). Signed-out visitors
+never see them. The startup line `Running at ...` says `"feedback":"on (...)"` (with whether Claude
+sorts it) or why it is off.
+
+Each issue gets the label `feedback` and one of the repository's **issue types**: `Bug`,
+`Feature` or `Task`. They must be issue types of the repository (`lomithrani/portfolio` has
+exactly these three): when GitHub refuses the type, the API files the issue again once without
+one, with the label `bug`, `enhancement` or `task` instead (the log says `Feedback: GitHub refused
+the issue type, filed again with a label instead`). Create the `feedback` label (and those three,
+if the repository has no issue types) on the repository (Issues → Labels) before turning the
+feature on. The token needs nothing more than for step suggestions: **Issues:
+Read and write** on that one repository.
+
+**Sorting (optional).** With `ANTHROPIC_API_KEY` set, the API first asks **Claude Haiku 5.5**
+whether the text is a bug, a feature request or a task, and for a short neutral title and summary
+in English (`GET /feedback` says `classifies: true`). That is one small call per feedback, a
+fraction of a cent, on the key's workspace and its spend limit. Without the key, or when Claude
+fails, refuses, answers something unusable or takes too long, the feedback is still filed, as a
+`Task` titled with the first words of the message, and the issue says it was not sorted
+automatically.
+
+What a person writes, and what Claude derived from it, is untrusted and public if the repository
+is: the dialog says so and links to the privacy policy (`/legal/privacy#data-feedback`). The issue
+follows the step suggestions' rules (text only inside fenced code blocks, nothing invisible filed,
+a title that cannot mention or reference anyone) and names nobody: no name, email, account id or
+portfolio address. It carries the page's route id (`/[domain]/experiences`, never the real path),
+the site language, the browser's name and major version and the operating system (read by the API
+from the User-Agent, never filed raw), the screen size and the light or dark theme. The user id,
+the issue number and its kind are in the API's log only (`Feedback filed`); a refusal by GitHub is
+logged as `Feedback: GitHub did not create the issue`, as for step suggestions.
+
+Limits, per UTC day (429 with `Retry-After`; constants of `server/services/feedback.ts`): **5
+feedbacks per account, 30 for the whole site, and 10 requests sent to GitHub per account**
+(attempts, never given back). As for step suggestions, a feedback GitHub refused is given back to
+the first two limits, one GitHub did not answer in time is not (the issue may exist), redirects are
+never followed, and the token never appears in a response or a log line.
 
 ## Travel times
 

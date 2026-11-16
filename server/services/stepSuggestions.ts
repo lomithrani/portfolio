@@ -4,6 +4,7 @@ import { env } from '../env'
 import type { ServerEnv } from '../env'
 import { FieldValidationError, ForbiddenError, ResourceNotFoundError, ServiceUnavailableError, TooManyRequestsError } from '../errors'
 import { Domain } from '../models/database'
+import { createGithubIssue, fenced, issueTitleText } from './githubIssues'
 import { logger } from './logger'
 import { rateLimitKey, refundRateLimit, takeRateLimit } from './rateLimit'
 import type { RateLimit } from './rateLimit'
@@ -43,7 +44,6 @@ export const stepSuggestionCounters = { globalKey: 'step-suggestion:global' }
 /** How long GitHub has to answer; a property so tests can shorten it */
 export const stepSuggestionTimeouts = { githubMs: 10_000 }
 
-const GITHUB_API = 'https://api.github.com'
 const ISSUE_LABELS = ['enhancement']
 
 /** One-line state of the feature, for the startup log (never the token) */
@@ -55,28 +55,6 @@ export const describeStepSuggestions = (settings: Pick<ServerEnv, 'GITHUB_ISSUES
 export const stepSuggestionsEnabled = () => Boolean(env.GITHUB_ISSUES_TOKEN)
 
 // ── The issue ───────────────────────────────────────────────
-
-/**
- * Text as a fenced code block: GitHub renders nothing inside one (no mention,
- * no link, no image, no HTML). The fence is longer than any run of backticks
- * in the text, so the text cannot close it
- */
-const fenced = (text: string) => {
-  const longestRun = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length))
-  const fence = '`'.repeat(Math.max(3, longestRun + 1))
-  return `${fence}text\n${text}\n${fence}`
-}
-
-/**
- * The name in the issue's title, where a code block is not possible: a
- * mention or an issue number must not read as one there (`@ name`, `# 12`,
- * `GH- 12`), and no backtick or tag is left
- */
-const titleText = (name: string) =>
-  name
-    .replace(/[`<>]/g, "'")
-    .replace(/([@#])(?=\S)/g, '$1 ')
-    .replace(/\b(gh-)(?=\d)/gi, '$1 ')
 
 export interface StepSuggestionIssue {
   title: string
@@ -96,24 +74,10 @@ export function stepSuggestionIssue(suggestion: StepSuggestionInput): StepSugges
   const reason = cleanStepSuggestionText(suggestion.reason ?? '')
   if (reason) sections.push(`### Why it would help\n\n${fenced(reason)}`)
   sections.push('Adding a step type: `docs/WORKFLOW_STEPS.md`.')
-  return { title: `Step suggestion: ${titleText(name)}`, body: sections.join('\n\n'), labels: ISSUE_LABELS }
+  return { title: `Step suggestion: ${issueTitleText(name)}`, body: sections.join('\n\n'), labels: ISSUE_LABELS }
 }
 
 // ── Sending ─────────────────────────────────────────────────
-
-/** GitHub said no: its status and the start of its message, for the operator's log (never the token) */
-const githubRefusal = async (response: Response, token: string) => {
-  let message: string | undefined
-  try {
-    const body: unknown = await response.json()
-    if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
-      message = body.message.replaceAll(token, '[token]').slice(0, 200)
-    }
-  } catch {
-    // Not JSON: the status is enough
-  }
-  return { status: response.status, ...(message ? { githubMessage: message } : {}) }
-}
 
 /**
  * Files a suggestion as an issue. 404 while the feature is off, 403 for an
@@ -151,54 +115,32 @@ export async function suggestStep(userId: string, input: { name?: unknown; descr
     throw new TooManyRequestsError(() => m.attemptsLimit, attempts.retryAfterSeconds)
   }
 
-  let response: Response
-  try {
-    response = await fetch(`${GITHUB_API}/repos/${repository}/issues`, {
-      method: 'POST',
-      headers: {
-        accept: 'application/vnd.github+json',
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-        'user-agent': 'portfolio-step-suggestions',
-        'x-github-api-version': '2022-11-28'
-      },
-      body: JSON.stringify(stepSuggestionIssue(parsed.suggestion)),
-      // Never followed: a redirect would carry the token to wherever it
-      // points. GitHub sends one for a renamed or transferred repository
-      redirect: 'manual',
-      signal: AbortSignal.timeout(stepSuggestionTimeouts.githubMs)
-    })
-  } catch (error) {
+  const result = await createGithubIssue(stepSuggestionIssue(parsed.suggestion), {
+    token,
+    repository,
+    userAgent: 'portfolio-step-suggestions',
+    timeoutMs: stepSuggestionTimeouts.githubMs
+  })
+
+  if (result.outcome === 'noAnswer') {
     // No answer: GitHub may have filed the issue, so it still counts
-    logger.warn('Step suggestion: no answer from GitHub', {
-      userId,
-      reason: error instanceof Error ? error.name : 'unknown'
-    })
+    logger.warn('Step suggestion: no answer from GitHub', { userId, reason: result.reason })
     throw new ServiceUnavailableError(() => m.unavailable)
   }
 
-  if (response.status !== 201) {
+  if (result.outcome === 'refused') {
     await giveBack()
-    // The operator's to fix: the token (expired, without access to the
-    // repository's issues) or the repository (renamed, issues disabled)
-    const operator = [301, 302, 307, 308, 401, 403, 404, 410, 422].includes(response.status)
+    const { status, operator, githubMessage } = result
     logger[operator ? 'error' : 'warn']('Step suggestion: GitHub did not create the issue', {
       userId,
       repository,
-      ...(await githubRefusal(response, token))
+      status,
+      ...(githubMessage ? { githubMessage } : {})
     })
     throw new ServiceUnavailableError(() => m.unavailable)
   }
 
-  let issueNumber: number | undefined
-  try {
-    const created: unknown = await response.json()
-    if (created && typeof created === 'object' && 'number' in created && typeof created.number === 'number') {
-      issueNumber = created.number
-    }
-  } catch {
-    // Created all the same
-  }
+  const issueNumber = result.number
   // Who suggested what stays here: the issue itself names nobody
   logger.info('Step suggestion filed', { userId, repository, ...(issueNumber ? { issueNumber } : {}) })
   return { created: true as const }
