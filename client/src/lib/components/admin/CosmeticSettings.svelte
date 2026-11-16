@@ -39,8 +39,10 @@
 	const titleHintId = `${uid}-title-hint`;
 
 	let theme = $state(page.data.domain?.theme ?? 'wintry');
-	let headerTitle = $state(page.data.domain?.headerTitle ?? '');
-	let headerSubtitle = $state(page.data.domain?.headerSubtitle ?? '');
+	// Text only: the API client turns a date-like string ('2027-01-01') into a Date
+	const text = (value: unknown) => (typeof value === 'string' ? value : '');
+	let headerTitle = $state(text(page.data.domain?.headerTitle));
+	let headerSubtitle = $state(text(page.data.domain?.headerSubtitle));
 	let defaultDarkMode = $state(page.data.domain?.defaultDarkMode ?? false);
 	let saving = $state(false);
 	let message = $state('');
@@ -116,8 +118,8 @@
 				aria-describedby={titleHintId}
 				bind:value={headerTitle}
 			/>
-			<span id={titleHintId} class="block text-xs opacity-75">{m.titleHint}</span>
 		</label>
+		<p id={titleHintId} class="-mt-3 text-xs opacity-75">{m.titleHint}</p>
 		<label class="label">
 			<span>{m.subtitle}</span>
 			<input
