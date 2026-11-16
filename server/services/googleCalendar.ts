@@ -386,6 +386,38 @@ const uniqueAttendees = (attendees: EventAttendee[]) => {
   })
 }
 
+type EventReminders = NonNullable<calendar_v3.Schema$Event['reminders']>
+
+/** The furthest ahead of an event Google lets a reminder fire: 4 weeks */
+export const MAX_REMINDER_MINUTES = 40_320
+/** How long after the booking the owner's email reminder fires: Google sends reminders on the minute */
+export const BOOKING_EMAIL_DELAY_MINUTES = 1
+/** Google Calendar's own default reminder, given back since the reminders below replace the owner's defaults */
+export const BOOKING_POPUP_REMINDER_MINUTES = 10
+
+/**
+ * The reminders of a booked event. Google never emails an event's organizer,
+ * but it emails a reminder to the calendar's owner: one set to fire a minute
+ * after the booking tells the owner at once that the slot was booked, with a
+ * link to the event. Google refuses a reminder more than 4 weeks ahead: for a
+ * meeting further away it fires 4 weeks before. Reminders replace the owner's
+ * defaults for this event, so the usual pop-up 10 minutes before comes back
+ */
+export function bookingReminders(start: Date, now = new Date()): EventReminders {
+  const minutesUntilStart = Math.floor((start.getTime() - now.getTime()) / 60_000)
+  const emailMinutes = Math.min(
+    MAX_REMINDER_MINUTES,
+    Math.max(0, minutesUntilStart - BOOKING_EMAIL_DELAY_MINUTES)
+  )
+  return {
+    useDefault: false,
+    overrides: [
+      { method: 'email', minutes: emailMinutes },
+      { method: 'popup', minutes: BOOKING_POPUP_REMINDER_MINUTES }
+    ]
+  }
+}
+
 export async function createEvent(
   calendar: calendar_v3.Calendar,
   calendarId: string,
@@ -403,6 +435,8 @@ export async function createEvent(
      * An address listed twice, in any case, is invited once (the first entry)
      */
     attendees?: EventAttendee[]
+    /** The event's reminders for the calendar's owner (bookingReminders); their defaults without it */
+    reminders?: EventReminders
     addGoogleMeet?: boolean
   }
 ) {
@@ -414,6 +448,7 @@ export async function createEvent(
     start: { dateTime: params.startTime, timeZone: params.timezone },
     end: { dateTime: params.endTime, timeZone: params.timezone },
     attendees: attendees.length > 0 ? attendees : undefined,
+    reminders: params.reminders,
     conferenceData: params.addGoogleMeet
       ? {
           createRequest: {

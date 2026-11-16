@@ -210,7 +210,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	A portfolio owner who offers meetings connects their Google Calendar. We then store the access
 	tokens Google gives us, which let the site read when the owner is busy and create the events that
 	visitors book, with the email address of the owner's account as a guest so that they receive the
-	invitation too. Details are in <a class="link-text" href="#google">Google user data</a>.
+	invitation too, and an email reminder that Google sends the owner a minute after the booking (or 4
+	weeks before a meeting further away), with the usual pop-up reminder 10 minutes before. Details
+	are in <a class="link-text" href="#google">Google user data</a>.
 </p>
 
 <h4 id="data-suggestions">Step suggestions</h4>
@@ -696,8 +698,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 		<strong>Google Calendar</strong>, only for portfolio owners who connect it: the site asks for
 		the scope <code>{GOOGLE_CALENDAR_SCOPE}</code> and uses it only to list your calendars so you pick
 		the one for meetings, read the busy times of that calendar (not the content of your events) to show
-		the free slots, create the event of each booking (with a Google Meet link if you chose one) and send
-		its invitation, and list and cancel the events booked through this site.
+		the free slots, create the event of each booking (with a Google Meet link if you chose one, and an
+		email reminder for you) and send its invitation, and list and cancel the events booked through this
+		site.
 	</li>
 	<li>
 		Data received from Google is not used for advertising, not sold, not transferred to data

@@ -216,7 +216,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Le propriétaire d'un portfolio qui propose des rendez-vous connecte son agenda Google. Nous
 	conservons alors les jetons d'accès fournis par Google, qui permettent au site de savoir quand il
 	est occupé et de créer les événements réservés par les visiteurs, avec l'adresse e-mail de son
-	compte parmi les invités pour qu'il reçoive lui aussi l'invitation. Les détails figurent dans
+	compte parmi les invités pour qu'il reçoive lui aussi l'invitation, et un rappel par e-mail que
+	Google lui envoie une minute après la réservation (ou 4 semaines avant un rendez-vous plus
+	lointain), avec le rappel habituel 10 minutes avant. Les détails figurent dans
 	<a class="link-text" href="#google">Données des utilisateurs Google</a>.
 </p>
 
@@ -748,8 +750,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 		: le site demande le périmètre <code>{GOOGLE_CALENDAR_SCOPE}</code> et ne l'utilise que pour lister
 		vos agendas afin que vous choisissiez celui des rendez-vous, lire les plages occupées de cet agenda
 		(pas le contenu de vos événements) pour afficher les créneaux libres, créer l'événement de chaque
-		réservation (avec un lien Google Meet si vous l'avez choisi) et envoyer son invitation, et lister
-		et annuler les événements réservés par ce site.
+		réservation (avec un lien Google Meet si vous l'avez choisi, et un rappel par e-mail pour vous) et
+		envoyer son invitation, et lister et annuler les événements réservés par ce site.
 	</li>
 	<li>
 		Les données reçues de Google ne sont pas utilisées à des fins publicitaires, ne sont pas

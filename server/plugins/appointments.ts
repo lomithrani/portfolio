@@ -30,6 +30,7 @@ import {
 } from '../models/elysia'
 import {
   connectGoogleCalendar,
+  bookingReminders,
   createEvent,
   deleteEvent,
   disconnectGoogleCalendar,
@@ -406,7 +407,8 @@ const appointmentsPublic = new Elysia()
       const journeyLines = await step.invitationLines(webOrigin(request))
       // The owner is a guest too: Google never emails an event's organizer, so
       // this is how they get the invitation when the schedule books into a
-      // calendar other than their sign-in account's own
+      // calendar other than their sign-in account's own (on that one, the
+      // event's email reminder tells them)
       const ownerEmail = await accountEmail(schedule.user)
 
       // Only now: a request for a taken slot or an unknown schedule must not
@@ -441,6 +443,8 @@ const appointmentsPublic = new Elysia()
             { email },
             ...(ownerEmail ? [{ email: ownerEmail, responseStatus: 'accepted' as const }] : [])
           ],
+          // Google never emails the organizer: an email reminder right after the booking does
+          reminders: bookingReminders(new Date(slot.start)),
           addGoogleMeet: schedule.locationType === 'google_meet'
         })
       } catch (error) {
