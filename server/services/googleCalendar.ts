@@ -370,6 +370,22 @@ export async function getFreeBusy(
   return result.busy ?? []
 }
 
+/** A guest of an event: `accepted` for one who need not answer the invitation (the owner offering the slot) */
+export interface EventAttendee {
+  email: string
+  responseStatus?: 'accepted'
+}
+
+const uniqueAttendees = (attendees: EventAttendee[]) => {
+  const seen = new Set<string>()
+  return attendees.filter(({ email }) => {
+    const key = email.trim().toLowerCase()
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 export async function createEvent(
   calendar: calendar_v3.Calendar,
   calendarId: string,
@@ -381,17 +397,23 @@ export async function createEvent(
     startTime: string
     endTime: string
     timezone: string
-    attendeeEmail?: string
+    /**
+     * The guests, each emailed the invitation (sendUpdates: 'all'), except
+     * the calendar's own account: Google never emails an event's organizer.
+     * An address listed twice, in any case, is invited once (the first entry)
+     */
+    attendees?: EventAttendee[]
     addGoogleMeet?: boolean
   }
 ) {
+  const attendees = uniqueAttendees(params.attendees ?? [])
   const event: calendar_v3.Schema$Event = {
     id: params.id,
     summary: params.summary,
     description: params.description,
     start: { dateTime: params.startTime, timeZone: params.timezone },
     end: { dateTime: params.endTime, timeZone: params.timezone },
-    attendees: params.attendeeEmail ? [{ email: params.attendeeEmail }] : undefined,
+    attendees: attendees.length > 0 ? attendees : undefined,
     conferenceData: params.addGoogleMeet
       ? {
           createRequest: {

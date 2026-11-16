@@ -174,11 +174,12 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	To book a meeting you enter your <strong>name</strong>, your <strong>email address</strong> and, if
 	you wish, a note. They are not stored in our database: they are sent to the portfolio owner's Google
-	Calendar, which creates the event with you as a guest and emails you the invitation. The invitation
-	also contains the details of the earlier steps (for example the title, company and link of the job description
-	you chose). We keep only a reservation of the time slot (the time, the calendar, the event identifier
-	and a hash of your email address keyed with a secret), which is deleted automatically when the slot
-	ends or the meeting is cancelled.
+	Calendar, which creates the event with you as a guest and emails you the invitation. The portfolio owner
+	is a guest too, with the email address of their account, so that they receive the invitation as well:
+	each of you sees the other's address in it. The invitation also contains the details of the earlier
+	steps (for example the title, company and link of the job description you chose). We keep only a reservation
+	of the time slot (the time, the calendar, the event identifier and a hash of your email address keyed
+	with a secret), which is deleted automatically when the slot ends or the meeting is cancelled.
 </p>
 
 <h4 id="data-perfect-job">Your perfect job (private)</h4>
@@ -208,7 +209,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	A portfolio owner who offers meetings connects their Google Calendar. We then store the access
 	tokens Google gives us, which let the site read when the owner is busy and create the events that
-	visitors book. Details are in <a class="link-text" href="#google">Google user data</a>.
+	visitors book, with the email address of the owner's account as a guest so that they receive the
+	invitation too. Details are in <a class="link-text" href="#google">Google user data</a>.
 </p>
 
 <h4 id="data-suggestions">Step suggestions</h4>
@@ -366,6 +368,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	<li>
 		<strong>Portfolio owners</strong>: the name, email address and note of a visitor who books a
 		meeting, with the details of the journey steps before it, in their Google Calendar invitation.
+	</li>
+	<li>
+		<strong>Visitors who book a meeting</strong>: the email address of the portfolio owner's
+		account, a guest of the same invitation.
 	</li>
 	<li>
 		<strong>Our processors</strong>, which act on our instructions:
@@ -683,7 +689,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	<li>
 		<strong>Sign in with Google</strong>: we receive your Google account identifier, email address,
 		name and picture in a signed token, and keep only the identifier and the email address, to
-		create your account and sign you in.
+		create your account, sign you in and, if you offer meetings, invite you to those booked with
+		you.
 	</li>
 	<li>
 		<strong>Google Calendar</strong>, only for portfolio owners who connect it: the site asks for

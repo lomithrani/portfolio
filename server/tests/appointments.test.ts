@@ -74,7 +74,7 @@ interface FakeEvent {
   description?: string;
   start?: { dateTime?: string };
   end?: { dateTime?: string };
-  attendees?: { email?: string }[];
+  attendees?: { email?: string; responseStatus?: string }[];
   extendedProperties?: { private?: Record<string, string> };
   hangoutLink?: string;
   htmlLink?: string;
@@ -708,7 +708,8 @@ describe('public booking', () => {
     expect(event).toMatchObject({
       calendarId: PRIMARY_CALENDAR,
       summary: 'Intro call — Jane Recruiter',
-      attendees: [{ email: t.email('jane') }],
+      // The owner too: Google never emails an event's organizer
+      attendees: [{ email: t.email('jane') }, { email: t.email('owner'), responseStatus: 'accepted' }],
       extendedProperties: { private: { portfolio_appointment: 'true' } }
     });
     const insert = google.state.requests.find((request) => request.method === 'POST' && request.url.pathname.endsWith('/events'));
@@ -724,6 +725,16 @@ describe('public booking', () => {
     expect(google.state.events.size).toBe(1);
   });
 
+  it('invites the owner once when the visitor types their address', async () => {
+    google.state.busy = [];
+    const booked = await call('POST', '/appointments/book', {
+      body: { scheduleId, startTime: at('09:00'), name: 'Owner', email: t.email('owner').toUpperCase() }
+    });
+    expect(booked.status).toBe(200);
+    const [event] = [...google.state.events.values()];
+    expect(event.attendees).toEqual([{ email: t.email('owner').toUpperCase() }]);
+  });
+
   it('lists upcoming bookings and cancels only events the app created', async () => {
     // A visitor's booking, made through the public route
     const booked = await call('POST', '/appointments/book', {
@@ -734,6 +745,7 @@ describe('public booking', () => {
     const upcoming = await call('GET', '/appointments/upcoming', { cookie: owner.cookie });
     expect(upcoming.status).toBe(200);
     const [booking] = upcoming.json<{ id: string; calendarId: string; attendees: string[] }[]>();
+    // Who booked: the owner, also a guest, is not listed
     expect(booking).toMatchObject({ calendarId: PRIMARY_CALENDAR, attendees: [t.email('jane')] });
 
     // One of the owner's own events, on the same calendar
