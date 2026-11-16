@@ -1,4 +1,5 @@
 import { RateLimitCounter, User } from '../models/database'
+import { FEEDBACK_ATTEMPTS_PER_ACCOUNT, FEEDBACK_PER_ACCOUNT, feedbackAccountKey, feedbackAttemptsKey } from './feedback'
 import { JOB_IMPORT_DAILY_WINDOW_MS, jobImportAttemptsKey } from './jobImport'
 import { carryRateLimit, rateLimitKey } from './rateLimit'
 import type { RateLimit } from './rateLimit'
@@ -15,7 +16,7 @@ import {
   stepSuggestionOwnerKey
 } from './stepSuggestions'
 
-// The per-account quotas (paid imports, step suggestions) are keyed by the
+// The per-account quotas (paid imports, step suggestions, feedback) are keyed by the
 // user id, which a deleted and re-created account does not keep: without
 // this, deleting the account (DELETE /me) and signing in again with the same
 // Google account would start every quota from zero, and one person could use
@@ -43,7 +44,9 @@ const carriedQuotas = (): readonly CarriedQuota[] => [
     name: 'step-suggestion:attempts',
     accountKey: stepSuggestionAttemptsKey,
     windowMs: STEP_SUGGESTION_ATTEMPTS_PER_OWNER.windowMs
-  }
+  },
+  { name: 'feedback:account', accountKey: feedbackAccountKey, windowMs: FEEDBACK_PER_ACCOUNT.windowMs },
+  { name: 'feedback:attempts', accountKey: feedbackAttemptsKey, windowMs: FEEDBACK_ATTEMPTS_PER_ACCOUNT.windowMs }
 ]
 
 /** How long the job imports a deleted recruiter space used are remembered (the plan's allowance is for the account's lifetime) */

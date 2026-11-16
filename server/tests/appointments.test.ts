@@ -39,6 +39,7 @@ import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
 import { jobImportAttemptsKey, jobImportCounters } from '../services/jobImport';
 import { stepSuggestionAttemptsKey, stepSuggestionCounters, stepSuggestionOwnerKey } from '../services/stepSuggestions';
+import { feedbackAccountKey, feedbackAttemptsKey, feedbackCounters } from '../services/feedback';
 import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
 import {
@@ -1705,6 +1706,28 @@ describe('no Google token in any API response', () => {
     } finally {
       env.GITHUB_ISSUES_TOKEN = savedIssuesToken;
       stepSuggestionCounters.globalKey = savedSuggestionKey;
+    }
+
+    // Feedback (tests/feedback.test.ts covers it), not classified (no Claude
+    // key): its request, to api.github.com, is answered here instead of by the fake Google
+    const savedFeedbackToken = env.GITHUB_ISSUES_TOKEN;
+    const savedFeedbackAnthropicKey = env.ANTHROPIC_API_KEY;
+    const savedFeedbackKey = feedbackCounters.globalKey;
+    env.GITHUB_ISSUES_TOKEN = 'github_pat_sweep_test_token';
+    env.ANTHROPIC_API_KEY = undefined;
+    feedbackCounters.globalKey = `feedback:global:${t.id('sweep')}`;
+    rateLimitKeys.add(feedbackCounters.globalKey);
+    rateLimitKeys.add(feedbackAccountKey(sweep.userId));
+    rateLimitKeys.add(feedbackAttemptsKey(sweep.userId));
+    try {
+      const fetchSpy = globalThis.fetch as unknown as Mock<(input: string | URL | Request) => Promise<Response>>;
+      fetchSpy.mockImplementationOnce(async () => Response.json({ number: 1 }, { status: 201 }));
+      expect((await call('GET', '/feedback', auth)).status).toBe(200);
+      expect((await call('POST', '/feedback', { ...auth, body: { message: 'The booking page works well for me.' } })).status).toBe(200);
+    } finally {
+      env.GITHUB_ISSUES_TOKEN = savedFeedbackToken;
+      env.ANTHROPIC_API_KEY = savedFeedbackAnthropicKey;
+      feedbackCounters.globalKey = savedFeedbackKey;
     }
 
     // Résumé import (tests/resumeImport.test.ts covers it): its two requests,

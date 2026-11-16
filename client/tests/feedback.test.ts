@@ -129,7 +129,9 @@ test.describe('feedback, signed in', () => {
 
 		await message(page).fill('The Save button does nothing on my phone.');
 		await dialog(page).getByRole('button', { name: 'Send' }).click();
-		await expect(dialog(page).getByRole('heading', { name: 'Thanks for your feedback!' })).toBeFocused();
+		await expect(
+			dialog(page).getByRole('heading', { name: 'Thanks for your feedback!' })
+		).toBeFocused();
 		await expect(dialog(page)).toContainText('We filed it as a bug report.');
 		await expect(dialog(page).getByRole('link', { name: /See it on GitHub/ })).toHaveAttribute(
 			'href',
@@ -198,7 +200,9 @@ test.describe('feedback, signed in', () => {
 		await expect(message(page)).toHaveValue('I would like to add a photo to my portfolio.');
 	});
 
-	test('a portfolio has the button in its footer, and the dialog fits a phone', async ({ page }) => {
+	test('a portfolio has the button in its footer, and the dialog fits a phone', async ({
+		page
+	}) => {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await enabled(page);
 		await gotoHydrated(page, '/louis.gentil/experiences');

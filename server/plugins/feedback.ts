@@ -8,6 +8,8 @@ import type { FeedbackResultDto, FeedbackStatusDto } from '../services/feedback'
 // an idea from the "Send feedback" dialog; the API classifies it with Claude
 // (bug, feature, task) and files it as an issue of that type in the project's
 // GitHub repository, without their name. Off without GITHUB_ISSUES_TOKEN.
+// The classification is optional: without ANTHROPIC_API_KEY (or when Claude
+// fails), the feedback is still filed, as a Task, not classified.
 
 const feedbackPublic = new Elysia()
   // Whether the dialog can send: public, so the client knows before anything is typed

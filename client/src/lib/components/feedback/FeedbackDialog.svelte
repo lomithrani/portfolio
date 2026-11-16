@@ -176,7 +176,7 @@ a navigation, or when the session ends.
 							<p class="text-sm">{m.sent[sent.kind]}</p>
 							{#if sent.issueUrl}
 								<p class="text-sm">
-									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the issue on GitHub, another site -->
+									<!-- eslint-disable svelte/no-navigation-without-resolve -- the issue on GitHub, another site -->
 									<a
 										class="{linkClass} inline-flex items-center gap-1"
 										href={sent.issueUrl}
@@ -186,6 +186,7 @@ a navigation, or when the session ends.
 											class="sr-only">{` ${m.newTab}`}</span
 										></a
 									>
+									<!-- eslint-enable svelte/no-navigation-without-resolve -->
 								</p>
 							{/if}
 						</div>
