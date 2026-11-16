@@ -79,6 +79,7 @@ const project = (
 const createExperience = async (body: {
 	title: string;
 	type?: string;
+	summary?: string;
 	start?: string;
 	end?: string;
 	projects?: ReturnType<typeof project>[];
@@ -288,6 +289,59 @@ test.describe('the owner of a portfolio', () => {
 		await editButton.click();
 		await expect(titleInput).toHaveValue(title);
 		await expect(dialog.getByText('Restored unsaved changes.')).toHaveCount(0);
+	});
+});
+
+test.describe('text that looks like a date', () => {
+	test('shows as its owner typed it, while the dates still render and sort', async ({ page }) => {
+		// The API client of the pages turns any JSON string matching its date pattern into a Date:
+		// the portfolio is read as text, only its experience and project dates made Dates again
+		const domainUrl = `${API_URL}/domain/${DOMAIN}`;
+		const before = await (await api.get(domainUrl)).json();
+		const setHeader = async (headerTitle: string, headerSubtitle: string) => {
+			const response = await api.put(domainUrl, { data: { headerTitle, headerSubtitle } });
+			expect(response.ok(), await response.text()).toBe(true);
+		};
+		// Titled exactly as a date: removed by id, as its title cannot carry the test's tag
+		const dated = await createExperience({
+			title: '2020-03',
+			summary: `2024 05 12 ${tag}`,
+			start: '2020-03-01T00:00:00.000Z',
+			end: '2021-06-01T00:00:00.000Z',
+			projects: [project('2020-04', ['Go'], [], ['2020-04', '2020-09'])]
+		});
+		try {
+			await createExperience({ title: `Later ${tag}` });
+			await setHeader('2027-01-01', '01-09-2024');
+
+			await gotoHydrated(page, `/${DOMAIN}/experiences`);
+			const banner = page.getByRole('banner');
+			await expect(banner.getByRole('heading', { level: 1 })).toHaveText('2027-01-01');
+			await expect(banner).toContainText('01-09-2024');
+			await expect(page).toHaveTitle(/2027-01-01/);
+
+			const datedCard = card(page, '2020-03');
+			await expect(datedCard).toContainText(`2024 05 12 ${tag}`);
+			await expect(datedCard).toContainText('Mar 2020 – Jun 2021');
+			await expect(datedCard).toContainText('2020-04');
+			await expect(datedCard).toContainText('Apr 2020 – Sep 2020');
+			// Sorted by their dates: the later experience first
+			const headings = page.locator('article h2');
+			await expect(headings).toHaveText([`Later ${tag}`, '2020-03']);
+
+			// The owner's Appearance form holds the title and subtitle as typed
+			await signIn(page, session);
+			await gotoHydrated(page, `/${DOMAIN}/admin`);
+			await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
+				'2027-01-01'
+			);
+			await expect(page.getByRole('textbox', { name: 'Subtitle', exact: true })).toHaveValue(
+				'01-09-2024'
+			);
+		} finally {
+			await setHeader(before.headerTitle ?? '', before.headerSubtitle ?? '');
+			await deleteExperience(dated._id);
+		}
 	});
 });
 

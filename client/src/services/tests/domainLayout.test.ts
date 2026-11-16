@@ -4,10 +4,11 @@ import { isHttpError } from '@sveltejs/kit';
 
 vi.mock('#services', () => {
 	const get = vi.fn();
-	return { portfolioApi: { domain: vi.fn(() => ({ get })) } };
+	// The text client only: the portfolio is read without Eden Treaty's date parsing
+	return { portfolioTextApi: { domain: vi.fn(() => ({ get })) } };
 });
 
-import { portfolioApi } from '#services';
+import { portfolioTextApi as portfolioApi } from '#services';
 import { load } from '../../routes/[domain]/+layout.server';
 
 const mockDomain = portfolioApi.domain as unknown as Mock;
@@ -39,6 +40,46 @@ describe('[domain] layout load', () => {
 			domain,
 			domainName: 'louis.gentil'
 		});
+	});
+
+	it('keeps every text as written and turns only the experience and project dates into Dates', async () => {
+		mockGet.mockResolvedValue({
+			data: {
+				name: 'jane.doe',
+				headerTitle: '2027-01-01',
+				headerSubtitle: '2024 05 12',
+				experiences: [
+					{
+						title: '2020-03',
+						summary: '01-09-2024',
+						start: '2020-03-01T00:00:00.000Z',
+						projects: [{ name: '2021-01', end: '2021-01-01T00:00:00.000Z' }]
+					}
+				]
+			},
+			error: null
+		});
+
+		const { domain } = (await runLoad('jane.doe')) as unknown as {
+			domain: {
+				headerTitle: unknown;
+				headerSubtitle: unknown;
+				experiences: {
+					title: unknown;
+					summary: unknown;
+					start: unknown;
+					projects: { name: unknown; end: unknown }[];
+				}[];
+			};
+		};
+		expect(domain.headerTitle).toBe('2027-01-01');
+		expect(domain.headerSubtitle).toBe('2024 05 12');
+		const [experience] = domain.experiences;
+		expect(experience.title).toBe('2020-03');
+		expect(experience.summary).toBe('01-09-2024');
+		expect(experience.start).toEqual(new Date('2020-03-01T00:00:00.000Z'));
+		expect(experience.projects[0].name).toBe('2021-01');
+		expect(experience.projects[0].end).toEqual(new Date('2021-01-01T00:00:00.000Z'));
 	});
 
 	it('offers the claim flow for an unknown but valid domain name', async () => {

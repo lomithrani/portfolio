@@ -43,8 +43,11 @@ export interface ServerEnv {
    */
   CLIENT_IP_HEADER?: string;
   /**
-   * Claude API key billed for résumé imports (services/resumeImport.ts); the
-   * feature is off without it. Secret: never logged, returned or traced
+   * Claude API key billed for résumé and job description imports
+   * (services/resumeImport.ts, services/jobImport.ts), which are off without
+   * it, and for sorting feedback into a bug, a feature request or a task
+   * (services/feedback.ts: without it, feedback is still filed, as a task).
+   * Secret: never logged, returned or traced
    */
   ANTHROPIC_API_KEY?: string;
   /** Résumé imports per user per 30-day window (0 turns the feature off) */
@@ -68,12 +71,13 @@ export interface ServerEnv {
    */
   JOB_IMPORT_ATTEMPTS_PER_DAY: number;
   /**
-   * GitHub token that files the steps portfolio owners suggest as issues
-   * (services/stepSuggestions.ts: issues write on GITHUB_ISSUES_REPO only);
-   * the feature is off without it. Secret: never logged, returned or traced
+   * GitHub token that files as issues the steps portfolio owners suggest
+   * (services/stepSuggestions.ts) and the feedback signed-in people send
+   * (services/feedback.ts): Issues write on GITHUB_ISSUES_REPO only. Both
+   * features are off without it. Secret: never logged, returned or traced
    */
   GITHUB_ISSUES_TOKEN?: string;
-  /** The repository those issues are filed in, as `owner/name` */
+  /** The repository those issues are filed in, as `owner/name` (its issue types Bug, Feature and Task type the feedback) */
   GITHUB_ISSUES_REPO: string;
   /**
    * COMMUTE_TIMES=true: travel times are computed for the commute criterion

@@ -12,6 +12,7 @@ import { describeResumeImport } from './services/resumeImport';
 import { describeJobImport } from './services/jobImport';
 import { describeCommute } from './services/commute';
 import { describeStepSuggestions } from './services/stepSuggestions';
+import { describeFeedback } from './services/feedback';
 import { registerSiteMetrics } from './services/siteMetrics';
 
 export { app };
@@ -52,6 +53,7 @@ logger.info(`Running at ${formatListenUrl(host, app.server!.port ?? env.PORT, !!
   resumeImport: describeResumeImport(env),
   jobImport: describeJobImport(env),
   stepSuggestions: describeStepSuggestions(env),
+  feedback: describeFeedback(env),
   travelTimes: describeCommute()
 });
 

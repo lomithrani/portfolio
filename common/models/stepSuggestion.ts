@@ -1,6 +1,7 @@
 // A step a portfolio owner suggests for the hiring journey, from their step editor: the API files
 // it as an issue in the project's GitHub repository (POST /workflow/step-suggestions). The rules
 // are shared by the form (which shows them) and the API (which enforces them).
+import { cleanIssueText } from './issueText';
 import { stepSuggestionMessages as m } from './stepSuggestion.messages';
 
 export const STEP_SUGGESTION_LIMITS = { name: 80, description: 1500, reason: 1500 } as const;
@@ -20,17 +21,8 @@ export type StepSuggestionResult =
 	| { ok: true; suggestion: StepSuggestionInput }
 	| { ok: false; field: StepSuggestionField; message: string };
 
-// What never reaches the issue: C0 and C1 controls but tab and line feed, the Unicode line
-// separators, every character Unicode says is not displayed (Default_Ignorable_Code_Point: bidi
-// controls, zero-width characters, variation selectors, the "tag" characters that can spell a
-// hidden sentence, blank fillers), the braille blank and lone surrogates. A joined emoji comes
-// apart; in exchange nothing is filed that a reader of the issue cannot see
-const NOT_FILED =
-	/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u2028\u2029\u2800]|\p{Default_Ignorable_Code_Point}|[\uD800-\uDFFF]/gu;
-
 /** A suggestion's text as it is filed: one kind of line break, nothing invisible, trimmed */
-export const cleanStepSuggestionText = (value: string) =>
-	value.replace(/\r\n?/g, '\n').replace(NOT_FILED, '').trim();
+export const cleanStepSuggestionText = cleanIssueText;
 
 const text = (value: unknown) => (typeof value === 'string' ? cleanStepSuggestionText(value) : '');
 

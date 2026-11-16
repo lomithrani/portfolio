@@ -4,6 +4,7 @@
 	import Login, { SIGN_IN_ID } from '#components/Login.svelte';
 	import AccountMenu, { ACCOUNT_MENU_TRIGGER_ID } from '#components/AccountMenu.svelte';
 	import SpaceChooser from '#components/SpaceChooser.svelte';
+	import FeedbackDialog from '#components/feedback/FeedbackDialog.svelte';
 	import { AppBar } from '@skeletonlabs/skeleton-svelte';
 	import Logo from '#images/logo.svelte';
 	import { onMount } from 'svelte';
@@ -17,7 +18,8 @@
 		showSignIn = true,
 		homeLink = false
 	}: {
-		headerTitle?: string;
+		/** A portfolio's title, or its address name when its owner set none ([domain]/+layout.svelte) */
+		headerTitle: string;
 		headerSubtitle?: string;
 		/**
 		 * false: no Google sign-in for a signed-out visitor (neither the button nor One Tap, so
@@ -88,34 +90,12 @@
 		<!-- Small screens: one line, smaller font, so the header stays short -->
 		<AppBar.Headline class="min-w-0 text-center">
 			<h1 class="truncate text-lg font-bold md:overflow-visible md:text-3xl md:whitespace-normal">
-				{#if headerTitle}
-					<span
-						class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
-						>{headerTitle}</span
-					>
-				{:else}
-					<!-- A portfolio whose owner set no title. Like a title they write, these words are
-					     not a message: they are always English, also on a French page, so they are marked
-					     lang="en" for screen readers to pronounce them as English -->
-					<span lang="en">
-						<span
-							class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
-							>Problem Solver</span
-						>
-
-						<span
-							class="bg-gradient-to-br from-red-500 to-yellow-500 bg-clip-text text-transparent box-decoration-clone"
-							>Engineer</span
-						>
-
-						<span
-							class="bg-gradient-to-br from-pink-500 to-violet-500 bg-clip-text text-transparent box-decoration-clone"
-							>Programmer</span
-						>
-					</span>
-				{/if}
+				<span
+					class="bg-gradient-to-br from-blue-500 to-cyan-300 bg-clip-text text-transparent box-decoration-clone"
+					>{headerTitle}</span
+				>
 			</h1>
-			{#if headerTitle && headerSubtitle}
+			{#if headerSubtitle}
 				<!-- Small screens: up to two balanced lines rather than a cut-off sentence -->
 				<p class="line-clamp-2 text-xs text-balance opacity-75 md:line-clamp-none md:text-sm">
 					{headerSubtitle}
@@ -142,6 +122,9 @@
 	onClose={() => (chooserOpen = false)}
 	finalFocusEl={chooserFinalFocus}
 />
+
+<!-- The page's one "Send feedback" dialog, opened from the account menu or the footer -->
+<FeedbackDialog {signedIn} />
 
 <style>
 	.logo :global(svg) {

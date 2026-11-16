@@ -28,6 +28,8 @@ import { CARRIED_PLAN_IMPORTS_MS, carriedPlanImportsKey } from '../services/acco
 import { hashValue, peekRateLimit, rateLimitKey, takeRateLimit } from '../services/rateLimit';
 import { RESUME_IMPORT_MONTHLY_WINDOW_MS, resumeImportAttemptsKey, resumeImportUserKey } from '../services/resumeImport';
 import { jobImportAttemptsKey } from '../services/jobImport';
+import { stepSuggestionAttemptsKey, stepSuggestionOwnerKey } from '../services/stepSuggestions';
+import { feedbackAccountKey, feedbackAttemptsKey } from '../services/feedback';
 import {
   CONSENT,
   authCookie,
@@ -437,11 +439,16 @@ describe('DELETE /me', () => {
 
   it('keeps the quotas the account used for its Google identity: signing in again does not reset them', async () => {
     const before = await login('quota');
-    // Used: 2 résumé imports this month, 4 attempts today, the 3 job imports of the plan, 1 job import attempt
+    // Used: 2 résumé imports this month, 4 attempts today, the 3 job imports of the plan, 1 job import
+    // attempt, 1 step suggestion (2 attempts), 2 feedbacks (3 attempts) today
     const used: [string, number, number][] = [
       [resumeImportUserKey(before.userId), RESUME_IMPORT_MONTHLY_WINDOW_MS, 2],
       [resumeImportAttemptsKey(before.userId), 24 * 60 * 60_000, 4],
-      [jobImportAttemptsKey(before.userId), 24 * 60 * 60_000, 1]
+      [jobImportAttemptsKey(before.userId), 24 * 60 * 60_000, 1],
+      [stepSuggestionOwnerKey(before.userId), 24 * 60 * 60_000, 1],
+      [stepSuggestionAttemptsKey(before.userId), 24 * 60 * 60_000, 2],
+      [feedbackAccountKey(before.userId), 24 * 60 * 60_000, 2],
+      [feedbackAttemptsKey(before.userId), 24 * 60 * 60_000, 3]
     ];
     for (const [key, windowMs, count] of used) {
       for (let index = 0; index < count; index += 1) {
@@ -456,7 +463,7 @@ describe('DELETE /me', () => {
     const sub = googleSub('quota');
     const carried = await RateLimitCounter.find({ _id: { $regex: `^carried:.*:${hashValue(sub)}(:|$)` } }).lean();
     for (const counter of carried) createdCounters.add(counter._id);
-    expect(carried).toHaveLength(4);
+    expect(carried).toHaveLength(8);
     const planCounter = await RateLimitCounter.findById(carriedPlanImportsKey(sub)).lean();
     expect(planCounter?.count).toBe(3);
     expect(planCounter!.expiresAt.getTime()).toBeLessThanOrEqual(Date.now() + CARRIED_PLAN_IMPORTS_MS);
@@ -468,7 +475,11 @@ describe('DELETE /me', () => {
     for (const [key, windowMs, count] of [
       [resumeImportUserKey(after.userId), RESUME_IMPORT_MONTHLY_WINDOW_MS, 2],
       [resumeImportAttemptsKey(after.userId), 24 * 60 * 60_000, 4],
-      [jobImportAttemptsKey(after.userId), 24 * 60 * 60_000, 1]
+      [jobImportAttemptsKey(after.userId), 24 * 60 * 60_000, 1],
+      [stepSuggestionOwnerKey(after.userId), 24 * 60 * 60_000, 1],
+      [stepSuggestionAttemptsKey(after.userId), 24 * 60 * 60_000, 2],
+      [feedbackAccountKey(after.userId), 24 * 60 * 60_000, 2],
+      [feedbackAttemptsKey(after.userId), 24 * 60 * 60_000, 3]
     ] as const) {
       createdCounters.add(`${key}:${Math.floor(Date.now() / windowMs) * windowMs}`);
       expect((await peekRateLimit(key, { windowMs })).count).toBe(count);

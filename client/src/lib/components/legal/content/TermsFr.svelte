@@ -126,6 +126,15 @@ résiliation, responsabilité, modifications, droit applicable.
 		d'identité ou une adresse personnelle.
 	</li>
 </ul>
+<p>
+	Les suggestions d'étapes et les avis que vous envoyez sont publiés sous forme de tickets publics
+	sur GitHub, dans le dépôt du projet, sans votre nom (voir la
+	<LegalDocLink doc="privacy" {lang} hash="data-feedback">politique de confidentialité</LegalDocLink
+	>). Vous accordez à l'éditeur la même licence pour les y publier et les utiliser afin d'améliorer
+	le site ; elle ne prend pas fin avec votre compte, mais vous pouvez nous demander de retirer un
+	ticket. N'y écrivez rien que vous voulez garder privé, aucune donnée personnelle d'autrui et rien
+	d'illicite : nous pouvons retirer un ticket qui enfreint ces conditions.
+</p>
 
 <h3 id="prohibited">Ce qui est interdit</h3>
 <p>Vous ne devez pas utiliser le site pour :</p>

@@ -180,3 +180,6 @@ server/key.pem
 
 # Graphify — generated knowledge graph outputs (rebuild with /graphify .)
 graphify-out/
+
+# Local MongoDB of `bun run db:up` when Docker is not running (scripts/db.ts)
+.mongo/

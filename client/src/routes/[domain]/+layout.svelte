@@ -3,6 +3,7 @@
 	import Header from '#components/Header.svelte';
 	import LeftBar from '#components/LeftBar.svelte';
 	import LegalLinks from '#components/legal/LegalLinks.svelte';
+	import FeedbackButton from '#components/feedback/FeedbackButton.svelte';
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
@@ -28,6 +29,8 @@
 		if ($sessionCheckedStore) untrack(recordShown);
 	});
 
+	let headerTitle = $derived(data.domain.headerTitle?.trim() ?? '');
+
 	$effect(() => {
 		if (!browser) return;
 		document.documentElement.dataset.theme = data.domain.theme ?? 'wintry';
@@ -38,7 +41,11 @@
 
 <div class="h-full flex flex-col">
 	<!-- Header renders the page's <header> (AppBar) -->
-	<Header headerTitle={data.domain.headerTitle} headerSubtitle={data.domain.headerSubtitle} />
+	<!-- A portfolio whose owner set no title is headed by its address name ('jane.doe') -->
+	<Header
+		headerTitle={headerTitle || data.domain.name}
+		headerSubtitle={data.domain.headerSubtitle}
+	/>
 	<div class="relative flex-1 overflow-hidden">
 		<aside>
 			<LeftBar domain={data.domain} />
@@ -55,7 +62,10 @@
 			<!-- The legal pages, small, at the end of every page of the portfolio: they scroll with it.
 			     Its side padding clears the sidebar's handle -->
 			<footer class="portfolio-legal border-t border-surface-200-800 px-10 py-3">
-				<LegalLinks compact class="mx-auto max-w-4xl justify-center" />
+				<div class="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-x-3 gap-y-1">
+					<LegalLinks compact class="justify-center" />
+					<FeedbackButton class="text-xs" />
+				</div>
 			</footer>
 		</main>
 	</div>
