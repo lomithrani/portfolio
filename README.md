@@ -65,7 +65,7 @@ Use Bun for everything (`bun`, `bunx`), not npm or npx.
 bun install
 cp server/.env.example server/.env
 cp client/.env.example client/.env
-bun run db:up      # MongoDB 7 (as in production) in Docker on 127.0.0.1:27017, waits until healthy
+bun run db:up      # MongoDB 7 (as in production) on 127.0.0.1:27017: Docker, else a local mongod
 bun run db:seed    # owner user + the 'louis.gentil' domain (safe to re-run)
 bun run dev        # API on http://localhost:3000 and web app on http://localhost:5173
 ```
@@ -87,7 +87,7 @@ Run from the repository root.
 | `bun run dev`          | API (watch mode) and web dev server in parallel, with prefixed output                        |
 | `bun run dev:server`   | API only (`server/`, watch mode with the Bun inspector)                                      |
 | `bun run dev:client`   | Web dev server only (`client/`, Vite on port 5173)                                           |
-| `bun run db:up`        | Start the local MongoDB (`compose.yaml`) and wait until it is healthy                        |
+| `bun run db:up`        | Start the local MongoDB (`compose.yaml`, or a local `mongod` without Docker) until healthy   |
 | `bun run db:down`      | Stop it (keeps the data; `docker compose down -v` deletes it)                                |
 | `bun run db:seed`      | Seed the database at `MONGO_URL` with the owner user and the `louis.gentil` domain           |
 | `bun run typecheck`    | `tsc` on the API and `svelte-check` on the web app                                           |
