@@ -516,7 +516,9 @@ in English (`GET /feedback` says `classifies: true`). That is one small call per
 fraction of a cent, on the key's workspace and its spend limit. Without the key, or when Claude
 fails, refuses, answers something unusable or takes too long, the feedback is still filed, as a
 `Task` titled with the first words of the message, and the issue says it was not sorted
-automatically.
+automatically. The site has Claude sort at most **60 feedbacks a UTC day**, counted when the call
+is made and never given back (even when GitHub then refuses the issue); past that, feedback is
+filed without sorting (`Feedback: the classifications of the day are used up`).
 
 What a person writes, and what Claude derived from it, is untrusted and public if the repository
 is: the dialog says so and links to the privacy policy (`/legal/privacy#data-feedback`). The issue
@@ -530,9 +532,12 @@ logged as `Feedback: GitHub did not create the issue`, as for step suggestions.
 
 Limits, per UTC day (429 with `Retry-After`; constants of `server/services/feedback.ts`): **5
 feedbacks per account, 30 for the whole site, and 10 requests sent to GitHub per account**
-(attempts, never given back). As for step suggestions, a feedback GitHub refused is given back to
+(attempts, never given back: the second request of an issue filed again without its type takes
+one too). As for step suggestions, a feedback GitHub refused is given back to
 the first two limits, one GitHub did not answer in time is not (the issue may exist), redirects are
-never followed, and the token never appears in a response or a log line.
+never followed, and the token never appears in a response or a log line. Claude gets 8 s and GitHub
+12 s for both its requests, so the answer comes well before the 30 s Bun lets a connection stay
+silent (Elysia's `idleTimeout`).
 
 ## Travel times
 

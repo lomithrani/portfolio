@@ -5,7 +5,8 @@
 // model, an app's name, text a client made up) reaches the public issue.
 
 // Automated clients: no browser to speak of
-const BOT = /bot\b|bot\/|crawl|spider|slurp|headless|lighthouse|facebookexternalhit|curl\/|wget\/|python|go-http-client|okhttp|axios|node-fetch|java\//i
+// ("bot" as a word or before a version: a phone model such as "CUBOT X30" is not one)
+const BOT = /\bbot\b|bot\/|[a-z]bot\b(?!\s+[A-Z0-9])|crawl|spider|slurp|headless|lighthouse|facebookexternalhit|curl\/|wget\/|python|go-http-client|okhttp|axios|node-fetch|java\//i
 
 // In order: Edge and Opera also say Chrome, Chrome (and every iOS browser) also says Safari
 const BROWSERS: { name: string; version: RegExp }[] = [
@@ -37,6 +38,8 @@ export function describeBrowser(userAgent?: string | null): string | undefined {
   // Real User-Agents are a few hundred characters
   const header = userAgent.slice(0, 512)
   if (BOT.test(header)) return undefined
+  // An Android app's web view says Chrome, and "; wv)": it is the app, not a browser
+  if (/;\s*wv\)/.test(header)) return undefined
   const system = SYSTEMS.find(({ test }) => test.test(header))?.name
   for (const { name, version } of BROWSERS) {
     const match = version.exec(header)

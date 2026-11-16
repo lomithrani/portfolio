@@ -25,15 +25,16 @@ export const fenced = (text: string) => {
 }
 
 /**
- * Text in an issue's title, where a code block is not possible: a mention or
- * an issue number must not read as one there (`@ name`, `# 12`, `GH- 12`),
- * and no backtick or tag is left
+ * Text in an issue's title, where a code block is not possible: a mention, an
+ * issue number or a link must not read as one there (`@ name`, `# 12`,
+ * `GH- 12`, `https: //…`), and no backtick or tag is left
  */
 export const issueTitleText = (text: string) =>
   text
     .replace(/[`<>]/g, "'")
     .replace(/([@#])(?=\S)/g, '$1 ')
     .replace(/\b(gh-)(?=\d)/gi, '$1 ')
+    .replace(/:\/\//g, ': //')
 
 export interface GithubIssue {
   title: string
@@ -62,22 +63,43 @@ export type GithubIssueResult =
    * `operator`: the operator's to fix (the token: expired, without access to
    * the repository's issues; or the repository: renamed, issues disabled)
    */
-  | { outcome: 'refused'; status: number; operator: boolean; githubMessage?: string }
+  | {
+      outcome: 'refused'
+      status: number
+      operator: boolean
+      githubMessage?: string
+      /** The fields a 422 names (GitHub's `errors[].field`), when it names some */
+      invalidFields?: string[]
+    }
 
 // Statuses that are the operator's to fix, not GitHub's (a redirect: a renamed or transferred repository)
 const OPERATOR_STATUSES = [301, 302, 307, 308, 401, 403, 404, 410, 422]
 
-/** GitHub said no: the start of its message, for the operator's log (never the token) */
-const githubMessageOf = async (response: Response, token: string) => {
+/**
+ * GitHub said no: the start of its message, for the operator's log (never the
+ * token), and the fields a 422 names (e.g. `type`), names only
+ */
+const githubRefusalOf = async (response: Response, token: string) => {
+  let githubMessage: string | undefined
+  let invalidFields: string[] | undefined
   try {
     const body: unknown = await response.json()
-    if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
-      return body.message.replaceAll(token, '[token]').slice(0, 200)
+    if (body && typeof body === 'object') {
+      if ('message' in body && typeof body.message === 'string') {
+        githubMessage = body.message.replaceAll(token, '[token]').slice(0, 200)
+      }
+      if ('errors' in body && Array.isArray(body.errors)) {
+        const fields = body.errors
+          .map((error: unknown) => (error && typeof error === 'object' && 'field' in error ? error.field : undefined))
+          .filter((field): field is string => typeof field === 'string' && /^[a-z_]{1,40}$/.test(field))
+          .slice(0, 10)
+        if (fields.length > 0) invalidFields = fields
+      }
     }
   } catch {
     // Not JSON: the status is enough
   }
-  return undefined
+  return { ...(githubMessage ? { githubMessage } : {}), ...(invalidFields ? { invalidFields } : {}) }
 }
 
 /** Files an issue; never throws for what GitHub does (the result says), and never follows a redirect */
@@ -105,12 +127,11 @@ export async function createGithubIssue(issue: GithubIssue, options: GithubIssue
   }
 
   if (response.status !== 201) {
-    const githubMessage = await githubMessageOf(response, token)
     return {
       outcome: 'refused',
       status: response.status,
       operator: OPERATOR_STATUSES.includes(response.status),
-      ...(githubMessage ? { githubMessage } : {})
+      ...(await githubRefusalOf(response, token))
     }
   }
 

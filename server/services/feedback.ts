@@ -50,6 +50,13 @@ export const FEEDBACK_PER_ACCOUNT: RateLimit = { limit: 5, windowMs: DAY_MS }
 export const FEEDBACK_PER_DAY: RateLimit = { limit: 30, windowMs: DAY_MS }
 /** Requests an account can have sent to GitHub per UTC day, whatever their outcome: never given back */
 export const FEEDBACK_ATTEMPTS_PER_ACCOUNT: RateLimit = { limit: 10, windowMs: DAY_MS }
+/**
+ * Classifications the whole site has Claude make per UTC day, never given
+ * back (each one is billed, whatever happens to the issue after it): past it,
+ * feedback is filed without one. Feedback GitHub refused is given back to
+ * FEEDBACK_PER_DAY, so this is what bounds the bill while GitHub refuses
+ */
+export const FEEDBACK_CLASSIFICATIONS_PER_DAY: RateLimit = { limit: 60, windowMs: DAY_MS }
 
 /** Counter key of an account's feedback of the day (an HMAC of the user id) */
 export const feedbackAccountKey = (userId: string) => rateLimitKey('feedback:account', userId)
@@ -57,11 +64,19 @@ export const feedbackAccountKey = (userId: string) => rateLimitKey('feedback:acc
 /** Counter key of an account's attempts of the day (an HMAC of the user id) */
 export const feedbackAttemptsKey = (userId: string) => rateLimitKey('feedback:attempts', userId)
 
-/** Counter key of the site-wide daily limit; a property so each test can count on a key of its own */
-export const feedbackCounters = { globalKey: 'feedback:global' }
+/** Counter keys of the site-wide daily limits; properties so each test can count on keys of its own */
+export const feedbackCounters = { globalKey: 'feedback:global', classificationsKey: 'feedback:classifications' }
 
-/** How long Claude and GitHub have to answer; properties so tests can shorten them */
-export const feedbackTimeouts = { classifyMs: 15_000, githubMs: 10_000 }
+/**
+ * How long Claude has to answer, and GitHub to answer both requests (the issue,
+ * and the one without its type): properties so tests can shorten them. Together
+ * well under the 30 s a connection may stay silent (Bun's idleTimeout, which
+ * Elysia sets): past it the browser gets no answer, while the issue may exist
+ */
+export const feedbackTimeouts = { classifyMs: 8_000, githubMs: 12_000 }
+
+/** Least time left for the request without a type to be worth sending */
+const MIN_RETRY_MS = 1_000
 
 /** Model that classifies feedback: the imports' */
 export const FEEDBACK_MODEL = PDF_IMPORT_MODEL
@@ -323,6 +338,29 @@ export function feedbackIssue(
 
 // ── Sending ─────────────────────────────────────────────────
 
+/**
+ * Whether Claude may classify this feedback: a key, and the site's
+ * classifications of the day not used up (taken here, never given back)
+ */
+const mayClassify = async () => {
+  if (!env.ANTHROPIC_API_KEY) return false
+  const taken = await takeRateLimit(feedbackCounters.classificationsKey, FEEDBACK_CLASSIFICATIONS_PER_DAY)
+  if (taken.retryAfterSeconds === null) return true
+  logger.warn('Feedback: the classifications of the day are used up, filed without classification', {
+    limit: FEEDBACK_CLASSIFICATIONS_PER_DAY.limit
+  })
+  return false
+}
+
+/**
+ * Whether GitHub may have refused the issue for its type: a 422 that names no
+ * field, or names `type` (one naming only other fields is about something else)
+ */
+const refusedForType = (result: GithubIssueResult): result is Extract<GithubIssueResult, { outcome: 'refused' }> =>
+  result.outcome === 'refused' &&
+  result.status === 422 &&
+  (!result.invalidFields || result.invalidFields.includes('type'))
+
 /** GitHub's link to the issue, only when it is the one expected of the repository */
 const issueUrlOf = (repository: string, result: Extract<GithubIssueResult, { outcome: 'created' }>) => {
   const { number, htmlUrl } = result
@@ -367,21 +405,30 @@ export async function sendFeedback(
   }
 
   // After the limits: each classification is billed
-  const classification = await classifyFeedback(parsed.feedback.message)
+  const classification = (await mayClassify()) ? await classifyFeedback(parsed.feedback.message) : NOT_CLASSIFIED
   const issue = feedbackIssue(parsed.feedback, classification, { locale: getLocale(), userAgent: request.userAgent })
-  const options = { token, repository, userAgent: 'portfolio-feedback', timeoutMs: feedbackTimeouts.githubMs }
+  const options = { token, repository, userAgent: 'portfolio-feedback' }
 
-  let result = await createGithubIssue(issue, options)
-  if (result.outcome === 'refused' && result.status === 422) {
-    // Most likely a repository without this issue type: filed again once,
-    // the kind as a label (an issue type the repository lacks is a 422)
-    logger.warn('Feedback: GitHub refused the issue type, filed again with a label instead', {
-      repository,
-      type: issue.type,
-      ...(result.githubMessage ? { githubMessage: result.githubMessage } : {})
-    })
-    const { type: _type, ...untyped } = issue
-    result = await createGithubIssue({ ...untyped, labels: [...issue.labels, FEEDBACK_KIND_LABELS[classification.kind]] }, options)
+  // One time budget for both requests to GitHub
+  const githubStarted = Date.now()
+  let result = await createGithubIssue(issue, { ...options, timeoutMs: feedbackTimeouts.githubMs })
+  const timeLeft = feedbackTimeouts.githubMs - (Date.now() - githubStarted)
+  if (refusedForType(result) && timeLeft >= MIN_RETRY_MS) {
+    // A repository without this issue type: filed again once, the kind as a
+    // label. Another request to GitHub, so another attempt
+    const retry = await takeRateLimit(feedbackAttemptsKey(userId), FEEDBACK_ATTEMPTS_PER_ACCOUNT)
+    if (retry.retryAfterSeconds === null) {
+      logger.warn('Feedback: GitHub refused the issue type, filed again with a label instead', {
+        repository,
+        type: issue.type,
+        ...(result.githubMessage ? { githubMessage: result.githubMessage } : {})
+      })
+      const { type: _type, ...untyped } = issue
+      result = await createGithubIssue(
+        { ...untyped, labels: [...issue.labels, FEEDBACK_KIND_LABELS[classification.kind]] },
+        { ...options, timeoutMs: timeLeft }
+      )
+    }
   }
 
   if (result.outcome === 'noAnswer') {

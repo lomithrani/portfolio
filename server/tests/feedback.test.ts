@@ -16,6 +16,7 @@ import { logger } from '../services/logger';
 import { peekRateLimit } from '../services/rateLimit';
 import {
   FEEDBACK_ATTEMPTS_PER_ACCOUNT,
+  FEEDBACK_CLASSIFICATIONS_PER_DAY,
   FEEDBACK_MODEL,
   FEEDBACK_PER_ACCOUNT,
   FEEDBACK_PER_DAY,
@@ -204,7 +205,7 @@ const setSiteCount = async (count: number) => {
 };
 
 const removeTestData = async (suffix: string, ids: string[]) => {
-  const counterKeys = [feedbackCounters.globalKey, ...ids.flatMap((userId) => [feedbackAccountKey(userId), feedbackAttemptsKey(userId)])];
+  const counterKeys = [feedbackCounters.globalKey, feedbackCounters.classificationsKey, ...ids.flatMap((userId) => [feedbackAccountKey(userId), feedbackAttemptsKey(userId)])];
   await RateLimitCounter.deleteMany({ _id: { $regex: `^(${counterKeys.join('|')}):` } });
   await User.deleteMany({ email: new RegExp(`-${suffix}@`) });
 };
@@ -217,6 +218,7 @@ const saved = {
   repo: env.GITHUB_ISSUES_REPO,
   apiKey: env.ANTHROPIC_API_KEY,
   globalKey: feedbackCounters.globalKey,
+  classificationsKey: feedbackCounters.classificationsKey,
   timeouts: { ...feedbackTimeouts }
 };
 let connected = false;
@@ -232,6 +234,7 @@ afterAll(async () => {
   env.GITHUB_ISSUES_REPO = saved.repo;
   env.ANTHROPIC_API_KEY = saved.apiKey;
   feedbackCounters.globalKey = saved.globalKey;
+  feedbackCounters.classificationsKey = saved.classificationsKey;
   Object.assign(feedbackTimeouts, saved.timeouts);
   if (connected) await mongoose.disconnect();
 });
@@ -246,6 +249,7 @@ beforeEach(() => {
   env.ANTHROPIC_API_KEY = TEST_API_KEY;
   Object.assign(feedbackTimeouts, saved.timeouts);
   feedbackCounters.globalKey = `feedback:global:${t.id('test')}`;
+  feedbackCounters.classificationsKey = `feedback:classifications:${t.id('test')}`;
   app = createApp();
   // Every log call, to check what is never written
   for (const level of ['debug', 'info', 'warn', 'error'] as const) {
@@ -666,9 +670,61 @@ describe('POST /feedback', () => {
         githubMessage: 'Validation Failed'
       })}`
     ]);
-    // One feedback, one attempt
+    // One feedback, two requests to GitHub: two attempts
     expect(await accountCount(user)).toBe(1);
+    expect(await attemptCount(user)).toBe(2);
+  });
+
+  it('does not file again when the 422 is about another field', async () => {
+    const user = await createUser('sender');
+    fake.githubAnswers = [() => Response.json({ message: 'Validation Failed', errors: [{ field: 'labels' }] }, { status: 422 })];
+    const failed = await send(user);
+    expect(failed.status).toBe(503);
+    expect(fake.github).toHaveLength(1);
+    expect(await accountCount(user)).toBe(0);
     expect(await attemptCount(user)).toBe(1);
+  });
+
+  it('does not file again once the account used its attempts of the day', async () => {
+    const user = await createUser('sender');
+    // Nine attempts used: the issue takes the last one, the retry finds none
+    for (let i = 0; i < FEEDBACK_ATTEMPTS_PER_ACCOUNT.limit - 1; i++) {
+      await RateLimitCounter.updateOne(
+        { _id: `${feedbackAttemptsKey(user.id)}:${Math.floor(Date.now() / FEEDBACK_ATTEMPTS_PER_ACCOUNT.windowMs) * FEEDBACK_ATTEMPTS_PER_ACCOUNT.windowMs}` },
+        { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date(Date.now() + FEEDBACK_ATTEMPTS_PER_ACCOUNT.windowMs) } },
+        { upsert: true }
+      );
+    }
+    fake.githubDefault = () => Response.json({ message: 'Validation Failed', errors: [{ field: 'type' }] }, { status: 422 });
+    expect((await send(user)).status).toBe(503);
+    expect(fake.github).toHaveLength(1);
+    expect(await accountCount(user)).toBe(0);
+  });
+
+  it('files without classification once the site used its classifications of the day, and counts each one', async () => {
+    const user = await createUser('sender');
+    const { windowMs } = FEEDBACK_CLASSIFICATIONS_PER_DAY;
+    const day = Math.floor(Date.now() / windowMs) * windowMs;
+    await RateLimitCounter.updateOne(
+      { _id: `${feedbackCounters.classificationsKey}:${day}` },
+      { $set: { count: FEEDBACK_CLASSIFICATIONS_PER_DAY.limit - 1, expiresAt: new Date(day + windowMs) } },
+      { upsert: true }
+    );
+    // The last classification of the day, kept although GitHub refuses the issue
+    fake.githubAnswers = [() => Response.json({ message: 'Bad credentials' }, { status: 401 })];
+    expect((await send(user)).status).toBe(503);
+    expect(fake.claude).toHaveLength(1);
+    // None left: filed, not classified, and Claude is not called
+    const sent = await send(user);
+    expect(sent.status).toBe(200);
+    expect(sent.json()).toMatchObject({ kind: 'task', classified: false });
+    expect(fake.claude).toHaveLength(1);
+    expect(logged('warn').map((line) => line.label)).toContain(
+      'logger.warn(Feedback: the classifications of the day are used up, filed without classification)'
+    );
+    expect((await peekRateLimit(feedbackCounters.classificationsKey, FEEDBACK_CLASSIFICATIONS_PER_DAY)).count).toBe(
+      FEEDBACK_CLASSIFICATIONS_PER_DAY.limit + 1
+    );
   });
 
   it('labels each kind for a repository without issue types', async () => {
@@ -690,7 +746,8 @@ describe('POST /feedback', () => {
     expect(fake.github).toHaveLength(2);
     expect(await accountCount(user)).toBe(0);
     expect(await siteCount()).toBe(0);
-    expect(await attemptCount(user)).toBe(1);
+    // Two requests sent to GitHub: two attempts, never given back
+    expect(await attemptCount(user)).toBe(2);
   });
 
   it.each([
