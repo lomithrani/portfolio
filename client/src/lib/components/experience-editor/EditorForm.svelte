@@ -107,16 +107,36 @@
 	let sessionExpired = false;
 
 	type ShownError = FormFieldError & { snapshot: string };
-	let shownErrors: ShownError[] = $state([]);
+	const projectOf = (field: FieldKey) =>
+		field.startsWith('projects.') ? field.split('.')[1] : undefined;
+	const shown = (errors: FormFieldError[], of: FormData): ShownError[] =>
+		errors.map((error) => ({ ...error, snapshot: fieldSnapshot(of, error.field) }));
+	// A prefilled form (a résumé draft) opens with every problem it has shown, and its projects
+	// that have one open: the import's review names only the first problem and a collapsed
+	// project shows none, so fixing what the review named and saving was refused for a problem
+	// nobody had seen yet (a project's start, labelled "Start" like the experience's)
+	const prefilled = mode === 'add' && !!untrack(() => initialForm);
+	const openingErrors = (of: FormData): FormFieldError[] =>
+		prefilled ? validateExperienceForm(of) : [];
+	const expandedFor = (projects: FormProject[], errors: FormFieldError[] = []) => ({
+		...Object.fromEntries(projects.length === 1 ? [[projects[0].id, true]] : []),
+		...Object.fromEntries(
+			errors.flatMap((error) => {
+				const projectId = projectOf(error.field);
+				return projectId ? [[projectId, true]] : [];
+			})
+		)
+	});
+
+	const startErrors = openingErrors(start.form);
+	let shownErrors: ShownError[] = $state(shown(startErrors, start.form));
 	// An error stays until its field changes
 	let visibleErrors = $derived(
 		shownErrors.filter((error) => fieldSnapshot(form, error.field) === error.snapshot)
 	);
 	let errorByField = $derived(new Map(visibleErrors.map((error) => [error.field, error.message])));
 
-	const expandedFor = (projects: FormProject[]) =>
-		Object.fromEntries(projects.length === 1 ? [[projects[0].id, true]] : []);
-	let expanded: Record<string, boolean> = $state(expandedFor(start.form.projects));
+	let expanded: Record<string, boolean> = $state(expandedFor(start.form.projects, startErrors));
 	let removed: { project: FormProject; index: number; expanded: boolean } | null = $state(null);
 
 	const uid = $props.id();
@@ -153,8 +173,6 @@
 		else clearDraft(storageKey);
 	});
 
-	const projectOf = (field: FieldKey) =>
-		field.startsWith('projects.') ? field.split('.')[1] : undefined;
 	const projectHasErrors = (id: string) =>
 		visibleErrors.some((error) => projectOf(error.field) === id);
 
@@ -177,7 +195,7 @@
 	}
 
 	async function showErrors(errors: FormFieldError[]) {
-		shownErrors = errors.map((error) => ({ ...error, snapshot: fieldSnapshot(form, error.field) }));
+		shownErrors = shown(errors, form);
 		for (const error of errors) {
 			const projectId = projectOf(error.field);
 			if (projectId) expanded[projectId] = true;
@@ -326,11 +344,12 @@
 	/** Back to the saved experience (or the empty / prefilled add form), without the draft */
 	async function resetForm() {
 		form = structuredClone(baseline);
-		expanded = expandedFor(form.projects);
+		const errors = openingErrors(form);
+		expanded = expandedFor(form.projects, errors);
 		removed = null;
 		restoredNotice = false;
 		confirming = null;
-		shownErrors = [];
+		shownErrors = shown(errors, form);
 		submitError = '';
 		clearDraft(storageKey);
 		announcement = mode === 'add' ? m.discarded.draft : m.discarded.changes;

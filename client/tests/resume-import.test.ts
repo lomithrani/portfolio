@@ -393,6 +393,100 @@ test.describe('résumé import', () => {
 		]);
 	});
 
+	test('Edit shows every problem of a draft, so fixing them saves the first time', async ({
+		page
+	}) => {
+		// "– present" without a start, as is its main project: the review names the first problem
+		// only, and with two projects both are collapsed in the editor
+		await stubImport(page, {
+			status: () => enabled(),
+			post: (route) =>
+				route.fulfill({
+					json: {
+						experiences: [
+							{
+								type: 'professional',
+								title: `Consultant ${tag}`,
+								company: 'Initech',
+								current: true,
+								summary: '',
+								projects: [
+									{
+										name: `Audit ${tag}`,
+										current: true,
+										summary: '',
+										hardSkills: ['Go'],
+										softSkills: []
+									},
+									{
+										name: `Migration ${tag}`,
+										start: '2024-03',
+										end: '2024-09',
+										current: false,
+										summary: '',
+										hardSkills: [],
+										softSkills: []
+									}
+								]
+							},
+							{
+								// A second draft: the review stays open once the first is added
+								type: 'professional',
+								title: `Intern ${tag}`,
+								company: 'Globex',
+								start: '2019-01',
+								end: '2019-06',
+								current: false,
+								summary: '',
+								projects: []
+							}
+						],
+						warnings: [],
+						quota: { limit: 3, remaining: 1, resetsAt: '2026-12-01T10:00:00.000Z' }
+					}
+				})
+		});
+		const posts: unknown[] = [];
+		page.on('request', (request) => {
+			if (request.url() === `${API_URL}/experiences` && request.method() === 'POST') {
+				posts.push(request.postDataJSON());
+			}
+		});
+		await openAsOwner(page);
+		const dialog = await importDrafts(page);
+		const draft = dialog.getByRole('listitem').filter({ hasText: `Consultant ${tag}` });
+		await expect(draft).toContainText('Start: Choose the start month. (and 1 more)');
+
+		await draft.getByRole('button', { name: `Edit Consultant ${tag}` }).click();
+		const editor = page.getByRole('dialog', { name: 'New experience' });
+		await expect(editor).toBeVisible();
+		// Both problems from the start, the project's open: before, the editor showed none, and
+		// fixing the start the review named was refused for the project's (also called "Start")
+		await expect(editor).toContainText('Fix 2 problems before saving:');
+		await expect(
+			editor.getByRole('link', { name: 'Project 1 · Start: Choose the start month.' })
+		).toBeVisible();
+		const audit = editor.getByRole('region', { name: new RegExp(`Audit ${tag}`) });
+		await expect(audit).toBeVisible();
+
+		await editor.getByRole('combobox', { name: 'Start month' }).first().selectOption('03');
+		await editor.getByRole('combobox', { name: 'Start year' }).first().selectOption('2022');
+		await expect(editor).toContainText('Fix 1 problem before saving:');
+		await audit.getByRole('combobox', { name: 'Start month' }).selectOption('03');
+		await audit.getByRole('combobox', { name: 'Start year' }).selectOption('2022');
+		await expect(editor.getByText(/before saving/)).toHaveCount(0);
+		await editor.getByRole('button', { name: 'Add experience', exact: true }).click();
+
+		// Saved on the first press
+		await expect(editor).toBeHidden();
+		await expect(draft).toContainText('Added');
+		expect(posts).toHaveLength(1);
+		const saved = (await listExperiences()).find(
+			(experience) => experience.title === `Consultant ${tag}`
+		);
+		expect(saved).toMatchObject({ start: '2022-03-01T00:00:00.000Z' });
+	});
+
 	test('keeps the changes made in the editor to a draft, after a reload or an expired session', async ({
 		page
 	}) => {

@@ -64,12 +64,8 @@ test.describe('a visitor whose browser prefers French', () => {
 
 		await page.goto('/louis.gentil/experiences');
 		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
-		// A portfolio without a title is headed by words that are not translated, marked as English
-		const heading = page.getByRole('heading', { level: 1 });
-		await expect(heading).toHaveText(/Problem Solver\s*Engineer\s*Programmer/);
-		await expect(heading.locator('[lang="en"]')).toHaveText(
-			/Problem Solver\s*Engineer\s*Programmer/
-		);
+		// A portfolio without a title is headed by its address name, which is not translated
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText('louis.gentil');
 		await expect(page.getByRole('button', { name: 'Se connecter' })).toBeVisible();
 		await expect(page.getByRole('navigation', { name: 'Informations légales' })).toBeVisible();
 

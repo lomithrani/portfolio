@@ -28,6 +28,12 @@
 		if ($sessionCheckedStore) untrack(recordShown);
 	});
 
+	// Text only: the API client turns a date-like string ('2027-01-01') into a Date, which has no
+	// trim() and would take every page of the portfolio down with it
+	let headerTitle = $derived(
+		typeof data.domain.headerTitle === 'string' ? data.domain.headerTitle.trim() : ''
+	);
+
 	$effect(() => {
 		if (!browser) return;
 		document.documentElement.dataset.theme = data.domain.theme ?? 'wintry';
@@ -38,7 +44,11 @@
 
 <div class="h-full flex flex-col">
 	<!-- Header renders the page's <header> (AppBar) -->
-	<Header headerTitle={data.domain.headerTitle} headerSubtitle={data.domain.headerSubtitle} />
+	<!-- A portfolio whose owner set no title is headed by its address name ('jane.doe') -->
+	<Header
+		headerTitle={headerTitle || data.domain.name}
+		headerSubtitle={data.domain.headerSubtitle}
+	/>
 	<div class="relative flex-1 overflow-hidden">
 		<aside>
 			<LeftBar domain={data.domain} />
