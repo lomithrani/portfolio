@@ -71,7 +71,10 @@ export const feedbackCounters = { globalKey: 'feedback:global', classificationsK
  * How long Claude has to answer, and GitHub to answer both requests (the issue,
  * and the one without its type): properties so tests can shorten them. Together
  * well under the 30 s a connection may stay silent (Bun's idleTimeout, which
- * Elysia sets): past it the browser gets no answer, while the issue may exist
+ * Elysia sets). Bun (1.4.4) does not apply it while it handles a request that
+ * has a body, as POST /feedback does (tests/resumeImport.test.ts, "over a real
+ * connection"), but the budget keeps under it all the same: were it applied,
+ * the browser would get no answer past it while the issue may exist
  */
 export const feedbackTimeouts = { classifyMs: 8_000, githubMs: 12_000 }
 

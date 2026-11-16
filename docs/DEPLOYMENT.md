@@ -419,6 +419,23 @@ answer that counted is not thrown away.
 - Invalid files never reach Claude or the counters: not base64 or not a PDF (`422`), over 4 MB
   (`413`).
 
+**Silent connections.** The API sends nothing while Claude reads (up to 3.5 minutes, the job
+description import alike). Two timers could cut the connection meanwhile:
+
+- Bun's `idleTimeout`, 30 s (Elysia's default; `app.ts` does not set it). Bun 1.4.4 does not apply
+  it while it handles a request that has a body (`Content-Length` above 0, or chunked), which both
+  imports have: only body-less requests (a GET, a POST with `Content-Length: 0`) are cut, and the
+  timer starts again once the answer is sent. `server/tests/resumeImport.test.ts` ("over a real
+  connection") pins it: an import answered after the idle timeout must reach the client. If a Bun
+  upgrade breaks it, give the imports a timeout of their own (`server.timeout(request, seconds)`,
+  above the two deadlines, 255 s at most), not a longer `idleTimeout` for every connection.
+- Railway's edge: a request may last 15 minutes while data flows and is closed after 5 minutes with
+  no data transferred ([Specs & Limits](https://docs.railway.com/networking/public-networking/specs-and-limits)),
+  above the 3.5 minutes. A community report (July 2026, not confirmed by Railway) describes the
+  edge closing requests that sent no response byte for 60 s, answered `499`: if imports longer than
+  a minute fail in production, look for `499` with `totalDuration` about 60000 in the HTTP logs of
+  the API service.
+
 **Request size.** The API's body cap is 6 MB (Bun answers `413` above it, before the app runs): a
 4 MB PDF is about 5.4 MB of base64 JSON, so the two PDF imports, `POST /experiences/import` and
 `POST /jobs/import` (see "Job description import" below), take bodies up to that cap. Without a
@@ -537,7 +554,8 @@ one too). As for step suggestions, a feedback GitHub refused is given back to
 the first two limits, one GitHub did not answer in time is not (the issue may exist), redirects are
 never followed, and the token never appears in a response or a log line. Claude gets 8 s and GitHub
 12 s for both its requests, so the answer comes well before the 30 s Bun lets a connection stay
-silent (Elysia's `idleTimeout`).
+silent (Elysia's `idleTimeout`; Bun does not apply it while it handles a request with a body, as
+this one has, see [Résumé import](#résumé-import), but the budget does not count on that).
 
 ## Travel times
 
