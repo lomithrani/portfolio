@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { isValidDomainName, normalizeDomainName } from 'portfolio-common';
-import { portfolioApi } from '#services';
+import { portfolioTextApi } from '#services';
+import { reviveExperienceDates } from '#services/experienceDates.ts';
 import { isDomainNotFound } from '#services/apiErrors.ts';
 import type { Domain, Experience } from 'portfolio-api/models/database';
 import type { LayoutServerLoad } from './$types';
@@ -12,8 +13,10 @@ type DomainWithExperiences = Omit<Domain, 'experiences'> & {
 
 export const load: LayoutServerLoad = async ({ params }) => {
 	// Path params arrive decoded: re-encode so a crafted segment ('a?x', 'a/../b') cannot
-	// change the upstream API URL
-	const { data, error: apiError } = await portfolioApi
+	// change the upstream API URL. Read as text: the title, the subtitle and every text of the
+	// experiences come back as their owner wrote them, even one that looks like a date ('2027-01-01');
+	// only the dates of the experiences and their projects are made Dates again
+	const { data, error: apiError } = await portfolioTextApi
 		.domain({ name: encodeURIComponent(params.domain) })
 		.get();
 
@@ -36,7 +39,7 @@ export const load: LayoutServerLoad = async ({ params }) => {
 	}
 
 	return {
-		domain: data as unknown as DomainWithExperiences,
+		domain: reviveExperienceDates(data as unknown as DomainWithExperiences),
 		domainName: params.domain
 	};
 };
