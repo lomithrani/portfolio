@@ -108,7 +108,7 @@ export async function limitBookingRequestsForEmail(email: string) {
   }
 }
 
-type Booking = AppointmentBooking & { _id: Types.ObjectId }
+export type Booking = AppointmentBooking & { _id: Types.ObjectId }
 
 /**
  * Whether a booking still holds its slot: pending and recently held (its
@@ -155,7 +155,7 @@ export async function heldBookingBlocks(userId: Types.ObjectId, from: Date, to: 
 }
 
 /** Deletes a booking that no longer holds its slot; false when it still does */
-async function dropIfStale(calendar: calendar_v3.Calendar, booking: Booking) {
+export async function dropIfStale(calendar: calendar_v3.Calendar, booking: Booking) {
   if (await holdsSlot(calendar, booking)) return false
   // Unless it changed since it was read: confirmed, or its request renewed the hold
   await AppointmentBooking.deleteOne({
@@ -166,7 +166,8 @@ async function dropIfStale(calendar: calendar_v3.Calendar, booking: Booking) {
   return true
 }
 
-type BookingFields = Pick<Booking, 'schedule' | 'user' | 'calendarId' | 'start' | 'end' | 'emailHash'>
+type BookingFields = Pick<Booking, 'schedule' | 'user' | 'calendarId' | 'start' | 'end' | 'emailHash'> &
+  Partial<Pick<Booking, 'visitor'>>
 
 async function insertBooking(calendar: calendar_v3.Calendar, fields: BookingFields) {
   // A second try only after removing a stale booking of the same slot
@@ -198,13 +199,16 @@ export async function reserveSlot({
   schedule,
   start,
   end,
-  email
+  email,
+  visitor
 }: {
   calendar: calendar_v3.Calendar
   schedule: { _id: Types.ObjectId; user: Types.ObjectId; calendarId?: string | null }
   start: Date
   end: Date
   email: string
+  /** The signed-in account booking, which then lists the meeting; never the owner */
+  visitor?: Types.ObjectId | null
 }) {
   const fields: BookingFields = {
     schedule: schedule._id,
@@ -212,7 +216,8 @@ export async function reserveSlot({
     calendarId: schedule.calendarId ?? 'primary',
     start,
     end,
-    emailHash: hashValue(normalizeEmail(email))
+    emailHash: hashValue(normalizeEmail(email)),
+    ...(visitor && !visitor.equals(schedule.user) && { visitor })
   }
   const id = await insertBooking(calendar, fields)
 
@@ -261,11 +266,18 @@ export async function reserveSlot({
   return id
 }
 
-/** Records the Google event of a reserved booking */
-export async function confirmBooking(id: Types.ObjectId, eventId: string | null | undefined) {
+/** Records the Google event of a reserved booking, with its Meet link when it has one */
+export async function confirmBooking(
+  id: Types.ObjectId,
+  eventId: string | null | undefined,
+  meetLink?: string | null
+) {
   if (!eventId) return
   try {
-    await AppointmentBooking.updateOne({ _id: id }, { $set: { eventId } })
+    await AppointmentBooking.updateOne(
+      { _id: id },
+      { $set: { eventId, ...(meetLink && { meetLink }) } }
+    )
   } catch (error) {
     // Still pending: the next booking of the slot finds the event by its id and records it
     logger.error('Could not record the event of a booking', {

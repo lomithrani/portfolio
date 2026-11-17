@@ -178,8 +178,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	is a guest too, with the email address of their account, so that they receive the invitation as well:
 	each of you sees the other's address in it. The invitation also contains the details of the earlier
 	steps (for example the title, company and link of the job description you chose). We keep only a reservation
-	of the time slot (the time, the calendar, the event identifier and a hash of your email address keyed
-	with a secret), which is deleted automatically when the slot ends or the meeting is cancelled.
+	of the time slot (the time, the calendar, the event identifier, its Google Meet link and a hash of your
+	email address keyed with a secret) and, when you book signed in, your account, so that the meeting is
+	listed under your upcoming meetings in your recruiter space with its link to join. It is deleted automatically
+	when the slot ends or the meeting is cancelled.
 </p>
 
 <h4 id="data-perfect-job">Your perfect job (private)</h4>
@@ -559,9 +561,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	>), and your portfolio address becomes available to others. What stays: skill names in the shared
 	catalogue (they are not linked to anyone), step suggestions and feedback already published on
 	GitHub (write to us to have one removed), the meeting slots you reserved as a guest of other
-	portfolios (until the slot ends), the abuse and quota counters (keyed hashes, deleted at the end
-	of their window, at most 30 days; the quotas you used are carried over to a hash of your Google
-	account identifier, as described above), and logs until they expire.
+	portfolios (until the slot ends, no longer tied to your account), the abuse and quota counters
+	(keyed hashes, deleted at the end of their window, at most 30 days; the quotas you used are
+	carried over to a hash of your Google account identifier, as described above), and logs until they
+	expire.
 </p>
 
 <h3 id="rights">Your rights</h3>

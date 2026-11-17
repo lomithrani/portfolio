@@ -1001,6 +1001,107 @@ describe('public booking', () => {
 
 // The booking page greys out every date this route leaves out: it must list
 // exactly the dates available-slots has slots for
+describe('booked meetings', () => {
+  let scheduleId: string;
+
+  // After the top-level beforeEach: the owner connects, with one enabled schedule
+  beforeEach(async () => {
+    await connectOwner();
+    scheduleId = (await AppointmentSchedule.create({ ...scheduleBody(), user: owner.userId }))._id.toString();
+    google.state.busy = [];
+    rateLimitKeys.add(rateLimitKey('booked-meetings', other.userId));
+    rateLimitKeys.add(rateLimitKey('booked-meetings', owner.userId));
+  });
+
+  const book = (time: string, cookie?: string, email = t.email('other')) =>
+    call('POST', '/appointments/book', { body: { scheduleId, startTime: at(time), name: 'Recruiter', email }, cookie });
+  const booked = async (cookie = other.cookie) => {
+    const response = await call('GET', '/appointments/booked', { cookie });
+    expect(response.status).toBe(200);
+    return response.json<{ meetings: Record<string, unknown>[] }>().meetings;
+  };
+
+  it('lists the meetings an account booked signed in, with what it needs to join', async () => {
+    expect((await call('GET', '/appointments/booked')).status).toBe(401);
+    expect(await booked()).toEqual([]);
+
+    expect((await book('11:00', other.cookie)).status).toBe(200);
+    expect((await book('09:00', other.cookie)).status).toBe(200);
+    // Signed out: the booking keeps no account
+    expect((await book('10:00', undefined, t.email('anonymous'))).status).toBe(200);
+
+    const meetings = await booked();
+    expect(meetings).toEqual([
+      {
+        id: expect.any(String),
+        start: at('09:00'),
+        end: at('10:00'),
+        title: 'Intro call',
+        portfolio: { name: t.id('domain'), title: null },
+        location: 'google_meet',
+        locationDetails: null,
+        meetLink: 'https://meet.google.com/abc-defg-hij'
+      },
+      expect.objectContaining({ start: at('11:00'), end: at('12:00') })
+    ]);
+    // Nothing of the owner's account, calendar or event
+    expect(JSON.stringify(meetings)).not.toContain(PRIMARY_CALENDAR);
+    expect(JSON.stringify(meetings)).not.toContain(owner.userId);
+
+    // The owner's own list is the calendar's; the visitor's is their own
+    expect(await booked(owner.cookie)).toEqual([]);
+    const anonymous = await AppointmentBooking.findOne({ user: owner.userId, start: new Date(at('10:00')) }).lean();
+    expect(anonymous?.visitor).toBeUndefined();
+  });
+
+  it('says where a meeting outside Google Meet takes place', async () => {
+    await AppointmentSchedule.updateOne(
+      { _id: scheduleId },
+      { $set: { locationType: 'phone', locationDetails: ' +33 1 23 45 67 89 ' } }
+    );
+    expect((await book('09:00', other.cookie)).status).toBe(200);
+    expect(await booked()).toEqual([
+      expect.objectContaining({ location: 'phone', locationDetails: '+33 1 23 45 67 89', meetLink: null })
+    ]);
+  });
+
+  it('leaves out a meeting the owner deleted in Google Calendar, and keeps it while Google cannot be asked', async () => {
+    expect((await book('09:00', other.cookie)).status).toBe(200);
+    expect((await book('11:00', other.cookie)).status).toBe(200);
+    const [first] = [...google.state.events.values()].filter((event) => event.start?.dateTime === at('09:00'));
+    google.state.events.delete(first.id);
+
+    expect((await booked()).map((meeting) => meeting.start)).toEqual([at('11:00')]);
+    // Removed as a booking of its slot would remove it: the slot is free again
+    expect(await AppointmentBooking.countDocuments({ user: owner.userId, start: new Date(at('09:00')) })).toBe(0);
+
+    // The owner disconnected: listed from what the booking recorded
+    expect((await call('POST', '/appointments/disconnect', { cookie: owner.cookie })).status).toBe(200);
+    expect((await booked()).map((meeting) => meeting.start)).toEqual([at('11:00')]);
+  });
+
+  it('stops asking Google over the limit of checks', async () => {
+    expect((await book('09:00', other.cookie)).status).toBe(200);
+    await RateLimitCounter.create({
+      _id: `${rateLimitKey('booked-meetings', other.userId)}:${Math.floor(Date.now() / 3_600_000) * 3_600_000}`,
+      count: 60,
+      expiresAt: new Date(Date.now() + 3_600_000)
+    });
+    const before = google.state.requests.length;
+    expect(await booked()).toHaveLength(1);
+    expect(google.state.requests.length).toBe(before);
+  });
+
+  it('keeps the meeting booked when the account that booked it is deleted', async () => {
+    expect((await book('09:00', other.cookie)).status).toBe(200);
+    const deleted = await call('DELETE', '/me', { body: { confirm: 'DELETE' }, cookie: other.cookie });
+    expect(deleted.status).toBe(204);
+    const booking = await AppointmentBooking.findOne({ user: owner.userId, start: new Date(at('09:00')) }).lean();
+    expect(booking?.eventId).toBeString();
+    expect(booking?.visitor).toBeUndefined();
+  });
+});
+
 describe('hiring journey gate', () => {
   let scheduleId: string;
   // The web app the bookings come from: an allowed origin whatever ALLOWED_DOMAINS this run has
@@ -1881,6 +1982,15 @@ describe('no Google token in any API response', () => {
       body: { scheduleId, startTime: at('11:00'), name: 'Sweep', email: t.email('sweep-visitor') }
     });
     expect(booked.status).toBe(200);
+    // Booked signed in: in the visitor's own list, checked with the owner's calendar
+    rateLimitKeys.add(rateLimitKey('booked-meetings', other.userId));
+    const bookedSignedIn = await call('POST', '/appointments/book', {
+      cookie: other.cookie,
+      body: { scheduleId, startTime: at('10:00'), name: 'Sweep', email: t.email('sweep-other') }
+    });
+    expect(bookedSignedIn.status).toBe(200);
+    const visitorMeetings = await call('GET', '/appointments/booked', { cookie: other.cookie });
+    expect(visitorMeetings.json<{ meetings: unknown[] }>().meetings).toHaveLength(1);
 
     const upcoming = await call('GET', '/appointments/upcoming', auth);
     expect(upcoming.status).toBe(200);

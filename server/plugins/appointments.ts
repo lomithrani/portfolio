@@ -1,6 +1,6 @@
 import Elysia, { t } from 'elysia'
 import type { calendar_v3 } from '@googleapis/calendar'
-import type { Types } from 'mongoose'
+import { Types } from 'mongoose'
 import {
   MAX_AVAILABLE_DATES_RANGE,
   addDays,
@@ -54,6 +54,7 @@ import {
   releaseEventBooking,
   reserveSlot
 } from '../services/appointmentBookings'
+import { listBookedMeetings } from '../services/bookedMeetings'
 import { clientAddress } from '../services/clientAddress'
 import { logger } from '../services/logger'
 import { sessionUserId } from '../services/session'
@@ -152,6 +153,9 @@ const appointmentsAdmin = new Elysia()
       params: objectIdParams
     }
   )
+  // The meetings this account booked on other portfolios, signed in: its own
+  // side of /appointments/upcoming (services/bookedMeetings.ts)
+  .get('/appointments/booked', async ({ userId }) => ({ meetings: await listBookedMeetings(userId) }))
   .get('/appointments/upcoming', async ({ userId }) => {
     const calendar = await getCalendarClient(userId)
     const [schedules, ownerEmail] = await Promise.all([
@@ -421,7 +425,9 @@ const appointmentsPublic = new Elysia()
         schedule,
         start: new Date(slot.start),
         end: new Date(slot.end),
-        email
+        email,
+        // Signed in: the meeting is listed in the visitor's space (GET /appointments/booked)
+        visitor: visitorId ? new Types.ObjectId(visitorId) : null
       })
 
       // Read by the owner and by the person who books: in the language of this request
@@ -454,7 +460,7 @@ const appointmentsPublic = new Elysia()
         if (isRejectedInsert(error)) await releaseBooking(bookingId)
         throw error
       }
-      await confirmBooking(bookingId, event.id)
+      await confirmBooking(bookingId, event.id, event.hangoutLink)
       // The meeting is booked whatever happens to this record: never answered as a failure
       await recordStepData(schedule.user, visitorId, step.stepId, { bookedAt: new Date() }).catch((error: unknown) => {
         logger.error('Could not record a booking in the hiring journey', {

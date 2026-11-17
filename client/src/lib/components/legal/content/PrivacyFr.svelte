@@ -183,8 +183,11 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	invité, avec l'adresse e-mail de son compte, pour recevoir l'invitation lui aussi : chacun de vous voit
 	l'adresse de l'autre dans l'invitation. L'invitation contient aussi les éléments des étapes précédentes
 	(par exemple l'intitulé, l'entreprise et le lien de l'offre choisie). Nous ne gardons qu'une réservation
-	du créneau (l'horaire, l'agenda, l'identifiant de l'événement et une empreinte de votre adresse e-mail
-	calculée avec une clé secrète), supprimée automatiquement à la fin du créneau ou à l'annulation du rendez-vous.
+	du créneau (l'horaire, l'agenda, l'identifiant de l'événement, son lien Google Meet et une empreinte
+	de votre adresse e-mail calculée avec une clé secrète) et, si vous réservez en étant connecté, votre
+	compte, pour que le rendez-vous figure parmi vos prochains rendez-vous dans votre espace recruteur,
+	avec son lien pour le rejoindre. Elle est supprimée automatiquement à la fin du créneau ou à l'annulation
+	du rendez-vous.
 </p>
 
 <h4 id="data-perfect-job">Votre poste idéal (privé)</h4>
@@ -594,10 +597,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	>), et l'adresse de votre portfolio redevient disponible. Ce qui reste : les noms de compétences
 	du catalogue partagé (ils ne sont liés à personne), les suggestions d'étapes et les avis déjà
 	publiés sur GitHub (écrivez-nous pour en faire retirer un), les créneaux que vous avez réservés
-	comme invité d'autres portfolios (jusqu'à la fin du créneau), les compteurs contre les abus et de
-	quotas (empreintes, supprimées à la fin de leur période, 30 jours au plus ; les quotas utilisés
-	sont reportés sur une empreinte de l'identifiant de votre compte Google, comme indiqué ci-dessus),
-	et les journaux jusqu'à leur expiration.
+	comme invité d'autres portfolios (jusqu'à la fin du créneau, sans lien avec votre compte), les
+	compteurs contre les abus et de quotas (empreintes, supprimées à la fin de leur période, 30 jours
+	au plus ; les quotas utilisés sont reportés sur une empreinte de l'identifiant de votre compte
+	Google, comme indiqué ci-dessus), et les journaux jusqu'à leur expiration.
 </p>
 
 <h3 id="rights">Vos droits</h3>
