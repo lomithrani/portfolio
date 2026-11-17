@@ -8,7 +8,9 @@ import type { InferSchemaType } from 'mongoose'
 // (services/appointmentBookings.ts), so Google can always be asked whether it
 // exists. Removed when the booking is cancelled from the admin panel, when
 // Google refuses the event, when another booking finds its event gone, and by
-// MongoDB once the slot is over (TTL index on `end`).
+// MongoDB once the slot is over (TTL index on `end`). A booking made signed in
+// keeps the account that made it, so it lists its upcoming meetings
+// (GET /appointments/booked, services/bookedMeetings.ts).
 export const appointmentBookingSchema = new Schema({
   schedule: { type: Schema.Types.ObjectId, ref: 'AppointmentSchedule', required: true },
   /** The schedule's owner, whose calendar holds the event */
@@ -21,6 +23,13 @@ export const appointmentBookingSchema = new Schema({
   /** Google event id; unset while the event is being created (pending) */
   eventId: { type: String },
   /**
+   * The account that booked, when signed in (not the owner): it finds the
+   * meeting among its own. Unset when that account is deleted
+   */
+  visitor: { type: Schema.Types.ObjectId, ref: 'User' },
+  /** The event's Google Meet link, recorded with its id, for the visitor to join */
+  meetLink: { type: String },
+  /**
    * Lease of a pending booking: renewed just before its event is created.
    * Another request only takes over a pending booking held for long (abandoned)
    */
@@ -32,6 +41,7 @@ appointmentBookingSchema.index({ schedule: 1, start: 1 }, { unique: true })
 appointmentBookingSchema.index({ user: 1, start: 1 })
 appointmentBookingSchema.index({ schedule: 1, emailHash: 1 })
 appointmentBookingSchema.index({ user: 1, eventId: 1 })
+appointmentBookingSchema.index({ visitor: 1, start: 1 }, { sparse: true })
 appointmentBookingSchema.index({ end: 1 }, { expireAfterSeconds: 0 })
 
 export type AppointmentBooking = InferSchemaType<typeof appointmentBookingSchema>

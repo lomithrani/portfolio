@@ -31,6 +31,20 @@ export const m = defineMessages({
      * Heading of the notes the visitor wrote, which follow on the next line as they typed them:
      * not through a message, whose French typography would rewrite their spaces
      */
-    notesLabel: { en: 'Notes:', fr: 'Notes :' }
+    notesLabel: { en: 'Notes:', fr: 'Notes :' },
+    /**
+     * Where the meeting takes place, outside Google Meet: alone, or followed on the same line by
+     * what the owner wrote in the schedule (their number, an address), as they wrote it
+     */
+    place: {
+      phone: { en: 'Phone call', fr: 'Appel téléphonique' },
+      in_person: { en: 'In person', fr: 'En personne' },
+      custom: { en: 'Where', fr: 'Lieu' }
+    },
+    placeLabel: {
+      phone: { en: 'Phone call:', fr: 'Appel téléphonique :' },
+      in_person: { en: 'In person:', fr: 'En personne :' },
+      custom: { en: 'Where:', fr: 'Lieu :' }
+    }
   }
 })

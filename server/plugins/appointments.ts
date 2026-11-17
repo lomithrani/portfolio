@@ -1,6 +1,6 @@
 import Elysia, { t } from 'elysia'
 import type { calendar_v3 } from '@googleapis/calendar'
-import type { Types } from 'mongoose'
+import { Types } from 'mongoose'
 import {
   MAX_AVAILABLE_DATES_RANGE,
   addDays,
@@ -13,7 +13,7 @@ import {
 import type { BookingHorizon } from 'portfolio-common'
 import { env } from '../env'
 import { userLogged } from './userLogged'
-import { AppointmentSchedule, Domain } from '../models/database'
+import { AppointmentSchedule, Domain, User } from '../models/database'
 import {
   AppointmentEventNotFoundError,
   AppointmentScheduleNotFoundError,
@@ -30,6 +30,7 @@ import {
 } from '../models/elysia'
 import {
   connectGoogleCalendar,
+  bookingReminders,
   createEvent,
   deleteEvent,
   disconnectGoogleCalendar,
@@ -53,6 +54,7 @@ import {
   releaseEventBooking,
   reserveSlot
 } from '../services/appointmentBookings'
+import { listBookedMeetings } from '../services/bookedMeetings'
 import { clientAddress } from '../services/clientAddress'
 import { logger } from '../services/logger'
 import { sessionUserId } from '../services/session'
@@ -80,6 +82,10 @@ const assertValidSchedule = (body: ScheduleRequest) => {
     throw new BadRequestError(() => m.windowsEndAfterStart)
   }
 }
+
+/** The email address an account signs in with, invited to the meetings booked with it */
+const accountEmail = async (userId: Types.ObjectId | string) =>
+  (await User.findById(userId, { email: 1 }).lean())?.email
 
 const appointmentsAdmin = new Elysia()
   .use(userLogged)
@@ -147,9 +153,17 @@ const appointmentsAdmin = new Elysia()
       params: objectIdParams
     }
   )
+  // The meetings this account booked on other portfolios, signed in: its own
+  // side of /appointments/upcoming (services/bookedMeetings.ts)
+  .get('/appointments/booked', async ({ userId }) => ({ meetings: await listBookedMeetings(userId) }))
   .get('/appointments/upcoming', async ({ userId }) => {
     const calendar = await getCalendarClient(userId)
-    const schedules = await AppointmentSchedule.find({ user: userId })
+    const [schedules, ownerEmail] = await Promise.all([
+      AppointmentSchedule.find({ user: userId }),
+      accountEmail(userId)
+    ])
+    // The owner is a guest of every booking: the list says who booked
+    const isOwner = (email: string) => email.toLowerCase() === ownerEmail?.toLowerCase()
     const calendarIds = [...new Set(schedules.map((s) => s.calendarId ?? 'primary'))]
 
     const eventsByCalendar = await Promise.all(
@@ -167,7 +181,8 @@ const appointmentsAdmin = new Elysia()
         end: event.end?.dateTime ?? event.end?.date ?? null,
         attendees: (event.attendees ?? [])
           .map((a) => a.email)
-          .filter((email): email is string => Boolean(email)),
+          .filter((email): email is string => Boolean(email))
+          .filter((email) => !isOwner(email)),
         meetLink: event.hangoutLink ?? null,
         htmlLink: event.htmlLink ?? null,
         // The calendar the event was listed from, needed to cancel it
@@ -215,6 +230,22 @@ const publicScheduleFields = (schedule: ScheduleDocument) => ({
     endTime
   }))
 })
+
+type LocationType = 'google_meet' | 'phone' | 'in_person' | 'custom'
+
+/**
+ * Where a meeting outside Google Meet takes place, for the event's location (Google shows it,
+ * a number or an address a phone can open) and the first line of its description: what the
+ * owner wrote in the schedule, as they wrote it, after its kind (the visitor's language)
+ */
+const meetingPlace = (locationType: LocationType, details: string | null | undefined) => {
+  if (locationType === 'google_meet') return { location: undefined, line: '' }
+  const written = details?.trim()
+  if (!written) {
+    return { location: undefined, line: locationType === 'custom' ? '' : m.invitation.place[locationType] }
+  }
+  return { location: written, line: `${m.invitation.placeLabel[locationType]} ${written}` }
+}
 
 const scheduleNotFound = () => new AppointmentScheduleNotFoundError(() => m.scheduleNotFound)
 
@@ -379,6 +410,7 @@ const appointmentsPublic = new Elysia()
       if (isNaN(slotStart.getTime())) {
         throw new BadRequestError(() => m.invalidStartTime)
       }
+      const locationType = (schedule.locationType ?? 'google_meet') as LocationType
 
       // Recompute availability server-side: the slot must still be free, within
       // the booking horizon and respect the minimum notice
@@ -394,6 +426,11 @@ const appointmentsPublic = new Elysia()
       // picked): what the meeting is about. Before the slot is held, so a
       // failure here leaves nothing behind
       const journeyLines = await step.invitationLines(webOrigin(request))
+      // The owner is a guest too: Google never emails an event's organizer, so
+      // this is how they get the invitation when the schedule books into a
+      // calendar other than their sign-in account's own (on that one, the
+      // event's email reminder tells them)
+      const ownerEmail = await accountEmail(schedule.user)
 
       // Only now: a request for a taken slot or an unknown schedule must not
       // use up the quota of the address it names
@@ -405,12 +442,16 @@ const appointmentsPublic = new Elysia()
         schedule,
         start: new Date(slot.start),
         end: new Date(slot.end),
-        email
+        email,
+        // Signed in: the meeting is listed in the visitor's space (GET /appointments/booked)
+        visitor: visitorId ? new Types.ObjectId(visitorId) : null
       })
 
       // Read by the owner and by the person who books: in the language of this request
+      const place = meetingPlace(locationType, schedule.locationDetails)
       const description = [
         m.invitation.bookedBy(name, email),
+        place.line ? `\n${place.line}` : '',
         ...journeyLines.map((line) => `\n${line}`),
         notes ? `\n${m.invitation.notesLabel}\n${notes}` : ''
       ].join('')
@@ -423,8 +464,14 @@ const appointmentsPublic = new Elysia()
           startTime: slot.start,
           endTime: slot.end,
           timezone: schedule.timezone,
-          attendeeEmail: email,
-          addGoogleMeet: schedule.locationType === 'google_meet'
+          location: place.location,
+          attendees: [
+            { email },
+            ...(ownerEmail ? [{ email: ownerEmail, responseStatus: 'accepted' as const }] : [])
+          ],
+          // Google never emails the organizer: an email reminder right after the booking does
+          reminders: bookingReminders(new Date(slot.start)),
+          addGoogleMeet: locationType === 'google_meet'
         })
       } catch (error) {
         // Refused: no event. Otherwise (timeout, network, 5xx) Google may have
@@ -433,7 +480,7 @@ const appointmentsPublic = new Elysia()
         if (isRejectedInsert(error)) await releaseBooking(bookingId)
         throw error
       }
-      await confirmBooking(bookingId, event.id)
+      await confirmBooking(bookingId, event.id, event.hangoutLink)
       // The meeting is booked whatever happens to this record: never answered as a failure
       await recordStepData(schedule.user, visitorId, step.stepId, { bookedAt: new Date() }).catch((error: unknown) => {
         logger.error('Could not record a booking in the hiring journey', {

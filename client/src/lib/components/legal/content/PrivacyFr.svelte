@@ -179,11 +179,15 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Pour réserver un rendez-vous, vous indiquez votre <strong>nom</strong>, votre
 	<strong>adresse e-mail</strong> et, si vous le souhaitez, une note. Ils ne sont pas enregistrés dans
 	notre base de données : ils sont envoyés à l'agenda Google du propriétaire du portfolio, qui crée l'événement
-	avec vous comme invité et vous envoie l'invitation par e-mail. L'invitation contient aussi les éléments
-	des étapes précédentes (par exemple l'intitulé, l'entreprise et le lien de l'offre choisie). Nous ne
-	gardons qu'une réservation du créneau (l'horaire, l'agenda, l'identifiant de l'événement et une empreinte
-	de votre adresse e-mail calculée avec une clé secrète), supprimée automatiquement à la fin du créneau
-	ou à l'annulation du rendez-vous.
+	avec vous comme invité et vous envoie l'invitation par e-mail. Le propriétaire du portfolio est aussi
+	invité, avec l'adresse e-mail de son compte, pour recevoir l'invitation lui aussi : chacun de vous voit
+	l'adresse de l'autre dans l'invitation. L'invitation contient aussi les éléments des étapes précédentes
+	(par exemple l'intitulé, l'entreprise et le lien de l'offre choisie). Nous ne gardons qu'une réservation
+	du créneau (l'horaire, l'agenda, l'identifiant de l'événement, son lien Google Meet et une empreinte
+	de votre adresse e-mail calculée avec une clé secrète) et, si vous réservez en étant connecté, votre
+	compte, pour que le rendez-vous figure parmi vos prochains rendez-vous dans votre espace recruteur,
+	avec son lien pour le rejoindre. Elle est supprimée automatiquement à la fin du créneau ou à l'annulation
+	du rendez-vous.
 </p>
 
 <h4 id="data-perfect-job">Votre poste idéal (privé)</h4>
@@ -214,7 +218,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <p>
 	Le propriétaire d'un portfolio qui propose des rendez-vous connecte son agenda Google. Nous
 	conservons alors les jetons d'accès fournis par Google, qui permettent au site de savoir quand il
-	est occupé et de créer les événements réservés par les visiteurs. Les détails figurent dans
+	est occupé et de créer les événements réservés par les visiteurs, avec l'adresse e-mail de son
+	compte parmi les invités pour qu'il reçoive lui aussi l'invitation, et un rappel par e-mail que
+	Google lui envoie une minute après la réservation (ou 4 semaines avant un rendez-vous plus
+	lointain), avec le rappel habituel 10 minutes avant. Les détails figurent dans
 	<a class="link-text" href="#google">Données des utilisateurs Google</a>.
 </p>
 
@@ -388,6 +395,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 		<strong>Les propriétaires de portfolio</strong> : le nom, l'adresse e-mail et la note d'un visiteur
 		qui réserve un rendez-vous, avec les éléments des étapes précédentes du parcours, dans l'invitation
 		de leur agenda Google.
+	</li>
+	<li>
+		<strong>Les visiteurs qui réservent un rendez-vous</strong> : l'adresse e-mail du compte du propriétaire
+		du portfolio, invité au même rendez-vous.
 	</li>
 	<li>
 		<strong>Nos sous-traitants</strong>, qui agissent sur nos instructions :
@@ -586,10 +597,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	>), et l'adresse de votre portfolio redevient disponible. Ce qui reste : les noms de compétences
 	du catalogue partagé (ils ne sont liés à personne), les suggestions d'étapes et les avis déjà
 	publiés sur GitHub (écrivez-nous pour en faire retirer un), les créneaux que vous avez réservés
-	comme invité d'autres portfolios (jusqu'à la fin du créneau), les compteurs contre les abus et de
-	quotas (empreintes, supprimées à la fin de leur période, 30 jours au plus ; les quotas utilisés
-	sont reportés sur une empreinte de l'identifiant de votre compte Google, comme indiqué ci-dessus),
-	et les journaux jusqu'à leur expiration.
+	comme invité d'autres portfolios (jusqu'à la fin du créneau, sans lien avec votre compte), les
+	compteurs contre les abus et de quotas (empreintes, supprimées à la fin de leur période, 30 jours
+	au plus ; les quotas utilisés sont reportés sur une empreinte de l'identifiant de votre compte
+	Google, comme indiqué ci-dessus), et les journaux jusqu'à leur expiration.
 </p>
 
 <h3 id="rights">Vos droits</h3>
@@ -734,15 +745,16 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	<li>
 		<strong>Connexion avec Google</strong> : nous recevons l'identifiant de votre compte Google, votre
 		adresse e-mail, votre nom et votre photo dans un jeton signé, et ne conservons que l'identifiant et
-		l'adresse e-mail, pour créer votre compte et vous connecter.
+		l'adresse e-mail, pour créer votre compte, vous connecter et, si vous proposez des rendez-vous, vous
+		inviter à ceux qui sont réservés avec vous.
 	</li>
 	<li>
 		<strong>Google Agenda</strong>, uniquement pour les propriétaires de portfolio qui le connectent
 		: le site demande le périmètre <code>{GOOGLE_CALENDAR_SCOPE}</code> et ne l'utilise que pour lister
 		vos agendas afin que vous choisissiez celui des rendez-vous, lire les plages occupées de cet agenda
 		(pas le contenu de vos événements) pour afficher les créneaux libres, créer l'événement de chaque
-		réservation (avec un lien Google Meet si vous l'avez choisi) et envoyer son invitation, et lister
-		et annuler les événements réservés par ce site.
+		réservation (avec un lien Google Meet si vous l'avez choisi, et un rappel par e-mail pour vous) et
+		envoyer son invitation, et lister et annuler les événements réservés par ce site.
 	</li>
 	<li>
 		Les données reçues de Google ne sont pas utilisées à des fins publicitaires, ne sont pas

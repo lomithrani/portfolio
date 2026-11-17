@@ -268,7 +268,11 @@ claim needs it.
 
 The admin panel's **Appointments** tab connects the owner's Google Calendar (OAuth code flow in a
 Google popup); visitors then book free slots on the `/hire` page, and the API creates the events
-(with a Google Meet link and an invitation to the visitor). The API exchanges the authorization
+(with a Google Meet link and an invitation to the visitor and to the owner's account email: Google
+never emails an event's organizer, so the owner only gets the invitation when the schedule books
+into a calendar other than their sign-in account's primary one), and an email reminder Google sends
+the owner a minute after the booking (4 weeks before a meeting further away), which tells them in
+every case. The API exchanges the authorization
 code with the OAuth client's secret, so the feature is **off until `GOOGLE_CLIENT_SECRET` is set**:
 the API boots without it, the tab says Google Calendar is not configured, and `/hire` offers no
 slots.
@@ -313,7 +317,7 @@ reconnecting would not fix it, so it stays a 500 logged at `error`, and the toke
 ### Booking protection
 
 Booking is public, and every booking makes Google email an invitation from the owner's calendar
-to the address the visitor typed. `POST /appointments/book` therefore:
+to the address the visitor typed (and to the owner's account email, a guest of every booking). `POST /appointments/book` therefore:
 
 - **Reserves the slot in MongoDB** (collection `appointmentbookings`, unique index on schedule and
   start) after re-checking Google FreeBusy and before creating the event, so two concurrent
