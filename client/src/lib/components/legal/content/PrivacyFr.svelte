@@ -177,17 +177,17 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 </p>
 <p>
 	Pour réserver un rendez-vous, vous indiquez votre <strong>nom</strong>, votre
-	<strong>adresse e-mail</strong> et, si vous le souhaitez, une note. Ils ne sont pas enregistrés dans
-	notre base de données : ils sont envoyés à l'agenda Google du propriétaire du portfolio, qui crée l'événement
-	avec vous comme invité et vous envoie l'invitation par e-mail. Le propriétaire du portfolio est aussi
-	invité, avec l'adresse e-mail de son compte, pour recevoir l'invitation lui aussi : chacun de vous voit
-	l'adresse de l'autre dans l'invitation. L'invitation contient aussi les éléments des étapes précédentes
-	(par exemple l'intitulé, l'entreprise et le lien de l'offre choisie). Nous ne gardons qu'une réservation
-	du créneau (l'horaire, l'agenda, l'identifiant de l'événement, son lien Google Meet et une empreinte
-	de votre adresse e-mail calculée avec une clé secrète) et, si vous réservez en étant connecté, votre
-	compte, pour que le rendez-vous figure parmi vos prochains rendez-vous dans votre espace recruteur,
-	avec son lien pour le rejoindre. Elle est supprimée automatiquement à la fin du créneau ou à l'annulation
-	du rendez-vous.
+	<strong>adresse e-mail</strong>, pour un appel votre <strong>numéro de téléphone</strong> et, si vous
+	le souhaitez, une note. Ils ne sont pas enregistrés dans notre base de données : ils sont envoyés à
+	l'agenda Google du propriétaire du portfolio, qui crée l'événement avec vous comme invité et vous envoie
+	l'invitation par e-mail. Le propriétaire du portfolio est aussi invité, avec l'adresse e-mail de son
+	compte, pour recevoir l'invitation lui aussi : chacun de vous voit l'adresse de l'autre dans l'invitation.
+	L'invitation contient aussi les éléments des étapes précédentes (par exemple l'intitulé, l'entreprise
+	et le lien de l'offre choisie). Nous ne gardons qu'une réservation du créneau (l'horaire, l'agenda,
+	l'identifiant de l'événement, son lien Google Meet et une empreinte de votre adresse e-mail calculée
+	avec une clé secrète) et, si vous réservez en étant connecté, votre compte, pour que le rendez-vous
+	figure parmi vos prochains rendez-vous dans votre espace recruteur, avec son lien pour le rejoindre.
+	Elle est supprimée automatiquement à la fin du créneau ou à l'annulation du rendez-vous.
 </p>
 
 <h4 id="data-perfect-job">Votre poste idéal (privé)</h4>
@@ -392,9 +392,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 		la liste des candidats de leurs offres.
 	</li>
 	<li>
-		<strong>Les propriétaires de portfolio</strong> : le nom, l'adresse e-mail et la note d'un visiteur
-		qui réserve un rendez-vous, avec les éléments des étapes précédentes du parcours, dans l'invitation
-		de leur agenda Google.
+		<strong>Les propriétaires de portfolio</strong> : le nom, l'adresse e-mail, le numéro de téléphone
+		(pour un appel) et la note d'un visiteur qui réserve un rendez-vous, avec les éléments des étapes
+		précédentes du parcours, dans l'invitation de leur agenda Google.
 	</li>
 	<li>
 		<strong>Les visiteurs qui réservent un rendez-vous</strong> : l'adresse e-mail du compte du propriétaire

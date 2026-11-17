@@ -5,8 +5,10 @@ import {
   MAX_AVAILABLE_DATES_RANGE,
   addDays,
   bookingHorizon,
+  cleanPhoneNumber,
   daysBetween,
   isCalendarDate,
+  isPhoneNumber,
   normalizeDomainName,
   wallDateInTimezone
 } from 'portfolio-common'
@@ -231,6 +233,22 @@ const publicScheduleFields = (schedule: ScheduleDocument) => ({
   }))
 })
 
+type LocationType = 'google_meet' | 'phone' | 'in_person' | 'custom'
+
+/**
+ * Where a meeting outside Google Meet takes place, for the event's location (Google shows it,
+ * a number or an address a phone can open) and the first line of its description: what the
+ * owner wrote in the schedule, as they wrote it, after its kind (the visitor's language)
+ */
+const meetingPlace = (locationType: LocationType, details: string | null | undefined) => {
+  if (locationType === 'google_meet') return { location: undefined, line: '' }
+  const written = details?.trim()
+  if (!written) {
+    return { location: undefined, line: locationType === 'custom' ? '' : m.invitation.place[locationType] }
+  }
+  return { location: written, line: `${m.invitation.placeLabel[locationType]} ${written}` }
+}
+
 const scheduleNotFound = () => new AppointmentScheduleNotFoundError(() => m.scheduleNotFound)
 
 const findEnabledSchedule = async (id: string) => {
@@ -394,6 +412,13 @@ const appointmentsPublic = new Elysia()
       if (isNaN(slotStart.getTime())) {
         throw new BadRequestError(() => m.invalidStartTime)
       }
+      // A phone meeting: the number to reach the visitor on, which only goes into the invitation.
+      // Ignored for any other kind of meeting
+      const locationType = (schedule.locationType ?? 'google_meet') as LocationType
+      const phone = locationType === 'phone' ? cleanPhoneNumber(body.phone ?? '') : ''
+      if (locationType === 'phone' && !isPhoneNumber(phone)) {
+        throw new BadRequestError(() => m.phoneRequired)
+      }
 
       // Recompute availability server-side: the slot must still be free, within
       // the booking horizon and respect the minimum notice
@@ -431,8 +456,11 @@ const appointmentsPublic = new Elysia()
       })
 
       // Read by the owner and by the person who books: in the language of this request
+      const place = meetingPlace(locationType, schedule.locationDetails)
       const description = [
         m.invitation.bookedBy(name, email),
+        place.line ? `\n${place.line}` : '',
+        phone ? `\n${m.invitation.visitorPhoneLabel(name)} ${phone}` : '',
         ...journeyLines.map((line) => `\n${line}`),
         notes ? `\n${m.invitation.notesLabel}\n${notes}` : ''
       ].join('')
@@ -445,13 +473,14 @@ const appointmentsPublic = new Elysia()
           startTime: slot.start,
           endTime: slot.end,
           timezone: schedule.timezone,
+          location: place.location,
           attendees: [
             { email },
             ...(ownerEmail ? [{ email: ownerEmail, responseStatus: 'accepted' as const }] : [])
           ],
           // Google never emails the organizer: an email reminder right after the booking does
           reminders: bookingReminders(new Date(slot.start)),
-          addGoogleMeet: schedule.locationType === 'google_meet'
+          addGoogleMeet: locationType === 'google_meet'
         })
       } catch (error) {
         // Refused: no event. Otherwise (timeout, network, 5xx) Google may have

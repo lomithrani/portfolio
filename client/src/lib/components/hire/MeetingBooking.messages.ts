@@ -98,6 +98,17 @@ export const m = defineMessages({
 	namePlaceholder: { en: 'Jane Doe', fr: 'Camille Martin' },
 	email: { en: 'Your email *', fr: 'Votre e-mail *' },
 	emailPlaceholder: { en: 'jane@company.com', fr: 'camille@entreprise.com' },
+	/** A phone meeting: the number the candidate can reach the visitor on */
+	phone: { en: 'Your phone number *', fr: 'Votre numéro de téléphone *' },
+	phonePlaceholder: { en: '+33 6 12 34 56 78', fr: '06 12 34 56 78' },
+	phoneHint: {
+		en: 'For the call. It goes into the calendar invitation only: Portfolio does not keep it.',
+		fr: "Pour l'appel. Il figure seulement dans l'invitation : Portfolio ne le conserve pas."
+	},
+	phoneInvalid: {
+		en: 'Enter a phone number, for example +33 6 12 34 56 78.',
+		fr: 'Indiquez un numéro de téléphone, par exemple 06 12 34 56 78.'
+	},
 	notes: { en: 'Notes (optional)', fr: 'Notes (facultatif)' },
 	notesPlaceholder: {
 		en: 'What would you like to talk about?',

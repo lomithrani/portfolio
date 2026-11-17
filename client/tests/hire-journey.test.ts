@@ -427,6 +427,94 @@ test.describe('the hiring journey', () => {
 		await expect(journeySteps(page)).toHaveCount(0);
 	});
 
+	test('a phone meeting asks the recruiter for their number, and sends it with the booking', async ({
+		page
+	}) => {
+		await setJourney('meeting');
+		// Answered in the browser: no Google Calendar is connected here
+		const day = (offset: number) =>
+			new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+		const date = day(1);
+		const slot = { start: `${date}T08:00:00.000Z`, end: `${date}T09:00:00.000Z` };
+		const schedule = {
+			id: '65e2e00000000000000000aa',
+			title: `Phone screen ${tag}`,
+			description: null,
+			durationMinutes: 60,
+			minNoticeHours: 0,
+			maxAdvanceDays: 30,
+			timezone: 'Europe/Paris',
+			locationType: 'phone',
+			locationDetails: '+33 1 23 45 67 89',
+			availability: [
+				{ dayOfWeek: new Date(date).getUTCDay(), startTime: '09:00', endTime: '10:00' }
+			]
+		};
+		const booked: Record<string, unknown>[] = [];
+		await page.route(`${API_URL}/appointments/**`, async (route) => {
+			const request = route.request();
+			const headers = cors(request);
+			if (request.method() === 'OPTIONS') return route.fulfill(preflight(request));
+			const { pathname } = new URL(request.url());
+			if (pathname.endsWith(`/domains/${DOMAIN}/schedules`)) {
+				return route.fulfill({ json: [schedule], headers });
+			}
+			if (pathname.endsWith('/available-dates')) {
+				return route.fulfill({
+					json: { horizon: { first: day(0), last: day(30) }, dates: [date] },
+					headers
+				});
+			}
+			if (pathname.endsWith('/available-slots')) return route.fulfill({ json: [slot], headers });
+			if (pathname.endsWith('/book')) {
+				booked.push(request.postDataJSON());
+				const json = {
+					booked: true,
+					start: slot.start,
+					end: slot.end,
+					meetLink: null,
+					eventLink: null
+				};
+				return route.fulfill({ json, headers });
+			}
+			return route.continue();
+		});
+		await signIn(page, recruiter);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+
+		// The candidate's number shows before booking
+		await expect(page.getByText('Phone call · +33 1 23 45 67 89')).toBeVisible();
+		const cell = page.locator(`[role="button"][data-value="${date}"]`);
+		if (!(await cell.isVisible()))
+			await page.getByRole('button', { name: /next/i }).first().click();
+		await cell.click();
+		await page
+			.getByRole('button', { name: /^\d{1,2}:\d{2}/ })
+			.first()
+			.click();
+
+		const phone = page.getByLabel('Your phone number *');
+		await expect(phone).toHaveAttribute('type', 'tel');
+		await expect(phone).toHaveAccessibleDescription(/goes into the calendar invitation only/);
+		// Not a number: said at the field, nothing sent
+		await phone.fill('call me');
+		await page.getByRole('button', { name: 'Confirm booking' }).click();
+		await expect(phone).toBeFocused();
+		await expect(phone).toHaveAccessibleDescription(
+			'Enter a phone number, for example +33 6 12 34 56 78.'
+		);
+		expect(booked).toHaveLength(0);
+
+		await phone.fill('  +33 7 00  00 00 00 ');
+		await page.getByRole('button', { name: 'Confirm booking' }).click();
+		await expect.poll(() => booked.length).toBe(1);
+		expect(booked[0]).toMatchObject({
+			scheduleId: schedule.id,
+			startTime: slot.start,
+			phone: '+33 7 00 00 00 00'
+		});
+	});
+
 	test('the owner suggests a step they miss, sent to the project as a feature request', async ({
 		page
 	}) => {

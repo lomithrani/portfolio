@@ -1,4 +1,5 @@
 import { t } from 'elysia'
+import { PHONE_LIMITS } from 'portfolio-common'
 
 // HH:mm, 00:00 to 23:59 (availability is set per day)
 const wallTime = t.String({ pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' })
@@ -65,5 +66,7 @@ export const bookAppointmentRequest = t.Object({
   startTime: t.String({ minLength: 1, maxLength: 64 }),
   name: t.String({ minLength: 1, maxLength: 200 }),
   email: t.String({ format: 'email', maxLength: 254 }),
+  /** The visitor's number, for a phone meeting: checked with portfolio-common's isPhoneNumber */
+  phone: t.Optional(t.String({ maxLength: PHONE_LIMITS.maxLength + 20 })),
   notes: t.Optional(t.String({ maxLength: 2000 }))
 })

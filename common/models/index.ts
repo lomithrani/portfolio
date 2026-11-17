@@ -145,6 +145,7 @@ export type {
 } from './perfectJob';
 export { perfectJobMessages } from './perfectJob.messages';
 export { ADDRESS_KINDS, ADDRESS_SEARCH, addressSearchText, canSearchAddress } from './address';
+export { PHONE_LIMITS, cleanPhoneNumber, isPhoneNumber } from './phone';
 export type { AddressKind, AddressSuggestion, OfficePlace } from './address';
 export {
 	STEP_SUGGESTION_LIMITS,

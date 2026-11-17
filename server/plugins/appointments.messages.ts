@@ -18,6 +18,11 @@ export const m = defineMessages({
     fr: (max: number) => `${max} dates au plus par requête`
   },
   invalidStartTime: { en: 'Invalid start time', fr: 'Heure de début invalide' },
+  /** A phone meeting booked without a number to call, or with something that is not one */
+  phoneRequired: {
+    en: 'Enter the phone number to reach you on for this call, for example +33 6 12 34 56 78.',
+    fr: 'Indiquez le numéro de téléphone où vous joindre pour cet appel, par exemple +33 6 12 34 56 78.'
+  },
   /**
    * The description of the Google Calendar event a booking creates, read by the portfolio's
    * owner and by the person who booked: in the language of the request that books
@@ -31,6 +36,25 @@ export const m = defineMessages({
      * Heading of the notes the visitor wrote, which follow on the next line as they typed them:
      * not through a message, whose French typography would rewrite their spaces
      */
-    notesLabel: { en: 'Notes:', fr: 'Notes :' }
+    notesLabel: { en: 'Notes:', fr: 'Notes :' },
+    /**
+     * Where the meeting takes place, outside Google Meet: alone, or followed on the same line by
+     * what the owner wrote in the schedule (their number, an address), as they wrote it
+     */
+    place: {
+      phone: { en: 'Phone call', fr: 'Appel téléphonique' },
+      in_person: { en: 'In person', fr: 'En personne' },
+      custom: { en: 'Where', fr: 'Lieu' }
+    },
+    placeLabel: {
+      phone: { en: 'Phone call:', fr: 'Appel téléphonique :' },
+      in_person: { en: 'In person:', fr: 'En personne :' },
+      custom: { en: 'Where:', fr: 'Lieu :' }
+    },
+    /** Followed on the same line by the number the visitor gave, as they typed it */
+    visitorPhoneLabel: {
+      en: (name: string) => `Phone number of ${name}:`,
+      fr: (name: string) => `Téléphone de ${name} :`
+    }
   }
 })

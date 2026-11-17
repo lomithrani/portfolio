@@ -9,7 +9,13 @@ hiring journey; requests carry the session, which the API checks against the ste
 	import { onMount, untrack, type ComponentProps } from 'svelte';
 	import { DatePicker, parseDate } from '@skeletonlabs/skeleton-svelte';
 	import type { DateValue } from '@skeletonlabs/skeleton-svelte';
-	import { intlLocale, wallDateInTimezone } from 'portfolio-common';
+	import {
+		PHONE_LIMITS,
+		cleanPhoneNumber,
+		intlLocale,
+		isPhoneNumber,
+		wallDateInTimezone
+	} from 'portfolio-common';
 	import type { BookingHorizon } from 'portfolio-common';
 	import { portfolioApi } from '#services';
 	import { errorStatus, isSlotUnavailable } from '#services/apiErrors.ts';
@@ -143,6 +149,10 @@ hiring journey; requests carry the session, which the API checks against the ste
 			prefilled = next;
 		});
 	});
+	// A phone meeting only: the number to call the visitor on, for the invitation (never stored)
+	let phone = $state('');
+	let phoneError = $state('');
+	let asksPhone = $derived(selectedSchedule?.locationType === 'phone');
 	let notes = $state('');
 	let booking = $state(false);
 	let bookingError = $state('');
@@ -328,6 +338,12 @@ hiring journey; requests carry the session, which the API checks against the ste
 
 	async function book() {
 		if (!selectedSchedule || !selectedSlot) return;
+		const phoneNumber = asksPhone ? cleanPhoneNumber(phone) : '';
+		phoneError = asksPhone && !isPhoneNumber(phoneNumber) ? m.phoneInvalid : '';
+		if (phoneError) {
+			document.getElementById('booking-phone')?.focus();
+			return;
+		}
 		booking = true;
 		bookingError = '';
 
@@ -338,6 +354,7 @@ hiring journey; requests carry the session, which the API checks against the ste
 					startTime: selectedSlot.start,
 					name,
 					email,
+					phone: phoneNumber || undefined,
 					notes: notes || undefined
 				},
 				withCredentials
@@ -360,8 +377,9 @@ hiring journey; requests carry the session, which the API checks against the ste
 				await loadSchedules();
 				bookingError = datesMessages.bookingUnavailable;
 				return;
-			} else if (status === 429 && typeof error?.value === 'string') {
-				// Rate limit or booking cap: the API's message says what to do, or how long to wait
+			} else if ((status === 429 || status === 400) && typeof error?.value === 'string') {
+				// Rate limit or booking cap: the API's message says what to do, or how long to wait;
+				// a refused phone number (checked here first): what to enter
 				bookingError = error.value;
 			} else {
 				bookingError = m.failed;
@@ -655,6 +673,30 @@ hiring journey; requests carry the session, which the API checks against the ste
 								placeholder={m.emailPlaceholder}
 							/>
 						</label>
+						{#if asksPhone}
+							<label class="label">
+								<span class="label-text">{m.phone}</span>
+								<input
+									id="booking-phone"
+									class="input"
+									type="tel"
+									inputmode="tel"
+									autocomplete="tel"
+									required
+									maxlength={PHONE_LIMITS.maxLength}
+									bind:value={phone}
+									oninput={() => (phoneError = '')}
+									placeholder={m.phonePlaceholder}
+									aria-invalid={phoneError ? 'true' : undefined}
+									aria-describedby={phoneError ? 'booking-phone-error' : 'booking-phone-hint'}
+								/>
+								{#if phoneError}
+									<span id="booking-phone-error" class="text-sm text-error-500">{phoneError}</span>
+								{:else}
+									<span id="booking-phone-hint" class="text-xs opacity-75">{m.phoneHint}</span>
+								{/if}
+							</label>
+						{/if}
 						<label class="label">
 							<span class="label-text">{m.notes}</span>
 							<textarea
