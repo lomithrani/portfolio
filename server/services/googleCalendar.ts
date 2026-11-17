@@ -426,6 +426,8 @@ export async function createEvent(
     id?: string
     summary: string
     description?: string
+    /** Where it takes place, outside Google Meet: a phone number, an address */
+    location?: string
     startTime: string
     endTime: string
     timezone: string
@@ -445,6 +447,7 @@ export async function createEvent(
     id: params.id,
     summary: params.summary,
     description: params.description,
+    location: params.location,
     start: { dateTime: params.startTime, timeZone: params.timezone },
     end: { dateTime: params.endTime, timeZone: params.timezone },
     attendees: attendees.length > 0 ? attendees : undefined,

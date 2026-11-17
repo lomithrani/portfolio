@@ -22,6 +22,7 @@
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
 	import RecruiterLanding from '#components/recruiter/RecruiterLanding.svelte';
+	import UpcomingMeetings from '#components/recruiter/UpcomingMeetings.svelte';
 	import { portfolioApi } from '#services';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
@@ -56,7 +57,8 @@
 	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
 	import { m } from './page.messages.ts';
 
-	// The recruiter's dashboard: their job descriptions (GET /recruiter/jobs), with the PDF import
+	// The recruiter's dashboard: the meetings they booked on candidates' Hire pages
+	// (UpcomingMeetings, GET /appointments/booked), their job descriptions (GET /recruiter/jobs), with the PDF import
 	// (GET / POST /jobs/import) and deletion. Signed out: what the space does and a sign-in; signed
 	// in without a recruiter space: a button to create it. Rendered in the browser only
 	// (recruiter/+layout.ts).
@@ -368,6 +370,9 @@
 				{/snippet}
 			</PageNotice>
 		{:else}
+			<!-- First: a meeting may be about to start -->
+			<UpcomingMeetings userId={user._id} />
+
 			<div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
 				<div class="min-w-0 space-y-1">
 					<h2 bind:this={heading} tabindex="-1" class="text-2xl font-bold outline-none md:text-3xl">

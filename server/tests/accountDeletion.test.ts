@@ -215,7 +215,8 @@ const remaining = async (userId: string, domainName: string, experienceId: strin
   jobPostings: await JobPosting.countDocuments({ recruiter: userId }),
   jobApplications: await JobApplication.countDocuments({ candidate: userId }),
   appointmentSchedules: await AppointmentSchedule.countDocuments({ user: userId }),
-  appointmentBookings: await AppointmentBooking.countDocuments({ user: userId })
+  appointmentBookings: await AppointmentBooking.countDocuments({ user: userId }),
+  bookedMeetings: await AppointmentBooking.countDocuments({ visitor: userId })
 });
 
 const nothing = {
@@ -229,7 +230,8 @@ const nothing = {
   jobPostings: 0,
   jobApplications: 0,
   appointmentSchedules: 0,
-  appointmentBookings: 0
+  appointmentBookings: 0,
+  bookedMeetings: 0
 };
 
 /** Routes global fetch to a fake of Google's revocation endpoint; anything else fails the test */
@@ -272,6 +274,11 @@ describe('DELETE /me', () => {
     const step = { meeting: { data: { booked: true }, updatedAt: new Date() } };
     await WorkflowInstance.create({ owner: candidate.userId, visitor: other.userId, steps: step });
     await WorkflowInstance.create({ owner: other.userId, visitor: candidate.userId, steps: step });
+    // A meeting booked with the other account, signed in: it stays booked, no longer tied to this account
+    const visited = await AppointmentBooking.create({
+      ...booking(other.userId, other.schedule._id, 2000),
+      visitor: candidate.userId
+    });
     const otherBefore = await remaining(other.userId, other.domainName, other.experienceId);
     expect(await remaining(candidate.userId, candidate.domainName, candidate.experienceId)).toEqual({
       user: 1,
@@ -284,7 +291,8 @@ describe('DELETE /me', () => {
       jobPostings: 1,
       jobApplications: 1,
       appointmentSchedules: 1,
-      appointmentBookings: 1
+      appointmentBookings: 1,
+      bookedMeetings: 1
     });
 
     const result = await deleteMe(candidate.cookie);
@@ -302,6 +310,8 @@ describe('DELETE /me', () => {
     });
     expect(await JobPosting.exists({ _id: other.posting._id })).not.toBeNull();
     expect(await AppointmentSchedule.exists({ _id: other.schedule._id })).not.toBeNull();
+    expect(await AppointmentBooking.findById(visited._id).lean()).toMatchObject({ eventId: 'evt2000' });
+    expect((await AppointmentBooking.findById(visited._id).lean())?.visitor).toBeUndefined();
     // The skills catalogue is shared: the other portfolio still uses the skill
     expect(await Skill.exists({ displayName: t.id('shared-skill') })).not.toBeNull();
 

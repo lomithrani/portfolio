@@ -499,6 +499,72 @@ test.describe('the recruiter', () => {
 		expect((await detail.json()).applicants).toEqual([]);
 	});
 
+	test('lists the meetings booked on Hire pages, and joins one with its Google Meet link', async ({
+		page
+	}) => {
+		// Answered in the browser: the e2e database has no Google Calendar
+		const now = Date.now();
+		const meetings = [
+			{
+				id: 'meeting-now',
+				start: new Date(now - 10 * 60_000).toISOString(),
+				end: new Date(now + 20 * 60_000).toISOString(),
+				title: `Intro call ${tag}`,
+				portfolio: { name: 'e2e-applicant', title: 'Ada Applicant' },
+				location: 'google_meet',
+				locationDetails: null,
+				meetLink: 'https://meet.google.com/abc-defg-hij'
+			},
+			{
+				id: 'meeting-later',
+				start: new Date(now + 3 * 86_400_000).toISOString(),
+				end: new Date(now + 3 * 86_400_000 + 30 * 60_000).toISOString(),
+				title: null,
+				portfolio: null,
+				location: 'phone',
+				locationDetails: '+33 1 23 45 67 89',
+				meetLink: null
+			}
+		];
+		let answer: { meetings: typeof meetings } = { meetings };
+		await page.route(`${API_URL}/appointments/booked`, (route) => route.fulfill({ json: answer }));
+		await openAsRecruiter(page, '/recruiter');
+
+		const section = page.getByRole('region', { name: 'Upcoming meetings' });
+		const items = section.getByRole('listitem');
+		await expect(items).toHaveCount(2);
+
+		const current = items.nth(0);
+		await expect(current.getByRole('heading', { level: 3 })).toHaveText(`Intro call ${tag}`);
+		await expect(current).toContainText('Now');
+		await expect(current.getByRole('link', { name: 'Ada Applicant' })).toHaveAttribute(
+			'href',
+			'/e2e-applicant'
+		);
+		const join = current.getByRole('link', { name: /^Join Google Meet/ });
+		await expect(join).toHaveAttribute('href', 'https://meet.google.com/abc-defg-hij');
+		await expect(join).toHaveAttribute('target', '_blank');
+		await expect(join).toHaveAttribute('rel', 'noopener noreferrer');
+
+		// A phone call: where it takes place, nothing to join; a schedule and portfolio since deleted
+		const later = items.nth(1);
+		await expect(later.getByRole('heading', { level: 3 })).toHaveText('Meeting');
+		await expect(later).toContainText('with a candidate');
+		await expect(later).toContainText('By phone: +33 1 23 45 67 89');
+		await expect(later.getByRole('link')).toHaveCount(0);
+		await expect(later).not.toContainText('Now');
+
+		// Nothing booked: one line saying where meetings come from
+		answer = { meetings: [] };
+		await page.reload();
+		await expect(section).toContainText('No upcoming meetings.');
+		await expect(section.getByRole('listitem')).toHaveCount(0);
+		// The job descriptions are still there, under it
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'Your job descriptions' })
+		).toBeVisible();
+	});
+
 	test('the account menu names the recruiter space; Browse jobs opens the job board', async ({
 		page
 	}) => {
