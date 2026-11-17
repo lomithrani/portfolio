@@ -5,10 +5,8 @@ import {
   MAX_AVAILABLE_DATES_RANGE,
   addDays,
   bookingHorizon,
-  cleanPhoneNumber,
   daysBetween,
   isCalendarDate,
-  isPhoneNumber,
   normalizeDomainName,
   wallDateInTimezone
 } from 'portfolio-common'
@@ -412,13 +410,7 @@ const appointmentsPublic = new Elysia()
       if (isNaN(slotStart.getTime())) {
         throw new BadRequestError(() => m.invalidStartTime)
       }
-      // A phone meeting: the number to reach the visitor on, which only goes into the invitation.
-      // Ignored for any other kind of meeting
       const locationType = (schedule.locationType ?? 'google_meet') as LocationType
-      const phone = locationType === 'phone' ? cleanPhoneNumber(body.phone ?? '') : ''
-      if (locationType === 'phone' && !isPhoneNumber(phone)) {
-        throw new BadRequestError(() => m.phoneRequired)
-      }
 
       // Recompute availability server-side: the slot must still be free, within
       // the booking horizon and respect the minimum notice
@@ -460,7 +452,6 @@ const appointmentsPublic = new Elysia()
       const description = [
         m.invitation.bookedBy(name, email),
         place.line ? `\n${place.line}` : '',
-        phone ? `\n${m.invitation.visitorPhoneLabel(name)} ${phone}` : '',
         ...journeyLines.map((line) => `\n${line}`),
         notes ? `\n${m.invitation.notesLabel}\n${notes}` : ''
       ].join('')

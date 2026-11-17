@@ -746,48 +746,39 @@ describe('public booking', () => {
     expect(emailMinutes('2026-03-02T10:01:00Z')).toEqual({ method: 'email', minutes: 0 });
   });
 
-  it('asks a phone meeting for the number to call, and puts where it takes place in the invitation', async () => {
+  it("puts a phone meeting's number in the invitation, for the visitor to call", async () => {
     google.state.busy = [];
     await AppointmentSchedule.updateOne(
       { _id: scheduleId },
       { $set: { locationType: 'phone', locationDetails: ' +33 1 23 45 67 89 ' } }
     );
-    const book = (phone?: string) =>
-      call('POST', '/appointments/book', {
-        body: { scheduleId, startTime: at('09:00'), name: 'Jane Recruiter', email: t.email('jane'), phone }
-      });
+    const booked = await call('POST', '/appointments/book', {
+      body: { scheduleId, startTime: at('09:00'), name: 'Jane Recruiter', email: t.email('jane') }
+    });
+    expect(booked.status).toBe(200);
 
-    for (const phone of [undefined, '', 'call me', '+33 12', '06 12 34 56 78 90 12 34 56', '33+ 6 12 34 56 78']) {
-      const refused = await book(phone);
-      expect({ phone, status: refused.status }).toEqual({ phone, status: 400 });
-      expect(refused.text).toContain('phone number');
-    }
-    expect(google.state.events.size).toBe(0);
-
-    expect((await book('  +33 (0)7 00-00.00  00 ')).status).toBe(200);
     const [event] = [...google.state.events.values()];
     // Google shows the place, a number a phone can call; no Meet
     expect(event.location).toBe('+33 1 23 45 67 89');
     expect(event.hangoutLink).toBeUndefined();
-    expect(event.description?.split('\n').slice(0, 3)).toEqual([
+    expect(event.description?.split('\n').slice(0, 2)).toEqual([
       `Booked via Portfolio by Jane Recruiter (${t.email('jane')})`,
-      'Phone call: +33 1 23 45 67 89',
-      'Phone number of Jane Recruiter: +33 (0)7 00-00.00 00'
+      'Phone call: +33 1 23 45 67 89'
     ]);
   });
 
-  it('says where a meeting outside Google Meet takes place, and leaves a number out of any other', async () => {
+  it('says where a meeting outside Google Meet takes place', async () => {
     google.state.busy = [];
     // An address each: an email holds at most 2 upcoming bookings of a schedule
-    const book = (time: string, phone?: string) =>
+    const book = (time: string) =>
       call('POST', '/appointments/book', {
-        body: { scheduleId, startTime: at(time), name: 'Jane Recruiter', email: t.email(`jane-${time.slice(0, 2)}`), phone }
+        body: { scheduleId, startTime: at(time), name: 'Jane Recruiter', email: t.email(`jane-${time.slice(0, 2)}`) }
       });
-    // Google Meet: no place, the number is not asked for and not written
-    expect((await book('09:00', '+33 7 00 00 00 00')).status).toBe(200);
+    // Google Meet: no place
+    expect((await book('09:00')).status).toBe(200);
     // In person, without details: its kind alone
     await AppointmentSchedule.updateOne({ _id: scheduleId }, { $set: { locationType: 'in_person' } });
-    expect((await book('10:00', '+33 7 00 00 00 00')).status).toBe(200);
+    expect((await book('10:00')).status).toBe(200);
     await AppointmentSchedule.updateOne(
       { _id: scheduleId },
       { $set: { locationType: 'custom', locationDetails: 'Zoom: link sent by email' } }
@@ -803,7 +794,6 @@ describe('public booking', () => {
       'In person',
       'Where: Zoom: link sent by email'
     ]);
-    expect(events.map((event) => event.description).join()).not.toContain('+33 7');
   });
 
   it('invites the owner once when the visitor types their address', async () => {
@@ -1074,12 +1064,8 @@ describe('booked meetings', () => {
     rateLimitKeys.add(rateLimitKey('booked-meetings', owner.userId));
   });
 
-  // A number to call too: only a phone meeting reads it
   const book = (time: string, cookie?: string, email = t.email('other')) =>
-    call('POST', '/appointments/book', {
-      body: { scheduleId, startTime: at(time), name: 'Recruiter', email, phone: '+33 7 00 00 00 00' },
-      cookie
-    });
+    call('POST', '/appointments/book', { body: { scheduleId, startTime: at(time), name: 'Recruiter', email }, cookie });
   const booked = async (cookie = other.cookie) => {
     const response = await call('GET', '/appointments/booked', { cookie });
     expect(response.status).toBe(200);

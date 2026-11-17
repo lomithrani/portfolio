@@ -427,7 +427,7 @@ test.describe('the hiring journey', () => {
 		await expect(journeySteps(page)).toHaveCount(0);
 	});
 
-	test('a phone meeting asks the recruiter for their number, and sends it with the booking', async ({
+	test("a phone meeting shows the candidate's number, and asks the recruiter for none of theirs", async ({
 		page
 	}) => {
 		await setJourney('meeting');
@@ -493,26 +493,13 @@ test.describe('the hiring journey', () => {
 			.first()
 			.click();
 
-		const phone = page.getByLabel('Your phone number *');
-		await expect(phone).toHaveAttribute('type', 'tel');
-		await expect(phone).toHaveAccessibleDescription(/goes into the calendar invitation only/);
-		// Not a number: said at the field, nothing sent
-		await phone.fill('call me');
-		await page.getByRole('button', { name: 'Confirm booking' }).click();
-		await expect(phone).toBeFocused();
-		await expect(phone).toHaveAccessibleDescription(
-			'Enter a phone number, for example +33 6 12 34 56 78.'
-		);
-		expect(booked).toHaveLength(0);
-
-		await phone.fill('  +33 7 00  00 00 00 ');
+		// The recruiter calls the candidate: the form asks for no number of theirs
+		await expect(page.getByLabel('Your email *')).toBeVisible();
+		await expect(page.getByRole('textbox', { name: /phone/i })).toHaveCount(0);
 		await page.getByRole('button', { name: 'Confirm booking' }).click();
 		await expect.poll(() => booked.length).toBe(1);
-		expect(booked[0]).toMatchObject({
-			scheduleId: schedule.id,
-			startTime: slot.start,
-			phone: '+33 7 00 00 00 00'
-		});
+		expect(booked[0]).toMatchObject({ scheduleId: schedule.id, startTime: slot.start });
+		expect(booked[0]).not.toHaveProperty('phone');
 	});
 
 	test('the owner suggests a step they miss, sent to the project as a feature request', async ({

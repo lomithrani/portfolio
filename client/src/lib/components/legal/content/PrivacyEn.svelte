@@ -172,16 +172,16 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	booked.
 </p>
 <p>
-	To book a meeting you enter your <strong>name</strong>, your <strong>email address</strong>, for a
-	phone call your <strong>phone number</strong> and, if you wish, a note. They are not stored in our database:
-	they are sent to the portfolio owner's Google Calendar, which creates the event with you as a guest
-	and emails you the invitation. The portfolio owner is a guest too, with the email address of their account,
-	so that they receive the invitation as well: each of you sees the other's address in it. The invitation
-	also contains the details of the earlier steps (for example the title, company and link of the job description
-	you chose). We keep only a reservation of the time slot (the time, the calendar, the event identifier,
-	its Google Meet link and a hash of your email address keyed with a secret) and, when you book signed
-	in, your account, so that the meeting is listed under your upcoming meetings in your recruiter space
-	with its link to join. It is deleted automatically when the slot ends or the meeting is cancelled.
+	To book a meeting you enter your <strong>name</strong>, your <strong>email address</strong> and, if
+	you wish, a note. They are not stored in our database: they are sent to the portfolio owner's Google
+	Calendar, which creates the event with you as a guest and emails you the invitation. The portfolio owner
+	is a guest too, with the email address of their account, so that they receive the invitation as well:
+	each of you sees the other's address in it. The invitation also contains the details of the earlier
+	steps (for example the title, company and link of the job description you chose). We keep only a reservation
+	of the time slot (the time, the calendar, the event identifier, its Google Meet link and a hash of your
+	email address keyed with a secret) and, when you book signed in, your account, so that the meeting is
+	listed under your upcoming meetings in your recruiter space with its link to join. It is deleted automatically
+	when the slot ends or the meeting is cancelled.
 </p>
 
 <h4 id="data-perfect-job">Your perfect job (private)</h4>
@@ -370,9 +370,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 		lists of their job descriptions.
 	</li>
 	<li>
-		<strong>Portfolio owners</strong>: the name, email address, phone number (for a phone call) and
-		note of a visitor who books a meeting, with the details of the journey steps before it, in their
-		Google Calendar invitation.
+		<strong>Portfolio owners</strong>: the name, email address and note of a visitor who books a
+		meeting, with the details of the journey steps before it, in their Google Calendar invitation.
 	</li>
 	<li>
 		<strong>Visitors who book a meeting</strong>: the email address of the portfolio owner's
