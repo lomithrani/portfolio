@@ -25,6 +25,13 @@ export const m = defineMessages({
 		en: (day: string) => `Opened <time>${day}</time>`,
 		fr: (day: string) => `Ouverte le <time>${day}</time>`
 	},
+	/** Next to Edit: a new job description copied from this one (a draft) */
+	duplicate: { en: 'Duplicate', fr: 'Dupliquer' },
+	/** Under the dates of a job description opened before: its terms cannot change */
+	termsLocked: {
+		en: "Its pay and conditions are locked since it was opened: candidates' matches are computed on them. Duplicate it to change them.",
+		fr: 'Sa rémunération et ses conditions sont verrouillées depuis son ouverture : les correspondances des candidats sont calculées sur elles. Dupliquez-la pour les modifier.'
+	},
 	/** Small screens: the link to the management panel, after the description */
 	manageLink: { en: 'Go to its status', fr: 'Aller à son statut' },
 	/** Name of the management panel */

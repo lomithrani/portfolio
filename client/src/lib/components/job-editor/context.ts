@@ -10,6 +10,11 @@ export type JobEditorContext = {
 	/** The error currently shown for the field (reactive) */
 	error: (field: JobFormField) => string | undefined;
 	/**
+	 * Whether the field is one of the terms of a posting opened before: read-only, with a lock (its
+	 * control is made read-only by the editor)
+	 */
+	locked: (field: JobFormField) => boolean;
+	/**
 	 * A list field (ListInput) registers how to add the text typed in it and not added yet: a
 	 * save adds it first. `commit` answers why it could not (the save then stops on the field).
 	 * Returns the unregistration.

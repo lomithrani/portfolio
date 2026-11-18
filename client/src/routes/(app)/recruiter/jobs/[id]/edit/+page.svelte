@@ -22,11 +22,14 @@
 	import { errorStatus } from '#services/apiErrors.ts';
 	import { isConsentProblem } from '#services/account.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { duplicateJobHref } from '#services/recruiter.ts';
 	import { m } from './page.messages.ts';
 
-	// Edits one of the recruiter's job postings (GET /recruiter/jobs/:id, then PUT /jobs/:id). A
-	// recruiter who has not accepted the terms in force (422 on `consent`) accepts them first
-	// (TermsAcceptance). Rendered in the browser only (recruiter/+layout.ts).
+	// Edits one of the recruiter's job postings (GET /recruiter/jobs/:id, then PUT /jobs/:id). An
+	// opened posting's terms are read-only in the editor, which leads to its copy
+	// (/recruiter/jobs/new?duplicate=<id>) to change them. A recruiter who has not accepted the
+	// terms in force (422 on `consent`) accepts them first (TermsAcceptance). Rendered in the
+	// browser only (recruiter/+layout.ts).
 
 	type LoadedJob = NonNullable<
 		Awaited<ReturnType<ReturnType<(typeof portfolioApi)['recruiter']['jobs']>['get']>>['data']
@@ -154,6 +157,7 @@
 					job={loadState.job}
 					cancelHref={resolve('/(app)/recruiter/jobs/[id]', { id: loadState.job._id })}
 					{recruiterHref}
+					duplicateHref={duplicateJobHref(resolve('/(app)/recruiter/jobs/new'), loadState.job._id)}
 					{onSaved}
 					onSessionExpired={() => (expiredWhileSaving = true)}
 				/>

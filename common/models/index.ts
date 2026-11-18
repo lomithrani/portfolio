@@ -70,6 +70,13 @@ export type {
 } from './jobPosting';
 export { jobPostingMessages } from './jobPosting.messages';
 export {
+	LOCKED_JOB_FIELDS,
+	isLockedJobField,
+	jobTermsLocked,
+	locksJobTerms,
+	changedLockedFields
+} from './jobTerms';
+export {
 	USER_MODES,
 	USER_MODE_LABELS,
 	RECRUITER_PLANS,

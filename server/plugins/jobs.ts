@@ -12,6 +12,7 @@ import {
   findOwnJobPosting,
   jobPostingFields,
   publishedAtFor,
+  requireUnchangedTerms,
   toJobPostingDto,
   validJobPosting
 } from '../services/jobPostings';
@@ -23,7 +24,9 @@ import { JOB_CHANGED } from '../protocol';
 // services/recruiters.ts) and only ever finds the caller's own postings:
 // another recruiter's answers 404, like an unknown id, so ids leak nothing.
 // There is no public job page or list: a recruiter shows a job description
-// by picking it on a candidate's Hire page (the job step).
+// by picking it on a candidate's Hire page (the job step). Once opened, a
+// posting's terms (what the perfect job scores) are locked: an edit that
+// changes them answers 409 (services/jobPostings.ts, requireUnchangedTerms).
 
 /**
  * save() of a posting that matched nothing: deleted meanwhile (e.g. in another tab), a 404 like
@@ -74,8 +77,16 @@ export const jobs = new Elysia()
     const fields = validJobPosting(posting);
     const job = await findOwnJobPosting(userId, id);
     // An edit of the version it started from only: saved over a posting changed since (status
-    // set in another tab...), it would undo that change. save() then matches nothing: 409
-    if (updatedAt !== undefined) job.$where = { updatedAt: new Date(updatedAt) };
+    // set in another tab...), it would undo that change. Refused before anything else (the
+    // posting may have been opened since: the editor reloads it), then save() matches nothing
+    // should it change meanwhile: 409 either way
+    if (updatedAt !== undefined) {
+      const version = new Date(updatedAt);
+      if (job.updatedAt?.getTime() !== version.getTime()) throw new ConflictError(JOB_CHANGED);
+      job.$where = { updatedAt: version };
+    }
+    // Opened before: its terms stay as they are (409)
+    requireUnchangedTerms(job.toObject<StoredJobPosting>(), fields);
     // Every field replaced: the optional ones left out are unset
     job.set(jobPostingFields(fields));
     job.publishedAt = publishedAtFor(fields.status, job.publishedAt);
@@ -84,7 +95,9 @@ export const jobs = new Elysia()
   }, {
     params: objectIdParams,
     body: jobPostingEditRequest,
-    detail: { summary: 'Edit a job posting (409 when it changed since `updatedAt`)' }
+    detail: {
+      summary: 'Edit a job posting (409 when it changed since `updatedAt`, or when it changes the terms of a posting opened before)'
+    }
   })
   .put('/jobs/:id/status', async ({ userId, params: { id }, body: { status } }): Promise<JobPostingDto> => {
     const job = await findOwnJobPosting(userId, id);

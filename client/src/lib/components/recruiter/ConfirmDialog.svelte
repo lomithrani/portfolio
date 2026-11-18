@@ -1,9 +1,10 @@
 <!--
 @component
-Asks before something that cannot be undone: deleting a job description.
-The page runs the request (`busy` while it does) and closes the dialog once it is done; a failure
-shows as `error` in the dialog, which stays open for a retry. Focus starts on Cancel (the safe
-choice); Escape and the backdrop cancel, except while the request runs.
+Asks before something that cannot be undone: deleting a job description, or opening one (its
+terms lock: OpenJobDialog.svelte). The page runs the request (`busy` while it does) and closes the
+dialog once it is done, or as soon as it is confirmed; a failure shows as `error` in the dialog,
+which stays open for a retry. Focus starts on Cancel (the safe choice); Escape and the backdrop
+cancel, except while the request runs.
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
@@ -19,6 +20,7 @@ choice); Escape and the backdrop cancel, except while the request runs.
 		busyLabel = common.deleting,
 		busy = false,
 		error = '',
+		tone = 'error',
 		onConfirm,
 		onCancel,
 		finalFocusEl
@@ -33,6 +35,8 @@ choice); Escape and the backdrop cancel, except while the request runs.
 		busy?: boolean;
 		/** Why the last attempt failed */
 		error?: string;
+		/** The confirm button: `error` for what is destroyed, `primary` for what is not (opening) */
+		tone?: 'error' | 'primary';
 		onConfirm: () => void;
 		onCancel: () => void;
 		/** Where the focus goes once the dialog closes (by default, what had it when it opened) */
@@ -96,7 +100,9 @@ choice); Escape and the backdrop cancel, except while the request runs.
 					<!-- Kept focusable while busy (aria-disabled): disabling it would drop the focus -->
 					<button
 						type="button"
-						class="btn preset-filled-error-700-300"
+						class="btn {tone === 'primary'
+							? 'preset-filled-primary-700-300'
+							: 'preset-filled-error-700-300'}"
 						aria-disabled={busy ? 'true' : undefined}
 						onclick={() => {
 							if (!busy) onConfirm();

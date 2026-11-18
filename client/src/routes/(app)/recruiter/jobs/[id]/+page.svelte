@@ -6,13 +6,14 @@
 	import {
 		ArrowLeft,
 		Briefcase,
+		DocumentDuplicate,
 		DocumentMagnifyingGlass,
 		ExclamationTriangle,
 		LockClosed,
 		PencilSquare,
 		Trash
 	} from 'svelte-heros-v2';
-	import type { JobStatus } from 'portfolio-common';
+	import { jobTermsLocked, locksJobTerms, type JobStatus } from 'portfolio-common';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { SIGN_IN_ID } from '#components/Login.svelte';
@@ -21,6 +22,7 @@
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
 	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
+	import OpenJobDialog from '#components/recruiter/OpenJobDialog.svelte';
 	import StatusControl from '#components/recruiter/StatusControl.svelte';
 	import { portfolioApi } from '#services';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
@@ -30,6 +32,7 @@
 	import { clearJobDraft, jobDraftStorageKey } from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
+		duplicateJobHref,
 		networkError,
 		failureText,
 		formatDay,
@@ -41,10 +44,11 @@
 	import { m } from './page.messages.ts';
 
 	// One of the recruiter's job descriptions (GET /recruiter/jobs/:id): the posting as candidates
-	// read it, its status (PUT /jobs/:id/status) and its deletion. It is never public: the
-	// recruiter shows it to a candidate by picking it on their Hire page. A recruiter who has not
-	// accepted the terms in force (422 on `consent`) accepts them first (TermsAcceptance). Rendered
-	// in the browser only (recruiter/+layout.ts).
+	// read it, its status (PUT /jobs/:id/status, confirmed first when it opens the posting: its
+	// terms lock, OpenJobDialog), its copy (Duplicate: /recruiter/jobs/new?duplicate=<id>) and its
+	// deletion. It is never public: the recruiter shows it to a candidate by picking it on their
+	// Hire page. A recruiter who has not accepted the terms in force (422 on `consent`) accepts
+	// them first (TermsAcceptance). Rendered in the browser only (recruiter/+layout.ts).
 
 	type LoadState =
 		| { kind: 'idle' }
@@ -76,6 +80,7 @@
 		requested = key;
 		loadState = { kind: 'loading', key };
 		deleting = null;
+		confirmingStatus = null;
 		try {
 			const { data, error } = await portfolioApi.recruiter.jobs({ id }).get(withCredentials);
 			if (requested !== key) return;
@@ -141,6 +146,15 @@
 	// --- Status ----------------------------------------------------------------------------
 
 	let changingStatus = $state(false);
+	// The status asked for, until the recruiter confirms it opens the posting (its terms lock)
+	let confirmingStatus = $state<JobStatus | null>(null);
+
+	/** The status control's choice: confirmed first when it opens a posting never opened */
+	function chooseStatus(status: JobStatus) {
+		if (!job || changingStatus) return;
+		if (locksJobTerms(status, job)) confirmingStatus = status;
+		else changeStatus(status);
+	}
 
 	async function changeStatus(status: JobStatus) {
 		if (!job || changingStatus) return;
@@ -208,8 +222,9 @@
 	const signedOutFocus = () => (user ? null : document.getElementById(SIGN_IN_ID));
 
 	beforeNavigate(() => {
-		// Close the dialog before the page unmounts (its focus trap would read a destroyed page)
+		// Close the dialogs before the page unmounts (their focus trap would read a destroyed page)
 		deleting = null;
+		confirmingStatus = null;
 	});
 </script>
 
@@ -235,6 +250,15 @@
 							<PencilSquare size="18" aria-hidden="true" />
 							{common.edit}
 						</a>
+						<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve()d, with a query -->
+						<a
+							href={duplicateJobHref(resolve('/(app)/recruiter/jobs/new'), job._id)}
+							class="btn preset-tonal min-h-10 max-sm:flex-1"
+						>
+							<DocumentDuplicate size="18" aria-hidden="true" />
+							{m.duplicate}
+						</a>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 						<button
 							type="button"
 							class="btn min-h-10 text-error-700-300 hover:preset-tonal-error max-sm:flex-1"
@@ -266,6 +290,12 @@
 								</span>
 							{/if}
 						</p>
+						{#if jobTermsLocked(job)}
+							<p class="mt-1 flex items-start gap-1.5">
+								<LockClosed size="16" class="mt-0.5 shrink-0" aria-hidden="true" />
+								<span>{m.termsLocked}</span>
+							</p>
+						{/if}
 						<!-- Small screens: the management panel comes after the description -->
 						<a href="#manage" class="mt-2 inline-block font-medium underline lg:hidden">
 							{m.manageLink}
@@ -274,7 +304,7 @@
 				</JobDetails>
 
 				<aside id="manage" class="space-y-4" aria-label={m.manage}>
-					<StatusControl status={job.status} busy={changingStatus} onChange={changeStatus} />
+					<StatusControl status={job.status} busy={changingStatus} onChange={chooseStatus} />
 				</aside>
 			</div>
 		{:else if !$sessionCheckedStore || loadState.kind === 'loading' || (user && loadState.kind === 'idle' && user.recruiter !== false)}
@@ -339,5 +369,15 @@
 	error={deleting?.error ?? ''}
 	onConfirm={confirmDelete}
 	onCancel={() => (deleting = null)}
+	finalFocusEl={signedOutFocus}
+/>
+
+<OpenJobDialog
+	status={job ? confirmingStatus : null}
+	onConfirm={(status) => {
+		confirmingStatus = null;
+		changeStatus(status);
+	}}
+	onCancel={() => (confirmingStatus = null)}
 	finalFocusEl={signedOutFocus}
 />

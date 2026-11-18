@@ -5,11 +5,12 @@ import { API_URL } from './owner';
 // (an account's terms, its spaces), or a state the e2e database does not have.
 
 /**
- * An answer of stubApi (without `json`, an empty body; `headers` are added to the CORS ones);
- * undefined lets the request through to the API
+ * An answer of stubApi (`json`, or `text`: a plain-text body as the API's errors have; without
+ * either, an empty body; `headers` are added to the CORS ones); undefined lets the request through
+ * to the API
  */
 export type StubAnswer =
-	{ status?: number; json?: unknown; headers?: Record<string, string> } | undefined;
+	{ status?: number; json?: unknown; text?: string; headers?: Record<string, string> } | undefined;
 
 /**
  * Answers `method path` of the API in the browser with `answer` (given the request and how many
@@ -47,7 +48,9 @@ export const stubApi = async (
 		return route.fulfill({
 			status: reply.status ?? 200,
 			headers: { ...cors, ...reply.headers },
-			...(reply.json === undefined ? { body: '' } : { json: reply.json })
+			...(reply.json !== undefined
+				? { json: reply.json }
+				: { body: reply.text ?? '', contentType: reply.text ? 'text/plain' : undefined })
 		});
 	});
 	return answered;

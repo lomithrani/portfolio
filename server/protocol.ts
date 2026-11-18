@@ -21,3 +21,6 @@ export const ALREADY_OWNS_DOMAIN = 'You already own a domain'
 
 /** 409 of an edit that started from an older version of a posting: `JOB_CHANGED` of client/src/lib/components/job-editor/JobEditor.svelte, which then offers to reload */
 export const JOB_CHANGED = 'This job posting was changed since you opened it'
+
+/** 409 of an edit that changes the terms (the fields the perfect job scores) of a posting opened before: `JOB_TERMS_LOCKED` of client/src/lib/components/job-editor/JobEditor.svelte, which then offers to reload it or to duplicate it */
+export const JOB_TERMS_LOCKED = 'The terms of an opened job posting cannot be changed'

@@ -4,8 +4,8 @@ import { JOB_STATUS_DESCRIPTIONS } from './jobPosting';
 import { m } from './recruiter.messages';
 
 // Pure helpers of the recruiter's pages: the dashboard (/recruiter: the job descriptions, their
-// status filters) and a job description's page (/recruiter/jobs/:id: its status). The API calls
-// stay in the pages; nothing here knows the UI.
+// status filters), a job description's page (/recruiter/jobs/:id: its status) and its copy
+// (Duplicate). The API calls stay in the pages; nothing here knows the UI.
 
 // --- Shapes ----------------------------------------------------------------------------
 
@@ -107,6 +107,23 @@ export const statusChangedText = (status: JobStatus): { title: string; descripti
 	title: m.statusChanged(JOB_STATUS_LABELS[status]),
 	description: JOB_STATUS_DESCRIPTIONS[status]
 });
+
+// --- Duplicate --------------------------------------------------------------------------
+
+/**
+ * The parameter of /recruiter/jobs/new naming the posting to copy (Duplicate): the editor starts
+ * from its fields, as a new draft. An opened posting's terms are locked: a new version of them
+ * is a new posting
+ */
+export const DUPLICATE_PARAM = 'duplicate';
+
+/** The posting id of a `?duplicate=` parameter; null when it is not one */
+export const duplicateSourceId = (param: string | null | undefined): string | null =>
+	param && /^[0-9a-f]{24}$/i.test(param) ? param : null;
+
+/** The address of a new posting copied from `jobId` (`newJobHref`: /recruiter/jobs/new, resolved) */
+export const duplicateJobHref = (newJobHref: string, jobId: string): string =>
+	`${newJobHref}?${DUPLICATE_PARAM}=${encodeURIComponent(jobId)}`;
 
 // --- Failures ---------------------------------------------------------------------------
 

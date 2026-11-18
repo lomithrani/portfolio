@@ -11,9 +11,13 @@ import {
 	getLocale
 } from 'portfolio-common';
 import {
+	LOCKED_FORM_FIELDS,
+	duplicateJobForm,
 	emptyJobForm,
 	jobFormSignature,
 	jobToForm,
+	openedJobForm,
+	withLockedTerms,
 	type JobForm,
 	type JobPostingLike
 } from './jobPosting';
@@ -21,7 +25,8 @@ import {
 // What the job editor keeps in this browser:
 // - its unsaved state, per user and posting, restored when the recruiter comes back:
 //   `jobDraft:<userId>:<jobId>` (editing), `jobDraft:<userId>:new` (adding, from a blank form),
-//   `jobDraft:<userId>:import` (adding, from the import below; it goes with that import);
+//   `jobDraft:<userId>:import` (adding, from the import below; it goes with that import),
+//   `jobDraft:<userId>:copy:<jobId>` (adding, from a copy of the posting `jobId`: Duplicate);
 // - the draft of the last job description PDF import, per user: `jobImportDraft:<userId>`,
 //   written by the import dialog and read by /recruiter/jobs/new?import=1, removed once the
 //   posting is saved or the recruiter discards it (an import is paid: a reload keeps it).
@@ -79,16 +84,32 @@ export const jobDraftStorageKey = (userId: string, jobId?: string): string =>
  */
 export const importEditsStorageKey = (userId: string): string => `jobDraft:${userId}:import`;
 
-/** The key of the editor's draft, for what it edits: a posting, an import or a blank form */
+/**
+ * `jobDraft:<userId>:copy:<jobId>`: a new posting copied from the posting `jobId` (Duplicate), a
+ * key of its own per posting copied
+ */
+export const duplicateDraftStorageKey = (userId: string, jobId: string): string =>
+	`jobDraft:${userId}:copy:${jobId}`;
+
+/**
+ * The key of the editor's draft, for what it edits: a posting, an import, a copy of a posting
+ * (`duplicateOf`) or a blank form
+ */
 export const editorDraftStorageKey = (
 	userId: string,
-	{ jobId, imported = false }: { jobId?: string; imported?: boolean } = {}
+	{
+		jobId,
+		imported = false,
+		duplicateOf
+	}: { jobId?: string; imported?: boolean; duplicateOf?: string } = {}
 ): string =>
 	jobId
 		? jobDraftStorageKey(userId, jobId)
 		: imported
 			? importEditsStorageKey(userId)
-			: jobDraftStorageKey(userId);
+			: duplicateOf
+				? duplicateDraftStorageKey(userId, duplicateOf)
+				: jobDraftStorageKey(userId);
 
 /**
  * What a draft started from: the posting as it was loaded, or the imported file. A posting's
@@ -227,11 +248,17 @@ export function clearJobDraft(
 
 /**
  * What the editor starts from. `baseline` is what the unsaved-changes check compares to (and
- * what "Discard draft" goes back to): the posting being edited, else the imported draft, else
- * an empty form. `form` is what is shown: the stored draft when it differs from the baseline
- * (`restored`), else a copy of the baseline. A posting's draft and a blank form's are always
- * restored (their keys say what they were made from), a posting's draft `stale` when the posting
- * was saved since the draft started; an import's draft only over the same import (`basis`).
+ * what "Discard draft" goes back to): the posting being edited, else the imported draft, else a
+ * copy of the posting `duplicate` (as a draft), else an empty form. `form` is what is shown: the
+ * stored draft when it differs from the baseline (`restored`), else a copy of the baseline. A
+ * posting's draft, a copy's and a blank form's are always restored (their keys say what they were
+ * made from), a posting's draft `stale` when the posting was saved since the draft started; an
+ * import's draft only over the same import (`basis`).
+ *
+ * `locked`: the posting was opened, its terms (LOCKED_FORM_FIELDS) are its own. The baseline is
+ * openedJobForm's (`capped`: its pay range brought down to the top it is scored with), and what a
+ * draft holds of the terms gives way to the posting's, text typed in a locked list included: they
+ * could not be saved. A draft that changed nothing else is not restored.
  *
  * `basis` is the signature of the baseline. `draftBasis` is the basis to store with the draft
  * from now on: the baseline's, except for a stale draft, which keeps its own so that the warning
@@ -239,7 +266,17 @@ export function clearJobDraft(
  * added yet: the restored draft's (a draft of such text alone is restored too), else none.
  */
 export function startingJobForms(
-	{ job, imported }: { job?: JobPostingLike | null; imported?: JobPostingLike | null },
+	{
+		job,
+		imported,
+		duplicate,
+		locked = false
+	}: {
+		job?: JobPostingLike | null;
+		imported?: JobPostingLike | null;
+		duplicate?: JobPostingLike | null;
+		locked?: boolean;
+	},
 	readDraft: () => StoredJobDraft | undefined
 ): {
 	baseline: JobForm;
@@ -249,14 +286,20 @@ export function startingJobForms(
 	basis: string;
 	draftBasis: string;
 	pending: PendingListText;
+	capped: boolean;
 } {
+	const opened = job && locked ? openedJobForm(job) : undefined;
+	const capped = opened?.capped ?? false;
 	const baseline = job
-		? jobToForm(job)
+		? (opened?.form ?? jobToForm(job))
 		: imported
 			? (importedForm(imported) ?? emptyJobForm())
-			: emptyJobForm();
+			: duplicate
+				? duplicateJobForm(duplicate)
+				: emptyJobForm();
 	const basis = draftBasis(baseline);
-	const draft = readDraft();
+	const stored = readDraft();
+	const draft = stored && opened ? withPostingTerms(stored, baseline) : stored;
 	const sameStart = !!job || !imported || draft?.basis === basis;
 	const changed =
 		!!draft &&
@@ -271,7 +314,8 @@ export function startingJobForms(
 			stale,
 			basis,
 			draftBasis: stale && draft.basis ? draft.basis : basis,
-			pending: { ...emptyPendingText(), ...draft.pending }
+			pending: { ...emptyPendingText(), ...draft.pending },
+			capped
 		};
 	}
 	return {
@@ -281,9 +325,23 @@ export function startingJobForms(
 		stale: false,
 		basis,
 		draftBasis: basis,
-		pending: emptyPendingText()
+		pending: emptyPendingText(),
+		capped
 	};
 }
+
+/** A draft of an opened posting, its terms (and the text typed in a locked list) the posting's */
+const withPostingTerms = (draft: StoredJobDraft, terms: JobForm): StoredJobDraft => {
+	const pending = { ...emptyPendingText(), ...draft.pending };
+	for (const field of LIST_FIELDS) {
+		if (LOCKED_FORM_FIELDS.includes(field)) pending[field] = '';
+	}
+	return {
+		...draft,
+		form: withLockedTerms(draft.form, terms),
+		...(draft.pending ? { pending } : {})
+	};
+};
 
 // --- The imported draft -----------------------------------------------------------------
 

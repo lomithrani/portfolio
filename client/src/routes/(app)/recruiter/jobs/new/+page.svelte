@@ -3,7 +3,14 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { ArrowLeft, Briefcase, InformationCircle, LockClosed } from 'svelte-heros-v2';
+	import {
+		ArrowLeft,
+		Briefcase,
+		DocumentMagnifyingGlass,
+		ExclamationTriangle,
+		InformationCircle,
+		LockClosed
+	} from 'svelte-heros-v2';
 	import { JOB_STATUS_LABELS } from 'portfolio-common';
 	import JobEditor from '#components/job-editor/JobEditor.svelte';
 	import EditorPlaceholder from '#components/job-editor/EditorPlaceholder.svelte';
@@ -11,23 +18,38 @@
 	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import { editorPages } from '#components/job-editor/editorPages.messages.ts';
 	import Rich from '#lib/i18n/Rich.svelte';
+	import { common } from '#lib/i18n/common.messages.ts';
+	import { portfolioApi } from '#services';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
-	import { isSessionValid } from '#services/authentication.ts';
-	import { hasAcceptedCurrentTerms } from '#services/account.ts';
+	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
+	import { errorStatus } from '#services/apiErrors.ts';
+	import { hasAcceptedCurrentTerms, isConsentProblem } from '#services/account.ts';
+	import {
+		DUPLICATE_PARAM,
+		duplicateSourceId,
+		type RecruiterJobDetail
+	} from '#services/recruiter.ts';
 	import { loadImportedDraft, type ImportedJobDraft } from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { JOB_PARAM, JOURNEY_PARAM, journeyReturnDomain } from '#services/workflow.ts';
 	import { m } from './page.messages.ts';
 
-	// A new job posting, blank or (?import=1) from the job description import the import dialog
-	// kept in this browser. Rendered in the browser only (recruiter/+layout.ts). Opened from a
-	// portfolio's hiring journey (?journey=<portfolio>), it goes back there once the posting is
-	// created, to pick it. A recruiter whose session says they have not accepted the terms in
-	// force accepts them first (TermsAcceptance), as the other recruiter pages ask once the API
-	// refused them: the form opens once they have (the API would refuse to save it).
+	// A new job posting, blank, (?import=1) from the job description import the import dialog
+	// kept in this browser, or (?duplicate=<id>) from a copy of one of the recruiter's postings
+	// (GET /recruiter/jobs/:id), as a draft: an opened posting's terms are locked, a new version
+	// of them is a new posting. Nothing is saved until the recruiter creates it. Rendered in the
+	// browser only (recruiter/+layout.ts). Opened from a portfolio's hiring journey
+	// (?journey=<portfolio>), it goes back there once the posting is created, to pick it. A
+	// recruiter whose session says they have not accepted the terms in force accepts them first
+	// (TermsAcceptance), as the other recruiter pages ask once the API refused them: the form opens
+	// once they have (the API would refuse to save it).
 
 	// Read once: the import is taken when the editor opens, and the parameter goes once discarded
 	const importRequested = untrack(() => page.url.searchParams.get('import') === '1');
+	// The posting to copy (an import comes first)
+	const duplicateId = untrack(() =>
+		importRequested ? null : duplicateSourceId(page.url.searchParams.get(DUPLICATE_PARAM))
+	);
 	const journeyDomain = untrack(() =>
 		journeyReturnDomain(page.url.searchParams.get(JOURNEY_PARAM))
 	);
@@ -56,6 +78,55 @@
 	// Starts the editor over (a discarded import)
 	let editorRun = $state(0);
 
+	// The posting to copy (?duplicate=), for the account it was loaded for
+	type SourceState =
+		| { kind: 'idle' }
+		| { kind: 'loading' }
+		| { kind: 'loaded'; userId: string; job: RecruiterJobDetail }
+		| { kind: 'not-found' }
+		| { kind: 'terms' }
+		| { kind: 'error' };
+	let source = $state.raw<SourceState>({ kind: 'idle' });
+	let sourceRequested: string | null = null;
+	let duplicateSource = $derived(
+		source.kind === 'loaded' && source.userId === editorUser ? source.job : null
+	);
+
+	async function loadSource(userId: string, id: string) {
+		const key = `${userId}:${id}`;
+		sourceRequested = key;
+		source = { kind: 'loading' };
+		try {
+			const { data, error } = await portfolioApi.recruiter
+				.jobs({ id })
+				.get({ fetch: { credentials: 'include' } });
+			if (sourceRequested !== key) return;
+			if (error || !data) {
+				const code = errorStatus(error);
+				if (code === 401) {
+					sourceRequested = null;
+					source = { kind: 'idle' };
+					clearAuthentication();
+				} else if (isConsentProblem(code, error?.value)) {
+					source = { kind: 'terms' };
+				} else if (code === 404 || code === 422) {
+					source = { kind: 'not-found' };
+				} else {
+					// 403 (no recruiter space) too: the session said it had one
+					source = { kind: 'error' };
+				}
+				return;
+			}
+			source = { kind: 'loaded', userId, job: data };
+		} catch {
+			if (sourceRequested === key) source = { kind: 'error' };
+		}
+	}
+
+	const retrySource = () => {
+		if (editorUser && duplicateId) loadSource(editorUser, duplicateId);
+	};
+
 	$effect(() => {
 		const id = user?._id;
 		if (id) expiredWhileSaving = false;
@@ -65,6 +136,7 @@
 			editorUser = id;
 			imported = importRequested ? (loadImportedDraft(id) ?? null) : null;
 			importMissing = importRequested && !imported;
+			if (duplicateId && !termsFirst) loadSource(id, duplicateId);
 		});
 	});
 
@@ -137,24 +209,60 @@
 		</a>
 		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
-		{#if termsFirst && user}
+		{#if (termsFirst || source.kind === 'terms') && user}
 			<!-- Accepted: the form takes its place, and its heading the focus -->
 			<TermsAcceptance
 				{user}
 				source="recruiter"
 				level={2}
+				required={source.kind === 'terms'}
 				onAccepted={async () => {
+					if (duplicateId && editorUser && !duplicateSource)
+						await loadSource(editorUser, duplicateId);
 					await tick();
 					heading?.focus();
 				}}
 			/>
+		{:else if showEditor && editorUser && duplicateId && !duplicateSource}
+			{#if source.kind === 'not-found'}
+				<PageNotice title={m.duplicateNotFound.title} icon={DocumentMagnifyingGlass}>
+					<p>{m.duplicateNotFound.text}</p>
+					{#snippet actions()}
+						<a href={recruiterHref} class="btn preset-filled-primary-700-300 min-h-11">
+							{editorPages.jobDescriptions}
+						</a>
+					{/snippet}
+				</PageNotice>
+			{:else if source.kind === 'error'}
+				<PageNotice title={m.duplicateFailed} icon={ExclamationTriangle} tone="error">
+					<p>{m.duplicateFailedText}</p>
+					{#snippet actions()}
+						<button
+							type="button"
+							class="btn preset-filled-primary-700-300 min-h-11"
+							onclick={retrySource}
+						>
+							{common.retry}
+						</button>
+						<a href={recruiterHref} class="btn preset-tonal min-h-11">
+							{editorPages.jobDescriptions}
+						</a>
+					{/snippet}
+				</PageNotice>
+			{:else}
+				<EditorPlaceholder />
+			{/if}
 		{:else if showEditor && editorUser}
 			<div class="space-y-1">
 				<h2 bind:this={heading} tabindex="-1" class="text-2xl font-bold outline-none md:text-3xl">
 					{m.heading}
 				</h2>
 				<p class="text-surface-700-300">
-					{imported ? m.introImported : m.intro(JOB_STATUS_LABELS.open)}
+					{imported
+						? m.introImported
+						: duplicateSource
+							? m.introDuplicate(duplicateSource.title)
+							: m.intro(JOB_STATUS_LABELS.open)}
 				</p>
 			</div>
 			{#if journeyDomain}
@@ -191,6 +299,7 @@
 				<JobEditor
 					userId={editorUser}
 					{imported}
+					duplicate={duplicateSource}
 					cancelHref={journeyHref ?? recruiterHref}
 					{recruiterHref}
 					{onSaved}

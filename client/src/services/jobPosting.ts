@@ -6,11 +6,14 @@ import {
 	FIXED_TERM_CONTRACT_TYPES,
 	FR_FULL_TIME_HOURS_PER_WEEK,
 	JOB_STATUS_LABELS,
+	LOCKED_JOB_FIELDS,
 	PAY_PERIOD_LABELS,
 	SENIORITY_LABELS,
 	TRAVEL_LABELS,
 	WORK_MODE_LABELS,
+	highestPayMax,
 	intlLocale,
+	isPayRangeTooWide,
 	normalizeJobPosting,
 	validateJobPosting,
 	type ContractType,
@@ -320,6 +323,51 @@ export const jobFormFieldOf = (path: string): JobFormField | undefined =>
 	Object.hasOwn(FIELD_OF_PATH, path)
 		? FIELD_OF_PATH[path as keyof typeof FIELD_OF_PATH]
 		: undefined;
+
+/**
+ * The form fields of a posting's terms (portfolio-common's LOCKED_JOB_FIELDS: what the perfect job
+ * scores): read-only in the editor once the posting is opened, since the API refuses a change of
+ * them then (409)
+ */
+export const LOCKED_FORM_FIELDS: readonly JobFormField[] = LOCKED_JOB_FIELDS.flatMap((path) => {
+	const field = jobFormFieldOf(path);
+	return field ? [field] : [];
+});
+
+/** `form` with the terms of `terms` (LOCKED_FORM_FIELDS): what an opened posting's draft keeps */
+export const withLockedTerms = (form: JobForm, terms: JobForm): JobForm => {
+	const kept: JobForm = { ...form };
+	for (const field of LOCKED_FORM_FIELDS) {
+		const value = terms[field];
+		(kept as Record<JobFormField, unknown>)[field] = Array.isArray(value) ? [...value] : value;
+	}
+	return kept;
+};
+
+/**
+ * The form of an opened posting. Its pay range, when it was saved wider than portfolio-common's
+ * JOB_LIMITS.pay.maxRangeRatio times its bottom (before that cap existed), shows the top it is
+ * scored with: the only maximum its terms take (the API compares that one as unchanged), and one
+ * it can be saved with (validateJobPosting refuses a wider one). `capped` says it was brought down
+ */
+export const openedJobForm = (job: JobPostingLike): { form: JobForm; capped: boolean } => {
+	const form = jobToForm(job);
+	const min = job.pay?.min;
+	const max = job.pay?.max;
+	if (min === undefined || max === undefined || !isPayRangeTooWide({ min, max })) {
+		return { form, capped: false };
+	}
+	return { form: { ...form, payMax: String(highestPayMax(min)) }, capped: true };
+};
+
+/**
+ * The form of a new posting copied from `job` (Duplicate): every field of it, as a draft. The
+ * copy is a posting of its own, never opened: its terms can be changed before it is opened
+ */
+export const duplicateJobForm = (job: JobPostingLike & { _id?: string }): JobForm => ({
+	...jobToForm(job),
+	status: 'draft'
+});
 
 /** The number fields (how each is named in its message: `notANumber` of jobPosting.messages.ts) */
 const NUMBER_FIELDS = [

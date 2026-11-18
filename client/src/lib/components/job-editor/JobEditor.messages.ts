@@ -31,6 +31,28 @@ export const m = defineMessages({
 	/** The other answer to "Discard…?" */
 	keepIt: { en: 'Keep it', fr: 'Conserver' },
 
+	// --- An opened posting's terms -------------------------------------------------------------
+
+	/** The note at the top of the editor of a job description opened before: its terms are locked */
+	locked: {
+		title: { en: 'Pay and conditions locked', fr: 'Rémunération et conditions verrouillées' },
+		text: {
+			en: "This job description was opened: its pay and its conditions (the fields with a lock) can no longer be changed, because candidates' matches are computed on them. You can still edit its description and the other fields, and change its status. To change them, duplicate it as a new job description.",
+			fr: "Cette offre d'emploi a été ouverte : sa rémunération et ses conditions (les champs marqués d'un cadenas) ne peuvent plus être modifiées, car les correspondances des candidats sont calculées sur elles. Vous pouvez toujours modifier sa description et les autres champs, et changer son statut. Pour les modifier, dupliquez-la en une nouvelle offre d'emploi."
+		},
+		/**
+		 * A range saved wider than `ratio` (JOB_LIMITS.pay.maxRangeRatio) times its minimum, before
+		 * that cap: its maximum shows (and is saved) as `amount`, the top it was scored with
+		 */
+		payCapped: {
+			en: (amount: string, ratio: number) =>
+				`Its pay range was saved wider than ${ratio.toLocaleString('en-GB')} times its minimum: its maximum shows as ${amount}, the top candidates' matches were computed with, and is saved so with your next change.`,
+			fr: (amount: string, ratio: number) =>
+				`Sa fourchette de rémunération a été enregistrée plus large que ${ratio.toLocaleString('fr-FR')} fois sa minimale : sa rémunération maximale s'affiche à ${amount}, le haut de fourchette sur lequel les correspondances des candidats ont été calculées, et sera enregistrée ainsi avec votre prochaine modification.`
+		},
+		duplicate: { en: 'Duplicate', fr: 'Dupliquer' }
+	},
+
 	// --- The restored draft -------------------------------------------------------------------
 
 	restored: {
@@ -114,6 +136,15 @@ export const m = defineMessages({
 		fr: "Cette offre d'emploi a été modifiée depuis que vous l'avez ouverte (dans un autre onglet, ou son statut depuis sa page). Vos modifications sont conservées dans ce navigateur : rechargez pour voir la version enregistrée, avec vos modifications par-dessus, à vérifier."
 	},
 	reload: { en: 'Reload', fr: 'Recharger' },
+	/** The API refused the save: the job description was opened, its terms are locked (409) */
+	termsLockedOnSave: {
+		en: "The pay and the conditions of this job description are locked: it was opened, and candidates' matches are computed on them. Your changes are kept in this browser: reload to see it as it is, with your changes to the other fields over it, or duplicate it with all your changes as a new job description.",
+		fr: "La rémunération et les conditions de cette offre d'emploi sont verrouillées : elle a été ouverte, et les correspondances des candidats sont calculées sur elles. Vos modifications sont conservées dans ce navigateur : rechargez pour la voir telle qu'elle est, avec vos modifications des autres champs par-dessus, ou dupliquez-la avec toutes vos modifications en une nouvelle offre d'emploi."
+	},
+	duplicateWithChanges: {
+		en: 'Duplicate with my changes',
+		fr: 'Dupliquer avec mes modifications'
+	},
 	tooManyJobs: {
 		en: 'You have too many job descriptions: delete one to add another.',
 		fr: "Vous avez trop d'offres d'emploi : supprimez-en une pour en ajouter une autre."

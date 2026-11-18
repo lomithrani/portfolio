@@ -4,13 +4,17 @@ A labelled field of the job editor: label (with a required mark), the control, a
 after it (also in the label for screen readers: 'Trial period (months)'), a hint and the field's
 error. The control is a snippet given the attributes to spread
 on the input or select (`id`, `aria-invalid`, `aria-describedby`, `aria-required`), so the
-label, the hint, the error and the error summary's link all point to it.
+label, the hint, the error and the error summary's link all point to it. A field of the terms of
+a posting opened before (the editor's `locked`) shows a lock, described to screen readers; the
+editor makes its control read-only.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { LockClosed } from 'svelte-heros-v2';
 	import type { JobFormField } from '#services/jobPosting.ts';
 	import FieldError from './FieldError.svelte';
 	import { getJobEditorContext, type ControlAttributes } from './context';
+	import { m } from './Field.messages.ts';
 
 	let {
 		field,
@@ -41,14 +45,17 @@ label, the hint, the error and the error summary's link all point to it.
 	const editor = getJobEditorContext();
 	let id = $derived(editor.fieldId(field));
 	let hintId = $derived(`${id}-hint`);
+	let lockedId = $derived(`${id}-locked`);
 	let error = $derived(editor.error(field));
+	let locked = $derived(editor.locked(field));
 	let spokenUnit = $derived(unitLabel ?? unit);
 	let attributes: ControlAttributes = $derived({
 		id,
 		'aria-invalid': error ? true : undefined,
 		'aria-describedby':
-			[hint ? hintId : '', error ? editor.errorId(field) : ''].filter(Boolean).join(' ') ||
-			undefined,
+			[locked ? lockedId : '', hint ? hintId : '', error ? editor.errorId(field) : '']
+				.filter(Boolean)
+				.join(' ') || undefined,
 		'aria-required': required ? true : undefined
 	});
 </script>
@@ -62,7 +69,18 @@ label, the hint, the error and the error summary's link all point to it.
 		{#if required}
 			<span class="text-error-700-300" aria-hidden="true">*</span>
 		{/if}
+		{#if locked}
+			<LockClosed
+				size="14"
+				class="ms-0.5 inline-block align-[-2px] text-surface-700-300"
+				aria-hidden="true"
+			/>
+		{/if}
 	</label>
+	{#if locked}
+		<!-- Out of the label: it describes the control, its name stays the field's -->
+		<span id={lockedId} class="sr-only">{m.locked}</span>
+	{/if}
 	{#if unit}
 		<div class="flex items-center gap-2">
 			<div class="min-w-0 flex-1">{@render control(attributes)}</div>

@@ -157,10 +157,29 @@ test.describe('the recruiter', () => {
 		await expect(page.getByRole('heading', { name: 'Public page' })).toHaveCount(0);
 		await expect(page.getByRole('heading', { name: 'Applicants' })).toHaveCount(0);
 
-		// Open: it can be picked on a candidate's Hire page
+		// Open: asked first, since its terms lock then. Cancelled, it stays a draft
 		await page.getByRole('button', { name: 'Change status' }).click();
 		await page.getByRole('menuitemradio', { name: /^Open/ }).click();
+		const confirm = page.getByRole('alertdialog', { name: 'Open this job description?' });
+		await expect(confirm).toContainText(
+			"Once open, the pay and the conditions of this job are locked, because candidates' matches are computed on them. To change them later, duplicate it as a new job."
+		);
+		await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused();
+		await confirm.getByRole('button', { name: 'Cancel' }).click();
+		await expect(confirm).toBeHidden();
+		expect((await listRecruiterJobs(api)).find((job) => job._id === id)?.status).toBe('draft');
+		await expect(page.getByText('Its pay and conditions are locked')).toHaveCount(0);
+
+		// Open: it can be picked on a candidate's Hire page, and its terms are locked
+		await page.getByRole('button', { name: 'Change status' }).click();
+		await page.getByRole('menuitemradio', { name: /^Open/ }).click();
+		await confirm.getByRole('button', { name: 'Open', exact: true }).click();
 		await expect(toasts(page).getByText('Status changed to Open', { exact: true })).toBeVisible();
+		await expect(
+			page.getByText(
+				"Its pay and conditions are locked since it was opened: candidates' matches are computed on them. Duplicate it to change them."
+			)
+		).toBeVisible();
 		await expect(
 			toasts(page).getByText("Hiring: you can pick it on a candidate's Hire page.", {
 				exact: true
@@ -329,7 +348,8 @@ test.describe('the recruiter', () => {
 
 	test('edits a job description, then deletes it', async ({ page }) => {
 		const title = `Backend engineer ${tag}`;
-		const { _id: id } = await createJob(api, { title, status: 'open' });
+		// A draft: every field can change (an opened one's terms are locked, tested below)
+		const { _id: id } = await createJob(api, { title, status: 'draft' });
 		await openAsRecruiter(page, `/recruiter/jobs/${id}`);
 
 		await page.getByRole('link', { name: 'Edit', exact: true }).click();
@@ -352,7 +372,7 @@ test.describe('the recruiter', () => {
 		await gotoHydrated(page, '/recruiter');
 		const list = page.getByRole('list', { name: 'Job descriptions' });
 		const card = list.getByRole('listitem').filter({ hasText: newTitle });
-		await expect(card).toContainText('Open');
+		await expect(card).toContainText('Draft');
 		// Its name ends with the title (for screen readers): the only Delete of the card
 		await card.getByRole('button', { name: /^Delete\b/ }).click();
 		const dialog = page.getByRole('alertdialog', { name: `Delete “${newTitle}”?` });
@@ -414,23 +434,30 @@ test.describe('the recruiter', () => {
 		// Opened from another tab meanwhile: the editor still shows the draft
 		const opened = await api.put(`${API_URL}/jobs/${id}/status`, { data: { status: 'open' } });
 		expect(opened.ok()).toBe(true);
-		await titleInput.fill(`${title} (typo fixed)`);
+		const description = page.getByRole('textbox', { name: 'Job description' });
+		const fixed = '## The job\n\nCreated by an end-to-end test (typo fixed).';
+		await description.fill(fixed);
 		await page.getByRole('button', { name: 'Save changes' }).click();
 		await expect(
 			page.getByText(/^This job description was changed since you opened it/)
 		).toBeVisible();
-		// Nothing was overwritten: still open, with its title
+		// Nothing was overwritten: still open, with its description
 		const stored = await (await api.get(`${API_URL}/recruiter/jobs/${id}`)).json();
-		expect([stored.status, stored.title]).toEqual(['open', title]);
+		expect([stored.status, stored.description]).toEqual([
+			'open',
+			'## The job\n\nCreated by an end-to-end test.'
+		]);
 
-		// Reloaded: the saved posting, with the changes over it, flagged as older
+		// Reloaded: the saved posting, with the changes over it, flagged as older. It was opened
+		// meanwhile: its terms are read-only now
 		await page.getByRole('button', { name: 'Reload', exact: true }).click();
 		await expect(
 			page.getByText(
 				'This job description was saved since you made them: check them before saving.'
 			)
 		).toBeVisible();
-		await expect(titleInput).toHaveValue(`${title} (typo fixed)`);
+		await expect(description).toHaveValue(fixed);
+		await expect(titleInput).not.toBeEditable();
 		await page.getByLabel('Status').selectOption('open');
 
 		// Saving: the fields take nothing until the answer (it would not be sent)
@@ -443,7 +470,155 @@ test.describe('the recruiter', () => {
 		await expect(titleInput).toBeDisabled();
 		await expect(page).toHaveURL(new RegExp(`/recruiter/jobs/${id}$`));
 		const saved = await (await api.get(`${API_URL}/recruiter/jobs/${id}`)).json();
-		expect([saved.status, saved.title]).toEqual(['open', `${title} (typo fixed)`]);
+		expect([saved.status, saved.title, saved.description]).toEqual(['open', title, fixed]);
+	});
+
+	test('asks before a save opens a job description, then locks its terms: Duplicate starts a new draft from it', async ({
+		page
+	}) => {
+		const title = `Data engineer ${tag}`;
+		const { _id: id } = await createJob(api, {
+			title,
+			status: 'draft',
+			requirements: { skills: ['Python'] }
+		});
+		await openAsRecruiter(page, `/recruiter/jobs/${id}/edit`);
+		const titleInput = page.getByRole('textbox', { name: 'Job title' });
+		await expect(titleInput).toBeEditable();
+		await expect(page.locator('[data-terms-locked]')).toHaveCount(0);
+
+		// Saved as open: asked first. Cancelled, nothing is saved
+		await page.getByLabel('Status').selectOption('open');
+		await page.getByRole('button', { name: 'Save changes' }).click();
+		const confirm = page.getByRole('alertdialog', { name: 'Open this job description?' });
+		await expect(confirm).toContainText(
+			'Once open, the pay and the conditions of this job are locked'
+		);
+		await confirm.getByRole('button', { name: 'Cancel' }).click();
+		await expect(confirm).toBeHidden();
+		expect((await listRecruiterJobs(api)).find((job) => job._id === id)?.status).toBe('draft');
+		await page.getByRole('button', { name: 'Save changes' }).click();
+		await confirm.getByRole('button', { name: 'Open', exact: true }).click();
+		await expect(page).toHaveURL(new RegExp(`/recruiter/jobs/${id}$`));
+		expect((await listRecruiterJobs(api)).find((job) => job._id === id)?.status).toBe('open');
+
+		// Its page: Duplicate next to Edit
+		await expect(page.getByRole('link', { name: 'Duplicate', exact: true })).toHaveAttribute(
+			'href',
+			`/recruiter/jobs/new?duplicate=${id}`
+		);
+
+		// Edited again (its toast would cover Edit): its terms are read-only, said at the top; the
+		// rest is not
+		await gotoHydrated(page, `/recruiter/jobs/${id}/edit`);
+		const note = page.getByRole('region', { name: 'Pay and conditions locked' });
+		await expect(note).toContainText(
+			"This job description was opened: its pay and its conditions (the fields with a lock) can no longer be changed, because candidates' matches are computed on them. You can still edit its description and the other fields, and change its status."
+		);
+		await expect(titleInput).toHaveValue(title);
+		for (const locked of [
+			titleInput,
+			page.getByRole('textbox', { name: 'City', exact: true }),
+			page.getByRole('textbox', { name: 'Minimum pay' }),
+			page.getByRole('textbox', { name: 'Maximum pay' }),
+			page.getByLabel('Contract type'),
+			page.getByLabel('Pay period'),
+			page.getByRole('textbox', { name: 'Skills' })
+		]) {
+			await expect(locked).not.toBeEditable();
+		}
+		await expect(titleInput).toHaveAccessibleDescription(
+			'Locked since the job description was opened.'
+		);
+		await expect(page.getByRole('button', { name: /^Remove Python/ })).toHaveCount(0);
+		// The work mode's choices are read-only: forced, a click changes nothing
+		const workMode = page.getByRole('radiogroup', { name: 'Work mode' });
+		await workMode.getByText('Hybrid', { exact: true }).click({ force: true });
+		await expect(workMode.getByRole('radio', { name: 'On site' })).toBeChecked();
+		await expect(workMode).toHaveAccessibleDescription(
+			'Locked since the job description was opened.'
+		);
+		for (const open of [
+			page.getByRole('textbox', { name: 'Job description' }),
+			page.getByRole('textbox', { name: 'Company' }),
+			page.getByRole('textbox', { name: 'Benefits' }),
+			page.getByLabel('Status')
+		]) {
+			await expect(open).toBeEditable();
+		}
+		await page.getByRole('textbox', { name: 'Company' }).fill('E2E Holding');
+		await page.getByRole('button', { name: 'Save changes' }).click();
+		await expect(toasts(page).getByText('Changes saved', { exact: true })).toBeVisible();
+		await expect(page).toHaveURL(new RegExp(`/recruiter/jobs/${id}$`));
+
+		// Duplicate, from the editor's note: a new draft with its fields, nothing saved yet
+		await gotoHydrated(page, `/recruiter/jobs/${id}/edit`);
+		await note.getByRole('link', { name: 'Duplicate' }).click();
+		await expect(page).toHaveURL(new RegExp(`/recruiter/jobs/new\\?duplicate=${id}$`));
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'New job description' })
+		).toBeVisible();
+		await expect(
+			page.getByText(`A copy of “${title}”, as a new draft: change what you need, then create it.`)
+		).toBeVisible();
+		await expect(page.locator('[data-terms-locked]')).toHaveCount(0);
+		await expect(titleInput).toHaveValue(title);
+		await expect(page.getByRole('textbox', { name: 'Company' })).toHaveValue('E2E Holding');
+		await expect(page.getByLabel('Status')).toHaveValue('draft');
+		const minimum = page.getByRole('textbox', { name: 'Minimum pay' });
+		await expect(minimum).toHaveValue('45000');
+		await expect(minimum).toBeEditable();
+		await titleInput.fill(`Senior data engineer ${tag}`);
+		await minimum.fill('50000');
+		await page.getByRole('button', { name: 'Create job description' }).click();
+		await expect(page).toHaveURL(JOB_PAGE);
+		const copyId = JOB_PAGE.exec(new URL(page.url()).pathname)![1];
+		expect(copyId).not.toBe(id);
+
+		const jobs = await listRecruiterJobs(api);
+		const copy = await (await api.get(`${API_URL}/recruiter/jobs/${copyId}`)).json();
+		expect(copy).toMatchObject({
+			title: `Senior data engineer ${tag}`,
+			status: 'draft',
+			company: 'E2E Holding',
+			pay: { min: 50000, max: 55000 },
+			requirements: { skills: ['Python'] }
+		});
+		expect(copy).not.toHaveProperty('publishedAt');
+		// The original stays as it was
+		expect(jobs.find((job) => job._id === id)).toMatchObject({ title, status: 'open' });
+	});
+
+	test('a save refused for locked terms keeps what was typed, and duplicates it with the changes', async ({
+		page
+	}) => {
+		const title = `Ops engineer ${tag}`;
+		const { _id: id } = await createJob(api, { title, status: 'open' });
+		// As if the terms had changed: the API refuses them
+		const saves = await stubApi(page, 'PUT', `/jobs/${id}`, () => ({
+			status: 409,
+			text: 'The terms of an opened job posting cannot be changed'
+		}));
+		await openAsRecruiter(page, `/recruiter/jobs/${id}/edit`);
+		const description = page.getByRole('textbox', { name: 'Job description' });
+		await description.fill('## The job\n\nRun the platform.');
+		await page.getByRole('button', { name: 'Save changes' }).click();
+
+		await expect(
+			page.getByText(
+				/^The pay and the conditions of this job description are locked: it was opened/
+			)
+		).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Reload', exact: true })).toBeVisible();
+		expect(saves).toHaveLength(1);
+		await page.getByRole('button', { name: 'Duplicate with my changes' }).click();
+
+		await expect(page).toHaveURL(new RegExp(`/recruiter/jobs/new\\?duplicate=${id}$`));
+		await expect(page.getByText('Restored your unsaved changes from this browser.')).toBeVisible();
+		await expect(description).toHaveValue('## The job\n\nRun the platform.');
+		await expect(page.getByLabel('Status')).toHaveValue('draft');
+		// Nothing was saved
+		expect((await listRecruiterJobs(api)).filter((job) => job.title === title)).toHaveLength(1);
 	});
 
 	test('counts text typed in a list as a change, kept with the draft', async ({ page }) => {

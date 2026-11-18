@@ -18,6 +18,32 @@ export const m = defineMessages({
 		fr: (open: string) =>
 			`Décrivez le poste : dès que le statut de l'offre est « ${open} », vous pouvez la choisir sur la page Recruter d'un candidat.`
 	},
+	/** Under the heading, when the form starts from a copy (`title`: the posting copied) */
+	introDuplicate: {
+		en: (title: string) =>
+			`A copy of “${title}”, as a new draft: change what you need, then create it. The job description it copies stays as it is.`,
+		fr: (title: string) =>
+			`Une copie de « ${title} », en nouveau brouillon : modifiez ce qu'il faut, puis créez l'offre. L'offre d'emploi copiée reste telle qu'elle est.`
+	},
+	/** ?duplicate= names no posting of this recruiter */
+	duplicateNotFound: {
+		title: {
+			en: 'Job description to copy not found',
+			fr: "Offre d'emploi à copier introuvable"
+		},
+		text: {
+			en: 'It may have been deleted, or it belongs to another recruiter account. Your job descriptions are listed in your recruiter space: duplicate one from its page.',
+			fr: "Elle a peut-être été supprimée, ou elle appartient à un autre compte recruteur. Vos offres d'emploi sont listées dans votre espace recruteur : dupliquez-en une depuis sa page."
+		}
+	},
+	duplicateFailed: {
+		en: 'Could not load the job description to copy',
+		fr: "Impossible de charger l'offre d'emploi à copier"
+	},
+	duplicateFailedText: {
+		en: 'The server could not be reached, or it failed. Check your connection and try again.',
+		fr: 'Le serveur est injoignable, ou il a rencontré une erreur. Vérifiez votre connexion et réessayez.'
+	},
 	backToJourney: {
 		en: 'Back to the hiring journey',
 		fr: 'Retour au parcours de recrutement'

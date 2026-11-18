@@ -1991,7 +1991,8 @@ describe('no Google token in any API response', () => {
     const job = await call('POST', '/jobs', { ...auth, body: jobBody });
     expect(job.status).toBe(200);
     const jobId = job.json()._id as string;
-    expect((await call('PUT', `/jobs/${jobId}`, { ...auth, body: { ...jobBody, title: 'Staff engineer' } })).status).toBe(200);
+    // Open: its terms are locked, its description is not
+    expect((await call('PUT', `/jobs/${jobId}`, { ...auth, body: { ...jobBody, description: 'Build the billing platform' } })).status).toBe(200);
     expect((await call('PUT', `/jobs/${jobId}/status`, { ...auth, body: { status: 'open' } })).status).toBe(200);
     expect((await call('GET', '/recruiter/jobs', auth)).status).toBe(200);
     expect((await call('GET', `/recruiter/jobs/${jobId}`, auth)).status).toBe(200);

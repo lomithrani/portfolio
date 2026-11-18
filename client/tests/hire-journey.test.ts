@@ -761,6 +761,12 @@ test.describe('the hiring journey', () => {
 		await page.getByRole('textbox', { name: 'Minimum pay' }).fill('60 000');
 		await page.getByRole('textbox', { name: 'Maximum pay' }).fill('70 000');
 		await page.getByRole('button', { name: 'Create job description' }).click();
+		// Created open: asked first, since its terms lock then
+		const confirm = page.getByRole('alertdialog', { name: 'Open this job description?' });
+		await expect(confirm).toContainText(
+			'Once open, the pay and the conditions of this job are locked'
+		);
+		await confirm.getByRole('button', { name: 'Open', exact: true }).click();
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire\\?job=[0-9a-f]{24}$`));
 		await expect(toasts(page).getByText('Job description created', { exact: true })).toBeVisible();
 		await expect(radio(`Platform lead ${tag}`)).toBeChecked();
@@ -851,6 +857,10 @@ test.describe('the hiring journey', () => {
 		).toBeVisible();
 		await page.getByLabel('Status', { exact: true }).selectOption('open');
 		await page.getByRole('button', { name: 'Create job description' }).click();
+		await page
+			.getByRole('alertdialog', { name: 'Open this job description?' })
+			.getByRole('button', { name: 'Open', exact: true })
+			.click();
 
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire\\?job=[0-9a-f]{24}$`));
 		await expect(

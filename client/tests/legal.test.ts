@@ -298,6 +298,10 @@ test.describe('legal pages', () => {
 		expect(recruiters).toContain(
 			`when the candidate adds the step "${jobMatchLabel('en')}" to their hiring journey`
 		);
+		// An opened job description's terms are locked (the job editor, PUT /jobs/:id)
+		expect(recruiters).toContain(
+			"Once a job description is opened, its pay and its conditions can no longer be changed, because candidates' matches are computed on them: a new version of them is a new job description."
+		);
 		const article = page.locator('article[data-legal-document]');
 		await expect(article).not.toContainText('recruitment agency');
 		await expect(article).not.toContainText('does not select, score or rank');
@@ -325,6 +329,9 @@ test.describe('legal pages', () => {
 		expect(recruitersFr).toContain("La seule note qu'il calcule est celle d'une offre d'emploi");
 		expect(recruitersFr).toContain(
 			`lorsque le candidat ajoute l'étape « ${jobMatchLabel('fr')} » à son parcours de recrutement`
+		);
+		expect(recruitersFr).toContain(
+			"Une fois une offre d'emploi ouverte, sa rémunération et ses conditions ne peuvent plus être modifiées, car les correspondances des candidats sont calculées sur elles : une nouvelle version de celles-ci est une nouvelle offre d'emploi."
 		);
 		await expect(article).not.toContainText('cabinet de recrutement');
 	});

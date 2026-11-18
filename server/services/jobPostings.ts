@@ -1,4 +1,10 @@
-import { JOB_LIMITS, normalizeJobPosting, validateJobPosting } from 'portfolio-common';
+import {
+  JOB_LIMITS,
+  changedLockedFields,
+  jobTermsLocked,
+  normalizeJobPosting,
+  validateJobPosting
+} from 'portfolio-common';
 import type {
   ContractType,
   EducationLevel,
@@ -16,6 +22,7 @@ import { JobPosting } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../errors';
 import { m } from './jobPostings.messages';
+import { JOB_TERMS_LOCKED } from '../protocol';
 
 // Job postings of the recruiter space (plugins/jobs.ts): what the API returns
 // for a posting (an explicit mapping: no internal field, never its recruiter),
@@ -153,6 +160,20 @@ export const jobPostingFields = (job: JobPostingInput) => ({
   benefits: job.benefits,
   travel: job.travel
 });
+
+/**
+ * An edit of a posting opened before (`publishedAt`) leaves its terms as they are: the fields the
+ * perfect job scores (portfolio-common's LOCKED_JOB_FIELDS), compared normalised, or a 409 (a new
+ * version of them is a new posting: the editor offers to duplicate it). The status and the fields
+ * no criterion reads stay editable. A posting never opened takes any change, the save that opens
+ * it included.
+ */
+export function requireUnchangedTerms(stored: StoredJobPosting, fields: JobPostingInput) {
+  if (!jobTermsLocked(stored)) return;
+  if (changedLockedFields(normalizeJobPosting(toJobPostingDto(stored)), fields).length > 0) {
+    throw new ConflictError(JOB_TERMS_LOCKED);
+  }
+}
 
 /** When a posting with this status was first published: now, the first time it leaves draft */
 export const publishedAtFor = (status: JobStatus, publishedAt: Date | null | undefined) =>
