@@ -2,11 +2,11 @@ import { expect, test } from '@playwright/test';
 import { API_URL } from './support/owner.ts';
 
 // Search engines (client/src/lib/robots.ts): a portfolio's pages, the 404 of a name nobody
-// claimed and the private pages answer with `x-robots-tag: noindex` and carry a robots meta; the
-// landing page and the legal pages stay listed, with their canonical links; robots.txt refuses
-// nothing, so crawlers and link previews can still fetch a portfolio; the API asks the same of
-// every answer. Runs against the CI seed: the portfolio 'louis.gentil' exists; the visitor is
-// anonymous.
+// claimed and the private pages answer with `x-robots-tag: noindex` and carry a robots meta (that
+// 404 has the header alone); the landing page and the legal pages stay listed, with their
+// canonical links; robots.txt refuses nothing, so crawlers and link previews can still fetch a
+// portfolio; the API asks the same of every answer. Runs against the CI seed: the portfolio
+// 'louis.gentil' exists; the visitor is anonymous.
 
 const DOMAIN = 'louis.gentil';
 // A valid name nobody claimed: the root error page offers to claim it
@@ -80,18 +80,26 @@ test.describe('a portfolio', () => {
 	});
 });
 
-test('the private pages are not listed', async ({ request }) => {
+test('the private pages are not listed', async ({ page }) => {
 	for (const path of [
 		'/account',
 		'/recruiter/jobs/new',
 		'/recruiter/jobs/65e2e00000000000000000aa'
 	]) {
-		const response = await request.get(path);
-		expect({ path, status: response.status() }).toEqual({ path, status: 200 });
+		const response = await page.goto(path);
+		expect({ path, status: response?.status() }).toEqual({ path, status: 200 });
 		expect({ path, robots: robotsHeader(response) }).toEqual({
 			path,
 			robots: expect.stringMatching(/\bnoindex\b/)
 		});
+		// The meta: in the server's HTML for /account, written once the page's script ran in the
+		// recruiter space, which is rendered in the browser only. Its layout writes it with the
+		// rest of its head, so the links below are checked on the page as it shows
+		await expect(page.locator('meta[name="robots"]')).toHaveCount(1);
+		await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /\bnoindex\b/);
+		// It names no address for search engines to list instead
+		await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
+		await expect(page.locator('link[rel="alternate"]')).toHaveCount(0);
 	}
 });
 
@@ -102,8 +110,10 @@ test('the landing page and the legal pages stay listed, with their canonical lin
 		const response = await page.goto(path);
 		expect({ path, status: response?.status() }).toEqual({ path, status: 200 });
 		expect({ path, robots: robotsHeader(response) }).toEqual({ path, robots: undefined });
+		// The recruiter landing is rendered in the browser only: its canonical link, written with
+		// its layout's head, says the page has shown before the meta is looked for
+		await expect(page.locator('link[rel="canonical"]')).toHaveCount(1);
 		await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
-		if (path !== '/recruiter') await expect(page.locator('link[rel="canonical"]')).toHaveCount(1);
 	}
 });
 

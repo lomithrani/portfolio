@@ -1,5 +1,6 @@
 import { Elysia, StatusMap } from 'elysia'
 import mongoose from 'mongoose'
+import { ROBOTS_NOINDEX } from 'portfolio-common'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
 import {
@@ -108,14 +109,6 @@ export const responseStatus = (status: number | string | undefined): number => {
   return (StatusMap as Record<string, number>)[status] ?? 0
 }
 
-// Asks search engines not to list any answer of the API (GET /domain/:name is
-// a whole portfolio as public JSON). Sent on every answer, errors, unmatched
-// 404s and CORS preflights included: Elysia's default headers start the
-// context of every request. No robots.txt Disallow instead: a crawler must
-// fetch an answer to read this header. The web pages say the same of the
-// portfolios (client/src/lib/robots.ts)
-export const X_ROBOTS_TAG = 'noindex, nofollow, noarchive'
-
 // Request start times, keyed by request. Filled in onRequest, which (unlike
 // derive) also runs for unmatched routes, so 404s get a real duration too.
 const requestStarts = new WeakMap<Request, number>()
@@ -136,7 +129,13 @@ const apiDocs = () =>
 
 export const createApp = () =>
   new Elysia({ serve: { maxRequestBodySize: MAX_REQUEST_BODY_SIZE } })
-    .headers({ 'x-robots-tag': X_ROBOTS_TAG })
+    // Asks search engines not to list any answer of the API (GET /domain/:name
+    // is a whole portfolio as public JSON). Sent on every answer, errors,
+    // unmatched 404s and CORS preflights included: Elysia's default headers
+    // start the context of every request. No robots.txt Disallow instead: a
+    // crawler must fetch an answer to read this header. The web pages ask the
+    // same of the portfolios (client/src/lib/robots.ts), with the same value
+    .headers({ 'x-robots-tag': ROBOTS_NOINDEX })
     .use(instrumentation)
     // The request's language, for every text the API answers with (services/locale.ts)
     .use(locale)

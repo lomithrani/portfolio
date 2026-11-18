@@ -171,7 +171,8 @@ modifications, droit applicable.
 	</li>
 	<li>
 		collecter des portfolios ou des offres d'emploi par des moyens automatisés (scraping), en dehors
-		de l'indexation des pages publiques par les moteurs de recherche ;
+		des moteurs de recherche qui respectent les règles du site (il leur demande de ne pas référencer
+		les portfolios) et de l'aperçu d'un lien partagé ;
 	</li>
 	<li>
 		attaquer, surcharger ou sonder le site, contourner ses limites et quotas, ou détourner les

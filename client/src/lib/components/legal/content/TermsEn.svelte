@@ -151,7 +151,8 @@ no age limit, the right to act for the employer), imports, meetings, moderation 
 	<li>send spam, unsolicited advertising, or book meetings you do not intend to attend;</li>
 	<li>
 		collect portfolios or job descriptions by automated means (scraping), other than search engines
-		indexing public pages;
+		that keep to the site's rules (it asks them not to list portfolios) and the preview of a shared
+		link;
 	</li>
 	<li>
 		attack, overload or probe the site, get around its limits and quotas, or abuse the imports (for

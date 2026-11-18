@@ -1,16 +1,19 @@
+import { ROBOTS_NOINDEX } from 'portfolio-common';
+
 // Which pages search engines are asked not to list. A portfolio is public to anyone with its
 // address, but nobody should find it by searching a name: every page under /[domain] (and the
-// 404 of a name nobody claimed, which the root error page renders without the portfolio's
-// layout), the pages of the recruiter space that hold a job description, and the account page
-// answer with an `x-robots-tag` header (hooks.server.ts) and carry a robots meta
-// (PortfolioHead.svelte, the (app) layout, the account page). They are not refused in
-// robots.txt: a crawler must fetch a page to read that it may not list it, and LinkedIn must
-// fetch a shared portfolio to build its preview. The landing page and the legal pages stay
-// listed, with their canonical links. The API sends the same header on every answer
-// (server/app.ts).
+// 404 of a name nobody claimed), the pages of the recruiter space that hold a job description,
+// and the account page answer with an `x-robots-tag` header (hooks.server.ts). They also carry a
+// robots meta (PortfolioHead.svelte, the (app) layout, the account page), but for the 404 of a
+// name nobody claimed, which the root error page renders without the portfolio's layout: the
+// header alone says it there. The recruiter space is rendered in the browser only, so its meta is
+// written once the page's script ran. They are not refused in robots.txt: a crawler must fetch a
+// page to read that it may not list it, and LinkedIn must fetch a shared portfolio to build its
+// preview. The landing page and the legal pages stay listed, with their canonical links. The API
+// sends the same header, with the same value, on every answer (server/app.ts).
 
 /** What those pages ask of search engines: not listed, their links not followed, no cached copy */
-export const NOINDEX = 'noindex, nofollow, noarchive';
+export const NOINDEX = ROBOTS_NOINDEX;
 
 /**
  * SvelteKit route ids (`page.route.id`, `event.route.id`) whose pages, and the pages under them,

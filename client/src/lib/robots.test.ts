@@ -20,6 +20,15 @@ const layoutSources = import.meta.glob<string>('/src/routes/*/+layout.svelte', {
 	import: 'default',
 	eager: true
 });
+// The account page's source ('/src/routes/(site)/account/+page.svelte'; a group's parentheses
+// would be a pattern of their own)
+const accountPageSource = Object.values(
+	import.meta.glob<string>('/src/routes/*/account/+page.svelte', {
+		query: '?raw',
+		import: 'default',
+		eager: true
+	})
+)[0];
 const portfolioHeadSource = Object.values(
 	import.meta.glob<string>('/src/lib/components/PortfolioHead.svelte', {
 		query: '?raw',
@@ -63,6 +72,17 @@ describe('pages search engines are asked not to list', () => {
 		// page when it is saved or read without its headers
 		expect(layoutSources['/src/routes/[domain]/+layout.svelte']).toMatch(/^<PortfolioHead \/>$/m);
 		expect(portfolioHeadSource).toMatch(/^\t<meta name="robots" content=\{NOINDEX\} \/>$/m);
+	});
+
+	test('the other pages not listed write the robots meta too', () => {
+		// The (app) layout on its routes of NOINDEX_ROUTES (/recruiter/jobs/*, rendered in the
+		// browser), and the account page. client/tests/robots.test.ts checks the rendered pages
+		const appLayout = layoutSources['/src/routes/(app)/+layout.svelte'];
+		expect(appLayout).toMatch(
+			/\{#if noindex\}\s*<meta name="robots" content=\{NOINDEX\} \/>\s*\{\/if\}/
+		);
+		expect(appLayout).toMatch(/let noindex = \$derived\(isNoindexRoute\(page\.route\.id\)\);/);
+		expect(accountPageSource).toMatch(/^\t<meta name="robots" content=\{NOINDEX\} \/>$/m);
 	});
 
 	test("every page of a portfolio keeps the portfolio's layout and its robots meta", () => {

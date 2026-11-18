@@ -843,9 +843,13 @@ with a free name) and tell its owner before deploying.
 
 Portfolios are public to anyone with their address but are not listed by search engines
 (CLAUDE.md, "Search engines"): every page of a portfolio, the 404 of a name nobody claimed,
-`/account` and `/recruiter/jobs/*` answer with `x-robots-tag: noindex, nofollow, noarchive` and
-carry a robots meta, and the API sends the same header on every answer. The landing page, the
-legal pages, the job pages and `/recruiter` stay listed, with their canonical links.
+`/account` and `/recruiter/jobs/*` answer with `x-robots-tag: noindex, nofollow, noarchive`, and
+the API sends the same header on every answer. The pages rendered on the server (a portfolio's
+pages, `/account`) also carry a robots meta in their HTML; the 404 of a name nobody claimed has
+the header alone; `/recruiter/jobs/*` is rendered in the browser, so its meta is only written once
+its script ran (`curl` never sees it). The landing page, the legal pages, the job pages and
+`/recruiter` stay listed, with their canonical links (the one of `/recruiter`, rendered in the
+browser too, is written by its script).
 
 **robots.txt refuses nothing, on purpose.** A crawler has to fetch a page to read its `noindex`:
 a `Disallow` would hide the request, and a search engine can still list a refused address it
@@ -875,10 +879,18 @@ headers https://api.example.com/health | grep -i '^x-robots-tag'                
 curl -s https://example.com/louis.gentil/experiences | grep -o '<meta name="robots"[^>]*>'
 headers https://example.com/ | grep -ci '^x-robots-tag'                          # 0: the landing page is listed
 headers https://example.com/legal/privacy | grep -ci '^x-robots-tag'             # 0
-curl -s https://example.com/robots.txt | grep -i '^disallow'                     # no "Disallow: /" under "User-agent: *"
-curl -s -o /dev/null -w '%{http_code}\n' -A 'LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)' \
+curl -s https://example.com/robots.txt | grep -iE '^(user-agent|allow|disallow)'   # each group with its user agents
+LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'
+curl -s -o /dev/null -w '%{http_code}\n' -A "$LINKEDIN" \
   https://example.com/louis.gentil/experiences                                   # 200, not a challenge (403 or 503)
+curl -s -A "$LINKEDIN" https://example.com/louis.gentil/experiences \
+  | grep -o '<meta property="og:[^>]*>\|<title>[^<]*</title>'                     # og:url, og:locale and the page's title
 ```
+
+In the robots.txt output, every group that names `User-agent: *` has only `Allow: /` or an empty
+`Disallow:`: a `Disallow: /` belongs only to the AI crawlers Cloudflare's block names (GPTBot,
+ClaudeBot...). The page fetched as LinkedInBot must be the portfolio itself, with its preview tags,
+not a challenge page that also answers 200.
 
 LinkedIn's [Post Inspector](https://www.linkedin.com/post-inspector/) on a portfolio's address
 then shows its preview.
@@ -886,12 +898,18 @@ then shows its preview.
 **Pages listed before.** A `noindex` counts from the next time a search engine reads the page,
 which can take weeks. Verify the domain in
 [Google Search Console](https://search.google.com/search-console) (a domain property, with the
-DNS `TXT` record it gives, added in Cloudflare), find what is listed (`site:portfolio.gentil.tech`
-in Google), and ask for the removal of each portfolio (**Removals**, **New request**, **Remove all
-URLs with this prefix**: `https://portfolio.gentil.tech/<name>/`). Google hides them for about six
-months, long enough to read the `noindex`; **Pages** then lists them under "Excluded by 'noindex'
-tag". Do the same in [Bing Webmaster Tools](https://www.bing.com/webmasters) (**Content Removal**),
-whose index other engines use too.
+DNS `TXT` record it gives, added in Cloudflare: it covers every subdomain), find what is listed
+(`site:portfolio.gentil.tech` in Google, then `site:api.portfolio.gentil.tech`,
+`site:develop.portfolio.gentil.tech` and `site:develop.api.portfolio.gentil.tech`), and ask for
+the removal of each portfolio (**Removals**, **New request**, **Remove all URLs with this
+prefix**: `https://portfolio.gentil.tech/<name>/`). Do the same for the API's answers, which until
+this header had none (`GET /domain/<name>` is a whole portfolio as JSON): the prefix
+`https://api.portfolio.gentil.tech/domain/`, and `https://develop.api.portfolio.gentil.tech/domain/`
+for staging, whose portfolios found under `https://develop.portfolio.gentil.tech/<name>/` go too.
+Google hides them for about six months, long enough to read the `noindex`; **Pages** then lists
+them under "Excluded by 'noindex' tag". Do the same in
+[Bing Webmaster Tools](https://www.bing.com/webmasters) (**Content Removal**), whose index other
+engines use too.
 
 **Limits.** `noindex` is a request. Google and Bing follow it; a crawler that ignores robots
 rules, or an AI answer engine, may not. That is why the landing FAQ and the privacy policy say

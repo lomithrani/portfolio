@@ -192,3 +192,4 @@ export {
 } from './legal';
 export type { ConsentInput, ConsentSource, ConsentProblemProperty, ConsentResult } from './legal';
 export { legalMessages } from './legal.messages';
+export { ROBOTS_NOINDEX } from './robots';
