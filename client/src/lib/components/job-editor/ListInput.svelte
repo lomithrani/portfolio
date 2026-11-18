@@ -66,6 +66,8 @@ editor's `locked`) is read-only: its items show without their remove buttons, wi
 	});
 
 	function add(raw: string) {
+		// Locked: nothing is added, whatever reaches it (a paste included)
+		if (locked) return;
 		const result = addListItems(value, raw, { max, maxLength });
 		if (result.added.length > 0) value = result.list;
 		const added = result.added.length > 0 ? m.added(result.added) : '';
@@ -101,10 +103,12 @@ editor's `locked`) is read-only: its items show without their remove buttons, wi
 		if (event.key !== 'Enter' || event.isComposing) return;
 		// Enter adds the item, it never submits the form
 		event.preventDefault();
-		if (text.trim()) add(text);
+		if (!locked && text.trim()) add(text);
 	}
 
 	function onpaste(event: ClipboardEvent) {
+		// A read-only input still gets paste events: a locked list takes nothing
+		if (locked) return;
 		const pasted = event.clipboardData?.getData('text') ?? '';
 		if (!/\r?\n/.test(pasted.trim())) return;
 		event.preventDefault();
@@ -112,6 +116,7 @@ editor's `locked`) is read-only: its items show without their remove buttons, wi
 	}
 
 	async function remove(index: number) {
+		if (locked) return;
 		const item = value[index];
 		value = value.filter((_, position) => position !== index);
 		problem = '';

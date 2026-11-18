@@ -22,7 +22,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 - `job` set: edit mode (the posting as GET /recruiter/jobs/:id returns it); else add mode. A
   posting opened before (`publishedAt`) has its terms locked (portfolio-common's
   LOCKED_JOB_FIELDS, what the perfect job scores: the API refuses to change them, 409): their
-  inputs are read-only, a note at the top says why, with Duplicate (`duplicateHref`).
+  inputs are read-only, a note at the top says why, with Duplicate (`duplicateHref`). Terms the
+  draft kept in this browser changed before it was opened (another tab opened it meanwhile) cannot
+  be saved on it: a notice names them, and they stay with the draft until the recruiter duplicates
+  it with them ("Duplicate with my changes": the copy's draft takes the whole form, a copy kept
+  already is replaced once confirmed) or discards them.
 - `imported` (add mode): starts from a job description import (the stored result of
   POST /jobs/import), with a banner listing its warnings; the import is removed from this
   browser once the posting is saved or the recruiter discards it (`onImportDiscarded`).
@@ -66,6 +70,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		WORKING_TIME_LABELS,
 		WORK_MODES,
 		WORK_MODE_LABELS,
+		intlLocale,
 		jobTermsLocked,
 		locksJobTerms,
 		type AddressSuggestion,
@@ -100,6 +105,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	import { officeFromSuggestion, officeKey, type OfficeAddress } from '#services/addressSearch.ts';
 	import { toaster } from '#services/toaster.ts';
 	import AddressSearch from '#components/address/AddressSearch.svelte';
+	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
 	import OpenJobDialog from '#components/recruiter/OpenJobDialog.svelte';
 	import {
 		clearImportedDraft,
@@ -108,11 +114,14 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		editorDraftStorageKey,
 		emptyPendingText,
 		hasPendingText,
+		heldTermsDraft,
 		loadJobDraft,
 		saveJobDraft,
 		startingJobForms,
+		withHeldTerms,
 		type ImportedJobDraft,
-		type PendingListText
+		type PendingListText,
+		type StoredJobDraft
 	} from '#services/jobDrafts.ts';
 	import DescriptionField from './DescriptionField.svelte';
 	import Field from './Field.svelte';
@@ -260,6 +269,15 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	let pendingText: PendingListText = $state(start.pending);
 	let dirty = $derived(jobFormSignature(form) !== baselineSignature || hasPendingText(pendingText));
 	let restoredNotice = $state(start.restored);
+	// Terms the stored draft changed that the posting, opened since, keeps: they cannot be saved on
+	// it, and stay in this browser (with the draft) until the recruiter duplicates it with them or
+	// discards them
+	let heldTerms = $state.raw<StoredJobDraft | null>(
+		start.droppedTerms.length > 0 ? (start.typedDraft ?? null) : null
+	);
+	const droppedLabels = new Intl.ListFormat(intlLocale(), { type: 'conjunction' }).format(
+		start.droppedTerms.map((field) => JOB_FIELD_LABELS[field])
+	);
 	let importBanner = $state(!!initialImport);
 	let confirming = $state<'reset' | 'import' | null>(null);
 
@@ -281,8 +299,17 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		const changed = dirty;
 		const snapshot = $state.snapshot(form) as JobForm;
 		const pending = $state.snapshot(pendingText);
+		const held = heldTerms;
 		if (finished) return;
-		if (changed) {
+		if (held) {
+			// The terms the posting could not take stay over the rest of the draft
+			const kept = withHeldTerms(snapshot, pending, held);
+			saveJobDraft(storageKey, {
+				form: kept.form,
+				basis: basisToStore,
+				...(hasPendingText(kept.pending) ? { pending: kept.pending } : {})
+			});
+		} else if (changed) {
 			saveJobDraft(storageKey, {
 				form: snapshot,
 				basis: basisToStore,
@@ -551,7 +578,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		finished = true;
 		status = 'saved';
 		announcement = m.savedAnnouncement;
-		clearJobDraft(storageKey);
+		// Terms held for a duplicate stay in this browser, over the posting as saved
+		if (heldTerms) saveJobDraft(storageKey, heldTermsDraft(saved, heldTerms));
+		else clearJobDraft(storageKey);
 		if (initialImport) clearImportedDraft(owner);
 		const savedMode = mode === 'add' ? 'created' : 'updated';
 		// Left while it was saving: the page the recruiter went to stays
@@ -577,28 +606,64 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		location.reload();
 	}
 
+	// A copy of this posting kept in this browser already, with changes of its own: replaced by
+	// "Duplicate with my changes" once the recruiter confirms it (the copy's draft to write)
+	let replacingCopy = $state.raw<StoredJobDraft | null>(null);
+
 	/**
-	 * A new posting copied from this one, with every change made here (its terms included), as a
-	 * draft: the copy's editor restores them from this browser, and they leave this editor
+	 * A new posting copied from this one, with every change made here (its terms included, those
+	 * held too), as a draft: the copy's editor restores them from this browser, and they leave this
+	 * editor. A copy of it kept in this browser with other changes is replaced once confirmed
 	 */
-	async function duplicateWithChanges() {
+	function duplicateWithChanges() {
 		if (!jobId || !duplicateHref) return;
 		const snapshot = $state.snapshot(form) as JobForm;
 		const pending = $state.snapshot(pendingText);
-		saveJobDraft(duplicateDraftStorageKey(owner, jobId), {
-			form: { ...snapshot, status: 'draft' },
-			...(hasPendingText(pending) ? { pending } : {})
-		});
+		const typed = heldTerms
+			? withHeldTerms(snapshot, pending, heldTerms)
+			: { form: snapshot, pending };
+		const copy: StoredJobDraft = {
+			form: { ...typed.form, status: 'draft' },
+			...(hasPendingText(typed.pending) ? { pending: typed.pending } : {})
+		};
+		const kept = loadJobDraft(duplicateDraftStorageKey(owner, jobId));
+		const same =
+			!!kept &&
+			jobFormSignature(kept.form) === jobFormSignature(copy.form) &&
+			JSON.stringify({ ...emptyPendingText(), ...kept.pending }) ===
+				JSON.stringify({ ...emptyPendingText(), ...copy.pending });
+		if (kept && !same) {
+			replacingCopy = copy;
+			return;
+		}
+		return moveToCopy(copy);
+	}
+
+	/** Writes the copy's draft, and goes to it: nothing is left in this editor's */
+	async function moveToCopy(copy: StoredJobDraft) {
+		if (!jobId || !duplicateHref) return;
+		replacingCopy = null;
+		saveJobDraft(duplicateDraftStorageKey(owner, jobId), copy);
 		finished = true;
 		clearJobDraft(storageKey);
 		leaveAllowed = true;
+		await tick();
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by the page
 		await goto(duplicateHref);
+	}
+
+	/** "Discard these changes": the terms held go, the draft keeps the rest */
+	async function discardHeldTerms() {
+		heldTerms = null;
+		announcement = m.droppedTerms.discarded;
+		await tick();
+		document.getElementById(fieldId('title'))?.focus();
 	}
 
 	/** The form as the editor started (the posting, the import or a blank form), no draft */
 	function startOver() {
 		form = structuredClone(start.baseline);
+		heldTerms = null;
 		// The office is the starting one again: its note is looked up for it
 		officeAsked = office();
 		pendingText = emptyPendingText();
@@ -654,6 +719,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		// A shallow navigation only changes the URL (the discarded import): the editor stays.
 		// While saving, leaving is allowed: the save still ends (see save)
 		if (navigation.shallow) return;
+		// The confirmations close first: the leave dialog may take their place, and a focus trap
+		// must not outlive the page
+		confirmingOpen = null;
+		replacingCopy = null;
 		if (finished || leaveAllowed || !dirty || status === 'saving') return;
 		// A reload, closing the tab, typing an address: the browser asks
 		if (navigation.type === 'leave') {
@@ -858,6 +927,44 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				</div>
 			{/if}
 		</div>
+	{/if}
+
+	{#if heldTerms}
+		<section
+			class="space-y-2 rounded-container border border-warning-500/40 preset-tonal-warning px-4 py-3 text-sm text-surface-950-50"
+			aria-labelledby="{uid}-held-title"
+			data-held-terms
+		>
+			<div class="flex items-start gap-2">
+				<ExclamationTriangle size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
+				<div class="min-w-0 flex-1 space-y-1">
+					<h3 id="{uid}-held-title" class="font-semibold">{m.droppedTerms.title}</h3>
+					<p>{m.droppedTerms.text}</p>
+					<p>{m.droppedTerms.fields(droppedLabels)}</p>
+				</div>
+			</div>
+			<div class="flex flex-wrap justify-end gap-2">
+				<button
+					type="button"
+					class="btn btn-sm underline hover:preset-tonal"
+					disabled={busy}
+					onclick={discardHeldTerms}
+				>
+					{m.droppedTerms.discard}
+				</button>
+				{#if duplicateHref}
+					<button
+						type="button"
+						class="btn btn-sm preset-filled-primary-700-300"
+						disabled={busy}
+						onclick={duplicateWithChanges}
+					>
+						<DocumentDuplicate size="16" aria-hidden="true" />
+						{m.duplicateWithChanges}
+					</button>
+				{/if}
+			</div>
+		</section>
 	{/if}
 
 	{#if locked}
@@ -1663,6 +1770,17 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	onStay={() => (leaveTarget = null)}
 	onLeave={() => leave(false)}
 	onDiscard={() => leave(true)}
+/>
+
+<ConfirmDialog
+	open={!!replacingCopy}
+	title={m.replaceCopy.title}
+	description={m.replaceCopy.text}
+	confirmLabel={m.replaceCopy.confirm}
+	onConfirm={() => {
+		if (replacingCopy) moveToCopy(replacingCopy);
+	}}
+	onCancel={() => (replacingCopy = null)}
 />
 
 <OpenJobDialog

@@ -1293,9 +1293,14 @@ test.describe('the hiring journey', () => {
 		]);
 		// What the owner asks for is never told
 		await expect(matchStep).not.toContainText(/remote|lead|cdi/i);
+		// Opened to be picked, its terms are locked: a new version of them is a copy, which comes back
+		// here once created
 		await expect(
-			matchStep.getByRole('link', { name: 'Edit this job description' })
-		).toHaveAttribute('href', `/recruiter/jobs/${onSite._id}/edit`);
+			matchStep.getByRole('link', { name: 'Duplicate this job description' })
+		).toHaveAttribute('href', `/recruiter/jobs/new?duplicate=${onSite._id}&journey=${DOMAIN}`);
+		await expect(matchStep).toContainText(
+			'Its pay and conditions have been locked since it was opened, but a new job description that states more can score higher'
+		);
 		await expect(meetingStep).toContainText('Complete the steps above first.');
 		await expect(meetingStep.getByRole('button')).toHaveCount(0);
 

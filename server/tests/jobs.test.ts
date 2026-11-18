@@ -6,7 +6,7 @@
 // in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
-import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS, JOB_LIMITS, LOCKED_JOB_FIELDS, normalizeJobPosting } from 'portfolio-common';
+import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS, JOB_LIMITS, LOCKED_JOB_FIELDS, changedLockedFields, normalizeJobPosting } from 'portfolio-common';
 import type { JobFieldPath, JobPostingInput } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
@@ -869,7 +869,11 @@ describe('terms locked once opened', () => {
     expect(Object.keys(changes).sort()).toEqual([...LOCKED_JOB_FIELDS].sort());
   });
 
-  it.each(Object.entries(changes))('refuses (409) a change of %s once the posting was opened, leaving it unchanged', async (_field, { base, change }) => {
+  it.each(Object.entries(changes))('refuses (409) a change of %s once the posting was opened, leaving it unchanged', async (field, { base, change }) => {
+    // The case changes the field it is named after (some change others with it: the remote days
+    // go with a hybrid job, the hours with a weekly arrangement, the amounts with the period)
+    const normalised = (posting: Record<string, unknown>) => normalizeJobPosting(posting as unknown as JobPostingInput);
+    expect(changedLockedFields(normalised(termsJob(base)), normalised(termsJob({ ...base, ...change })))).toContain(field as JobFieldPath);
     const recruiter = await createRecruiter();
     const created = await createJob(recruiter, termsJob(base));
     expect(created.publishedAt).toMatch(ISO_INSTANT);
@@ -978,6 +982,27 @@ describe('terms locked once opened', () => {
     // A created draft was never opened: not locked
     const draft = await createJob(recruiter, termsJob({ status: 'draft' }));
     expect(draft).not.toHaveProperty('publishedAt');
+  });
+
+  it('refuses (409) an edit without updatedAt that would change the terms of a posting opened meanwhile', async () => {
+    const recruiter = await createRecruiter();
+    const created = await createJob(recruiter, termsJob({ status: 'draft' }));
+    // Loaded by the edit while a draft, then opened from its status (another tab) before it is saved
+    const loaded = await JobPosting.findById(created._id);
+    const opened = await call('PUT', `/jobs/${created._id}/status`, { body: { status: 'open' }, cookie: recruiter.cookie });
+    expect(opened.status).toBe(200);
+    spyOn(JobPosting, 'findOne').mockResolvedValueOnce(loaded as never);
+
+    // No updatedAt (an API client that does not track versions): the terms it changes do not land
+    const result = await call('PUT', `/jobs/${created._id}`, {
+      body: termsJob({ status: 'draft', title: 'Staff Backend Engineer', pay: { min: 50000, max: 60000, currency: 'EUR', period: 'year' } }),
+      cookie: recruiter.cookie
+    });
+
+    expect([result.status, result.text]).toEqual([409, 'This job posting was changed since you opened it']);
+    const stored = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
+    expect(stored.json()).toEqual(opened.json());
+    expect(stored.json()).toMatchObject({ status: 'open', title: created.title, pay: created.pay, publishedAt: expect.stringMatching(ISO_INSTANT) });
   });
 
   it('lets a range saved wider than 1.5 times its bottom come down to the top it was scored with, and no further', async () => {

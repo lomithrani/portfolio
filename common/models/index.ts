@@ -73,7 +73,6 @@ export type {
 export { jobPostingMessages } from './jobPosting.messages';
 export {
 	LOCKED_JOB_FIELDS,
-	isLockedJobField,
 	jobTermsLocked,
 	locksJobTerms,
 	changedLockedFields

@@ -229,9 +229,9 @@ modifications, droit applicable.
 	<li>respecter le droit du travail.</li>
 </ul>
 <p>
-	Une fois une offre d'emploi ouverte, sa rémunération et ses conditions ne peuvent plus être
-	modifiées, car les correspondances des candidats sont calculées sur elles : une nouvelle version
-	de celles-ci est une nouvelle offre d'emploi.
+	Une fois une offre d'emploi ouverte, sa fourchette de rémunération et les conditions sur
+	lesquelles les correspondances des candidats sont calculées ne peuvent plus être modifiées : une
+	nouvelle version de celles-ci est une nouvelle offre d'emploi.
 </p>
 <p>
 	Avant d'embaucher, les recruteurs doivent vérifier que le candidat est légalement autorisé à

@@ -154,21 +154,27 @@ export const m = defineMessages({
 			fr: (ownerName: string) =>
 				`Une offre qui ne correspond pas à un critère éliminatoire pour ${ownerName} obtient 0, quel que soit le reste.`
 		},
+		/**
+		 * Under the minimum, with the criteria shown. The job was opened to be picked: its terms are
+		 * locked, a new version of them is a new job description (Duplicate)
+		 */
 		raiseWithDetails: {
-			en: 'What your job description does not state counts as not matching: completing it can raise the score.',
-			fr: 'Ce que votre offre ne précise pas compte comme ne correspondant pas : la compléter peut augmenter la note.'
+			en: 'What your job description does not state counts as not matching. Its pay and conditions have been locked since it was opened, but a new job description that states more can score higher: duplicate this one, complete the copy and open it, then pick it above.',
+			fr: "Ce que votre offre ne précise pas compte comme ne correspondant pas. Sa rémunération et ses conditions sont verrouillées depuis son ouverture, mais une nouvelle offre qui en précise davantage peut obtenir une meilleure note : dupliquez celle-ci, complétez la copie et ouvrez-la, puis choisissez-la à l'étape ci-dessus."
 		},
+		/** The same, the owner not sharing the criteria */
 		raiseWithoutDetails: {
 			en: (ownerName: string) =>
-				`${ownerName} does not share what they are looking for here. A job description that says more (seniority, skills, remote days, travel…) can score higher: what it leaves out counts as not matching.`,
+				`${ownerName} does not share what they are looking for here. A job description that says more (seniority, skills, remote days, travel…) can score higher: what it leaves out counts as not matching. Its pay and conditions have been locked since it was opened: duplicate it, complete the copy and open it, then pick it above.`,
 			fr: (ownerName: string) =>
-				`${ownerName} ne partage pas ses critères ici. Une offre qui en dit plus (niveau d'expérience, compétences, jours de télétravail, déplacements…) peut obtenir une meilleure note : ce qu'elle ne précise pas compte comme ne correspondant pas.`
+				`${ownerName} ne partage pas ses critères ici. Une offre qui en dit plus (niveau d'expérience, compétences, jours de télétravail, déplacements…) peut obtenir une meilleure note : ce qu'elle ne précise pas compte comme ne correspondant pas. Sa rémunération et ses conditions sont verrouillées depuis son ouverture : dupliquez-la, complétez la copie et ouvrez-la, puis choisissez-la à l'étape ci-dessus.`
 		},
 		pickAnother: {
 			en: 'You can also pick another job in the step above.',
 			fr: "Vous pouvez aussi choisir une autre offre à l'étape ci-dessus."
 		},
-		edit: { en: 'Edit this job description', fr: 'Modifier cette offre' },
+		/** A new job description copied from the one scored (its terms are locked) */
+		duplicate: { en: 'Duplicate this job description', fr: 'Dupliquer cette offre' },
 		checkAgain: { en: 'Check again', fr: 'Vérifier de nouveau' },
 		settings: {
 			minScore: { en: 'Minimum score', fr: 'Note minimale' },

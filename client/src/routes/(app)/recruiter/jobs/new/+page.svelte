@@ -29,7 +29,12 @@
 		duplicateSourceId,
 		type RecruiterJobDetail
 	} from '#services/recruiter.ts';
-	import { loadImportedDraft, type ImportedJobDraft } from '#services/jobDrafts.ts';
+	import {
+		duplicateDraftStorageKey,
+		loadImportedDraft,
+		loadJobDraft,
+		type ImportedJobDraft
+	} from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { JOB_PARAM, JOURNEY_PARAM, journeyReturnDomain } from '#services/workflow.ts';
 	import { m } from './page.messages.ts';
@@ -37,7 +42,9 @@
 	// A new job posting, blank, (?import=1) from the job description import the import dialog
 	// kept in this browser, or (?duplicate=<id>) from a copy of one of the recruiter's postings
 	// (GET /recruiter/jobs/:id), as a draft: an opened posting's terms are locked, a new version
-	// of them is a new posting. Nothing is saved until the recruiter creates it. Rendered in the
+	// of them is a new posting (a parameter that names no posting of theirs says so; a posting
+	// deleted since its copy was started leaves that copy, kept in this browser, to finish from a
+	// blank form). Nothing is saved until the recruiter creates it. Rendered in the
 	// browser only (recruiter/+layout.ts). Opened from a portfolio's hiring journey
 	// (?journey=<portfolio>), it goes back there once the posting is created, to pick it. A
 	// recruiter whose session says they have not accepted the terms in force accepts them first
@@ -46,10 +53,11 @@
 
 	// Read once: the import is taken when the editor opens, and the parameter goes once discarded
 	const importRequested = untrack(() => page.url.searchParams.get('import') === '1');
-	// The posting to copy (an import comes first)
-	const duplicateId = untrack(() =>
-		importRequested ? null : duplicateSourceId(page.url.searchParams.get(DUPLICATE_PARAM))
+	// The posting to copy (an import comes first); a parameter that is not a posting id names none
+	const duplicateParam = untrack(() =>
+		importRequested ? null : page.url.searchParams.get(DUPLICATE_PARAM)
 	);
+	const duplicateId = duplicateSourceId(duplicateParam);
 	const journeyDomain = untrack(() =>
 		journeyReturnDomain(page.url.searchParams.get(JOURNEY_PARAM))
 	);
@@ -83,13 +91,22 @@
 		| { kind: 'idle' }
 		| { kind: 'loading' }
 		| { kind: 'loaded'; userId: string; job: RecruiterJobDetail }
+		// Not found, but a copy of it was started and is kept in this browser: it goes on, from a
+		// blank form
+		| { kind: 'orphan'; userId: string; id: string }
 		| { kind: 'not-found' }
 		| { kind: 'terms' }
 		| { kind: 'error' };
-	let source = $state.raw<SourceState>({ kind: 'idle' });
+	let source = $state.raw<SourceState>(
+		duplicateParam !== null && !duplicateId ? { kind: 'not-found' } : { kind: 'idle' }
+	);
 	let sourceRequested: string | null = null;
 	let duplicateSource = $derived(
-		source.kind === 'loaded' && source.userId === editorUser ? source.job : null
+		source.kind === 'loaded' && source.userId === editorUser
+			? source.job
+			: source.kind === 'orphan' && source.userId === editorUser
+				? { _id: source.id }
+				: null
 	);
 
 	async function loadSource(userId: string, id: string) {
@@ -110,7 +127,9 @@
 				} else if (isConsentProblem(code, error?.value)) {
 					source = { kind: 'terms' };
 				} else if (code === 404 || code === 422) {
-					source = { kind: 'not-found' };
+					source = loadJobDraft(duplicateDraftStorageKey(userId, id))
+						? { kind: 'orphan', userId, id }
+						: { kind: 'not-found' };
 				} else {
 					// 403 (no recruiter space) too: the session said it had one
 					source = { kind: 'error' };
@@ -223,7 +242,7 @@
 					heading?.focus();
 				}}
 			/>
-		{:else if showEditor && editorUser && duplicateId && !duplicateSource}
+		{:else if showEditor && editorUser && duplicateParam !== null && !duplicateSource}
 			{#if source.kind === 'not-found'}
 				<PageNotice title={m.duplicateNotFound.title} icon={DocumentMagnifyingGlass}>
 					<p>{m.duplicateNotFound.text}</p>
@@ -260,9 +279,11 @@
 				<p class="text-surface-700-300">
 					{imported
 						? m.introImported
-						: duplicateSource
-							? m.introDuplicate(duplicateSource.title)
-							: m.intro(JOB_STATUS_LABELS.open)}
+						: source.kind === 'loaded' && duplicateSource
+							? m.introDuplicate(source.job.title)
+							: source.kind === 'orphan' && duplicateSource
+								? m.introOrphanCopy
+								: m.intro(JOB_STATUS_LABELS.open)}
 				</p>
 			</div>
 			{#if journeyDomain}

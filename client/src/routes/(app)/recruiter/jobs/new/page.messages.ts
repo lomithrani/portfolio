@@ -25,7 +25,15 @@ export const m = defineMessages({
 		fr: (title: string) =>
 			`Une copie de « ${title} », en nouveau brouillon : modifiez ce qu'il faut, puis créez l'offre. L'offre d'emploi copiée reste telle qu'elle est.`
 	},
-	/** ?duplicate= names no posting of this recruiter */
+	/**
+	 * Under the heading, when the posting a copy was started from was deleted since: the copy, kept
+	 * in this browser, goes on from a blank form
+	 */
+	introOrphanCopy: {
+		en: 'The job description this copy was made from no longer exists: your unsaved copy is restored from this browser. Change what you need, then create it.',
+		fr: "L'offre d'emploi dont cette copie a été faite n'existe plus : votre copie non enregistrée est restaurée depuis ce navigateur. Modifiez ce qu'il faut, puis créez l'offre."
+	},
+	/** ?duplicate= names no posting of this recruiter (or is not a posting id) */
 	duplicateNotFound: {
 		title: {
 			en: 'Job description to copy not found',

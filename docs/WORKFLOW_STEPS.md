@@ -362,8 +362,11 @@ posting is the visitor's.
 **It stores nothing and takes no submission.** The score is computed at each read, from the
 posting and the owner's criteria as they are now (`scorePerfectJob` in
 `common/models/perfectJob.ts`, which is pure and tested in
-`server/tests/perfectJobScore.test.ts`). The recruiter editing the posting, picking another one,
-or the owner changing their criteria or the minimum all change the status at the next read.
+`server/tests/perfectJobScore.test.ts`). The recruiter picking another posting, or the owner
+changing their criteria or the minimum, change the status at the next read. A posting picked was
+opened, so the fields the score reads are locked (`LOCKED_JOB_FIELDS`): editing it cannot change
+its score, and the step offers to duplicate it instead (a new draft, back on the Hire page with
+`?journey=` once created, to be opened and picked).
 
 **It reads something private of the owner's.** The perfect job (`GET`/`PUT /perfect-job`, model
 `PerfectJob`, admin tab "Perfect job") is the owner's alone. `visitorConfig` returns the minimum

@@ -32,7 +32,8 @@ import { JOB_CHANGED } from '../protocol';
 /**
  * save() of a posting that matched nothing: deleted meanwhile (e.g. in another tab), a 404 like
  * an unknown id; else changed meanwhile, a 409. save() filters on the version it loaded when an
- * edit replaces a list (Mongoose's VersionError) and on `$where` (PUT /jobs/:id's `updatedAt`)
+ * edit replaces a list (Mongoose's VersionError) and on `$where` (PUT /jobs/:id's `updatedAt`,
+ * and a posting never opened still being so)
  */
 const saveJobPosting = async (job: Awaited<ReturnType<typeof findOwnJobPosting>>) => {
   try {
@@ -86,8 +87,11 @@ export const jobs = new Elysia()
       if (job.updatedAt?.getTime() !== version.getTime()) throw new ConflictError(JOB_CHANGED);
       job.$where = { updatedAt: version };
     }
-    // Opened before: its terms stay as they are (409)
+    // Opened before: its terms stay as they are (409). Never opened: saved only while it still
+    // is not (null also matches a missing field), so an edit without `updatedAt` cannot change
+    // the terms of a posting opened meanwhile (PUT /jobs/:id/status): save() matches nothing, 409
     requireUnchangedTerms(job.toObject<StoredJobPosting>(), fields);
+    if (!job.publishedAt) job.$where = { ...job.$where, publishedAt: null };
     // Every field replaced: the optional ones left out are unset
     job.set(jobPostingFields(fields));
     job.publishedAt = publishedAtFor(fields.status, job.publishedAt);

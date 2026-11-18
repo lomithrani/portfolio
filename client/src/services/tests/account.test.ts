@@ -749,6 +749,9 @@ describe('isUserStorageKey and clearUserBrowserData', () => {
 		'resumeImport:user-1:rita': '{}',
 		'jobDraft:user-1:new': '{}',
 		'jobDraft:user-1:import': '{}',
+		'jobDraft:user-1:j9': '{}',
+		'jobDraft:user-1:copy:j9': '{}',
+		'jobDraft:user-10:copy:j9': '{}',
 		jobImportDraft: '{}',
 		'jobImportDraft:user-1': '{}',
 		'jobImportDraft:user-10': '{}',
@@ -773,7 +776,9 @@ describe('isUserStorageKey and clearUserBrowserData', () => {
 		expect(clearUserBrowserData('user-1', storage).sort()).toEqual([
 			'experienceDraft:user-1:rita:import:d1',
 			'experienceDraft:user-1:rita:new',
+			'jobDraft:user-1:copy:j9',
 			'jobDraft:user-1:import',
+			'jobDraft:user-1:j9',
 			'jobDraft:user-1:new',
 			'jobImportDraft:user-1',
 			'resumeImport:user-1:rita'
@@ -781,6 +786,7 @@ describe('isUserStorageKey and clearUserBrowserData', () => {
 		expect(storage.keys()).toEqual([
 			'authenticationStore',
 			'experienceDraft:user-10:x:new',
+			'jobDraft:user-10:copy:j9',
 			'jobImportDraft',
 			'jobImportDraft:user-10',
 			'portfolio-dark-mode',

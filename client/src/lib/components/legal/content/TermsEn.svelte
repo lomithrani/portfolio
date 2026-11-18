@@ -206,8 +206,8 @@ meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law
 	<li>comply with employment law.</li>
 </ul>
 <p>
-	Once a job description is opened, its pay and its conditions can no longer be changed, because
-	candidates' matches are computed on them: a new version of them is a new job description.
+	Once a job description is opened, its pay range and the conditions candidates' matches are
+	computed on can no longer be changed: a new version of them is a new job description.
 </p>
 <p>
 	Before hiring, recruiters must check that the candidate is legally allowed to do the job,

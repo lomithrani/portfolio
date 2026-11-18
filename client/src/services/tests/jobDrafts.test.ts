@@ -15,7 +15,9 @@ import {
 	saveJobDraft,
 	startingJobForms,
 	draftBasis,
-	hasPendingText
+	hasPendingText,
+	heldTermsDraft,
+	withHeldTerms
 } from '../jobDrafts';
 import { emptyJobForm, jobFormSignature, jobToForm, type JobForm } from '../jobPosting';
 
@@ -232,7 +234,8 @@ describe('startingJobForms', () => {
 			basis: draftBasis(blank),
 			draftBasis: draftBasis(blank),
 			pending: { skills: '', languages: '', benefits: '' },
-			capped: false
+			capped: false,
+			droppedTerms: []
 		});
 	});
 
@@ -442,15 +445,64 @@ describe('startingJobForms of an opened posting (its terms locked)', () => {
 		expect(start.form).toEqual({ ...posting, description: 'New text' });
 		// Text typed in a locked list goes too; in the others it stays
 		expect(start.pending).toEqual({ skills: '', languages: 'German', benefits: '' });
-		// Not locked: the draft comes back whole
-		expect(startingJobForms({ job }, () => draft).form.title).toBe('Staff engineer');
+		// The terms it changed are named, and the draft is given back as it was stored
+		expect(start.droppedTerms).toEqual(['title', 'payMin', 'skills']);
+		expect(start.typedDraft).toBe(draft);
+		// Not locked: the draft comes back whole, nothing dropped
+		const open = startingJobForms({ job }, () => draft);
+		expect([open.form.title, open.droppedTerms, open.typedDraft]).toEqual([
+			'Staff engineer',
+			[],
+			undefined
+		]);
 	});
 
-	it('does not restore a draft that changed its terms alone', () => {
+	it('names the terms of a draft that changed its terms alone, without restoring it', () => {
 		const draft = { form: { ...posting, title: 'Staff engineer' }, basis: draftBasis(posting) };
 		const start = startingJobForms({ job, locked: true }, () => draft);
 		expect(start.restored).toBe(false);
 		expect(start.form).toEqual(posting);
+		expect(start.droppedTerms).toEqual(['title']);
+		expect(start.typedDraft).toBe(draft);
+	});
+
+	it('drops nothing for terms the API would not see change', () => {
+		// Typed the same once normalised, or in a field that does not apply (an on-site job)
+		const draft = {
+			form: { ...posting, title: '  Backend   engineer ', remoteDaysPerWeek: '2' },
+			basis: draftBasis(posting)
+		};
+		const start = startingJobForms({ job, locked: true }, () => draft);
+		expect([start.droppedTerms, start.typedDraft]).toEqual([[], undefined]);
+		expect(startingJobForms({ job, locked: true }, () => undefined).droppedTerms).toEqual([]);
+	});
+
+	it('keeps held terms over the form, and over the posting once its other changes are saved', () => {
+		const held = {
+			form: { ...posting, title: 'Staff engineer', payMin: '50000', description: 'Old text' },
+			pending: { skills: 'Rust', languages: 'German', benefits: '' }
+		};
+		const kept = withHeldTerms(
+			{ ...posting, description: 'New text' },
+			{ skills: '', languages: 'French', benefits: '' },
+			held
+		);
+		// The terms are the held ones, the rest the form's (a locked list's text included)
+		expect(kept.form).toEqual({
+			...posting,
+			title: 'Staff engineer',
+			payMin: '50000',
+			description: 'New text'
+		});
+		expect(kept.pending).toEqual({ skills: 'Rust', languages: 'French', benefits: '' });
+
+		const saved = { ...job, description: 'New text' };
+		const draft = heldTermsDraft(saved, held);
+		expect(draft.form).toEqual({ ...jobToForm(saved), title: 'Staff engineer', payMin: '50000' });
+		expect(draft.pending).toEqual({ skills: 'Rust', languages: '', benefits: '' });
+		// Read again, the posting as saved: nothing else to restore, the terms still named
+		const again = startingJobForms({ job: saved, locked: true }, () => draft);
+		expect([again.restored, again.droppedTerms]).toEqual([false, ['title', 'payMin', 'skills']]);
 	});
 
 	it('shows a range saved wider than the cap with the top it is scored with', () => {

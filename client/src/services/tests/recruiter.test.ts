@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { JobStatus } from 'portfolio-common';
 import {
+	DUPLICATE_PARAM,
 	countByStatus,
+	duplicateJobHref,
+	duplicateSourceId,
 	failureText,
 	filterJobs,
 	formatDay,
@@ -90,6 +93,34 @@ describe('status', () => {
 
 	it('says that deleting a posting cannot be undone', () => {
 		expect(m.deleteJob).toBe('This cannot be undone.');
+	});
+});
+
+describe('Duplicate', () => {
+	it('reads the posting id of a ?duplicate= parameter, in either case, and nothing else', () => {
+		expect(duplicateSourceId('65e2e0000000000000000abc')).toBe('65e2e0000000000000000abc');
+		expect(duplicateSourceId('65E2E0000000000000000ABC')).toBe('65E2E0000000000000000ABC');
+		for (const param of [
+			'abc',
+			'65e2e0000000000000000abcd',
+			'65e2e000000000000000000g',
+			'',
+			null
+		]) {
+			expect(duplicateSourceId(param)).toBeNull();
+		}
+		expect(duplicateSourceId(undefined)).toBeNull();
+	});
+
+	it('links the new posting page with the posting to copy', () => {
+		expect(DUPLICATE_PARAM).toBe('duplicate');
+		expect(duplicateJobHref('/recruiter/jobs/new', '65e2e0000000000000000abc')).toBe(
+			'/recruiter/jobs/new?duplicate=65e2e0000000000000000abc'
+		);
+		// Encoded, whatever it is given
+		expect(duplicateJobHref('/recruiter/jobs/new', 'a&b c')).toBe(
+			'/recruiter/jobs/new?duplicate=a%26b%20c'
+		);
 	});
 });
 

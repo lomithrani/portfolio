@@ -17,9 +17,6 @@ export const LOCKED_JOB_FIELDS: readonly JobFieldPath[] = JOB_FIELD_PATHS.filter
 	(path) => JOB_FIELD_CRITERIA[path].length > 0
 );
 
-/** Whether a field of a posting is one of its terms, locked once the posting is opened */
-export const isLockedJobField = (path: JobFieldPath): boolean => LOCKED_JOB_FIELDS.includes(path);
-
 /** A posting's dates, as the API returns them or the client holds them */
 type Published = { publishedAt?: Date | string | null };
 
