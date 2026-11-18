@@ -1,8 +1,8 @@
 <!--
 @component
 The links to the four legal pages (legal notice, privacy policy, terms of use, cookies), in a
-navigation landmark labelled "Legal". LegalFooter shows them on the site's own pages; the job pages
-and the portfolios show them small at the bottom of their content.
+navigation landmark labelled "Legal". LegalFooter shows them on the site's own pages; the recruiter
+space and the portfolios show them small at the bottom of their content.
 
 - `compact`: smaller text and short labels ("Privacy", "Terms"), for the bottom of a page
 - `class`: extra classes of the list

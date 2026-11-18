@@ -21,7 +21,7 @@ see the criteria.
 		HOURS_TOLERANCE,
 		MANAGEMENT_ROLES,
 		MANAGEMENT_ROLE_LABELS,
-		PAY_TOLERANCE,
+		PAY_MATCH,
 		PERFECT_JOB_CRITERION_LABELS,
 		PERFECT_JOB_LIMITS,
 		SENIORITY_LABELS,
@@ -567,7 +567,11 @@ see the criteria.
 				<h3 class={groupHeadingClass} id="{uid}-group-pay">{m.groups.pay}</h3>
 				<Criterion
 					criterion="pay"
-					description={m.pay.description(PAY_TOLERANCE * 100)}
+					description={m.pay.description(
+						Math.round(PAY_MATCH.fullShareOfRange * 100),
+						Math.round((1 - PAY_MATCH.fullShareOfRange) * 100),
+						Math.round(PAY_MATCH.aboveRangeTolerance * 100)
+					)}
 					bind:rating={form.pay}
 					share={shares.pay}
 					disabled={saving}

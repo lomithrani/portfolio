@@ -8,7 +8,7 @@ import { localized, type Localized } from '../i18n';
 import { legalMessages } from './legal.messages';
 
 /** Version (date) of the Terms of use and Privacy policy in force; bump when either changes materially */
-export const LEGAL_VERSION = '2026-11-17';
+export const LEGAL_VERSION = '2026-11-18';
 
 /** Fixed age floor of the confirmation (GDPR art. 8 max threshold, above COPPA 13, French working age 16) */
 export const MINIMUM_AGE = 16;
@@ -28,11 +28,17 @@ export const AGE_CONFIRMATION_KEY = AGE_CONFIRMATION_KEYS.en;
 /** Key of the wording shown in the language in use */
 export const ageConfirmationKey = (): string => localized(AGE_CONFIRMATION_KEYS);
 
-/** What a client sends when the person ticked the confirmation (POST /login, PUT /me/consent, POST /domain/claim) */
+/**
+ * What a client sends when the person ticked the confirmation (POST /login, PUT /me/consent,
+ * POST /domain/claim, PUT /me/mode when it opens the recruiter space)
+ */
 export type ConsentInput = { termsVersion: string; ageConfirmed: true };
 
-/** Where an acceptance was given: the landing page's sign-in, a claim form, the account page */
-export const CONSENT_SOURCES = ['landing', 'claim', 'account'] as const;
+/**
+ * Where an acceptance was given: the landing page's sign-in, a claim form, the account page, or
+ * the recruiter space (its sign-in, its creation, or accepting again from it)
+ */
+export const CONSENT_SOURCES = ['landing', 'claim', 'account', 'recruiter'] as const;
 export type ConsentSource = (typeof CONSENT_SOURCES)[number];
 
 /** Longest termsVersion the API reads (a version is a date: 10 characters) */

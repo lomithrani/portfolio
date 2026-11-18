@@ -5,8 +5,10 @@ is scored out of 100 against the owner's perfect job, and the steps after it ope
 minimum the owner set. Nothing is submitted here: the API computes the score at each read, from
 the job description and the owner's criteria as they are now (the step's `view`). It shows the
 score against the minimum and, when the owner shares them, how the job does on each criterion
-(never what the owner asks for). Under the minimum, the recruiter can edit the job description or
-pick another one on the job step, then check again.
+(never what the owner asks for). Under the minimum, the recruiter can pick another job description
+on the job step, or duplicate this one (it was opened to be picked, so its terms are locked) into a
+new one that states more, which comes back here to be opened and picked; Check again reads the
+score again (the owner may have changed their criteria or the minimum).
 Not for the portfolio's owner: the page shows them the step's description instead.
 -->
 <script lang="ts">
@@ -14,13 +16,15 @@ Not for the portfolio's owner: the page shows them the step's description instea
 	import {
 		ArrowPath,
 		Check,
+		DocumentDuplicate,
 		Minus,
-		PencilSquare,
 		QuestionMarkCircle,
 		XMark
 	} from 'svelte-heros-v2';
 	import { PERFECT_JOB_CRITERION_LABELS } from 'portfolio-common';
+	import { duplicateJobHref } from '#services/recruiter.ts';
 	import {
+		JOURNEY_PARAM,
 		jobMatch,
 		jobMatchMinScore,
 		jobMatchOutcomeText,
@@ -30,7 +34,7 @@ Not for the portfolio's owner: the page shows them the step's description instea
 	import { m } from './steps.messages';
 	import type { StepProps } from './types';
 
-	let { step, ownerName, reload }: StepProps = $props();
+	let { step, domainName, ownerName, reload }: StepProps = $props();
 
 	const uid = $props.id();
 
@@ -38,6 +42,12 @@ Not for the portfolio's owner: the page shows them the step's description instea
 	let passed = $derived(match !== undefined && passesJobMatch(match));
 	let minScore = $derived(match?.minScore ?? jobMatchMinScore(step.config));
 	let dealBreaker = $derived(match?.criteria?.some((entry) => entry.dealBreaker) ?? false);
+	// A copy of the job scored, as a new draft, back here once created (to be opened and picked)
+	let duplicateHref = $derived(
+		match
+			? `${duplicateJobHref(resolve('/(app)/recruiter/jobs/new'), match.job._id)}&${JOURNEY_PARAM}=${encodeURIComponent(domainName)}`
+			: ''
+	);
 </script>
 
 {#if !match}
@@ -185,12 +195,10 @@ Not for the portfolio's owner: the page shows them the step's description instea
 					{m.jobMatch.pickAnother}
 				</p>
 				<div class="flex flex-wrap gap-2">
-					<a
-						class="btn preset-tonal min-h-11"
-						href={resolve('/(app)/recruiter/jobs/[id]/edit', { id: match.job._id })}
-					>
-						<PencilSquare size="18" aria-hidden="true" />
-						{m.jobMatch.edit}
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d, with a query -->
+					<a class="btn preset-tonal min-h-11" href={duplicateHref}>
+						<DocumentDuplicate size="18" aria-hidden="true" />
+						{m.jobMatch.duplicate}
 					</a>
 					<button type="button" class="btn preset-tonal min-h-11" onclick={() => reload()}>
 						<ArrowPath size="18" aria-hidden="true" />

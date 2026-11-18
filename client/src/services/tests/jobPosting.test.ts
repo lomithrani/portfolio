@@ -1,8 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from 'portfolio-common';
+import {
+	JOB_FIELD_CRITERIA,
+	JOB_FIELD_PATHS,
+	LOCKED_JOB_FIELDS,
+	changedLockedFields,
+	jobTermsLocked,
+	locksJobTerms,
+	withLocale
+} from 'portfolio-common';
 import {
 	JOB_FIELD_LABELS,
 	JOB_FORM_FIELDS,
+	LOCKED_FORM_FIELDS,
+	duplicateJobForm,
 	emptyJobForm,
 	formToJobInput,
 	formatContract,
@@ -17,8 +27,10 @@ import {
 	jobFormFieldOf,
 	jobFormSignature,
 	jobToForm,
+	openedJobForm,
 	parseFormNumber,
 	startDateKey,
+	withLockedTerms,
 	type JobForm,
 	type JobPostingLike
 } from '../jobPosting';
@@ -153,6 +165,22 @@ describe('jobFormErrors', () => {
 		expect(errors.peers).toBe('Peers must be a number');
 		expect(errors.hoursPerWeek).toMatch(/^Hours per week must be from 1 to 48/);
 		expect(errors.payMax).toBe('Maximum pay must not be below the minimum');
+	});
+
+	it('reports a pay range whose top is over 1.5 times its bottom, with the most it can be', () => {
+		expect(jobFormErrors(validForm({ payMin: '45 000', payMax: '67 500' })).payMax).toBeUndefined();
+		expect(jobFormErrors(validForm({ payMin: '45 000', payMax: '67 501' })).payMax).toBe(
+			'Maximum pay must be at most €67,500 (1.5 times the minimum)'
+		);
+		// In cents, rounded down: 1.5 × €33.33 is €49.995
+		expect(
+			jobFormErrors(validForm({ payMin: '33,33', payMax: '50', payPeriod: 'hour' })).payMax
+		).toBe('Maximum pay must be at most €49.99 (1.5 times the minimum)');
+		expect(
+			withLocale('fr', () => jobFormErrors(validForm({ payMin: '45000', payMax: '90000' })).payMax)
+		).toBe(
+			'Rémunération maximale\u00a0: indiquez 67\u202f500\u00a0€ au maximum (1,5 fois la minimale)'
+		);
 	});
 });
 
@@ -326,5 +354,125 @@ describe('the fields a perfect job is scored on', () => {
 		expect(jobToForm(sent).address).toBe('12 rue de la République');
 		expect(formatPlace(sent.location)).toBe('12 rue de la République, Lyon (69003), France');
 		expect(jobFieldOfProperty('location.address')).toBe('address');
+	});
+});
+
+// Once opened, a posting's terms (the fields the perfect job scores) are locked: the API refuses to
+// change them (409, its tests check it), the editor shows their inputs read-only
+describe('the terms of an opened posting', () => {
+	const opened = {
+		_id: 'j1',
+		...formToJobInput(validForm({ skills: ['Go'], travel: 'occasional' })),
+		status: 'open' as const,
+		publishedAt: '2026-11-03T10:00:00.000Z'
+	};
+
+	it('are every field a criterion reads, and only those', () => {
+		const scored = JOB_FIELD_PATHS.filter((path) => JOB_FIELD_CRITERIA[path].length > 0);
+		expect([...LOCKED_JOB_FIELDS]).toEqual(scored);
+		expect(LOCKED_FORM_FIELDS).toEqual(scored.map((path) => jobFormFieldOf(path)));
+		for (const field of ['description', 'company', 'status', 'benefits', 'payVariable'] as const) {
+			expect(LOCKED_FORM_FIELDS).not.toContain(field);
+		}
+	});
+
+	it('lock once the posting was opened, whatever its status since', () => {
+		expect(jobTermsLocked(opened)).toBe(true);
+		const backToDraft = { ...opened, status: 'draft' as const };
+		expect(jobTermsLocked(backToDraft)).toBe(true);
+		expect(jobTermsLocked({ publishedAt: undefined })).toBe(false);
+		expect(jobTermsLocked(null)).toBe(false);
+		// What the editor and the status control confirm: a posting never opened leaving the drafts
+		expect(locksJobTerms('open', null)).toBe(true);
+		expect(locksJobTerms('closed', { publishedAt: null })).toBe(true);
+		expect(locksJobTerms('draft', null)).toBe(false);
+		expect(locksJobTerms('open', opened)).toBe(false);
+	});
+
+	it('are compared normalised, each field on its own', () => {
+		const stored = formToJobInput(jobToForm(opened));
+		const edit = (overrides: Partial<JobForm>) =>
+			formToJobInput({ ...jobToForm(opened), ...overrides });
+		// The whole posting sent back, typed differently: nothing changed
+		expect(changedLockedFields(stored, edit({ title: '  Backend   engineer ' }))).toEqual([]);
+		// What no criterion reads changes freely
+		expect(
+			changedLockedFields(
+				stored,
+				edit({ description: 'Other.', company: 'Other', benefits: ['Gym'], status: 'closed' })
+			)
+		).toEqual([]);
+		expect(
+			changedLockedFields(stored, edit({ title: 'Staff engineer', payMin: '46000', skills: [] }))
+		).toEqual(['title', 'pay.min', 'requirements.skills']);
+		// The remote days go with a job that is no longer hybrid
+		expect(changedLockedFields(stored, edit({ workMode: 'on_site' }))).toEqual([
+			'location.workMode',
+			'location.remoteDaysPerWeek'
+		]);
+		expect(changedLockedFields(stored, edit({ travel: '' }))).toEqual(['travel']);
+	});
+
+	it('take the top of a range saved wider than the cap down to the top it was scored with only', () => {
+		const wide = {
+			...opened,
+			pay: { min: 40000, max: 80000, currency: 'EUR' as const, period: 'year' as const }
+		};
+		const { form, capped } = openedJobForm(wide);
+		expect([capped, form.payMax]).toEqual([true, '60000']);
+		const stored = formToJobInput(jobToForm(wide));
+		expect(changedLockedFields(stored, formToJobInput(form))).toEqual([]);
+		expect(changedLockedFields(stored, formToJobInput({ ...form, payMax: '59000' }))).toEqual([
+			'pay.max'
+		]);
+		// Within the cap: as it is
+		expect(openedJobForm(opened)).toEqual({ form: jobToForm(opened), capped: false });
+	});
+
+	it('are what a draft of the opened posting keeps of the posting', () => {
+		const posting = jobToForm(opened);
+		const draft = {
+			...posting,
+			title: 'Changed',
+			payMin: '1',
+			skills: ['Rust'],
+			description: 'New.'
+		};
+		expect(withLockedTerms(draft, posting)).toEqual({ ...posting, description: 'New.' });
+	});
+});
+
+describe('duplicateJobForm', () => {
+	it('copies every field of the posting, as a new draft', () => {
+		const job = {
+			_id: 'j1',
+			...formToJobInput(validForm({ status: 'open', skills: ['Go'], benefits: ['Gym'] })),
+			publishedAt: '2026-11-03T10:00:00.000Z'
+		};
+		const copy = duplicateJobForm(job);
+		expect(copy).toEqual({ ...jobToForm(job), status: 'draft' });
+		expect(copy).toMatchObject({ title: 'Backend engineer', payMin: '45000', skills: ['Go'] });
+		// Its lists are its own
+		copy.skills.push('Rust');
+		expect(job.requirements?.skills).toEqual(['Go']);
+		// A posting without openings: the copy has none either
+		expect(duplicateJobForm({ ...job, openings: undefined }).openings).toBe('');
+	});
+
+	it('starts a copy of an opened posting saved wider than the cap from the top it is scored with', () => {
+		// Saved at €80,000 for a €40,000 bottom, before the cap: its editor shows €60,000
+		const wide = {
+			_id: 'j2',
+			...formToJobInput(validForm({ status: 'open', payMin: '40000', payMax: '60000' })),
+			publishedAt: '2026-11-03T10:00:00.000Z'
+		};
+		wide.pay = { ...wide.pay, max: 80000 };
+		const copy = duplicateJobForm(wide);
+		expect(copy).toEqual({ ...openedJobForm(wide).form, status: 'draft' });
+		expect([copy.payMin, copy.payMax]).toEqual(['40000', '60000']);
+		// ...which it can be saved with
+		expect(jobFormErrors(copy)).toEqual({});
+		// A draft never opened is copied as it is: its own editor shows the same range
+		expect(duplicateJobForm({ ...wide, publishedAt: undefined }).payMax).toBe('80000');
 	});
 });

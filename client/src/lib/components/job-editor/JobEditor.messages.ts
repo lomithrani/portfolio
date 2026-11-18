@@ -31,6 +31,77 @@ export const m = defineMessages({
 	/** The other answer to "Discard…?" */
 	keepIt: { en: 'Keep it', fr: 'Conserver' },
 
+	// --- An opened posting's terms -------------------------------------------------------------
+
+	/** The note at the top of the editor of a job description opened before: its terms are locked */
+	locked: {
+		title: { en: 'Pay and conditions locked', fr: 'Rémunération et conditions verrouillées' },
+		text: {
+			en: "This job description was opened: its pay and its conditions (the fields with a lock) can no longer be changed, because candidates' matches are computed on them. You can still edit its description and the other fields, and change its status. To change its pay and conditions, duplicate it as a new job description.",
+			fr: "Cette offre d'emploi a été ouverte : sa rémunération et ses conditions (les champs marqués d'un cadenas) ne peuvent plus être modifiées, car les correspondances des candidats sont calculées sur elles. Vous pouvez toujours modifier sa description et les autres champs, et changer son statut. Pour modifier sa rémunération et ses conditions, dupliquez-la en une nouvelle offre d'emploi."
+		},
+		/**
+		 * The fields locked (`fields`: their names as a list, 'Job title, City, … and Travel'): a typo
+		 * in one of them cannot be fixed either
+		 */
+		fields: {
+			en: (fields: string) => `Locked fields: ${fields}.`,
+			fr: (fields: string) => `Champs verrouillés : ${fields}.`
+		},
+		/**
+		 * A range saved wider than `ratio` (JOB_LIMITS.pay.maxRangeRatio) times its minimum, before
+		 * that cap: its maximum shows (and is saved) as `amount`, the top it is scored with
+		 */
+		payCapped: {
+			en: (amount: string, ratio: number) =>
+				`Its pay range was saved wider than ${ratio.toLocaleString('en-GB')} times its minimum: its maximum shows as ${amount}, the top of the range candidates' matches are computed with, and your next save stores it.`,
+			fr: (amount: string, ratio: number) =>
+				`Sa fourchette de rémunération a été enregistrée plus large que ${ratio.toLocaleString('fr-FR')} fois sa minimale : sa rémunération maximale s'affiche à ${amount}, le haut de fourchette retenu pour les correspondances des candidats, et votre prochain enregistrement la conservera ainsi.`
+		},
+		duplicate: { en: 'Duplicate', fr: 'Dupliquer' }
+	},
+	/**
+	 * Above the editor of an opened job description, when the draft kept in this browser changed its
+	 * terms before it was opened: they cannot be saved on it, and are kept until the recruiter
+	 * duplicates it with them or discards them
+	 */
+	droppedTerms: {
+		title: {
+			en: 'Your changes to its pay and conditions cannot be saved',
+			fr: 'Vos modifications de sa rémunération et de ses conditions ne peuvent pas être enregistrées'
+		},
+		text: {
+			en: "This job description was opened after you made them in this browser: its pay and its conditions are locked, because candidates' matches are computed on them. Your changes are kept here: duplicate it with your changes to make them a new job description, or discard them.",
+			fr: "Cette offre d'emploi a été ouverte après que vous les avez faites dans ce navigateur : sa rémunération et ses conditions sont verrouillées, car les correspondances des candidats sont calculées sur elles. Vos modifications sont conservées ici : dupliquez-la avec vos modifications pour en faire une nouvelle offre d'emploi, ou abandonnez-les."
+		},
+		/** `fields`: the names of the fields changed, as a list ("Job title and Minimum pay") */
+		fields: {
+			en: (fields: string) => `Fields changed: ${fields}.`,
+			fr: (fields: string) => `Champs modifiés : ${fields}.`
+		},
+		discard: { en: 'Discard these changes', fr: 'Abandonner ces modifications' },
+		/** Announced to screen readers */
+		discarded: {
+			en: 'Your changes to its pay and conditions were discarded.',
+			fr: 'Vos modifications de sa rémunération et de ses conditions ont été abandonnées.'
+		}
+	},
+	/**
+	 * Before "Duplicate with my changes" replaces a copy of the job description kept in this browser
+	 * with changes of its own (a Duplicate started and left)
+	 */
+	replaceCopy: {
+		title: {
+			en: 'Replace your unsaved copy?',
+			fr: 'Remplacer votre copie non enregistrée ?'
+		},
+		text: {
+			en: 'This browser already keeps an unsaved copy of this job description, with changes of its own. Duplicating it with the changes made here replaces that copy.',
+			fr: "Ce navigateur conserve déjà une copie non enregistrée de cette offre d'emploi, avec ses propres modifications. La dupliquer avec les modifications faites ici remplace cette copie."
+		},
+		confirm: { en: 'Replace it', fr: 'La remplacer' }
+	},
+
 	// --- The restored draft -------------------------------------------------------------------
 
 	restored: {
@@ -95,6 +166,11 @@ export const m = defineMessages({
 		fr: "Ce compte n'a pas encore d'espace recruteur. Ouvrez l'espace recruteur pour le créer, puis revenez enregistrer : vos modifications sont conservées dans ce navigateur."
 	},
 	openRecruiterSpace: { en: 'Open the recruiter space', fr: "Ouvrir l'espace recruteur" },
+	/** The API refused the save: the recruiter has not accepted the terms in force (422 on consent) */
+	termsRequired: {
+		en: 'Accept the terms of use in force to save: open the recruiter space to accept them, then come back to save. Your changes are kept in this browser.',
+		fr: "Acceptez les conditions d'utilisation en vigueur pour enregistrer : ouvrez l'espace recruteur pour les accepter, puis revenez enregistrer. Vos modifications sont conservées dans ce navigateur."
+	},
 	cannotSave: {
 		en: 'You cannot save this job description.',
 		fr: "Vous ne pouvez pas enregistrer cette offre d'emploi."
@@ -105,10 +181,19 @@ export const m = defineMessages({
 	},
 	backToJobs: { en: 'Back to your job descriptions', fr: "Retour à vos offres d'emploi" },
 	changedSince: {
-		en: 'This job description was changed since you opened it (in another tab, or its status from its page). Your changes are kept in this browser: reload to see the saved version, with your changes over it to check.',
-		fr: "Cette offre d'emploi a été modifiée depuis que vous l'avez ouverte (dans un autre onglet, ou son statut depuis sa page). Vos modifications sont conservées dans ce navigateur : rechargez pour voir la version enregistrée, avec vos modifications par-dessus, à vérifier."
+		en: 'This job description was saved elsewhere since you started editing it (in another tab, or its status from its page). Your changes are kept in this browser: reload to see the saved version with your changes over it, to check them. Should it have been opened meanwhile, its pay and its conditions are locked: your changes to them are then kept for a duplicate.',
+		fr: "Cette offre d'emploi a été enregistrée ailleurs depuis que vous avez commencé à la modifier (dans un autre onglet, ou son statut depuis sa page). Vos modifications sont conservées dans ce navigateur : rechargez pour voir la version enregistrée avec vos modifications par-dessus, à vérifier. Si elle a été ouverte entre-temps, sa rémunération et ses conditions sont verrouillées : vos modifications de celles-ci sont alors conservées pour une copie."
 	},
 	reload: { en: 'Reload', fr: 'Recharger' },
+	/** The API refused the save: the job description was opened, its terms are locked (409) */
+	termsLockedOnSave: {
+		en: "The pay and the conditions of this job description are locked: it was opened, and candidates' matches are computed on them. Your changes are kept in this browser: reload to see it as it is, with your changes to the other fields over it, or duplicate it with all your changes as a new job description.",
+		fr: "La rémunération et les conditions de cette offre d'emploi sont verrouillées : elle a été ouverte, et les correspondances des candidats sont calculées sur elles. Vos modifications sont conservées dans ce navigateur : rechargez pour la voir telle qu'elle est, avec vos modifications des autres champs par-dessus, ou dupliquez-la avec toutes vos modifications en une nouvelle offre d'emploi."
+	},
+	duplicateWithChanges: {
+		en: 'Duplicate with my changes',
+		fr: 'Dupliquer avec mes modifications'
+	},
 	tooManyJobs: {
 		en: 'You have too many job descriptions: delete one to add another.',
 		fr: "Vous avez trop d'offres d'emploi : supprimez-en une pour en ajouter une autre."
@@ -189,8 +274,8 @@ export const m = defineMessages({
 	/** After the number of openings */
 	positions: { en: 'positions', fr: 'postes' },
 	descriptionIntro: {
-		en: 'The job, its team and its missions, as candidates will read them on the job page.',
-		fr: "Le poste, son équipe et ses missions, tels que les candidats les liront sur la page de l'offre."
+		en: 'The job, its team and its missions, as candidates will read them.',
+		fr: 'Le poste, son équipe et ses missions, tels que les candidats les liront.'
 	},
 	/** Markdown, like the description it shows the shape of */
 	descriptionPlaceholder: {
@@ -258,9 +343,20 @@ export const m = defineMessages({
 		en: 'Gross amounts (brut) in euros. The same minimum and maximum for a fixed pay.',
 		fr: 'Montants bruts en euros. Le même minimum et le même maximum pour une rémunération fixe.'
 	},
+	/**
+	 * Under the pay's intro: how wide a range can be (`ratio`: JOB_LIMITS.pay.maxRangeRatio), and
+	 * how a candidate's pay criterion is matched in it (`full`: how far up the range an ask still
+	 * matches fully, in percent; PAY_MATCH). A fixed pay has no top of the range: up to it matches
+	 */
+	payScoredInRange: {
+		en: (ratio: number, full: number) =>
+			`The maximum can be up to ${ratio.toLocaleString('en-GB')} times the minimum. A candidate's pay criterion matches when what they ask is at most ${full}% of the way up your range (at most your pay, when it is fixed), and less and less from there.`,
+		fr: (ratio: number, full: number) =>
+			`Le maximum peut aller jusqu'à ${ratio.toLocaleString('fr-FR')} fois le minimum. Le critère de rémunération d'un candidat correspond quand sa demande ne dépasse pas les ${full} % inférieurs de votre fourchette (ou votre rémunération, quand elle est fixe), et de moins en moins au-delà.`
+	},
 	/** How screen readers hear the unit of a pay amount (€) */
 	eurosGross: { en: 'euros, gross', fr: 'euros, brut' },
-	/** Before the pay as the job page writes it */
+	/** Before the pay as candidates read it */
 	candidatesSee: { en: 'Candidates see:', fr: 'Les candidats voient :' },
 	variablePayHint: {
 		en: 'Bonus, commission, profit-sharing… in a few words.',

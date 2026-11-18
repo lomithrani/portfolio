@@ -36,7 +36,6 @@ const counts = (overrides: Partial<SiteRecordCounts> = {}): SiteRecordCounts => 
   experiences: 57,
   job_postings: 9,
   open_job_postings: 5,
-  job_applications: 3,
   journeys_started: 2,
   upcoming_bookings: 1,
   ...overrides

@@ -1,10 +1,11 @@
 import { Types } from 'mongoose';
-import { APPLICABLE_JOB_STATUS } from 'portfolio-common';
+import { OPEN_JOB_STATUS, opportunityPath } from 'portfolio-common';
 import type { JobStatus } from 'portfolio-common';
 import { JobPosting } from '../../models/database';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../../errors';
 import { JOB_NOT_FOUND, toJobPostingDto } from '../jobPostings';
 import type { JobPostingDto } from '../jobPostings';
+import { userAcceptedCurrentTerms } from '../legal';
 import { requireRecruiterSpace } from '../recruiters';
 import type { ServerStep, StepContext } from './types';
 import { inputFields } from './types';
@@ -12,8 +13,10 @@ import { m } from './steps.messages';
 
 // Job step: the visitor (a recruiter) picks one of their own open job
 // postings, again if they wish (the latest pick counts). The step holds
-// while that posting is theirs and open: closed or deleted since, they pick
-// another one.
+// while that posting is theirs and open, and while they have accepted the
+// terms in force: closed or deleted since, they pick another one; after a
+// change of the terms, they accept them again (the step's list asks for
+// them, like every recruiter route) before the journey goes on.
 
 export interface JobStepData {
   /** The id of the posting picked */
@@ -41,11 +44,19 @@ export const JOB_NOT_OPEN = 'Only an open job description can be picked';
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 const jobId = (value: unknown) => (typeof value === 'string' && OBJECT_ID.test(value) ? value : undefined);
 
+/**
+ * The id of the posting a job step's stored `data` picked, when it holds one: for what reads a
+ * visitor's pick outside the journey (services/jobAccess.ts: the owner reads the job picked on
+ * their journey)
+ */
+export const pickedJobId = (data: unknown): string | undefined =>
+  jobId((data as Partial<JobStepData> | null | undefined)?.job);
+
 type JobContext = StepContext<Record<string, never>, JobStepData>;
 
 /** The posting the visitor picked, while it is still theirs */
 const pickedJob = async ({ visitorId, data }: JobContext): Promise<JourneyJobDto | undefined> => {
-  const id = jobId(data?.job);
+  const id = pickedJobId(data);
   if (!id || !Types.ObjectId.isValid(visitorId)) return undefined;
   const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }, { title: 1, company: 1, status: 1 }).lean();
   if (!job) return undefined;
@@ -59,12 +70,15 @@ const pickedJob = async ({ visitorId, data }: JobContext): Promise<JourneyJobDto
 
 /**
  * The whole posting a visitor picked on a job step, from what that step
- * stored (`data`), while it is still theirs: for a later step that works on
- * it (the job match)
+ * stored (`data`), while it is still theirs and they have accepted the terms
+ * in force (as the job step holds a pick): for a later step that works on it
+ * (the job match, which scores nothing for a recruiter who has not accepted
+ * them again)
  */
 export const pickedPosting = async (visitorId: string, data: unknown): Promise<JobPostingDto | undefined> => {
-  const id = jobId((data as Partial<JobStepData> | null | undefined)?.job);
+  const id = pickedJobId(data);
   if (!id || !Types.ObjectId.isValid(visitorId)) return undefined;
+  if (!(await userAcceptedCurrentTerms(visitorId))) return undefined;
   const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }).lean();
   return job ? toJobPostingDto(job) : undefined;
 };
@@ -73,14 +87,16 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
   type: 'job',
   evaluate: async (ctx) => {
     const job = await pickedJob(ctx);
+    const holds = job?.status === OPEN_JOB_STATUS && (await userAcceptedCurrentTerms(ctx.visitorId));
     return {
-      status: job?.status === APPLICABLE_JOB_STATUS ? 'succeeded' : 'pending',
+      status: holds ? 'succeeded' : 'pending',
       ...(job ? { view: { job } } : {})
     };
   },
   /**
-   * Needs a recruiter space (403) and a posting of theirs (404 otherwise,
-   * like any unknown id) that is open (409)
+   * Needs a recruiter space (403) with the terms in force (422 on `consent`:
+   * services/recruiters.ts) and a posting of theirs (404 otherwise, like any
+   * unknown id) that is open (409)
    */
   submit: async ({ visitorId, input }) => {
     const id = jobId(inputFields(input)?.jobId);
@@ -88,16 +104,18 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
     await requireRecruiterSpace(visitorId);
     const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }, { status: 1 }).lean();
     if (!job) throw new ResourceNotFoundError(JOB_NOT_FOUND);
-    if (job.status !== APPLICABLE_JOB_STATUS) throw new ConflictError(JOB_NOT_OPEN);
+    if (job.status !== OPEN_JOB_STATUS) throw new ConflictError(JOB_NOT_OPEN);
     return { job: job._id.toString(), selectedAt: new Date() };
   },
-  // What the meeting is about
+  // What the meeting is about, and the job's private page (web client's /opportunities/:id):
+  // the owner reads it there signed in, its recruiter is sent on to their own page of it; anyone
+  // else the invitation reaches reads that it is not shared with them (services/jobAccess.ts)
   describe: async ({ webOrigin, ...ctx }) => {
     const job = await pickedJob(ctx);
     if (!job) return [];
     return [
       m.job.invitation(job.title, job.company),
-      ...(webOrigin ? [`${webOrigin}/jobs/${job._id}`] : [])
+      ...(webOrigin ? [`${webOrigin}${opportunityPath(job._id)}`] : [])
     ];
   }
 };

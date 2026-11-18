@@ -1,8 +1,8 @@
 import {
-	APPLICABLE_JOB_STATUS,
 	DEFAULT_JOB_MATCH_MIN_SCORE,
 	JOB_MATCH_STEP_LIMITS,
 	JOB_STATUS_LABELS,
+	OPEN_JOB_STATUS,
 	PERFECT_JOB_CRITERIA,
 	WORKFLOW_LIMITS,
 	isValidDomainName,
@@ -17,6 +17,7 @@ import {
 	type WorkflowStepManifest,
 	type WorkflowStepStatus
 } from 'portfolio-common';
+import { isConsentProblem } from './apiErrors';
 import { isNetworkFailure, networkError } from './recruiter';
 import { m } from './workflow.messages';
 
@@ -329,8 +330,7 @@ export const pickedJob = (view: unknown): JourneyJob | undefined => {
 };
 
 /** Only an open posting can be picked (the API's rule) */
-export const isPickable = (job: { status: JobStatus }): boolean =>
-	job.status === APPLICABLE_JOB_STATUS;
+export const isPickable = (job: { status: JobStatus }): boolean => job.status === OPEN_JOB_STATUS;
 
 /** Open postings first, each group in the order the API listed them (most recently updated) */
 export const sortJobChoices = <T extends { status: JobStatus }>(jobs: readonly T[]): T[] => [
@@ -368,15 +368,20 @@ export const jobStepNote = (view: unknown, state: 'open' | 'done'): string => {
 
 /**
  * What a failed pick means. `reload-jobs`: the recruiter's jobs are not what the step shows
- * (it loads them again)
+ * (it loads them again); `terms`: the recruiter has not accepted the terms in force (a 422 on
+ * `consent`: the step asks for them, TermsAcceptance)
  */
 export const pickJobFailure = (
 	status: number | undefined,
 	value: unknown
-): StepFailure<'reload-jobs'> => {
+): StepFailure<'reload-jobs' | 'terms'> => {
 	if (isNetworkFailure(value)) return submitFailure(status, value);
 	const text = bodyText(value);
 	switch (status) {
+		case 422:
+			return isConsentProblem(status, value)
+				? { message: m.job.pick.terms, kind: 'terms' }
+				: { message: m.job.pick.failed, kind: 'error' };
 		case 401:
 			return { message: m.job.pick.signedOut, kind: 'signed-out' };
 		case 403:

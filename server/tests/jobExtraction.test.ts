@@ -2,7 +2,14 @@
 // (services/jobExtraction.ts): the model's output is untrusted, so every enum,
 // range and length is enforced here.
 import { describe, it, expect } from 'bun:test';
-import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS, JOB_LIMITS, normalizeJobPosting, validateJobPosting } from 'portfolio-common';
+import {
+  JOB_FIELD_CRITERIA,
+  JOB_FIELD_PATHS,
+  JOB_LIMITS,
+  normalizeJobPosting,
+  validateJobPosting,
+  withLocale
+} from 'portfolio-common';
 import type { JobPostingInput } from 'portfolio-common';
 import {
   JOB_EXTRACTION_SCHEMA,
@@ -142,8 +149,9 @@ describe('normalizeJobExtraction', () => {
   it('reads fields of another type as not stated', () => {
     const { draft } = normalize({ title: 42, payMin: 45000, skills: 'TypeScript', benefits: ['Mutuelle', 7, null] });
     expect(draft.title).toBeUndefined();
-    // A single amount left is the fixed pay
-    expect(draft.pay).toMatchObject({ min: 55000, max: 55000 });
+    // A maximum alone is a ceiling: the minimum stays unstated
+    expect(draft.pay).toMatchObject({ max: 55000 });
+    expect(draft.pay?.min).toBeUndefined();
     expect(draft.requirements?.skills).toBeUndefined();
     expect(draft.benefits).toEqual(['Mutuelle']);
   });
@@ -261,7 +269,7 @@ describe('normalizeJobExtraction', () => {
         peers: '100000',
         levelsToCeo: '0',
         payMin: '0.01',
-        payMax: '10000000',
+        payMax: '0.01',
         // An hourly pay is never written in k€: no warning about the 0.01
         payPeriod: 'hour'
       });
@@ -271,8 +279,11 @@ describe('normalizeJobExtraction', () => {
         location: { remoteDaysPerWeek: 4 },
         workingTime: { hoursPerWeek: 48, rttDaysPerYear: 0 },
         organization: { directReports: 0, peers: 100000, levelsToCeo: 0 },
-        pay: { min: 0.01, max: 10000000 }
+        pay: { min: 0.01, max: 0.01 }
       });
+      const highest = normalize({ payMin: '10000000', payMax: '10000000' });
+      expect(highest.warnings).toEqual([]);
+      expect(highest.draft.pay).toMatchObject({ min: 10000000, max: 10000000 });
     });
 
     it('rounds amounts to cents', () => {
@@ -283,8 +294,8 @@ describe('normalizeJobExtraction', () => {
   });
 
   describe('pay', () => {
-    it('takes a single amount as a fixed pay', () => {
-      expect(normalize({ payMin: '', payMax: '550', payPeriod: 'day' }).draft.pay).toEqual({
+    it('takes a minimum alone as a fixed pay', () => {
+      expect(normalize({ payMin: '550', payMax: '', payPeriod: 'day' }).draft.pay).toEqual({
         min: 550,
         max: 550,
         currency: 'EUR',
@@ -292,6 +303,14 @@ describe('normalizeJobExtraction', () => {
         variable: 'Prime sur objectifs (10 %)'
       });
       expect(normalize({ payMin: '3200', payMax: '' }).draft.pay).toMatchObject({ min: 3200, max: 3200 });
+    });
+
+    it('never makes a ceiling ("up to 60 k€") the minimum, which the job match scores', () => {
+      const { draft, warnings } = normalize({ payMin: '', payMax: '60000' });
+      expect(draft.pay).toEqual({ max: 60000, currency: 'EUR', period: 'year', variable: 'Prime sur objectifs (10 %)' });
+      // The recruiter gives the minimum before saving
+      expect(warnings).toEqual(['Not found in this file, needed to save the posting: minimum pay']);
+      expect(JOB_EXTRACTION_SYSTEM_PROMPT).toContain('only as a ceiling');
     });
 
     it('does not copy an amount over one that was left out', () => {
@@ -310,13 +329,34 @@ describe('normalizeJobExtraction', () => {
       expect(warnings).toEqual(['The minimum pay is above the maximum: check the pay range']);
     });
 
+    it('keeps a range whose top is over 1.5 times its bottom, with a warning, for the editor to narrow', () => {
+      const { draft, warnings } = normalize({ payMin: '40000', payMax: '80000' });
+      expect(draft.pay).toMatchObject({ min: 40000, max: 80000 });
+      expect(warnings).toEqual(['The maximum pay is more than 1.5 times the minimum: narrow the pay range']);
+      // Saving it is refused until it is narrowed: the editor shows why, at the maximum
+      const posting = normalizeJobPosting(draft as unknown as JobPostingInput);
+      expect(validateJobPosting(posting)).toEqual([
+        { field: 'pay.max', message: 'Maximum pay must be at most €60,000 (1.5 times the minimum)' }
+      ]);
+      // Up to 1.5 times: no warning
+      expect(normalize({ payMin: '40000', payMax: '60000' }).warnings).toEqual([]);
+      // A wide range given in k€ without its "k" gets both warnings
+      expect(normalize({ payMin: '45', payMax: '55000' }).warnings).toEqual([
+        'The maximum pay is more than 1.5 times the minimum: narrow the pay range',
+        'Check the pay: 45-55000 € per year looks too low (amounts in k€?)'
+      ]);
+      expect(withLocale('fr', () => normalize({ payMin: '40000', payMax: '80000' }).warnings)).toEqual([
+        'La rémunération maximale dépasse 1,5 fois la minimale\u00a0: resserrez la fourchette de rémunération'
+      ]);
+    });
+
     it.each([
       ['year', '45', '55', 'Check the pay: 45-55 € per year looks too low (amounts in k€?)'],
-      ['year', '', '38.5', 'Check the pay: 38.5 € per year looks too low (amounts in k€?)'],
+      ['year', '38.5', '', 'Check the pay: 38.5 € per year looks too low (amounts in k€?)'],
       ['month', '2.5', '3', 'Check the pay: 2.5-3 € per month looks too low (amounts in k€?)'],
       ['day', '1', '', 'Check the pay: 1 € per day looks too low (amounts in k€?)'],
       // Only the lowest amount needs to be implausible
-      ['year', '45', '55000', 'Check the pay: 45-55000 € per year looks too low (amounts in k€?)']
+      ['year', '800', '1100', 'Check the pay: 800-1100 € per year looks too low (amounts in k€?)']
     ])('keeps a %s pay of %p-%p that looks given in k€ without its "k", with a warning', (period, min, max, warning) => {
       const { draft, warnings } = normalize({ payMin: min, payMax: max, payPeriod: period });
       // Flagged, never converted: the recruiter checks it

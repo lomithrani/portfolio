@@ -16,8 +16,8 @@ import {
 // A job description of the recruiter space. Its fields are those of
 // portfolio-common's JobPostingInput, normalised and validated there
 // (normalizeJobPosting, validateJobPosting) before they reach this schema,
-// which only guards the shape. Owned by one recruiter; its applications are
-// JobApplication documents (removed with it).
+// which only guards the shape. Owned by one recruiter, who shows it to a
+// candidate by picking it on their Hire page (the job step): it is never public.
 
 const locationSchema = new Schema({
   country: { type: String, enum: JOB_COUNTRIES, required: true },
@@ -81,11 +81,12 @@ export const jobPostingSchema = new Schema({
   requirements: requirementsSchema,
   benefits: { type: [String], default: undefined },
   travel: { type: String, enum: TRAVEL_FREQUENCIES },
-  // First time the posting left the draft status (it was then made public)
+  // First time the posting left the draft status
   publishedAt: Date
 }, { timestamps: true });
 
-// The public list (GET /jobs): open postings, most recently published first
+// Postings by status, most recently published first (the count of open postings of
+// services/siteMetrics.ts)
 jobPostingSchema.index({ status: 1, publishedAt: -1 });
 
 export type JobPosting = InferSchemaType<typeof jobPostingSchema> & { _id: Types.ObjectId };

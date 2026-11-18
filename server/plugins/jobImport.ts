@@ -5,8 +5,9 @@ import { getJobImportStatus, importJobDescription } from '../services/jobImport'
 
 // Job description import (services/jobImport.ts): Claude extracts a job
 // posting draft from a PDF; nothing is saved here (the client saves it
-// through POST /jobs). Both routes need a recruiter space (403); POST is off
-// (404) without ANTHROPIC_API_KEY, and 402 once the plan's imports are used.
+// through POST /jobs). Both routes need a recruiter space (403) with the
+// terms in force (422 on `consent`); POST is off (404) without
+// ANTHROPIC_API_KEY, and 402 once the plan's imports are used.
 export const jobImport = new Elysia()
   .use(userLogged)
   .get('/jobs/import', ({ userId }) => getJobImportStatus(userId), {

@@ -12,8 +12,8 @@ export const m = defineMessages({
 	},
 	heading: { en: 'Edit job description', fr: "Modifier l'offre d'emploi" },
 	intro: {
-		en: 'Changes show on the job page as soon as you save them.',
-		fr: "Les modifications apparaissent sur la page de l'offre dès que vous les enregistrez."
+		en: "Your changes apply as soon as you save them, also where you picked this job description on a candidate's Hire page.",
+		fr: "Vos modifications s'appliquent dès que vous les enregistrez, y compris là où vous avez choisi cette offre sur la page Recruter d'un candidat."
 	},
 	signInText: {
 		en: 'Sign in to edit your job descriptions.',

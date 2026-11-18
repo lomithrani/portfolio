@@ -46,15 +46,24 @@ export const googleAuth = new Elysia()
       // Google, issued for our client ID, unexpired and has a verified email
       const identity = await google.verifyIdToken(token);
 
+      // Found or created like any sign-in, even one refused below for the
+      // mode 'recruiter' without the terms (it stores no more than a sign-in
+      // without a mode would: the Google id and email)
       const found = await findOrCreateGoogleUser(identity);
       // Recorded before the session exists: an account signed in with the
-      // confirmation never has a session without it
-      // From where the box was ticked: the landing page, or a claim form that signs in first
-      const recorded = accepted ? await recordConsent(found.id, accepted, consentSource ?? 'landing') : false;
+      // confirmation never has a session without it. From where the box was
+      // ticked: the landing page, a claim form that signs in first, or the
+      // recruiter space's sign-in. A sign-in into the recruiter space opens
+      // it: its confirmation is always the recruiter space's, so no space is
+      // opened by an acceptance recorded from elsewhere in the same request
+      const source = mode === 'recruiter' ? 'recruiter' : (consentSource ?? 'landing');
+      const recorded = accepted ? await recordConsent(found.id, accepted, source) : false;
       // The space picked on the login screen, set (and the recruiter space
-      // created) before the session is issued, as PUT /me/mode would
+      // created) before the session is issued, as PUT /me/mode would: opening
+      // the recruiter space needs the terms in force, accepted just above or
+      // before (422 on `consent` otherwise: no session, no space)
       const user = mode
-        ? await setActiveMode(found.id, mode)
+        ? await setActiveMode(found.id, mode, accepted)
         : recorded
           ? await findAccount(found.id)
           : found;
@@ -85,8 +94,9 @@ export const googleAuth = new Elysia()
         // Sent when the person ticked the age and terms checkbox before
         // signing in; recorded with the source consentSource
         consent: t.Optional(consentRequest),
-        // Where that checkbox was: the landing page (default), or the claim
-        // form of a portfolio page, which signs in before claiming
+        // Where that checkbox was: the landing page (default), the claim
+        // form of a portfolio page, which signs in before claiming, or the
+        // recruiter space (always, with the mode 'recruiter')
         consentSource: t.Optional(loginConsentSource)
       })
     })

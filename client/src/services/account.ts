@@ -14,7 +14,7 @@ import { portfolioApi } from '#services';
 import { authenticationStore, type AuthUser } from './stores';
 import { clearAuthentication, isSessionValid, readUser, termsVersionText } from './authentication';
 import { disableGoogleAutoSelect } from './googleIdentity';
-import { errorStatus } from './apiErrors';
+import { bodyProperty, errorStatus, isConsentProblem } from './apiErrors';
 import { accountMessages } from './account.messages';
 
 // The account's spaces (portfolio-common USER_MODES): the candidate space is the portfolio of the
@@ -176,8 +176,9 @@ const portfolioOfPath = (pathname: string): string => {
 /**
  * The space to record (PUT /me/mode) for the page shown, so the account menu names it: 'recruiter'
  * on a /recruiter page for an account that has a recruiter space, 'candidate' on the account's
- * own portfolio, when another space is active; null otherwise. An account without a recruiter
- * space creates it from the page instead.
+ * own portfolio and on /opportunities (a job description shared with a portfolio owner) for an
+ * account that has a portfolio, when another space is active; null otherwise. An account without
+ * a recruiter space creates it from the page instead.
  */
 export const spaceToRecord = (
 	user: Pick<AuthUser, 'activeMode' | 'recruiter' | 'domain'> | null | undefined,
@@ -187,8 +188,11 @@ export const spaceToRecord = (
 	if (isCurrentSection(pathname, '/recruiter')) {
 		return user.recruiter && user.activeMode !== 'recruiter' ? 'recruiter' : null;
 	}
-	const ownPortfolio = !!user.domain && portfolioOfPath(pathname) === user.domain.toLowerCase();
-	return ownPortfolio && user.activeMode !== 'candidate' ? 'candidate' : null;
+	const candidatePage =
+		!!user.domain &&
+		(isCurrentSection(pathname, '/opportunities') ||
+			portfolioOfPath(pathname) === user.domain.toLowerCase());
+	return candidatePage && user.activeMode !== 'candidate' ? 'candidate' : null;
 };
 
 const bodyText = (value: unknown): string => {
@@ -199,15 +203,16 @@ const bodyText = (value: unknown): string => {
 	return '';
 };
 
-/** The field a 422 validation error names (`property`), '' for any other body */
-const bodyProperty = (value: unknown): string =>
-	value && typeof value === 'object' && 'property' in value && typeof value.property === 'string'
-		? value.property
-		: '';
+// Shared with the journey's job step (pickJobFailure of workflow.ts): one rule for that refusal
+export { isConsentProblem };
 
-/** A 422 about the age and terms confirmation (`consent`, `consent.termsVersion`...) */
-const isConsentProblem = (status: number | undefined, body: unknown): boolean =>
-	status === 422 && /^consent(\.|$)/.test(bodyProperty(body));
+/**
+ * The message of a refused confirmation: the version this page sends is outdated (only a reload
+ * helps), else `missing` (the form shows its checkbox)
+ */
+const consentMessage = (body: unknown, missing: string): string =>
+	// The client always sends the version it was built with: a refused one is outdated
+	bodyProperty(body) === 'consent.termsVersion' ? legalMessages.staleTerms : missing;
 
 /**
  * What a failed POST /domain/claim was about: 'name' (invalid or already taken: the person picks
@@ -231,12 +236,7 @@ export const claimFailureCause = (
 export const claimErrorMessage = (status: number | undefined, body: unknown): string => {
 	const text = bodyText(body);
 	if (status === 401) return accountMessages.sessionExpired;
-	if (isConsentProblem(status, body)) {
-		// The client always sends the version it was built with: a refused one is outdated
-		return bodyProperty(body) === 'consent.termsVersion'
-			? legalMessages.staleTerms
-			: accountMessages.claim.consent;
-	}
+	if (isConsentProblem(status, body)) return consentMessage(body, accountMessages.claim.consent);
 	if (status === 409 && /already own/i.test(text)) {
 		return accountMessages.claim.ownsPortfolio;
 	}
@@ -268,18 +268,24 @@ const failure = (reason: AccountFailureReason, message: string): AccountFailure 
 	message
 });
 
-const accountRequest = async (
+/**
+ * An account request: 401 clears the session, `refusal` says what another error was about (its
+ * failure, or undefined for the plain `errorMessage`)
+ */
+const accountRequest = async <Failure extends AccountFailure = AccountFailure>(
 	request: () => Promise<{ data: unknown; error: { status: unknown; value?: unknown } | null }>,
-	errorMessage: string
-): Promise<AccountResult> => {
+	errorMessage: string,
+	refusal?: (status: number | undefined, value: unknown) => Failure | undefined
+): Promise<{ ok: true; user: AuthUser } | AccountFailure | Failure> => {
 	try {
 		const { data, error } = await request();
 		if (error) {
-			if (errorStatus(error) === 401) {
+			const status = errorStatus(error);
+			if (status === 401) {
 				clearAuthentication();
 				return failure('session-expired', accountMessages.sessionExpired);
 			}
-			return failure('error', errorMessage);
+			return refusal?.(status, error.value) ?? failure('error', errorMessage);
 		}
 		const user = readUser(data);
 		if (!user) return failure('error', errorMessage);
@@ -290,37 +296,53 @@ const accountRequest = async (
 	}
 };
 
+export type SwitchFailure = AccountFailure & { cause?: 'consent' };
+export type SwitchResult = { ok: true; user: AuthUser } | SwitchFailure;
+
 /**
  * Makes `mode` the account's active space (PUT /me/mode): choosing 'recruiter' the first time
- * creates the recruiter space. Updates the persisted session with the account returned.
+ * creates the recruiter space, which needs the terms in force: `consent` (the age and terms
+ * checkbox ticked where the space is opened, portfolio-common currentConsent()) is required by
+ * the API from an account that has not accepted them (hasAcceptedCurrentTerms), recorded from the
+ * source 'recruiter'; without it the switch fails with the cause 'consent'. Updates the persisted
+ * session with the account returned.
  */
-export const switchMode = (mode: UserMode): Promise<AccountResult> =>
-	accountRequest(
-		() => portfolioApi.me.mode.put({ mode }, withCredentials),
-		switchErrorMessage(mode)
+export const switchMode = (mode: UserMode, consent?: ConsentInput): Promise<SwitchResult> =>
+	accountRequest<SwitchFailure>(
+		() => portfolioApi.me.mode.put({ mode, ...(consent ? { consent } : {}) }, withCredentials),
+		switchErrorMessage(mode),
+		(status, value) =>
+			isConsentProblem(status, value)
+				? {
+						...failure('error', consentMessage(value, accountMessages.recruiter.consent)),
+						cause: 'consent'
+					}
+				: undefined
 	);
 
-/** The space being recorded by recordSpaceShown: one request at a time per space */
-let recording: UserMode | null = null;
+/** The last recording of recordSpaceShown: the next one waits for it to end */
+let recorded: Promise<void> = Promise.resolve();
 
 /**
  * Records the space of the page shown (spaceToRecord) as the account's active one, once a
  * navigation to it ended: the layouts call it after every navigation (a link, a bookmark, the
  * account menu or the space chooser, which only navigate) and once the session is known. A
  * navigation the page kept (unsaved changes) records nothing, so the menu never names a space
- * the page is not in. A failure only leaves the menu's label as it was.
+ * the page is not in. One request at a time, in the order the pages were shown: each looks at
+ * the account once the one before it answered, so a page shown while another space is being
+ * recorded (/opportunities sending a recruiter on to their own job) ends in its own space, and a
+ * space recorded meanwhile is not asked for again. A failure only leaves the menu's label as it
+ * was.
  */
-export const recordSpaceShown = async (pathname: string): Promise<void> => {
-	const auth = get(authenticationStore);
-	if (!isSessionValid(auth)) return;
-	const mode = spaceToRecord(auth.user, pathname);
-	if (!mode || recording === mode) return;
-	recording = mode;
-	try {
-		await switchMode(mode);
-	} finally {
-		recording = null;
-	}
+export const recordSpaceShown = (pathname: string): Promise<void> => {
+	const record = recorded.then(async () => {
+		const auth = get(authenticationStore);
+		if (!isSessionValid(auth)) return;
+		const mode = spaceToRecord(auth.user, pathname);
+		if (mode) await switchMode(mode);
+	});
+	recorded = record.catch(() => {});
+	return record;
 };
 
 /** Reloads the signed-in account (GET /me), e.g. once it claimed a domain */
@@ -437,13 +459,17 @@ export const domainAvailabilityMessage = (
 	}
 };
 
+/** Where PUT /me/consent says the terms were accepted: a claim form, the account page, the recruiter space */
+export type AcceptTermsSource = 'claim' | 'account' | 'recruiter';
+
 /**
  * Records that the signed-in account accepts the Terms of use in force, with the age confirmation
- * (PUT /me/consent): for an account that signed in without the checkbox. `source` says where it
- * was given. Updates the persisted session with the account returned (its termsVersion).
+ * (PUT /me/consent): for an account that signed in without the checkbox, or a recruiter whose
+ * acceptance is older than the terms in force. `source` says where it was given. Updates the
+ * persisted session with the account returned (its termsVersion).
  */
 export const acceptTerms = async (
-	source: 'claim' | 'account' = 'account'
+	source: AcceptTermsSource = 'account'
 ): Promise<AccountResult> => {
 	try {
 		const { data, error } = await portfolioApi.me.consent.put(
@@ -524,7 +550,7 @@ const isUnknownUser = (error: { status: unknown; value?: unknown }): boolean =>
 
 /**
  * Deletes the signed-in account and everything tied to it (DELETE /me): its portfolio, hiring
- * journey, job postings, applications and schedules; the API asks Google to revoke its Google
+ * journey, job postings and schedules; the API asks Google to revoke its Google
  * Calendar access and ends the session. Then this browser forgets the account: the session, its
  * drafts (clearUserBrowserData) and Google's automatic sign-in. A 401 saying the account no longer
  * exists counts as deleted: a retry after a lost answer (the first request did delete it), or a

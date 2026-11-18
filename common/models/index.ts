@@ -20,8 +20,7 @@ export {
 export type { BookingHorizon, DateRange } from './bookingDates';
 export {
 	JOB_STATUSES,
-	PUBLIC_JOB_STATUSES,
-	APPLICABLE_JOB_STATUS,
+	OPEN_JOB_STATUS,
 	WORK_MODES,
 	JOB_COUNTRIES,
 	FR_CONTRACT_TYPES,
@@ -40,6 +39,11 @@ export {
 	normalizeJobPosting,
 	validateJobPosting,
 	isJobStartDate,
+	highestPayMax,
+	isPayRangeTooWide,
+	payRangeTooWideMessage,
+	formatPayAmount,
+	opportunityPath,
 	JOB_STATUS_LABELS,
 	WORK_MODE_LABELS,
 	COUNTRY_LABELS,
@@ -67,6 +71,12 @@ export type {
 	JobFieldPath
 } from './jobPosting';
 export { jobPostingMessages } from './jobPosting.messages';
+export {
+	LOCKED_JOB_FIELDS,
+	jobTermsLocked,
+	locksJobTerms,
+	changedLockedFields
+} from './jobTerms';
 export {
 	USER_MODES,
 	USER_MODE_LABELS,
@@ -112,7 +122,7 @@ export {
 	WORK_DAYS_PER_WEEK,
 	COMMUTE_TOLERANCE,
 	BIKE_METERS_PER_MINUTE,
-	PAY_TOLERANCE,
+	PAY_MATCH,
 	HOURS_TOLERANCE,
 	PERFECT_JOB_LIMITS,
 	IMPORTANCE_LABELS,
@@ -192,3 +202,4 @@ export {
 } from './legal';
 export type { ConsentInput, ConsentSource, ConsentProblemProperty, ConsentResult } from './legal';
 export { legalMessages } from './legal.messages';
+export { ROBOTS_NOINDEX } from './robots';

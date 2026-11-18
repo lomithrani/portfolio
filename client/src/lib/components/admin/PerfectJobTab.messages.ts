@@ -215,12 +215,17 @@ export const m = defineMessages({
 
 	// --- The pay ---
 	pay: {
-		/** `percent`: how far under the pay asked a job stops matching */
+		/**
+		 * How the pay asked matches a job's range (PAY_MATCH). `full`: how far up the range an ask
+		 * still matches fully, in percent; `top`: the share at the top of the range that matches only
+		 * partly, in percent; `over`: how far over the top it still does a little. A fixed pay has no
+		 * top of the range: up to it matches
+		 */
 		description: {
-			en: (percent: number) =>
-				`The gross pay (brut) you ask for, in euros. A job matches when the middle of its range reaches it, partly when it is under, and not at all ${percent}% under.`,
-			fr: (percent: number) =>
-				`La rémunération brute que vous demandez, en euros. Une offre correspond quand le milieu de sa fourchette l'atteint, en partie quand il est en dessous, et plus du tout à ${percent} % en dessous.`
+			en: (full: number, top: number, over: number) =>
+				`The gross pay (brut) you ask for, in euros. A job matches when what you ask is at most ${full}% of the way up its pay range (at most its pay, when the pay is fixed), partly when it is in the top ${top}% of the range, a little up to ${over}% over the top, and not at all further over.`,
+			fr: (full: number, top: number, over: number) =>
+				`La rémunération brute que vous demandez, en euros. Une offre correspond quand votre demande ne dépasse pas les ${full} % inférieurs de sa fourchette (ou sa rémunération, quand elle est fixe), en partie quand elle est dans les ${top} % supérieurs de la fourchette, un peu jusqu'à ${over} % au-dessus du haut de la fourchette, et plus du tout au-delà.`
 		},
 		perYear: { en: 'Per year', fr: 'Par an' },
 		perYearPlaceholder: { en: 'e.g. 70 000', fr: 'ex. : 70 000' },

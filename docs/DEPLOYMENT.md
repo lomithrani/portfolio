@@ -257,12 +257,125 @@ in place of the publisher and contact, and the web deploy logs one warning at st
 (`LEGAL_PUBLISHER_NAME is not set: the legal notice and the privacy policy show ...`). Without a
 SIREN the publisher is presented as an individual acting on a non-professional basis.
 
-Before going live, confirm what the texts state about the operations: log and trace retention
-("up to 30 days", `LOG_RETENTION` in `client/src/lib/components/legal/legalDocuments.ts`),
-database backups, and the processors' transfer basis (Railway, Anthropic, Google, GitHub, the
-monitoring provider). When the Terms of use or the Privacy policy change materially, bump
-`LEGAL_VERSION` in `common/models/legal.ts`: accounts are asked to accept the new version, and a
-claim needs it.
+Before going live, confirm what the texts state about the operations: log and trace retention ("up
+to 30 days", `LOG_RETENTION` in `client/src/lib/components/legal/legalDocuments.ts`), what
+Cloudflare keeps of the page requests ("up to 31 days", `CLOUDFLARE_LOG_RETENTION` there: the
+retention of its traffic and security analytics on the Free, Pro and Business plans, 90 days on
+Enterprise; check the zone's plan and Cloudflare's data processing addendum), database backups, and the processors' transfer basis (Railway, Cloudflare, Anthropic, Google, GitHub, the
+monitoring provider: each on the [Data Privacy Framework
+list](https://www.dataprivacyframework.gov/list), or with standard contractual clauses in its data
+processing terms; for Cloudflare, that the account is covered by its customer data processing
+addendum). When the Terms of use or the Privacy policy change materially, bump `LEGAL_VERSION` in
+`common/models/legal.ts`: accounts are asked to accept the new version, and a claim needs it, as
+does the recruiter space: opening one, and every recruiter route, which answers 422 on `consent`
+until the recruiter accepts the new version (the recruiter pages then show the terms to accept).
+Recruiter spaces opened before recruiters accepted the terms (before the `recruiter` consent source)
+are asked the same way. Reseed the e2e database after a bump (`bun run --cwd server seed:e2e`
+records the version in force for the e2e recruiter), locally and in the cloud environment.
+
+**Tell the accounts before a bump reaches production.** Both documents promise it (`#changes` of
+the Terms and of the Privacy policy: "tell you on the site or by email before the change
+applies"), and nothing on the site does it: the checkbox only shows once the release is deployed,
+and from then on every recruiter route answers 422 on `consent` until the new version is accepted.
+So, before deploying a release that bumps `LEGAL_VERSION` to production, email every account a
+short notice, in English and French: what changes, when it applies, that they will be asked to
+accept the new version (recruiters before they use their space again), and that they can delete
+their account instead. The notice of `2026-11-18` also tells recruiters what the Terms now ask of
+them (`#recruiters`): once a job description is opened, its pay and conditions can no longer be
+changed (a new version of them is a new job description: Duplicate), and the top of its pay range
+is at most 1.5 times its bottom. Read the addresses at that moment from production's database, for example
+`mongosh "$MONGO_URL" --quiet --eval 'db.users.find({}, { email: 1, _id: 0 }).forEach((u) => print(u.email))'`,
+send the notice with the addresses in Bcc, and keep no copy of the list. List this step in the
+release pull request's deployment notes. If no notice can be sent before the deploy, change
+`#changes` first (both documents, both languages) so it no longer promises one.
+
+**Cloudflare.** The privacy policy names Cloudflare, Inc. as the content delivery network and
+proxy in front of the **web pages only** (`#recipients`, `#data-technical`, `#transfers` and its
+log retention in `#retention`): on 2026-11-18, `curl -sI https://portfolio.gentil.tech/` answered
+`server: cloudflare` with a `cf-ray`, while `https://api.portfolio.gentil.tech/health` and both
+staging hosts answered `server: railway-hikari` (Railway directly). The cookies page names it too
+(`#summary`: it "sets no cookie and adds no script on this site"). The texts say that Cloudflare
+receives the requests and the pages sent back, not that it changes them, stores anything in the
+browser or adds a script: no Cloudflare cookie, no Web Analytics beacon (which "no analytics" in
+the privacy policy and the cookies page rules out), and **two zone settings that Cloudflare turns
+on by default must stay off**. Both were on when checked on 2026-11-18: turn them off before
+deploying the release that names Cloudflare in the privacy policy.
+
+- **Email Address Obfuscation** (Security, **Settings**, "Email Address Obfuscation" off, or a
+  configuration rule that turns it off for the hostname). On, it replaced every email address of
+  `/legal`, `/legal/privacy` and `/legal/terms` (the publisher's contact, the host's) with a
+  `/cdn-cgi/l/email-protection` link and added its script `email-decode.min.js` to those pages:
+  without JavaScript, and for anything reading the HTML, the legal notice's contact address read
+  "[email protected]".
+- **Network Error Logging** (Account home, **Network**, "Network Error Logging Monitoring" off,
+  or the zone setting `nel`). On, every answer carries `NEL` and `Report-To` headers: the
+  browser keeps a reporting policy for 7 days and sends Cloudflare a report when a connection to
+  the site fails, which neither the privacy policy nor the cookies page lists.
+
+Run the checks after changing a Cloudflare setting, and after each production deploy (also in
+[Verify a deploy](#verify-a-deploy)):
+
+```bash
+for url in https://portfolio.gentil.tech/ https://api.portfolio.gentil.tech/health; do
+  echo "$url"; curl -s -o /dev/null -D - "$url" | grep -iE '^(server|cf-ray|set-cookie|nel|report-to):'
+done   # server (and cf-ray for the pages) only: no set-cookie, nel or report-to
+for p in / /legal /legal/privacy /legal/terms /legal/cookies '/legal?lang=fr'; do
+  printf '%s ' "$p"; curl -s "https://portfolio.gentil.tech$p" | grep -c 'cdn-cgi\|cloudflareinsights\|__cf_email__'
+done   # 0 for each page: no address rewritten, no script added
+```
+
+The pages without an email address (the landing page, `/legal/cookies`) show nothing either way:
+check the legal notice, the privacy policy and the terms. If one of these features has to stay on,
+the texts change first, in both languages, with a `LEGAL_VERSION` bump: Email Address Obfuscation
+in `#recipients` (Cloudflare rewrites the email addresses shown on the pages and adds a script that
+decodes them), Network Error Logging in `#recipients` and on the cookies page (the reporting policy
+the browser keeps, for 7 days).
+
+Putting the API (or staging) behind Cloudflare changes the texts: say so in the privacy policy
+(both languages; the API carries the session cookie and every form's data), bump `LEGAL_VERSION`,
+and set `CLIENT_IP_HEADER=CF-Connecting-IP` on that API (see
+[Booking protection](#booking-protection)). A Cloudflare cookie (`__cf_bm` of Bot Fight Mode, the
+`cf_clearance` of a passed challenge) or Web Analytics goes in the cookies page and the privacy
+policy first.
+
+**Who pays.** The Terms say candidates never pay (article L5321-3 of the Labour Code forbids
+asking job seekers for anything in return for placement services) and that the service is free
+for recruiters for now, who are told before any paid feature applies to them. A paid feature can
+only ever be for recruiters, and the Terms (and `LEGAL_VERSION`) change before it ships.
+
+**Annual placement report.** The Terms name the activity placement (article L5321-1: the site
+puts job offers and job seekers in touch, and is not a party to the employment contract). A
+private organisation that runs placement sends the préfet a report **every year before 31 March**
+on the year before (article R5323-8): its placement turnover and that turnover's share of its
+total, and the number of job seekers received, placed and still registered on 31 December, by sex
+and age. Ask the DDETS of the publisher's département (in Île-de-France, the unité départementale
+of the DRIEETS) for the model of the statement, which an arrêté sets, and whether "not known" is
+accepted for sex and age: the site collects neither, and must not start to (data minimisation,
+and a sex or age field next to hiring invites discrimination, article L5321-2). Placement turnover
+is 0 while the service is free, and placements are not tracked (the site never learns who was
+hired). The counts, from the production database, in January (counts only, nothing about a
+person):
+
+```bash
+mongosh "<production MONGO_URL>" --quiet --eval '
+  const year = 2026;
+  const from = new Date(Date.UTC(year, 0, 1)), to = new Date(Date.UTC(year + 1, 0, 1));
+  const idAt = (date) => ObjectId.createFromTime(Math.floor(date.getTime() / 1000));
+  printjson({
+    year,
+    portfoliosCreated: db.domains.countDocuments({ _id: { $gte: idAt(from), $lt: idAt(to) } }),
+    portfoliosOn31December: db.domains.countDocuments({ _id: { $lt: idAt(to) } }),
+    recruiterSpacesOpened: db.users.countDocuments({ "recruiter.enabledAt": { $gte: from, $lt: to } }),
+    journeysStarted: db.workflowinstances.countDocuments({ createdAt: { $gte: from, $lt: to } })
+  })'
+```
+
+A portfolio has no creation date of its own: its `_id` holds the second it was created. Job
+seekers received are the portfolios created that year; those still registered on 31 December are
+the portfolios created before it that still exist, so run it early in January (a portfolio goes
+with its account). `recruiterSpacesOpened` and `journeysStarted` (a recruiter's first step on a
+candidate's journey; gone with either account) describe the other side and the activity; keep the
+answer with the report.
 
 ## Google Calendar appointments
 
@@ -348,8 +461,9 @@ proxy, so the API reads the `X-Real-IP` header Railway sets instead: that is the
 `CLIENT_IP_HEADER` whenever Railway's `RAILWAY_PROJECT_ID` variable is present, so nothing needs
 setting on Railway. Put another proxy in front of Railway (e.g. Cloudflare's orange cloud on the
 custom domain) and `X-Real-IP` becomes that proxy's address: set `CLIENT_IP_HEADER` to the header
-holding the visitor's address there (`CF-Connecting-IP` for Cloudflare). For a list header such as
-`X-Forwarded-For`, the API takes the last entry, the one the closest proxy appended. Only name a
+holding the visitor's address there (`CF-Connecting-IP` for Cloudflare; today Cloudflare fronts
+the web pages only, not the API, so the default holds: see [Legal pages](#legal-pages)). For a
+list header such as `X-Forwarded-For`, the API takes the last entry, the one the closest proxy appended. Only name a
 header that proxy overwrites: anything else, a client can set to any value. An invalid header
 name stops the deployment with `CLIENT_IP_HEADER must be an HTTP header name`.
 
@@ -686,7 +800,10 @@ The production services deploy from **`main`**, the staging services from **`dev
 Work goes to `develop`: every pull request targets it (`develop` is the repository's default
 branch) and is squash-merged. A release brings `develop` into `main`:
 
-1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship.
+1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship. When the release
+   bumps `LEGAL_VERSION` (`git diff <latest tag> develop -- common/models/legal.ts`), email the
+   accounts first, before running the workflow (the merge deploys production on its own): see
+   "Tell the accounts before a bump reaches production" under [Legal pages](#legal-pages).
 2. Run the `Release` workflow (after its one-time setup, below): **Actions**, **Release**, **Run
    workflow** (branch `develop`), and pick what the release brings since the last one
    ([semantic versioning](https://semver.org)):
@@ -814,25 +931,169 @@ the deploy.
   MONGO_URL="<production MONGO_URL>" bun run db:seed
   ```
 
+### The job board's applications (one-off)
+
+The public job board, applying to a job and the applicant lists are gone: no route reads or writes
+the `jobapplications` collection any more, except deleting an account, which still removes the
+account's own applications from it (as candidate, for its portfolio, to its job descriptions:
+`LEGACY_JOB_APPLICATIONS_COLLECTION` of `server/services/accountDeletion.ts`) until it is gone.
+Once the API without them runs on a stage, record how many applications it held, by source
+(counts only: no candidate, posting or portfolio), then drop the collection, in that stage's
+database (staging, then production):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  printjson(db.jobapplications.aggregate([{ $group: { _id: "$source", count: { $sum: 1 } } }]).toArray());
+  db.jobapplications.drop()'
+```
+
+Write the counts in the release's pull request: they are the only record left of the board's
+applications. Do it soon after the deploy: until then the collection holds personal data that the
+privacy policy no longer describes. `drop()` answers `false` once it is gone. Once it is dropped on
+both stages, a later release removes `LEGACY_JOB_APPLICATIONS_COLLECTION` from account deletion. Drop it from local and cloud-session databases too, and run
+`bun run --cwd server seed:e2e` again there: its portfolio `e2e-applicant` became `e2e-shared`
+(the old one is left unused).
+
+The overview dashboard loses its job application panels with this release: import
+`docs/grafana/overview.json` over the stack's **Portfolio · Overview** (Dashboards, New, Import,
+same uid, overwrite).
+
+### Locked job terms and capped pay ranges (one-off)
+
+From the release that brings them, a job description's terms (the fields the perfect job scores,
+`LOCKED_JOB_FIELDS` of `common/models/jobTerms.ts`) are locked once it has been opened
+(`publishedAt` set, whatever its status since), and the top of a pay range is at most 1.5 times its
+bottom (`JOB_LIMITS.pay.maxRangeRatio`). Nothing is migrated: the postings already opened become
+locked as they are, and one saved wider than 1.5 times its bottom before the cap is scored as if its
+top were that (its editor shows that top, which its next save stores; until then a candidate reading
+it on `/opportunities/:id` still sees the top it was saved with). Such a posting cannot be saved
+again with its wider top, nor opened from its status if it never was, until it is narrowed. Before
+deploying that release on each stage (staging, then production), count them (counts only: no
+posting, recruiter or pay):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  const wider = { $expr: { $gt: ["$pay.max", { $multiply: ["$pay.min", 1.5] }] } };
+  printjson({
+    opened: db.jobpostings.countDocuments({ publishedAt: { $ne: null } }),
+    wider: db.jobpostings.countDocuments(wider),
+    openedAndWider: db.jobpostings.countDocuments({ $and: [{ publishedAt: { $ne: null } }, wider] })
+  })'
+```
+
+Write the counts in the release's pull request. When `wider` is not 0, tell the recruiters of those
+postings, with the `LEGAL_VERSION` notice (see "Tell the accounts before a bump reaches
+production") or on their own, that each must be narrowed (its editor) or, once opened, duplicated
+into a new job description with the range they mean: an opened one is matched with a top of 1.5
+times its bottom from the deploy.
+
 ### Reserved portfolio names
 
 Every top-level route of the web app is a reserved portfolio name (`RESERVED_DOMAIN_NAMES` in
 `common/models/domainName.ts`): a portfolio with that name would be hidden behind the route.
 The landing page, legal pages and account page reserved `about`, `contact`, `cookies`, `help`,
-`legal`, `privacy`, `report`, `signup`, `start` and `terms`. Before deploying a version that
-reserves new names, check that no existing portfolio uses one (it would become unreachable, and
-could not be found or claimed again):
+`legal`, `privacy`, `report`, `signup`, `start` and `terms`; the private page of a job
+description shared with a candidate (`/opportunities/:id`) reserved `opportunities`. Before
+deploying a version that reserves new names, check on each stage (the staging database, then
+production's) that no existing portfolio uses one (it would become unreachable, and could not be
+found or claimed again):
 
 ```bash
-mongosh "<production MONGO_URL>" --quiet --eval '
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
   db.domains.find(
-    { name: { $in: ["about", "contact", "cookies", "help", "legal", "privacy", "report", "signup", "start", "terms"] } },
+    { name: { $in: ["about", "contact", "cookies", "help", "legal", "opportunities", "privacy", "report", "signup", "start", "terms"] } },
     { name: 1, admin: 1 }
   ).toArray()'
 ```
 
 An empty array (`[]`) means nothing to do. Otherwise, rename the domain (`db.domains.updateOne`
-with a free name) and tell its owner before deploying.
+with a free name) and tell its owner before deploying that stage.
+
+## Search engines
+
+Portfolios are public to anyone with their address but are not listed by search engines
+(CLAUDE.md, "Search engines"): every page of a portfolio, the 404 of a name nobody claimed,
+`/account`, `/recruiter/jobs/*` and `/opportunities/*` (the private page of a job description
+shared with a candidate) answer with `x-robots-tag: noindex, nofollow, noarchive`, and the API
+sends the same header on every answer. The pages rendered on the server (a portfolio's pages,
+`/account`) also carry a robots meta in their HTML; the 404 of a name nobody claimed has the
+header alone; `/recruiter/jobs/*` and `/opportunities/*` are rendered in the browser, so their
+meta is only written once their script ran (`curl` never sees it). The landing page, the legal
+pages and `/recruiter` stay listed, with their canonical links (the one of `/recruiter`, rendered
+in the browser too, is written by its script). The job board is gone: `/jobs` answers `410 Gone`,
+which tells search engines to drop it, `/jobs/<id>` answers `308` to `/opportunities/<id>` (the
+link of the meeting invitations sent before), and the API's `GET /jobs` and `GET /jobs/<id>`
+answer 404.
+
+**robots.txt refuses nothing, on purpose.** A crawler has to fetch a page to read its `noindex`:
+a `Disallow` would hide the request, and a search engine can still list a refused address it
+finds through a link, without its content. It would also stop LinkedIn, Slack and the like from
+building the preview of a shared portfolio, and it could not name portfolios anyway (each is a
+top-level path, `/<name>`). With Cloudflare in front of the web service and its managed
+robots.txt on, Cloudflare puts its own block (`# BEGIN Cloudflare Managed Content` to
+`# END Cloudflare Managed Content`: `User-agent: *` with its content signals, and a `Disallow: /`
+for each AI training crawler it lists, such as GPTBot, ClaudeBot, CCBot or Google-Extended) above
+the lines of `client/static/robots.txt`, which follow unchanged. Keep it so, and check that the
+block adds no `Disallow: /` for `User-agent: *`.
+
+**Cloudflare must not get in the way.** Bot Fight Mode, Block AI bots, AI Crawl Control and any
+WAF rule must not challenge the crawlers of link previews (`LinkedInBot`, `Slackbot`,
+`Twitterbot`, `facebookexternalhit`), and no Transform Rule or cache rule may strip
+`X-Robots-Tag`.
+
+**Checks**, from outside, after a deploy that touches pages or headers (`GET` requests: the
+headers of a `HEAD` request may differ):
+
+```bash
+headers() { curl -s -o /dev/null -D - "$@"; }
+headers https://example.com/louis.gentil/experiences | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+headers https://example.com/louis.gentil/hire | grep -i '^x-robots-tag'          # the same
+headers https://example.com/a-name-nobody-claimed/experiences | grep -i '^x-robots-tag'   # the same, on the 404
+headers https://api.example.com/health | grep -i '^x-robots-tag'                 # the same
+curl -s https://example.com/louis.gentil/experiences | grep -o '<meta name="robots"[^>]*>'
+headers https://example.com/ | grep -ci '^x-robots-tag'                          # 0: the landing page is listed
+headers https://example.com/legal/privacy | grep -ci '^x-robots-tag'             # 0
+curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs               # 410: the job board is gone
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://example.com/jobs/65e2e00000000000000000aa   # 308 .../opportunities/65e2e00000000000000000aa
+headers https://example.com/opportunities/65e2e00000000000000000aa | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+curl -s -o /dev/null -w '%{http_code}\n' https://api.example.com/jobs           # 404
+curl -s https://example.com/robots.txt | grep -iE '^(user-agent|allow|disallow)'   # each group with its user agents
+LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'
+curl -s -o /dev/null -w '%{http_code}\n' -A "$LINKEDIN" \
+  https://example.com/louis.gentil/experiences                                   # 200, not a challenge (403 or 503)
+curl -s -A "$LINKEDIN" https://example.com/louis.gentil/experiences \
+  | grep -o '<meta property="og:[^>]*>\|<title>[^<]*</title>'                     # og:url, og:locale and the page's title
+```
+
+In the robots.txt output, every group that names `User-agent: *` has only `Allow: /` or an empty
+`Disallow:`: a `Disallow: /` belongs only to the AI crawlers Cloudflare's block names (GPTBot,
+ClaudeBot...). The page fetched as LinkedInBot must be the portfolio itself, with its preview tags,
+not a challenge page that also answers 200.
+
+LinkedIn's [Post Inspector](https://www.linkedin.com/post-inspector/) on a portfolio's address
+then shows its preview.
+
+**Pages listed before.** A `noindex` counts from the next time a search engine reads the page,
+which can take weeks. Verify the domain in
+[Google Search Console](https://search.google.com/search-console) (a domain property, with the
+DNS `TXT` record it gives, added in Cloudflare: it covers every subdomain), find what is listed
+(`site:portfolio.gentil.tech` in Google, then `site:api.portfolio.gentil.tech`,
+`site:develop.portfolio.gentil.tech` and `site:develop.api.portfolio.gentil.tech`), and ask for
+the removal of each portfolio (**Removals**, **New request**, **Remove all URLs with this
+prefix**: `https://portfolio.gentil.tech/<name>/`). Do the same for the API's answers, which until
+this header had none (`GET /domain/<name>` is a whole portfolio as JSON): the prefix
+`https://api.portfolio.gentil.tech/domain/`, and `https://develop.api.portfolio.gentil.tech/domain/`
+for staging, whose portfolios found under `https://develop.portfolio.gentil.tech/<name>/` go too.
+The former job board goes the same way: the prefix `https://portfolio.gentil.tech/jobs` (and
+`https://api.portfolio.gentil.tech/jobs`, with their staging twins). Google hides them for about six
+months, long enough to read the `noindex` (or the `410` of the job board); **Pages** then lists
+them under "Excluded by 'noindex' tag". Do the same in
+[Bing Webmaster Tools](https://www.bing.com/webmasters) (**Content Removal**), whose index other
+engines use too.
+
+**Limits.** `noindex` is a request. Google and Bing follow it; a crawler that ignores robots
+rules, or an AI answer engine, may not. That is why the landing FAQ and the privacy policy say
+that search engines are asked not to list a portfolio, never that it cannot be found.
 
 ## Verify a deploy
 
@@ -853,8 +1114,15 @@ with a free name) and tell its owner before deploying.
    curl -s https://api.example.com/domain/louis.gentil/availability   # {"name":"louis.gentil","available":false,"reason":"taken"}
    curl -si -H 'Origin: https://example.com' https://api.example.com/domain/louis.gentil \
      | grep -i '^access-control-allow-origin'  # https://example.com
+   curl -s -o /dev/null -D - https://example.com/louis.gentil/experiences | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+   curl -s -o /dev/null -D - https://api.example.com/health | grep -i '^x-robots-tag'                 # the same
+   curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs   # 410: the job board is gone
+   curl -s https://example.com/legal | grep -c 'cdn-cgi\|__cf_email__'   # 0: the proxy changed nothing
    ```
 
+   The other checks of what search engines and link previews get: [Search engines](#search-engines);
+   of what Cloudflare adds to the pages (Email Address Obfuscation, Network Error Logging): the
+   loops under [Legal pages](#legal-pages).
 4. **In the browser**: open the site, sign in with Google, reload the page and check you are still
    signed in (the `auth` cookie is stored for the API domain). With `GOOGLE_CLIENT_SECRET` set,
    **Admin, Appointments** shows the calendar as connected (or offers to connect it).

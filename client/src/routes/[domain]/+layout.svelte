@@ -15,7 +15,7 @@
 	import { browser } from '$app/env';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
-	import LocaleLinks from '#lib/i18n/LocaleLinks.svelte';
+	import PortfolioHead from '#components/PortfolioHead.svelte';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -37,7 +37,8 @@
 	});
 </script>
 
-<LocaleLinks />
+<!-- Not listed by search engines, but previewed when shared -->
+<PortfolioHead />
 
 <div class="h-full flex flex-col">
 	<!-- Header renders the page's <header> (AppBar) -->

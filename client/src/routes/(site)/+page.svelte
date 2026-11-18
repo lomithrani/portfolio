@@ -11,7 +11,6 @@
 		EyeSlash,
 		Funnel,
 		MapPin,
-		PaperAirplane,
 		Swatch
 	} from 'svelte-heros-v2';
 	import type { Snippet } from 'svelte';
@@ -78,10 +77,7 @@
 		m.match.steps.meeting
 	];
 
-	const alsoIncluded = [
-		{ icon: EyeSlash, ...m.match.private },
-		{ icon: PaperAirplane, ...m.match.apply }
-	];
+	const alsoIncluded = [{ icon: EyeSlash, ...m.match.private }];
 
 	/** What the owner chooses about the look of their portfolio (admin tab "Appearance", the views) */
 	const personalisation = [
@@ -233,7 +229,7 @@
 				<p class="text-sm text-surface-700-300">{m.match.keep}</p>
 			</div>
 			<DemoVideo name="demo-journey" label={m.match.demo.label} caption={m.match.demo.caption} />
-			<ul class="grid gap-4 sm:grid-cols-2 lg:col-span-2">
+			<ul class="grid gap-4 lg:col-span-2">
 				{#each alsoIncluded as feature (feature.title)}
 					<li class="card preset-outlined-surface-200-800 bg-surface-50-950 flex gap-4 p-5">
 						<span

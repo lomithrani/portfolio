@@ -118,6 +118,17 @@ export const LOG_RETENTION: Record<LegalLanguage, string> = {
 	fr: "jusqu'à 30 jours"
 };
 
+/**
+ * How long Cloudflare, in front of the web pages, keeps the requests it served: the retention of
+ * its traffic and security analytics on the Free, Pro and Business plans (31 days; 90 on
+ * Enterprise). Not set by the code either: the operator confirms it against the zone's plan and
+ * Cloudflare's data processing addendum (docs/DEPLOYMENT.md, "Legal pages")
+ */
+export const CLOUDFLARE_LOG_RETENTION: Record<LegalLanguage, string> = {
+	en: 'up to 31 days',
+	fr: "jusqu'à 31 jours"
+};
+
 /** The publisher (and data controller) as the web service's LEGAL_* variables describe them */
 export interface LegalPublisher {
 	/** Whether the name and the contact email are set: without them the notice is incomplete */

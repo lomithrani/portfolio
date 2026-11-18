@@ -107,7 +107,12 @@ Two consequences that are easy to miss:
 - **What `visitorConfig` returns is public.** `GET /workflow/domains/:domainName` needs no session,
   so anonymous callers get it too. Return a setting there only when it is written for visitors.
 - **The owner does not see a visitor's `data`.** The only thing that reaches the owner is what the
-  step's `describe` puts in the meeting invitation.
+  step's `describe` puts in the meeting invitation, and what that invitation links: for the job
+  step, the job's private page (`GET /opportunities/jobs/:id`, `server/services/jobAccess.ts`),
+  which reads the job step's pick (`pickedJobId`) to let the owner read the posting picked on
+  their journey. Nobody else reads it there but its recruiter and the other owners on whose
+  journey that recruiter picked the same posting (a recruiter can pick one posting on several
+  journeys).
 
 ## Adding a step: the note step, file by file
 
@@ -226,10 +231,12 @@ What to know about each function:
 **`evaluate`** decides the status every time the journey is read. Nothing stores a status. It is
 called for every step each time a signed-in visitor loads the journey, and for the steps before a
 step each time that step is used (each submit, each availability request of the booking calendar),
-so keep it cheap: no query for the note, one indexed query for the job. It is never called for the
+so keep it cheap: no query for the note, two indexed queries for the job. It is never called for the
 owner or for an anonymous caller, who are `pending` on every step. A step may read more than its
 own data: the job step loads the posting again and is `succeeded` only while that posting still
-belongs to the visitor and is open, so a posting closed since sends the visitor back to the step.
+belongs to the visitor and is open, and while the visitor has accepted the terms in force (like
+every recruiter route), so a posting closed since, or a change of the terms, sends the visitor back
+to the step.
 
 **`view`** is the part of `evaluate`'s answer the visitor's page receives. The note has none. The
 job step returns `{ job: { _id, title, company?, status } }`, the posting the visitor picked, so
@@ -260,7 +267,13 @@ that each field is a string instead of returning `config` as it is.
 visitor books. Its lines go into the calendar event's description, between the "Booked via
 portfolio by ..." line and the visitor's notes, so both the owner and the visitor read them. The
 job step returns `Job: <title> — <company>` and, when the request came from an allowed web origin,
-the public link of the posting. The note describes nothing.
+a link to the job's private page on that origin (`opportunityPath(id)` of portfolio-common,
+`/opportunities/<id>`: the page and the link share it, so they cannot drift apart). Only its
+recruiter and the portfolio owners on whose journey the recruiter picked it can open it, signed in
+(each owner while it is the recruiter's current pick on their journey and not a draft: a
+recruiter can pick one posting on several journeys); anyone else reads that it is not shared with
+them. The old `/jobs/<id>` of invitations sent before answers 308 to it. The note describes
+nothing.
 
 ### 3. The client entry: `client/src/lib/components/hire/steps/`
 
@@ -349,8 +362,12 @@ posting is the visitor's.
 **It stores nothing and takes no submission.** The score is computed at each read, from the
 posting and the owner's criteria as they are now (`scorePerfectJob` in
 `common/models/perfectJob.ts`, which is pure and tested in
-`server/tests/perfectJobScore.test.ts`). The recruiter editing the posting, picking another one,
-or the owner changing their criteria or the minimum all change the status at the next read.
+`server/tests/perfectJobScore.test.ts`). The recruiter picking another posting, or the owner
+changing their criteria or the minimum, change the status at the next read. A posting picked was
+opened, so the fields the score reads are locked (`LOCKED_JOB_FIELDS`): editing it cannot change
+its score, and the step offers to duplicate it instead
+(`/recruiter/jobs/new?duplicate=<id>&journey=<domain>`: a new draft that, once created, comes back
+to the Hire page with `?job=<id>`, to be opened and picked).
 
 **It reads something private of the owner's.** The perfect job (`GET`/`PUT /perfect-job`, model
 `PerfectJob`, admin tab "Perfect job") is the owner's alone. `visitorConfig` returns the minimum

@@ -1,10 +1,10 @@
 <!--
 @component
-A "Sign in with Google" button, with no space chooser: the apply panel's signs in to the candidate
-space (`mode`, the default: the visitor stays on the job page to apply); the hiring journey's job
-step passes null, so the account keeps the space it last chose (it creates its recruiter space next,
-if it has none).
-`onSignedIn` runs once the session is stored.
+A "Sign in with Google" button, with no space chooser, for the steps of a hiring journey (the note
+and job steps) and the private page of a job shared with a candidate (/opportunities/:id): the
+account keeps the space it last chose (on the job step it creates its recruiter space next, if it
+has none, with the terms checkbox there). A sign-in that opens a space goes through signIn of
+services/authentication.ts, with the consent it needs, not through this button.
 Google's sign-in is loaded only once the visitor asks for it: a local "Sign in with Google" button
 first (nothing reaches accounts.google.com before), then Google's button and its One Tap prompt.
 Google Identity has one credential callback for the whole page: this button takes it when it is
@@ -12,21 +12,12 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getLocale, type UserMode } from 'portfolio-common';
+	import { getLocale } from 'portfolio-common';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { login } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
-	import { m } from './ApplySignIn.messages.ts';
-
-	let {
-		onSignedIn,
-		mode = 'candidate'
-	}: {
-		onSignedIn?: () => void;
-		/** The space to sign in to; null keeps the one the account last chose */
-		mode?: UserMode | null;
-	} = $props();
+	import { m } from './SignInButton.messages.ts';
 
 	let buttonContainer: HTMLDivElement | undefined = $state();
 	let status = $state<'idle' | 'loading' | 'ready' | 'unavailable' | 'signing-in'>('idle');
@@ -55,15 +46,13 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 			clickedAt = 0;
 			errorMessage = '';
 			status = 'signing-in';
-			// Read before signing in: once the session is stored, the panel replaces this component
-			// (destroyed by the time login() returns), and still has to hear about it
-			const notify = onSignedIn;
-			const signedIn = await login(credential, mode ?? undefined);
+			// Once the session is stored, the step replaces this component (destroyed by the time
+			// login() returns)
+			const signedIn = await login(credential);
 			if (!destroyed) {
 				status = 'ready';
 				if (!signedIn) errorMessage = FAILED_MESSAGE;
 			}
-			if (signedIn) notify?.();
 		};
 
 		/** Renders Google's button */

@@ -14,8 +14,8 @@
 
 	// The site's own pages, which belong to no portfolio: the landing page (/), the legal pages
 	// (/legal...) and the account page (/account). Same header and toasts as the other layouts
-	// (its logo leads back to the landing page), with the site footer: the job board, the
-	// recruiter space, the language and light/dark switches and the legal pages. The header offers no Google
+	// (its logo leads back to the landing page), with the site footer: the recruiter space, the
+	// language and light/dark switches and the legal pages. The header offers no Google
 	// sign-in here: the landing page signs in after its age and terms checkbox, and nothing else
 	// on these pages needs a session to read.
 	let { children }: { children: Snippet } = $props();

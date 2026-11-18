@@ -129,6 +129,7 @@ TEST_MONGO_URL=mongodb://127.0.0.1:27017/portfolio-test bun run test
 - `ALLOWED_DOMAINS` must be a JSON array of strings and `MONGO_URL` must start
   with `mongodb://` or `mongodb+srv://`, or the server exits at startup with
   the list of problems. Check the Railway service variables first.
-- No data migration: the app was never in production, so start from a fresh
-  database (drop the old data, then run `bun run seed` against the production
-  `MONGO_URL`) rather than carrying documents written by older versions.
+- Production holds real data: never drop it. Each release's data steps are in
+  its pull request's deployment notes and in `docs/DEPLOYMENT.md` (its one-off
+  sections). Only a fresh database is seeded (`bun run seed` against its
+  `MONGO_URL`: the owner's user and the `louis.gentil` domain).

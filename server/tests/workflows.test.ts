@@ -13,10 +13,9 @@ import { env } from '../env';
 import { createApp } from '../app';
 import { ConflictError, JourneyStepLockedError, MissingAuthCookieError, ResourceNotFoundError } from '../errors';
 import { Domain, JobPosting, PerfectJob, User, Workflow, WorkflowInstance } from '../models/database';
-import { enableRecruiterSpace } from '../services/recruiters';
 import { assertStepOpen, openStepOfType, recordStepData } from '../services/workflows';
 import { serverStep, serverStepTypes } from '../services/workflowSteps';
-import { authCookie } from './helpers';
+import { CONSENT, authCookie, openRecruiterSpace } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
@@ -51,7 +50,7 @@ const createUser = async (
 ): Promise<TestUser> => {
   const user = await User.create({ email: t.email(name), googleId: t.id(`sub-${name}`), name });
   const id = user._id.toString();
-  if (recruiter) expect(await enableRecruiterSpace(id)).toBe(true);
+  if (recruiter) expect(await openRecruiterSpace(id)).toBe(true);
   let domainName: string | undefined;
   if (domain) {
     domainName = t.id(name);
@@ -568,7 +567,7 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
     const jobId = await createJob(recruiter);
     const picked = await submit(owner.domain, 'job', { jobId }, recruiter);
     expect(picked.status).toBe(200);
-    // Work mode and contract match (8 of 10), the pay is more than 20% under what is asked
+    // Work mode and contract match (8 of 10); the pay asked is more than 10% over the top of the range
     const scored = { score: 80, minScore: 70, job: { _id: jobId, title: 'Staff Engineer' } };
     expect(picked.json().steps[1]).toEqual({ ...match, status: 'succeeded', view: scored });
     expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:succeeded', 'job-match:succeeded', 'meeting:pending']);
@@ -591,7 +590,16 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
     });
     await expect(assertStepOpen(owner.id, recruiter.id, 'meeting')).rejects.toBeInstanceOf(JourneyStepLockedError);
 
-    // The recruiter raises the pay of the posting: it passes again
+    // A range saved wider than 1.5 times its bottom before that cap scores as the range brought
+    // down to it: 50-75 k€, the ask up to 10% over its top (8 of 10, and 0.3 of 2)
+    for (const max of [200000, 75000]) {
+      await JobPosting.updateOne({ _id: jobId }, { pay: { min: 50000, max, currency: 'EUR', period: 'year' } });
+      expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'failed', view: { score: 86 } });
+    }
+
+    // The score is read from the stored posting at each read (written here directly: once
+    // opened, the API refuses this edit, a recruiter duplicates the posting): a pay the ask
+    // reaches passes again
     await JobPosting.updateOne({ _id: jobId }, { pay: { min: 80000, max: 90000, currency: 'EUR', period: 'year' } });
     expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'succeeded', view: { score: 100 } });
 
@@ -626,7 +634,8 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
       seniority: { importance: 4, levels: ['senior', 'lead'] },
       workMode: { importance: 5, modes: ['remote', 'hybrid'], minRemoteDays: 4 },
       contractTypes: { importance: 3, dealBreaker: true, types: ['freelance'] },
-      pay: { importance: 2, perYear: 55000 }
+      // Under the bottom of the posting's range (50000): it matches, and no number of the posting is the ask
+      pay: { importance: 2, perYear: 48000 }
     });
     const shown = (await journeyOf(owner.domain, recruiter)).steps[1];
     expect(shown.status).toBe('failed');
@@ -642,7 +651,7 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
         { criterion: 'pay', outcome: 'match' }
       ]
     });
-    expect(JSON.stringify(shown)).not.toMatch(/importance|55000|freelance|lead|levels|modes/);
+    expect(JSON.stringify(shown)).not.toMatch(/importance|48000|freelance|lead|levels|modes/);
 
     await setJourney(owner, job(), jobMatch(100, false), meeting());
     expect((await journeyOf(owner.domain, recruiter)).steps[1].view).toEqual({
@@ -856,6 +865,65 @@ describe('submitting a step (POST /workflow/domains/:domainName/steps/:stepId)',
     expect(await WorkflowInstance.countDocuments({ owner: owner.id })).toBe(0);
   });
 
+  it('refuses the pick of a recruiter without the terms in force (422 on consent), until accepted again', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), meeting());
+    const jobId = await createJob(recruiter);
+    // Accepted before the terms in force changed
+    await User.updateOne({ _id: recruiter.id }, { $set: { 'legalAcceptances.0.version': '2025-01-01' } });
+
+    const refused = await submit(owner.domain, 'job', { jobId }, recruiter);
+    expect(refused.status).toBe(422);
+    expect(refused.json()).toMatchObject({ property: 'consent' });
+    expect(await WorkflowInstance.countDocuments({ owner: owner.id })).toBe(0);
+
+    expect((await call('PUT', '/me/consent', { body: { ...CONSENT, source: 'recruiter' }, cookie: recruiter.cookie })).status).toBe(200);
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).json().steps[0].status).toBe('succeeded');
+  });
+
+  it('holds a pick only while its recruiter has the terms in force: after a change, the meeting locks until accepted again', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), meeting());
+    const jobId = await createJob(recruiter);
+    const noStep = () => new ResourceNotFoundError('No such step');
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).status).toBe(200);
+    expect((await openStepOfType(owner.id, recruiter.id, 'meeting', noStep)).stepId).toBe('meeting');
+
+    // The terms changed since the pick: the recruiter's latest acceptance is of an older version
+    await User.updateOne({ _id: recruiter.id }, { $set: { 'legalAcceptances.0.version': '2025-01-01' } });
+    const stale = await journeyOf(owner.domain, recruiter);
+    expect(statuses(stale)).toEqual(['job:pending', 'meeting:pending']);
+    // The pick is kept and shown: accepting the terms again is all it takes
+    expect(stale.steps[0].view).toEqual({ job: { _id: jobId, title: 'Staff Engineer', company: 'Acme', status: 'open' } });
+    // What POST /appointments/book asks (403)
+    await expect(openStepOfType(owner.id, recruiter.id, 'meeting', noStep)).rejects.toBeInstanceOf(JourneyStepLockedError);
+
+    expect((await call('PUT', '/me/consent', { body: { ...CONSENT, source: 'recruiter' }, cookie: recruiter.cookie })).status).toBe(200);
+    expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:succeeded', 'meeting:pending']);
+    expect((await openStepOfType(owner.id, recruiter.id, 'meeting', noStep)).stepId).toBe('meeting');
+  });
+
+  it('scores nothing for a recruiter without the terms in force, until accepted again', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), jobMatch(0, true), meeting());
+    await setPerfectJob(owner, { contractTypes: { importance: 3, types: ['cdi'] } });
+    const jobId = await createJob(recruiter);
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).status).toBe(200);
+    expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'succeeded', view: { score: 100 } });
+
+    // The terms changed since the pick: no score, no criteria, nothing derived from the perfect job
+    await User.updateOne({ _id: recruiter.id }, { $set: { 'legalAcceptances.0.version': '2025-01-01' } });
+    const stale = await journeyOf(owner.domain, recruiter);
+    expect(statuses(stale)).toEqual(['job:pending', 'job-match:pending', 'meeting:pending']);
+    expect(stale.steps[1]).toEqual({ id: 'job-match', type: 'job-match', status: 'pending', config: { minScore: 0 } });
+
+    expect((await call('PUT', '/me/consent', { body: { ...CONSENT, source: 'recruiter' }, cookie: recruiter.cookie })).status).toBe(200);
+    expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:succeeded', 'job-match:succeeded', 'meeting:pending']);
+  });
+
   it('needs a session, a portfolio, a step of the journey, and a step that takes something', async () => {
     const owner = await createUser('owner', { domain: true });
     const visitor = await createUser('visitor');
@@ -1058,11 +1126,12 @@ describe('the engine behind the routes of a step (services/workflows.ts)', () =>
 
     const step = await openStepOfType(owner.id, recruiter.id, 'meeting', noStep);
     expect(step.stepId).toBe('meeting');
-    // Notes say nothing; the job says what the meeting is about
+    // Notes say nothing; the job says what the meeting is about, and links its private page
+    // (the web client's /opportunities/:id, tests/opportunities.test.ts)
     expect(await step.invitationLines()).toEqual(['Job: Staff Engineer']);
     expect(await step.invitationLines('https://web.example')).toEqual([
       'Job: Staff Engineer',
-      `https://web.example/jobs/${jobId}`
+      `https://web.example/opportunities/${jobId}`
     ]);
   });
 

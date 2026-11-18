@@ -1,8 +1,12 @@
 <!--
 @component
-Terms of use (English): eligibility (age and working age), the service, accounts and portfolios,
-user content and its licence, prohibited content (discriminatory job descriptions, minors),
-imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law.
+Terms of use (English): eligibility (age and working age), the service (candidates never pay,
+L5321-3; free for recruiters for now; no exclusivity), accounts and portfolios, user content and
+its licence, prohibited content (discriminatory job descriptions, minors), recruiters (accepted when
+opening the recruiter space; real positions, the pay actually offered, no maximum age, the right to
+act for the employer; the activity is placement, L5321-1: the site puts people in touch, takes no
+part in hiring and scores only job descriptions, against a candidate's own criteria), imports,
+meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law.
 -->
 <script module lang="ts">
 	import type { LegalSection } from '../legalDocuments.ts';
@@ -44,21 +48,21 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 	These terms of use set the rules between you and the publisher of {SITE_NAME} (see the
 	<LegalDocLink doc="notice" {lang}>legal notice</LegalDocLink>) when you use the site. You accept
 	them by ticking the confirmation box when the site asks for it (when you sign up from the home
-	page or claim a portfolio), and by using an account. This is version
+	page, claim a portfolio or open the recruiter space), and by using an account. This is version
 	{LEGAL_VERSION}, in force since {legalLastUpdated(lang)}. How we process personal data is
 	explained in the <LegalDocLink doc="privacy" {lang}>privacy policy</LegalDocLink>.
 </p>
 
 <h3 id="eligibility">Who may use the site</h3>
-<p>Anyone can read portfolios and job descriptions. To create an account you must:</p>
+<p>Anyone with the address of a portfolio can read it. To create an account you must:</p>
 <ul>
 	<li>
 		be at least <strong>{MINIMUM_AGE} years old</strong> and have reached the
 		<strong>minimum legal working age in your country</strong>, which you confirm when the site asks
-		for it (when you sign up from the home page or claim a portfolio);
+		for it (when you sign up from the home page, claim a portfolio or open the recruiter space);
 	</li>
 	<li>have a Google account, which you use to sign in;</li>
-	<li>if you publish job descriptions for an organisation, be allowed to act on its behalf.</li>
+	<li>if you write job descriptions for an organisation, be allowed to act on its behalf.</li>
 </ul>
 <p>
 	Using an account means that you meet these conditions, whether or not the site asked you to
@@ -70,14 +74,25 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 <p>
 	{SITE_NAME} lets candidates publish a portfolio of their experiences and projects at their own address,
 	with a timeline and skill filters, and set a hiring journey that recruiters follow before booking a
-	meeting with them. Recruiters can publish job descriptions and see the portfolios that apply.
+	meeting with them. Recruiters write job descriptions and share one with a candidate by picking it on
+	that candidate's Hire page, where the candidate's journey can score it against the job they are looking
+	for. The site does not publish job descriptions.
 </p>
 <p>
-	The service is <strong>free</strong> and provided <strong>as it is</strong>. We work to keep it
-	available and correct, but we do not guarantee that it is always available or free of errors, and
-	we may change, limit or stop features, telling you in advance when a change affects you
-	significantly. The site helps candidates and recruiters meet; it does not guarantee a job, a
-	candidate or a meeting, and it is not a party to any contract between them.
+	<strong>Candidates never pay</strong> for the service: French law forbids asking people looking
+	for a job for anything, directly or indirectly, in return for placement services (article L5321-3
+	of the French Labour Code). The service is currently <strong>free for recruiters</strong> too; we
+	will tell a recruiter before any paid feature applies to them, and charge them nothing they did
+	not agree to. There is <strong>no exclusivity</strong>: candidates and recruiters are free to use
+	other services at the same time, and to contact each other or sign a contract without going
+	through the site.
+</p>
+<p>
+	The service is provided <strong>as it is</strong>. We work to keep it available and correct, but
+	we do not guarantee that it is always available or free of errors, and we may change, limit or
+	stop features, telling you in advance when a change affects you significantly. The site helps
+	candidates and recruiters meet; it does not guarantee a job, a candidate or a meeting, and it is
+	not a party to any contract between them.
 </p>
 
 <h3 id="account">Your account and your portfolio</h3>
@@ -95,10 +110,12 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 
 <h3 id="content">Your content</h3>
 <p>
-	You keep all your rights to what you publish: portfolio, experiences and projects, journey notes,
-	job descriptions. You grant the publisher a free, non-exclusive, worldwide licence to host, store,
-	reproduce and display this content on the site, and to make it available to the public, for as
-	long as it is online. The licence ends when you delete the content or your account.
+	You keep all your rights to what you put on the site: portfolio, experiences and projects, journey
+	notes, job descriptions. You grant the publisher a free, non-exclusive, worldwide licence to host,
+	store, reproduce and display this content on the site, and to show it to the people it is meant
+	for (a portfolio to anyone who has its address, a job description to the candidates whose hiring
+	journey it is picked in), for as long as it is online. The licence ends when you delete the
+	content or your account.
 </p>
 <p>You are responsible for your content. In particular, you confirm that:</p>
 <ul>
@@ -108,8 +125,9 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 		people's rights;
 	</li>
 	<li>
-		you understand that it is public: do not publish information you want to keep private, such as
-		health data, religious or political views, identity numbers or a home address.
+		you understand that a portfolio is public: anyone who has its address can read it, even though
+		search engines are asked not to list it. Do not publish information you want to keep private,
+		such as health data, religious or political views, identity numbers or a home address.
 	</li>
 </ul>
 <p>
@@ -135,8 +153,8 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 	</li>
 	<li>publish other people's personal data without a legal basis;</li>
 	<li>
-		publish discriminatory job descriptions, that is, that select candidates on their origin, sex,
-		sexual orientation, gender identity, age, family situation, pregnancy, disability, state of
+		write or share discriminatory job descriptions, that is, that select candidates on their origin,
+		sex, sexual orientation, gender identity, age, family situation, pregnancy, disability, state of
 		health, religious beliefs, political opinions, trade union activity, physical appearance,
 		surname, place of residence or any other criterion forbidden by article L1132-1 of the French
 		Labour Code or the law that applies to the job;
@@ -145,11 +163,12 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 		target people below the legal working age, or offer work that the law forbids for minors to
 		people under 18;
 	</li>
-	<li>publish fake job offers, scams, or ask candidates for money;</li>
+	<li>write or share fake job offers, scams, or ask candidates for money;</li>
 	<li>send spam, unsolicited advertising, or book meetings you do not intend to attend;</li>
 	<li>
 		collect portfolios or job descriptions by automated means (scraping), other than search engines
-		indexing public pages;
+		that keep to the site's rules (it asks them not to list portfolios) and the preview of a shared
+		link;
 	</li>
 	<li>
 		attack, overload or probe the site, get around its limits and quotas, or abuse the imports (for
@@ -161,19 +180,57 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 
 <h3 id="recruiters">Job descriptions and recruiters</h3>
 <p>
-	Recruiters are responsible for their job descriptions: they describe a real position, with the
-	pay, contract and conditions actually offered, and they comply with employment law. Before hiring,
-	recruiters must check that the candidate is legally allowed to do the job, including their age and
-	right to work. The site does not select, score or rank candidates, and it is not a recruitment
-	agency or an employer.
+	To open the recruiter space, recruiters accept these terms (the site asks for them then, unless
+	they already accepted the version in force), and they accept them again when they change
+	materially, before they use the space again. Recruiters are responsible for their job
+	descriptions, and commit to:
+</p>
+<ul>
+	<li>
+		describe a <strong>real position</strong>, open or about to open, with the contract and
+		conditions actually offered;
+	</li>
+	<li>
+		state the <strong>pay actually offered</strong>: a job description must not mislead about the
+		position, its pay, its place of work or anything else it offers (article L5331-3 of the French
+		Labour Code);
+	</li>
+	<li>
+		set <strong>no maximum age</strong>, unless the law sets one (article L5331-2 of the French
+		Labour Code), nor any other discriminatory criterion, age included (see
+		<a class="link-text" href="#prohibited">what is not allowed</a>);
+	</li>
+	<li>
+		be the employer, or be <strong>allowed to act on its behalf</strong>;
+	</li>
+	<li>comply with employment law.</li>
+</ul>
+<p>
+	Once a job description is opened, its pay range and the conditions candidates' matches are
+	computed on can no longer be changed: a new version of them is a new job description.
+</p>
+<p>
+	Before hiring, recruiters must check that the candidate is legally allowed to do the job,
+	including their age and right to work.
+</p>
+<p>
+	By bringing together job descriptions and people looking for a job, the site carries out a
+	placement activity within the meaning of article L5321-1 of the French Labour Code: it puts
+	candidates and recruiters in touch. The publisher takes no part in their decisions, hiring
+	decisions included, is not the employer, and is not a party to the employment contract that may
+	follow. The site does not assess candidates, and does not rank or filter them. The only score it
+	computes is that of a job description, against the criteria a candidate set for the job they are
+	looking for, when the candidate adds the step "Match the perfect job" to their hiring journey: by
+	fixed rules, not by an AI model, and with the minimum the candidate chose (see the
+	<LegalDocLink doc="privacy" {lang} hash="ai">privacy policy</LegalDocLink>).
 </p>
 
 <h3 id="imports">Résumé and job description imports</h3>
 <p>
 	The imports send your PDF to Claude, an AI model made by Anthropic, which proposes drafts. The
 	drafts can be incomplete or wrong: review them before adding them, as you are responsible for what
-	you publish. Only send documents you have the right to use. Imports are limited in number, and we
-	may suspend the feature, for example to prevent abuse.
+	you put on the site. Only send documents you have the right to use. Imports are limited in number,
+	and we may suspend the feature, for example to prevent abuse.
 </p>
 
 <h3 id="meetings">Hiring journeys and meetings</h3>
@@ -235,8 +292,8 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 <p>
 	When we change these terms materially, we update their date and version, tell you on the site or
 	by email before the change applies, and ask you to accept the new version when you next sign up or
-	claim a portfolio, or from your account page. If you do not accept it, you can stop using the site
-	and delete your account.
+	claim a portfolio, before you use the recruiter space again, or from your account page. If you do
+	not accept it, you can stop using the site and delete your account.
 </p>
 
 <h3 id="law">Governing law and disputes</h3>

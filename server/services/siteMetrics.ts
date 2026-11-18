@@ -10,7 +10,6 @@ import {
   AppointmentBooking,
   Domain,
   Experience,
-  JobApplication,
   JobPosting,
   User,
   WorkflowInstance
@@ -25,7 +24,6 @@ export const SITE_RECORD_KINDS = [
   'experiences',
   'job_postings',
   'open_job_postings',
-  'job_applications',
   'journeys_started',
   'upcoming_bookings'
 ] as const
@@ -45,7 +43,6 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     experiences,
     jobPostings,
     openJobPostings,
-    jobApplications,
     journeysStarted,
     upcomingBookings
   ] = await Promise.all([
@@ -55,7 +52,6 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     Experience.estimatedDocumentCount(),
     JobPosting.estimatedDocumentCount(),
     JobPosting.countDocuments({ status: 'open' }),
-    JobApplication.estimatedDocumentCount(),
     // A visitor's progress in an owner's hiring journey, created by their first submit
     WorkflowInstance.estimatedDocumentCount(),
     // MongoDB removes a booking once its slot is over
@@ -68,7 +64,6 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     experiences,
     job_postings: jobPostings,
     open_job_postings: openJobPostings,
-    job_applications: jobApplications,
     journeys_started: journeysStarted,
     upcoming_bookings: upcomingBookings
   }

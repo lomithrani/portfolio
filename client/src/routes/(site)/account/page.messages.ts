@@ -43,12 +43,12 @@ export const m = defineMessages({
 			fr: "De Google : l'identifiant de votre compte Google et votre adresse e-mail. Votre photo n'est pas conservée."
 		},
 		portfolio: {
-			en: 'Your portfolio and everything you publish on it, which anyone can read, and your hiring journey.',
-			fr: 'Votre portfolio et tout ce que vous y publiez, que tout le monde peut lire, ainsi que votre parcours de recrutement.'
+			en: 'Your portfolio and everything you publish on it, which anyone with its address can read (search engines are asked not to list it), and your hiring journey.',
+			fr: 'Votre portfolio et tout ce que vous y publiez, que toute personne qui a son adresse peut lire (nous demandons aux moteurs de recherche de ne pas le référencer), ainsi que votre parcours de recrutement.'
 		},
 		jobs: {
-			en: 'Your job descriptions, your applications and your meeting types.',
-			fr: "Vos offres d'emploi, vos candidatures et vos types de rendez-vous."
+			en: 'Your job descriptions and your meeting types.',
+			fr: "Vos offres d'emploi et vos types de rendez-vous."
 		},
 		terms: {
 			en: 'The terms you accepted: their version, the date and the wording of the age confirmation. No birth date.',
@@ -67,9 +67,9 @@ export const m = defineMessages({
 		/** `hasPortfolio`: the account owns a portfolio, which goes too */
 		text: {
 			en: (hasPortfolio: boolean) =>
-				`Deletes your account and everything tied to it, at once: ${hasPortfolio ? 'your portfolio (its address becomes available to others), ' : ''}your hiring journey, job descriptions, applications and meeting types. Google is asked to revoke its Calendar access. This cannot be undone.`,
+				`Deletes your account and everything tied to it, at once: ${hasPortfolio ? 'your portfolio (its address becomes available to others), ' : ''}your hiring journey, job descriptions and meeting types. Google is asked to revoke its Calendar access. This cannot be undone.`,
 			fr: (hasPortfolio: boolean) =>
-				`Supprime immédiatement votre compte et tout ce qui y est lié : ${hasPortfolio ? "votre portfolio (son adresse redevient disponible pour d'autres), " : ''}votre parcours de recrutement, vos offres d'emploi, vos candidatures et vos types de rendez-vous. Il est demandé à Google de révoquer son accès à Google Agenda. Cette action est irréversible.`
+				`Supprime immédiatement votre compte et tout ce qui y est lié : ${hasPortfolio ? "votre portfolio (son adresse redevient disponible pour d'autres), " : ''}votre parcours de recrutement, vos offres d'emploi et vos types de rendez-vous. Il est demandé à Google de révoquer son accès à Google Agenda. Cette action est irréversible.`
 		}
 	}
 });

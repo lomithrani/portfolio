@@ -1,22 +1,28 @@
-// /recruiter for a visitor who is not signed in: what the recruiter space is for. It sells the
-// value of skills: on a portfolio a skill comes with the projects it was used in and their
-// length (the experiences page's filters, previews and timeline). Keep the copy to what the code
-// does: there is no search of portfolios by skill.
+// /recruiter for a visitor who is not signed in: what the recruiter space is for, and its sign-in
+// (the age and terms box first, then Google's button). It sells the value of skills: on a
+// portfolio a skill comes with the projects it was used in and their length (the experiences
+// page's filters, previews and timeline). Keep the copy to what the code does: there is no search
+// of portfolios, by skill or otherwise (a recruiter opens the portfolio a candidate shared), and a
+// job is shared on a candidate's Hire page only when their journey has a job step.
 import { defineMessages } from 'portfolio-common';
 
 export const m = defineMessages({
 	title: {
-		en: 'Find talent with exactly the skills you need',
-		fr: 'Trouvez des talents qui ont exactement les compétences recherchées'
+		en: 'See where a candidate used each skill, and for how long',
+		fr: 'Voyez où un candidat a utilisé chaque compétence, et pendant combien de temps'
 	},
 	lead: {
-		en: 'On Portfolio, a skill is not a keyword: it comes with the projects it was used in, and for how long. Publish your job, and meet the people it matches.',
-		fr: "Sur Portfolio, une compétence n'est pas un mot-clé : elle vient avec les projets où elle a servi, et leur durée. Publiez votre offre, et rencontrez les personnes à qui elle correspond."
+		en: "On Portfolio, a skill is not a keyword: it comes with the projects it was used in, and for how long. When a candidate's Hire page asks for a job, share yours there, and book a meeting once you have been through their steps.",
+		fr: "Sur Portfolio, une compétence n'est pas un mot-clé : elle vient avec les projets où elle a servi, et leur durée. Lorsque la page Recruter d'un candidat demande une offre, partagez-y la vôtre, et réservez un rendez-vous une fois ses étapes franchies."
 	},
 	free: {
 		en: 'Free to use. The same Google account can also hold your own portfolio, as a candidate: switch spaces from the account menu.',
 		fr: "Gratuit. Avec le même compte Google, vous pouvez aussi avoir votre propre portfolio de candidat : changez d'espace depuis le menu du compte."
 	},
+	/** In place of Google's button until the age and terms box is ticked */
+	tickToContinue: { en: 'Tick the box to continue', fr: 'Cochez la case pour continuer' },
+	/** Google's button clicked once the box was unticked */
+	tickToSignIn: { en: 'Tick the box to sign in.', fr: 'Cochez la case pour vous connecter.' },
 	welcome: {
 		title: { en: 'Welcome to your recruiter space', fr: 'Bienvenue dans votre espace recruteur' },
 		description: {
@@ -60,25 +66,22 @@ export const m = defineMessages({
 		job: {
 			title: { en: 'Say exactly what you need', fr: 'Dites exactement ce que vous cherchez' },
 			text: {
-				en: 'Skills, contract, working time, pay range, remote days: the facts candidates look for, and the ones their portfolio checks your job against.',
-				fr: 'Compétences, contrat, temps de travail, fourchette de rémunération, télétravail : ce que les candidats regardent, et ce à quoi leur portfolio compare votre offre.'
+				en: 'Skills, contract, working time, pay range, remote days: the facts candidates look for, and the ones their portfolio can check your job against.',
+				fr: 'Compétences, contrat, temps de travail, fourchette de rémunération, télétravail : ce que les candidats regardent, et ce à quoi leur portfolio peut comparer votre offre.'
 			}
 		},
 		match: {
 			title: { en: 'A match before the meeting', fr: 'Une correspondance avant le rendez-vous' },
 			text: {
-				en: "Share your job on a candidate's Hire page and see how it scores against what they want. When it matches, book a meeting in their calendar: no call that ends on pay or commute.",
-				fr: "Partagez votre offre sur la page Recruter d'un candidat et voyez sa note au regard de ce qu'il recherche. Si elle correspond, réservez un rendez-vous dans son agenda : aucun appel qui s'arrête sur la rémunération ou le trajet."
+				en: "Share your job on a candidate's Hire page and, when their journey scores it, see how it does against what they want. When it matches, book a meeting in their calendar: no call that ends on pay or commute.",
+				fr: "Partagez votre offre sur la page Recruter d'un candidat et, lorsque son parcours la note, voyez son résultat au regard de ce qu'il recherche. Si elle correspond, réservez un rendez-vous dans son agenda : aucun appel qui s'arrête sur la rémunération ou le trajet."
 			}
 		},
-		applicants: {
-			title: {
-				en: 'Meet candidates through their portfolio',
-				fr: 'Rencontrez les candidats par leur portfolio'
-			},
+		meetings: {
+			title: { en: 'Your meetings in one place', fr: 'Vos rendez-vous au même endroit' },
 			text: {
-				en: 'See who applies, open their portfolio, and add the candidates you found yourself.',
-				fr: 'Voyez qui postule, ouvrez leur portfolio, et ajoutez les candidats que vous avez trouvés vous-même.'
+				en: "The meetings you book on candidates' Hire pages while signed in are listed in your recruiter space, with the link to join those held on Google Meet.",
+				fr: 'Les rendez-vous que vous réservez connecté sur la page Recruter des candidats sont listés dans votre espace recruteur, avec le lien pour rejoindre ceux qui ont lieu sur Google Meet.'
 			}
 		},
 		pdf: {
@@ -90,6 +93,5 @@ export const m = defineMessages({
 					`Lorsque l'import de PDF est proposé, Claude rédige à partir de votre fichier un brouillon de l'offre, que vous complétez. La formule gratuite comprend ${imports} imports.`
 			}
 		}
-	},
-	browse: { en: 'Browse open jobs', fr: 'Parcourir les offres ouvertes' }
+	}
 });

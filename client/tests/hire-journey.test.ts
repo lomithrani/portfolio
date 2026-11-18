@@ -1,9 +1,11 @@
 import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test';
 import {
 	API_URL,
+	E2E_CANDIDATE_ID,
 	JWT_SECRET,
 	apiAs,
 	blockGoogle,
+	candidateSession,
 	gotoHydrated,
 	ownerSession,
 	recruiterSession,
@@ -12,8 +14,9 @@ import {
 	type OwnerSession
 } from './support/owner';
 import { stubAddressSearch } from './support/addresses';
+import { TERMS_REQUIRED, stubApi } from './support/api';
 import { createJob, deleteJobs } from './support/jobs';
-import { PERFECT_JOB_CRITERIA } from 'portfolio-common';
+import { LEGAL_VERSION, PERFECT_JOB_CRITERIA } from 'portfolio-common';
 
 // The hiring journey of 'e2e-journey' (seeded by `bun run --cwd server seed:e2e`, changed by this
 // file alone): its owner adds, sets and orders the steps in the admin tab, and the e2e recruiter
@@ -22,7 +25,9 @@ import { PERFECT_JOB_CRITERIA } from 'portfolio-common';
 // opens. No Google Calendar is connected: the
 // meeting step says online booking is unavailable (the booking itself is covered by the API's
 // tests). The recruiter is shared with the other recruiter files, which run in parallel: each
-// test names its postings with its own tag and removes them afterwards.
+// test names its postings with its own tag and removes them afterwards. The e2e candidate (no
+// recruiter space, no acceptance of the terms) opens a recruiter space from the job step, with the
+// requests that would change it answered in the browser, so it stays that way.
 
 test.skip(
 	!JWT_SECRET,
@@ -598,6 +603,13 @@ test.describe('the hiring journey', () => {
 		await expect(
 			jobStep.getByRole('radio', { name: new RegExp(`Data engineer ${tag}`) })
 		).toBeDisabled();
+		// Each choice shows its pay, and the day it was opened: a duplicate keeps its title
+		const openChoice = jobStep.locator('label', { hasText: `Staff engineer ${tag}` });
+		await expect(openChoice).toContainText('€45,000 – €55,000 gross per year');
+		await expect(openChoice).toContainText(/Opened \d{1,2} \w+ \d{4}/);
+		await expect(jobStep.locator('label', { hasText: `Data engineer ${tag}` })).not.toContainText(
+			'Opened'
+		);
 		await jobStep.getByRole('radio', { name: new RegExp(`Staff engineer ${tag}`) }).check();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
 
@@ -625,6 +637,92 @@ test.describe('the hiring journey', () => {
 		await expect(
 			jobStep.getByRole('radio', { name: new RegExp(`Staff engineer ${tag}`) })
 		).toBeChecked();
+	});
+
+	test('an account without a recruiter space ticks the age and terms box to create it from the job step', async ({
+		page
+	}) => {
+		await setJourney('job', 'meeting');
+		const candidate = await candidateSession();
+		const opened = await stubApi(page, 'PUT', '/me/mode', () => ({
+			json: {
+				user: {
+					_id: E2E_CANDIDATE_ID,
+					email: 'e2e.candidate@example.com',
+					activeMode: 'recruiter',
+					recruiter: true,
+					termsVersion: LEGAL_VERSION
+				}
+			}
+		}));
+		await stubApi(page, 'GET', '/recruiter/jobs', () => ({ json: { jobs: [] } }));
+
+		await signIn(page, candidate);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		const jobStep = step(page, 'Step 1: Select or create a job');
+		await expect(jobStep).toContainText('Your job descriptions live in a recruiter space.');
+		await expect(
+			jobStep.getByRole('link', { name: /what they ask of recruiters/ })
+		).toHaveAttribute('href', '/legal/terms#recruiters');
+
+		// Not without the box
+		await jobStep.getByRole('button', { name: 'Create my recruiter space' }).click();
+		await expect(
+			jobStep.getByText(
+				'Tick the box to confirm your age and accept the terms before you create your recruiter space.'
+			)
+		).toBeVisible();
+		expect(opened).toHaveLength(0);
+
+		await jobStep.getByRole('checkbox', { name: /at least 16 years old/ }).check();
+		await jobStep.getByRole('button', { name: 'Create my recruiter space' }).click();
+
+		await expect(jobStep).toContainText('You have no job description yet.');
+		expect(opened.map((request) => request.postDataJSON())).toEqual([
+			{ mode: 'recruiter', consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } }
+		]);
+	});
+
+	test('a recruiter who has not accepted the terms in force accepts them on the job step', async ({
+		page
+	}) => {
+		await setJourney('job', 'meeting');
+		await createJob(recruiterApi, { title: `Staff engineer ${tag}`, status: 'open' });
+		// An acceptance older than the terms in force, refused until accepted again (answered in the
+		// browser: the e2e recruiter's acceptance is never changed)
+		const user = {
+			_id: recruiter.ownerId,
+			email: 'e2e.recruiter@example.com',
+			activeMode: 'recruiter',
+			recruiter: true,
+			termsVersion: '2025-01-01'
+		};
+		await stubApi(page, 'GET', '/isLogged', () => ({
+			json: { logged: true, user, expires: recruiter.exp }
+		}));
+		let accepted = false;
+		await stubApi(page, 'GET', '/recruiter/jobs', () => (accepted ? undefined : TERMS_REQUIRED));
+		const acceptances = await stubApi(page, 'PUT', '/me/consent', () => {
+			accepted = true;
+			return { json: { user: { ...user, termsVersion: LEGAL_VERSION } } };
+		});
+
+		await signIn(page, recruiter);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		const jobStep = step(page, 'Step 1: Select or create a job');
+		const terms = jobStep.locator('[data-terms-acceptance]');
+		await expect(terms.getByRole('heading', { level: 3, name: 'Terms of use' })).toBeVisible();
+		await expect(terms).toContainText('accept them to keep using your recruiter space');
+
+		await terms.getByRole('checkbox', { name: /at least 16 years old/ }).check();
+		await terms.getByRole('button', { name: 'Accept the terms' }).click();
+
+		await expect(
+			jobStep.getByRole('radio', { name: new RegExp(`Staff engineer ${tag}`) })
+		).toBeVisible();
+		expect(acceptances.map((request) => request.postDataJSON())).toEqual([
+			{ termsVersion: LEGAL_VERSION, ageConfirmed: true, source: 'recruiter' }
+		]);
 	});
 
 	test('a recruiter writes the job from the journey and comes back to pick it', async ({
@@ -670,6 +768,12 @@ test.describe('the hiring journey', () => {
 		await page.getByRole('textbox', { name: 'Minimum pay' }).fill('60 000');
 		await page.getByRole('textbox', { name: 'Maximum pay' }).fill('70 000');
 		await page.getByRole('button', { name: 'Create job description' }).click();
+		// Created open: asked first, since its terms lock then
+		const confirm = page.getByRole('alertdialog', { name: 'Open this job description?' });
+		await expect(confirm).toContainText(
+			'Once open, the pay and the conditions of this job are locked'
+		);
+		await confirm.getByRole('button', { name: 'Open', exact: true }).click();
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire\\?job=[0-9a-f]{24}$`));
 		await expect(toasts(page).getByText('Job description created', { exact: true })).toBeVisible();
 		await expect(radio(`Platform lead ${tag}`)).toBeChecked();
@@ -760,6 +864,10 @@ test.describe('the hiring journey', () => {
 		).toBeVisible();
 		await page.getByLabel('Status', { exact: true }).selectOption('open');
 		await page.getByRole('button', { name: 'Create job description' }).click();
+		await page
+			.getByRole('alertdialog', { name: 'Open this job description?' })
+			.getByRole('button', { name: 'Open', exact: true })
+			.click();
 
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire\\?job=[0-9a-f]{24}$`));
 		await expect(
@@ -818,6 +926,10 @@ test.describe('the hiring journey', () => {
 		// A number that is not one is said at its field
 		const pay = criterion(page, 'Pay');
 		await pay.getByText('Pay', { exact: true }).click();
+		// How the pay asked matches: by where it falls in the job's range
+		await expect(pay).toContainText(
+			'A job matches when what you ask is at most 90% of the way up its pay range (at most its pay, when the pay is fixed), partly when it is in the top 10% of the range, a little up to 10% over the top, and not at all further over.'
+		);
 		await pay.getByLabel('Per year').fill('a lot');
 		await expect(
 			pay.getByText('Pay per year must be a whole number of euros, above 0.')
@@ -965,6 +1077,10 @@ test.describe('the hiring journey', () => {
 		await page.getByRole('tab', { name: 'Perfect job' }).click();
 		const pay = criterion(page, 'Pay');
 		await pay.getByText('Pay', { exact: true }).click();
+		// How the pay asked matches: by where it falls in the job's range
+		await expect(pay).toContainText(
+			'A job matches when what you ask is at most 90% of the way up its pay range (at most its pay, when the pay is fixed), partly when it is in the top 10% of the range, a little up to 10% over the top, and not at all further over.'
+		);
 		await pay.getByLabel('Per year').fill('70 000');
 
 		// The save is answered 401: the tab is not signed out from under the owner
@@ -1184,9 +1300,14 @@ test.describe('the hiring journey', () => {
 		]);
 		// What the owner asks for is never told
 		await expect(matchStep).not.toContainText(/remote|lead|cdi/i);
+		// Opened to be picked, its terms are locked: a new version of them is a copy, which comes back
+		// here once created
 		await expect(
-			matchStep.getByRole('link', { name: 'Edit this job description' })
-		).toHaveAttribute('href', `/recruiter/jobs/${onSite._id}/edit`);
+			matchStep.getByRole('link', { name: 'Duplicate this job description' })
+		).toHaveAttribute('href', `/recruiter/jobs/new?duplicate=${onSite._id}&journey=${DOMAIN}`);
+		await expect(matchStep).toContainText(
+			'Its pay and conditions have been locked since it was opened, but a new job description that states more can score higher'
+		);
 		await expect(meetingStep).toContainText('Complete the steps above first.');
 		await expect(meetingStep.getByRole('button')).toHaveCount(0);
 

@@ -6,16 +6,18 @@ Duplicates (ignoring case), blanks and what goes over the limits are not added, 
 is announced. Text typed and not added yet is added when the editor saves (it registers how); what
 cannot be added then stops the save, as the field's error. Until then it is the editor's too
 (`bind:text`): an unsaved change, kept with the draft. The text input carries the field's id: the
-label and the error summary point to it.
+label and the error summary point to it. A list of the terms of a posting opened before (the
+editor's `locked`) is read-only: its items show without their remove buttons, with a lock.
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { Plus, XMark } from 'svelte-heros-v2';
+	import { LockClosed, Plus, XMark } from 'svelte-heros-v2';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import type { JobListField } from '#services/jobDrafts.ts';
 	import { addListItems } from '#services/jobPosting.ts';
 	import FieldError from './FieldError.svelte';
-	import { getJobEditorContext } from './context';
+	import { LOCKED_CONTROL_CLASS, getJobEditorContext } from './context';
+	import { m as fieldMessages } from './Field.messages.ts';
 	import { m } from './ListInput.messages.ts';
 
 	let {
@@ -45,7 +47,9 @@ label and the error summary point to it.
 	const editor = getJobEditorContext();
 	let id = $derived(editor.fieldId(field));
 	let hintId = $derived(`${id}-hint`);
+	let lockedId = $derived(`${id}-locked`);
 	let error = $derived(editor.error(field));
+	let locked = $derived(editor.locked(field));
 
 	/** Announced to screen readers: what was added or removed, and why something was not */
 	let message = $state('');
@@ -62,6 +66,8 @@ label and the error summary point to it.
 	});
 
 	function add(raw: string) {
+		// Locked: nothing is added, whatever reaches it (a paste included)
+		if (locked) return;
 		const result = addListItems(value, raw, { max, maxLength });
 		if (result.added.length > 0) value = result.list;
 		const added = result.added.length > 0 ? m.added(result.added) : '';
@@ -77,7 +83,7 @@ label and the error summary point to it.
 	 * text goes). Answers why it cannot be added, if it cannot: the text stays, to fix it.
 	 */
 	function commit(): string | undefined {
-		if (!text.trim()) return undefined;
+		if (locked || !text.trim()) return undefined;
 		const result = addListItems(value, text, { max, maxLength });
 		if (result.added.length > 0) value = result.list;
 		problem = '';
@@ -97,10 +103,12 @@ label and the error summary point to it.
 		if (event.key !== 'Enter' || event.isComposing) return;
 		// Enter adds the item, it never submits the form
 		event.preventDefault();
-		if (text.trim()) add(text);
+		if (!locked && text.trim()) add(text);
 	}
 
 	function onpaste(event: ClipboardEvent) {
+		// A read-only input still gets paste events: a locked list takes nothing
+		if (locked) return;
 		const pasted = event.clipboardData?.getData('text') ?? '';
 		if (!/\r?\n/.test(pasted.trim())) return;
 		event.preventDefault();
@@ -108,6 +116,7 @@ label and the error summary point to it.
 	}
 
 	async function remove(index: number) {
+		if (locked) return;
 		const item = value[index];
 		value = value.filter((_, position) => position !== index);
 		problem = '';
@@ -122,7 +131,19 @@ label and the error summary point to it.
 </script>
 
 <div class="min-w-0 space-y-2">
-	<label for={id} class="label-text text-sm">{label}</label>
+	<label for={id} class="label-text text-sm">
+		{label}
+		{#if locked}
+			<LockClosed
+				size="14"
+				class="ms-0.5 inline-block align-[-2px] text-surface-700-300"
+				aria-hidden="true"
+			/>
+		{/if}
+	</label>
+	{#if locked}
+		<span id={lockedId} class="sr-only">{fieldMessages.locked}</span>
+	{/if}
 	<div class="flex gap-2">
 		<input
 			bind:this={input}
@@ -132,22 +153,25 @@ label and the error summary point to it.
 				editor.pendingTextChanged(field);
 			}}
 			{id}
-			class="input min-w-0 flex-1"
+			class={['input min-w-0 flex-1', locked && LOCKED_CONTROL_CLASS]}
 			type="text"
 			autocomplete="off"
 			enterkeyhint="done"
 			maxlength={maxLength}
-			disabled={full && !text}
-			placeholder={full ? m.atMost(field, max) : placeholder}
+			disabled={full && !text && !locked}
+			readonly={locked}
+			placeholder={locked ? '' : full ? m.atMost(field, max) : placeholder}
 			aria-invalid={error ? true : undefined}
-			aria-describedby={[hintId, error ? editor.errorId(field) : ''].filter(Boolean).join(' ')}
+			aria-describedby={[locked ? lockedId : '', hintId, error ? editor.errorId(field) : '']
+				.filter(Boolean)
+				.join(' ')}
 			{onkeydown}
 			{onpaste}
 		/>
 		<button
 			type="button"
 			class="btn preset-tonal-primary shrink-0"
-			disabled={full || !text.trim()}
+			disabled={locked || full || !text.trim()}
 			onclick={() => {
 				add(text);
 				input?.focus();
@@ -161,22 +185,28 @@ label and the error summary point to it.
 		<p class="text-sm text-warning-800-200" aria-hidden="true">{problem}</p>
 	{/if}
 	<p id={hintId} class="text-xs text-surface-700-300">
-		{hint ? `${hint} ` : ''}{m.pressEnter(value.length, max)}
+		{hint ? `${hint} ` : ''}{locked ? '' : m.pressEnter(value.length, max)}
 	</p>
 	{#if value.length > 0}
 		<ul bind:this={list} class="flex flex-wrap gap-2" aria-label={m.addedItems(field, label)}>
 			{#each value as item, index (item)}
-				<li class="chip preset-tonal-primary max-w-full gap-1 py-1 ps-3 pe-1 text-sm">
+				<li
+					class="chip preset-tonal-primary max-w-full gap-1 py-1 ps-3 text-sm {locked
+						? 'pe-3'
+						: 'pe-1'}"
+				>
 					<span class="min-w-0 break-words whitespace-normal">{item}</span>
-					<button
-						type="button"
-						class="btn-icon size-7 shrink-0 rounded-full hover:preset-tonal"
-						aria-label={m.removeItem(field, item)}
-						data-remove-item
-						onclick={() => remove(index)}
-					>
-						<XMark size="14" aria-hidden="true" />
-					</button>
+					{#if !locked}
+						<button
+							type="button"
+							class="btn-icon size-7 shrink-0 rounded-full hover:preset-tonal"
+							aria-label={m.removeItem(field, item)}
+							data-remove-item
+							onclick={() => remove(index)}
+						>
+							<XMark size="14" aria-hidden="true" />
+						</button>
+					{/if}
 				</li>
 			{/each}
 		</ul>

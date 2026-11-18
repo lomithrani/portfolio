@@ -2,9 +2,11 @@ import { describe, it, expect, afterEach, mock, spyOn } from 'bun:test';
 import mongoose from 'mongoose';
 import { metrics, trace, ProxyTracerProvider } from '@opentelemetry/api';
 import { logs } from '@opentelemetry/api-logs';
+import { ROBOTS_NOINDEX } from 'portfolio-common';
 import { createApp, responseStatus } from '../app';
 import { env } from '../env';
 import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
+import { Domain } from '../models/database';
 import { google } from '../services/google';
 import { logger } from '../services/logger';
 import { SignJWT } from 'jose';
@@ -275,6 +277,65 @@ describe('request bodies', () => {
     // No Content-Type: reaches the route, which then wants a session
     const bodyless = await makeRequest(createApp(), '/experiences', { method: 'POST' });
     expect(bodyless.status).toBe(401);
+  });
+});
+
+describe('search engines', () => {
+  afterEach(() => {
+    mock.restore();
+    delete (mongoose.connection as unknown as Record<string, unknown>).readyState;
+  });
+
+  it('are asked not to list any answer of the API, errors and preflights included', async () => {
+    const app = createApp();
+    const answers = {
+      ok: await makeRequest(app, '/isLogged'),
+      // userLogged, through onError
+      unauthorized: await makeRequest(app, '/me'),
+      // Body validation, through onError
+      invalid: await makeRequest(app, '/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      }),
+      // Thrown in onRequest, before any route
+      unsupported: await makeRequest(app, '/experiences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: 'x'
+      }),
+      unmatched: await makeRequest(app, '/wp-login.php'),
+      preflight: await makeRequest(app, '/experiences', {
+        method: 'OPTIONS',
+        headers: { Origin: env.ALLOWED_DOMAINS[0], 'Access-Control-Request-Method': 'PUT' }
+      })
+    };
+    // An unexpected error, which onError turns into a 500
+    spyOn(Domain, 'findOne').mockRejectedValue(new Error('connection closed'));
+    const failed = await makeRequest(app, '/domain/jane.doe');
+    // A status set by a handler: the healthcheck while MongoDB is away
+    setReadyState(0);
+    const unavailable = await makeRequest(app, '/health');
+    // The metrics of these requests stay out of the next test's spies
+    await afterResponseHooks();
+
+    const seen = Object.fromEntries(
+      Object.entries({ ...answers, failed, unavailable }).map(([name, answer]) => [
+        name,
+        [answer.status, answer.headers.get('x-robots-tag')]
+      ])
+    );
+    expect(seen).toEqual({
+      ok: [200, ROBOTS_NOINDEX],
+      unauthorized: [401, ROBOTS_NOINDEX],
+      invalid: [422, ROBOTS_NOINDEX],
+      unsupported: [415, ROBOTS_NOINDEX],
+      unmatched: [404, ROBOTS_NOINDEX],
+      preflight: [204, ROBOTS_NOINDEX],
+      failed: [500, ROBOTS_NOINDEX],
+      unavailable: [503, ROBOTS_NOINDEX]
+    });
+    expect(ROBOTS_NOINDEX.split(', ')).toContain('noindex');
   });
 });
 

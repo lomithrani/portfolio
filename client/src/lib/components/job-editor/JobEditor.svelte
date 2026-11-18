@@ -19,10 +19,21 @@ form, `jobDraft:<userId>:import` for an import; restored with a notice). The pag
 session gate, the toast and where to go after a save. A save the recruiter left during still
 ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in this browser).
 
-- `job` set: edit mode (the posting as GET /recruiter/jobs/:id returns it); else add mode.
+- `job` set: edit mode (the posting as GET /recruiter/jobs/:id returns it); else add mode. A
+  posting opened before (`publishedAt`) has its terms locked (portfolio-common's
+  LOCKED_JOB_FIELDS, what the perfect job scores: the API refuses to change them, 409): their
+  inputs are read-only, a note at the top says why, with Duplicate (`duplicateHref`). Terms the
+  draft kept in this browser changed before it was opened (another tab opened it meanwhile) cannot
+  be saved on it: a notice names them, and they stay with the draft until the recruiter duplicates
+  it with them ("Duplicate with my changes": the copy's draft takes the whole form, a copy kept
+  already is replaced once confirmed) or discards them.
 - `imported` (add mode): starts from a job description import (the stored result of
   POST /jobs/import), with a banner listing its warnings; the import is removed from this
   browser once the posting is saved or the recruiter discards it (`onImportDiscarded`).
+- `duplicate` (add mode): starts from a copy of that posting, as a draft (Duplicate), its draft
+  kept under a key of its own (`jobDraft:<userId>:copy:<jobId>`).
+- A save that opens a posting never opened (portfolio-common's locksJobTerms) is confirmed first
+  (OpenJobDialog): its terms lock then.
 - Mounted once per posting: remount it (e.g. `{#key}`) to start over with other props.
 -->
 <script lang="ts">
@@ -32,8 +43,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	import {
 		ArrowPath,
 		DocumentArrowUp,
+		DocumentDuplicate,
 		ExclamationTriangle,
-		InformationCircle
+		InformationCircle,
+		LockClosed
 	} from 'svelte-heros-v2';
 	import {
 		CONTRACT_TYPE_LABELS,
@@ -46,6 +59,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		JOB_LIMITS,
 		JOB_STATUSES,
 		JOB_STATUS_LABELS,
+		PAY_MATCH,
 		PAY_PERIODS,
 		PAY_PERIOD_LABELS,
 		SENIORITY_LABELS,
@@ -56,7 +70,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		WORKING_TIME_LABELS,
 		WORK_MODES,
 		WORK_MODE_LABELS,
+		intlLocale,
+		jobTermsLocked,
+		locksJobTerms,
 		type AddressSuggestion,
+		type JobStatus,
 		type OfficePlace as OfficePlaceFound,
 		type WorkMode,
 		type WorkingTimeArrangement
@@ -69,13 +87,16 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	import {
 		JOB_FIELD_LABELS,
 		JOB_STATUS_DESCRIPTIONS,
+		LOCKED_FORM_FIELDS,
 		contractHasDuration,
 		contractNeedsDuration,
 		formToJobInput,
+		formatAmount,
 		formatPay,
 		jobFieldOfProperty,
 		jobFormErrors,
 		jobFormSignature,
+		lockedFieldsText,
 		orderedJobFormErrors,
 		parseFormNumber,
 		type JobForm,
@@ -85,41 +106,50 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	import { officeFromSuggestion, officeKey, type OfficeAddress } from '#services/addressSearch.ts';
 	import { toaster } from '#services/toaster.ts';
 	import AddressSearch from '#components/address/AddressSearch.svelte';
+	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
+	import OpenJobDialog from '#components/recruiter/OpenJobDialog.svelte';
 	import {
 		clearImportedDraft,
 		clearJobDraft,
+		duplicateDraftStorageKey,
 		editorDraftStorageKey,
 		emptyPendingText,
 		hasPendingText,
+		heldTermsDraft,
 		loadJobDraft,
 		saveJobDraft,
 		startingJobForms,
+		withHeldTerms,
 		type ImportedJobDraft,
-		type PendingListText
+		type PendingListText,
+		type StoredJobDraft
 	} from '#services/jobDrafts.ts';
 	import DescriptionField from './DescriptionField.svelte';
 	import Field from './Field.svelte';
 	import LeaveDialog from './LeaveDialog.svelte';
 	import ListInput from './ListInput.svelte';
 	import OfficePlace from './OfficePlace.svelte';
-	import { setJobEditorContext } from './context';
+	import { LOCKED_CONTROL_CLASS, setJobEditorContext, type ControlAttributes } from './context';
+	import { m as fieldMessages } from './Field.messages.ts';
 	import { m } from './JobEditor.messages.ts';
 
 	type SavedJob = NonNullable<Awaited<ReturnType<(typeof portfolioApi)['jobs']['post']>>['data']>;
 
-	/** A message above the form, with an optional way out (a link, or a button's action) */
+	/** A message above the form, with optional ways out (a link, or buttons' actions) */
 	type SubmitError = {
 		message: string;
 		link?: { href: string; label: string };
-		action?: { label: string; run: () => void };
+		actions?: { label: string; run: () => void }[];
 	};
 
 	let {
 		userId,
 		job = null,
 		imported = null,
+		duplicate = null,
 		cancelHref,
 		recruiterHref,
+		duplicateHref,
 		onSaved,
 		onImportDiscarded,
 		onSessionExpired
@@ -130,13 +160,24 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		 * The posting to edit (GET /recruiter/jobs/:id); null or undefined to add one. Its
 		 * `updatedAt` goes with the save: a posting changed since (in another tab) is not overwritten
 		 */
-		job?: (JobPostingLike & { _id: string; updatedAt?: Date | string }) | null;
+		job?:
+			| (JobPostingLike & {
+					_id: string;
+					updatedAt?: Date | string;
+					/** Set once it was opened: its terms are locked */
+					publishedAt?: Date | string;
+			  })
+			| null;
 		/** Add mode: the job description import to start from */
 		imported?: ImportedJobDraft | null;
+		/** Add mode: the posting to start from a copy of, as a new draft (Duplicate) */
+		duplicate?: (JobPostingLike & { _id: string; publishedAt?: Date | string | null }) | null;
 		/** Where Cancel goes (the posting, or the recruiter space) */
 		cancelHref: string;
 		/** The recruiter space, where an account without one creates it */
 		recruiterHref: string;
+		/** Edit mode: the new posting copied from this one (/recruiter/jobs/new?duplicate=<id>) */
+		duplicateHref?: string;
 		/**
 		 * After a save; the draft is already gone. Typically a toast and a navigation, but not
 		 * when the recruiter `left` the editor while it was saving (no navigation then)
@@ -163,16 +204,32 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	const RECRUITER_SPACE_REQUIRED = 'Create your recruiter space first';
 	/** The API's 409 when the posting changed since the editor loaded it (PUT /jobs/:id) */
 	const JOB_CHANGED = 'This job posting was changed since you opened it';
+	/** The API's 409 when an edit changes the terms of a posting opened before (PUT /jobs/:id) */
+	const JOB_TERMS_LOCKED = 'The terms of an opened job posting cannot be changed';
 
 	// The editor works on the props as they were when it was mounted
 	const initialJob = untrack(() => job);
 	const initialImport = untrack(() => (initialJob ? null : imported));
+	const initialDuplicate = untrack(() => (initialJob || initialImport ? null : duplicate));
 	const owner = untrack(() => userId);
 	const mode: 'add' | 'edit' = initialJob ? 'edit' : 'add';
 	const jobId = initialJob?._id;
-	const storageKey = editorDraftStorageKey(owner, { jobId, imported: !!initialImport });
-	const start = startingJobForms({ job: initialJob, imported: initialImport?.draft }, () =>
-		loadJobDraft(storageKey)
+	// Opened before: its terms are read-only (the API refuses to change them)
+	const locked = jobTermsLocked(initialJob);
+	const isLocked = (field: JobFormField) => locked && LOCKED_FORM_FIELDS.includes(field);
+	const storageKey = editorDraftStorageKey(owner, {
+		jobId,
+		imported: !!initialImport,
+		duplicateOf: initialDuplicate?._id
+	});
+	const start = startingJobForms(
+		{
+			job: initialJob,
+			imported: initialImport?.draft,
+			duplicate: initialDuplicate,
+			locked
+		},
+		() => loadJobDraft(storageKey)
 	);
 	const baselineSignature = jobFormSignature(start.baseline);
 	// Stored with the draft: what it started from (a stale draft keeps its own, to keep warning)
@@ -213,6 +270,15 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	let pendingText: PendingListText = $state(start.pending);
 	let dirty = $derived(jobFormSignature(form) !== baselineSignature || hasPendingText(pendingText));
 	let restoredNotice = $state(start.restored);
+	// Terms the stored draft changed that the posting, opened since, keeps: they cannot be saved on
+	// it, and stay in this browser (with the draft) until the recruiter duplicates it with them or
+	// discards them
+	let heldTerms = $state.raw<StoredJobDraft | null>(
+		start.droppedTerms.length > 0 ? (start.typedDraft ?? null) : null
+	);
+	const droppedLabels = new Intl.ListFormat(intlLocale(), { type: 'conjunction' }).format(
+		start.droppedTerms.map((field) => JOB_FIELD_LABELS[field])
+	);
 	let importBanner = $state(!!initialImport);
 	let confirming = $state<'reset' | 'import' | null>(null);
 
@@ -234,8 +300,17 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		const changed = dirty;
 		const snapshot = $state.snapshot(form) as JobForm;
 		const pending = $state.snapshot(pendingText);
+		const held = heldTerms;
 		if (finished) return;
-		if (changed) {
+		if (held) {
+			// The terms the posting could not take stay over the rest of the draft
+			const kept = withHeldTerms(snapshot, pending, held);
+			saveJobDraft(storageKey, {
+				form: kept.form,
+				basis: basisToStore,
+				...(hasPendingText(kept.pending) ? { pending: kept.pending } : {})
+			});
+		} else if (changed) {
 			saveJobDraft(storageKey, {
 				form: snapshot,
 				basis: basisToStore,
@@ -288,6 +363,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		fieldId,
 		errorId,
 		error: (field) => errors[field],
+		locked: isLocked,
 		registerPendingText: (field, commit) => {
 			pendingTextCommits.set(field, commit);
 			return () => {
@@ -407,7 +483,16 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		if (code === 409 && mode === 'edit' && text === JOB_CHANGED) {
 			return showSubmitError({
 				message: m.changedSince,
-				action: { label: m.reload, run: reloadEditor }
+				actions: [{ label: m.reload, run: reloadEditor }]
+			});
+		}
+		if (code === 409 && mode === 'edit' && text === JOB_TERMS_LOCKED) {
+			return showSubmitError({
+				message: m.termsLockedOnSave,
+				actions: [
+					{ label: m.reload, run: reloadEditor },
+					...(duplicateHref ? [{ label: m.duplicateWithChanges, run: duplicateWithChanges }] : [])
+				]
 			});
 		}
 		if (code === 409) {
@@ -415,6 +500,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		}
 		if (code === 413) {
 			return showSubmitError({ message: m.tooLarge });
+		}
+		if (code === 422 && validationProperty(error.value) === 'consent') {
+			return showSubmitError({
+				message: m.termsRequired,
+				link: { href: recruiterHref, label: m.openRecruiterSpace }
+			});
 		}
 		if (code === 400 || code === 422) {
 			const field = jobFieldOfProperty(validationProperty(error.value));
@@ -431,6 +522,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 
 	// --- Saving ---------------------------------------------------------------------------
 
+	// The status a save is about to open the posting with, until the recruiter confirms it (its
+	// terms lock then: OpenJobDialog)
+	let confirmingOpen = $state<JobStatus | null>(null);
+
 	async function save() {
 		if (status !== 'idle' || finished) return;
 		attempted = true;
@@ -443,7 +538,17 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			await tick();
 			return focusField(found[0].field);
 		}
+		// Opening a posting never opened locks its terms: asked first
+		if (locksJobTerms(form.status, initialJob)) {
+			confirmingOpen = form.status;
+			return;
+		}
+		return send();
+	}
 
+	/** Sends the form (checked, and confirmed when it opens the posting) */
+	async function send() {
+		if (status !== 'idle' || finished) return;
 		// The fields are disabled while saving (see the form): what is sent is all there is
 		status = 'saving';
 		announcement = common.saving;
@@ -474,7 +579,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		finished = true;
 		status = 'saved';
 		announcement = m.savedAnnouncement;
-		clearJobDraft(storageKey);
+		// Terms held for a duplicate stay in this browser, over the posting as saved
+		if (heldTerms) saveJobDraft(storageKey, heldTermsDraft(saved, heldTerms));
+		else clearJobDraft(storageKey);
 		if (initialImport) clearImportedDraft(owner);
 		const savedMode = mode === 'add' ? 'created' : 'updated';
 		// Left while it was saving: the page the recruiter went to stays
@@ -500,9 +607,64 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		location.reload();
 	}
 
+	// A copy of this posting kept in this browser already, with changes of its own: replaced by
+	// "Duplicate with my changes" once the recruiter confirms it (the copy's draft to write)
+	let replacingCopy = $state.raw<StoredJobDraft | null>(null);
+
+	/**
+	 * A new posting copied from this one, with every change made here (its terms included, those
+	 * held too), as a draft: the copy's editor restores them from this browser, and they leave this
+	 * editor. A copy of it kept in this browser with other changes is replaced once confirmed
+	 */
+	function duplicateWithChanges() {
+		if (!jobId || !duplicateHref) return;
+		const snapshot = $state.snapshot(form) as JobForm;
+		const pending = $state.snapshot(pendingText);
+		const typed = heldTerms
+			? withHeldTerms(snapshot, pending, heldTerms)
+			: { form: snapshot, pending };
+		const copy: StoredJobDraft = {
+			form: { ...typed.form, status: 'draft' },
+			...(hasPendingText(typed.pending) ? { pending: typed.pending } : {})
+		};
+		const kept = loadJobDraft(duplicateDraftStorageKey(owner, jobId));
+		const same =
+			!!kept &&
+			jobFormSignature(kept.form) === jobFormSignature(copy.form) &&
+			JSON.stringify({ ...emptyPendingText(), ...kept.pending }) ===
+				JSON.stringify({ ...emptyPendingText(), ...copy.pending });
+		if (kept && !same) {
+			replacingCopy = copy;
+			return;
+		}
+		return moveToCopy(copy);
+	}
+
+	/** Writes the copy's draft, and goes to it: nothing is left in this editor's */
+	async function moveToCopy(copy: StoredJobDraft) {
+		if (!jobId || !duplicateHref) return;
+		replacingCopy = null;
+		saveJobDraft(duplicateDraftStorageKey(owner, jobId), copy);
+		finished = true;
+		clearJobDraft(storageKey);
+		leaveAllowed = true;
+		await tick();
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by the page
+		await goto(duplicateHref);
+	}
+
+	/** "Discard these changes": the terms held go, the draft keeps the rest */
+	async function discardHeldTerms() {
+		heldTerms = null;
+		announcement = m.droppedTerms.discarded;
+		await tick();
+		document.getElementById(fieldId('title'))?.focus();
+	}
+
 	/** The form as the editor started (the posting, the import or a blank form), no draft */
 	function startOver() {
 		form = structuredClone(start.baseline);
+		heldTerms = null;
 		// The office is the starting one again: its note is looked up for it
 		officeAsked = office();
 		pendingText = emptyPendingText();
@@ -558,6 +720,10 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		// A shallow navigation only changes the URL (the discarded import): the editor stays.
 		// While saving, leaving is allowed: the save still ends (see save)
 		if (navigation.shallow) return;
+		// The confirmations close first: the leave dialog may take their place, and a focus trap
+		// must not outlive the page
+		confirmingOpen = null;
+		replacingCopy = null;
 		if (finished || leaveAllowed || !dirty || status === 'saving') return;
 		// A reload, closing the tab, typing an address: the browser asks
 		if (navigation.type === 'leave') {
@@ -608,6 +774,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 
 	/** Prefills the number of the arrangement chosen, when it is empty: 35 h, or 218 days */
 	function setArrangement(arrangement: WorkingTimeArrangement) {
+		if (isLocked('arrangement')) return;
 		form.arrangement = arrangement;
 		if (arrangement === 'weekly_hours' && !form.hoursPerWeek.trim()) {
 			form.hoursPerWeek = String(FR_FULL_TIME_HOURS_PER_WEEK);
@@ -640,6 +807,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	);
 	const formId = `${uid}-form`;
 	const daysOptions = [1, 2, 3, 4];
+	// How a locked field is described to screen readers (its lock icon is not read)
+	const lockedId = (field: JobFormField) => `${fieldId(field)}-locked`;
 </script>
 
 <!-- relative: what is only for screen readers (sr-only) is placed in the editor, not at the top
@@ -761,6 +930,78 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		</div>
 	{/if}
 
+	{#if heldTerms}
+		<section
+			class="space-y-2 rounded-container border border-warning-500/40 preset-tonal-warning px-4 py-3 text-sm text-surface-950-50"
+			aria-labelledby="{uid}-held-title"
+			data-held-terms
+		>
+			<div class="flex items-start gap-2">
+				<ExclamationTriangle size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
+				<div class="min-w-0 flex-1 space-y-1">
+					<h3 id="{uid}-held-title" class="font-semibold">{m.droppedTerms.title}</h3>
+					<p>{m.droppedTerms.text}</p>
+					<p>{m.droppedTerms.fields(droppedLabels)}</p>
+				</div>
+			</div>
+			<div class="flex flex-wrap justify-end gap-2">
+				<button
+					type="button"
+					class="btn btn-sm underline hover:preset-tonal"
+					disabled={busy}
+					onclick={discardHeldTerms}
+				>
+					{m.droppedTerms.discard}
+				</button>
+				{#if duplicateHref}
+					<button
+						type="button"
+						class="btn btn-sm preset-filled-primary-700-300"
+						disabled={busy}
+						onclick={duplicateWithChanges}
+					>
+						<DocumentDuplicate size="16" aria-hidden="true" />
+						{m.duplicateWithChanges}
+					</button>
+				{/if}
+			</div>
+		</section>
+	{/if}
+
+	{#if locked}
+		<section
+			class="space-y-3 rounded-container border border-surface-300-700 preset-tonal p-4 text-sm text-surface-950-50 sm:p-5"
+			aria-labelledby="{uid}-locked-title"
+			data-terms-locked
+		>
+			<div class="flex items-start gap-3">
+				<LockClosed size="20" class="mt-0.5 shrink-0" aria-hidden="true" />
+				<div class="min-w-0 flex-1 space-y-2">
+					<h3 id="{uid}-locked-title" class="font-semibold">{m.locked.title}</h3>
+					<p>{m.locked.text}</p>
+					<p>{m.locked.fields(lockedFieldsText())}</p>
+					{#if start.capped}
+						<p>
+							{m.locked.payCapped(
+								formatAmount(Number(start.baseline.payMax)),
+								JOB_LIMITS.pay.maxRangeRatio
+							)}
+						</p>
+					{/if}
+				</div>
+			</div>
+			{#if duplicateHref}
+				<div class="flex justify-end">
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolved by the page -->
+					<a href={duplicateHref} class="btn btn-sm preset-filled-primary-700-300">
+						<DocumentDuplicate size="16" aria-hidden="true" />
+						{m.locked.duplicate}
+					</a>
+				</div>
+			{/if}
+		</section>
+	{/if}
+
 	{#if errorList.length > 0 || submitError}
 		<div
 			bind:this={summaryElement}
@@ -779,14 +1020,18 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								{submitError.link.label}
 							</a>
 						{/if}
-						{#if submitError.action}
-							<button
-								type="button"
-								class="btn btn-sm preset-filled-error-700-300"
-								onclick={submitError.action.run}
-							>
-								{submitError.action.label}
-							</button>
+						{#if submitError.actions?.length}
+							<div class="flex flex-wrap gap-2">
+								{#each submitError.actions as action (action.label)}
+									<button
+										type="button"
+										class="btn btn-sm preset-filled-error-700-300"
+										onclick={action.run}
+									>
+										{action.label}
+									</button>
+								{/each}
+							</div>
 						{/if}
 					</div>
 				</div>
@@ -842,11 +1087,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
-							class="input"
+							class={['input', isLocked('title') && LOCKED_CONTROL_CLASS]}
 							type="text"
 							autocomplete="off"
 							maxlength={JOB_LIMITS.title}
-							placeholder={m.titlePlaceholder}
+							placeholder={isLocked('title') ? '' : m.titlePlaceholder}
+							readonly={isLocked('title')}
 							bind:value={form.title}
 						/>
 					{/snippet}
@@ -908,14 +1154,19 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				<SegmentedControl
 					value={form.workMode}
 					onValueChange={(details) => {
-						if (details.value) form.workMode = details.value as WorkMode;
+						if (details.value && !isLocked('workMode')) form.workMode = details.value as WorkMode;
 					}}
+					readOnly={isLocked('workMode')}
 					name="{uid}-work-mode"
 					ids={{ root: fieldId('workMode') }}
+					aria-describedby={isLocked('workMode') ? lockedId('workMode') : undefined}
 					class="gap-1"
 				>
 					<SegmentedControl.Label class="label-text text-sm">
 						{labels.workMode} <span class="text-error-700-300" aria-hidden="true">*</span>
+						{#if isLocked('workMode')}
+							{@render lockIcon()}
+						{/if}
 					</SegmentedControl.Label>
 					<SegmentedControl.Control class="grid w-full grid-cols-3 gap-1 p-1">
 						<SegmentedControl.Indicator />
@@ -930,6 +1181,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{/each}
 					</SegmentedControl.Control>
 				</SegmentedControl>
+				{#if isLocked('workMode')}
+					<span id={lockedId('workMode')} class="sr-only">{fieldMessages.locked}</span>
+				{/if}
 				<!-- Leaving the three fields looks the office up on the map -->
 				<div
 					class="space-y-4"
@@ -949,11 +1203,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							{#snippet control(attributes)}
 								<input
 									{...attributes}
-									class="input"
+									class={['input', isLocked('city') && LOCKED_CONTROL_CLASS]}
 									type="text"
 									autocomplete="address-level2"
 									maxlength={JOB_LIMITS.city}
-									placeholder={m.example('Lyon')}
+									placeholder={isLocked('city') ? '' : m.example('Lyon')}
+									readonly={isLocked('city')}
 									bind:value={form.city}
 								/>
 							{/snippet}
@@ -962,29 +1217,46 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							{#snippet control(attributes)}
 								<input
 									{...attributes}
-									class="input"
+									class={['input', isLocked('postalCode') && LOCKED_CONTROL_CLASS]}
 									type="text"
 									inputmode="numeric"
 									autocomplete="postal-code"
 									maxlength={JOB_LIMITS.postalCode}
-									placeholder={m.example('69003')}
+									placeholder={isLocked('postalCode') ? '' : m.example('69003')}
+									readonly={isLocked('postalCode')}
 									bind:value={form.postalCode}
 								/>
 							{/snippet}
 						</Field>
 					</div>
-					<Field field="address" label={labels.address} hint={m.addressHint}>
+					<Field
+						field="address"
+						label={labels.address}
+						hint={isLocked('address') ? '' : m.addressHint}
+					>
 						{#snippet control(attributes)}
-							<!-- No browser autofill: its list would cover the addresses found -->
-							<AddressSearch
-								{...attributes}
-								autocomplete="off"
-								maxlength={JOB_LIMITS.address}
-								placeholder={m.example('12 rue de la République')}
-								bind:value={form.address}
-								near={{ postalCode: form.postalCode, city: form.city }}
-								onpick={pickOffice}
-							/>
+							{#if isLocked('address')}
+								<!-- Locked: nothing to search -->
+								<input
+									{...attributes}
+									class={['input', LOCKED_CONTROL_CLASS]}
+									type="text"
+									autocomplete="off"
+									readonly
+									value={form.address}
+								/>
+							{:else}
+								<!-- No browser autofill: its list would cover the addresses found -->
+								<AddressSearch
+									{...attributes}
+									autocomplete="off"
+									maxlength={JOB_LIMITS.address}
+									placeholder={m.example('12 rue de la République')}
+									bind:value={form.address}
+									near={{ postalCode: form.postalCode, city: form.city }}
+									onpick={pickOffice}
+								/>
+							{/if}
 						{/snippet}
 					</Field>
 					{#if form.workMode !== 'remote'}
@@ -994,12 +1266,21 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				{#if form.workMode === 'hybrid'}
 					<Field field="remoteDaysPerWeek" label={labels.remoteDaysPerWeek} class="sm:max-w-xs">
 						{#snippet control(attributes)}
-							<select {...attributes} class="select" bind:value={form.remoteDaysPerWeek}>
-								<option value="">{m.notSpecified}</option>
-								{#each daysOptions as days (days)}
-									<option value={String(days)}>{m.daysAWeek(days)}</option>
-								{/each}
-							</select>
+							{#if isLocked('remoteDaysPerWeek')}
+								{@render lockedChoice(
+									attributes,
+									form.remoteDaysPerWeek
+										? m.daysAWeek(Number(form.remoteDaysPerWeek))
+										: m.notSpecified
+								)}
+							{:else}
+								<select {...attributes} class="select" bind:value={form.remoteDaysPerWeek}>
+									<option value="">{m.notSpecified}</option>
+									{#each daysOptions as days (days)}
+										<option value={String(days)}>{m.daysAWeek(days)}</option>
+									{/each}
+								</select>
+							{/if}
 						{/snippet}
 					</Field>
 				{/if}
@@ -1020,11 +1301,15 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				<div class="grid gap-4 sm:grid-cols-2">
 					<Field field="contractType" label={labels.contractType} required>
 						{#snippet control(attributes)}
-							<select {...attributes} class="select" bind:value={form.contractType}>
-								{#each FR_CONTRACT_TYPES as value (value)}
-									<option {value}>{CONTRACT_TYPE_LABELS[value]}</option>
-								{/each}
-							</select>
+							{#if isLocked('contractType')}
+								{@render lockedChoice(attributes, CONTRACT_TYPE_LABELS[form.contractType])}
+							{:else}
+								<select {...attributes} class="select" bind:value={form.contractType}>
+									{#each FR_CONTRACT_TYPES as value (value)}
+										<option {value}>{CONTRACT_TYPE_LABELS[value]}</option>
+									{/each}
+								</select>
+							{/if}
 						{/snippet}
 					</Field>
 					{#if contractHasDuration(form.contractType)}
@@ -1121,12 +1406,17 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					onValueChange={(details) => {
 						if (details.value) setArrangement(details.value as WorkingTimeArrangement);
 					}}
+					readOnly={isLocked('arrangement')}
 					name="{uid}-arrangement"
 					ids={{ root: fieldId('arrangement') }}
+					aria-describedby={isLocked('arrangement') ? lockedId('arrangement') : undefined}
 					class="gap-1"
 				>
 					<SegmentedControl.Label class="label-text text-sm">
 						{m.countedIn} <span class="text-error-700-300" aria-hidden="true">*</span>
+						{#if isLocked('arrangement')}
+							{@render lockIcon()}
+						{/if}
 					</SegmentedControl.Label>
 					<SegmentedControl.Control class="grid w-full grid-cols-2 gap-1 p-1">
 						<SegmentedControl.Indicator />
@@ -1140,6 +1430,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{/each}
 					</SegmentedControl.Control>
 				</SegmentedControl>
+				{#if isLocked('arrangement')}
+					<span id={lockedId('arrangement')} class="sr-only">{fieldMessages.locked}</span>
+				{/if}
 				<div class="grid gap-4 sm:grid-cols-2">
 					{#if form.arrangement === 'weekly_hours'}
 						<Field
@@ -1153,10 +1446,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							{#snippet control(attributes)}
 								<input
 									{...attributes}
-									class="input"
+									class={['input', isLocked('hoursPerWeek') && LOCKED_CONTROL_CLASS]}
 									type="text"
 									inputmode="decimal"
 									autocomplete="off"
+									readonly={isLocked('hoursPerWeek')}
 									bind:value={form.hoursPerWeek}
 								/>
 							{/snippet}
@@ -1173,10 +1467,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							{#snippet control(attributes)}
 								<input
 									{...attributes}
-									class="input"
+									class={['input', isLocked('daysPerYear') && LOCKED_CONTROL_CLASS]}
 									type="text"
 									inputmode="numeric"
 									autocomplete="off"
+									readonly={isLocked('daysPerYear')}
 									bind:value={form.daysPerYear}
 								/>
 							{/snippet}
@@ -1192,11 +1487,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
-								class="input"
+								class={['input', isLocked('rttDaysPerYear') && LOCKED_CONTROL_CLASS]}
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder={m.example('10')}
+								placeholder={isLocked('rttDaysPerYear') ? '' : m.example('10')}
+								readonly={isLocked('rttDaysPerYear')}
 								bind:value={form.rttDaysPerYear}
 							/>
 						{/snippet}
@@ -1211,17 +1507,24 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{m.sections.pay} <span class="text-error-700-300" aria-hidden="true">*</span>
 					</h3>
 					<p class={introClass}>{m.payIntro}</p>
+					<p class="mt-1 {introClass}">
+						{m.payScoredInRange(
+							JOB_LIMITS.pay.maxRangeRatio,
+							Math.round(PAY_MATCH.fullShareOfRange * 100)
+						)}
+					</p>
 				</div>
 				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
 					<Field field="payMin" label={labels.payMin} unit="€" unitLabel={m.eurosGross} required>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
-								class="input"
+								class={['input', isLocked('payMin') && LOCKED_CONTROL_CLASS]}
 								type="text"
 								inputmode="decimal"
 								autocomplete="off"
-								placeholder={m.example('45 000')}
+								placeholder={isLocked('payMin') ? '' : m.example('45 000')}
+								readonly={isLocked('payMin')}
 								bind:value={form.payMin}
 							/>
 						{/snippet}
@@ -1230,11 +1533,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
-								class="input"
+								class={['input', isLocked('payMax') && LOCKED_CONTROL_CLASS]}
 								type="text"
 								inputmode="decimal"
 								autocomplete="off"
-								placeholder={m.example('55 000')}
+								placeholder={isLocked('payMax') ? '' : m.example('55 000')}
+								readonly={isLocked('payMax')}
 								bind:value={form.payMax}
 							/>
 						{/snippet}
@@ -1246,11 +1550,15 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						class="col-span-2 sm:col-span-1"
 					>
 						{#snippet control(attributes)}
-							<select {...attributes} class="select" bind:value={form.payPeriod}>
-								{#each PAY_PERIODS as value (value)}
-									<option {value}>{PAY_PERIOD_LABELS[value]}</option>
-								{/each}
-							</select>
+							{#if isLocked('payPeriod')}
+								{@render lockedChoice(attributes, PAY_PERIOD_LABELS[form.payPeriod])}
+							{:else}
+								<select {...attributes} class="select" bind:value={form.payPeriod}>
+									{#each PAY_PERIODS as value (value)}
+										<option {value}>{PAY_PERIOD_LABELS[value]}</option>
+									{/each}
+								</select>
+							{/if}
 						{/snippet}
 					</Field>
 				</div>
@@ -1287,11 +1595,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
-								class="input"
+								class={['input', isLocked('directReports') && LOCKED_CONTROL_CLASS]}
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder={m.example('0')}
+								placeholder={isLocked('directReports') ? '' : m.example('0')}
+								readonly={isLocked('directReports')}
 								bind:value={form.directReports}
 							/>
 						{/snippet}
@@ -1333,12 +1642,19 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				<div class="grid gap-4 sm:grid-cols-2">
 					<Field field="seniority" label={labels.seniority}>
 						{#snippet control(attributes)}
-							<select {...attributes} class="select" bind:value={form.seniority}>
-								<option value="">{m.notSpecified}</option>
-								{#each SENIORITY_LEVELS as value (value)}
-									<option {value}>{SENIORITY_LABELS[value]}</option>
-								{/each}
-							</select>
+							{#if isLocked('seniority')}
+								{@render lockedChoice(
+									attributes,
+									form.seniority ? SENIORITY_LABELS[form.seniority] : m.notSpecified
+								)}
+							{:else}
+								<select {...attributes} class="select" bind:value={form.seniority}>
+									<option value="">{m.notSpecified}</option>
+									{#each SENIORITY_LEVELS as value (value)}
+										<option {value}>{SENIORITY_LABELS[value]}</option>
+									{/each}
+								</select>
+							{/if}
 						{/snippet}
 					</Field>
 					<Field field="education" label={labels.education}>
@@ -1388,12 +1704,19 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				/>
 				<Field field="travel" label={labels.travel} class="sm:max-w-xs">
 					{#snippet control(attributes)}
-						<select {...attributes} class="select" bind:value={form.travel}>
-							<option value="">{m.notSpecified}</option>
-							{#each TRAVEL_FREQUENCIES as value (value)}
-								<option {value}>{TRAVEL_LABELS[value]}</option>
-							{/each}
-						</select>
+						{#if isLocked('travel')}
+							{@render lockedChoice(
+								attributes,
+								form.travel ? TRAVEL_LABELS[form.travel] : m.notSpecified
+							)}
+						{:else}
+							<select {...attributes} class="select" bind:value={form.travel}>
+								<option value="">{m.notSpecified}</option>
+								{#each TRAVEL_FREQUENCIES as value (value)}
+									<option {value}>{TRAVEL_LABELS[value]}</option>
+								{/each}
+							</select>
+						{/if}
 					{/snippet}
 				</Field>
 			</section>
@@ -1456,3 +1779,44 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	onLeave={() => leave(false)}
 	onDiscard={() => leave(true)}
 />
+
+<ConfirmDialog
+	open={!!replacingCopy}
+	title={m.replaceCopy.title}
+	description={m.replaceCopy.text}
+	confirmLabel={m.replaceCopy.confirm}
+	onConfirm={() => {
+		if (replacingCopy) moveToCopy(replacingCopy);
+	}}
+	onCancel={() => (replacingCopy = null)}
+/>
+
+<OpenJobDialog
+	status={confirmingOpen}
+	onConfirm={() => {
+		confirmingOpen = null;
+		send();
+	}}
+	onCancel={() => (confirmingOpen = null)}
+/>
+
+<!-- A locked choice: its label in a read-only input (a disabled select would leave the tab order,
+     and its lock would never be read) -->
+{#snippet lockedChoice(attributes: ControlAttributes, text: string)}
+	<input
+		{...attributes}
+		class={['input', LOCKED_CONTROL_CLASS]}
+		type="text"
+		autocomplete="off"
+		readonly
+		value={text}
+	/>
+{/snippet}
+
+{#snippet lockIcon()}
+	<LockClosed
+		size="14"
+		class="ms-0.5 inline-block align-[-2px] text-surface-700-300"
+		aria-hidden="true"
+	/>
+{/snippet}

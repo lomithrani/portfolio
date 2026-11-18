@@ -183,7 +183,7 @@ describe('isCurrentSection', () => {
 		expect(isCurrentSection('/recruiter', '/recruiter')).toBe(true);
 		expect(isCurrentSection('/recruiter/jobs/1', '/recruiter')).toBe(true);
 		expect(isCurrentSection('/recruiters', '/recruiter')).toBe(false);
-		expect(isCurrentSection('/jobs', '/recruiter')).toBe(false);
+		expect(isCurrentSection('/legal', '/recruiter')).toBe(false);
 	});
 });
 
@@ -200,7 +200,7 @@ describe('spaceToRecord', () => {
 		// Without a recruiter space the page offers to create it: entering it creates nothing
 		expect(spaceToRecord({ recruiter: false, activeMode: 'candidate' }, '/recruiter')).toBeNull();
 		expect(spaceToRecord({ activeMode: 'candidate' }, '/recruiter')).toBeNull();
-		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/jobs')).toBeNull();
+		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/legal')).toBeNull();
 		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/recruiters')).toBeNull();
 		expect(spaceToRecord(undefined, '/recruiter')).toBeNull();
 	});
@@ -214,8 +214,20 @@ describe('spaceToRecord', () => {
 		expect(spaceToRecord({ ...both, activeMode: 'candidate' }, '/bo.both/experiences')).toBeNull();
 		expect(spaceToRecord(both, '/someone.else/experiences')).toBeNull();
 		expect(spaceToRecord(both, '/bo.both2/experiences')).toBeNull();
-		expect(spaceToRecord(both, '/jobs')).toBeNull();
+		expect(spaceToRecord(both, '/legal')).toBeNull();
 		expect(spaceToRecord({ ...both, domain: undefined }, '/bo.both/experiences')).toBeNull();
+	});
+
+	it('records the candidate space on a job description shared with a portfolio owner', () => {
+		const both = { recruiter: true, domain: 'bo.both', activeMode: 'recruiter' as const };
+		expect(spaceToRecord(both, '/opportunities/65e2e00000000000000000aa')).toBe('candidate');
+		expect(spaceToRecord({ domain: 'bo.both' }, '/opportunities/1')).toBe('candidate');
+		// Already active, an account without a portfolio, or a page that only starts like it
+		expect(spaceToRecord({ ...both, activeMode: 'candidate' }, '/opportunities/1')).toBeNull();
+		expect(
+			spaceToRecord({ recruiter: true, activeMode: 'recruiter' }, '/opportunities/1')
+		).toBeNull();
+		expect(spaceToRecord(both, '/opportunitiesboard')).toBeNull();
 	});
 });
 
@@ -240,9 +252,44 @@ describe('recordSpaceShown', () => {
 		expect(mockModePut).toHaveBeenLastCalledWith({ mode: 'candidate' }, withCredentials);
 	});
 
+	it('records the spaces of the pages shown one after the other, in their order', async () => {
+		// Both spaces, the recruiter one active: /opportunities (the candidate space) sends the
+		// posting's recruiter on to their own page of it before the first answer came back
+		const both = { ...recruiter, activeMode: 'recruiter' as const };
+		authenticationStore.set({ user: both, expires });
+		let answerCandidate = (): void => {};
+		mockModePut.mockImplementation(({ mode }: { mode: string }) =>
+			mode === 'candidate'
+				? new Promise((resolve) => {
+						answerCandidate = () =>
+							resolve({ data: { user: { ...both, activeMode: 'candidate' } }, error: null });
+					})
+				: Promise.resolve({ data: { user: { ...both, activeMode: 'recruiter' } }, error: null })
+		);
+
+		try {
+			const shown = recordSpaceShown('/opportunities/65e2e00000000000000000aa');
+			const sentOn = recordSpaceShown('/recruiter/jobs/65e2e00000000000000000aa');
+			await vi.waitFor(() => expect(mockModePut).toHaveBeenCalledTimes(1));
+			answerCandidate();
+			await Promise.all([shown, sentOn]);
+
+			expect(mockModePut.mock.calls.map(([body]) => body)).toEqual([
+				{ mode: 'candidate' },
+				{ mode: 'recruiter' }
+			]);
+			expect(get(authenticationStore).user?.activeMode).toBe('recruiter');
+		} finally {
+			// Even when an expectation failed first: the recordings chained after this one would
+			// otherwise wait for its answer, and the tests after it with them
+			answerCandidate();
+			mockModePut.mockReset();
+		}
+	});
+
 	it('records nothing on a page of no space, the active one, or signed out', async () => {
 		authenticationStore.set({ user: recruiter, expires });
-		await recordSpaceShown('/jobs');
+		await recordSpaceShown('/legal');
 		await recordSpaceShown('/rita/experiences');
 		authenticationStore.set(loggedOut);
 		await recordSpaceShown('/recruiter');
@@ -316,6 +363,54 @@ describe('switchMode', () => {
 		await expect(switchMode('recruiter')).resolves.toEqual({ ok: true, user: updated });
 		expect(mockModePut).toHaveBeenCalledWith({ mode: 'recruiter' }, withCredentials);
 		expect(get(authenticationStore)).toEqual({ user: updated, expires });
+	});
+
+	it('sends the age and terms confirmation that opens the recruiter space', async () => {
+		const updated = {
+			...user,
+			activeMode: 'recruiter',
+			recruiter: true,
+			termsVersion: LEGAL_VERSION
+		};
+		mockModePut.mockResolvedValue({ data: { user: updated }, error: null });
+
+		await expect(switchMode('recruiter', currentConsent())).resolves.toEqual({
+			ok: true,
+			user: updated
+		});
+		expect(mockModePut).toHaveBeenCalledWith(
+			{ mode: 'recruiter', consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } },
+			withCredentials
+		);
+		expect(hasAcceptedCurrentTerms(get(authenticationStore).user)).toBe(true);
+	});
+
+	it('says when the API asks for the confirmation, or refuses the version this page sends', async () => {
+		const refusal = (property: string) =>
+			apiError(422, { type: 'validation', on: 'body', property, message: 'x' });
+
+		mockModePut.mockResolvedValue(refusal('consent'));
+		await expect(switchMode('recruiter')).resolves.toEqual({
+			ok: false,
+			reason: 'error',
+			message: accountMessages.recruiter.consent,
+			cause: 'consent'
+		});
+
+		mockModePut.mockResolvedValue(refusal('consent.termsVersion'));
+		await expect(switchMode('recruiter', currentConsent())).resolves.toEqual({
+			ok: false,
+			reason: 'error',
+			message: legalMessages.staleTerms,
+			cause: 'consent'
+		});
+
+		// Another 422 is not about the terms
+		mockModePut.mockResolvedValue(refusal('mode'));
+		const other = await switchMode('recruiter');
+		expect(other).toMatchObject({ ok: false, reason: 'error' });
+		expect(other).not.toHaveProperty('cause');
+		expect(get(authenticationStore).user).toEqual(user);
 	});
 
 	it('clears the session on 401', async () => {
@@ -593,12 +688,12 @@ describe('acceptTerms', () => {
 		expect(hasAcceptedCurrentTerms(get(authenticationStore).user)).toBe(true);
 	});
 
-	it('says where it was given', async () => {
+	it.each(['claim', 'recruiter'] as const)('says where it was given: %s', async (source) => {
 		mockConsentPut.mockResolvedValue({ data: { user }, error: null });
 
-		await acceptTerms('claim');
+		await acceptTerms(source);
 		expect(mockConsentPut).toHaveBeenCalledWith(
-			{ termsVersion: LEGAL_VERSION, ageConfirmed: true, source: 'claim' },
+			{ termsVersion: LEGAL_VERSION, ageConfirmed: true, source },
 			withCredentials
 		);
 	});
@@ -654,6 +749,9 @@ describe('isUserStorageKey and clearUserBrowserData', () => {
 		'resumeImport:user-1:rita': '{}',
 		'jobDraft:user-1:new': '{}',
 		'jobDraft:user-1:import': '{}',
+		'jobDraft:user-1:j9': '{}',
+		'jobDraft:user-1:copy:j9': '{}',
+		'jobDraft:user-10:copy:j9': '{}',
 		jobImportDraft: '{}',
 		'jobImportDraft:user-1': '{}',
 		'jobImportDraft:user-10': '{}',
@@ -678,7 +776,9 @@ describe('isUserStorageKey and clearUserBrowserData', () => {
 		expect(clearUserBrowserData('user-1', storage).sort()).toEqual([
 			'experienceDraft:user-1:rita:import:d1',
 			'experienceDraft:user-1:rita:new',
+			'jobDraft:user-1:copy:j9',
 			'jobDraft:user-1:import',
+			'jobDraft:user-1:j9',
 			'jobDraft:user-1:new',
 			'jobImportDraft:user-1',
 			'resumeImport:user-1:rita'
@@ -686,6 +786,7 @@ describe('isUserStorageKey and clearUserBrowserData', () => {
 		expect(storage.keys()).toEqual([
 			'authenticationStore',
 			'experienceDraft:user-10:x:new',
+			'jobDraft:user-10:copy:j9',
 			'jobImportDraft',
 			'jobImportDraft:user-10',
 			'portfolio-dark-mode',

@@ -31,8 +31,7 @@ import {
 } from '../services/jobImport';
 import { logger } from '../services/logger';
 import { peekRateLimit } from '../services/rateLimit';
-import { enableRecruiterSpace } from '../services/recruiters';
-import { authCookie, messageStream, messageStreamEvents, sseResponse } from './helpers';
+import { authCookie, messageStream, messageStreamEvents, openRecruiterSpace, sseResponse } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
@@ -239,7 +238,7 @@ const createUser = async (name: string, { space = true, jobImportsUsed = 0 } = {
   const userId = user._id.toString();
   userIds.push(userId);
   if (space) {
-    expect(await enableRecruiterSpace(userId)).toBe(true);
+    expect(await openRecruiterSpace(userId)).toBe(true);
     if (jobImportsUsed) await User.updateOne({ _id: userId }, { $set: { 'recruiter.jobImportsUsed': jobImportsUsed } });
   }
   return { userId, cookie: await authCookie(userId) };
@@ -365,6 +364,24 @@ describe('availability', () => {
     expect(claude.state.requests).toHaveLength(0);
     expect(await siteCount()).toBe(0);
     expect(await attemptCount(candidate.userId)).toBe(0);
+  });
+
+  it('requires the terms in force (422 on consent), before reading the file or counting anything', async () => {
+    // Accepted before the terms in force changed (or the space predates recruiters accepting them)
+    await User.updateOne({ _id: recruiter.userId }, { $set: { 'legalAcceptances.0.version': '2025-01-01' } });
+
+    const read = await status();
+    expect(read.status).toBe(422);
+    expect(read.json()).toMatchObject({ property: 'consent' });
+    for (const file of [pdf, 'not base64!']) {
+      const result = await importFile(file);
+      expect(result.status).toBe(422);
+      expect(result.json()).toMatchObject({ type: 'validation', property: 'consent' });
+    }
+    expect(claude.state.requests).toHaveLength(0);
+    expect(await planUsed()).toBe(0);
+    expect(await siteCount()).toBe(0);
+    expect(await attemptCount()).toBe(0);
   });
 
   it('reports the full allowance of a recruiter who has not imported yet', async () => {
@@ -616,6 +633,18 @@ describe('a successful import', () => {
       estimatedCostUsd: 0.00132,
       stopReason: 'end_turn'
     });
+  });
+
+  it('keeps a pay range wider than 1.5 times its bottom as read, with a warning for the editor', async () => {
+    claude.state.output = { ...ONE_JOB, payMin: '40 k€', payMax: '80 k€' };
+
+    const result = await importFile(pdf);
+    expect(result.status).toBe(200);
+    expect(result.json()).toMatchObject({
+      draft: { pay: { min: 40000, max: 80000, currency: 'EUR', period: 'year' } },
+      warnings: ['The maximum pay is more than 1.5 times the minimum: narrow the pay range']
+    });
+    expect(await planUsed()).toBe(1);
   });
 
   it('counts an import that found nothing, and says so', async () => {

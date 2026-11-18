@@ -24,7 +24,7 @@ describe('legal constants', () => {
 		expect(legalMessages.ageConfirmation).toContain(`at least ${MINIMUM_AGE} years old`);
 		expect(legalMessages.ageConfirmation).toContain('minimum legal working age in my country');
 		expect(AGE_CONFIRMATION_KEY).toBe('age-16-working-age-v1');
-		expect(CONSENT_SOURCES).toEqual(['landing', 'claim', 'account']);
+		expect(CONSENT_SOURCES).toEqual(['landing', 'claim', 'account', 'recruiter']);
 	});
 });
 
@@ -96,7 +96,8 @@ describe('reserved domain names', () => {
 		'contact',
 		'report',
 		'help',
-		'account'
+		'account',
+		'opportunities'
 	])('reserves %s for a page of the site', (name) => {
 		expect(RESERVED_DOMAIN_NAMES.has(name)).toBe(true);
 		expect(isValidDomainName(name)).toBe(false);

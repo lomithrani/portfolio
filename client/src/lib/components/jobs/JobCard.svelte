@@ -2,7 +2,7 @@
 @component
 A job posting in a list: title (a link to `href`, the whole card is clickable), company, an
 optional status badge and a one-line summary: place · work mode · contract · pay. `meta` adds a
-line under it (applicant count, dates...); links or buttons in it stay clickable on their own.
+line under it (dates...); links or buttons in it stay clickable on their own.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';

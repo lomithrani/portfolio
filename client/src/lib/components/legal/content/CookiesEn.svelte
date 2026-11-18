@@ -1,7 +1,7 @@
 <!--
 @component
 Cookies and local storage (English): the session cookie, the language cookie, Google Identity
-Services cookies, each
+Services cookies, Cloudflare (in front of the pages: no cookie, no script), each
 localStorage key with its purpose and lifetime, why there is no consent banner (ePrivacy art. 5(3),
 French loi Informatique et Libertés art. 82), how to clear them.
 -->
@@ -31,12 +31,18 @@ French loi Informatique et Libertés art. 82), how to clear them.
 	which remembers the language you chose, and uses your browser's <strong>local storage</strong> for
 	your theme and your unsaved drafts. There is no analytics, no advertising and no social media
 	tracker. Google's sign-in is loaded only when you ask for it (for example by clicking "Sign in");
-	it then sets its own cookie <code>g_state</code> on this site's domain and its cookies on accounts.google.com,
-	under Google's policy. Everything listed here is strictly necessary for a service you ask for, which
-	is why the site does not ask for your consent with a banner (article 5(3) of the ePrivacy Directive,
-	article 82 of the French loi Informatique et Libertés). The descriptions of a portfolio can also show
-	images hosted on other sites, chosen by its owner: your browser loads them from those sites, which receive
-	your IP address and browser details and apply their own rules.
+	it then sets its own cookie <code>g_state</code> on this site's domain and its cookies on
+	accounts.google.com, under Google's policy. Everything listed here is strictly necessary for a
+	service you ask for, which is why the site does not ask for your consent with a banner (article
+	5(3) of the ePrivacy Directive, article 82 of the French loi Informatique et Libertés). The
+	descriptions of a portfolio can also show images hosted on other sites, chosen by its owner: your
+	browser loads them from those sites, which receive your IP address and browser details and apply
+	their own rules. The site's pages are served through Cloudflare, a content delivery network, which
+	sets no cookie and adds no script on this site (see the <LegalDocLink
+		doc="privacy"
+		{lang}
+		hash="recipients">privacy policy</LegalDocLink
+	>).
 </p>
 
 <h3 id="cookies">Cookies</h3>
@@ -101,13 +107,13 @@ French loi Informatique et Libertés art. 82), how to clear them.
 </div>
 <p>
 	<strong>When Google is involved.</strong> Google's sign-in script is loaded only after you ask for something
-	that needs it: clicking a "Sign in" or "Sign in with Google" button (in the header of portfolios, job
-	pages and the recruiter space, in the apply panel of a job page or in a hiring journey), ticking the
-	age and terms box on the home page or in a claim form, connecting Google Calendar, and also signing
-	out or deleting your account, to turn off Google's automatic sign-in on this browser (otherwise Google
-	would sign you straight back in). Loading it sends your IP address and browser details to Google, even
-	if you do not sign in. Once loaded, it stays loaded until you leave or reload the site, including on
-	the pages you open next, such as the legal pages.
+	that needs it: clicking a "Sign in" or "Sign in with Google" button (in the header of portfolios and
+	the recruiter space, in a hiring journey, or on the page of a job description shared with you), ticking
+	the age and terms box on the home page, on the recruiter space's page or in a claim form, connecting
+	Google Calendar, and also signing out or deleting your account, to turn off Google's automatic sign-in
+	on this browser (otherwise Google would sign you straight back in). Loading it sends your IP address
+	and browser details to Google, even if you do not sign in. Once loaded, it stays loaded until you leave
+	or reload the site, including on the pages you open next, such as the legal pages.
 </p>
 
 <h3 id="local-storage">Local storage</h3>
@@ -176,8 +182,8 @@ French loi Informatique et Libertés art. 82), how to clear them.
 	<li>Signing out deletes the session cookie and the copy of your session.</li>
 	<li>
 		Your browser's settings let you delete this site's cookies and storage ("site data"), or block
-		them. Blocking the <code>auth</code> cookie prevents signing in; reading portfolios and job
-		descriptions still works. Without the <code>lang</code> cookie the pages follow your browser's language.
+		them. Blocking the <code>auth</code> cookie prevents signing in; reading portfolios still works.
+		Without the <code>lang</code> cookie the pages follow your browser's language.
 	</li>
 	<li>
 		Google's cookies are managed in your browser and your Google account, under the

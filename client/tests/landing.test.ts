@@ -1,6 +1,14 @@
-import { expect, test, type Page, type Request, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { LEGAL_VERSION, legalMessages } from 'portfolio-common';
-import { API_URL, JWT_SECRET, gotoHydrated, ownerSession, signIn } from './support/owner';
+import {
+	E2E_CANDIDATE_ID as CANDIDATE_ID,
+	JWT_SECRET,
+	gotoHydrated,
+	ownerSession,
+	signIn
+} from './support/owner';
+import { stubApi } from './support/api';
+import { stubGoogle } from './support/google';
 
 // The landing page (/) and its onboarding card. Google is never reached: its script is stubbed
 // (a fake "Sign in with Google" button that hands a fake credential to the page). The steps of a
@@ -10,70 +18,8 @@ import { API_URL, JWT_SECRET, gotoHydrated, ownerSession, signIn } from './suppo
 // `?import=1` link use the real session of the 'e2e-owner' domain (seed:e2e), with the résumé
 // import stubbed (Claude is never called).
 
-/** Id of the stubbed candidate without a portfolio (the e2e candidate of seed:e2e) */
-const CANDIDATE_ID = '65e2e0000000000000000002';
+/** The stubbed candidate without a portfolio is the e2e candidate of seed:e2e (CANDIDATE_ID) */
 const CANDIDATE_EMAIL = 'e2e.candidate@example.com';
-
-/** Google Identity Services: a button that signs in with a fake credential when clicked */
-const GSI_STUB = `
-window.google = { accounts: { id: {
-	initialize(options) { window.__gsiCallback = options.callback; },
-	renderButton(element) {
-		const button = document.createElement('button');
-		button.type = 'button';
-		button.textContent = 'Stub Google sign-in';
-		button.onclick = () => window.__gsiCallback && window.__gsiCallback({ credential: 'stub-credential' });
-		element.replaceChildren(button);
-	},
-	prompt() {}, cancel() {}, disableAutoSelect() {}
-} } };`;
-
-/** Requests the page sent to Google's sign-in (the stubbed script included) */
-const stubGoogle = async (page: Page) => {
-	const requests: string[] = [];
-	await page.route('https://accounts.google.com/**', (route) => {
-		requests.push(route.request().url());
-		return route.fulfill({ contentType: 'application/javascript', body: GSI_STUB });
-	});
-	return requests;
-};
-
-/**
- * Answers `method path` of the API in the browser with `answer`, with the CORS headers the API
- * would send (the page and the API are on different origins). Returns the requests answered.
- */
-const stubApi = async (
-	page: Page,
-	method: string,
-	path: string,
-	answer: (
-		request: Request
-	) => { status?: number; json: unknown } | Promise<{ status?: number; json: unknown }>
-) => {
-	const answered: Request[] = [];
-	await page.route(`${API_URL}${path}`, async (route: Route) => {
-		const request = route.request();
-		const cors = {
-			'access-control-allow-origin': request.headers()['origin'] ?? '*',
-			'access-control-allow-credentials': 'true'
-		};
-		if (request.method() === 'OPTIONS') {
-			return route.fulfill({
-				status: 204,
-				headers: {
-					...cors,
-					'access-control-allow-methods': 'GET, POST, PUT, DELETE',
-					'access-control-allow-headers': request.headers()['access-control-request-headers'] ?? ''
-				}
-			});
-		}
-		if (request.method() !== method) return route.fallback();
-		answered.push(request);
-		const { status = 200, json } = await answer(request);
-		return route.fulfill({ status, json, headers: cors });
-	});
-	return answered;
-};
 
 const expires = () => Math.floor(Date.now() / 1000) + 3600;
 
@@ -138,7 +84,32 @@ test.describe('landing page, signed out', () => {
 		await expect(currentStep(page)).toContainText('Sign in with Google');
 	});
 
-	test('the footer leads to the job pages and holds the light/dark switch; the logo leads back', async ({
+	test('its claims hold for a new portfolio, whose journey is the meeting alone', async ({
+		page
+	}) => {
+		await stubGoogle(page);
+		await page.goto('/');
+		// A job is scored only once the owner adds the job and match steps (DEFAULT_WORKFLOW_STEPS)
+		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+			'content',
+			/Add the job and match steps, and the job they bring is scored against what you want before they can book a meeting with you\.$/
+		);
+		const answer = (question: string) => page.locator('details', { hasText: question });
+		await expect(answer('Who can see my portfolio?')).toContainText(
+			'Your email address is not shown on it, but someone who books a meeting with you sees it in the invitation.'
+		);
+		await expect(answer('What do recruiters see of what I am looking for?')).toContainText(
+			'A recruiter who tries several jobs could still guess part of it from the scores.'
+		);
+		await expect(answer('Can I delete my account?')).toContainText(
+			'the step suggestions and feedback already on GitHub (which do not name you), stay'
+		);
+		await expect(page.getByText("Pick the name in your portfolio's link.")).toContainText(
+			'It stays yours as long as you keep your account and follow the terms.'
+		);
+	});
+
+	test('the footer leads to the recruiter space and holds the light/dark switch; the logo leads back', async ({
 		page
 	}) => {
 		await stubGoogle(page);
@@ -157,6 +128,9 @@ test.describe('landing page, signed out', () => {
 			'href',
 			'/recruiter'
 		);
+		// The job board is gone: no link to it
+		await expect(page.getByRole('link', { name: 'Browse jobs' })).toHaveCount(0);
+		await expect(page.locator('a[href="/jobs"]')).toHaveCount(0);
 
 		// The switch: one for the page, kept in this browser
 		const html = page.locator('html');
@@ -169,12 +143,16 @@ test.describe('landing page, signed out', () => {
 			String(!dark)
 		);
 
-		// The job pages: no bar either, the switch next to the legal links, the logo back to here
-		await site.getByRole('link', { name: 'Browse jobs' }).click();
-		await expect(page).toHaveURL(/\/jobs$/);
-		await expect(page.getByRole('heading', { level: 2, name: 'Open positions' })).toBeVisible();
+		// The recruiter space: no bar either, the switch next to the legal links, the logo back to here
+		await site.getByRole('link', { name: 'For recruiters' }).click();
+		await expect(page).toHaveURL(/\/recruiter$/);
+		await expect(
+			page.getByRole('heading', {
+				level: 2,
+				name: 'See where a candidate used each skill, and for how long'
+			})
+		).toBeVisible();
 		await expect(outsidePage).toHaveCount(0);
-		await expect(page.getByRole('navigation', { name: 'Jobs' })).toHaveCount(0);
 		await expect(
 			page
 				.locator('main > footer')

@@ -15,6 +15,7 @@ import {
 	TRAVEL_FREQUENCIES,
 	WORKING_TIME_ARRANGEMENTS,
 	WORK_MODES,
+	highestPayMax,
 	normalizeList
 } from './jobPosting';
 import { perfectJobMessages as m } from './perfectJob.messages';
@@ -61,10 +62,19 @@ export const MANAGEMENT_ROLES = ['manager', 'contributor'] as const;
 export type ManagementRole = (typeof MANAGEMENT_ROLES)[number];
 
 /**
- * How far under the pay asked a job stops matching at all: at 20% under or less the pay
- * criterion scores nothing, in between it scores in proportion
+ * How the pay asked matches, by where it falls in a job's pay range (its top counted at most
+ * JOB_LIMITS.pay.maxRangeRatio times its bottom): up to `fullShareOfRange` of the way from the
+ * bottom to the top (or under the bottom), it matches; in the rest of the range it scores
+ * `topOfRange`; up to `aboveRangeTolerance` over the top, `aboveRange`; further over, nothing,
+ * the only outcome that breaks a pay deal-breaker. A fixed pay (min equal to max) has no top of
+ * the range: up to it matches, then the same tolerance over it
  */
-export const PAY_TOLERANCE = 0.2;
+export const PAY_MATCH = {
+	fullShareOfRange: 0.9,
+	topOfRange: 0.7,
+	aboveRange: 0.3,
+	aboveRangeTolerance: 0.1
+} as const;
 
 /**
  * How a candidate travels to the office. transit: public transport, door to door; the travel
@@ -631,23 +641,33 @@ export const officeDaysPerWeek = (location: ScoredJob['location']): number => {
 	return Math.max(0, WORK_DAYS_PER_WEEK - remote);
 };
 
-/** What the job pays in the middle of its range, converted to a year or a day */
-const jobPay = (job: ScoredJob, per: 'year' | 'day'): number => {
+/**
+ * What the job pays at the bottom and at the top of its range, converted to a year or a day. The
+ * top is the one scored: at most the highest maximum its bottom allows (highestPayMax, in cents,
+ * as validateJobPosting counts it), so a range saved wider than that before the cap scores as the
+ * same range brought down to it
+ */
+const jobPayRange = (job: ScoredJob, per: 'year' | 'day'): NumberRange => {
 	const { pay, workingTime } = job;
-	const middle = (pay.min + pay.max) / 2;
 	const daysPerYear = workingTime.daysPerYear ?? FR_FORFAIT_JOURS_STANDARD_DAYS;
 	const hoursPerWeek = workingTime.hoursPerWeek ?? FR_FULL_TIME_HOURS_PER_WEEK;
-	const perYear =
-		pay.period === 'year'
-			? middle
-			: pay.period === 'month'
-				? middle * 12
-				: pay.period === 'day'
-					? middle * daysPerYear
-					: middle * hoursPerWeek * 52;
-	if (per === 'year') return perYear;
-	return pay.period === 'day' ? middle : perYear / daysPerYear;
+	const converted = (amount: number): number => {
+		const perYear =
+			pay.period === 'year'
+				? amount
+				: pay.period === 'month'
+					? amount * 12
+					: pay.period === 'day'
+						? amount * daysPerYear
+						: amount * hoursPerWeek * 52;
+		if (per === 'year') return perYear;
+		return pay.period === 'day' ? amount : perYear / daysPerYear;
+	};
+	return { min: converted(pay.min), max: converted(Math.min(pay.max, highestPayMax(pay.min))) };
 };
+
+/** `value` is at most `limit`, float noise aside (an ask of 66,000 is not over 60,000 × 1.1) */
+const atMost = (value: number, limit: number): boolean => value <= limit * (1 + 1e-9);
 
 const TRAVEL_RANK: Record<TravelFrequency, number> = { none: 0, occasional: 1, frequent: 2 };
 
@@ -719,9 +739,13 @@ const SCORERS: {
 		const per = perDay !== undefined && (job.pay.period === 'day' || perYear === undefined) ? 'day' : 'year';
 		const asked = per === 'day' ? perDay : perYear;
 		if (asked === undefined) return 1;
-		const offered = jobPay(job, per);
-		if (offered >= asked) return 1;
-		return clamp((offered - asked * (1 - PAY_TOLERANCE)) / (asked * PAY_TOLERANCE));
+		// A range wider than the cap (saved before it) is scored as if capped (jobPayRange)
+		const { min, max } = jobPayRange(job, per);
+		const top = Math.max(min, max);
+		if (atMost(asked, min + (top - min) * PAY_MATCH.fullShareOfRange)) return 1;
+		if (atMost(asked, top)) return PAY_MATCH.topOfRange;
+		if (atMost(asked, top * (1 + PAY_MATCH.aboveRangeTolerance))) return PAY_MATCH.aboveRange;
+		return 0;
 	},
 	skills: ({ names }, job) => {
 		const asked = (job.requirements?.skills ?? []).map(skillKey).filter(Boolean);

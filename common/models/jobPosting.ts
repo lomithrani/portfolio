@@ -1,23 +1,23 @@
 // Job postings of the recruiter space: the values, limits and rules shared by the API (request
 // validation, PUT/POST /jobs) and the client (the job editor's validation and the display of a
 // posting). Contract rules depend on the country of the job: France is the first one handled.
+import { intlLocale } from '../i18n';
 import { isCalendarDate } from './bookingDates';
 import { jobPostingMessages as m } from './jobPosting.messages';
 
 // ── Values ──────────────────────────────────────────────────
 
 /**
- * draft: only its recruiter sees it; open: public, takes applications; on_hold: public, paused
- * (no applications); filled: someone was hired; closed: withdrawn without hiring
+ * draft: being written; open: hiring, the recruiter can pick it on a candidate's Hire page (the
+ * job step); on_hold: paused; filled: someone was hired; closed: withdrawn without hiring. Only
+ * an open posting can be picked. No status makes a posting public: its recruiter reads it, and
+ * the candidates on whose Hire page they pick it
  */
 export const JOB_STATUSES = ['draft', 'open', 'on_hold', 'filled', 'closed'] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
-/** Statuses anyone can see (GET /jobs/:id); a draft is its recruiter's alone */
-export const PUBLIC_JOB_STATUSES: readonly JobStatus[] = ['open', 'on_hold', 'filled', 'closed'];
-
-/** Candidates can apply to a posting only while it is open */
-export const APPLICABLE_JOB_STATUS: JobStatus = 'open';
+/** The status of a posting that is hiring: the only one the job step of a hiring journey takes */
+export const OPEN_JOB_STATUS: JobStatus = 'open';
 
 /** on_site: at the office; hybrid: some days remote; remote: fully remote (no office to name) */
 export const WORK_MODES = ['on_site', 'hybrid', 'remote'] as const;
@@ -131,8 +131,12 @@ export const JOB_LIMITS = {
 	hoursPerWeek: { min: 1, max: 48 },
 	daysPerYear: { min: 1, max: 235 },
 	rttDaysPerYear: { min: 0, max: 60 },
-	/** Pay amounts, in the currency's units (cents allowed) */
-	pay: { min: 0.01, max: 10_000_000 },
+	/**
+	 * Pay amounts, in the currency's units (cents allowed). maxRangeRatio: the top of a pay range
+	 * is at most that many times its bottom (a candidate's pay criterion is matched by where it
+	 * falls in the range, perfectJob.ts's PAY_MATCH)
+	 */
+	pay: { min: 0.01, max: 10_000_000, maxRangeRatio: 1.5 },
 	/** Years a start date can fall in: a typo (0202) or a placeholder (0000) is refused */
 	startDateYear: { min: 2000, max: 2100 },
 	directReports: { min: 0, max: 100_000 },
@@ -140,9 +144,7 @@ export const JOB_LIMITS = {
 	/** 0: the job is the CEO; 1: reports to the CEO */
 	levelsToCeo: { min: 0, max: 30 },
 	/** Postings a recruiter can keep */
-	jobsPerRecruiter: 200,
-	/** Applicants listed per posting */
-	applicantsPerJob: 1_000
+	jobsPerRecruiter: 200
 } as const;
 
 // ── Shape ───────────────────────────────────────────────────
@@ -264,6 +266,53 @@ export const normalizeList = (items: readonly string[] | undefined): string[] =>
 
 /** At most two decimals (cents), float noise aside (0.1 + 0.2) */
 const hasCents = (value: number) => Math.abs(Math.round(value * 100) - value * 100) < 1e-6;
+
+/** An amount of at most two decimals, in whole cents */
+const cents = (value: number) => Math.round(value * 100);
+
+/**
+ * The highest maximum pay a minimum allows: JOB_LIMITS.pay.maxRangeRatio times it, rounded down
+ * to cents
+ */
+export const highestPayMax = (min: number): number =>
+	Math.floor(cents(min) * JOB_LIMITS.pay.maxRangeRatio) / 100;
+
+/**
+ * A pay range whose top is over JOB_LIMITS.pay.maxRangeRatio times its bottom: what
+ * validateJobPosting refuses (compared in whole cents, where 1.5 times an amount is exact)
+ */
+export const isPayRangeTooWide = (pay: { min: number; max: number }): boolean =>
+	cents(pay.max) > cents(highestPayMax(pay.min));
+
+/**
+ * A pay amount as the language in use writes it: '€67,500', '67 500 €', '€49.99' (a currency
+ * that is not one of PAY_CURRENCIES is written in euros). The one formatter of pay amounts: the
+ * problems of validateJobPosting and every page that shows a posting's pay
+ */
+export const formatPayAmount = (amount: number, currency: string = 'EUR'): string =>
+	new Intl.NumberFormat(intlLocale(), {
+		style: 'currency',
+		currency: (PAY_CURRENCIES as readonly string[]).includes(currency) ? currency : 'EUR',
+		minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+		maximumFractionDigits: 2
+	}).format(amount);
+
+/**
+ * What validateJobPosting says of a pay range wider than JOB_LIMITS.pay.maxRangeRatio times its
+ * bottom (on `pay.max`: the most its top can be, in the language in use); undefined for a range
+ * that is not. Also what the API answers when a posting saved so before the cap is first opened
+ */
+export const payRangeTooWideMessage = (pay: {
+	min: number;
+	max: number;
+	currency: string;
+}): string | undefined =>
+	isPayRangeTooWide(pay)
+		? m.problems.payRangeTooWide(
+				JOB_LIMITS.pay.maxRangeRatio,
+				formatPayAmount(highestPayMax(pay.min), pay.currency)
+			)
+		: undefined;
 
 /**
  * An amount of at most two decimals as exactly that (45000.000000001 is 45000): what is stored
@@ -506,8 +555,11 @@ export function validateJobPosting(job: JobPostingInput): JobPostingProblem[] {
 	};
 	const validMin = amount('pay.min', pay.min, m.problems.amount.min);
 	const validMax = amount('pay.max', pay.max, m.problems.amount.max);
+	const tooWide = validMin && validMax ? payRangeTooWideMessage(pay) : undefined;
 	if (validMin && validMax && pay.max < pay.min) {
 		problem('pay.max', m.problems.payMaxBelowMin);
+	} else if (tooWide) {
+		problem('pay.max', tooWide);
 	}
 	if (!PAY_CURRENCIES.includes(pay.currency)) problem('pay.currency', m.problems.unknownCurrency);
 	if (!PAY_PERIODS.includes(pay.period)) problem('pay.period', m.problems.unknownPayPeriod);
@@ -594,3 +646,15 @@ export const SENIORITY_LABELS: Record<SeniorityLevel, string> = m.seniority;
 export const EDUCATION_LABELS: Record<EducationLevel, string> = m.education;
 
 export const TRAVEL_LABELS: Record<TravelFrequency, string> = m.travel;
+
+// ── Private page (web path) ─────────────────────────────────
+
+/**
+ * The web client's page of the job posting `jobId` for the people it was shared with
+ * (/opportunities/:id): what the meeting invitation of a hiring journey links (the job step's
+ * describe() in the API), and where the client sends the candidate. One path for both, so the
+ * link and the route cannot drift apart. It is private: only the posting's recruiter and the
+ * candidates whose journey it is picked on can open it, signed in (GET /opportunities/jobs/:id)
+ */
+export const opportunityPath = (jobId: string): string =>
+	`/opportunities/${encodeURIComponent(jobId)}`;

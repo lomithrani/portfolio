@@ -10,8 +10,8 @@ export const m = defineMessages({
 			fr: 'Votre portfolio trie les offres pour vous | Portfolio'
 		},
 		description: {
-			en: 'Portfolio is free and works as your job matchmaker: say what you want (pay, remote days, commute, skills) and set the steps recruiters follow. The job they bring is scored against what you want before they can book a meeting with you.',
-			fr: "Portfolio est gratuit et vous met en relation avec les bons postes : dites ce que vous cherchez (rémunération, télétravail, trajet, compétences), définissez les étapes que suivent les recruteurs, et l'offre qu'ils apportent est notée avant qu'ils puissent réserver un rendez-vous avec vous."
+			en: 'Portfolio is free and works as your job matchmaker: say what you want (pay, remote days, commute, skills) and set the steps recruiters follow. Add the job and match steps, and the job they bring is scored against what you want before they can book a meeting with you.',
+			fr: "Portfolio est gratuit et vous met en relation avec les bons postes : dites ce que vous cherchez (rémunération, télétravail, trajet, compétences) et définissez les étapes que suivent les recruteurs. Ajoutez les étapes de l'offre et de la correspondance, et l'offre qu'ils apportent est notée avant qu'ils puissent réserver un rendez-vous avec vous."
 		},
 		imageAlt: {
 			en: 'Your portfolio, your way. No more calls about the wrong job. The steps of a hiring journey: note, job, match 86 out of 100, book a meeting.',
@@ -27,8 +27,8 @@ export const m = defineMessages({
 			fr: 'Fini les appels pour le <nowrap>mauvais poste.</nowrap>'
 		},
 		lead: {
-			en: 'Say what you are looking for (pay, remote days, commute, skills) and choose the steps recruiters follow: the job they bring is scored against what you want, and only a match gets time in your calendar.',
-			fr: "Dites ce que vous cherchez (rémunération, télétravail, trajet, compétences) et choisissez les étapes que suivent les recruteurs : l'offre qu'ils apportent est notée, et seule une offre qui correspond obtient un créneau dans votre agenda."
+			en: 'Say what you are looking for (pay, remote days, commute, skills) and choose the steps recruiters follow: add the job and match steps, and the job they bring is scored against what you want; only a match then gets time in your calendar.',
+			fr: "Dites ce que vous cherchez (rémunération, télétravail, trajet, compétences) et choisissez les étapes que suivent les recruteurs : ajoutez celles de l'offre et de la correspondance, et l'offre qu'ils apportent est notée ; seule une offre qui correspond obtient alors un créneau dans votre agenda."
 		},
 		create: { en: 'Create your portfolio', fr: 'Créer mon portfolio' },
 		open: { en: 'Open my portfolio', fr: 'Ouvrir mon portfolio' },
@@ -130,13 +130,6 @@ export const m = defineMessages({
 				en: 'A recruiter sees the score of their job and, if you allow it, how it does on each criterion. Never what you asked for.',
 				fr: "Un recruteur voit la note de son offre et, si vous l'autorisez, son résultat sur chaque critère. Jamais ce que vous avez demandé."
 			}
-		},
-		apply: {
-			title: { en: 'Apply with your portfolio', fr: 'Postulez avec votre portfolio' },
-			text: {
-				en: 'Apply to the job descriptions published here in one step: the recruiter opens your portfolio.',
-				fr: 'Postulez en une étape aux offres publiées ici : le recruteur ouvre votre portfolio.'
-			}
 		}
 	},
 	yours: {
@@ -204,8 +197,8 @@ export const m = defineMessages({
 		claim: {
 			title: { en: 'Claim your address', fr: 'Réservez votre adresse' },
 			text: {
-				en: "Pick the name in your portfolio's link. It stays yours until you delete your account.",
-				fr: "Choisissez le nom qui figure dans le lien de votre portfolio. Il reste à vous jusqu'à la suppression de votre compte."
+				en: "Pick the name in your portfolio's link. It stays yours as long as you keep your account and follow the terms.",
+				fr: "Choisissez le nom qui figure dans le lien de votre portfolio. Il reste à vous tant que vous gardez votre compte et respectez les conditions d'utilisation."
 			}
 		},
 		resume: {
@@ -235,8 +228,8 @@ export const m = defineMessages({
 		visibility: {
 			question: { en: 'Who can see my portfolio?', fr: 'Qui peut voir mon portfolio ?' },
 			answer: {
-				en: 'Anyone with its address: your portfolio is public, and search engines may list it. Write only what you want to be public. Your email address is not shown on it.',
-				fr: "Toute personne qui a son adresse : votre portfolio est public, et les moteurs de recherche peuvent le référencer. N'y écrivez que ce que vous voulez rendre public. Votre adresse e-mail n'y figure pas."
+				en: 'Anyone with its address can open it. We ask search engines not to list it, and the main ones, such as Google and Bing, do as asked (a page they had already listed can take a few weeks to disappear). It is public all the same, and an address can be passed on: write only what you want to be public. Your email address is not shown on it, but someone who books a meeting with you sees it in the invitation.',
+				fr: "Toute personne qui a son adresse peut l'ouvrir. Nous demandons aux moteurs de recherche de ne pas le référencer, et les principaux, comme Google et Bing, respectent cette demande (une page qu'ils avaient déjà référencée peut mettre quelques semaines à disparaître). Il reste public pour autant, et une adresse peut circuler : n'y écrivez que ce que vous voulez rendre public. Votre adresse e-mail n'y figure pas, mais une personne qui réserve un rendez-vous avec vous la voit dans l'invitation."
 			}
 		},
 		recruiters: {
@@ -245,23 +238,23 @@ export const m = defineMessages({
 				fr: 'Que voient les recruteurs de ce que je recherche ?'
 			},
 			score: {
-				en: 'The score of their job and the minimum you set. If you allow it, they also see how the job does on each criterion (it matches, partly, or not) and which of your deal-breakers it misses, never what you asked for or how much the other criteria matter to you.',
-				fr: "La note de leur offre et le minimum que vous avez fixé. Si vous l'autorisez, ils voient aussi le résultat de l'offre sur chaque critère (elle correspond, en partie, ou non) et ceux de vos critères éliminatoires qu'elle ne remplit pas, jamais ce que vous avez demandé ni l'importance que vous accordez aux autres critères."
+				en: 'The score of their job and the minimum you set. If you allow it, they also see how the job does on each criterion (it matches, partly, or not) and which of your deal-breakers it misses, never what you asked for or how much the other criteria matter to you. A recruiter who tries several jobs could still guess part of it from the scores.',
+				fr: "La note de leur offre et le minimum que vous avez fixé. Si vous l'autorisez, ils voient aussi le résultat de l'offre sur chaque critère (elle correspond, en partie, ou non) et ceux de vos critères éliminatoires qu'elle ne remplit pas, jamais ce que vous avez demandé ni l'importance que vous accordez aux autres critères. Un recruteur qui essaie plusieurs offres pourrait toutefois en deviner une partie à partir des notes."
 			},
 			address: {
-				en: "Recruiters never see the address you give for your commute. To find it and compute travel times, it is sent to the Géoplateforme of IGN, the French state's map service, without your name or your account. Details in the <privacy>privacy policy</privacy>.",
-				fr: "Les recruteurs ne voient jamais l'adresse que vous indiquez pour votre trajet. Pour la localiser et calculer les temps de trajet, elle est envoyée à la Géoplateforme de l'IGN, le service cartographique de l'État français, sans votre nom ni votre compte. Détails dans la <privacy>politique de confidentialité</privacy>."
+				en: "Recruiters never see the address you give for your commute. To find it and compute travel times, it is sent to the Géoplateforme of IGN, the French state's map service, and, for public transport times, its position to a journey planner, without your name or your account. Details in the <privacy>privacy policy</privacy>.",
+				fr: "Les recruteurs ne voient jamais l'adresse que vous indiquez pour votre trajet. Pour la localiser et calculer les temps de trajet, elle est envoyée à la Géoplateforme de l'IGN, le service cartographique de l'État français, et, pour les temps en transports en commun, sa position à un calculateur d'itinéraires, sans votre nom ni votre compte. Détails dans la <privacy>politique de confidentialité</privacy>."
 			}
 		},
 		deletion: {
 			question: { en: 'Can I delete my account?', fr: 'Puis-je supprimer mon compte ?' },
 			everything: {
-				en: 'Yes. Your <account>account page</account> deletes your account and everything tied to it at once: portfolio, hiring journey, applications and Google Calendar access. Your address becomes free for someone else.',
-				fr: "Oui. Votre <account>page de compte</account> supprime d'un coup votre compte et tout ce qui y est lié : portfolio, parcours de recrutement, candidatures et accès à Google Agenda. Votre adresse redevient libre pour quelqu'un d'autre."
+				en: 'Yes. Your <account>account page</account> deletes your account and everything tied to it at once: portfolio, hiring journey and Google Calendar access. Your address becomes free for someone else.',
+				fr: "Oui. Votre <account>page de compte</account> supprime d'un coup votre compte et tout ce qui y est lié : portfolio, parcours de recrutement et accès à Google Agenda. Votre adresse redevient libre pour quelqu'un d'autre."
 			},
 			remains: {
-				en: "Meetings already in someone's calendar and step suggestions already on GitHub (which do not name you) stay; server logs expire on their own. Details in the <privacy>privacy policy</privacy>.",
-				fr: "Les rendez-vous déjà inscrits dans l'agenda de quelqu'un et les suggestions d'étapes déjà publiées sur GitHub (qui ne vous nomment pas) restent ; les journaux du serveur expirent d'eux-mêmes. Détails dans la <privacy>politique de confidentialité</privacy>."
+				en: "Meetings already in someone's calendar, and the step suggestions and feedback already on GitHub (which do not name you), stay; server logs expire on their own. Details in the <privacy>privacy policy</privacy>.",
+				fr: "Les rendez-vous déjà inscrits dans l'agenda de quelqu'un, ainsi que les suggestions d'étapes et les avis déjà publiés sur GitHub (qui ne vous nomment pas), restent ; les journaux du serveur expirent d'eux-mêmes. Détails dans la <privacy>politique de confidentialité</privacy>."
 			}
 		},
 		age: {
@@ -274,8 +267,8 @@ export const m = defineMessages({
 		data: {
 			question: { en: 'Which data do you keep?', fr: 'Quelles données conservez-vous ?' },
 			answer: {
-				en: 'Your Google account id and email address, what you publish, and what the features you use need, such as your applications or your meeting settings. The <privacy>privacy policy</privacy> lists everything, how long it is kept, and your rights.',
-				fr: "L'identifiant et l'adresse e-mail de votre compte Google, ce que vous publiez, et ce dont ont besoin les fonctions que vous utilisez, comme vos candidatures ou vos réglages de rendez-vous. La <privacy>politique de confidentialité</privacy> détaille tout, les durées de conservation et vos droits."
+				en: 'Your Google account id and email address, what you publish, and what the features you use need, such as your hiring journey or your meeting settings. The <privacy>privacy policy</privacy> lists everything, how long it is kept, and your rights.',
+				fr: "L'identifiant et l'adresse e-mail de votre compte Google, ce que vous publiez, et ce dont ont besoin les fonctions que vous utilisez, comme votre parcours de recrutement ou vos réglages de rendez-vous. La <privacy>politique de confidentialité</privacy> détaille tout, les durées de conservation et vos droits."
 			}
 		}
 	},

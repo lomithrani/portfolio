@@ -146,6 +146,16 @@ export const jobPostingMessages = defineMessages({
 			en: 'Maximum pay must not be below the minimum',
 			fr: 'La rémunération maximale ne peut pas être inférieure à la minimale'
 		},
+		/**
+		 * `ratio`: JOB_LIMITS.pay.maxRangeRatio; `most`: the highest maximum this minimum allows,
+		 * formatted ('€67,500')
+		 */
+		payRangeTooWide: {
+			en: (ratio: number, most: string) =>
+				`Maximum pay must be at most ${most} (${ratio.toLocaleString('en-GB')} times the minimum)`,
+			fr: (ratio: number, most: string) =>
+				`Rémunération maximale : indiquez ${most} au maximum (${ratio.toLocaleString('fr-FR')} fois la minimale)`
+		},
 		unknownCurrency: { en: 'Unknown currency', fr: 'Devise inconnue' },
 		unknownPayPeriod: { en: 'Unknown pay period', fr: 'Période de rémunération inconnue' },
 		unknownSeniority: { en: 'Unknown seniority', fr: "Niveau d'expérience inconnu" },

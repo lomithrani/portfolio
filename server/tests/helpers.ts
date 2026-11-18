@@ -6,6 +6,8 @@ import { currentConsent } from 'portfolio-common';
 import { env } from '../env';
 import { Domain, Experience, User } from '../models/database';
 import { createGoogleIdTokenVerifier, google } from '../services/google';
+import { recordConsent } from '../services/legal';
+import { enableRecruiterSpace } from '../services/recruiters';
 import { sessionAccounts } from '../services/session';
 
 // Tests replace model methods with spyOn(...) and every test file restores
@@ -80,8 +82,20 @@ export const experienceRequestBody = {
 };
 
 // The age and terms confirmation of the terms in force, as the client sends
-// it with POST /login, PUT /me/consent and the first POST /domain/claim
+// it with POST /login, PUT /me/consent, the first POST /domain/claim and the
+// PUT /me/mode that opens the recruiter space
 export const CONSENT = currentConsent();
+
+/**
+ * Opens the recruiter space of the account `userId` as the client does: the
+ * terms in force accepted from the recruiter space, then the space, which
+ * the recruiter routes need both. What enableRecruiterSpace answers (false:
+ * no such account)
+ */
+export const openRecruiterSpace = async (userId: string) => {
+  await recordConsent(userId, CONSENT, 'recruiter');
+  return enableRecruiterSpace(userId);
+};
 
 // A hiring journey as the admin tab saves it (each step with its id, its type and that type's
 // settings): pick a job, then book a meeting
