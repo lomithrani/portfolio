@@ -280,7 +280,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	et, lorsque la supervision est activée, notre prestataire de supervision reçoit des traces des
 	requêtes, qui comprennent l'adresse IP, l'agent utilisateur du navigateur, l'adresse de la page
 	sans ses paramètres et les en-têtes de la requête (les cookies, les en-têtes d'autorisation, les
-	paramètres d'adresse et le corps des requêtes sont retirés avant l'envoi).
+	paramètres d'adresse et le corps des requêtes sont retirés avant l'envoi). Les requêtes vers les
+	pages du site, mais pas celles vers son API, passent d'abord par Cloudflare, qui voit donc aussi
+	votre adresse IP (voir <a class="link-text" href="#recipients">qui reçoit vos données</a>).
 </p>
 
 <h4 id="data-device">Sur votre appareil</h4>
@@ -418,6 +420,16 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				>) ;
 			</li>
 			<li>
+				Cloudflare, Inc. (États-Unis) : le réseau de diffusion de contenu et le proxy par lesquels
+				passent les pages du site (l'API est jointe sans lui). Il reçoit chaque requête vers une
+				page, avec votre adresse IP et les informations de votre navigateur, ainsi que la page
+				renvoyée, et votre navigateur peut lui signaler les connexions à ces pages qui échouent (<a
+					class="link-text"
+					href={LINKS.cloudflarePrivacy}
+					rel="noopener noreferrer">politique de confidentialité</a
+				>) ;
+			</li>
+			<li>
 				Anthropic PBC (États-Unis) : lecture des PDF de CV et d'offres d'emploi que vous importez,
 				et tri des avis que vous envoyez, lorsque ce site l'active. Selon les <a
 					class="link-text"
@@ -474,9 +486,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 <h3 id="transfers">Transferts hors de l'Union européenne</h3>
 <p>
-	Notre hébergeur, Anthropic, Google, GitHub et notre prestataire de supervision peuvent traiter des
-	données aux <strong>États-Unis</strong> ; la base de données y est hébergée. Ces transferts
-	reposent sur le
+	Notre hébergeur, Cloudflare, Anthropic, Google, GitHub et notre prestataire de supervision peuvent
+	traiter des données aux <strong>États-Unis</strong> ; la base de données y est hébergée. Ces
+	transferts reposent sur le
 	<a class="link-text" href={LINKS.dpf} rel="noopener noreferrer"
 		>cadre de protection des données UE-États-Unis</a
 	>

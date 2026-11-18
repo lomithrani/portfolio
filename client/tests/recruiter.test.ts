@@ -570,7 +570,7 @@ test.describe('the recruiter', () => {
 		await expect(
 			page.getByRole('heading', {
 				level: 2,
-				name: 'Find talent with exactly the skills you need'
+				name: 'See where a candidate used each skill, and for how long'
 			})
 		).toBeVisible();
 		await expect(

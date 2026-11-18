@@ -1,10 +1,12 @@
 <!--
 @component
-Terms of use (English): eligibility (age and working age), the service, accounts and portfolios,
-user content and its licence, prohibited content (discriminatory job descriptions, minors),
-recruiters (accepted when opening the recruiter space; real positions, the pay actually offered,
-no maximum age, the right to act for the employer), imports, meetings, moderation (DSA arts 14, 16,
-17), termination, liability, changes, law.
+Terms of use (English): eligibility (age and working age), the service (candidates never pay,
+L5321-3; free for recruiters for now; no exclusivity), accounts and portfolios, user content and
+its licence, prohibited content (discriminatory job descriptions, minors), recruiters (accepted when
+opening the recruiter space; real positions, the pay actually offered, no maximum age, the right to
+act for the employer; the activity is placement, L5321-1: the site puts people in touch, takes no
+part in hiring and scores only job descriptions, against a candidate's own criteria), imports,
+meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law.
 -->
 <script module lang="ts">
 	import type { LegalSection } from '../legalDocuments.ts';
@@ -77,11 +79,19 @@ no maximum age, the right to act for the employer), imports, meetings, moderatio
 	for. The site does not publish job descriptions.
 </p>
 <p>
-	The service is <strong>free</strong> and provided <strong>as it is</strong>. We work to keep it
-	available and correct, but we do not guarantee that it is always available or free of errors, and
-	we may change, limit or stop features, telling you in advance when a change affects you
-	significantly. The site helps candidates and recruiters meet; it does not guarantee a job, a
-	candidate or a meeting, and it is not a party to any contract between them.
+	<strong>Candidates never pay</strong> for the service: French law forbids asking people looking
+	for a job for anything, directly or indirectly, in return for placement services (article L5321-3
+	of the French Labour Code). The service is currently <strong>free for recruiters</strong> too; we
+	will tell a recruiter before any paid feature applies to them, and charge them nothing they did
+	not agree to. There is <strong>no exclusivity</strong>: candidates and recruiters are free to use
+	other services at the same time, and to contact or hire each other without going through the site.
+</p>
+<p>
+	The service is provided <strong>as it is</strong>. We work to keep it available and correct, but
+	we do not guarantee that it is always available or free of errors, and we may change, limit or
+	stop features, telling you in advance when a change affects you significantly. The site helps
+	candidates and recruiters meet; it does not guarantee a job, a candidate or a meeting, and it is
+	not a party to any contract between them.
 </p>
 
 <h3 id="account">Your account and your portfolio</h3>
@@ -114,7 +124,8 @@ no maximum age, the right to act for the employer), imports, meetings, moderatio
 		people's rights;
 	</li>
 	<li>
-		you understand that a portfolio is public: do not publish information you want to keep private,
+		you understand that a portfolio is public: anyone who has its address can read it, even though
+		search engines are asked not to list it. Do not publish information you want to keep private,
 		such as health data, religious or political views, identity numbers or a home address.
 	</li>
 </ul>
@@ -195,8 +206,18 @@ no maximum age, the right to act for the employer), imports, meetings, moderatio
 </ul>
 <p>
 	Before hiring, recruiters must check that the candidate is legally allowed to do the job,
-	including their age and right to work. The site does not select, score or rank candidates, and it
-	is not a recruitment agency or an employer.
+	including their age and right to work.
+</p>
+<p>
+	By bringing together job descriptions and people looking for a job, the site carries out a
+	placement activity within the meaning of article L5321-1 of the French Labour Code: it puts
+	candidates and recruiters in touch. The publisher takes no part in their decisions, hiring
+	decisions included, is not the employer, and is not a party to the employment contract that may
+	follow. The site does not assess candidates, and does not rank or filter them. The only score it
+	computes is that of a job description, against the criteria a candidate set for the job they are
+	looking for, when the candidate adds this step to their hiring journey: by fixed rules, not by an
+	AI model, and with the minimum the candidate chose (see the
+	<LegalDocLink doc="privacy" {lang} hash="ai">privacy policy</LegalDocLink>).
 </p>
 
 <h3 id="imports">Résumé and job description imports</h3>

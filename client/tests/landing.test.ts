@@ -122,7 +122,10 @@ test.describe('landing page, signed out', () => {
 		await site.getByRole('link', { name: 'For recruiters' }).click();
 		await expect(page).toHaveURL(/\/recruiter$/);
 		await expect(
-			page.getByRole('heading', { level: 2, name: 'Find talent with exactly the skills you need' })
+			page.getByRole('heading', {
+				level: 2,
+				name: 'See where a candidate used each skill, and for how long'
+			})
 		).toBeVisible();
 		await expect(outsidePage).toHaveCount(0);
 		await expect(

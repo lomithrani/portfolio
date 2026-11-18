@@ -61,6 +61,23 @@ const forbidGoogle = (page: Page) => {
 
 const legalNav = (page: Page) => page.getByRole('navigation', { name: 'Legal' });
 
+/**
+ * The text of a section of the document on the page: what follows its heading (`h3#id`) up to the
+ * next section's, with its spaces collapsed
+ */
+const sectionText = (page: Page, id: string) =>
+	page.locator(`article[data-legal-document] h3#${id}`).evaluate((heading) => {
+		const parts: string[] = [];
+		let node = heading.nextElementSibling;
+		while (node && node.tagName !== 'H3') {
+			parts.push(node.textContent ?? '');
+			node = node.nextElementSibling;
+		}
+		return parts.join(' ').replace(/\s+/g, ' ');
+	});
+
+const CLOUDFLARE_PRIVACY = 'https://www.cloudflare.com/privacypolicy/';
+
 test.describe('legal pages', () => {
 	for (const doc of PAGES) {
 		for (const lang of ['en', 'fr'] as const) {
@@ -231,6 +248,74 @@ test.describe('legal pages', () => {
 			await expect(notConfigured).toBeVisible();
 			await expect(page.locator('a[href^="mailto:"]:not([href*="railway.com"])')).toHaveCount(0);
 		}
+	});
+
+	test('the terms say candidates never pay and what the site does in hiring', async ({ page }) => {
+		await page.goto('/legal/terms');
+		const service = await sectionText(page, 'service');
+		expect(service).toContain(
+			'Candidates never pay for the service: French law forbids asking people looking for a job for anything, directly or indirectly, in return for placement services (article L5321-3 of the French Labour Code).'
+		);
+		expect(service).toContain('The service is currently free for recruiters too');
+		expect(service).toContain('There is no exclusivity');
+		expect(service).toContain('it is not a party to any contract between them');
+		expect(await sectionText(page, 'content')).toContain(
+			'anyone who has its address can read it, even though search engines are asked not to list it.'
+		);
+		const recruiters = await sectionText(page, 'recruiters');
+		expect(recruiters).toContain(
+			'the site carries out a placement activity within the meaning of article L5321-1 of the French Labour Code: it puts candidates and recruiters in touch.'
+		);
+		expect(recruiters).toContain(
+			'The publisher takes no part in their decisions, hiring decisions included, is not the employer, and is not a party to the employment contract that may follow.'
+		);
+		// The site scores job descriptions on a candidate's journey: it never says it scores nothing
+		expect(recruiters).toContain('The only score it computes is that of a job description');
+		const article = page.locator('article[data-legal-document]');
+		await expect(article).not.toContainText('recruitment agency');
+		await expect(article).not.toContainText('does not select, score or rank');
+
+		await page.goto('/legal/terms?lang=fr');
+		const serviceFr = await sectionText(page, 'service');
+		expect(serviceFr).toContain(
+			"Les candidats ne paient jamais le service : la loi française interdit d'exiger des personnes à la recherche d'un emploi une quelconque rétribution, directe ou indirecte, en contrepartie de services de placement (article L5321-3 du code du travail)."
+		);
+		expect(serviceFr).toContain('Le service est actuellement gratuit pour les recruteurs aussi');
+		expect(serviceFr).toContain("Il n'y a aucune exclusivité");
+		expect(await sectionText(page, 'content')).toContain(
+			'toute personne qui a son adresse peut le lire, même si les moteurs de recherche sont priés de ne pas le référencer.'
+		);
+		const recruitersFr = await sectionText(page, 'recruiters');
+		expect(recruitersFr).toContain(
+			"le site exerce une activité de placement au sens de l'article L5321-1 du code du travail : il met en relation candidats et recruteurs."
+		);
+		expect(recruitersFr).toContain(
+			"L'éditeur ne prend part à aucune de leurs décisions, notamment d'embauche, n'est pas l'employeur et n'est pas partie au contrat de travail qui peut en découler."
+		);
+		expect(recruitersFr).toContain("La seule note qu'il calcule est celle d'une offre d'emploi");
+		await expect(article).not.toContainText('cabinet de recrutement');
+	});
+
+	test('the privacy policy names Cloudflare in front of the pages, not the API', async ({
+		page
+	}) => {
+		await page.goto('/legal/privacy');
+		expect(await sectionText(page, 'recipients')).toContain(
+			"Cloudflare, Inc. (USA): the content delivery network and proxy that the site's pages are served through (the API is reached without it)."
+		);
+		expect(await sectionText(page, 'transfers')).toContain(
+			'Our host, Cloudflare, Anthropic, Google, GitHub and our monitoring provider may process data in the United States'
+		);
+		await expect(page.locator(`article a[href="${CLOUDFLARE_PRIVACY}"]`)).toHaveCount(1);
+
+		await page.goto('/legal/privacy?lang=fr');
+		expect(await sectionText(page, 'recipients')).toContain(
+			"Cloudflare, Inc. (États-Unis) : le réseau de diffusion de contenu et le proxy par lesquels passent les pages du site (l'API est jointe sans lui)."
+		);
+		expect(await sectionText(page, 'transfers')).toContain(
+			'Notre hébergeur, Cloudflare, Anthropic, Google, GitHub et notre prestataire de supervision peuvent traiter des données aux États-Unis'
+		);
+		await expect(page.locator(`article a[href="${CLOUDFLARE_PRIVACY}"]`)).toHaveCount(1);
 	});
 
 	test('the privacy policy carries the Google Limited Use statement', async ({ page }) => {

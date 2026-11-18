@@ -238,12 +238,12 @@ export const m = defineMessages({
 				fr: 'Que voient les recruteurs de ce que je recherche ?'
 			},
 			score: {
-				en: 'The score of their job and the minimum you set. If you allow it, they also see how the job does on each criterion (it matches, partly, or not) and which of your deal-breakers it misses, never what you asked for or how much the other criteria matter to you.',
-				fr: "La note de leur offre et le minimum que vous avez fixé. Si vous l'autorisez, ils voient aussi le résultat de l'offre sur chaque critère (elle correspond, en partie, ou non) et ceux de vos critères éliminatoires qu'elle ne remplit pas, jamais ce que vous avez demandé ni l'importance que vous accordez aux autres critères."
+				en: 'The score of their job and the minimum you set. If you allow it, they also see how the job does on each criterion (it matches, partly, or not) and which of your deal-breakers it misses, never what you asked for or how much the other criteria matter to you. A recruiter who tries several jobs could still guess part of it from the scores.',
+				fr: "La note de leur offre et le minimum que vous avez fixé. Si vous l'autorisez, ils voient aussi le résultat de l'offre sur chaque critère (elle correspond, en partie, ou non) et ceux de vos critères éliminatoires qu'elle ne remplit pas, jamais ce que vous avez demandé ni l'importance que vous accordez aux autres critères. Un recruteur qui essaie plusieurs offres pourrait toutefois en deviner une partie à partir des notes."
 			},
 			address: {
-				en: "Recruiters never see the address you give for your commute. To find it and compute travel times, it is sent to the Géoplateforme of IGN, the French state's map service, without your name or your account. Details in the <privacy>privacy policy</privacy>.",
-				fr: "Les recruteurs ne voient jamais l'adresse que vous indiquez pour votre trajet. Pour la localiser et calculer les temps de trajet, elle est envoyée à la Géoplateforme de l'IGN, le service cartographique de l'État français, sans votre nom ni votre compte. Détails dans la <privacy>politique de confidentialité</privacy>."
+				en: "Recruiters never see the address you give for your commute. To find it and compute travel times, it is sent to the Géoplateforme of IGN, the French state's map service, and, for public transport times, its position to a journey planner, without your name or your account. Details in the <privacy>privacy policy</privacy>.",
+				fr: "Les recruteurs ne voient jamais l'adresse que vous indiquez pour votre trajet. Pour la localiser et calculer les temps de trajet, elle est envoyée à la Géoplateforme de l'IGN, le service cartographique de l'État français, et, pour les temps en transports en commun, sa position à un calculateur d'itinéraires, sans votre nom ni votre compte. Détails dans la <privacy>politique de confidentialité</privacy>."
 			}
 		},
 		deletion: {
@@ -253,8 +253,8 @@ export const m = defineMessages({
 				fr: "Oui. Votre <account>page de compte</account> supprime d'un coup votre compte et tout ce qui y est lié : portfolio, parcours de recrutement et accès à Google Agenda. Votre adresse redevient libre pour quelqu'un d'autre."
 			},
 			remains: {
-				en: "Meetings already in someone's calendar and step suggestions already on GitHub (which do not name you) stay; server logs expire on their own. Details in the <privacy>privacy policy</privacy>.",
-				fr: "Les rendez-vous déjà inscrits dans l'agenda de quelqu'un et les suggestions d'étapes déjà publiées sur GitHub (qui ne vous nomment pas) restent ; les journaux du serveur expirent d'eux-mêmes. Détails dans la <privacy>politique de confidentialité</privacy>."
+				en: "Meetings already in someone's calendar, and the step suggestions and feedback already on GitHub (which do not name you), stay; server logs expire on their own. Details in the <privacy>privacy policy</privacy>.",
+				fr: "Les rendez-vous déjà inscrits dans l'agenda de quelqu'un, ainsi que les suggestions d'étapes et les avis déjà publiés sur GitHub (qui ne vous nomment pas), restent ; les journaux du serveur expirent d'eux-mêmes. Détails dans la <privacy>politique de confidentialité</privacy>."
 			}
 		},
 		age: {

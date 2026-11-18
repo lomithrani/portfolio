@@ -266,7 +266,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	monitoring is enabled, our monitoring provider receives traces of the requests, which include the
 	IP address, the browser's user agent, the address of the page without its query string, and the
 	request headers (cookies, authorisation headers, query strings and request bodies are removed
-	before they are sent).
+	before they are sent). The requests for the site's pages, though not those to its API, first go
+	through Cloudflare, which therefore also sees your IP address (see
+	<a class="link-text" href="#recipients">who receives your data</a>).
 </p>
 
 <h4 id="data-device">On your device</h4>
@@ -389,6 +391,16 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				>);
 			</li>
 			<li>
+				Cloudflare, Inc. (USA): the content delivery network and proxy that the site's pages are
+				served through (the API is reached without it). It receives each request for a page, with
+				your IP address and your browser's details, and the page sent back, and your browser may
+				report to it the connections to these pages that fail (<a
+					class="link-text"
+					href={LINKS.cloudflarePrivacy}
+					rel="noopener noreferrer">privacy policy</a
+				>);
+			</li>
+			<li>
 				Anthropic PBC (USA): reading the résumé and job description PDFs you import, and sorting the
 				feedback you send, where this site enables it. Under Anthropic's <a
 					class="link-text"
@@ -444,8 +456,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 <h3 id="transfers">Transfers outside the European Union</h3>
 <p>
-	Our host, Anthropic, Google, GitHub and our monitoring provider may process data in the
-	<strong>United States</strong>; the database is hosted there. These transfers rely on the
+	Our host, Cloudflare, Anthropic, Google, GitHub and our monitoring provider may process data in
+	the <strong>United States</strong>; the database is hosted there. These transfers rely on the
 	<a class="link-text" href={LINKS.dpf} rel="noopener noreferrer">EU-US Data Privacy Framework</a>
 	(adequacy decision of the European Commission of 10 July 2023) for recipients certified under it, and
 	otherwise on the

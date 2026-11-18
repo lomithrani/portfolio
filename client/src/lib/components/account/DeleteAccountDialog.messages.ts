@@ -31,9 +31,10 @@ export const m = defineMessages({
 			fr: 'Les brouillons que ce navigateur conserve pour votre compte.'
 		}
 	},
+	/** What deleting the account cannot take back (privacy policy, #retention) */
 	whatStays: {
-		en: 'Meetings already added to Google calendars stay there, and step suggestions already published on GitHub stay (they do not name you).',
-		fr: "Les rendez-vous déjà ajoutés à des agendas Google y restent, et les suggestions d'étape déjà publiées sur GitHub restent (elles ne vous nomment pas)."
+		en: 'Meetings already added to Google calendars stay there, and the step suggestions and feedback already published on GitHub stay (they do not name you; write to us to have one removed).',
+		fr: "Les rendez-vous déjà ajoutés à des agendas Google y restent, et les suggestions d'étape et les avis déjà publiés sur GitHub restent (ils ne vous nomment pas ; écrivez-nous pour en faire retirer un)."
 	},
 	/** The field's label; `word` is what the person types (DELETE_CONFIRMATION_WORD) */
 	typeToConfirm: {

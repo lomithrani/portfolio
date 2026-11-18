@@ -257,17 +257,80 @@ in place of the publisher and contact, and the web deploy logs one warning at st
 (`LEGAL_PUBLISHER_NAME is not set: the legal notice and the privacy policy show ...`). Without a
 SIREN the publisher is presented as an individual acting on a non-professional basis.
 
-Before going live, confirm what the texts state about the operations: log and trace retention
-("up to 30 days", `LOG_RETENTION` in `client/src/lib/components/legal/legalDocuments.ts`),
-database backups, and the processors' transfer basis (Railway, Anthropic, Google, GitHub, the
-monitoring provider). When the Terms of use or the Privacy policy change materially, bump
-`LEGAL_VERSION` in `common/models/legal.ts`: accounts are asked to accept the new version, and a
-claim needs it, as does the recruiter space: opening one, and every recruiter route, which answers
-422 on `consent` until the recruiter accepts the new version (the recruiter pages then show the
-terms to accept). Recruiter spaces opened before recruiters accepted the terms (before the
-`recruiter` consent source) are asked the same way. Reseed the e2e database after a bump (`bun run
---cwd server seed:e2e` records the version in force for the e2e recruiter), locally and in the
-cloud environment.
+Before going live, confirm what the texts state about the operations: log and trace retention ("up
+to 30 days", `LOG_RETENTION` in `client/src/lib/components/legal/legalDocuments.ts`), database
+backups, and the processors' transfer basis (Railway, Cloudflare, Anthropic, Google, GitHub, the
+monitoring provider: each on the [Data Privacy Framework
+list](https://www.dataprivacyframework.gov/list), or with standard contractual clauses in its data
+processing terms; for Cloudflare, that the account is covered by its customer data processing
+addendum). When the Terms of use or the Privacy policy change materially, bump `LEGAL_VERSION` in
+`common/models/legal.ts`: accounts are asked to accept the new version, and a claim needs it, as
+does the recruiter space: opening one, and every recruiter route, which answers 422 on `consent`
+until the recruiter accepts the new version (the recruiter pages then show the terms to accept).
+Recruiter spaces opened before recruiters accepted the terms (before the `recruiter` consent source)
+are asked the same way. Reseed the e2e database after a bump (`bun run --cwd server seed:e2e`
+records the version in force for the e2e recruiter), locally and in the cloud environment.
+
+**Cloudflare.** The privacy policy names Cloudflare, Inc. as the content delivery network and
+proxy in front of the **web pages only** (`#recipients`, `#data-technical` and `#transfers`): on
+2026-11-18, `curl -sI https://portfolio.gentil.tech/` answered `server: cloudflare` with a
+`cf-ray`, while `https://api.portfolio.gentil.tech/health` and both staging hosts answered
+`server: railway-hikari` (Railway directly). Cloudflare set no cookie and added no script to the
+pages (no Web Analytics beacon, which "no analytics" in the privacy policy and the cookies page
+rules out); it sends `NEL` and `Report-To` headers, so a browser may report failed connections to
+it, which the privacy policy says. Run the same checks after changing a Cloudflare setting:
+
+```bash
+for url in https://portfolio.gentil.tech/ https://api.portfolio.gentil.tech/health; do
+  echo "$url"; curl -s -o /dev/null -D - "$url" | grep -iE '^(server|cf-ray|set-cookie|nel):'
+done
+curl -s https://portfolio.gentil.tech/ | grep -c 'cdn-cgi\|cloudflareinsights'   # 0: no script added
+```
+
+Putting the API (or staging) behind Cloudflare changes the texts: say so in the privacy policy
+(both languages; the API carries the session cookie and every form's data), bump `LEGAL_VERSION`,
+and set `CLIENT_IP_HEADER=CF-Connecting-IP` on that API (see
+[Booking protection](#booking-protection)). A Cloudflare cookie (`__cf_bm` of Bot Fight Mode, the
+`cf_clearance` of a passed challenge) or Web Analytics goes in the cookies page and the privacy
+policy first.
+
+**Who pays.** The Terms say candidates never pay (article L5321-3 of the Labour Code forbids
+asking job seekers for anything in return for placement services) and that the service is free
+for recruiters for now, who are told before any paid feature applies to them. A paid feature can
+only ever be for recruiters, and the Terms (and `LEGAL_VERSION`) change before it ships.
+
+**Annual placement report.** The Terms name the activity placement (article L5321-1: the site
+puts job offers and job seekers in touch, and is not a party to the employment contract). A
+private organisation that runs placement sends the préfet a report **every year before 31 March**
+on the year before (article R5323-8): its placement turnover and that turnover's share of its
+total, and the number of job seekers received, placed and still registered on 31 December, by sex
+and age. Ask the DDETS of the publisher's département (Paris) for the form, and whether "not known"
+is accepted for sex and age: the site collects neither, and must not start to (data minimisation,
+and a sex or age field next to hiring invites discrimination, article L5321-2). Placement turnover
+is 0 while the service is free, and placements are not tracked (the site never learns who was
+hired). The counts, from the production database, in January (counts only, nothing about a
+person):
+
+```bash
+mongosh "<production MONGO_URL>" --quiet --eval '
+  const year = 2026;
+  const from = new Date(Date.UTC(year, 0, 1)), to = new Date(Date.UTC(year + 1, 0, 1));
+  const idAt = (date) => ObjectId.createFromTime(Math.floor(date.getTime() / 1000));
+  printjson({
+    year,
+    portfoliosCreated: db.domains.countDocuments({ _id: { $gte: idAt(from), $lt: idAt(to) } }),
+    portfoliosOn31December: db.domains.countDocuments({ _id: { $lt: idAt(to) } }),
+    recruiterSpacesOpened: db.users.countDocuments({ "recruiter.enabledAt": { $gte: from, $lt: to } }),
+    journeysStarted: db.workflowinstances.countDocuments({ createdAt: { $gte: from, $lt: to } })
+  })'
+```
+
+A portfolio has no creation date of its own: its `_id` holds the second it was created. Job
+seekers received are the portfolios created that year; those still registered on 31 December are
+the portfolios created before it that still exist, so run it early in January (a portfolio goes
+with its account). `recruiterSpacesOpened` and `journeysStarted` (a recruiter's first step on a
+candidate's journey; gone with either account) describe the other side and the activity; keep the
+answer with the report.
 
 ## Google Calendar appointments
 
@@ -353,8 +416,9 @@ proxy, so the API reads the `X-Real-IP` header Railway sets instead: that is the
 `CLIENT_IP_HEADER` whenever Railway's `RAILWAY_PROJECT_ID` variable is present, so nothing needs
 setting on Railway. Put another proxy in front of Railway (e.g. Cloudflare's orange cloud on the
 custom domain) and `X-Real-IP` becomes that proxy's address: set `CLIENT_IP_HEADER` to the header
-holding the visitor's address there (`CF-Connecting-IP` for Cloudflare). For a list header such as
-`X-Forwarded-For`, the API takes the last entry, the one the closest proxy appended. Only name a
+holding the visitor's address there (`CF-Connecting-IP` for Cloudflare; today Cloudflare fronts
+the web pages only, not the API, so the default holds: see [Legal pages](#legal-pages)). For a
+list header such as `X-Forwarded-For`, the API takes the last entry, the one the closest proxy appended. Only name a
 header that proxy overwrites: anything else, a client can set to any value. An invalid header
 name stops the deployment with `CLIENT_IP_HEADER must be an HTTP header name`.
 

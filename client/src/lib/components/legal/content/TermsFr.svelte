@@ -1,10 +1,13 @@
 <!--
 @component
 Conditions d'utilisation (français), traduction fidèle de TermsEn.svelte : conditions d'âge et
-d'âge légal de travail, le service, comptes et portfolios, contenus et licence, contenus interdits
-(offres discriminatoires, mineurs), recruteurs (acceptation à l'ouverture de l'espace recruteur ;
-poste réel, rémunération réellement proposée, aucune limite d'âge supérieure, droit d'agir pour l'employeur),
-imports, rendez-vous, modération (DSA art. 14, 16, 17), résiliation, responsabilité,
+d'âge légal de travail, le service (les candidats ne paient jamais, L5321-3 ; gratuit pour les
+recruteurs pour l'instant ; aucune exclusivité), comptes et portfolios, contenus et licence,
+contenus interdits (offres discriminatoires, mineurs), recruteurs (acceptation à l'ouverture de
+l'espace recruteur ; poste réel, rémunération réellement proposée, aucune limite d'âge supérieure,
+droit d'agir pour l'employeur ; l'activité est du placement, L5321-1 : le site met en relation, ne
+prend pas part à l'embauche et ne note que des offres, au regard des critères propres d'un
+candidat), imports, rendez-vous, modération (DSA art. 14, 16, 17), résiliation, responsabilité,
 modifications, droit applicable.
 -->
 <script module lang="ts">
@@ -85,12 +88,21 @@ modifications, droit applicable.
 	son parcours peut la noter au regard du poste qu'il recherche. Le site ne publie pas d'offres d'emploi.
 </p>
 <p>
-	Le service est <strong>gratuit</strong> et fourni <strong>en l'état</strong>. Nous faisons en
-	sorte qu'il reste disponible et correct, mais nous ne garantissons pas qu'il soit toujours
-	disponible ni exempt d'erreurs, et nous pouvons modifier, limiter ou arrêter des fonctionnalités,
-	en vous prévenant à l'avance lorsqu'un changement vous affecte de manière importante. Le site aide
-	candidats et recruteurs à se rencontrer ; il ne garantit ni un emploi, ni un candidat, ni un
-	rendez-vous, et il n'est partie à aucun contrat conclu entre eux.
+	<strong>Les candidats ne paient jamais</strong> le service : la loi française interdit d'exiger
+	des personnes à la recherche d'un emploi une quelconque rétribution, directe ou indirecte, en
+	contrepartie de services de placement (article L5321-3 du code du travail). Le service est
+	actuellement <strong>gratuit pour les recruteurs</strong> aussi ; nous préviendrons un recruteur
+	avant qu'une fonctionnalité payante ne s'applique à lui, et ne lui facturerons rien qu'il n'ait
+	accepté. Il n'y a <strong>aucune exclusivité</strong> : candidats et recruteurs sont libres d'utiliser
+	d'autres services en même temps, et de se contacter ou de conclure un contrat sans passer par le site.
+</p>
+<p>
+	Le service est fourni <strong>en l'état</strong>. Nous faisons en sorte qu'il reste disponible et
+	correct, mais nous ne garantissons pas qu'il soit toujours disponible ni exempt d'erreurs, et nous
+	pouvons modifier, limiter ou arrêter des fonctionnalités, en vous prévenant à l'avance lorsqu'un
+	changement vous affecte de manière importante. Le site aide candidats et recruteurs à se
+	rencontrer ; il ne garantit ni un emploi, ni un candidat, ni un rendez-vous, et il n'est partie à
+	aucun contrat conclu entre eux.
 </p>
 
 <h3 id="account">Votre compte et votre portfolio</h3>
@@ -127,9 +139,10 @@ modifications, droit applicable.
 		des autres ;
 	</li>
 	<li>
-		vous comprenez qu'un portfolio est public : ne publiez pas d'informations que vous voulez garder
-		privées, comme des données de santé, des opinions religieuses ou politiques, des numéros
-		d'identité ou une adresse personnelle.
+		vous comprenez qu'un portfolio est public : toute personne qui a son adresse peut le lire, même
+		si les moteurs de recherche sont priés de ne pas le référencer. Ne publiez pas d'informations
+		que vous voulez garder privées, comme des données de santé, des opinions religieuses ou
+		politiques, des numéros d'identité ou une adresse personnelle.
 	</li>
 </ul>
 <p>
@@ -161,7 +174,7 @@ modifications, droit applicable.
 		situation de famille, leur grossesse, leur handicap, leur état de santé, leurs convictions
 		religieuses, leurs opinions politiques, leurs activités syndicales, leur apparence physique,
 		leur nom de famille, leur lieu de résidence ou tout autre critère interdit par l'article L1132-1
-		du Code du travail ou par la loi applicable au poste ;
+		du code du travail ou par la loi applicable au poste ;
 	</li>
 	<li>
 		viser des personnes n'ayant pas atteint l'âge légal pour travailler, ou proposer à des personnes
@@ -214,8 +227,18 @@ modifications, droit applicable.
 </ul>
 <p>
 	Avant d'embaucher, les recruteurs doivent vérifier que le candidat est légalement autorisé à
-	occuper le poste, notamment son âge et son droit au travail. Le site ne sélectionne, ne note ni ne
-	classe les candidats, et il n'est ni un cabinet de recrutement ni un employeur.
+	occuper le poste, notamment son âge et son droit au travail.
+</p>
+<p>
+	En rapprochant des offres d'emploi et des personnes à la recherche d'un emploi, le site exerce une
+	activité de placement au sens de l'article L5321-1 du code du travail : il met en relation
+	candidats et recruteurs. L'éditeur ne prend part à aucune de leurs décisions, notamment
+	d'embauche, n'est pas l'employeur et n'est pas partie au contrat de travail qui peut en découler.
+	Le site n'évalue pas les candidats, et ne les classe ni ne les filtre. La seule note qu'il calcule
+	est celle d'une offre d'emploi, au regard des critères qu'un candidat a fixés pour le poste qu'il
+	recherche, lorsque le candidat ajoute cette étape à son parcours de recrutement : selon des règles
+	fixes, et non par un modèle d'IA, avec le minimum choisi par le candidat (voir la
+	<LegalDocLink doc="privacy" {lang} hash="ai">politique de confidentialité</LegalDocLink>).
 </p>
 
 <h3 id="imports">Imports de CV et d'offres d'emploi</h3>

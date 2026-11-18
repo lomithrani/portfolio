@@ -40,6 +40,13 @@ export const LINKS = {
 	anthropicPrivacy: 'https://www.anthropic.com/legal/privacy',
 	anthropicCommercialTerms: 'https://www.anthropic.com/legal/commercial-terms',
 	railwayPrivacy: 'https://railway.com/legal/privacy',
+	/**
+	 * The content delivery network in front of the web application's pages, not of the API
+	 * (production, checked 2026-11-18: the pages answer with `server: cloudflare` and a `cf-ray`,
+	 * the API with `server: railway-hikari`). If it ever fronts the API too, the privacy policy
+	 * says so (docs/DEPLOYMENT.md, "Legal pages")
+	 */
+	cloudflarePrivacy: 'https://www.cloudflare.com/privacypolicy/',
 	githubPrivacy:
 		'https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement',
 	/** The French state's map services (geocoding, routes), used for travel times */

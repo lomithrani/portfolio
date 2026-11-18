@@ -74,7 +74,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		await expect(
 			page.getByRole('heading', {
 				level: 2,
-				name: 'Trouvez des talents qui ont exactement les compétences recherchées'
+				name: 'Voyez où un candidat a utilisé chaque compétence, et pendant combien de temps'
 			})
 		).toBeVisible();
 		// The sign-in starts with the age and terms box, in French too
@@ -143,7 +143,7 @@ test.describe('a visitor whose browser prefers English', () => {
 		await expect(
 			page.getByRole('heading', {
 				level: 2,
-				name: 'Trouvez des talents qui ont exactement les compétences recherchées'
+				name: 'Voyez où un candidat a utilisé chaque compétence, et pendant combien de temps'
 			})
 		).toBeVisible();
 		await page.goto('/louis.gentil/experiences');

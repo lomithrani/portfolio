@@ -203,6 +203,12 @@ test.describe('deleting the account', () => {
 				'If you connected Google Calendar, its tokens are deleted and Google is asked to revoke its access.'
 			)
 		).toBeVisible();
+		// What deleting cannot take back is said too: what was sent to Google and GitHub
+		await expect(
+			dialog.getByText(
+				'the step suggestions and feedback already published on GitHub stay (they do not name you; write to us to have one removed).'
+			)
+		).toBeVisible();
 		const confirmation = dialog.getByLabel('Type DELETE to confirm');
 		await expect(confirmation).toBeFocused();
 
