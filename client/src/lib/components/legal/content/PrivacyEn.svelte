@@ -64,8 +64,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			name and picture are not kept.
 		</li>
 		<li>
-			What you put in your portfolio is public: it is the point of the site. Do not publish what you
-			want to keep private.
+			What you put in your portfolio is public: anyone with its address can read it, which is the
+			point of the site. We ask search engines not to list it. Do not publish what you want to keep
+			private.
 		</li>
 		<li>
 			If you import a résumé, the PDF is sent to Anthropic (USA) to draft your experiences. We do
@@ -114,12 +115,20 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <h4 id="data-portfolio">Your portfolio (public)</h4>
 <p>
 	When you claim a portfolio, its address (for example <code>{page.url.host}/jane.doe</code>) and
-	everything you add to it are <strong>public</strong>: anyone can read them and search engines can
-	index them. This includes the title and subtitle of the header (usually your name), the theme,
-	your experiences with their companies, locations, dates and descriptions, your projects and
-	skills, your hiring journey and its notes, and the public part of your booking schedules (title,
-	description, time zone, meeting location and available times). The public data of a portfolio also
-	contains a random internal identifier of the owner's account, never their email address.
+	everything you add to it are <strong>public</strong>: anyone with the address can read them. This
+	includes the title and subtitle of the header (usually your name), the theme, your experiences
+	with their companies, locations, dates and descriptions, your projects and skills, your hiring
+	journey and its notes, and the public part of your booking schedules (title, description, time
+	zone, meeting location and available times). The public data of a portfolio also contains a random
+	internal identifier of the owner's account, never their email address.
+</p>
+<p>
+	We ask search engines not to list portfolios: every page of a portfolio, and every answer of the
+	site's API, carries a <code>noindex</code> request, which the main search engines, such as Google and
+	Bing, follow. A page they had already listed leaves their results once they read it again, which can
+	take a few weeks. It is a request, not a lock: a service can ignore it, and anyone who has the address
+	of your portfolio, or is given it, can still open it. Sites where you share the address, such as LinkedIn,
+	read the page to show a preview of it.
 </p>
 <p>
 	The descriptions of experiences and projects can show images hosted on other sites, chosen by the

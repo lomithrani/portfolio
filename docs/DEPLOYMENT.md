@@ -834,6 +834,64 @@ mongosh "<production MONGO_URL>" --quiet --eval '
 An empty array (`[]`) means nothing to do. Otherwise, rename the domain (`db.domains.updateOne`
 with a free name) and tell its owner before deploying.
 
+## Search engines
+
+Portfolios are public to anyone with their address but are not listed by search engines
+(CLAUDE.md, "Search engines"): every page of a portfolio, the 404 of a name nobody claimed,
+`/account` and `/recruiter/jobs/*` answer with `x-robots-tag: noindex, nofollow, noarchive` and
+carry a robots meta, and the API sends the same header on every answer. The landing page, the
+legal pages, the job pages and `/recruiter` stay listed, with their canonical links.
+
+**robots.txt refuses nothing, on purpose.** A crawler has to fetch a page to read its `noindex`:
+a `Disallow` would hide the request, and a search engine can still list a refused address it
+finds through a link, without its content. It would also stop LinkedIn, Slack and the like from
+building the preview of a shared portfolio, and it could not name portfolios anyway (each is a
+top-level path, `/<name>`). With Cloudflare in front of the web service and its managed
+robots.txt on, Cloudflare puts its own block (`# BEGIN Cloudflare Managed Content` to
+`# END Cloudflare Managed Content`: `User-agent: *` with its content signals, and a `Disallow: /`
+for each AI training crawler it lists, such as GPTBot, ClaudeBot, CCBot or Google-Extended) above
+the lines of `client/static/robots.txt`, which follow unchanged. Keep it so, and check that the
+block adds no `Disallow: /` for `User-agent: *`.
+
+**Cloudflare must not get in the way.** Bot Fight Mode, Block AI bots, AI Crawl Control and any
+WAF rule must not challenge the crawlers of link previews (`LinkedInBot`, `Slackbot`,
+`Twitterbot`, `facebookexternalhit`), and no Transform Rule or cache rule may strip
+`X-Robots-Tag`.
+
+**Checks**, from outside, after a deploy that touches pages or headers (`GET` requests: the
+headers of a `HEAD` request may differ):
+
+```bash
+headers() { curl -s -o /dev/null -D - "$@"; }
+headers https://example.com/louis.gentil/experiences | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+headers https://example.com/louis.gentil/hire | grep -i '^x-robots-tag'          # the same
+headers https://example.com/a-name-nobody-claimed/experiences | grep -i '^x-robots-tag'   # the same, on the 404
+headers https://api.example.com/health | grep -i '^x-robots-tag'                 # the same
+curl -s https://example.com/louis.gentil/experiences | grep -o '<meta name="robots"[^>]*>'
+headers https://example.com/ | grep -ci '^x-robots-tag'                          # 0: the landing page is listed
+headers https://example.com/legal/privacy | grep -ci '^x-robots-tag'             # 0
+curl -s https://example.com/robots.txt | grep -i '^disallow'                     # no "Disallow: /" under "User-agent: *"
+curl -s -o /dev/null -w '%{http_code}\n' -A 'LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)' \
+  https://example.com/louis.gentil/experiences                                   # 200, not a challenge (403 or 503)
+```
+
+LinkedIn's [Post Inspector](https://www.linkedin.com/post-inspector/) on a portfolio's address
+then shows its preview.
+
+**Pages listed before.** A `noindex` counts from the next time a search engine reads the page,
+which can take weeks. Verify the domain in
+[Google Search Console](https://search.google.com/search-console) (a domain property, with the
+DNS `TXT` record it gives, added in Cloudflare), find what is listed (`site:portfolio.gentil.tech`
+in Google), and ask for the removal of each portfolio (**Removals**, **New request**, **Remove all
+URLs with this prefix**: `https://portfolio.gentil.tech/<name>/`). Google hides them for about six
+months, long enough to read the `noindex`; **Pages** then lists them under "Excluded by 'noindex'
+tag". Do the same in [Bing Webmaster Tools](https://www.bing.com/webmasters) (**Content Removal**),
+whose index other engines use too.
+
+**Limits.** `noindex` is a request. Google and Bing follow it; a crawler that ignores robots
+rules, or an AI answer engine, may not. That is why the landing FAQ and the privacy policy say
+that search engines are asked not to list a portfolio, never that it cannot be found.
+
 ## Verify a deploy
 
 1. **Build logs** (deployment, **Build Logs**, or `railway logs --build --service <service>`):
@@ -853,8 +911,11 @@ with a free name) and tell its owner before deploying.
    curl -s https://api.example.com/domain/louis.gentil/availability   # {"name":"louis.gentil","available":false,"reason":"taken"}
    curl -si -H 'Origin: https://example.com' https://api.example.com/domain/louis.gentil \
      | grep -i '^access-control-allow-origin'  # https://example.com
+   curl -s -o /dev/null -D - https://example.com/louis.gentil/experiences | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+   curl -s -o /dev/null -D - https://api.example.com/health | grep -i '^x-robots-tag'                 # the same
    ```
 
+   The other checks of what search engines and link previews get: [Search engines](#search-engines).
 4. **In the browser**: open the site, sign in with Google, reload the page and check you are still
    signed in (the `auth` cookie is stored for the API domain). With `GOOGLE_CLIENT_SECRET` set,
    **Admin, Appointments** shows the calendar as connected (or offers to connect it).

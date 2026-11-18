@@ -14,6 +14,7 @@ import {
 	setLocaleResolver,
 	type Locale
 } from 'portfolio-common';
+import { NOINDEX, isNoindexRoute } from '#lib/robots.ts';
 
 const storage = new AsyncLocalStorage<Locale>();
 
@@ -60,6 +61,11 @@ export const handle: Handle = ({ event, resolve }) => {
 			// The same URL is answered in the visitor's language
 			response.headers.append('vary', 'Accept-Language, Cookie');
 		}
+		// A portfolio and the private pages are not listed by search engines (lib/robots.ts): every
+		// answer of their routes says so, the page, its data (`__data.json`) and its error page,
+		// which for a name nobody claimed is the root +error.svelte, without the portfolio's layout
+		// and its robots meta
+		if (isNoindexRoute(event.route.id)) response.headers.set('x-robots-tag', NOINDEX);
 		return response;
 	});
 };

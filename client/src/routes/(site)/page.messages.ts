@@ -235,8 +235,8 @@ export const m = defineMessages({
 		visibility: {
 			question: { en: 'Who can see my portfolio?', fr: 'Qui peut voir mon portfolio ?' },
 			answer: {
-				en: 'Anyone with its address: your portfolio is public, and search engines may list it. Write only what you want to be public. Your email address is not shown on it.',
-				fr: "Toute personne qui a son adresse : votre portfolio est public, et les moteurs de recherche peuvent le référencer. N'y écrivez que ce que vous voulez rendre public. Votre adresse e-mail n'y figure pas."
+				en: 'Anyone with its address can open it. We ask search engines not to list it, and the main ones, such as Google and Bing, do as asked (a page they had already listed can take a few weeks to disappear). It is public all the same, and an address can be passed on: write only what you want to be public. Your email address is not shown on it.',
+				fr: "Toute personne qui a son adresse peut l'ouvrir. Nous demandons aux moteurs de recherche de ne pas le référencer, et les principaux, comme Google et Bing, le respectent (une page qu'ils avaient déjà référencée peut mettre quelques semaines à disparaître). Il reste public pour autant, et une adresse peut circuler : n'y écrivez que ce que vous voulez rendre public. Votre adresse e-mail n'y figure pas."
 			}
 		},
 		recruiters: {

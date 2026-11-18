@@ -64,8 +64,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			adresse e-mail. Le nom et la photo de votre compte Google ne sont pas conservés.
 		</li>
 		<li>
-			Ce que vous mettez dans votre portfolio est public : c'est le principe du site. Ne publiez pas
-			ce que vous souhaitez garder privé.
+			Ce que vous mettez dans votre portfolio est public : toute personne qui a son adresse peut le
+			lire, c'est le principe du site. Nous demandons aux moteurs de recherche de ne pas le
+			référencer. Ne publiez pas ce que vous souhaitez garder privé.
 		</li>
 		<li>
 			Si vous importez un CV, le PDF est envoyé à Anthropic (États-Unis) pour rédiger vos
@@ -114,13 +115,21 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <h4 id="data-portfolio">Votre portfolio (public)</h4>
 <p>
 	Lorsque vous créez un portfolio, son adresse (par exemple <code>{page.url.host}/jane.doe</code>)
-	et tout ce que vous y ajoutez sont <strong>publics</strong> : tout le monde peut les lire et les moteurs
-	de recherche peuvent les indexer. Cela comprend le titre et le sous-titre de l'en-tête (généralement
-	votre nom), le thème, vos expériences avec leurs entreprises, lieux, dates et descriptions, vos projets
-	et compétences, votre parcours de recrutement et ses notes, et la partie publique de vos agendas de
-	rendez-vous (titre, description, fuseau horaire, lieu du rendez-vous et créneaux disponibles). Les données
-	publiques d'un portfolio contiennent aussi un identifiant interne aléatoire du compte de son propriétaire,
-	jamais son adresse e-mail.
+	et tout ce que vous y ajoutez sont <strong>publics</strong> : toute personne qui a l'adresse peut les
+	lire. Cela comprend le titre et le sous-titre de l'en-tête (généralement votre nom), le thème, vos expériences
+	avec leurs entreprises, lieux, dates et descriptions, vos projets et compétences, votre parcours de
+	recrutement et ses notes, et la partie publique de vos agendas de rendez-vous (titre, description, fuseau
+	horaire, lieu du rendez-vous et créneaux disponibles). Les données publiques d'un portfolio contiennent
+	aussi un identifiant interne aléatoire du compte de son propriétaire, jamais son adresse e-mail.
+</p>
+<p>
+	Nous demandons aux moteurs de recherche de ne pas référencer les portfolios : chaque page d'un
+	portfolio, et chaque réponse de l'API du site, porte une demande <code>noindex</code>, que
+	respectent les principaux moteurs de recherche, comme Google et Bing. Une page qu'ils avaient déjà
+	référencée sort de leurs résultats lorsqu'ils la consultent à nouveau, ce qui peut prendre
+	quelques semaines. C'est une demande, pas un verrou : un service peut l'ignorer, et toute personne
+	qui a l'adresse de votre portfolio, ou à qui on la donne, peut toujours l'ouvrir. Les sites où
+	vous partagez l'adresse, comme LinkedIn, lisent la page pour en afficher un aperçu.
 </p>
 <p>
 	Les descriptions des expériences et des projets peuvent afficher des images hébergées sur d'autres

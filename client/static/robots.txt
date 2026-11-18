@@ -1,3 +1,10 @@
 # https://www.robotstxt.org/robotstxt.html
+#
+# Nothing is refused here, on purpose. Portfolios are not listed by search engines: their pages
+# answer with an `x-robots-tag: noindex` header and carry a robots meta (client/src/lib/robots.ts).
+# A crawler has to fetch a page to read that, and LinkedIn, Slack and the like fetch a shared
+# portfolio to build its preview; a Disallow would stop both, and could not name the portfolios
+# anyway (each is a top-level path, /<name>). In production Cloudflare puts its managed rules
+# above these lines (docs/DEPLOYMENT.md, "Search engines").
 User-agent: *
 Disallow:

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, mock, spyOn } from 'bun:test';
 import mongoose from 'mongoose';
 import { metrics, trace, ProxyTracerProvider } from '@opentelemetry/api';
 import { logs } from '@opentelemetry/api-logs';
-import { createApp, responseStatus } from '../app';
+import { createApp, responseStatus, X_ROBOTS_TAG } from '../app';
 import { env } from '../env';
 import { httpRequestCounter, httpRequestDuration } from '../instrumentation';
 import { google } from '../services/google';
@@ -275,6 +275,49 @@ describe('request bodies', () => {
     // No Content-Type: reaches the route, which then wants a session
     const bodyless = await makeRequest(createApp(), '/experiences', { method: 'POST' });
     expect(bodyless.status).toBe(401);
+  });
+});
+
+describe('search engines', () => {
+  it('are asked not to list any answer of the API, errors and preflights included', async () => {
+    const app = createApp();
+    const answers = {
+      ok: await makeRequest(app, '/isLogged'),
+      // userLogged, through onError
+      unauthorized: await makeRequest(app, '/me'),
+      // Body validation, through onError
+      invalid: await makeRequest(app, '/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      }),
+      // Thrown in onRequest, before any route
+      unsupported: await makeRequest(app, '/experiences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: 'x'
+      }),
+      unmatched: await makeRequest(app, '/wp-login.php'),
+      preflight: await makeRequest(app, '/experiences', {
+        method: 'OPTIONS',
+        headers: { Origin: env.ALLOWED_DOMAINS[0], 'Access-Control-Request-Method': 'PUT' }
+      })
+    };
+    // The metrics of these requests stay out of the next test's spies
+    await afterResponseHooks();
+
+    const seen = Object.fromEntries(
+      Object.entries(answers).map(([name, answer]) => [name, [answer.status, answer.headers.get('x-robots-tag')]])
+    );
+    expect(seen).toEqual({
+      ok: [200, X_ROBOTS_TAG],
+      unauthorized: [401, X_ROBOTS_TAG],
+      invalid: [422, X_ROBOTS_TAG],
+      unsupported: [415, X_ROBOTS_TAG],
+      unmatched: [404, X_ROBOTS_TAG],
+      preflight: [204, X_ROBOTS_TAG]
+    });
+    expect(X_ROBOTS_TAG.split(', ')).toContain('noindex');
   });
 });
 

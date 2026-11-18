@@ -16,6 +16,7 @@
 	import { page } from '$app/state';
 	import LanguageSwitch from '#lib/i18n/LanguageSwitch.svelte';
 	import LocaleLinks from '#lib/i18n/LocaleLinks.svelte';
+	import { NOINDEX, isNoindexRoute } from '#lib/robots.ts';
 	import { m } from './layout.messages.ts';
 
 	// Pages that belong to no portfolio: the recruiter space (/recruiter) and the public job pages
@@ -44,9 +45,21 @@
 	});
 
 	let header = $derived(inRecruiterSpace ? m.recruiter : m.jobs);
+
+	// The pages of the recruiter space that hold a job description are not listed by search
+	// engines (#lib/robots.ts; the server sends the same as a header): no canonical or hreflang
+	// link there, only the others name their addresses
+	let noindex = $derived(isNoindexRoute(page.route.id));
 </script>
 
-<LocaleLinks />
+<svelte:head>
+	{#if noindex}
+		<meta name="robots" content={NOINDEX} />
+	{/if}
+</svelte:head>
+{#if !noindex}
+	<LocaleLinks />
+{/if}
 
 <div class="h-full flex flex-col">
 	<Header headerTitle={header.title} headerSubtitle={header.subtitle} homeLink />

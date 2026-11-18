@@ -43,8 +43,8 @@ export const m = defineMessages({
 			fr: "De Google : l'identifiant de votre compte Google et votre adresse e-mail. Votre photo n'est pas conservée."
 		},
 		portfolio: {
-			en: 'Your portfolio and everything you publish on it, which anyone can read, and your hiring journey.',
-			fr: 'Votre portfolio et tout ce que vous y publiez, que tout le monde peut lire, ainsi que votre parcours de recrutement.'
+			en: 'Your portfolio and everything you publish on it, which anyone with its address can read (search engines are asked not to list it), and your hiring journey.',
+			fr: 'Votre portfolio et tout ce que vous y publiez, que toute personne qui a son adresse peut lire (nous demandons aux moteurs de recherche de ne pas le référencer), ainsi que votre parcours de recrutement.'
 		},
 		jobs: {
 			en: 'Your job descriptions, your applications and your meeting types.',
