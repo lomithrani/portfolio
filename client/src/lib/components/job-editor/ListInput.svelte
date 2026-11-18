@@ -16,7 +16,7 @@ editor's `locked`) is read-only: its items show without their remove buttons, wi
 	import type { JobListField } from '#services/jobDrafts.ts';
 	import { addListItems } from '#services/jobPosting.ts';
 	import FieldError from './FieldError.svelte';
-	import { getJobEditorContext } from './context';
+	import { LOCKED_CONTROL_CLASS, getJobEditorContext } from './context';
 	import { m as fieldMessages } from './Field.messages.ts';
 	import { m } from './ListInput.messages.ts';
 
@@ -153,7 +153,7 @@ editor's `locked`) is read-only: its items show without their remove buttons, wi
 				editor.pendingTextChanged(field);
 			}}
 			{id}
-			class="input min-w-0 flex-1"
+			class={['input min-w-0 flex-1', locked && LOCKED_CONTROL_CLASS]}
 			type="text"
 			autocomplete="off"
 			enterkeyhint="done"

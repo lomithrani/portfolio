@@ -16,6 +16,7 @@
 	import {
 		JOB_LIMITS,
 		highestPayMax,
+		isPayRangeTooWide,
 		jobTermsLocked,
 		locksJobTerms,
 		type JobStatus
@@ -156,9 +157,34 @@
 	// The status asked for, until the recruiter confirms it opens the posting (its terms lock)
 	let confirmingStatus = $state<JobStatus | null>(null);
 
-	/** The status control's choice: confirmed first when it opens a posting never opened */
+	/**
+	 * A posting whose range was saved wider than the cap before it cannot be opened (the API answers
+	 * 422 on pay.max): the toast says so, with the way to its editor
+	 */
+	function narrowPayToOpen(id: string, payMin: number) {
+		toaster.error({
+			title: m.narrowPayToOpen.title,
+			description: m.narrowPayToOpen.text(
+				formatAmount(highestPayMax(payMin)),
+				JOB_LIMITS.pay.maxRangeRatio
+			),
+			action: {
+				label: common.edit,
+				onClick: () => goto(resolve('/(app)/recruiter/jobs/[id]/edit', { id }))
+			}
+		});
+	}
+
+	/**
+	 * The status control's choice: confirmed first when it opens a posting never opened, unless it
+	 * cannot be opened as it is (its range is wider than the cap: nothing to confirm)
+	 */
 	function chooseStatus(status: JobStatus) {
 		if (!job || changingStatus) return;
+		if (locksJobTerms(status, job) && isPayRangeTooWide(job.pay)) {
+			narrowPayToOpen(job._id, job.pay.min);
+			return;
+		}
 		if (locksJobTerms(status, job)) confirmingStatus = status;
 		else changeStatus(status);
 	}
@@ -177,14 +203,9 @@
 				if (code === 401) sessionExpired();
 				else if (code === 404) loadState = { kind: 'not-found' };
 				else if (code === 422 && bodyProperty(error?.value) === 'pay.max') {
-					// Its range was saved wider than the cap before it: narrowed in the editor first
-					toaster.error({
-						title: m.narrowPayToOpen.title,
-						description: m.narrowPayToOpen.text(
-							formatAmount(highestPayMax(payMin)),
-							JOB_LIMITS.pay.maxRangeRatio
-						)
-					});
+					// Its range was saved wider than the cap before it (in another tab since this page
+					// loaded): narrowed in the editor first
+					narrowPayToOpen(id, payMin);
 				} else {
 					toaster.error({
 						title: failureText(error?.value, m.statusFailed)

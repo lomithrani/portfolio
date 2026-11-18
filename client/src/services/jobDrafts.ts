@@ -281,7 +281,8 @@ export function startingJobForms(
 	}: {
 		job?: JobPostingLike | null;
 		imported?: JobPostingLike | null;
-		duplicate?: JobPostingLike | null;
+		/** With the day it was opened, if it was: a copy of an opened posting starts capped */
+		duplicate?: (JobPostingLike & { publishedAt?: Date | string | null }) | null;
 		locked?: boolean;
 	},
 	readDraft: () => StoredJobDraft | undefined

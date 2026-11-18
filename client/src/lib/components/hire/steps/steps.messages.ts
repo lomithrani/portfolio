@@ -63,6 +63,14 @@ export const m = defineMessages({
 			fr: "Vous n'avez pas encore d'offre d'emploi. Rédigez celle pour laquelle vous recrutez : vous revenez ici pour la choisir."
 		},
 		yourJobs: { en: 'Your job descriptions', fr: "Vos offres d'emploi" },
+		/**
+		 * Under a job to pick, the day it first left the draft status (`day`: '3 Nov 2026', shown as a
+		 * <time>): a duplicate keeps its source's title, this tells them apart
+		 */
+		opened: {
+			en: (day: string) => `Opened <time>${day}</time>`,
+			fr: (day: string) => `Ouverte le <time>${day}</time>`
+		},
 		notPickable: {
 			en: 'Only an open job description can be picked. <status>Change its status</status>',
 			fr: 'Seule une offre ouverte peut être choisie. <status>Changer son statut</status>'

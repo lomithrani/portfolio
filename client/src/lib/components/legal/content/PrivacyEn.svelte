@@ -592,7 +592,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <ul>
 	<li><strong>access</strong> your data and get a copy of it;</li>
 	<li>
-		<strong>rectify</strong> it: you edit your portfolio and job descriptions yourself; your email address
+		<strong>rectify</strong> it: you edit your portfolio and job descriptions yourself (once a job description
+		is opened, its pay and conditions can no longer be changed: delete it, or ask us); your email address
 		is the one of your Google account;
 	</li>
 	<li>
@@ -649,7 +650,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	A hiring journey can score the job description a recruiter picks against the owner's perfect job,
 	and open its next steps only from a minimum the owner set. The score is computed by fixed rules,
 	not by an AI model, and it is about the job description, not about a person: the recruiter can
-	complete it, pick another one, or reach the owner another way.
+	write another one that states more (once a job description is opened, what the score reads is
+	locked, so a new version of it is a new job description), pick another one, or reach the owner
+	another way.
 </p>
 
 <h3 id="children">Children</h3>

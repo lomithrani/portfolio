@@ -29,7 +29,8 @@ description instead.
 		jobImportQuotaText,
 		type JobImportStatus
 	} from '#services/jobImport.ts';
-	import { networkError, failureText } from '#services/recruiter.ts';
+	import { formatPay, type JobPostingLike } from '#services/jobPosting.ts';
+	import { networkError, failureText, formatDay, isoDate } from '#services/recruiter.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
@@ -58,7 +59,18 @@ description instead.
 	const uid = $props.id();
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 
-	type JobChoice = { _id: string; title: string; company?: string; status: JobStatus };
+	/**
+	 * A posting to pick, with its pay and the day it was opened: a duplicate (the only way to change
+	 * an opened posting's terms) keeps the title and company of its source, these tell them apart
+	 */
+	type JobChoice = {
+		_id: string;
+		title: string;
+		company?: string;
+		status: JobStatus;
+		pay?: JobPostingLike['pay'];
+		publishedAt?: Date | string;
+	};
 	type JobsState =
 		| { key: string; state: 'loading' }
 		| { key: string; state: 'loaded'; jobs: JobChoice[] }
@@ -208,7 +220,9 @@ description instead.
 					_id: job._id,
 					title: job.title,
 					company: job.company,
-					status: job.status
+					status: job.status,
+					pay: job.pay,
+					publishedAt: job.publishedAt
 				}))
 			);
 			jobs = { key, state: 'loaded', jobs: list };
@@ -368,6 +382,7 @@ description instead.
 				<legend class="mb-2 text-sm font-semibold">{m.job.yourJobs}</legend>
 				{#each shown.jobs as job (job._id)}
 					{@const pickable = isPickable(job)}
+					{@const pay = formatPay(job.pay)}
 					<label
 						class={[
 							'flex items-start gap-3 rounded-container border p-3',
@@ -390,6 +405,18 @@ description instead.
 							<span class="block font-semibold break-words">{job.title}</span>
 							{#if job.company}
 								<span class="block text-sm text-surface-700-300">{job.company}</span>
+							{/if}
+							{#if pay}
+								<span class="block text-sm text-surface-700-300">{pay}</span>
+							{/if}
+							{#if job.publishedAt}
+								<span class="block text-xs text-surface-700-300">
+									<Rich text={m.job.opened(formatDay(job.publishedAt))}>
+										{#snippet time(day)}
+											<time datetime={isoDate(job.publishedAt)}>{day}</time>
+										{/snippet}
+									</Rich>
+								</span>
 							{/if}
 							{#if !pickable}
 								<span class="block text-xs" id="{uid}-{job._id}-why">

@@ -16,6 +16,7 @@ cancel, except while the request runs.
 		open,
 		title,
 		description,
+		details = '',
 		confirmLabel,
 		busyLabel = common.deleting,
 		busy = false,
@@ -28,6 +29,8 @@ cancel, except while the request runs.
 		open: boolean;
 		title: string;
 		description: string;
+		/** A second paragraph of the description (OpenJobDialog: the fields it locks) */
+		details?: string;
 		/** The destructive action: "Delete", "Remove" */
 		confirmLabel: string;
 		busyLabel?: string;
@@ -71,7 +74,12 @@ cancel, except while the request runs.
 				aria-busy={busy ? 'true' : undefined}
 			>
 				<Dialog.Title class="text-lg font-semibold break-words">{title}</Dialog.Title>
-				<Dialog.Description class="text-sm text-surface-700-300">{description}</Dialog.Description>
+				<Dialog.Description class="space-y-2 text-sm text-surface-700-300">
+					<span class="block">{description}</span>
+					{#if details}
+						<span class="block">{details}</span>
+					{/if}
+				</Dialog.Description>
 				{#if error}
 					<div
 						bind:this={alertElement}

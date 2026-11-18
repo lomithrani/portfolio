@@ -280,7 +280,10 @@ and from then on every recruiter route answers 422 on `consent` until the new ve
 So, before deploying a release that bumps `LEGAL_VERSION` to production, email every account a
 short notice, in English and French: what changes, when it applies, that they will be asked to
 accept the new version (recruiters before they use their space again), and that they can delete
-their account instead. Read the addresses at that moment from production's database, for example
+their account instead. The notice of `2026-11-18` also tells recruiters what the Terms now ask of
+them (`#recruiters`): once a job description is opened, its pay and conditions can no longer be
+changed (a new version of them is a new job description: Duplicate), and the top of its pay range
+is at most 1.5 times its bottom. Read the addresses at that moment from production's database, for example
 `mongosh "$MONGO_URL" --quiet --eval 'db.users.find({}, { email: 1, _id: 0 }).forEach((u) => print(u.email))'`,
 send the notice with the addresses in Bcc, and keep no copy of the list. List this step in the
 release pull request's deployment notes. If no notice can be sent before the deploy, change
@@ -954,6 +957,35 @@ both stages, a later release removes `LEGACY_JOB_APPLICATIONS_COLLECTION` from a
 The overview dashboard loses its job application panels with this release: import
 `docs/grafana/overview.json` over the stack's **Portfolio · Overview** (Dashboards, New, Import,
 same uid, overwrite).
+
+### Locked job terms and capped pay ranges (one-off)
+
+From the release that brings them, a job description's terms (the fields the perfect job scores,
+`LOCKED_JOB_FIELDS` of `common/models/jobTerms.ts`) are locked once it has been opened
+(`publishedAt` set, whatever its status since), and the top of a pay range is at most 1.5 times its
+bottom (`JOB_LIMITS.pay.maxRangeRatio`). Nothing is migrated: the postings already opened become
+locked as they are, and one saved wider than 1.5 times its bottom before the cap is scored as if its
+top were that (its editor shows that top, which its next save stores; until then a candidate reading
+it on `/opportunities/:id` still sees the top it was saved with). Such a posting cannot be saved
+again with its wider top, nor opened from its status if it never was, until it is narrowed. Before
+deploying that release on each stage (staging, then production), count them (counts only: no
+posting, recruiter or pay):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  const wider = { $expr: { $gt: ["$pay.max", { $multiply: ["$pay.min", 1.5] }] } };
+  printjson({
+    opened: db.jobpostings.countDocuments({ publishedAt: { $ne: null } }),
+    wider: db.jobpostings.countDocuments(wider),
+    openedAndWider: db.jobpostings.countDocuments({ $and: [{ publishedAt: { $ne: null } }, wider] })
+  })'
+```
+
+Write the counts in the release's pull request. When `wider` is not 0, tell the recruiters of those
+postings, with the `LEGAL_VERSION` notice (see "Tell the accounts before a bump reaches
+production") or on their own, that each must be narrowed (its editor) or, once opened, duplicated
+into a new job description with the range they mean: an opened one is matched with a top of 1.5
+times its bottom from the deploy.
 
 ### Reserved portfolio names
 

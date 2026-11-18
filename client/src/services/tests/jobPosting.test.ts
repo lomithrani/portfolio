@@ -458,4 +458,21 @@ describe('duplicateJobForm', () => {
 		// A posting without openings: the copy has none either
 		expect(duplicateJobForm({ ...job, openings: undefined }).openings).toBe('');
 	});
+
+	it('starts a copy of an opened posting saved wider than the cap from the top it is scored with', () => {
+		// Saved at €80,000 for a €40,000 bottom, before the cap: its editor shows €60,000
+		const wide = {
+			_id: 'j2',
+			...formToJobInput(validForm({ status: 'open', payMin: '40000', payMax: '60000' })),
+			publishedAt: '2026-11-03T10:00:00.000Z'
+		};
+		wide.pay = { ...wide.pay, max: 80000 };
+		const copy = duplicateJobForm(wide);
+		expect(copy).toEqual({ ...openedJobForm(wide).form, status: 'draft' });
+		expect([copy.payMin, copy.payMax]).toEqual(['40000', '60000']);
+		// ...which it can be saved with
+		expect(jobFormErrors(copy)).toEqual({});
+		// A draft never opened is copied as it is: its own editor shows the same range
+		expect(duplicateJobForm({ ...wide, publishedAt: undefined }).payMax).toBe('80000');
+	});
 });

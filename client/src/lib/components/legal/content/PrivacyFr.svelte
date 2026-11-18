@@ -631,8 +631,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <ul>
 	<li><strong>accéder</strong> à vos données et en obtenir une copie ;</li>
 	<li>
-		les <strong>rectifier</strong> : vous modifiez vous-même votre portfolio et vos offres ; votre adresse
-		e-mail est celle de votre compte Google ;
+		les <strong>rectifier</strong> : vous modifiez vous-même votre portfolio et vos offres (une fois une
+		offre ouverte, sa rémunération et ses conditions ne peuvent plus être modifiées : supprimez-la, ou
+		écrivez-nous) ; votre adresse e-mail est celle de votre compte Google ;
 	</li>
 	<li>
 		les <strong>effacer</strong> : supprimez vous-même votre compte depuis
@@ -689,8 +690,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Un parcours de recrutement peut noter l'offre choisie par un recruteur au regard du poste idéal du
 	propriétaire, et n'ouvrir ses étapes suivantes qu'à partir d'un minimum fixé par celui-ci. La note
 	est calculée selon des règles fixes, et non par un modèle d'IA, et elle porte sur l'offre, non sur
-	une personne : le recruteur peut la compléter, en choisir une autre, ou joindre le propriétaire
-	autrement.
+	une personne : le recruteur peut en rédiger une autre qui en précise davantage (une fois l'offre
+	ouverte, ce que la note prend en compte est verrouillé : une nouvelle version est une nouvelle
+	offre), en choisir une autre, ou joindre le propriétaire autrement.
 </p>
 
 <h3 id="children">Mineurs</h3>

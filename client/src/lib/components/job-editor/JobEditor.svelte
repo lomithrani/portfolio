@@ -96,6 +96,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		jobFieldOfProperty,
 		jobFormErrors,
 		jobFormSignature,
+		lockedFieldsText,
 		orderedJobFormErrors,
 		parseFormNumber,
 		type JobForm,
@@ -128,7 +129,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	import LeaveDialog from './LeaveDialog.svelte';
 	import ListInput from './ListInput.svelte';
 	import OfficePlace from './OfficePlace.svelte';
-	import { setJobEditorContext } from './context';
+	import { LOCKED_CONTROL_CLASS, setJobEditorContext, type ControlAttributes } from './context';
 	import { m as fieldMessages } from './Field.messages.ts';
 	import { m } from './JobEditor.messages.ts';
 
@@ -170,7 +171,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		/** Add mode: the job description import to start from */
 		imported?: ImportedJobDraft | null;
 		/** Add mode: the posting to start from a copy of, as a new draft (Duplicate) */
-		duplicate?: (JobPostingLike & { _id: string }) | null;
+		duplicate?: (JobPostingLike & { _id: string; publishedAt?: Date | string | null }) | null;
 		/** Where Cancel goes (the posting, or the recruiter space) */
 		cancelHref: string;
 		/** The recruiter space, where an account without one creates it */
@@ -978,6 +979,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				<div class="min-w-0 flex-1 space-y-2">
 					<h3 id="{uid}-locked-title" class="font-semibold">{m.locked.title}</h3>
 					<p>{m.locked.text}</p>
+					<p>{m.locked.fields(lockedFieldsText())}</p>
 					{#if start.capped}
 						<p>
 							{m.locked.payCapped(
@@ -1085,11 +1087,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
-							class="input"
+							class={['input', isLocked('title') && LOCKED_CONTROL_CLASS]}
 							type="text"
 							autocomplete="off"
 							maxlength={JOB_LIMITS.title}
-							placeholder={m.titlePlaceholder}
+							placeholder={isLocked('title') ? '' : m.titlePlaceholder}
 							readonly={isLocked('title')}
 							bind:value={form.title}
 						/>
@@ -1201,11 +1203,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							{#snippet control(attributes)}
 								<input
 									{...attributes}
-									class="input"
+									class={['input', isLocked('city') && LOCKED_CONTROL_CLASS]}
 									type="text"
 									autocomplete="address-level2"
 									maxlength={JOB_LIMITS.city}
-									placeholder={m.example('Lyon')}
+									placeholder={isLocked('city') ? '' : m.example('Lyon')}
 									readonly={isLocked('city')}
 									bind:value={form.city}
 								/>
@@ -1215,12 +1217,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							{#snippet control(attributes)}
 								<input
 									{...attributes}
-									class="input"
+									class={['input', isLocked('postalCode') && LOCKED_CONTROL_CLASS]}
 									type="text"
 									inputmode="numeric"
 									autocomplete="postal-code"
 									maxlength={JOB_LIMITS.postalCode}
-									placeholder={m.example('69003')}
+									placeholder={isLocked('postalCode') ? '' : m.example('69003')}
 									readonly={isLocked('postalCode')}
 									bind:value={form.postalCode}
 								/>
@@ -1237,7 +1239,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 								<!-- Locked: nothing to search -->
 								<input
 									{...attributes}
-									class="input"
+									class={['input', LOCKED_CONTROL_CLASS]}
 									type="text"
 									autocomplete="off"
 									readonly
@@ -1264,17 +1266,21 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				{#if form.workMode === 'hybrid'}
 					<Field field="remoteDaysPerWeek" label={labels.remoteDaysPerWeek} class="sm:max-w-xs">
 						{#snippet control(attributes)}
-							<select
-								{...attributes}
-								class="select"
-								disabled={isLocked('remoteDaysPerWeek')}
-								bind:value={form.remoteDaysPerWeek}
-							>
-								<option value="">{m.notSpecified}</option>
-								{#each daysOptions as days (days)}
-									<option value={String(days)}>{m.daysAWeek(days)}</option>
-								{/each}
-							</select>
+							{#if isLocked('remoteDaysPerWeek')}
+								{@render lockedChoice(
+									attributes,
+									form.remoteDaysPerWeek
+										? m.daysAWeek(Number(form.remoteDaysPerWeek))
+										: m.notSpecified
+								)}
+							{:else}
+								<select {...attributes} class="select" bind:value={form.remoteDaysPerWeek}>
+									<option value="">{m.notSpecified}</option>
+									{#each daysOptions as days (days)}
+										<option value={String(days)}>{m.daysAWeek(days)}</option>
+									{/each}
+								</select>
+							{/if}
 						{/snippet}
 					</Field>
 				{/if}
@@ -1295,16 +1301,15 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				<div class="grid gap-4 sm:grid-cols-2">
 					<Field field="contractType" label={labels.contractType} required>
 						{#snippet control(attributes)}
-							<select
-								{...attributes}
-								class="select"
-								disabled={isLocked('contractType')}
-								bind:value={form.contractType}
-							>
-								{#each FR_CONTRACT_TYPES as value (value)}
-									<option {value}>{CONTRACT_TYPE_LABELS[value]}</option>
-								{/each}
-							</select>
+							{#if isLocked('contractType')}
+								{@render lockedChoice(attributes, CONTRACT_TYPE_LABELS[form.contractType])}
+							{:else}
+								<select {...attributes} class="select" bind:value={form.contractType}>
+									{#each FR_CONTRACT_TYPES as value (value)}
+										<option {value}>{CONTRACT_TYPE_LABELS[value]}</option>
+									{/each}
+								</select>
+							{/if}
 						{/snippet}
 					</Field>
 					{#if contractHasDuration(form.contractType)}
@@ -1441,7 +1446,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							{#snippet control(attributes)}
 								<input
 									{...attributes}
-									class="input"
+									class={['input', isLocked('hoursPerWeek') && LOCKED_CONTROL_CLASS]}
 									type="text"
 									inputmode="decimal"
 									autocomplete="off"
@@ -1462,7 +1467,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							{#snippet control(attributes)}
 								<input
 									{...attributes}
-									class="input"
+									class={['input', isLocked('daysPerYear') && LOCKED_CONTROL_CLASS]}
 									type="text"
 									inputmode="numeric"
 									autocomplete="off"
@@ -1482,11 +1487,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
-								class="input"
+								class={['input', isLocked('rttDaysPerYear') && LOCKED_CONTROL_CLASS]}
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder={m.example('10')}
+								placeholder={isLocked('rttDaysPerYear') ? '' : m.example('10')}
 								readonly={isLocked('rttDaysPerYear')}
 								bind:value={form.rttDaysPerYear}
 							/>
@@ -1514,11 +1519,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
-								class="input"
+								class={['input', isLocked('payMin') && LOCKED_CONTROL_CLASS]}
 								type="text"
 								inputmode="decimal"
 								autocomplete="off"
-								placeholder={m.example('45 000')}
+								placeholder={isLocked('payMin') ? '' : m.example('45 000')}
 								readonly={isLocked('payMin')}
 								bind:value={form.payMin}
 							/>
@@ -1528,11 +1533,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
-								class="input"
+								class={['input', isLocked('payMax') && LOCKED_CONTROL_CLASS]}
 								type="text"
 								inputmode="decimal"
 								autocomplete="off"
-								placeholder={m.example('55 000')}
+								placeholder={isLocked('payMax') ? '' : m.example('55 000')}
 								readonly={isLocked('payMax')}
 								bind:value={form.payMax}
 							/>
@@ -1545,16 +1550,15 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						class="col-span-2 sm:col-span-1"
 					>
 						{#snippet control(attributes)}
-							<select
-								{...attributes}
-								class="select"
-								disabled={isLocked('payPeriod')}
-								bind:value={form.payPeriod}
-							>
-								{#each PAY_PERIODS as value (value)}
-									<option {value}>{PAY_PERIOD_LABELS[value]}</option>
-								{/each}
-							</select>
+							{#if isLocked('payPeriod')}
+								{@render lockedChoice(attributes, PAY_PERIOD_LABELS[form.payPeriod])}
+							{:else}
+								<select {...attributes} class="select" bind:value={form.payPeriod}>
+									{#each PAY_PERIODS as value (value)}
+										<option {value}>{PAY_PERIOD_LABELS[value]}</option>
+									{/each}
+								</select>
+							{/if}
 						{/snippet}
 					</Field>
 				</div>
@@ -1591,11 +1595,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
-								class="input"
+								class={['input', isLocked('directReports') && LOCKED_CONTROL_CLASS]}
 								type="text"
 								inputmode="numeric"
 								autocomplete="off"
-								placeholder={m.example('0')}
+								placeholder={isLocked('directReports') ? '' : m.example('0')}
 								readonly={isLocked('directReports')}
 								bind:value={form.directReports}
 							/>
@@ -1638,17 +1642,19 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				<div class="grid gap-4 sm:grid-cols-2">
 					<Field field="seniority" label={labels.seniority}>
 						{#snippet control(attributes)}
-							<select
-								{...attributes}
-								class="select"
-								disabled={isLocked('seniority')}
-								bind:value={form.seniority}
-							>
-								<option value="">{m.notSpecified}</option>
-								{#each SENIORITY_LEVELS as value (value)}
-									<option {value}>{SENIORITY_LABELS[value]}</option>
-								{/each}
-							</select>
+							{#if isLocked('seniority')}
+								{@render lockedChoice(
+									attributes,
+									form.seniority ? SENIORITY_LABELS[form.seniority] : m.notSpecified
+								)}
+							{:else}
+								<select {...attributes} class="select" bind:value={form.seniority}>
+									<option value="">{m.notSpecified}</option>
+									{#each SENIORITY_LEVELS as value (value)}
+										<option {value}>{SENIORITY_LABELS[value]}</option>
+									{/each}
+								</select>
+							{/if}
 						{/snippet}
 					</Field>
 					<Field field="education" label={labels.education}>
@@ -1698,17 +1704,19 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				/>
 				<Field field="travel" label={labels.travel} class="sm:max-w-xs">
 					{#snippet control(attributes)}
-						<select
-							{...attributes}
-							class="select"
-							disabled={isLocked('travel')}
-							bind:value={form.travel}
-						>
-							<option value="">{m.notSpecified}</option>
-							{#each TRAVEL_FREQUENCIES as value (value)}
-								<option {value}>{TRAVEL_LABELS[value]}</option>
-							{/each}
-						</select>
+						{#if isLocked('travel')}
+							{@render lockedChoice(
+								attributes,
+								form.travel ? TRAVEL_LABELS[form.travel] : m.notSpecified
+							)}
+						{:else}
+							<select {...attributes} class="select" bind:value={form.travel}>
+								<option value="">{m.notSpecified}</option>
+								{#each TRAVEL_FREQUENCIES as value (value)}
+									<option {value}>{TRAVEL_LABELS[value]}</option>
+								{/each}
+							</select>
+						{/if}
 					{/snippet}
 				</Field>
 			</section>
@@ -1791,6 +1799,19 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	}}
 	onCancel={() => (confirmingOpen = null)}
 />
+
+<!-- A locked choice: its label in a read-only input (a disabled select would leave the tab order,
+     and its lock would never be read) -->
+{#snippet lockedChoice(attributes: ControlAttributes, text: string)}
+	<input
+		{...attributes}
+		class={['input', LOCKED_CONTROL_CLASS]}
+		type="text"
+		autocomplete="off"
+		readonly
+		value={text}
+	/>
+{/snippet}
 
 {#snippet lockIcon()}
 	<LockClosed

@@ -15,6 +15,7 @@ import {
 	highestPayMax,
 	intlLocale,
 	isPayRangeTooWide,
+	jobTermsLocked,
 	normalizeJobPosting,
 	validateJobPosting,
 	type ContractType,
@@ -363,10 +364,14 @@ export const openedJobForm = (job: JobPostingLike): { form: JobForm; capped: boo
 
 /**
  * The form of a new posting copied from `job` (Duplicate): every field of it, as a draft. The
- * copy is a posting of its own, never opened: its terms can be changed before it is opened
+ * copy is a posting of its own, never opened: its terms can be changed before it is opened. A copy
+ * of an opened posting starts from what that posting's editor shows (openedJobForm: a range saved
+ * wider than the cap, before it, brought down to the top it is scored with), so it can be saved
  */
-export const duplicateJobForm = (job: JobPostingLike & { _id?: string }): JobForm => ({
-	...jobToForm(job),
+export const duplicateJobForm = (
+	job: JobPostingLike & { _id?: string; publishedAt?: Date | string | null }
+): JobForm => ({
+	...(jobTermsLocked(job) ? openedJobForm(job).form : jobToForm(job)),
 	status: 'draft'
 });
 
@@ -479,6 +484,15 @@ export const JOB_FORM_FIELDS: readonly JobFormField[] = [
  * use when a label is read
  */
 export const JOB_FIELD_LABELS: Record<JobFormField, string> = m.fieldLabels;
+
+/**
+ * The names of the fields locked once a posting is opened (LOCKED_FORM_FIELDS), as one list in the
+ * page's language: 'Job title, City, … and Travel'. Read when shown
+ */
+export const lockedFieldsText = (): string =>
+	new Intl.ListFormat(intlLocale(), { type: 'conjunction' }).format(
+		LOCKED_FORM_FIELDS.map((field) => JOB_FIELD_LABELS[field])
+	);
 
 export type JobFieldError = { field: JobFormField; label: string; message: string };
 

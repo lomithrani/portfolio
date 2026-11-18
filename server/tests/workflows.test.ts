@@ -597,7 +597,9 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
       expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'failed', view: { score: 86 } });
     }
 
-    // The recruiter raises the pay of the posting, the ask at its bottom: it passes again
+    // The score is read from the stored posting at each read (written here directly: once
+    // opened, the API refuses this edit, a recruiter duplicates the posting): a pay the ask
+    // reaches passes again
     await JobPosting.updateOne({ _id: jobId }, { pay: { min: 80000, max: 90000, currency: 'EUR', period: 'year' } });
     expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'succeeded', view: { score: 100 } });
 

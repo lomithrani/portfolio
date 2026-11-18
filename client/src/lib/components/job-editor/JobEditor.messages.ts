@@ -37,18 +37,26 @@ export const m = defineMessages({
 	locked: {
 		title: { en: 'Pay and conditions locked', fr: 'Rémunération et conditions verrouillées' },
 		text: {
-			en: "This job description was opened: its pay and its conditions (the fields with a lock) can no longer be changed, because candidates' matches are computed on them. You can still edit its description and the other fields, and change its status. To change them, duplicate it as a new job description.",
-			fr: "Cette offre d'emploi a été ouverte : sa rémunération et ses conditions (les champs marqués d'un cadenas) ne peuvent plus être modifiées, car les correspondances des candidats sont calculées sur elles. Vous pouvez toujours modifier sa description et les autres champs, et changer son statut. Pour les modifier, dupliquez-la en une nouvelle offre d'emploi."
+			en: "This job description was opened: its pay and its conditions (the fields with a lock) can no longer be changed, because candidates' matches are computed on them. You can still edit its description and the other fields, and change its status. To change its pay and conditions, duplicate it as a new job description.",
+			fr: "Cette offre d'emploi a été ouverte : sa rémunération et ses conditions (les champs marqués d'un cadenas) ne peuvent plus être modifiées, car les correspondances des candidats sont calculées sur elles. Vous pouvez toujours modifier sa description et les autres champs, et changer son statut. Pour modifier sa rémunération et ses conditions, dupliquez-la en une nouvelle offre d'emploi."
+		},
+		/**
+		 * The fields locked (`fields`: their names as a list, 'Job title, City, … and Travel'): a typo
+		 * in one of them cannot be fixed either
+		 */
+		fields: {
+			en: (fields: string) => `Locked fields: ${fields}.`,
+			fr: (fields: string) => `Champs verrouillés : ${fields}.`
 		},
 		/**
 		 * A range saved wider than `ratio` (JOB_LIMITS.pay.maxRangeRatio) times its minimum, before
-		 * that cap: its maximum shows (and is saved) as `amount`, the top it was scored with
+		 * that cap: its maximum shows (and is saved) as `amount`, the top it is scored with
 		 */
 		payCapped: {
 			en: (amount: string, ratio: number) =>
-				`Its pay range was saved wider than ${ratio.toLocaleString('en-GB')} times its minimum: its maximum shows as ${amount}, the top candidates' matches were computed with, and is saved so with your next change.`,
+				`Its pay range was saved wider than ${ratio.toLocaleString('en-GB')} times its minimum: its maximum shows as ${amount}, the top of the range candidates' matches are computed with, and your next save stores it.`,
 			fr: (amount: string, ratio: number) =>
-				`Sa fourchette de rémunération a été enregistrée plus large que ${ratio.toLocaleString('fr-FR')} fois sa minimale : sa rémunération maximale s'affiche à ${amount}, le haut de fourchette sur lequel les correspondances des candidats ont été calculées, et sera enregistrée ainsi avec votre prochaine modification.`
+				`Sa fourchette de rémunération a été enregistrée plus large que ${ratio.toLocaleString('fr-FR')} fois sa minimale : sa rémunération maximale s'affiche à ${amount}, le haut de fourchette retenu pour les correspondances des candidats, et votre prochain enregistrement la conservera ainsi.`
 		},
 		duplicate: { en: 'Duplicate', fr: 'Dupliquer' }
 	},

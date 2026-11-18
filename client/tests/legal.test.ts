@@ -336,6 +336,28 @@ test.describe('legal pages', () => {
 		await expect(article).not.toContainText('cabinet de recrutement');
 	});
 
+	test('the privacy policy says what an opened job description keeps', async ({ page }) => {
+		// Its scored fields are locked (PUT /jobs/:id answers 409): it is never "completed" in place
+		await page.goto('/legal/privacy');
+		expect(await sectionText(page, 'ai')).toContain(
+			'the recruiter can write another one that states more (once a job description is opened, what the score reads is locked, so a new version of it is a new job description), pick another one, or reach the owner another way.'
+		);
+		expect(await sectionText(page, 'rights')).toContain(
+			'you edit your portfolio and job descriptions yourself (once a job description is opened, its pay and conditions can no longer be changed: delete it, or ask us);'
+		);
+		const article = page.locator('article[data-legal-document]');
+		await expect(article).not.toContainText('the recruiter can complete it');
+
+		await page.goto('/legal/privacy?lang=fr');
+		expect(await sectionText(page, 'ai')).toContain(
+			"le recruteur peut en rédiger une autre qui en précise davantage (une fois l'offre ouverte, ce que la note prend en compte est verrouillé : une nouvelle version est une nouvelle offre), en choisir une autre, ou joindre le propriétaire autrement."
+		);
+		expect(await sectionText(page, 'rights')).toContain(
+			'vous modifiez vous-même votre portfolio et vos offres (une fois une offre ouverte, sa rémunération et ses conditions ne peuvent plus être modifiées : supprimez-la, ou écrivez-nous) ;'
+		);
+		await expect(article).not.toContainText('le recruteur peut la compléter');
+	});
+
 	test('the privacy policy names Cloudflare in front of the pages, not the API', async ({
 		page
 	}) => {

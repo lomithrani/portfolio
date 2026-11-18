@@ -26,6 +26,13 @@ export type JobEditorContext = {
 
 export const [getJobEditorContext, setJobEditorContext] = createContext<JobEditorContext>();
 
+/**
+ * The class of a locked control, added to its `input` class: tinted, without a text cursor. Every
+ * locked control is a read-only text input (a locked choice shows its label in one), never a
+ * disabled one: it stays in the tab order, so its lock is read to screen readers
+ */
+export const LOCKED_CONTROL_CLASS = 'bg-surface-100-900! cursor-default';
+
 /** What a field gives its control (Field.svelte): spread on the input or select */
 export type ControlAttributes = {
 	id: string;

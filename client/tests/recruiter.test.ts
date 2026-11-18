@@ -222,6 +222,39 @@ test.describe('the recruiter', () => {
 		expect(stored?.status).toBe('open');
 	});
 
+	test('says to narrow a draft saved wider than the cap before asking to open it', async ({
+		page
+	}) => {
+		const { _id: id } = await createJob(api, { title: `Wide range ${tag}`, status: 'draft' });
+		// Saved wider than 1.5 times its bottom before that cap (none can be saved now): the page
+		// reads it so (answered in the browser)
+		await page.route(`${API_URL}/recruiter/jobs/${id}`, async (route) => {
+			if (route.request().method() !== 'GET') return route.fallback();
+			const response = await route.fetch();
+			const job = await response.json();
+			await route.fulfill({ response, json: { ...job, pay: { ...job.pay, max: 80000 } } });
+		});
+		await openAsRecruiter(page, `/recruiter/jobs/${id}`);
+		await expect(fact(page, 'Pay')).toContainText('€45,000 – €80,000 gross per year');
+
+		// It could not be opened as it is: nothing to confirm, the toast leads to its editor
+		await page.getByRole('button', { name: 'Change status' }).click();
+		await page.getByRole('menuitemradio', { name: /^Open/ }).click();
+		await expect(
+			toasts(page).getByText('Narrow its pay range before opening it', { exact: true })
+		).toBeVisible();
+		await expect(
+			toasts(page).getByText(
+				'Its maximum pay can be at most €67,500 (1.5 times its minimum). Edit the job description to narrow it, then open it.',
+				{ exact: true }
+			)
+		).toBeVisible();
+		await expect(page.getByRole('alertdialog')).toHaveCount(0);
+		expect((await listRecruiterJobs(api)).find((job) => job._id === id)?.status).toBe('draft');
+		await toasts(page).getByRole('button', { name: 'Edit', exact: true }).click();
+		await expect(page).toHaveURL(new RegExp(`/recruiter/jobs/${id}/edit$`));
+	});
+
 	test('has an input for every field a perfect job is scored on, the office address among them', async ({
 		page
 	}) => {
@@ -569,6 +602,10 @@ test.describe('the recruiter', () => {
 		await expect(confirm).toContainText(
 			'Once open, the pay and the conditions of this job are locked'
 		);
+		// ...and which fields that is, the title included: a typo is fixed before
+		await expect(confirm).toHaveAccessibleDescription(
+			/locked fields: job title, city, postal code, .* seniority, skills and travel\.$/i
+		);
 		await confirm.getByRole('button', { name: 'Cancel' }).click();
 		await expect(confirm).toBeHidden();
 		expect((await listRecruiterJobs(api)).find((job) => job._id === id)?.status).toBe('draft');
@@ -588,7 +625,10 @@ test.describe('the recruiter', () => {
 		await gotoHydrated(page, `/recruiter/jobs/${id}/edit`);
 		const note = page.getByRole('region', { name: 'Pay and conditions locked' });
 		await expect(note).toContainText(
-			"This job description was opened: its pay and its conditions (the fields with a lock) can no longer be changed, because candidates' matches are computed on them. You can still edit its description and the other fields, and change its status."
+			"This job description was opened: its pay and its conditions (the fields with a lock) can no longer be changed, because candidates' matches are computed on them. You can still edit its description and the other fields, and change its status. To change its pay and conditions, duplicate it as a new job description."
+		);
+		await expect(note).toContainText(
+			'Locked fields: Job title, City, Postal code, Address, Work mode, Remote days a week, Contract type, Working time, Hours per week, Days per year, RTT days per year, Minimum pay, Maximum pay, Pay period, Direct reports, Seniority, Skills and Travel.'
 		);
 		await expect(titleInput).toHaveValue(title);
 		for (const locked of [
@@ -605,6 +645,16 @@ test.describe('the recruiter', () => {
 		await expect(titleInput).toHaveAccessibleDescription(
 			'Locked since the job description was opened.'
 		);
+		// A locked choice is a read-only field holding its label, in the tab order like the others
+		const contract = page.getByRole('textbox', { name: 'Contract type' });
+		await expect(contract).toHaveValue('CDI (permanent)');
+		await expect(contract).toHaveAccessibleDescription(
+			'Locked since the job description was opened.'
+		);
+		await contract.focus();
+		await expect(contract).toBeFocused();
+		await expect(page.getByRole('combobox', { name: 'Pay period' })).toHaveCount(0);
+		await expect(page.getByRole('textbox', { name: 'Pay period' })).toHaveValue('per year');
 		await expect(page.getByRole('button', { name: /^Remove Python/ })).toHaveCount(0);
 		// A read-only input still gets a paste: the skills take nothing from it
 		const skills = page.getByRole('list', { name: /^Skills added/ });

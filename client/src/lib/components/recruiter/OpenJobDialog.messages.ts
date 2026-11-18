@@ -21,6 +21,14 @@ export const m = defineMessages({
 		en: "Once it leaves the drafts, the pay and the conditions of this job are locked, because candidates' matches are computed on them. To change them later, duplicate it as a new job.",
 		fr: "Une fois l'offre sortie des brouillons, sa rémunération et ses conditions sont verrouillées, car les correspondances des candidats sont calculées sur elles. Pour les modifier ensuite, dupliquez-la en une nouvelle offre."
 	},
+	/**
+	 * Under the reason: the fields locked (`fields`: their names as a list, 'Job title, City, … and
+	 * Travel'), so that a typo in one of them is fixed before
+	 */
+	lockedFields: {
+		en: (fields: string) => `Locked fields: ${fields}.`,
+		fr: (fields: string) => `Champs verrouillés : ${fields}.`
+	},
 	/** The confirm button */
 	open: { en: 'Open', fr: 'Ouvrir' },
 	/** The confirm button for another status (`status`: its label) */

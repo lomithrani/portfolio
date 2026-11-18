@@ -11,9 +11,10 @@ import { m } from './steps.messages';
 // scored out of 100 against the owner's perfect job (portfolio-common's
 // scorePerfectJob), and the steps after it open from the minimum the owner
 // set. Nothing to submit and nothing stored: the score is computed at each
-// read, from the posting and the perfect job as they are now. Editing the
-// posting, picking another one, or the owner changing their criteria changes
-// it.
+// read, from the posting and the perfect job as they are now. Picking another
+// posting, or the owner changing their criteria or the minimum, changes it;
+// the fields it reads are locked once the posting is opened
+// (LOCKED_JOB_FIELDS), so a new version of them is a duplicate, picked again.
 //
 // The perfect job is private. A visitor gets their score and the minimum;
 // with the owner's `showDetails`, also the name of each criterion and how
@@ -26,7 +27,10 @@ export type JobMatchOutcome = 'match' | 'partial' | 'miss' | 'unknown';
 export interface JobMatchCriterionView {
   criterion: PerfectJobCriterion;
   outcome: JobMatchOutcome;
-  /** The posting does not say what the criterion reads: filling it in can change the outcome */
+  /**
+   * The posting does not say what the criterion reads: a duplicate that states it can change
+   * the outcome
+   */
   notStated?: true;
   /** A deal-breaker of the owner's that the job does not match: the score is 0 */
   dealBreaker?: true;

@@ -603,6 +603,13 @@ test.describe('the hiring journey', () => {
 		await expect(
 			jobStep.getByRole('radio', { name: new RegExp(`Data engineer ${tag}`) })
 		).toBeDisabled();
+		// Each choice shows its pay, and the day it was opened: a duplicate keeps its title
+		const openChoice = jobStep.locator('label', { hasText: `Staff engineer ${tag}` });
+		await expect(openChoice).toContainText('€45,000 – €55,000 gross per year');
+		await expect(openChoice).toContainText(/Opened \d{1,2} \w+ \d{4}/);
+		await expect(jobStep.locator('label', { hasText: `Data engineer ${tag}` })).not.toContainText(
+			'Opened'
+		);
 		await jobStep.getByRole('radio', { name: new RegExp(`Staff engineer ${tag}`) }).check();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
 
