@@ -216,14 +216,16 @@ export const m = defineMessages({
 	// --- The pay ---
 	pay: {
 		/**
-		 * How the pay asked matches a job's range (PAY_MATCH). `top`: the share at the top of the
-		 * range that matches only partly, in percent; `over`: how far over the top it still does
+		 * How the pay asked matches a job's range (PAY_MATCH). `full`: how far up the range an ask
+		 * still matches fully, in percent; `top`: the share at the top of the range that matches only
+		 * partly, in percent; `over`: how far over the top it still does a little. A fixed pay has no
+		 * top of the range: up to it matches
 		 */
 		description: {
-			en: (top: number, over: number) =>
-				`The gross pay (brut) you ask for, in euros. A job matches when what you ask is below the top ${top}% of its pay range, partly when it is in that top ${top}%, a little up to ${over}% over the range, and not at all further over.`,
-			fr: (top: number, over: number) =>
-				`La rémunération brute que vous demandez, en euros. Une offre correspond quand votre demande est sous les ${top} % supérieurs de sa fourchette, en partie quand elle est dans ces ${top} %, un peu jusqu'à ${over} % au-dessus de la fourchette, et plus du tout au-delà.`
+			en: (full: number, top: number, over: number) =>
+				`The gross pay (brut) you ask for, in euros. A job matches when what you ask is at most ${full}% of the way up its pay range (at most its pay, when the pay is fixed), partly when it is in the top ${top}% of the range, a little up to ${over}% over the top, and not at all further over.`,
+			fr: (full: number, top: number, over: number) =>
+				`La rémunération brute que vous demandez, en euros. Une offre correspond quand votre demande ne dépasse pas les ${full} % inférieurs de sa fourchette (ou sa rémunération, quand elle est fixe), en partie quand elle est dans les ${top} % supérieurs de la fourchette, un peu jusqu'à ${over} % au-dessus du haut de la fourchette, et plus du tout au-delà.`
 		},
 		perYear: { en: 'Per year', fr: 'Par an' },
 		perYearPlaceholder: { en: 'e.g. 70 000', fr: 'ex. : 70 000' },

@@ -1398,7 +1398,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					<p class="mt-1 {introClass}">
 						{m.payScoredInRange(
 							JOB_LIMITS.pay.maxRangeRatio,
-							Math.round((1 - PAY_MATCH.fullShareOfRange) * 100)
+							Math.round(PAY_MATCH.fullShareOfRange * 100)
 						)}
 					</p>
 				</div>

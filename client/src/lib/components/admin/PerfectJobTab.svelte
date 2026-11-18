@@ -568,6 +568,7 @@ see the criteria.
 				<Criterion
 					criterion="pay"
 					description={m.pay.description(
+						Math.round(PAY_MATCH.fullShareOfRange * 100),
 						Math.round((1 - PAY_MATCH.fullShareOfRange) * 100),
 						Math.round(PAY_MATCH.aboveRangeTolerance * 100)
 					)}

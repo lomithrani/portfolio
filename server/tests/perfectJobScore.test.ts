@@ -12,6 +12,7 @@ import {
   JOB_FIELD_PATHS,
   PERFECT_JOB_LIMITS,
   criterionJobFields,
+  highestPayMax,
   normalizeJobPosting,
   officeAddress,
   officeDaysPerWeek,
@@ -397,6 +398,20 @@ describe('scorePerfectJob', () => {
         }
       }
     }
+  });
+
+  it('caps a wide range at the most validation lets it be saved with, to the cent', () => {
+    // 1.5 times 33.33 is 49.995: a range can be saved up to 49.99 an hour at most, the top a
+    // wider range is scored with too, so bringing one down to it changes no score
+    const hourly = (max: number) => posting({ pay: { min: 33.33, max, currency: 'EUR', period: 'hour' } });
+    expect(highestPayMax(33.33)).toBe(49.99);
+    // 49.99 an hour is 90,981.80 a year at 35 hours a week: 87,949.68 at 90% of the way
+    for (const perYear of [87949, 87955, 90981, 90985, 99000, 100500]) {
+      const perfectJob: PerfectJob = { pay: { importance: 3, perYear } };
+      expect(scorePerfectJob(perfectJob, hourly(3333))).toEqual(scorePerfectJob(perfectJob, hourly(49.99)));
+    }
+    expect(match({ pay: { importance: 3, perYear: 87955 } }, hourly(3333))).toBe(0.7);
+    expect(match({ pay: { importance: 3, perYear: 90985 } }, hourly(3333))).toBe(0.3);
   });
 
   it('breaks a pay deal-breaker only further than 10% over the top of the range', () => {

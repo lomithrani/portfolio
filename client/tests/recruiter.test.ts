@@ -131,7 +131,7 @@ test.describe('the recruiter', () => {
 		// The job match places a candidate's ask in the range, and the editor says how
 		await expect(
 			page.getByText(
-				"The maximum can be up to 1.5 times the minimum. A candidate's pay criterion matches when what they ask is below the top 10% of your range",
+				"The maximum can be up to 1.5 times the minimum. A candidate's pay criterion matches when what they ask is at most 90% of the way up your range (at most your pay, when it is fixed)",
 				{ exact: false }
 			)
 		).toBeVisible();
@@ -169,6 +169,38 @@ test.describe('the recruiter', () => {
 		await expect(confirm).toBeHidden();
 		expect((await listRecruiterJobs(api)).find((job) => job._id === id)?.status).toBe('draft');
 		await expect(page.getByText('Its pay and conditions are locked')).toHaveCount(0);
+
+		// A range saved wider than 1.5 times its bottom before that cap (none can be saved now): the
+		// API refuses to open it (answered in the browser), and the page says to narrow it first
+		await page.route(
+			`**/jobs/${id}/status`,
+			(route) =>
+				route.request().method() === 'PUT'
+					? route.fulfill({
+							status: 422,
+							json: {
+								type: 'validation',
+								on: 'body',
+								property: 'pay.max',
+								message: 'Maximum pay must be at most €63,000 (1.5 times the minimum)'
+							}
+						})
+					: route.fallback(),
+			{ times: 1 }
+		);
+		await page.getByRole('button', { name: 'Change status' }).click();
+		await page.getByRole('menuitemradio', { name: /^Open/ }).click();
+		await confirm.getByRole('button', { name: 'Open', exact: true }).click();
+		await expect(
+			toasts(page).getByText('Narrow its pay range before opening it', { exact: true })
+		).toBeVisible();
+		await expect(
+			toasts(page).getByText(
+				'Its maximum pay can be at most €63,000 (1.5 times its minimum). Edit the job description to narrow it, then open it.',
+				{ exact: true }
+			)
+		).toBeVisible();
+		expect((await listRecruiterJobs(api)).find((job) => job._id === id)?.status).toBe('draft');
 
 		// Open: it can be picked on a candidate's Hire page, and its terms are locked
 		await page.getByRole('button', { name: 'Change status' }).click();

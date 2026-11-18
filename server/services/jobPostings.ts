@@ -2,7 +2,9 @@ import {
   JOB_LIMITS,
   changedLockedFields,
   jobTermsLocked,
+  locksJobTerms,
   normalizeJobPosting,
+  payRangeTooWideMessage,
   validateJobPosting
 } from 'portfolio-common';
 import type {
@@ -173,6 +175,19 @@ export function requireUnchangedTerms(stored: StoredJobPosting, fields: JobPosti
   if (changedLockedFields(normalizeJobPosting(toJobPostingDto(stored)), fields).length > 0) {
     throw new ConflictError(JOB_TERMS_LOCKED);
   }
+}
+
+/**
+ * A status change that opens a posting for the first time (portfolio-common's locksJobTerms) needs
+ * its pay range within JOB_LIMITS.pay.maxRangeRatio times its bottom, or a 422 on `pay.max` with
+ * validateJobPosting's own message: a draft saved wider before the cap is narrowed in the editor
+ * first, so its terms never lock on a range candidates would read wider than it is scored. A
+ * posting opened before keeps its status changes (on hold, filled...), scored as if capped.
+ */
+export function requireOpenablePay(stored: Pick<StoredJobPosting, 'pay' | 'publishedAt'>, status: JobStatus) {
+  if (!locksJobTerms(status, stored)) return;
+  const tooWide = payRangeTooWideMessage(stored.pay);
+  if (tooWide) throw new FieldValidationError('pay.max', tooWide);
 }
 
 /** When a posting with this status was first published: now, the first time it leaves draft */

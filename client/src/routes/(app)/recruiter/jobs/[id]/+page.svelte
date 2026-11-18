@@ -13,7 +13,13 @@
 		PencilSquare,
 		Trash
 	} from 'svelte-heros-v2';
-	import { jobTermsLocked, locksJobTerms, type JobStatus } from 'portfolio-common';
+	import {
+		JOB_LIMITS,
+		highestPayMax,
+		jobTermsLocked,
+		locksJobTerms,
+		type JobStatus
+	} from 'portfolio-common';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { SIGN_IN_ID } from '#components/Login.svelte';
@@ -27,7 +33,8 @@
 	import { portfolioApi } from '#services';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
-	import { errorStatus } from '#services/apiErrors.ts';
+	import { bodyProperty, errorStatus } from '#services/apiErrors.ts';
+	import { formatAmount } from '#services/jobPosting.ts';
 	import { isConsentProblem } from '#services/account.ts';
 	import { clearJobDraft, jobDraftStorageKey } from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
@@ -159,6 +166,7 @@
 	async function changeStatus(status: JobStatus) {
 		if (!job || changingStatus) return;
 		const id = job._id;
+		const payMin = job.pay.min;
 		changingStatus = true;
 		try {
 			const { data, error } = await portfolioApi
@@ -168,7 +176,16 @@
 				const code = errorStatus(error);
 				if (code === 401) sessionExpired();
 				else if (code === 404) loadState = { kind: 'not-found' };
-				else {
+				else if (code === 422 && bodyProperty(error?.value) === 'pay.max') {
+					// Its range was saved wider than the cap before it: narrowed in the editor first
+					toaster.error({
+						title: m.narrowPayToOpen.title,
+						description: m.narrowPayToOpen.text(
+							formatAmount(highestPayMax(payMin)),
+							JOB_LIMITS.pay.maxRangeRatio
+						)
+					});
+				} else {
 					toaster.error({
 						title: failureText(error?.value, m.statusFailed)
 					});

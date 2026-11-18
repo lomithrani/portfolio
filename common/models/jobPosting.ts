@@ -284,14 +284,35 @@ export const highestPayMax = (min: number): number =>
 export const isPayRangeTooWide = (pay: { min: number; max: number }): boolean =>
 	cents(pay.max) > cents(highestPayMax(pay.min));
 
-/** An amount as the language in use writes it: '€67,500', '67 500 €', '€49.99' */
-const formatPayAmount = (amount: number, currency: PayCurrency): string =>
+/**
+ * A pay amount as the language in use writes it: '€67,500', '67 500 €', '€49.99' (a currency
+ * that is not one of PAY_CURRENCIES is written in euros). The one formatter of pay amounts: the
+ * problems of validateJobPosting and every page that shows a posting's pay
+ */
+export const formatPayAmount = (amount: number, currency: string = 'EUR'): string =>
 	new Intl.NumberFormat(intlLocale(), {
 		style: 'currency',
-		currency: PAY_CURRENCIES.includes(currency) ? currency : 'EUR',
+		currency: (PAY_CURRENCIES as readonly string[]).includes(currency) ? currency : 'EUR',
 		minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
 		maximumFractionDigits: 2
 	}).format(amount);
+
+/**
+ * What validateJobPosting says of a pay range wider than JOB_LIMITS.pay.maxRangeRatio times its
+ * bottom (on `pay.max`: the most its top can be, in the language in use); undefined for a range
+ * that is not. Also what the API answers when a posting saved so before the cap is first opened
+ */
+export const payRangeTooWideMessage = (pay: {
+	min: number;
+	max: number;
+	currency: string;
+}): string | undefined =>
+	isPayRangeTooWide(pay)
+		? m.problems.payRangeTooWide(
+				JOB_LIMITS.pay.maxRangeRatio,
+				formatPayAmount(highestPayMax(pay.min), pay.currency)
+			)
+		: undefined;
 
 /**
  * An amount of at most two decimals as exactly that (45000.000000001 is 45000): what is stored
@@ -534,11 +555,11 @@ export function validateJobPosting(job: JobPostingInput): JobPostingProblem[] {
 	};
 	const validMin = amount('pay.min', pay.min, m.problems.amount.min);
 	const validMax = amount('pay.max', pay.max, m.problems.amount.max);
+	const tooWide = validMin && validMax ? payRangeTooWideMessage(pay) : undefined;
 	if (validMin && validMax && pay.max < pay.min) {
 		problem('pay.max', m.problems.payMaxBelowMin);
-	} else if (validMin && validMax && isPayRangeTooWide(pay)) {
-		const most = formatPayAmount(highestPayMax(pay.min), pay.currency);
-		problem('pay.max', m.problems.payRangeTooWide(JOB_LIMITS.pay.maxRangeRatio, most));
+	} else if (tooWide) {
+		problem('pay.max', tooWide);
 	}
 	if (!PAY_CURRENCIES.includes(pay.currency)) problem('pay.currency', m.problems.unknownCurrency);
 	if (!PAY_PERIODS.includes(pay.period)) problem('pay.period', m.problems.unknownPayPeriod);

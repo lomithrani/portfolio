@@ -37,6 +37,23 @@ export const m = defineMessages({
 	/** Name of the management panel */
 	manage: { en: 'Manage this job description', fr: "Gérer cette offre d'emploi" },
 
+	/**
+	 * Opening a job description whose pay range was saved wider than JOB_LIMITS.pay.maxRangeRatio
+	 * times its bottom, before that cap (422 on pay.max). `most`: the highest maximum its minimum
+	 * allows, formatted ('€63,000'); `ratio`: the cap
+	 */
+	narrowPayToOpen: {
+		title: {
+			en: 'Narrow its pay range before opening it',
+			fr: "Resserrez sa fourchette de rémunération avant de l'ouvrir"
+		},
+		text: {
+			en: (most: string, ratio: number) =>
+				`Its maximum pay can be at most ${most} (${ratio.toLocaleString('en-GB')} times its minimum). Edit the job description to narrow it, then open it.`,
+			fr: (most: string, ratio: number) =>
+				`Sa rémunération maximale peut aller jusqu'à ${most} (${ratio.toLocaleString('fr-FR')} fois sa minimale). Modifiez l'offre pour la resserrer, puis ouvrez-la.`
+		}
+	},
 	statusFailed: {
 		en: 'Could not change the status. Try again in a moment.',
 		fr: 'Impossible de changer le statut. Réessayez dans un instant.'

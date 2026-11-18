@@ -11,6 +11,7 @@ import {
 	SENIORITY_LABELS,
 	TRAVEL_LABELS,
 	WORK_MODE_LABELS,
+	formatPayAmount,
 	highestPayMax,
 	intlLocale,
 	isPayRangeTooWide,
@@ -495,14 +496,9 @@ export const orderedJobFormErrors = (
 /** The tag English numbers and dates are written with (French: fr-FR), read when formatting */
 const locale = () => intlLocale('en-GB');
 
-/** '€45,000', '€11.88' */
+/** '€45,000', '€11.88' (portfolio-common's formatPayAmount, as validateJobPosting writes them) */
 export const formatAmount = (amount: number, currency = 'EUR'): string =>
-	new Intl.NumberFormat(locale(), {
-		style: 'currency',
-		currency,
-		minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
-		maximumFractionDigits: 2
-	}).format(amount);
+	formatPayAmount(amount, currency);
 
 /** '€45,000 – €55,000 gross per year', '€500 gross per day' (min equal to max: a fixed pay) */
 export const formatPay = (pay: JobPostingLike['pay']): string => {

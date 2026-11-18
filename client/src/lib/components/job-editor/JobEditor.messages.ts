@@ -296,14 +296,14 @@ export const m = defineMessages({
 	},
 	/**
 	 * Under the pay's intro: how wide a range can be (`ratio`: JOB_LIMITS.pay.maxRangeRatio), and
-	 * how a candidate's pay criterion is matched in it (`top`: the share at the top of the range
-	 * that matches only partly, in percent; PAY_MATCH)
+	 * how a candidate's pay criterion is matched in it (`full`: how far up the range an ask still
+	 * matches fully, in percent; PAY_MATCH). A fixed pay has no top of the range: up to it matches
 	 */
 	payScoredInRange: {
-		en: (ratio: number, top: number) =>
-			`The maximum can be up to ${ratio.toLocaleString('en-GB')} times the minimum. A candidate's pay criterion matches when what they ask is below the top ${top}% of your range, and less and less from there.`,
-		fr: (ratio: number, top: number) =>
-			`Le maximum peut aller jusqu'à ${ratio.toLocaleString('fr-FR')} fois le minimum. Le critère de rémunération d'un candidat correspond quand sa demande est sous les ${top} % supérieurs de votre fourchette, et de moins en moins au-delà.`
+		en: (ratio: number, full: number) =>
+			`The maximum can be up to ${ratio.toLocaleString('en-GB')} times the minimum. A candidate's pay criterion matches when what they ask is at most ${full}% of the way up your range (at most your pay, when it is fixed), and less and less from there.`,
+		fr: (ratio: number, full: number) =>
+			`Le maximum peut aller jusqu'à ${ratio.toLocaleString('fr-FR')} fois le minimum. Le critère de rémunération d'un candidat correspond quand sa demande ne dépasse pas les ${full} % inférieurs de votre fourchette (ou votre rémunération, quand elle est fixe), et de moins en moins au-delà.`
 	},
 	/** How screen readers hear the unit of a pay amount (€) */
 	eurosGross: { en: 'euros, gross', fr: 'euros, brut' },

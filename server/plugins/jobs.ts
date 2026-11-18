@@ -12,6 +12,7 @@ import {
   findOwnJobPosting,
   jobPostingFields,
   publishedAtFor,
+  requireOpenablePay,
   requireUnchangedTerms,
   toJobPostingDto,
   validJobPosting
@@ -101,6 +102,8 @@ export const jobs = new Elysia()
   })
   .put('/jobs/:id/status', async ({ userId, params: { id }, body: { status } }): Promise<JobPostingDto> => {
     const job = await findOwnJobPosting(userId, id);
+    // Opened for the first time: a range saved wider than the cap is narrowed first (422)
+    requireOpenablePay(job, status);
     job.status = status;
     job.publishedAt = publishedAtFor(status, job.publishedAt);
     const saved = await saveJobPosting(job);
@@ -108,7 +111,9 @@ export const jobs = new Elysia()
   }, {
     params: objectIdParams,
     body: jobStatusRequest,
-    detail: { summary: 'Change the status of a job posting' }
+    detail: {
+      summary: 'Change the status of a job posting (422 on `pay.max` when it opens one whose pay range is wider than the cap)'
+    }
   })
   .delete('/jobs/:id', async ({ userId, params: { id } }) => {
     const job = await JobPosting.findOneAndDelete({ _id: id, recruiter: userId });

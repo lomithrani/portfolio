@@ -921,7 +921,7 @@ test.describe('the hiring journey', () => {
 		await pay.getByText('Pay', { exact: true }).click();
 		// How the pay asked matches: by where it falls in the job's range
 		await expect(pay).toContainText(
-			'A job matches when what you ask is below the top 10% of its pay range, partly when it is in that top 10%, a little up to 10% over the range, and not at all further over.'
+			'A job matches when what you ask is at most 90% of the way up its pay range (at most its pay, when the pay is fixed), partly when it is in the top 10% of the range, a little up to 10% over the top, and not at all further over.'
 		);
 		await pay.getByLabel('Per year').fill('a lot');
 		await expect(
@@ -1072,7 +1072,7 @@ test.describe('the hiring journey', () => {
 		await pay.getByText('Pay', { exact: true }).click();
 		// How the pay asked matches: by where it falls in the job's range
 		await expect(pay).toContainText(
-			'A job matches when what you ask is below the top 10% of its pay range, partly when it is in that top 10%, a little up to 10% over the range, and not at all further over.'
+			'A job matches when what you ask is at most 90% of the way up its pay range (at most its pay, when the pay is fixed), partly when it is in the top 10% of the range, a little up to 10% over the top, and not at all further over.'
 		);
 		await pay.getByLabel('Per year').fill('70 000');
 

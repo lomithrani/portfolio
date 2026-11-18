@@ -590,6 +590,13 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
     });
     await expect(assertStepOpen(owner.id, recruiter.id, 'meeting')).rejects.toBeInstanceOf(JourneyStepLockedError);
 
+    // A range saved wider than 1.5 times its bottom before that cap scores as the range brought
+    // down to it: 50-75 k€, the ask up to 10% over its top (8 of 10, and 0.3 of 2)
+    for (const max of [200000, 75000]) {
+      await JobPosting.updateOne({ _id: jobId }, { pay: { min: 50000, max, currency: 'EUR', period: 'year' } });
+      expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'failed', view: { score: 86 } });
+    }
+
     // The recruiter raises the pay of the posting, the ask at its bottom: it passes again
     await JobPosting.updateOne({ _id: jobId }, { pay: { min: 80000, max: 90000, currency: 'EUR', period: 'year' } });
     expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'succeeded', view: { score: 100 } });

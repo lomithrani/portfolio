@@ -1000,6 +1000,59 @@ describe('terms locked once opened', () => {
   });
 });
 
+describe('a pay range saved wider than 1.5 times its bottom, before that cap', () => {
+  const widePay = { min: 45000, max: 80000, currency: 'EUR', period: 'year' };
+  /** A posting of `recruiter` whose range was saved 45-80 k€ before the cap (validation bypassed) */
+  const legacyJob = async (recruiter: TestUser, status: 'open' | 'draft') => {
+    const created = await createJob(recruiter, sampleJob({ status }));
+    await JobPosting.updateOne({ _id: created._id }, { $set: { 'pay.max': widePay.max } });
+    return created._id as string;
+  };
+
+  it('stays readable and keeps its status changes once opened, and is refused only by an edit that keeps it', async () => {
+    const recruiter = await createRecruiter();
+    const id = await legacyJob(recruiter, 'open');
+
+    const read = await call('GET', `/recruiter/jobs/${id}`, { cookie: recruiter.cookie });
+    expect([read.status, read.json().pay]).toEqual([200, widePay]);
+    for (const status of ['on_hold', 'open', 'filled']) {
+      const changed = await call('PUT', `/jobs/${id}/status`, { body: { status }, cookie: recruiter.cookie });
+      expect([changed.status, changed.json().status, changed.json().pay]).toEqual([200, status, widePay]);
+    }
+    const kept = await call('PUT', `/jobs/${id}`, { body: sampleJob({ status: 'filled', pay: widePay }), cookie: recruiter.cookie });
+    expect(kept.status).toBe(422);
+    expect(kept.json()).toMatchObject({ property: 'pay.max', message: 'Maximum pay must be at most €67,500 (1.5 times the minimum)' });
+  });
+
+  it('is narrowed before a draft is first opened from its status (422 on pay.max), leaving it a draft', async () => {
+    const recruiter = await createRecruiter();
+    const id = await legacyJob(recruiter, 'draft');
+
+    for (const [status, language, message] of [
+      ['open', 'en', 'Maximum pay must be at most €67,500 (1.5 times the minimum)'],
+      ['on_hold', 'fr', 'Rémunération maximale\u00a0: indiquez 67\u202f500\u00a0€ au maximum (1,5 fois la minimale)']
+    ]) {
+      const opened = await call('PUT', `/jobs/${id}/status`, { body: { status }, cookie: recruiter.cookie, language });
+      expect(opened.status).toBe(422);
+      expect(opened.json()).toEqual({ type: 'validation', on: 'body', property: 'pay.max', message });
+    }
+    const stored = await JobPosting.findById(id).lean();
+    expect([stored?.status, stored?.publishedAt, stored?.pay.max]).toEqual(['draft', undefined, widePay.max]);
+    // Staying a draft is no opening
+    expect((await call('PUT', `/jobs/${id}/status`, { body: { status: 'draft' }, cookie: recruiter.cookie })).status).toBe(200);
+
+    // Narrowed in the editor, it opens
+    const narrowed = await call('PUT', `/jobs/${id}`, {
+      body: sampleJob({ status: 'draft', pay: { ...widePay, max: 60000 } }),
+      cookie: recruiter.cookie
+    });
+    expect(narrowed.status).toBe(200);
+    const opened = await call('PUT', `/jobs/${id}/status`, { body: { status: 'open' }, cookie: recruiter.cookie });
+    expect([opened.status, opened.json().status, opened.json().pay.max]).toEqual([200, 'open', 60000]);
+    expect(opened.json().publishedAt).toMatch(ISO_INSTANT);
+  });
+});
+
 describe("another recruiter's posting", () => {
   it('is not found (404) by every recruiter route, and stays unchanged', async () => {
     const owner = await createRecruiter('owner');

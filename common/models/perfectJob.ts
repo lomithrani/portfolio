@@ -15,6 +15,7 @@ import {
 	TRAVEL_FREQUENCIES,
 	WORKING_TIME_ARRANGEMENTS,
 	WORK_MODES,
+	highestPayMax,
 	normalizeList
 } from './jobPosting';
 import { perfectJobMessages as m } from './perfectJob.messages';
@@ -640,7 +641,12 @@ export const officeDaysPerWeek = (location: ScoredJob['location']): number => {
 	return Math.max(0, WORK_DAYS_PER_WEEK - remote);
 };
 
-/** What the job pays at the bottom and at the top of its range, converted to a year or a day */
+/**
+ * What the job pays at the bottom and at the top of its range, converted to a year or a day. The
+ * top is the one scored: at most the highest maximum its bottom allows (highestPayMax, in cents,
+ * as validateJobPosting counts it), so a range saved wider than that before the cap scores as the
+ * same range brought down to it
+ */
 const jobPayRange = (job: ScoredJob, per: 'year' | 'day'): NumberRange => {
 	const { pay, workingTime } = job;
 	const daysPerYear = workingTime.daysPerYear ?? FR_FORFAIT_JOURS_STANDARD_DAYS;
@@ -657,7 +663,7 @@ const jobPayRange = (job: ScoredJob, per: 'year' | 'day'): NumberRange => {
 		if (per === 'year') return perYear;
 		return pay.period === 'day' ? amount : perYear / daysPerYear;
 	};
-	return { min: converted(pay.min), max: converted(pay.max) };
+	return { min: converted(pay.min), max: converted(Math.min(pay.max, highestPayMax(pay.min))) };
 };
 
 /** `value` is at most `limit`, float noise aside (an ask of 66,000 is not over 60,000 × 1.1) */
@@ -733,9 +739,9 @@ const SCORERS: {
 		const per = perDay !== undefined && (job.pay.period === 'day' || perYear === undefined) ? 'day' : 'year';
 		const asked = per === 'day' ? perDay : perYear;
 		if (asked === undefined) return 1;
+		// A range wider than the cap (saved before it) is scored as if capped (jobPayRange)
 		const { min, max } = jobPayRange(job, per);
-		// A range wider than the cap (saved before it) is scored as if capped
-		const top = Math.max(min, Math.min(max, min * JOB_LIMITS.pay.maxRangeRatio));
+		const top = Math.max(min, max);
 		if (atMost(asked, min + (top - min) * PAY_MATCH.fullShareOfRange)) return 1;
 		if (atMost(asked, top)) return PAY_MATCH.topOfRange;
 		if (atMost(asked, top * (1 + PAY_MATCH.aboveRangeTolerance))) return PAY_MATCH.aboveRange;

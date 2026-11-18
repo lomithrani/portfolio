@@ -41,6 +41,8 @@ export {
 	isJobStartDate,
 	highestPayMax,
 	isPayRangeTooWide,
+	payRangeTooWideMessage,
+	formatPayAmount,
 	opportunityPath,
 	JOB_STATUS_LABELS,
 	WORK_MODE_LABELS,
