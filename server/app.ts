@@ -14,6 +14,7 @@ import {
   corsConf,
   jobs,
   jobImport,
+  opportunities,
   perfectJob,
   addresses,
   feedback
@@ -211,6 +212,7 @@ export const createApp = () =>
     .use(addresses)
     .use(feedback)
     .use(appointments)
+    .use(opportunities)
     // Before jobs: its static /jobs/import routes, then the /jobs/:id ones
     .use(jobImport)
     .use(jobs)

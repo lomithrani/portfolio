@@ -868,14 +868,17 @@ with a free name) and tell its owner before deploying.
 
 Portfolios are public to anyone with their address but are not listed by search engines
 (CLAUDE.md, "Search engines"): every page of a portfolio, the 404 of a name nobody claimed,
-`/account` and `/recruiter/jobs/*` answer with `x-robots-tag: noindex, nofollow, noarchive`, and
-the API sends the same header on every answer. The pages rendered on the server (a portfolio's
-pages, `/account`) also carry a robots meta in their HTML; the 404 of a name nobody claimed has
-the header alone; `/recruiter/jobs/*` is rendered in the browser, so its meta is only written once
-its script ran (`curl` never sees it). The landing page, the legal pages and `/recruiter` stay
-listed, with their canonical links (the one of `/recruiter`, rendered in the browser too, is
-written by its script). The job board is gone: `/jobs` answers `410 Gone`, which tells search
-engines to drop it, and the API's `GET /jobs` and `GET /jobs/<id>` answer 404.
+`/account`, `/recruiter/jobs/*` and `/opportunities/*` (the private page of a job description
+shared with a candidate) answer with `x-robots-tag: noindex, nofollow, noarchive`, and the API
+sends the same header on every answer. The pages rendered on the server (a portfolio's pages,
+`/account`) also carry a robots meta in their HTML; the 404 of a name nobody claimed has the
+header alone; `/recruiter/jobs/*` and `/opportunities/*` are rendered in the browser, so their
+meta is only written once their script ran (`curl` never sees it). The landing page, the legal
+pages and `/recruiter` stay listed, with their canonical links (the one of `/recruiter`, rendered
+in the browser too, is written by its script). The job board is gone: `/jobs` answers `410 Gone`,
+which tells search engines to drop it, `/jobs/<id>` answers `308` to `/opportunities/<id>` (the
+link of the meeting invitations sent before), and the API's `GET /jobs` and `GET /jobs/<id>`
+answer 404.
 
 **robots.txt refuses nothing, on purpose.** A crawler has to fetch a page to read its `noindex`:
 a `Disallow` would hide the request, and a search engine can still list a refused address it
@@ -906,6 +909,8 @@ curl -s https://example.com/louis.gentil/experiences | grep -o '<meta name="robo
 headers https://example.com/ | grep -ci '^x-robots-tag'                          # 0: the landing page is listed
 headers https://example.com/legal/privacy | grep -ci '^x-robots-tag'             # 0
 curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs               # 410: the job board is gone
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://example.com/jobs/65e2e00000000000000000aa   # 308 .../opportunities/65e2e00000000000000000aa
+headers https://example.com/opportunities/65e2e00000000000000000aa | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
 curl -s -o /dev/null -w '%{http_code}\n' https://api.example.com/jobs           # 404
 curl -s https://example.com/robots.txt | grep -iE '^(user-agent|allow|disallow)'   # each group with its user agents
 LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'

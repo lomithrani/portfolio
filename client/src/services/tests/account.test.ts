@@ -217,6 +217,18 @@ describe('spaceToRecord', () => {
 		expect(spaceToRecord(both, '/legal')).toBeNull();
 		expect(spaceToRecord({ ...both, domain: undefined }, '/bo.both/experiences')).toBeNull();
 	});
+
+	it('records the candidate space on a job description shared with a portfolio owner', () => {
+		const both = { recruiter: true, domain: 'bo.both', activeMode: 'recruiter' as const };
+		expect(spaceToRecord(both, '/opportunities/65e2e00000000000000000aa')).toBe('candidate');
+		expect(spaceToRecord({ domain: 'bo.both' }, '/opportunities/1')).toBe('candidate');
+		// Already active, an account without a portfolio, or a page that only starts like it
+		expect(spaceToRecord({ ...both, activeMode: 'candidate' }, '/opportunities/1')).toBeNull();
+		expect(
+			spaceToRecord({ recruiter: true, activeMode: 'recruiter' }, '/opportunities/1')
+		).toBeNull();
+		expect(spaceToRecord(both, '/opportunitiesboard')).toBeNull();
+	});
 });
 
 describe('recordSpaceShown', () => {
@@ -238,6 +250,35 @@ describe('recordSpaceShown', () => {
 		mockModePut.mockResolvedValue({ data: { user: recruiter }, error: null });
 		await recordSpaceShown('/rita/experiences');
 		expect(mockModePut).toHaveBeenLastCalledWith({ mode: 'candidate' }, withCredentials);
+	});
+
+	it('records the spaces of the pages shown one after the other, in their order', async () => {
+		// Both spaces, the recruiter one active: /opportunities (the candidate space) sends the
+		// posting's recruiter on to their own page of it before the first answer came back
+		const both = { ...recruiter, activeMode: 'recruiter' as const };
+		authenticationStore.set({ user: both, expires });
+		let answerCandidate = (): void => {};
+		mockModePut.mockImplementation(({ mode }: { mode: string }) =>
+			mode === 'candidate'
+				? new Promise((resolve) => {
+						answerCandidate = () =>
+							resolve({ data: { user: { ...both, activeMode: 'candidate' } }, error: null });
+					})
+				: Promise.resolve({ data: { user: { ...both, activeMode: 'recruiter' } }, error: null })
+		);
+
+		const shown = recordSpaceShown('/opportunities/65e2e00000000000000000aa');
+		const sentOn = recordSpaceShown('/recruiter/jobs/65e2e00000000000000000aa');
+		await vi.waitFor(() => expect(mockModePut).toHaveBeenCalledTimes(1));
+		answerCandidate();
+		await Promise.all([shown, sentOn]);
+
+		expect(mockModePut.mock.calls.map(([body]) => body)).toEqual([
+			{ mode: 'candidate' },
+			{ mode: 'recruiter' }
+		]);
+		expect(get(authenticationStore).user?.activeMode).toBe('recruiter');
+		mockModePut.mockReset();
 	});
 
 	it('records nothing on a page of no space, the active one, or signed out', async () => {

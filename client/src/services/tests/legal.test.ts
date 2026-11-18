@@ -96,7 +96,8 @@ describe('reserved domain names', () => {
 		'contact',
 		'report',
 		'help',
-		'account'
+		'account',
+		'opportunities'
 	])('reserves %s for a page of the site', (name) => {
 		expect(RESERVED_DOMAIN_NAMES.has(name)).toBe(true);
 		expect(isValidDomainName(name)).toBe(false);

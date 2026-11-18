@@ -176,8 +176,9 @@ const portfolioOfPath = (pathname: string): string => {
 /**
  * The space to record (PUT /me/mode) for the page shown, so the account menu names it: 'recruiter'
  * on a /recruiter page for an account that has a recruiter space, 'candidate' on the account's
- * own portfolio, when another space is active; null otherwise. An account without a recruiter
- * space creates it from the page instead.
+ * own portfolio and on /opportunities (a job description shared with a portfolio owner) for an
+ * account that has a portfolio, when another space is active; null otherwise. An account without
+ * a recruiter space creates it from the page instead.
  */
 export const spaceToRecord = (
 	user: Pick<AuthUser, 'activeMode' | 'recruiter' | 'domain'> | null | undefined,
@@ -187,8 +188,11 @@ export const spaceToRecord = (
 	if (isCurrentSection(pathname, '/recruiter')) {
 		return user.recruiter && user.activeMode !== 'recruiter' ? 'recruiter' : null;
 	}
-	const ownPortfolio = !!user.domain && portfolioOfPath(pathname) === user.domain.toLowerCase();
-	return ownPortfolio && user.activeMode !== 'candidate' ? 'candidate' : null;
+	const candidatePage =
+		!!user.domain &&
+		(isCurrentSection(pathname, '/opportunities') ||
+			portfolioOfPath(pathname) === user.domain.toLowerCase());
+	return candidatePage && user.activeMode !== 'candidate' ? 'candidate' : null;
 };
 
 const bodyText = (value: unknown): string => {
@@ -327,27 +331,29 @@ export const switchMode = (mode: UserMode, consent?: ConsentInput): Promise<Swit
 				: undefined
 	);
 
-/** The space being recorded by recordSpaceShown: one request at a time per space */
-let recording: UserMode | null = null;
+/** The last recording of recordSpaceShown: the next one waits for it to end */
+let recorded: Promise<void> = Promise.resolve();
 
 /**
  * Records the space of the page shown (spaceToRecord) as the account's active one, once a
  * navigation to it ended: the layouts call it after every navigation (a link, a bookmark, the
  * account menu or the space chooser, which only navigate) and once the session is known. A
  * navigation the page kept (unsaved changes) records nothing, so the menu never names a space
- * the page is not in. A failure only leaves the menu's label as it was.
+ * the page is not in. One request at a time, in the order the pages were shown: each looks at
+ * the account once the one before it answered, so a page shown while another space is being
+ * recorded (/opportunities sending a recruiter on to their own job) ends in its own space, and a
+ * space recorded meanwhile is not asked for again. A failure only leaves the menu's label as it
+ * was.
  */
-export const recordSpaceShown = async (pathname: string): Promise<void> => {
-	const auth = get(authenticationStore);
-	if (!isSessionValid(auth)) return;
-	const mode = spaceToRecord(auth.user, pathname);
-	if (!mode || recording === mode) return;
-	recording = mode;
-	try {
-		await switchMode(mode);
-	} finally {
-		recording = null;
-	}
+export const recordSpaceShown = (pathname: string): Promise<void> => {
+	const record = recorded.then(async () => {
+		const auth = get(authenticationStore);
+		if (!isSessionValid(auth)) return;
+		const mode = spaceToRecord(auth.user, pathname);
+		if (mode) await switchMode(mode);
+	});
+	recorded = record.catch(() => {});
+	return record;
 };
 
 /** Reloads the signed-in account (GET /me), e.g. once it claimed a domain */

@@ -23,6 +23,7 @@ export const RESERVED_DOMAIN_NAMES: ReadonlySet<string> = new Set([
 	'login',
 	'logout',
 	'me',
+	'opportunities',
 	'privacy',
 	'recruiter',
 	'report',

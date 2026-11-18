@@ -73,8 +73,9 @@ describe('pages search engines are asked not to list', () => {
 	});
 
 	test('the other pages not listed write the robots meta too', () => {
-		// The (app) layout on its routes of NOINDEX_ROUTES (/recruiter/jobs/*, rendered in the
-		// browser), and the account page. client/tests/robots.test.ts checks the rendered pages
+		// The (app) layout on its routes of NOINDEX_ROUTES (/recruiter/jobs/*, /opportunities/*,
+		// rendered in the browser), and the account page. client/tests/robots.test.ts checks the
+		// rendered pages
 		const appLayout = layoutSources['/src/routes/(app)/+layout.svelte'];
 		expect(appLayout).toMatch(
 			/\{#if noindex\}\s*<meta name="robots" content=\{NOINDEX\} \/>\s*\{\/if\}/
@@ -107,12 +108,13 @@ describe('pages search engines are asked not to list', () => {
 			expect({ route, noindex: isNoindexRoute(route) }).toEqual({ route, noindex: false });
 	});
 
-	test('the account page and the job descriptions of the recruiter space are not listed', () => {
+	test('the account page and the job descriptions of the recruiter space and of a candidate are not listed', () => {
 		for (const route of [
 			'/(site)/account',
 			'/(app)/recruiter/jobs/new',
 			'/(app)/recruiter/jobs/[id]',
-			'/(app)/recruiter/jobs/[id]/edit'
+			'/(app)/recruiter/jobs/[id]/edit',
+			'/(app)/opportunities/[id]'
 		]) {
 			expect({ route, noindex: isNoindexRoute(route) }).toEqual({ route, noindex: true });
 		}
@@ -123,6 +125,7 @@ describe('pages search engines are asked not to list', () => {
 		expect(isNoindexRoute('/[domain]x')).toBe(false);
 		expect(isNoindexRoute('/(app)/recruiter/jobsboard')).toBe(false);
 		expect(isNoindexRoute('/(site)/accounts')).toBe(false);
+		expect(isNoindexRoute('/(app)/opportunitiesboard')).toBe(false);
 		expect(isNoindexRoute('/')).toBe(false);
 		// An address that matches no route (SvelteKit's own 404)
 		expect(isNoindexRoute(null)).toBe(false);

@@ -1268,7 +1268,7 @@ describe('hiring journey gate', () => {
     expect(booked.status).toBe(200);
     const [event] = [...google.state.events.values()];
     expect(event.description).toBe(
-      `Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
+      `Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/opportunities/${jobId}`
     );
     const instance = await WorkflowInstance.findOne({ owner: owner.userId, visitor: other.userId }).lean();
     expect(instance?.steps?.meeting.data).toEqual({ bookedAt: expect.any(Date) });
@@ -1313,7 +1313,7 @@ describe('hiring journey gate', () => {
     // The note adds nothing to the invitation
     const [event] = [...google.state.events.values()];
     expect(event.description).toBe(
-      `Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/jobs/${jobId}`
+      `Booked via Portfolio by Jane Recruiter (${t.email('jane')})\nJob: Staff Engineer — Acme\n${WEB_ORIGIN}/opportunities/${jobId}`
     );
   });
 
@@ -2000,6 +2000,10 @@ describe('no Google token in any API response', () => {
     expect(
       (await call('POST', `/workflow/domains/${t.id('domain')}/steps/job`, { ...auth, body: { input: { jobId } } })).status
     ).toBe(200);
+    // The job's private page, as its recruiter and as the owner it was picked for
+    // (tests/opportunities.test.ts covers it)
+    expect((await call('GET', `/opportunities/jobs/${jobId}`, auth)).json().access).toBe('recruiter');
+    expect((await call('GET', `/opportunities/jobs/${jobId}`, { cookie: owner.cookie })).json().access).toBe('journey');
     expect((await call('DELETE', `/jobs/${jobId}`, auth)).status).toBe(200);
 
     expect((await call('GET', '/appointments/calendars', auth)).status).toBe(200);

@@ -107,7 +107,10 @@ Two consequences that are easy to miss:
 - **What `visitorConfig` returns is public.** `GET /workflow/domains/:domainName` needs no session,
   so anonymous callers get it too. Return a setting there only when it is written for visitors.
 - **The owner does not see a visitor's `data`.** The only thing that reaches the owner is what the
-  step's `describe` puts in the meeting invitation.
+  step's `describe` puts in the meeting invitation, and what that invitation links: for the job
+  step, the job's private page (`GET /opportunities/jobs/:id`, `server/services/jobAccess.ts`),
+  which reads the job step's pick (`pickedJobId`) to let the owner, and nobody else but the
+  posting's recruiter, read the posting picked on their journey.
 
 ## Adding a step: the note step, file by file
 
@@ -262,8 +265,11 @@ that each field is a string instead of returning `config` as it is.
 visitor books. Its lines go into the calendar event's description, between the "Booked via
 portfolio by ..." line and the visitor's notes, so both the owner and the visitor read them. The
 job step returns `Job: <title> — <company>` and, when the request came from an allowed web origin,
-a link to `/jobs/<id>` on that origin (the posting has no public page any more: the job board is
-gone). The note describes nothing.
+a link to the job's private page on that origin (`opportunityPath(id)` of portfolio-common,
+`/opportunities/<id>`: the page and the link share it, so they cannot drift apart). Only the
+portfolio owner, while it is the recruiter's current pick on their journey and not a draft, and its
+recruiter can open it, signed in; anyone else reads that it is not shared with them. The old
+`/jobs/<id>` of invitations sent before answers 308 to it. The note describes nothing.
 
 ### 3. The client entry: `client/src/lib/components/hire/steps/`
 

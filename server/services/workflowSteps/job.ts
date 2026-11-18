@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import { OPEN_JOB_STATUS } from 'portfolio-common';
+import { OPEN_JOB_STATUS, opportunityPath } from 'portfolio-common';
 import type { JobStatus } from 'portfolio-common';
 import { JobPosting } from '../../models/database';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../../errors';
@@ -44,11 +44,19 @@ export const JOB_NOT_OPEN = 'Only an open job description can be picked';
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 const jobId = (value: unknown) => (typeof value === 'string' && OBJECT_ID.test(value) ? value : undefined);
 
+/**
+ * The id of the posting a job step's stored `data` picked, when it holds one: for what reads a
+ * visitor's pick outside the journey (services/jobAccess.ts: the owner reads the job picked on
+ * their journey)
+ */
+export const pickedJobId = (data: unknown): string | undefined =>
+  jobId((data as Partial<JobStepData> | null | undefined)?.job);
+
 type JobContext = StepContext<Record<string, never>, JobStepData>;
 
 /** The posting the visitor picked, while it is still theirs */
 const pickedJob = async ({ visitorId, data }: JobContext): Promise<JourneyJobDto | undefined> => {
-  const id = jobId(data?.job);
+  const id = pickedJobId(data);
   if (!id || !Types.ObjectId.isValid(visitorId)) return undefined;
   const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }, { title: 1, company: 1, status: 1 }).lean();
   if (!job) return undefined;
@@ -66,7 +74,7 @@ const pickedJob = async ({ visitorId, data }: JobContext): Promise<JourneyJobDto
  * it (the job match)
  */
 export const pickedPosting = async (visitorId: string, data: unknown): Promise<JobPostingDto | undefined> => {
-  const id = jobId((data as Partial<JobStepData> | null | undefined)?.job);
+  const id = pickedJobId(data);
   if (!id || !Types.ObjectId.isValid(visitorId)) return undefined;
   const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }).lean();
   return job ? toJobPostingDto(job) : undefined;
@@ -96,13 +104,15 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
     if (job.status !== OPEN_JOB_STATUS) throw new ConflictError(JOB_NOT_OPEN);
     return { job: job._id.toString(), selectedAt: new Date() };
   },
-  // What the meeting is about
+  // What the meeting is about, and the job's private page (web client's /opportunities/:id):
+  // the owner reads it there signed in, its recruiter is sent on to their own page of it; anyone
+  // else the invitation reaches reads that it is not shared with them (services/jobAccess.ts)
   describe: async ({ webOrigin, ...ctx }) => {
     const job = await pickedJob(ctx);
     if (!job) return [];
     return [
       m.job.invitation(job.title, job.company),
-      ...(webOrigin ? [`${webOrigin}/jobs/${job._id}`] : [])
+      ...(webOrigin ? [`${webOrigin}${opportunityPath(job._id)}`] : [])
     ];
   }
 };

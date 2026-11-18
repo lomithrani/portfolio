@@ -1098,11 +1098,12 @@ describe('the engine behind the routes of a step (services/workflows.ts)', () =>
 
     const step = await openStepOfType(owner.id, recruiter.id, 'meeting', noStep);
     expect(step.stepId).toBe('meeting');
-    // Notes say nothing; the job says what the meeting is about
+    // Notes say nothing; the job says what the meeting is about, and links its private page
+    // (the web client's /opportunities/:id, tests/opportunities.test.ts)
     expect(await step.invitationLines()).toEqual(['Job: Staff Engineer']);
     expect(await step.invitationLines('https://web.example')).toEqual([
       'Job: Staff Engineer',
-      `https://web.example/jobs/${jobId}`
+      `https://web.example/opportunities/${jobId}`
     ]);
   });
 

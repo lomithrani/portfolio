@@ -39,6 +39,7 @@ export {
 	normalizeJobPosting,
 	validateJobPosting,
 	isJobStartDate,
+	opportunityPath,
 	JOB_STATUS_LABELS,
 	WORK_MODE_LABELS,
 	COUNTRY_LABELS,

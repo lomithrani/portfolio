@@ -591,3 +591,15 @@ export const SENIORITY_LABELS: Record<SeniorityLevel, string> = m.seniority;
 export const EDUCATION_LABELS: Record<EducationLevel, string> = m.education;
 
 export const TRAVEL_LABELS: Record<TravelFrequency, string> = m.travel;
+
+// ── Address ─────────────────────────────────────────────────
+
+/**
+ * The web client's page of the job posting `jobId` for the people it was shared with
+ * (/opportunities/:id): what the meeting invitation of a hiring journey links (the job step's
+ * describe() in the API), and where the client sends the candidate. One path for both, so the
+ * link and the route cannot drift apart. It is private: only the posting's recruiter and the
+ * candidates whose journey it is picked on can open it, signed in (GET /opportunities/jobs/:id)
+ */
+export const opportunityPath = (jobId: string): string =>
+	`/opportunities/${encodeURIComponent(jobId)}`;

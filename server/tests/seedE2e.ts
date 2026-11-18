@@ -5,7 +5,8 @@
 // 'e2e.recruiter@example.com' (a recruiter space, no domain, the terms in force accepted: every
 // run records the version of the code it runs, so a new LEGAL_VERSION never locks the e2e tests
 // out of the recruiter routes, which ask for it). 'e2e-shared' is a portfolio the tests may read
-// or point at but never change (its journey is the default one: a meeting step).
+// or point at but never change: its journey, set here on every run, is a job step then the
+// meeting, on which client/tests/job-view.test.ts alone has the e2e recruiter pick its jobs.
 // client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
 // and goes through it as the e2e recruiter. client/tests/account.test.ts (and the signed-in steps of
 // client/tests/landing.test.ts) use the candidate 'e2e.candidate@example.com': no domain, no
@@ -15,7 +16,7 @@
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose, { Types } from "mongoose";
 import { currentConsent } from "portfolio-common";
-import { Domain, User } from "../models/database";
+import { Domain, User, Workflow } from "../models/database";
 import { recordConsent } from "../services/legal";
 import { redactConnectionString } from "../services/redact";
 
@@ -50,6 +51,24 @@ for (const owner of owners) {
     { $setOnInsert: { admin: user._id, experiences: [] } },
     { upsert: true }
   );
+
+  // A job to pick before the meeting: the e2e recruiter's pick links the job's private page
+  // (/opportunities/:id), which its owner reads. Set on every run (a database seeded before has
+  // the default journey), as PUT /workflow stores it
+  if (owner.domain === 'e2e-shared') {
+    await Workflow.findOneAndUpdate(
+      { user: user._id },
+      {
+        $set: {
+          steps: [
+            { id: 'job', type: 'job', config: {} },
+            { id: 'meeting', type: 'meeting', config: {} }
+          ]
+        }
+      },
+      { upsert: true }
+    );
+  }
 }
 
 // A recruiter space without a domain, on the free plan with no import used. Its id is fixed:

@@ -1,8 +1,8 @@
 <!--
 @component
 A job posting as candidates and its recruiter read it: status, title, company, the facts
-(JobFacts) and the Markdown description. Used by the recruiter's job page: it has no controls of
-its own. Pass them as snippets: `actions` (next to the title: Edit...), `meta` (under the company:
+(JobFacts) and the Markdown description. Used by the recruiter's job page and by the private page
+of a job shared with a candidate (/opportunities/:id): it has no controls of its own. Pass them as snippets: `actions` (next to the title: Edit...), `meta` (under the company:
 dates...) and `children` (after the description).
 -->
 <script lang="ts">
@@ -23,7 +23,7 @@ dates...) and `children` (after the description).
 		children
 	}: {
 		job: JobPostingLike;
-		/** Show the status badge (the public page may leave it out for open postings) */
+		/** Show the status badge */
 		showStatus?: boolean;
 		/** Level of the title's heading; the sections below rank under it */
 		headingLevel?: 1 | 2 | 3;

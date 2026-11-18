@@ -84,7 +84,8 @@ test('the private pages are not listed', async ({ page }) => {
 	for (const path of [
 		'/account',
 		'/recruiter/jobs/new',
-		'/recruiter/jobs/65e2e00000000000000000aa'
+		'/recruiter/jobs/65e2e00000000000000000aa',
+		'/opportunities/65e2e00000000000000000aa'
 	]) {
 		const response = await page.goto(path);
 		expect({ path, status: response?.status() }).toEqual({ path, status: 200 });
@@ -93,8 +94,9 @@ test('the private pages are not listed', async ({ page }) => {
 			robots: expect.stringMatching(/\bnoindex\b/)
 		});
 		// The meta: in the server's HTML for /account, written once the page's script ran in the
-		// recruiter space, which is rendered in the browser only. Its layout writes it with the
-		// rest of its head, so the links below are checked on the page as it shows
+		// recruiter space and on /opportunities, which are rendered in the browser only. Their
+		// layout writes it with the rest of its head, so the links below are checked on the page
+		// as it shows
 		await expect(page.locator('meta[name="robots"]')).toHaveCount(1);
 		await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /\bnoindex\b/);
 		// It names no address for search engines to list instead

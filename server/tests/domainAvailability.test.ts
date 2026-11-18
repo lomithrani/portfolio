@@ -93,7 +93,7 @@ describe('GET /domain/:name/availability', () => {
     expect(exists).toHaveBeenCalledWith({ name });
   });
 
-  it.each(['legal', 'privacy', 'terms', 'cookies', 'account', 'jobs', 'Recruiter'])(
+  it.each(['legal', 'privacy', 'terms', 'cookies', 'account', 'jobs', 'Recruiter', 'opportunities'])(
     'says the route name %s is reserved, without a lookup',
     async (name) => {
       const exists = spyOn(Domain, 'exists');
