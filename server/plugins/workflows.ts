@@ -1,5 +1,4 @@
 import Elysia from 'elysia';
-import type { WorkflowStep } from 'portfolio-common';
 import { userLogged } from './userLogged';
 import {
   domainNameParams,
@@ -10,8 +9,8 @@ import {
 } from '../models/elysia';
 import { sessionUserId } from '../services/session';
 import { stepSuggestionsEnabled, suggestStep } from '../services/stepSuggestions';
-import { journeyFor, journeySteps, portfolioOwner, saveJourneySteps, submitStep } from '../services/workflows';
-import type { JourneyDto } from '../services/workflows';
+import { journeyFor, ownerJourney, portfolioOwner, saveJourneySteps, submitStep } from '../services/workflows';
+import type { JourneyDto, OwnerJourney } from '../services/workflows';
 
 // The hiring journey of a portfolio (services/workflows.ts): the owner
 // chooses its steps; visitors see them, signed in with where they stand, and
@@ -20,19 +19,22 @@ import type { JourneyDto } from '../services/workflows';
 // routes are the same for every type. The booking routes of the meeting step
 // (plugins/appointments.ts) check the steps before it.
 
-/** The owner's journey as they edit it: every step with its settings */
-interface WorkflowDto {
-  steps: WorkflowStep[];
-}
+/**
+ * The owner's journey as they edit it: every step with its settings, and
+ * whether they saved one (false: the default journey, a meeting step only)
+ */
+type WorkflowDto = OwnerJourney;
 
 const workflowOwner = new Elysia()
   .use(userLogged)
-  .get('/workflow', async ({ userId }): Promise<WorkflowDto> => ({ steps: await journeySteps(userId) }), {
-    detail: { summary: 'Your hiring journey: the steps visitors go through on your Hire page, in order' }
+  .get('/workflow', async ({ userId }): Promise<WorkflowDto> => ownerJourney(userId), {
+    detail: {
+      summary: 'Your hiring journey: the steps visitors go through on your Hire page, in order, and whether you saved one'
+    }
   })
   .put(
     '/workflow',
-    async ({ userId, body }): Promise<WorkflowDto> => ({ steps: await saveJourneySteps(userId, body.steps) }),
+    async ({ userId, body }): Promise<WorkflowDto> => ({ steps: await saveJourneySteps(userId, body.steps), saved: true }),
     {
       body: workflowRequest,
       detail: { summary: 'Replace the steps of your hiring journey (ids, types and settings, in order)' }

@@ -8,7 +8,16 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
 import { SignJWT } from 'jose';
-import { NOTE_STEP_LIMITS, WORKFLOW_LIMITS, stepManifests } from 'portfolio-common';
+import {
+  DEFAULT_JOB_MATCH_MIN_SCORE,
+  JOURNEY_TEMPLATES,
+  LOCALES,
+  NOTE_STEP_LIMITS,
+  WORKFLOW_LIMITS,
+  journeyTemplate,
+  stepManifests,
+  withLocale
+} from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import { ConflictError, JourneyStepLockedError, MissingAuthCookieError, ResourceNotFoundError } from '../errors';
@@ -97,6 +106,8 @@ const jobMatch = (minScore: unknown = 70, showDetails: unknown = false, id = 'jo
   config: { minScore, showDetails }
 });
 const journey = (...steps: Step[]) => ({ steps });
+/** The owner's journey as GET and PUT /workflow answer once they saved `steps` */
+const savedJourney = (...steps: Step[]) => ({ steps, saved: true });
 
 /** The owner saves `criteria` as their perfect job */
 const setPerfectJob = async (owner: TestUser, criteria: Record<string, unknown>) => {
@@ -183,23 +194,44 @@ describe("the owner's journey (GET, PUT /workflow)", () => {
 
   it('starts with the meeting step only, then keeps the steps saved, in their order', async () => {
     const owner = await createUser('owner', { domain: true });
-    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual(journey(meeting()));
+    // Not saved: the default journey, which reading does not store
+    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual({ ...journey(meeting()), saved: false });
+    expect(await Workflow.countDocuments({ user: owner.id })).toBe(0);
 
     const steps = [note('why'), job(), note('terms', 'My conditions', 'Four days a week.'), meeting()];
-    expect(await setJourney(owner, ...steps)).toEqual(journey(...steps));
-    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual(journey(...steps));
+    expect(await setJourney(owner, ...steps)).toEqual(savedJourney(...steps));
+    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual(savedJourney(...steps));
 
     // The same steps in another order: a note after the job, then both before it
     const reordered = [job(), steps[2], steps[0], meeting()];
-    expect(await setJourney(owner, ...reordered)).toEqual(journey(...reordered));
+    expect(await setJourney(owner, ...reordered)).toEqual(savedJourney(...reordered));
     const moved = [steps[2], steps[0], job(), meeting()];
-    expect(await setJourney(owner, ...moved)).toEqual(journey(...moved));
-    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual(journey(...moved));
+    expect(await setJourney(owner, ...moved)).toEqual(savedJourney(...moved));
+    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual(savedJourney(...moved));
 
-    // Replaced, never added to: one journey per account. An empty journey is one too
-    expect(await setJourney(owner)).toEqual(journey());
-    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual(journey());
+    // Replaced, never added to: one journey per account. An empty journey is one too, and so
+    // is the default journey once saved
+    expect(await setJourney(owner)).toEqual(savedJourney());
+    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual(savedJourney());
+    expect(await setJourney(owner, meeting())).toEqual(savedJourney(meeting()));
+    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual(savedJourney(meeting()));
     expect(await Workflow.countDocuments({ user: owner.id })).toBe(1);
+  });
+
+  it('saves each journey template as it is built, in English and in French', async () => {
+    const owner = await createUser('owner', { domain: true });
+    for (const locale of LOCALES) {
+      for (const name of JOURNEY_TEMPLATES) {
+        const steps = withLocale(locale, () => journeyTemplate(name));
+        const saved = await call('PUT', '/workflow', { body: { steps }, cookie: owner.cookie });
+        expect(saved.status).toBe(200);
+        // Nothing normalised away: the template is already what the API stores
+        expect(saved.json()).toEqual({ steps, saved: true });
+      }
+    }
+    const gate = journeyTemplate('gate');
+    expect(gate.map((step) => step.type)).toEqual(['note', 'job', 'job-match', 'meeting']);
+    expect(gate[2].config).toEqual({ minScore: DEFAULT_JOB_MATCH_MIN_SCORE, showDetails: true });
   });
 
   it("stores each step's settings as its type normalises them", async () => {
@@ -217,7 +249,7 @@ describe("the owner's journey (GET, PUT /workflow)", () => {
     });
     expect(saved.status).toBe(200);
     const stored = journey(note('note', 'Before you book', 'Remote only.'), job(), meeting());
-    expect(saved.json()).toEqual(stored);
+    expect(saved.json()).toEqual({ ...stored, saved: true });
     const document = await Workflow.collection.findOne({ user: new Types.ObjectId(owner.id) });
     // `config: {}` is stored, not dropped
     expect(document?.steps).toEqual(stored.steps);
@@ -701,7 +733,7 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
     await Workflow.collection.updateOne({ user: new Types.ObjectId(owner.id) }, { $set: { steps: stored } });
 
     // The owner still has it (to remove it), and cannot save it again
-    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual({ steps: stored });
+    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual({ steps: stored, saved: true });
     const saved = await call('PUT', '/workflow', { body: { steps: stored }, cookie: owner.cookie });
     expect(saved.status).toBe(422);
     expect(saved.json()).toMatchObject({ property: 'steps.1', message: 'This step is not available anymore: remove it.' });
@@ -757,7 +789,7 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
 
     await Workflow.collection.updateOne({ user: new Types.ObjectId(owner.id) }, { $unset: { steps: '' } });
     expect(await journeyOf(owner.domain, recruiter)).toEqual({ steps: [] });
-    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual({ steps: [] });
+    expect((await call('GET', '/workflow', { cookie: owner.cookie })).json()).toEqual({ steps: [], saved: true });
     await setJourney(owner, meeting());
   });
 });

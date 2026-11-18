@@ -508,7 +508,7 @@ describe('hiring journey (real collection)', () => {
 
     const saved = await putWithCookie(app, '/workflow', workflowRequestBody, owner.cookie);
     expect(saved.status).toBe(200);
-    expect(await readJson(saved)).toEqual(workflowRequestBody);
+    expect(await readJson(saved)).toEqual({ ...workflowRequestBody, saved: true });
     const stored = await Workflow.findOne({ user: owner.body.user._id }).lean();
     expect(stored?.steps.map(({ id, type, config }) => ({ id, type, config }))).toEqual(workflowRequestBody.steps);
 

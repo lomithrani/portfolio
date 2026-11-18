@@ -35,6 +35,14 @@ open to anyone, signed in or not. The owner previews their own journey and is ne
 A portfolio whose owner never chose anything has `DEFAULT_WORKFLOW_STEPS`: one `meeting` step, so
 the Hire page is a booking page open to anyone.
 
+An owner can also start from a **template** (`JOURNEY_TEMPLATES`, `journeyTemplate` in
+`common/models/workflow.ts`), saved through `PUT /workflow` like any journey: `gate` is a note
+(its title and text read from `workflowMessages.gateNote` when it is built, in the owner's
+language, unless the owner's own are given), a job step, a job match (`DEFAULT_JOB_MATCH_MIN_SCORE`,
+`showDetails: true`) and a meeting; `open` is `DEFAULT_WORKFLOW_STEPS`. Each template must pass
+`parseWorkflow` as it is built, in every language (`client/src/services/tests/workflow.test.ts`,
+`server/tests/workflows.test.ts`): a step type whose settings change must keep the templates valid.
+
 The engine (`server/services/workflows.ts`) owns the order, the locks and the storage. It knows
 nothing about what a step is. A step type only answers two questions: where does this visitor
 stand on me, and what may they submit?
@@ -63,8 +71,8 @@ All in `server/plugins/workflows.ts`, the same for every step type:
 
 | Route | Who | What |
 | --- | --- | --- |
-| `GET /workflow` | owner (session) | Their steps, with their full settings: `{ steps: [{ id, type, config }] }`. |
-| `PUT /workflow` | owner (session) | Replaces their steps. Answers the steps as stored (settings normalised). |
+| `GET /workflow` | owner (session) | Their steps, with their full settings, and whether they saved a journey (`false`: `DEFAULT_WORKFLOW_STEPS`): `{ steps: [{ id, type, config }], saved }`. |
+| `PUT /workflow` | owner (session) | Replaces their steps. Answers the steps as stored (settings normalised), with `saved: true`. |
 | `GET /workflow/domains/:domainName` | anyone | The journey as the caller stands in it: `{ steps: [{ id, type, status, config?, view? }], own? }`. |
 | `POST /workflow/domains/:domainName/steps/:stepId` | visitor (session) | Submits `{ input }` on a step. Answers the journey as the visitor now stands in it. |
 

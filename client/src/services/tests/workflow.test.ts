@@ -1,9 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
+	DEFAULT_JOB_MATCH_MIN_SCORE,
 	DEFAULT_WORKFLOW_STEPS,
+	JOURNEY_TEMPLATES,
+	LOCALES,
+	NOTE_STEP_LIMITS,
 	WORKFLOW_LIMITS,
+	journeyTemplate,
 	parseWorkflow,
 	stepManifest,
+	withLocale,
+	type NoteStepConfig,
 	type WorkflowStep,
 	type WorkflowStepStatus
 } from 'portfolio-common';
@@ -79,6 +86,60 @@ describe('the step types (portfolio-common)', () => {
 	it('starts every portfolio with booking only', () => {
 		expect(DEFAULT_WORKFLOW_STEPS).toEqual([{ id: 'meeting', type: 'meeting', config: {} }]);
 		expect(parseWorkflow(DEFAULT_WORKFLOW_STEPS)).toMatchObject({ ok: true });
+	});
+
+	it('builds each journey template as a journey the API accepts, in English and in French', () => {
+		for (const locale of LOCALES) {
+			withLocale(locale, () => {
+				for (const name of JOURNEY_TEMPLATES) {
+					const steps = journeyTemplate(name);
+					// Already as parseWorkflow stores it: nothing is trimmed or dropped on save
+					expect(parseWorkflow(steps)).toEqual({ ok: true, steps });
+				}
+				const [note] = journeyTemplate('gate');
+				const { title, text } = note.config as NoteStepConfig;
+				expect(title.length).toBeLessThanOrEqual(NOTE_STEP_LIMITS.title);
+				expect(text.length).toBeLessThanOrEqual(NOTE_STEP_LIMITS.text);
+			});
+		}
+	});
+
+	it('makes the gate a note, a job, its match and a meeting, and the open journey the default one', () => {
+		const gate = journeyTemplate('gate');
+		expect(gate.map(({ id, type }) => [id, type])).toEqual([
+			['note', 'note'],
+			['job', 'job'],
+			['job-match', 'job-match'],
+			['meeting', 'meeting']
+		]);
+		expect(gate[2].config).toEqual({
+			minScore: DEFAULT_JOB_MATCH_MIN_SCORE,
+			showDetails: true
+		});
+		// The ids the editor gives the first step of each type
+		expect(ids(editorSteps('note', 'job', 'job-match', 'meeting'))).toEqual(ids(gate));
+		expect(journeyTemplate('open')).toEqual(DEFAULT_WORKFLOW_STEPS);
+		// A new journey each time: changing one changes neither the next nor the default
+		(journeyTemplate('open')[0].config as Record<string, unknown>).changed = true;
+		expect(journeyTemplate('open')).toEqual(DEFAULT_WORKFLOW_STEPS);
+		expect(DEFAULT_WORKFLOW_STEPS[0].config).toEqual({});
+	});
+
+	it("writes the gate's note in the language in use when it is built, unless it is given", () => {
+		const noteOf = (steps: WorkflowStep[]) => steps[0].config as NoteStepConfig;
+		const english = noteOf(journeyTemplate('gate'));
+		const french = withLocale('fr', () => noteOf(journeyTemplate('gate')));
+		expect(english.title).toBe('Share the job first');
+		expect(english.text).toContain('with its pay range');
+		expect(french.title).toBe("Présentez d'abord le poste");
+		expect(french.text).toContain('fourchette de rémunération');
+		expect(
+			noteOf(journeyTemplate('gate', { noteTitle: 'My terms', noteText: 'Remote only.' }))
+		).toEqual({ title: 'My terms', text: 'Remote only.' });
+		expect(noteOf(journeyTemplate('gate', { noteTitle: 'My terms' }))).toEqual({
+			title: 'My terms',
+			text: english.text
+		});
 	});
 
 	it('accepts an empty journey, and requirements before a step they open', () => {

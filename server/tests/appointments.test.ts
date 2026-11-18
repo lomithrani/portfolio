@@ -2014,6 +2014,8 @@ describe('no Google token in any API response', () => {
     const scheduleId = schedule.json()._id as string;
     expect((await call('PUT', `/appointments/schedules/${scheduleId}`, { ...auth, body: scheduleBody() })).status).toBe(200);
     expect((await call('GET', '/appointments/schedules', auth)).status).toBe(200);
+    // What the account still has to set up, its calendar included (tests/candidateReadiness.test.ts covers it)
+    expect((await call('GET', '/me/readiness', auth)).json().calendar).toMatchObject({ connected: true });
 
     google.state.busy = [];
     expect((await call('GET', `/appointments/domains/${sweepDomain}/schedules`)).status).toBe(200);

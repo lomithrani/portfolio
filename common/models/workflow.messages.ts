@@ -1,8 +1,22 @@
 import { defineMessages } from '../i18n';
 
 // Why a journey cannot be saved (parseWorkflow), as the owner's editor shows it at the step it is
-// about. Step names are the manifests' labels, already in the language in use.
+// about. Step names are the manifests' labels, already in the language in use. And the note the
+// gate template starts with (journeyTemplate), in the owner's words: once saved it is their text,
+// shown as they wrote it (Markdown) in whatever language the recruiter reads the page.
 export const workflowMessages = defineMessages({
+	/**
+	 * The note of the gate template: it asks for the job with its pay range first, says the job is
+	 * scored against what the owner looks for, and that a meeting can be booked once it matches.
+	 * Within NOTE_STEP_LIMITS (client/src/services/tests/workflow.test.ts)
+	 */
+	gateNote: {
+		title: { en: 'Share the job first', fr: "Présentez d'abord le poste" },
+		text: {
+			en: 'Thank you for your interest. Before we talk, please share the job on this page: pick one of your job descriptions, or write it, with its pay range.\n\nThe job is then scored against what I look for. If it is a match, you can book a meeting in my calendar right away. This saves us both a call about a job that would not fit.',
+			fr: "Merci de votre intérêt. Avant d'échanger, présentez le poste sur cette page : choisissez l'une de vos offres d'emploi, ou rédigez-la, avec sa fourchette de rémunération.\n\nL'offre est ensuite notée par rapport à ce que je recherche. Si elle correspond, vous pouvez réserver tout de suite un rendez-vous dans mon agenda. Cela nous évite à tous les deux un appel pour un poste qui ne conviendrait pas."
+		}
+	},
 	tooManySteps: {
 		en: (max: number) => `A journey has at most ${max} steps.`,
 		fr: (max: number) => `Un parcours compte ${max} étapes au maximum.`

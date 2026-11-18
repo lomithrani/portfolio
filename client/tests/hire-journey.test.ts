@@ -196,7 +196,8 @@ test.describe('the hiring journey', () => {
 			steps: [
 				{ id: 'job', type: 'job', config: {} },
 				{ id: 'meeting', type: 'meeting', config: {} }
-			]
+			],
+			saved: true
 		});
 
 		// Their own Hire page is a preview: nothing is locked for them, and the job step, which
@@ -269,7 +270,8 @@ test.describe('the hiring journey', () => {
 				},
 				{ id: 'job', type: 'job', config: {} },
 				{ id: 'meeting', type: 'meeting', config: {} }
-			]
+			],
+			saved: true
 		});
 
 		// The recruiter, in a browser of their own
@@ -422,7 +424,7 @@ test.describe('the hiring journey', () => {
 		await save.click();
 		await expect(toasts(page).getByText('Hiring journey saved')).toBeVisible();
 		const saved = await ownerApi.get(`${API_URL}/workflow`);
-		expect(await saved.json()).toEqual({ steps: [] });
+		expect(await saved.json()).toEqual({ steps: [], saved: true });
 
 		await page.getByRole('link', { name: 'See your Hire page' }).click();
 		await expect(page.getByRole('heading', { level: 1, name: `Hire ${DOMAIN}` })).toBeVisible();
@@ -996,7 +998,8 @@ test.describe('the hiring journey', () => {
 				{ id: 'job', type: 'job', config: {} },
 				{ id: 'job-match', type: 'job-match', config: { minScore: 60, showDetails: true } },
 				{ id: 'meeting', type: 'meeting', config: {} }
-			]
+			],
+			saved: true
 		});
 
 		// Anyone is told the minimum, and nothing of the criteria
