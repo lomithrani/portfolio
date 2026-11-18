@@ -592,7 +592,7 @@ export const EDUCATION_LABELS: Record<EducationLevel, string> = m.education;
 
 export const TRAVEL_LABELS: Record<TravelFrequency, string> = m.travel;
 
-// ── Address ─────────────────────────────────────────────────
+// ── Private page (web path) ─────────────────────────────────
 
 /**
  * The web client's page of the job posting `jobId` for the people it was shared with

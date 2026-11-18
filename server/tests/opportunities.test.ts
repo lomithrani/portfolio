@@ -193,6 +193,39 @@ describe('GET /opportunities/jobs/:id', () => {
     expect(answer.text).not.toContain(recruiter.email);
   });
 
+  it('lets every owner on whose journey the recruiter picked the same posting read it', async () => {
+    const { owner, recruiter, jobId } = await pickedJob();
+    const secondOwner = await createUser('second-owner', { domain: true });
+    await setJourney(secondOwner, 'job', 'meeting');
+    await pick(secondOwner, recruiter, jobId);
+
+    for (const user of [owner, secondOwner]) {
+      const answer = await read(jobId, user);
+      expect([user.domain, answer.status]).toEqual([user.domain, 200]);
+      expect(answer.json()).toMatchObject({ access: 'journey', job: { _id: jobId } });
+    }
+    // A later pick on one journey ends it there only
+    const other = await createJob(recruiter, { title: 'Principal Engineer' });
+    await pick(secondOwner, recruiter, other);
+    expect(await read(jobId, secondOwner)).toMatchObject(notFound);
+    expect((await read(jobId, owner)).json().access).toBe('journey');
+  });
+
+  it('reads the id whatever its case, as the posting is found', async () => {
+    const { owner, recruiter, jobId } = await pickedJob();
+    const upper = jobId.toUpperCase();
+    expect(upper).not.toBe(jobId);
+
+    for (const [user, access] of [
+      [owner, 'journey'],
+      [recruiter, 'recruiter']
+    ] as const) {
+      const answer = await read(upper, user);
+      expect([access, answer.status]).toEqual([access, 200]);
+      expect(answer.json()).toMatchObject({ access, job: { _id: jobId } });
+    }
+  });
+
   it('keeps it readable to the owner once closed or paused, never as a draft', async () => {
     const { owner, recruiter, jobId } = await pickedJob();
     for (const status of ['on_hold', 'filled', 'closed']) {
@@ -265,7 +298,7 @@ describe('GET /opportunities/jobs/:id', () => {
     expect(await read(jobId, owner)).toMatchObject(notFound);
 
     // Under a step of another type (a note)
-    await call('PUT', '/workflow', {
+    const noteJourney = await call('PUT', '/workflow', {
       body: {
         steps: [
           { id: 'job', type: 'note', config: { title: 'Before you book', text: 'Remote only.' } },
@@ -274,7 +307,16 @@ describe('GET /opportunities/jobs/:id', () => {
       },
       cookie: owner.cookie
     });
-    await WorkflowInstance.updateOne({ owner: owner.id, visitor: recruiter.id }, { $set: { 'steps.job': progress({ job: jobId }) } });
+    expect(noteJourney.status).toBe(200);
+    expect(noteJourney.json().steps.map((step: { id: string; type: string }) => [step.id, step.type])).toEqual([
+      ['job', 'note'],
+      ['meeting', 'meeting']
+    ]);
+    const underNote = await WorkflowInstance.updateOne(
+      { owner: owner.id, visitor: recruiter.id },
+      { $set: { 'steps.job': progress({ job: jobId }) } }
+    );
+    expect(underNote.matchedCount).toBe(1);
     expect(await read(jobId, owner)).toMatchObject(notFound);
 
     // In the progress of another visitor than the posting's recruiter
@@ -283,10 +325,11 @@ describe('GET /opportunities/jobs/:id', () => {
     expect(await read(jobId, owner)).toMatchObject(notFound);
 
     // Data that is not a pick (the id in a list)
-    await WorkflowInstance.updateOne(
+    const inList = await WorkflowInstance.updateOne(
       { owner: owner.id, visitor: recruiter.id },
       { $set: { 'steps.job': progress({ job: [jobId] }) } }
     );
+    expect(inList.modifiedCount).toBe(1);
     expect(await read(jobId, owner)).toMatchObject(notFound);
 
     // The recruiter's own pick on the job step: readable

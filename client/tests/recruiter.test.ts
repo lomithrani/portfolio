@@ -27,12 +27,12 @@ import { createJob, deleteJobs, listRecruiterJobs } from './support/jobs';
 // stubbed, and accepting them again, answered in the browser: the e2e recruiter's acceptance is
 // never changed), and opening a recruiter space as the e2e candidate (no space, no acceptance of
 // the terms: PUT /me/mode is answered in the browser, so it never gets one). GET and POST
-// /jobs/import are stubbed in the browser: Claude is never called (it
-// needs the operator's key and is billed); the drafts are saved for real, through POST /jobs of
-// the e2e API. Each test
-// names its postings with its own tag and removes them afterwards. The tests share the recruiter
-// (with client/tests/hire-journey.test.ts, which runs in parallel), so they run one after the other
-// (as the tests of a file do by default: keep it that way) and never expect its list to be empty.
+// /jobs/import are stubbed in the browser: Claude is never called (it needs the operator's key and
+// is billed); the drafts are saved for real, through POST /jobs of the e2e API. Each test names
+// its postings with its own tag and removes them afterwards. The tests share the recruiter (with
+// client/tests/hire-journey.test.ts and client/tests/job-view.test.ts, which run in parallel and
+// add postings of their own), so they run one after the other (as the tests of a file do by
+// default: keep it that way) and never expect its list to be empty.
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e recruiter');
 

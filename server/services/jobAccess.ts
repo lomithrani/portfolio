@@ -30,8 +30,9 @@ export interface SharedJobPostingDto {
 const isObjectId = (value: string) => Types.ObjectId.isValid(value) && /^[0-9a-fA-F]{24}$/.test(value);
 
 /**
- * Whether the recruiter's pick on a job step of `ownerId`'s journey is the posting `jobId`: what
- * the job steps of the journey the owner has now stored for that recruiter (their progress is kept
+ * Whether the recruiter's pick on a job step of `ownerId`'s journey is the posting `jobId` (the
+ * stored posting's own id, as the job step stores it: lower case, whatever the URL had): what the
+ * job steps of the journey the owner has now stored for that recruiter (their progress is kept
  * under each step's id, services/workflows.ts)
  */
 async function pickedOnJourney(ownerId: string, recruiterId: Types.ObjectId, jobId: string): Promise<boolean> {
@@ -54,6 +55,6 @@ export async function readableJobPosting(userId: string, jobId: string): Promise
   const job = await JobPosting.findById(jobId).lean<StoredJobPosting>();
   if (!job) throw notFound();
   if (String(job.recruiter) === userId) return { job: toJobPostingDto(job), access: 'recruiter' };
-  if (job.status === 'draft' || !(await pickedOnJourney(userId, job.recruiter, jobId))) throw notFound();
+  if (job.status === 'draft' || !(await pickedOnJourney(userId, job.recruiter, String(job._id)))) throw notFound();
   return { job: toJobPostingDto(job), access: 'journey' };
 }

@@ -4,7 +4,7 @@ import { m } from './jobView.messages';
 
 // Pure helpers of the private page of a job description (/opportunities/:id, the page the meeting
 // invitation of a hiring journey links): GET /opportunities/jobs/:id answers its recruiter
-// (`access: 'recruiter'`, sent on to their page of it in the recruiter space) and the portfolio
+// (`access: 'recruiter'`, sent on to their page of it in the recruiter space) and each portfolio
 // owner on whose journey they picked it (`access: 'journey'`); anyone else gets the 404 of an
 // unknown id. The API call stays in the page; nothing here knows the UI.
 

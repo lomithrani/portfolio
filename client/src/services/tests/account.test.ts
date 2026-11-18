@@ -267,18 +267,24 @@ describe('recordSpaceShown', () => {
 				: Promise.resolve({ data: { user: { ...both, activeMode: 'recruiter' } }, error: null })
 		);
 
-		const shown = recordSpaceShown('/opportunities/65e2e00000000000000000aa');
-		const sentOn = recordSpaceShown('/recruiter/jobs/65e2e00000000000000000aa');
-		await vi.waitFor(() => expect(mockModePut).toHaveBeenCalledTimes(1));
-		answerCandidate();
-		await Promise.all([shown, sentOn]);
+		try {
+			const shown = recordSpaceShown('/opportunities/65e2e00000000000000000aa');
+			const sentOn = recordSpaceShown('/recruiter/jobs/65e2e00000000000000000aa');
+			await vi.waitFor(() => expect(mockModePut).toHaveBeenCalledTimes(1));
+			answerCandidate();
+			await Promise.all([shown, sentOn]);
 
-		expect(mockModePut.mock.calls.map(([body]) => body)).toEqual([
-			{ mode: 'candidate' },
-			{ mode: 'recruiter' }
-		]);
-		expect(get(authenticationStore).user?.activeMode).toBe('recruiter');
-		mockModePut.mockReset();
+			expect(mockModePut.mock.calls.map(([body]) => body)).toEqual([
+				{ mode: 'candidate' },
+				{ mode: 'recruiter' }
+			]);
+			expect(get(authenticationStore).user?.activeMode).toBe('recruiter');
+		} finally {
+			// Even when an expectation failed first: the recordings chained after this one would
+			// otherwise wait for its answer, and the tests after it with them
+			answerCandidate();
+			mockModePut.mockReset();
+		}
 	});
 
 	it('records nothing on a page of no space, the active one, or signed out', async () => {

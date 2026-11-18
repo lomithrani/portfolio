@@ -1,9 +1,10 @@
 <!--
 @component
 A "Sign in with Google" button, with no space chooser, for the steps of a hiring journey (the note
-and job steps) and the private page of a job shared with a candidate (/opportunities/:id): by default (`mode` null) the account keeps the space it last chose (on the job
-step it creates its recruiter space next, if it has none); `mode` signs in to that space instead.
-`onSignedIn` runs once the session is stored.
+and job steps) and the private page of a job shared with a candidate (/opportunities/:id): by
+default (`mode` null) the account keeps the space it last chose (on the job step it creates its
+recruiter space next, if it has none); `mode` signs in to that space instead. `onSignedIn` runs
+once the session is stored.
 Google's sign-in is loaded only once the visitor asks for it: a local "Sign in with Google" button
 first (nothing reaches accounts.google.com before), then Google's button and its One Tap prompt.
 Google Identity has one credential callback for the whole page: this button takes it when it is

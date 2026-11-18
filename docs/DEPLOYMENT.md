@@ -915,20 +915,22 @@ same uid, overwrite).
 Every top-level route of the web app is a reserved portfolio name (`RESERVED_DOMAIN_NAMES` in
 `common/models/domainName.ts`): a portfolio with that name would be hidden behind the route.
 The landing page, legal pages and account page reserved `about`, `contact`, `cookies`, `help`,
-`legal`, `privacy`, `report`, `signup`, `start` and `terms`. Before deploying a version that
-reserves new names, check that no existing portfolio uses one (it would become unreachable, and
-could not be found or claimed again):
+`legal`, `privacy`, `report`, `signup`, `start` and `terms`; the private page of a job
+description shared with a candidate (`/opportunities/:id`) reserved `opportunities`. Before
+deploying a version that reserves new names, check on each stage (the staging database, then
+production's) that no existing portfolio uses one (it would become unreachable, and could not be
+found or claimed again):
 
 ```bash
-mongosh "<production MONGO_URL>" --quiet --eval '
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
   db.domains.find(
-    { name: { $in: ["about", "contact", "cookies", "help", "legal", "privacy", "report", "signup", "start", "terms"] } },
+    { name: { $in: ["about", "contact", "cookies", "help", "legal", "opportunities", "privacy", "report", "signup", "start", "terms"] } },
     { name: 1, admin: 1 }
   ).toArray()'
 ```
 
 An empty array (`[]`) means nothing to do. Otherwise, rename the domain (`db.domains.updateOne`
-with a free name) and tell its owner before deploying.
+with a free name) and tell its owner before deploying that stage.
 
 ## Search engines
 

@@ -187,14 +187,15 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	invité, avec l'adresse e-mail de son compte, pour recevoir l'invitation lui aussi : chacun de vous voit
 	l'adresse de l'autre dans l'invitation. L'invitation contient aussi les éléments des étapes précédentes
 	(par exemple l'intitulé, l'entreprise et le lien de l'offre choisie). Ce lien ouvre une page privée
-	de ce site : seuls le propriétaire du portfolio et le recruteur peuvent l'ouvrir, une fois connectés,
-	et le propriétaire seulement tant qu'il s'agit de la dernière offre choisie par le recruteur dans son
-	parcours et qu'elle n'est pas un brouillon ; toute autre personne à qui l'invitation parvient lit qu'elle
-	n'est pas partagée avec elle. Nous ne gardons qu'une réservation du créneau (l'horaire, l'agenda, l'identifiant
-	de l'événement, son lien Google Meet et une empreinte de votre adresse e-mail calculée avec une clé
-	secrète) et, si vous réservez en étant connecté, votre compte, pour que le rendez-vous figure parmi
-	vos prochains rendez-vous dans votre espace recruteur, avec son lien pour le rejoindre. Elle est supprimée
-	automatiquement à la fin du créneau ou à l'annulation du rendez-vous.
+	de ce site : seuls le recruteur et les propriétaires de portfolio dans le parcours desquels le recruteur
+	a choisi cette offre peuvent l'ouvrir, une fois connectés, chaque propriétaire seulement tant qu'il
+	s'agit de la dernière offre choisie par le recruteur dans son parcours et qu'elle n'est pas un brouillon
+	; toute autre personne à qui l'invitation parvient lit qu'elle n'est pas partagée avec elle. Nous ne
+	gardons qu'une réservation du créneau (l'horaire, l'agenda, l'identifiant de l'événement, son lien Google
+	Meet et une empreinte de votre adresse e-mail calculée avec une clé secrète) et, si vous réservez en
+	étant connecté, votre compte, pour que le rendez-vous figure parmi vos prochains rendez-vous dans votre
+	espace recruteur, avec son lien pour le rejoindre. Elle est supprimée automatiquement à la fin du créneau
+	ou à l'annulation du rendez-vous.
 </p>
 
 <h4 id="data-perfect-job">Votre poste idéal (privé)</h4>

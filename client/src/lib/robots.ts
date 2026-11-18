@@ -8,10 +8,11 @@ import { ROBOTS_NOINDEX } from 'portfolio-common';
 // meta (PortfolioHead.svelte, the (app) layout, the account page), but for the 404 of a name
 // nobody claimed, which the root error page renders without the portfolio's layout: the header
 // alone says it there. The recruiter space and /opportunities are rendered in the browser only,
-// so their meta is written once the page's script ran. They are not refused in robots.txt: a crawler must fetch a
-// page to read that it may not list it, and LinkedIn must fetch a shared portfolio to build its
-// preview. The landing page and the legal pages stay listed, with their canonical links. The API
-// sends the same header, with the same value, on every answer (server/app.ts).
+// so their meta is written once the page's script ran. They are not refused in robots.txt: a
+// crawler must fetch a page to read that it may not list it, and LinkedIn must fetch a shared
+// portfolio to build its preview. The landing page and the legal pages stay listed, with their
+// canonical links. The API sends the same header, with the same value, on every answer
+// (server/app.ts).
 
 /** What those pages ask of search engines: not listed, their links not followed, no cached copy */
 export const NOINDEX = ROBOTS_NOINDEX;

@@ -179,13 +179,14 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	is a guest too, with the email address of their account, so that they receive the invitation as well:
 	each of you sees the other's address in it. The invitation also contains the details of the earlier
 	steps (for example the title, company and link of the job description you chose). That link opens a
-	private page of this site: only the portfolio owner and the recruiter can open it, signed in, and the
-	owner only while it is the job description the recruiter last chose in the owner's journey and it is
-	not a draft; anyone else the invitation reaches reads that it is not shared with them. We keep only
-	a reservation of the time slot (the time, the calendar, the event identifier, its Google Meet link and
-	a hash of your email address keyed with a secret) and, when you book signed in, your account, so that
-	the meeting is listed under your upcoming meetings in your recruiter space with its link to join. It
-	is deleted automatically when the slot ends or the meeting is cancelled.
+	private page of this site: only the recruiter and the portfolio owners on whose journey the recruiter
+	chose that job description can open it, signed in, each owner only while it is the job description the
+	recruiter last chose in their journey and it is not a draft; anyone else the invitation reaches reads
+	that it is not shared with them. We keep only a reservation of the time slot (the time, the calendar,
+	the event identifier, its Google Meet link and a hash of your email address keyed with a secret) and,
+	when you book signed in, your account, so that the meeting is listed under your upcoming meetings in
+	your recruiter space with its link to join. It is deleted automatically when the slot ends or the meeting
+	is cancelled.
 </p>
 
 <h4 id="data-perfect-job">Your perfect job (private)</h4>
