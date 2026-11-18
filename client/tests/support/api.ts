@@ -4,19 +4,24 @@ import { API_URL } from './owner';
 // Routes of the API answered in the browser (page.route): what a test must not change for real
 // (an account's terms, its spaces), or a state the e2e database does not have.
 
-/** An answer of stubApi; undefined lets the request through to the API */
-export type StubAnswer = { status?: number; json: unknown } | undefined;
+/**
+ * An answer of stubApi (without `json`, an empty body; `headers` are added to the CORS ones);
+ * undefined lets the request through to the API
+ */
+export type StubAnswer =
+	{ status?: number; json?: unknown; headers?: Record<string, string> } | undefined;
 
 /**
- * Answers `method path` of the API in the browser with `answer`, with the CORS headers the API
- * would send (the page and the API are on different origins, so a preflight is answered too).
- * When `answer` gives nothing, the request goes on to the API. Returns the requests answered.
+ * Answers `method path` of the API in the browser with `answer` (given the request and how many
+ * were answered before it), with the CORS headers the API would send (the page and the API are on
+ * different origins, so a preflight is answered too). When `answer` gives nothing, the request
+ * goes on to the API. Returns the requests answered.
  */
 export const stubApi = async (
 	page: Page,
 	method: string,
 	path: string,
-	answer: (request: Request) => StubAnswer | Promise<StubAnswer>
+	answer: (request: Request, index: number) => StubAnswer | Promise<StubAnswer>
 ) => {
 	const answered: Request[] = [];
 	await page.route(`${API_URL}${path}`, async (route: Route) => {
@@ -36,10 +41,14 @@ export const stubApi = async (
 			});
 		}
 		if (request.method() !== method) return route.fallback();
-		const reply = await answer(request);
+		const reply = await answer(request, answered.length);
 		if (!reply) return route.fallback();
 		answered.push(request);
-		return route.fulfill({ status: reply.status ?? 200, json: reply.json, headers: cors });
+		return route.fulfill({
+			status: reply.status ?? 200,
+			headers: { ...cors, ...reply.headers },
+			...(reply.json === undefined ? { body: '' } : { json: reply.json })
+		});
 	});
 	return answered;
 };

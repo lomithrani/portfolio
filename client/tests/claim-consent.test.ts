@@ -1,14 +1,14 @@
-import { expect, test, type Page, type Request } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { LEGAL_VERSION } from 'portfolio-common';
 import {
-	API_URL,
+	E2E_CANDIDATE_ID as CANDIDATE_ID,
 	JWT_SECRET,
 	blockGoogle,
+	candidateSession,
 	gotoHydrated,
-	signIn,
-	signSession,
-	type OwnerSession
+	signIn
 } from './support/owner';
+import { stubApi } from './support/api';
 
 // The age and terms checkbox of the claim form a signed-in account without a portfolio meets: the
 // account menu's "Claim your portfolio" (SpaceChooser.svelte). Signed in for real as the e2e
@@ -18,8 +18,6 @@ import {
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API secret to sign in without Google');
 
-/** The e2e candidate of seed:e2e (server/tests/seedE2e.ts): its id is fixed */
-const CANDIDATE_ID = '65e2e0000000000000000002';
 const CANDIDATE_EMAIL = 'e2e.candidate@example.com';
 const CONSENT = { termsVersion: LEGAL_VERSION, ageConfirmed: true };
 const CONSENT_REFUSED = {
@@ -32,46 +30,6 @@ const CONSENT_REFUSED = {
 test.beforeEach(async ({ page }) => {
 	await blockGoogle(page);
 });
-
-const candidateSession = async (): Promise<OwnerSession> => {
-	const exp = Math.floor(Date.now() / 1000) + 3600;
-	return { ownerId: CANDIDATE_ID, token: await signSession(CANDIDATE_ID, exp), exp };
-};
-
-/**
- * Answers `method path` of the API in the browser, with the CORS headers the API would send;
- * other methods go to the API. Returns the requests answered.
- */
-const stubApi = async (
-	page: Page,
-	method: string,
-	path: string,
-	answer: (request: Request, index: number) => { status?: number; json: unknown }
-) => {
-	const answered: Request[] = [];
-	await page.route(`${API_URL}${path}`, async (route) => {
-		const request = route.request();
-		const cors = {
-			'access-control-allow-origin': request.headers()['origin'] ?? '*',
-			'access-control-allow-credentials': 'true'
-		};
-		if (request.method() === 'OPTIONS') {
-			return route.fulfill({
-				status: 204,
-				headers: {
-					...cors,
-					'access-control-allow-methods': 'GET, POST, PUT, DELETE',
-					'access-control-allow-headers': request.headers()['access-control-request-headers'] ?? ''
-				}
-			});
-		}
-		if (request.method() !== method) return route.fallback();
-		answered.push(request);
-		const { status = 200, json } = answer(request, answered.length - 1);
-		return route.fulfill({ status, json, headers: cors });
-	});
-	return answered;
-};
 
 /** Signed in as the e2e candidate, the session saying it accepted `termsVersion` (if any) */
 const signInAsCandidate = async (page: Page, termsVersion?: string) => {
@@ -96,7 +54,7 @@ const signInAsCandidate = async (page: Page, termsVersion?: string) => {
 
 /** POST /domain/claim: `answers` in turn (the last one repeated), the name claimed otherwise */
 const stubClaim = (page: Page, answers: { status?: number; json: unknown }[] = []) =>
-	stubApi(page, 'POST', '/domain/claim', (request, index) =>
+	stubApi(page, 'POST', '/domain/claim', (_request, index) =>
 		answers.length ? answers[Math.min(index, answers.length - 1)] : { json: { name: '' } }
 	);
 

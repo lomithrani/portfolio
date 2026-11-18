@@ -170,10 +170,22 @@ describe('a new account', () => {
       message: 'Confirm your age and accept the terms of use to open your recruiter space.'
     });
     expect(sessionIssued(result.headers)).toBe(false);
+    // Found or created like any sign-in (the Google id and email, as a sign-in without a mode
+    // stores), then refused: no space, no mode, no acceptance
     const doc = await User.findOne({ email: t.email('no-terms') }).lean();
-    expect(doc?.recruiter).toBeUndefined();
-    expect(doc?.activeMode).toBeUndefined();
-    expect(doc?.legalAcceptances).toBeUndefined();
+    expect(doc).not.toBeNull();
+    expect(doc!.googleId).toBe(t.id('sub-no-terms'));
+    expect(doc!.recruiter).toBeUndefined();
+    expect(doc!.activeMode).toBeUndefined();
+    expect(doc!.legalAcceptances ?? []).toEqual([]);
+  });
+
+  it('chosen as a recruiter on login, records the terms from the recruiter space whatever consentSource says', async () => {
+    const { userId, user } = await login('mixed', 'recruiter', { consent: CONSENT, consentSource: 'landing' });
+
+    expect(user).toMatchObject({ activeMode: 'recruiter', recruiter: true, termsVersion: LEGAL_VERSION });
+    // The sign-in that opens the space is the recruiter space's: never an acceptance from elsewhere
+    expect(await consentSources(userId)).toEqual(['recruiter']);
   });
 });
 

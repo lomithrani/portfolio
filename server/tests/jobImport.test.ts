@@ -366,6 +366,24 @@ describe('availability', () => {
     expect(await attemptCount(candidate.userId)).toBe(0);
   });
 
+  it('requires the terms in force (422 on consent), before reading the file or counting anything', async () => {
+    // Accepted before the terms in force changed (or the space predates recruiters accepting them)
+    await User.updateOne({ _id: recruiter.userId }, { $set: { 'legalAcceptances.0.version': '2025-01-01' } });
+
+    const read = await status();
+    expect(read.status).toBe(422);
+    expect(read.json()).toMatchObject({ property: 'consent' });
+    for (const file of [pdf, 'not base64!']) {
+      const result = await importFile(file);
+      expect(result.status).toBe(422);
+      expect(result.json()).toMatchObject({ type: 'validation', property: 'consent' });
+    }
+    expect(claude.state.requests).toHaveLength(0);
+    expect(await planUsed()).toBe(0);
+    expect(await siteCount()).toBe(0);
+    expect(await attemptCount()).toBe(0);
+  });
+
   it('reports the full allowance of a recruiter who has not imported yet', async () => {
     const result = await status();
     expect(result.status).toBe(200);

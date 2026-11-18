@@ -1,78 +1,30 @@
-import { expect, test, type Page, type Request, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { LEGAL_VERSION } from 'portfolio-common';
 import {
 	API_URL,
+	E2E_CANDIDATE_ID as CANDIDATE_ID,
 	JWT_SECRET,
 	blockGoogle,
+	candidateSession,
 	gotoHydrated,
 	ownerSession,
+	recruiterSession,
 	signIn,
-	signSession,
-	toasts,
-	type OwnerSession
+	toasts
 } from './support/owner';
+import { stubApi } from './support/api';
 
 // The account page (/account): what the site keeps for the account, the terms it accepted, and
 // deleting it. Signed in for real (a session JWT, see support/owner.ts) as the e2e candidate
-// ('e2e.candidate@example.com': no portfolio, no acceptance of the terms) or as the owner of
-// 'e2e-owner', both seeded by `bun run --cwd server seed:e2e`. Every request that would change an
+// ('e2e.candidate@example.com': no portfolio, no acceptance of the terms), as the owner of
+// 'e2e-owner' or as the e2e recruiter (what its session says answered in the browser), all seeded
+// by `bun run --cwd server seed:e2e`. Every request that would change an
 // account (PUT /me/consent, DELETE /me) is answered in the browser: nothing is accepted or deleted
 // for real, and the seeded accounts stay as they are. Google is never reached (deleting signs out
 // of Google's automatic sign-in, which would load its script).
 
-/** The e2e candidate of seed:e2e (server/tests/seedE2e.ts): its id is fixed */
-const CANDIDATE_ID = '65e2e0000000000000000002';
 const CANDIDATE_EMAIL = 'e2e.candidate@example.com';
 const OWNER_DOMAIN = 'e2e-owner';
-
-const candidateSession = async (): Promise<OwnerSession> => {
-	const exp = Math.floor(Date.now() / 1000) + 3600;
-	return { ownerId: CANDIDATE_ID, token: await signSession(CANDIDATE_ID, exp), exp };
-};
-
-/**
- * Answers `method path` of the API in the browser with `answer`, with the CORS headers the API
- * would send (the page and the API are on different origins); other methods go to the API.
- * Returns the requests answered.
- */
-const stubApi = async (
-	page: Page,
-	method: string,
-	path: string,
-	answer: (request: Request) => {
-		status?: number;
-		json?: unknown;
-		headers?: Record<string, string>;
-	}
-) => {
-	const answered: Request[] = [];
-	await page.route(`${API_URL}${path}`, async (route: Route) => {
-		const request = route.request();
-		const cors = {
-			'access-control-allow-origin': request.headers()['origin'] ?? '*',
-			'access-control-allow-credentials': 'true'
-		};
-		if (request.method() === 'OPTIONS') {
-			return route.fulfill({
-				status: 204,
-				headers: {
-					...cors,
-					'access-control-allow-methods': 'GET, POST, PUT, DELETE',
-					'access-control-allow-headers': request.headers()['access-control-request-headers'] ?? ''
-				}
-			});
-		}
-		if (request.method() !== method) return route.fallback();
-		answered.push(request);
-		const { status = 200, json, headers = {} } = answer(request);
-		return route.fulfill({
-			status,
-			headers: { ...cors, ...headers },
-			...(json === undefined ? { body: '' } : { json })
-		});
-	});
-	return answered;
-};
 
 const deleteDialog = (page: Page) =>
 	page.getByRole('alertdialog', { name: 'Delete your account?' });
@@ -135,6 +87,40 @@ test.describe('account page, signed in', () => {
 			'You have not accepted the current Terms of use yet. Accepting them records your confirmation for your portfolio.'
 		);
 		await expect(page.getByText('before you create your portfolio')).toHaveCount(0);
+	});
+
+	test('tells a recruiter whose terms changed that their recruiter space needs them', async ({
+		page
+	}) => {
+		const recruiter = await recruiterSession();
+		// The e2e recruiter, its acceptance older than the terms in force (answered in the browser:
+		// its real acceptance is never changed)
+		const user = {
+			_id: recruiter.ownerId,
+			email: 'e2e.recruiter@example.com',
+			name: 'Rita',
+			surname: 'Recruiter',
+			activeMode: 'recruiter',
+			recruiter: true,
+			termsVersion: '2025-01-01'
+		};
+		await stubApi(page, 'GET', '/isLogged', () => ({
+			json: { logged: true, user, expires: recruiter.exp }
+		}));
+		await stubApi(page, 'GET', '/me', () => ({ json: { user } }));
+		await signIn(page, recruiter);
+		await gotoHydrated(page, '/account');
+
+		const terms = page.locator('[data-terms-acceptance]');
+		await expect(terms.locator('[data-terms-status="outdated"]')).toContainText(
+			'accept them to keep using your recruiter space'
+		);
+		await expect(terms.getByText('create your portfolio')).toHaveCount(0);
+		// Its box names what the terms ask of recruiters
+		await expect(terms.getByRole('link', { name: /what they ask of recruiters/ })).toHaveAttribute(
+			'href',
+			'/legal/terms#recruiters'
+		);
 	});
 
 	test('accepting the terms asks for the box, then records them (PUT /me/consent)', async ({

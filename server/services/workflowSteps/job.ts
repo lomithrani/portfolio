@@ -5,6 +5,7 @@ import { JobPosting } from '../../models/database';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../../errors';
 import { JOB_NOT_FOUND, toJobPostingDto } from '../jobPostings';
 import type { JobPostingDto } from '../jobPostings';
+import { userAcceptedCurrentTerms } from '../legal';
 import { requireRecruiterSpace } from '../recruiters';
 import type { ServerStep, StepContext } from './types';
 import { inputFields } from './types';
@@ -12,8 +13,10 @@ import { m } from './steps.messages';
 
 // Job step: the visitor (a recruiter) picks one of their own open job
 // postings, again if they wish (the latest pick counts). The step holds
-// while that posting is theirs and open: closed or deleted since, they pick
-// another one.
+// while that posting is theirs and open, and while they have accepted the
+// terms in force: closed or deleted since, they pick another one; after a
+// change of the terms, they accept them again (the step's list asks for
+// them, like every recruiter route) before the journey goes on.
 
 export interface JobStepData {
   /** The id of the posting picked */
@@ -73,8 +76,9 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
   type: 'job',
   evaluate: async (ctx) => {
     const job = await pickedJob(ctx);
+    const holds = job?.status === OPEN_JOB_STATUS && (await userAcceptedCurrentTerms(ctx.visitorId));
     return {
-      status: job?.status === OPEN_JOB_STATUS ? 'succeeded' : 'pending',
+      status: holds ? 'succeeded' : 'pending',
       ...(job ? { view: { job } } : {})
     };
   },

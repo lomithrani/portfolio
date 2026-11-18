@@ -8,10 +8,12 @@
 	import JobEditor from '#components/job-editor/JobEditor.svelte';
 	import EditorPlaceholder from '#components/job-editor/EditorPlaceholder.svelte';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
+	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import { editorPages } from '#components/job-editor/editorPages.messages.ts';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { isSessionValid } from '#services/authentication.ts';
+	import { hasAcceptedCurrentTerms } from '#services/account.ts';
 	import { loadImportedDraft, type ImportedJobDraft } from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { JOB_PARAM, JOURNEY_PARAM, journeyReturnDomain } from '#services/workflow.ts';
@@ -20,7 +22,9 @@
 	// A new job posting, blank or (?import=1) from the job description import the import dialog
 	// kept in this browser. Rendered in the browser only (recruiter/+layout.ts). Opened from a
 	// portfolio's hiring journey (?journey=<portfolio>), it goes back there once the posting is
-	// created, to pick it.
+	// created, to pick it. A recruiter whose session says they have not accepted the terms in
+	// force accepts them first (TermsAcceptance), as the other recruiter pages ask once the API
+	// refused them: the form opens once they have (the API would refuse to save it).
 
 	// Read once: the import is taken when the editor opens, and the parameter goes once discarded
 	const importRequested = untrack(() => page.url.searchParams.get('import') === '1');
@@ -45,6 +49,8 @@
 	let showEditor = $derived(
 		!!editorUser && (user?._id === editorUser || (!user && expiredWhileSaving))
 	);
+	// The terms in force come first (POST /jobs answers 422 on `consent` without them)
+	let termsFirst = $derived(!!user?.recruiter && !hasAcceptedCurrentTerms(user));
 	let imported: ImportedJobDraft | null = $state.raw(null);
 	let importMissing = $state(false);
 	// Starts the editor over (a discarded import)
@@ -131,7 +137,18 @@
 		</a>
 		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
-		{#if showEditor && editorUser}
+		{#if termsFirst && user}
+			<!-- Accepted: the form takes its place, and its heading the focus -->
+			<TermsAcceptance
+				{user}
+				source="recruiter"
+				level={2}
+				onAccepted={async () => {
+					await tick();
+					heading?.focus();
+				}}
+			/>
+		{:else if showEditor && editorUser}
 			<div class="space-y-1">
 				<h2 bind:this={heading} tabindex="-1" class="text-2xl font-bold outline-none md:text-3xl">
 					{m.heading}

@@ -3,7 +3,7 @@
 Terms of use (English): eligibility (age and working age), the service, accounts and portfolios,
 user content and its licence, prohibited content (discriminatory job descriptions, minors),
 recruiters (accepted when opening the recruiter space; real positions, the pay actually offered,
-no age limit, the right to act for the employer), imports, meetings, moderation (DSA arts 14, 16,
+no maximum age, the right to act for the employer), imports, meetings, moderation (DSA arts 14, 16,
 17), termination, liability, changes, law.
 -->
 <script module lang="ts">
@@ -184,8 +184,8 @@ no age limit, the right to act for the employer), imports, meetings, moderation 
 		Labour Code);
 	</li>
 	<li>
-		set <strong>no age limit</strong>, unless the law requires one (article L5331-2 of the French
-		Labour Code), nor any other discriminatory criterion (see
+		set <strong>no maximum age</strong>, unless the law sets one (article L5331-2 of the French
+		Labour Code), nor any other discriminatory criterion, age included (see
 		<a class="link-text" href="#prohibited">what is not allowed</a>);
 	</li>
 	<li>

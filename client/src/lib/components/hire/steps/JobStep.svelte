@@ -6,8 +6,8 @@ descriptions (GET /recruiter/jobs), or writes a new one and comes back here to p
 address asks for is the one selected). Before that, a visitor signs in (keeping the space the
 account had) and an account without a recruiter space creates it here, after the age and terms box
 when it has not accepted the terms in force (the API records them from the source 'recruiter'); a
-recruiter who has not accepted the terms in force (the API answers 422 on `consent`) accepts them
-here (TermsAcceptance) before picking.
+recruiter who has not accepted the terms in force (the API answers 422 on `consent`, and a job
+picked before stops counting) accepts them here (TermsAcceptance) before picking.
 The pick is submitted to the step (`{ jobId }`); the job picked comes back as the step's view.
 Not for the portfolio's owner (the API refuses their pick): the page shows them the step's
 description instead.
@@ -339,6 +339,10 @@ description instead.
 			onAccepted={() => {
 				pickError = '';
 				if (jobsKey) void loadJobs(jobsKey);
+				// The import was refused with the list: it may be offered now
+				void refreshImportStatus();
+				// A job picked before the terms changed holds again: the journey goes on from it
+				if (pickedJob(step.view)) reload();
 			}}
 		/>
 	</div>

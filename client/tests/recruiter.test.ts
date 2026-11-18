@@ -1,10 +1,12 @@
 import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
 import {
 	API_URL,
+	E2E_CANDIDATE_ID,
 	E2E_RECRUITER_ID,
 	JWT_SECRET,
 	apiAs,
 	blockGoogle,
+	candidateSession,
 	gotoHydrated,
 	recruiterSession,
 	signIn,
@@ -23,7 +25,9 @@ import { createJob, deleteJobs, listRecruiterJobs } from './support/jobs';
 // status of a posting (never public: no job board, no applicants), the PDF import, the account
 // menu, and the terms a recruiter accepts (the sign-in of the signed-out page, with Google
 // stubbed, and accepting them again, answered in the browser: the e2e recruiter's acceptance is
-// never changed). GET and POST /jobs/import are stubbed in the browser: Claude is never called (it
+// never changed), and opening a recruiter space as the e2e candidate (no space, no acceptance of
+// the terms: PUT /me/mode is answered in the browser, so it never gets one). GET and POST
+// /jobs/import are stubbed in the browser: Claude is never called (it
 // needs the operator's key and is billed); the drafts are saved for real, through POST /jobs of
 // the e2e API. Each test
 // names its postings with its own tag and removes them afterwards. The tests share the recruiter
@@ -648,6 +652,224 @@ test.describe('the recruiter', () => {
 		expect(acceptances.map((request) => request.postDataJSON())).toEqual([
 			{ termsVersion: LEGAL_VERSION, ageConfirmed: true, source: 'recruiter' }
 		]);
+	});
+});
+
+// --- Opening the recruiter space, and the terms on every recruiter page ------------------
+
+/** The e2e candidate as its session shows it: no recruiter space, `termsVersion` if given */
+const candidateUser = (termsVersion?: string) => ({
+	_id: E2E_CANDIDATE_ID,
+	email: 'e2e.candidate@example.com',
+	name: 'E2E',
+	surname: 'Candidate',
+	recruiter: false,
+	...(termsVersion ? { termsVersion } : {})
+});
+
+/**
+ * Signed in as the e2e candidate, the session saying it accepted `termsVersion` (if any). PUT
+ * /me/mode is answered in the browser (the candidate never gets a space for real), and so is the
+ * empty list of the space it then shows. Returns the PUT /me/mode requests.
+ */
+const asCandidateWithoutSpace = async (page: Page, termsVersion?: string) => {
+	const candidate = await candidateSession();
+	const user = candidateUser(termsVersion);
+	await signIn(page, candidate);
+	await stubApi(page, 'GET', '/isLogged', () => ({
+		json: { logged: true, user, expires: candidate.exp }
+	}));
+	await stubApi(page, 'GET', '/recruiter/jobs', () => ({ json: { jobs: [] } }));
+	return stubApi(page, 'PUT', '/me/mode', () => ({
+		json: {
+			user: { ...user, activeMode: 'recruiter', recruiter: true, termsVersion: LEGAL_VERSION }
+		}
+	}));
+};
+
+/** The e2e recruiter as its session shows it, with an acceptance older than the terms in force */
+const staleRecruiter = {
+	_id: E2E_RECRUITER_ID,
+	email: 'e2e.recruiter@example.com',
+	name: 'Rita',
+	surname: 'Recruiter',
+	activeMode: 'recruiter',
+	recruiter: true,
+	termsVersion: '2025-01-01'
+};
+
+/** The session says the terms in force are not accepted; PUT /me/consent accepts them (answered in the browser) */
+const stubStaleTerms = async (page: Page, onAccepted?: () => void) => {
+	await stubApi(page, 'GET', '/isLogged', () => ({
+		json: { logged: true, user: staleRecruiter, expires: inAnHour() }
+	}));
+	return stubApi(page, 'PUT', '/me/consent', () => {
+		onAccepted?.();
+		return { json: { user: { ...staleRecruiter, termsVersion: LEGAL_VERSION } } };
+	});
+};
+
+const CONSENT = { termsVersion: LEGAL_VERSION, ageConfirmed: true };
+
+test.describe('opening the recruiter space', () => {
+	test('the account menu leads an account without a space to /recruiter, which asks for the terms and sends them with the creation', async ({
+		page
+	}) => {
+		const modes = await asCandidateWithoutSpace(page);
+		await gotoHydrated(page, '/legal');
+		await page.getByRole('button', { name: /^Account menu/ }).click();
+		await page.getByRole('menuitemradio', { name: /^Recruiter space/ }).click();
+
+		// The menu only leads there: the page creates the space
+		await expect(page).toHaveURL(/\/recruiter$/);
+		await expect(page.getByRole('heading', { name: 'Create your recruiter space' })).toBeVisible();
+		expect(modes).toHaveLength(0);
+		await expect(page.getByRole('link', { name: /what they ask of recruiters/ })).toHaveAttribute(
+			'href',
+			'/legal/terms#recruiters'
+		);
+
+		// Not without the box
+		await page.getByRole('button', { name: 'Create my recruiter space' }).click();
+		await expect(
+			page.getByText(
+				'Tick the box to confirm your age and accept the terms before you create your recruiter space.'
+			)
+		).toBeVisible();
+		expect(modes).toHaveLength(0);
+
+		await page.getByRole('checkbox', { name: /at least 16 years old/ }).check();
+		await page.getByRole('button', { name: 'Create my recruiter space' }).click();
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'Your job descriptions' })
+		).toBeVisible();
+		expect(modes.map((request) => request.postDataJSON())).toEqual([
+			{ mode: 'recruiter', consent: CONSENT }
+		]);
+	});
+
+	test('the space chooser after a sign-in leads an account without a space to /recruiter, and creates none', async ({
+		page
+	}) => {
+		await stubGoogle(page);
+		const user = candidateUser();
+		// Signed out on arrival; signed in once POST /login answered
+		let signedIn = false;
+		await stubApi(page, 'GET', '/isLogged', () => ({
+			json: signedIn ? { logged: true, user, expires: inAnHour() } : { logged: false }
+		}));
+		await stubApi(page, 'POST', '/login', () => {
+			signedIn = true;
+			return { json: { user, expires: inAnHour() } };
+		});
+		const modes = await stubApi(page, 'PUT', '/me/mode', () => ({ json: { user } }));
+		await gotoHydrated(page, '/e2e-shared/experiences');
+
+		const signInGroup = page.getByRole('group', { name: 'Sign in' });
+		await signInGroup.getByRole('button', { name: 'Sign in' }).click();
+		await signInGroup.getByRole('button', { name: 'Stub Google sign-in' }).click();
+		const chooser = page.getByRole('dialog', { name: 'How do you want to continue?' });
+		await chooser.getByRole('button', { name: /^Recruiter/ }).click();
+
+		await expect(page).toHaveURL(/\/recruiter$/);
+		await expect(page.getByRole('heading', { name: 'Create your recruiter space' })).toBeVisible();
+		await expect(page.getByRole('checkbox', { name: /at least 16 years old/ })).not.toBeChecked();
+		expect(modes).toHaveLength(0);
+	});
+
+	test('an account that accepted the terms in force elsewhere opens it without the box, told what they ask of recruiters', async ({
+		page
+	}) => {
+		const modes = await asCandidateWithoutSpace(page, LEGAL_VERSION);
+		await gotoHydrated(page, '/recruiter');
+
+		await expect(page.getByRole('heading', { name: 'Create your recruiter space' })).toBeVisible();
+		await expect(
+			page.getByRole('link', { name: /what the Terms of use ask of recruiters/ })
+		).toHaveAttribute('href', '/legal/terms#recruiters');
+		await expect(page.getByRole('checkbox', { name: /at least 16 years old/ })).toHaveCount(0);
+
+		await page.getByRole('button', { name: 'Create my recruiter space' }).click();
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'Your job descriptions' })
+		).toBeVisible();
+		expect(modes.map((request) => request.postDataJSON())).toEqual([{ mode: 'recruiter' }]);
+	});
+});
+
+test.describe('the terms on the recruiter pages', () => {
+	test("a posting's page asks a recruiter who has not accepted the terms in force for them, then shows it", async ({
+		page
+	}) => {
+		const title = `Terms check ${tag}`;
+		const { _id: id } = await createJob(api, { title, status: 'draft' });
+		let accepted = false;
+		const acceptances = await stubStaleTerms(page, () => (accepted = true));
+		// Refused until accepted, then the posting itself
+		const reads = await stubApi(page, 'GET', `/recruiter/jobs/${id}`, () =>
+			accepted ? undefined : TERMS_REQUIRED
+		);
+		await openAsRecruiter(page, `/recruiter/jobs/${id}`);
+
+		const terms = page.locator('[data-terms-acceptance]');
+		await expect(terms.getByRole('heading', { level: 2, name: 'Terms of use' })).toBeVisible();
+		await expect(terms).toContainText('accept them to keep using your recruiter space');
+		await expect(page.getByRole('heading', { name: title })).toHaveCount(0);
+		expect(reads).toHaveLength(1);
+
+		await terms.getByRole('checkbox', { name: /at least 16 years old/ }).check();
+		await terms.getByRole('button', { name: 'Accept the terms' }).click();
+
+		await expect(page.getByRole('heading', { level: 2, name: title, exact: true })).toBeVisible();
+		expect(acceptances.map((request) => request.postDataJSON())).toEqual([
+			{ ...CONSENT, source: 'recruiter' }
+		]);
+	});
+
+	test('the new job page asks for the terms in force before the form, then opens it', async ({
+		page
+	}) => {
+		const acceptances = await stubStaleTerms(page);
+		await openAsRecruiter(page, '/recruiter/jobs/new');
+
+		const terms = page.locator('[data-terms-acceptance]');
+		await expect(terms.getByRole('heading', { level: 2, name: 'Terms of use' })).toBeVisible();
+		await expect(page.getByRole('textbox', { name: 'Job title' })).toHaveCount(0);
+
+		await terms.getByRole('checkbox', { name: /at least 16 years old/ }).check();
+		await terms.getByRole('button', { name: 'Accept the terms' }).click();
+
+		await expect(page.getByRole('heading', { name: 'New job description' })).toBeFocused();
+		await expect(page.getByRole('textbox', { name: 'Job title' })).toBeVisible();
+		expect(acceptances.map((request) => request.postDataJSON())).toEqual([
+			{ ...CONSENT, source: 'recruiter' }
+		]);
+	});
+
+	test('a save refused for the terms says to accept them in the recruiter space', async ({
+		page
+	}) => {
+		const title = `Save check ${tag}`;
+		const { _id: id } = await createJob(api, { title, status: 'draft' });
+		// The session says the terms in force were accepted: the API asks for them all the same
+		const saves = await stubApi(page, 'PUT', `/jobs/${id}`, () => TERMS_REQUIRED);
+		await openAsRecruiter(page, `/recruiter/jobs/${id}/edit`);
+
+		const titleInput = page.getByRole('textbox', { name: 'Job title' });
+		await expect(titleInput).toHaveValue(title);
+		await titleInput.fill(`${title} changed`);
+		await page.getByRole('button', { name: 'Save changes' }).click();
+
+		await expect(
+			page.getByText('Accept the terms of use in force to save: open the recruiter space')
+		).toBeVisible();
+		await expect(page.getByRole('link', { name: 'Open the recruiter space' })).toHaveAttribute(
+			'href',
+			'/recruiter'
+		);
+		expect(saves).toHaveLength(1);
+		// Nothing saved: the posting keeps its title
+		expect((await listRecruiterJobs(api)).find((job) => job._id === id)?.title).toBe(title);
 	});
 });
 

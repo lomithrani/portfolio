@@ -3,24 +3,15 @@ import {
 	API_URL,
 	JWT_SECRET,
 	blockGoogle,
+	candidateSession,
 	gotoHydrated,
-	signIn,
-	signSession,
-	type OwnerSession
+	signIn
 } from './support/owner';
 
 // "Send feedback" (components/feedback/): the dialog the account menu and the footers open, for a
 // signed-in account. Signed in for real (a session JWT, see support/owner.ts) as the e2e candidate
 // of seed:e2e (no portfolio: any account can send feedback). GET and POST /feedback are answered
 // in the browser: nothing is filed, neither GitHub nor Claude is ever called.
-
-/** The e2e candidate of seed:e2e (server/tests/seedE2e.ts): its id is fixed */
-const CANDIDATE_ID = '65e2e0000000000000000002';
-
-const candidateSession = async (): Promise<OwnerSession> => {
-	const exp = Math.floor(Date.now() / 1000) + 3600;
-	return { ownerId: CANDIDATE_ID, token: await signSession(CANDIDATE_ID, exp), exp };
-};
 
 type Answer = { status?: number; json?: unknown; body?: string; headers?: Record<string, string> };
 

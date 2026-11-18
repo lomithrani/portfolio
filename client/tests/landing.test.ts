@@ -1,6 +1,13 @@
-import { expect, test, type Page, type Request, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { LEGAL_VERSION, legalMessages } from 'portfolio-common';
-import { API_URL, JWT_SECRET, gotoHydrated, ownerSession, signIn } from './support/owner';
+import {
+	E2E_CANDIDATE_ID as CANDIDATE_ID,
+	JWT_SECRET,
+	gotoHydrated,
+	ownerSession,
+	signIn
+} from './support/owner';
+import { stubApi } from './support/api';
 import { stubGoogle } from './support/google';
 
 // The landing page (/) and its onboarding card. Google is never reached: its script is stubbed
@@ -11,46 +18,8 @@ import { stubGoogle } from './support/google';
 // `?import=1` link use the real session of the 'e2e-owner' domain (seed:e2e), with the résumé
 // import stubbed (Claude is never called).
 
-/** Id of the stubbed candidate without a portfolio (the e2e candidate of seed:e2e) */
-const CANDIDATE_ID = '65e2e0000000000000000002';
+/** The stubbed candidate without a portfolio is the e2e candidate of seed:e2e (CANDIDATE_ID) */
 const CANDIDATE_EMAIL = 'e2e.candidate@example.com';
-
-/**
- * Answers `method path` of the API in the browser with `answer`, with the CORS headers the API
- * would send (the page and the API are on different origins). Returns the requests answered.
- */
-const stubApi = async (
-	page: Page,
-	method: string,
-	path: string,
-	answer: (
-		request: Request
-	) => { status?: number; json: unknown } | Promise<{ status?: number; json: unknown }>
-) => {
-	const answered: Request[] = [];
-	await page.route(`${API_URL}${path}`, async (route: Route) => {
-		const request = route.request();
-		const cors = {
-			'access-control-allow-origin': request.headers()['origin'] ?? '*',
-			'access-control-allow-credentials': 'true'
-		};
-		if (request.method() === 'OPTIONS') {
-			return route.fulfill({
-				status: 204,
-				headers: {
-					...cors,
-					'access-control-allow-methods': 'GET, POST, PUT, DELETE',
-					'access-control-allow-headers': request.headers()['access-control-request-headers'] ?? ''
-				}
-			});
-		}
-		if (request.method() !== method) return route.fallback();
-		answered.push(request);
-		const { status = 200, json } = await answer(request);
-		return route.fulfill({ status, json, headers: cors });
-	});
-	return answered;
-};
 
 const expires = () => Math.floor(Date.now() / 1000) + 3600;
 

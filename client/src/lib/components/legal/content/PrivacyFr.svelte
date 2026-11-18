@@ -674,9 +674,12 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <p>
 	Le site ne s'adresse pas aux personnes de moins de {MINIMUM_AGE} ans ou n'ayant pas atteint l'âge légal
 	minimum pour travailler dans leur pays. Le confirmer est exigé lors de l'inscription depuis la page
-	d'accueil ou de la création d'un portfolio, et utiliser un compte signifie que vous remplissez ces conditions.
-	Si nous apprenons qu'un compte appartient à une personne plus jeune, nous le supprimons. Les parents
-	et tuteurs peuvent nous écrire à <ContactEmail {publisher} {lang} /> pour en demander la suppression.
+	d'accueil, de la création d'un portfolio ou de l'ouverture de l'espace recruteur, et utiliser un compte
+	signifie que vous remplissez ces conditions. Si nous apprenons qu'un compte appartient à une personne
+	plus jeune, nous le supprimons. Les parents et tuteurs peuvent nous écrire à <ContactEmail
+		{publisher}
+		{lang}
+	/> pour en demander la suppression.
 </p>
 
 <h3 id="security">Sécurité</h3>
@@ -780,6 +783,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Lorsque nous modifions cette politique de manière importante, nous mettons à jour sa date et sa
 	version, vous en informons sur le site ou par e-mail avant que la modification ne s'applique, et
 	vous demandons d'accepter les nouvelles conditions lors de votre prochaine inscription ou création
-	d'un portfolio, ou depuis la page de votre compte. Cette version s'applique depuis le
+	d'un portfolio, avant d'utiliser de nouveau l'espace recruteur, ou depuis la page de votre compte.
+	Cette version s'applique depuis le
 	{legalLastUpdated(lang)}.
 </p>

@@ -632,9 +632,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <h3 id="children">Children</h3>
 <p>
 	The site is not intended for anyone under {MINIMUM_AGE} or below the minimum legal working age of their
-	country. Confirming it is required when you sign up from the home page or claim a portfolio, and using
-	an account means you meet these conditions. If we learn that an account belongs to someone younger,
-	we delete it. Parents and guardians can write to us at
+	country. Confirming it is required when you sign up from the home page, claim a portfolio or open the
+	recruiter space, and using an account means you meet these conditions. If we learn that an account belongs
+	to someone younger, we delete it. Parents and guardians can write to us at
 	<ContactEmail {publisher} {lang} /> to have it deleted.
 </p>
 
@@ -723,5 +723,6 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	When we change this policy materially, we update its date and version, tell you on the site or by
 	email before the change applies, and ask you to accept the new terms when you next sign up or
-	claim a portfolio, or from your account page. This version applies since {legalLastUpdated(lang)}.
+	claim a portfolio, before you use the recruiter space again, or from your account page. This
+	version applies since {legalLastUpdated(lang)}.
 </p>

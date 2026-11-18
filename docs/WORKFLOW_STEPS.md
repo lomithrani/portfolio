@@ -226,10 +226,12 @@ What to know about each function:
 **`evaluate`** decides the status every time the journey is read. Nothing stores a status. It is
 called for every step each time a signed-in visitor loads the journey, and for the steps before a
 step each time that step is used (each submit, each availability request of the booking calendar),
-so keep it cheap: no query for the note, one indexed query for the job. It is never called for the
+so keep it cheap: no query for the note, two indexed queries for the job. It is never called for the
 owner or for an anonymous caller, who are `pending` on every step. A step may read more than its
 own data: the job step loads the posting again and is `succeeded` only while that posting still
-belongs to the visitor and is open, so a posting closed since sends the visitor back to the step.
+belongs to the visitor and is open, and while the visitor has accepted the terms in force (like
+every recruiter route), so a posting closed since, or a change of the terms, sends the visitor back
+to the step.
 
 **`view`** is the part of `evaluate`'s answer the visitor's page receives. The note has none. The
 job step returns `{ job: { _id, title, company?, status } }`, the posting the visitor picked, so

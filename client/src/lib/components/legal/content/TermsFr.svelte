@@ -3,7 +3,7 @@
 Conditions d'utilisation (français), traduction fidèle de TermsEn.svelte : conditions d'âge et
 d'âge légal de travail, le service, comptes et portfolios, contenus et licence, contenus interdits
 (offres discriminatoires, mineurs), recruteurs (acceptation à l'ouverture de l'espace recruteur ;
-poste réel, rémunération réellement proposée, aucune limite d'âge, droit d'agir pour l'employeur),
+poste réel, rémunération réellement proposée, aucune limite d'âge supérieure, droit d'agir pour l'employeur),
 imports, rendez-vous, modération (DSA art. 14, 16, 17), résiliation, responsabilité,
 modifications, droit applicable.
 -->
@@ -202,8 +202,8 @@ modifications, droit applicable.
 		L5331-3 du code du travail) ;
 	</li>
 	<li>
-		ne fixer <strong>aucune limite d'âge</strong>, sauf si la loi l'impose (article L5331-2 du code
-		du travail), ni aucun autre critère discriminatoire (voir
+		ne fixer <strong>aucune limite d'âge supérieure</strong>, sauf si la loi en fixe une (article
+		L5331-2 du code du travail), ni aucun autre critère discriminatoire, dont l'âge (voir
 		<a class="link-text" href="#prohibited">ce qui est interdit</a>) ;
 	</li>
 	<li>

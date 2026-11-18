@@ -873,6 +873,29 @@ describe('submitting a step (POST /workflow/domains/:domainName/steps/:stepId)',
     expect((await submit(owner.domain, 'job', { jobId }, recruiter)).json().steps[0].status).toBe('succeeded');
   });
 
+  it('holds a pick only while its recruiter has the terms in force: after a change, the meeting locks until accepted again', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), meeting());
+    const jobId = await createJob(recruiter);
+    const noStep = () => new ResourceNotFoundError('No such step');
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).status).toBe(200);
+    expect((await openStepOfType(owner.id, recruiter.id, 'meeting', noStep)).stepId).toBe('meeting');
+
+    // The terms changed since the pick: the recruiter's latest acceptance is of an older version
+    await User.updateOne({ _id: recruiter.id }, { $set: { 'legalAcceptances.0.version': '2025-01-01' } });
+    const stale = await journeyOf(owner.domain, recruiter);
+    expect(statuses(stale)).toEqual(['job:pending', 'meeting:pending']);
+    // The pick is kept and shown: accepting the terms again is all it takes
+    expect(stale.steps[0].view).toEqual({ job: { _id: jobId, title: 'Staff Engineer', company: 'Acme', status: 'open' } });
+    // What POST /appointments/book asks (403)
+    await expect(openStepOfType(owner.id, recruiter.id, 'meeting', noStep)).rejects.toBeInstanceOf(JourneyStepLockedError);
+
+    expect((await call('PUT', '/me/consent', { body: { ...CONSENT, source: 'recruiter' }, cookie: recruiter.cookie })).status).toBe(200);
+    expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:succeeded', 'meeting:pending']);
+    expect((await openStepOfType(owner.id, recruiter.id, 'meeting', noStep)).stepId).toBe('meeting');
+  });
+
   it('needs a session, a portfolio, a step of the journey, and a step that takes something', async () => {
     const owner = await createUser('owner', { domain: true });
     const visitor = await createUser('visitor');

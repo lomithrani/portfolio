@@ -10,7 +10,8 @@ existed stays online without it (the text says so to its owner).
 - `source`: where it shows: 'account' (the account page, the default) or 'recruiter' (the
   recruiter pages and the job step of a hiring journey, in place of what the API refused with a
   422 on `consent`: its texts are about the recruiter space, and the acceptance is recorded from
-  there)
+  there). On the account page, the texts of an account with a recruiter space say what it needs
+  the terms for: that space, and the portfolio when it has one too
 - `required`: the API asked for the terms (a 422 on `consent`): the form shows even when the
   session says they were accepted (then this page is older than the terms in force, and the API
   asks for a reload: legalMessages.staleTerms)
@@ -60,6 +61,14 @@ existed stays online without it (the text says so to its owner).
 	let acceptedHere = $state(false);
 	let accepted = $derived(acceptedInSession && (!required || acceptedHere));
 	let inRecruiterSpace = $derived(source === 'recruiter');
+	/** The account uses its recruiter space, whose routes need the terms in force */
+	let recruiterSpace = $derived(inRecruiterSpace || !!user.recruiter);
+	/** What the terms are needed for, when the account has not accepted those in force */
+	let need = $derived.by((): 'recruiter' | 'both' | 'portfolio' | 'none' => {
+		if (inRecruiterSpace) return 'recruiter';
+		if (user.recruiter) return user.domain ? 'both' : 'recruiter';
+		return user.domain ? 'portfolio' : 'none';
+	});
 	/** An older version of the terms: they changed since the account accepted them */
 	let acceptedVersion = $derived(termsVersionText(user.termsVersion));
 	let currentDate = formatLegalDate(LEGAL_VERSION, getLocale());
@@ -157,11 +166,13 @@ existed stays online without it (the text says so to its owner).
 			{:else if acceptedVersion}
 				<p class="text-sm text-surface-700-300" data-terms-status="outdated">
 					<Rich
-						text={(inRecruiterSpace
+						text={(need === 'recruiter'
 							? m.recruiter.outdated
-							: user.domain
-								? m.outdated.withPortfolio
-								: m.outdated.withoutPortfolio)(
+							: need === 'both'
+								? m.outdated.withBoth
+								: need === 'portfolio'
+									? m.outdated.withPortfolio
+									: m.outdated.withoutPortfolio)(
 							formatLegalDate(acceptedVersion, getLocale()),
 							currentDate
 						)}
@@ -169,9 +180,13 @@ existed stays online without it (the text says so to its owner).
 						{date}
 					/>
 				</p>
-			{:else if inRecruiterSpace}
+			{:else if need === 'recruiter'}
 				<p class="text-sm text-surface-700-300" data-terms-status="none">
 					<Rich text={m.recruiter.notAccepted} {terms} />
+				</p>
+			{:else if need === 'both'}
+				<p class="text-sm text-surface-700-300" data-terms-status="none">
+					<Rich text={m.notAccepted.withBoth} {terms} />
 				</p>
 			{:else if user.domain}
 				<!-- A portfolio claimed before the terms existed (or from a sign-in without the box): it stays online -->
@@ -193,7 +208,7 @@ existed stays online without it (the text says so to its owner).
 				error={shownConsentError}
 				disabled={busy}
 				id={checkboxId}
-				recruiter={inRecruiterSpace}
+				recruiter={recruiterSpace}
 			/>
 			{#if formError}
 				<p
