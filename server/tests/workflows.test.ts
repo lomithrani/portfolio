@@ -567,7 +567,7 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
     const jobId = await createJob(recruiter);
     const picked = await submit(owner.domain, 'job', { jobId }, recruiter);
     expect(picked.status).toBe(200);
-    // Work mode and contract match (8 of 10), the pay is more than 20% under what is asked
+    // Work mode and contract match (8 of 10); the pay asked is more than 10% over the top of the range
     const scored = { score: 80, minScore: 70, job: { _id: jobId, title: 'Staff Engineer' } };
     expect(picked.json().steps[1]).toEqual({ ...match, status: 'succeeded', view: scored });
     expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:succeeded', 'job-match:succeeded', 'meeting:pending']);
@@ -590,7 +590,7 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
     });
     await expect(assertStepOpen(owner.id, recruiter.id, 'meeting')).rejects.toBeInstanceOf(JourneyStepLockedError);
 
-    // The recruiter raises the pay of the posting: it passes again
+    // The recruiter raises the pay of the posting, the ask at its bottom: it passes again
     await JobPosting.updateOne({ _id: jobId }, { pay: { min: 80000, max: 90000, currency: 'EUR', period: 'year' } });
     expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'succeeded', view: { score: 100 } });
 
@@ -625,7 +625,7 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
       seniority: { importance: 4, levels: ['senior', 'lead'] },
       workMode: { importance: 5, modes: ['remote', 'hybrid'], minRemoteDays: 4 },
       contractTypes: { importance: 3, dealBreaker: true, types: ['freelance'] },
-      // The bottom of the posting's range (50000) reaches it, and no number of the posting is the ask
+      // Under the bottom of the posting's range (50000): it matches, and no number of the posting is the ask
       pay: { importance: 2, perYear: 48000 }
     });
     const shown = (await journeyOf(owner.domain, recruiter)).steps[1];

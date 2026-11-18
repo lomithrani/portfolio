@@ -54,9 +54,14 @@ const richJob = (overrides: Record<string, unknown> = {}) =>
 
 let app: ReturnType<typeof createApp>;
 
-const call = async (method: string, path: string, { body, cookie }: { body?: unknown; cookie?: string } = {}) => {
+const call = async (
+  method: string,
+  path: string,
+  { body, cookie, language }: { body?: unknown; cookie?: string; language?: string } = {}
+) => {
   const headers: Record<string, string> = {};
   if (cookie) headers.Cookie = cookie;
+  if (language) headers['Accept-Language'] = language;
   const text = body === undefined ? undefined : JSON.stringify(body);
   if (text !== undefined) headers['Content-Type'] = 'application/json';
   const response = await app.fetch(new Request(`http://localhost${path}`, { method, headers, body: text }));
@@ -309,6 +314,12 @@ describe('validation', () => {
       'Maximum pay must not be below the minimum'
     ],
     [
+      'a maximum pay over 1.5 times the minimum',
+      sampleJob({ pay: { min: 40000, max: 60001, currency: 'EUR', period: 'year' } }),
+      'pay.max',
+      'Maximum pay must be at most €60,000 (1.5 times the minimum)'
+    ],
+    [
       'a start date that is not a date',
       sampleJob({ contract: { type: 'cdi', startDate: '2027-02-30' } }),
       'contract.startDate',
@@ -340,6 +351,41 @@ describe('validation', () => {
     expect(result.status).toBe(422);
     expect(result.json()).toEqual({ type: 'validation', on: 'body', property, message });
     expect(await JobPosting.countDocuments({ recruiter: recruiter.id })).toBe(0);
+  });
+
+  it('takes a pay range up to 1.5 times its bottom, and says in the visitor\'s language the most it can be', async () => {
+    const recruiter = await createRecruiter();
+    const pay = (min: number, max: number, period: 'year' | 'hour' | 'day' = 'year') => ({ min, max, currency: 'EUR' as const, period });
+
+    // Exactly 1.5 times the bottom, and a single figure
+    const created = await createJob(recruiter, sampleJob({ status: 'draft', pay: pay(40000, 60000) }));
+    expect(created.pay).toEqual(pay(40000, 60000));
+    expect((await createJob(recruiter, sampleJob({ status: 'draft', pay: pay(500, 500, 'day') }))).pay).toEqual(pay(500, 500, 'day'));
+
+    // In cents, rounded down: 1.5 times 33.33 is 49.995, so 49.99 at most; in French, as French writes it
+    const french = await call('POST', '/jobs', {
+      body: sampleJob({ pay: pay(33.33, 50, 'hour') }),
+      cookie: recruiter.cookie,
+      language: 'fr'
+    });
+    expect(french.status).toBe(422);
+    expect(french.json()).toEqual({
+      type: 'validation',
+      on: 'body',
+      property: 'pay.max',
+      message: 'Rémunération maximale\u00a0: indiquez 49,99\u00a0€ au maximum (1,5 fois la minimale)'
+    });
+    const english = await call('POST', '/jobs', { body: sampleJob({ pay: pay(33.33, 49.99, 'hour') }), cookie: recruiter.cookie });
+    expect(english.status).toBe(200);
+
+    // An edit too, leaving the posting as it was
+    const widened = await call('PUT', `/jobs/${created._id}`, {
+      body: sampleJob({ status: 'draft', pay: pay(40000, 80000) }),
+      cookie: recruiter.cookie
+    });
+    expect([widened.status, widened.json().property]).toEqual([422, 'pay.max']);
+    expect((await JobPosting.findById(created._id).lean())?.pay).toEqual(pay(40000, 60000));
+    expect(await JobPosting.countDocuments({ recruiter: recruiter.id })).toBe(3);
   });
 
   it('refuses an unknown contract type with a schema 422', async () => {

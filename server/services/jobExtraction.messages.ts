@@ -144,6 +144,13 @@ export const m = defineMessages({
     en: 'The minimum pay is above the maximum: check the pay range',
     fr: 'La rémunération minimale dépasse la maximale : vérifiez la fourchette de rémunération'
   },
+  /** `ratio`: portfolio-common's JOB_LIMITS.pay.maxRangeRatio */
+  payRangeTooWide: {
+    en: (ratio: number) =>
+      `The maximum pay is more than ${ratio.toLocaleString('en-GB')} times the minimum: narrow the pay range`,
+    fr: (ratio: number) =>
+      `La rémunération maximale dépasse ${ratio.toLocaleString('fr-FR')} fois la minimale : resserrez la fourchette de rémunération`
+  },
   /** `range`: an amount or two ("45", "40-45"); `period`: portfolio-common's PAY_PERIOD_LABELS ("per year") */
   checkPay: {
     en: (range: string, period: string) => `Check the pay: ${range} € ${period} looks too low (amounts in k€?)`,

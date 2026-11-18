@@ -46,6 +46,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		JOB_LIMITS,
 		JOB_STATUSES,
 		JOB_STATUS_LABELS,
+		PAY_MATCH,
 		PAY_PERIODS,
 		PAY_PERIOD_LABELS,
 		SENIORITY_LABELS,
@@ -1217,7 +1218,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{m.sections.pay} <span class="text-error-700-300" aria-hidden="true">*</span>
 					</h3>
 					<p class={introClass}>{m.payIntro}</p>
-					<p class="mt-1 {introClass}">{m.payScoredOnMinimum}</p>
+					<p class="mt-1 {introClass}">
+						{m.payScoredInRange(
+							JOB_LIMITS.pay.maxRangeRatio,
+							Math.round((1 - PAY_MATCH.fullShareOfRange) * 100)
+						)}
+					</p>
 				</div>
 				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
 					<Field field="payMin" label={labels.payMin} unit="€" unitLabel={m.eurosGross} required>

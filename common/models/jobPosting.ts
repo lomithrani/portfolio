@@ -1,6 +1,7 @@
 // Job postings of the recruiter space: the values, limits and rules shared by the API (request
 // validation, PUT/POST /jobs) and the client (the job editor's validation and the display of a
 // posting). Contract rules depend on the country of the job: France is the first one handled.
+import { intlLocale } from '../i18n';
 import { isCalendarDate } from './bookingDates';
 import { jobPostingMessages as m } from './jobPosting.messages';
 
@@ -130,8 +131,12 @@ export const JOB_LIMITS = {
 	hoursPerWeek: { min: 1, max: 48 },
 	daysPerYear: { min: 1, max: 235 },
 	rttDaysPerYear: { min: 0, max: 60 },
-	/** Pay amounts, in the currency's units (cents allowed) */
-	pay: { min: 0.01, max: 10_000_000 },
+	/**
+	 * Pay amounts, in the currency's units (cents allowed). maxRangeRatio: the top of a pay range
+	 * is at most that many times its bottom (a candidate's pay criterion is matched by where it
+	 * falls in the range, perfectJob.ts's PAY_MATCH)
+	 */
+	pay: { min: 0.01, max: 10_000_000, maxRangeRatio: 1.5 },
 	/** Years a start date can fall in: a typo (0202) or a placeholder (0000) is refused */
 	startDateYear: { min: 2000, max: 2100 },
 	directReports: { min: 0, max: 100_000 },
@@ -261,6 +266,32 @@ export const normalizeList = (items: readonly string[] | undefined): string[] =>
 
 /** At most two decimals (cents), float noise aside (0.1 + 0.2) */
 const hasCents = (value: number) => Math.abs(Math.round(value * 100) - value * 100) < 1e-6;
+
+/** An amount of at most two decimals, in whole cents */
+const cents = (value: number) => Math.round(value * 100);
+
+/**
+ * The highest maximum pay a minimum allows: JOB_LIMITS.pay.maxRangeRatio times it, rounded down
+ * to cents
+ */
+export const highestPayMax = (min: number): number =>
+	Math.floor(cents(min) * JOB_LIMITS.pay.maxRangeRatio) / 100;
+
+/**
+ * A pay range whose top is over JOB_LIMITS.pay.maxRangeRatio times its bottom: what
+ * validateJobPosting refuses (compared in whole cents, where 1.5 times an amount is exact)
+ */
+export const isPayRangeTooWide = (pay: { min: number; max: number }): boolean =>
+	cents(pay.max) > cents(highestPayMax(pay.min));
+
+/** An amount as the language in use writes it: '€67,500', '67 500 €', '€49.99' */
+const formatPayAmount = (amount: number, currency: PayCurrency): string =>
+	new Intl.NumberFormat(intlLocale(), {
+		style: 'currency',
+		currency: PAY_CURRENCIES.includes(currency) ? currency : 'EUR',
+		minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+		maximumFractionDigits: 2
+	}).format(amount);
 
 /**
  * An amount of at most two decimals as exactly that (45000.000000001 is 45000): what is stored
@@ -505,6 +536,9 @@ export function validateJobPosting(job: JobPostingInput): JobPostingProblem[] {
 	const validMax = amount('pay.max', pay.max, m.problems.amount.max);
 	if (validMin && validMax && pay.max < pay.min) {
 		problem('pay.max', m.problems.payMaxBelowMin);
+	} else if (validMin && validMax && isPayRangeTooWide(pay)) {
+		const most = formatPayAmount(highestPayMax(pay.min), pay.currency);
+		problem('pay.max', m.problems.payRangeTooWide(JOB_LIMITS.pay.maxRangeRatio, most));
 	}
 	if (!PAY_CURRENCIES.includes(pay.currency)) problem('pay.currency', m.problems.unknownCurrency);
 	if (!PAY_PERIODS.includes(pay.period)) problem('pay.period', m.problems.unknownPayPeriod);

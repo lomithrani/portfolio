@@ -909,6 +909,10 @@ test.describe('the hiring journey', () => {
 		// A number that is not one is said at its field
 		const pay = criterion(page, 'Pay');
 		await pay.getByText('Pay', { exact: true }).click();
+		// How the pay asked matches: by where it falls in the job's range
+		await expect(pay).toContainText(
+			'A job matches when what you ask is below the top 10% of its pay range, partly when it is in that top 10%, a little up to 10% over the range, and not at all further over.'
+		);
 		await pay.getByLabel('Per year').fill('a lot');
 		await expect(
 			pay.getByText('Pay per year must be a whole number of euros, above 0.')
@@ -1056,6 +1060,10 @@ test.describe('the hiring journey', () => {
 		await page.getByRole('tab', { name: 'Perfect job' }).click();
 		const pay = criterion(page, 'Pay');
 		await pay.getByText('Pay', { exact: true }).click();
+		// How the pay asked matches: by where it falls in the job's range
+		await expect(pay).toContainText(
+			'A job matches when what you ask is below the top 10% of its pay range, partly when it is in that top 10%, a little up to 10% over the range, and not at all further over.'
+		);
 		await pay.getByLabel('Per year').fill('70 000');
 
 		// The save is answered 401: the tab is not signed out from under the owner

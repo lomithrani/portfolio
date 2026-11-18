@@ -15,6 +15,7 @@ import {
   intlLocale,
   isCalendarDate,
   isJobStartDate,
+  isPayRangeTooWide,
   normalizeList
 } from 'portfolio-common'
 import type {
@@ -548,14 +549,19 @@ export function normalizeJobExtraction(output: unknown): JobExtraction {
   })
 
   // Pay, in euros: a minimum alone is a fixed pay (min = max). A maximum
-  // alone is a ceiling ("up to"): the minimum, the only amount the job match
-  // scores, stays unstated for the recruiter to give, never the ceiling. An
-  // amount left out is not replaced by the other
+  // alone is a ceiling ("up to"): the minimum, the bottom of the range the job
+  // match places a candidate's ask in, stays unstated for the recruiter to
+  // give, never the ceiling. An amount left out is not replaced by the other.
+  // A range the editor refuses (upside down, or wider than
+  // JOB_LIMITS.pay.maxRangeRatio) is kept as read, with a warning: the
+  // recruiter fixes it before saving
   const payMin = read.number('payMin', fields.payMin, JOB_LIMITS.pay, 'cents')
   let payMax = read.number('payMax', fields.payMax, JOB_LIMITS.pay, 'cents')
   if (payMax === undefined && payMin !== undefined && read.statesNoNumber('payMax')) payMax = payMin
   if (payMin !== undefined && payMax !== undefined && payMin > payMax) {
     read.warnings.push(m.payMinAboveMax)
+  } else if (payMin !== undefined && payMax !== undefined && isPayRangeTooWide({ min: payMin, max: payMax })) {
+    read.warnings.push(m.payRangeTooWide(JOB_LIMITS.pay.maxRangeRatio))
   }
   const payPeriod = read.choice('payPeriod', PAY_PERIODS, fields.payPeriod)
   // The model may drop a "k" it was told to multiply out: flagged, not

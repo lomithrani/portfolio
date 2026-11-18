@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from 'portfolio-common';
+import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS, withLocale } from 'portfolio-common';
 import {
 	JOB_FIELD_LABELS,
 	JOB_FORM_FIELDS,
@@ -153,6 +153,22 @@ describe('jobFormErrors', () => {
 		expect(errors.peers).toBe('Peers must be a number');
 		expect(errors.hoursPerWeek).toMatch(/^Hours per week must be from 1 to 48/);
 		expect(errors.payMax).toBe('Maximum pay must not be below the minimum');
+	});
+
+	it('reports a pay range whose top is over 1.5 times its bottom, with the most it can be', () => {
+		expect(jobFormErrors(validForm({ payMin: '45 000', payMax: '67 500' })).payMax).toBeUndefined();
+		expect(jobFormErrors(validForm({ payMin: '45 000', payMax: '67 501' })).payMax).toBe(
+			'Maximum pay must be at most €67,500 (1.5 times the minimum)'
+		);
+		// In cents, rounded down: 1.5 × €33.33 is €49.995
+		expect(
+			jobFormErrors(validForm({ payMin: '33,33', payMax: '50', payPeriod: 'hour' })).payMax
+		).toBe('Maximum pay must be at most €49.99 (1.5 times the minimum)');
+		expect(
+			withLocale('fr', () => jobFormErrors(validForm({ payMin: '45000', payMax: '90000' })).payMax)
+		).toBe(
+			'Rémunération maximale\u00a0: indiquez 67\u202f500\u00a0€ au maximum (1,5 fois la minimale)'
+		);
 	});
 });
 

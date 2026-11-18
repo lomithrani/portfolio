@@ -112,14 +112,28 @@ test.describe('the recruiter', () => {
 		await page.getByRole('textbox', { name: 'Duration (months)' }).fill('12');
 		await page.getByRole('textbox', { name: 'Hours per week' }).fill('39');
 		await page.getByRole('textbox', { name: 'Minimum pay' }).fill('42 000');
-		await page.getByRole('textbox', { name: 'Maximum pay' }).fill('50 000');
-		await expect(page.getByText('Fix 5 problems before saving:')).toBeHidden();
-		await expect(page.getByText('Candidates see: €42,000 – €50,000 gross per year')).toBeVisible();
-		// The job match scores the bottom of the range, and the editor says so
+		// The top of a range is at most 1.5 times its bottom: the field says the most it can be
+		const payMax = page.getByRole('textbox', { name: 'Maximum pay' });
+		await payMax.fill('70 000');
 		await expect(
-			page.getByText("A candidate's pay criterion is compared with the minimum of your range", {
-				exact: false
+			page.getByRole('link', {
+				name: 'Maximum pay: Maximum pay must be at most €63,000 (1.5 times the minimum)'
 			})
+		).toBeVisible();
+		await expect(payMax).toHaveAttribute('aria-invalid', 'true');
+		await expect(payMax).toHaveAccessibleDescription(
+			/Maximum pay must be at most €63,000 \(1\.5 times the minimum\)/
+		);
+		await payMax.fill('50 000');
+		await expect(page.getByText('Fix 5 problems before saving:')).toBeHidden();
+		await expect(payMax).not.toHaveAttribute('aria-invalid', 'true');
+		await expect(page.getByText('Candidates see: €42,000 – €50,000 gross per year')).toBeVisible();
+		// The job match places a candidate's ask in the range, and the editor says how
+		await expect(
+			page.getByText(
+				"The maximum can be up to 1.5 times the minimum. A candidate's pay criterion matches when what they ask is below the top 10% of your range",
+				{ exact: false }
+			)
 		).toBeVisible();
 
 		await page.getByRole('button', { name: 'Create job description' }).click();

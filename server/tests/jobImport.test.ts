@@ -635,6 +635,18 @@ describe('a successful import', () => {
     });
   });
 
+  it('keeps a pay range wider than 1.5 times its bottom as read, with a warning for the editor', async () => {
+    claude.state.output = { ...ONE_JOB, payMin: '40 k€', payMax: '80 k€' };
+
+    const result = await importFile(pdf);
+    expect(result.status).toBe(200);
+    expect(result.json()).toMatchObject({
+      draft: { pay: { min: 40000, max: 80000, currency: 'EUR', period: 'year' } },
+      warnings: ['The maximum pay is more than 1.5 times the minimum: narrow the pay range']
+    });
+    expect(await planUsed()).toBe(1);
+  });
+
   it('counts an import that found nothing, and says so', async () => {
     claude.state.output = BLANK;
 
