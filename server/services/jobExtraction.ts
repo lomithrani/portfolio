@@ -117,7 +117,7 @@ Rules:
 - workMode: "on_site", "hybrid" (some days remote each week) or "remote" (fully remote). remoteDaysPerWeek: the remote days a week of a hybrid job.
 - contractType, for French contracts: "cdi" (CDI, permanent), "cdd" (CDD, fixed-term), "interim" (intérim, temporary work), "apprenticeship" (contrat d'apprentissage, or "alternance" when the kind of contract is not given), "professionalisation" (contrat de professionnalisation), "internship" (stage), "freelance" (freelance, independent, portage salarial). durationMonths: the length of the contract in months. startDate: "YYYY-MM-DD", the first of the month when only a month is given, "" for "as soon as possible". trialPeriodMonths: the trial period (période d'essai) in months. collectiveAgreement: the convention collective (e.g. "Syntec").
 - workingTimeArrangement: "weekly_hours" when the job counts hours a week (then hoursPerWeek, e.g. "35" or "37.5"), "annual_days" for a forfait jours (then daysPerYear, e.g. "218"). rttDaysPerYear: the RTT days a year.
-- Pay: payMin and payMax are gross amounts in euros, as plain numbers: "45000" for "45 k€" or "45 000 €", "550" for a daily rate of 550 €. A single amount goes in both. payPeriod: what the amounts are for: "year", "month", "day" or "hour". payVariable: the variable part in words (bonus, commission, profit-sharing).
+- Pay: payMin and payMax are gross amounts in euros, as plain numbers: "45000" for "45 k€" or "45 000 €", "550" for a daily rate of 550 €. A single amount goes in both, unless the document gives it only as a ceiling ("up to 60 k€", "jusqu'à 60 k€", "60 k€ max"): then it goes in payMax alone and payMin is "", since the lowest pay is not stated. payPeriod: what the amounts are for: "year", "month", "day" or "hour". payVariable: the variable part in words (bonus, commission, profit-sharing).
 - Every number (remote days, durations, hours, days, amounts, counts) is digits only, with a dot for decimals and no unit or currency: "35", "37.5", "45000".
 - openings: the positions to fill. directReports: the people who report to this job. peers: the colleagues who report to the same manager. levelsToCeo: the management levels above the job ("1" when it reports to the CEO, "0" for the CEO). Fill these only from what the document states.
 - seniority: "entry" (no experience), "junior" (0-2 years), "mid" (2-5 years), "senior" (5-10 years), "lead" (10+ years, or leading others) or "executive", from the experience the document asks for. education: the minimum degree asked: "none", "cap_bep", "bac", "bac_2", "bac_3" (licence, bachelor), "bac_5" (master, engineering school) or "doctorate".
@@ -173,7 +173,7 @@ export interface JobPostingDraft {
     rttDaysPerYear?: number
   }
   pay?: {
-    /** Gross amounts in euros; a single amount is both min and max */
+    /** Gross amounts in euros; a single amount is both min and max, unless it is a ceiling (max alone) */
     min?: number
     max?: number
     currency: PayCurrency
@@ -547,11 +547,12 @@ export function normalizeJobExtraction(output: unknown): JobExtraction {
     rttDaysPerYear: read.number('rttDaysPerYear', fields.rttDaysPerYear, JOB_LIMITS.rttDaysPerYear)
   })
 
-  // Pay, in euros: a single amount is a fixed pay (min = max); an amount
-  // left out is not replaced by the other
-  let payMin = read.number('payMin', fields.payMin, JOB_LIMITS.pay, 'cents')
+  // Pay, in euros: a minimum alone is a fixed pay (min = max). A maximum
+  // alone is a ceiling ("up to"): the minimum, the only amount the job match
+  // scores, stays unstated for the recruiter to give, never the ceiling. An
+  // amount left out is not replaced by the other
+  const payMin = read.number('payMin', fields.payMin, JOB_LIMITS.pay, 'cents')
   let payMax = read.number('payMax', fields.payMax, JOB_LIMITS.pay, 'cents')
-  if (payMin === undefined && payMax !== undefined && read.statesNoNumber('payMin')) payMin = payMax
   if (payMax === undefined && payMin !== undefined && read.statesNoNumber('payMax')) payMax = payMin
   if (payMin !== undefined && payMax !== undefined && payMin > payMax) {
     read.warnings.push(m.payMinAboveMax)

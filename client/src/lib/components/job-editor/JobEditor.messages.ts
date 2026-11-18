@@ -261,7 +261,7 @@ export const m = defineMessages({
 	/** Under the pay's intro: the job match scores the bottom of the range */
 	payScoredOnMinimum: {
 		en: "A candidate's pay criterion is compared with the minimum of your range: they see the maximum, but it is not scored.",
-		fr: "Le critère de rémunération d'un candidat est comparé au minimum de votre fourchette : il voit le maximum, mais celui-ci n'est pas noté."
+		fr: "Le critère de rémunération d'un candidat est comparé au minimum de votre fourchette : le candidat voit le maximum, mais celui-ci ne compte pas dans la note."
 	},
 	/** How screen readers hear the unit of a pay amount (€) */
 	eurosGross: { en: 'euros, gross', fr: 'euros, brut' },

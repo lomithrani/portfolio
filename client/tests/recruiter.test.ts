@@ -105,6 +105,12 @@ test.describe('the recruiter', () => {
 		await page.getByRole('textbox', { name: 'Maximum pay' }).fill('50 000');
 		await expect(page.getByText('Fix 5 problems before saving:')).toBeHidden();
 		await expect(page.getByText('Candidates see: €42,000 – €50,000 gross per year')).toBeVisible();
+		// The job match scores the bottom of the range, and the editor says so
+		await expect(
+			page.getByText("A candidate's pay criterion is compared with the minimum of your range", {
+				exact: false
+			})
+		).toBeVisible();
 
 		await page.getByRole('button', { name: 'Create job description' }).click();
 		await expect(page).toHaveURL(JOB_PAGE);

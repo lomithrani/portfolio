@@ -142,8 +142,9 @@ describe('normalizeJobExtraction', () => {
   it('reads fields of another type as not stated', () => {
     const { draft } = normalize({ title: 42, payMin: 45000, skills: 'TypeScript', benefits: ['Mutuelle', 7, null] });
     expect(draft.title).toBeUndefined();
-    // A single amount left is the fixed pay
-    expect(draft.pay).toMatchObject({ min: 55000, max: 55000 });
+    // A maximum alone is a ceiling: the minimum stays unstated
+    expect(draft.pay).toMatchObject({ max: 55000 });
+    expect(draft.pay?.min).toBeUndefined();
     expect(draft.requirements?.skills).toBeUndefined();
     expect(draft.benefits).toEqual(['Mutuelle']);
   });
@@ -283,8 +284,8 @@ describe('normalizeJobExtraction', () => {
   });
 
   describe('pay', () => {
-    it('takes a single amount as a fixed pay', () => {
-      expect(normalize({ payMin: '', payMax: '550', payPeriod: 'day' }).draft.pay).toEqual({
+    it('takes a minimum alone as a fixed pay', () => {
+      expect(normalize({ payMin: '550', payMax: '', payPeriod: 'day' }).draft.pay).toEqual({
         min: 550,
         max: 550,
         currency: 'EUR',
@@ -292,6 +293,14 @@ describe('normalizeJobExtraction', () => {
         variable: 'Prime sur objectifs (10 %)'
       });
       expect(normalize({ payMin: '3200', payMax: '' }).draft.pay).toMatchObject({ min: 3200, max: 3200 });
+    });
+
+    it('never makes a ceiling ("up to 60 k€") the minimum, which the job match scores', () => {
+      const { draft, warnings } = normalize({ payMin: '', payMax: '60000' });
+      expect(draft.pay).toEqual({ max: 60000, currency: 'EUR', period: 'year', variable: 'Prime sur objectifs (10 %)' });
+      // The recruiter gives the minimum before saving
+      expect(warnings).toEqual(['Not found in this file, needed to save the posting: minimum pay']);
+      expect(JOB_EXTRACTION_SYSTEM_PROMPT).toContain('only as a ceiling');
     });
 
     it('does not copy an amount over one that was left out', () => {
@@ -312,7 +321,7 @@ describe('normalizeJobExtraction', () => {
 
     it.each([
       ['year', '45', '55', 'Check the pay: 45-55 € per year looks too low (amounts in k€?)'],
-      ['year', '', '38.5', 'Check the pay: 38.5 € per year looks too low (amounts in k€?)'],
+      ['year', '38.5', '', 'Check the pay: 38.5 € per year looks too low (amounts in k€?)'],
       ['month', '2.5', '3', 'Check the pay: 2.5-3 € per month looks too low (amounts in k€?)'],
       ['day', '1', '', 'Check the pay: 1 € per day looks too low (amounts in k€?)'],
       // Only the lowest amount needs to be implausible
