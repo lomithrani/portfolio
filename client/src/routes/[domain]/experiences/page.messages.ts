@@ -16,6 +16,14 @@ export const m = defineMessages({
 	hireMe: { en: 'Hire me', fr: 'Me recruter' },
 	/** The owner's heading above their buttons */
 	heading: { en: 'Experiences', fr: 'Expériences' },
+	/** The owner's link to the admin's "Get started" while its checklist is not complete */
+	setup: {
+		title: { en: 'Get ready to share your link', fr: 'Préparez-vous à partager votre lien' },
+		progress: {
+			en: (done: number, total: number) => `(${done} of ${total})`,
+			fr: (done: number, total: number) => `(${done} sur ${total})`
+		}
+	},
 	/**
 	 * The owner's "Add experience" button. In the floating corner it is short to fit the row: the
 	 * passage marked `hidden` is only read by screen readers (the button's name stays "Add

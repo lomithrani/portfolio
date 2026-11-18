@@ -26,6 +26,33 @@ export const m = defineMessages({
 	},
 	loading: { en: 'Loading your perfect job...', fr: 'Chargement de votre poste idéal…' },
 
+	/** Offered while no criterion is rated: the essentials switched on in one click */
+	essentials: {
+		title: { en: 'Not sure where to start?', fr: 'Par où commencer ?' },
+		text: {
+			commute: {
+				en: 'The pay (a deal-breaker), the work mode, your commute and the contract: what most calls end on. You fill them in, then save.',
+				fr: "La rémunération (critère éliminatoire), le mode de travail, votre trajet et le contrat : ce sur quoi la plupart des appels s'arrêtent. Vous les complétez, puis enregistrez."
+			},
+			cities: {
+				en: 'The pay (a deal-breaker), the work mode, the location and the contract: what most calls end on. You fill them in, then save.',
+				fr: "La rémunération (critère éliminatoire), le mode de travail, le lieu et le contrat : ce sur quoi la plupart des appels s'arrêtent. Vous les complétez, puis enregistrez."
+			}
+		},
+		start: { en: 'Start with the essentials', fr: "Commencer par l'essentiel" },
+		/** Read out once they are on */
+		on: {
+			commute: {
+				en: 'The pay, the work mode, the commute and the contract are on: fill them in, then save.',
+				fr: 'La rémunération, le mode de travail, le trajet et le contrat sont activés : complétez-les, puis enregistrez.'
+			},
+			cities: {
+				en: 'The pay, the work mode, the location and the contract are on: fill them in, then save.',
+				fr: 'La rémunération, le mode de travail, le lieu et le contrat sont activés : complétez-les, puis enregistrez.'
+			}
+		}
+	},
+
 	// --- How a job is scored ---
 	scoring: {
 		title: { en: 'How a job is scored', fr: 'Comment une offre est notée' },

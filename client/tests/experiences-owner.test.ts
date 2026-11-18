@@ -329,9 +329,10 @@ test.describe('text that looks like a date', () => {
 			const headings = page.locator('article h2');
 			await expect(headings).toHaveText([`Later ${tag}`, '2020-03']);
 
-			// The owner's Appearance form holds the title and subtitle as typed
+			// The owner's Appearance form holds the title and subtitle as typed (`?tab=` opens its tab:
+			// without it, the page opens on "Get started" while the owner's setup is not complete)
 			await signIn(page, session);
-			await gotoHydrated(page, `/${DOMAIN}/admin`);
+			await gotoHydrated(page, `/${DOMAIN}/admin?tab=appearance`);
 			await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
 				'2027-01-01'
 			);
@@ -1217,5 +1218,35 @@ test.describe('the navigation rail', () => {
 		await expect(railLink(page)).toBeInViewport({ ratio: 1 });
 		await expect(railLinks(page)).toHaveCount(3);
 		await context.close();
+	});
+});
+
+test.describe('the owner’s setup', () => {
+	test('the page says how far the owner is, and leads to "Get started"', async ({ page }) => {
+		const setup = page.locator('[data-setup-progress]');
+		const progress = async () => {
+			await expect(setup).toBeVisible();
+			const [, done, total] = /\((\d+) of (\d+)\)/.exec((await setup.textContent()) ?? '') ?? [];
+			return { done: Number(done), total: Number(total) };
+		};
+
+		// No experience yet: shown in the owner's empty page
+		await openAsOwner(page);
+		await expect(setup).toContainText('Get ready to share your link');
+		await expect(setup).toHaveAttribute('href', `/${DOMAIN}/admin?tab=start`);
+		const before = await progress();
+
+		// One experience counts, as soon as it is there
+		await createExperience({ title: `Setup ${tag}` });
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		expect(await progress()).toEqual({ done: before.done + 1, total: before.total });
+
+		// It leads to the checklist, which opens on its own tab
+		await setup.click();
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=start$`));
+		await expect(page.getByRole('tab', { name: /Get started/, selected: true })).toBeVisible();
+		await expect(
+			page.getByRole('list', { name: 'Checklist' }).locator('[data-item="resume"]')
+		).toHaveAttribute('data-state', 'done');
 	});
 });

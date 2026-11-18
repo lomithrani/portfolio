@@ -1,4 +1,4 @@
-import { defineMessages } from 'portfolio-common';
+import { defineMessages, plural } from 'portfolio-common';
 
 export const m = defineMessages({
 	title: {
@@ -7,12 +7,17 @@ export const m = defineMessages({
 	},
 	subtitle: {
 		create: {
-			en: 'Three steps, a few minutes, free.',
-			fr: 'Trois étapes, quelques minutes, gratuit.'
+			en: 'Four steps, a few minutes, free.',
+			fr: 'Quatre étapes, quelques minutes, gratuit.'
 		},
 		online: {
 			en: 'Fill it with your experiences, then share its address.',
 			fr: 'Ajoutez-y vos expériences, puis partagez son adresse.'
+		},
+		/** Every step is done */
+		ready: {
+			en: 'Send your link to the next recruiter who writes to you.',
+			fr: 'Envoyez votre lien au prochain recruteur qui vous écrit.'
 		}
 	},
 	address: {
@@ -136,6 +141,41 @@ export const m = defineMessages({
 			fr: "Vous avez utilisé les imports de CV de ce mois-ci : ajoutez vos expériences à la main pour l'instant."
 		},
 		byHand: { en: 'Add my experiences', fr: 'Ajouter mes expériences' },
-		open: { en: 'Open my portfolio', fr: 'Ouvrir mon portfolio' }
+		open: { en: 'Open my portfolio', fr: 'Ouvrir mon portfolio' },
+		done: {
+			en: (count: number) =>
+				`${count} ${plural(count, 'experience', 'experiences')} on your portfolio.`,
+			fr: (count: number) =>
+				`${count} ${plural(count, 'expérience', 'expériences')} sur votre portfolio.`
+		}
+	},
+	/** Step 4: what the owner wants, their steps and their calendar, set in the admin's "Get started" */
+	terms: {
+		title: { en: 'Set your terms', fr: 'Fixer vos conditions' },
+		upcoming: {
+			en: 'Say what you want, choose your steps and open your calendar.',
+			fr: 'Dites ce que vous voulez, choisissez vos étapes et ouvrez votre agenda.'
+		},
+		intro: {
+			en: 'Say what you want in a job, choose the steps recruiters go through, and open your calendar. Recruiters never see what you ask: only how their job scores against it.',
+			fr: "Dites ce que vous voulez d'un poste, choisissez les étapes que suivent les recruteurs et ouvrez votre agenda. Les recruteurs ne voient jamais ce que vous demandez : seulement la note de leur offre."
+		},
+		open: { en: 'Set my terms', fr: 'Fixer mes conditions' },
+		/** Next to the button: how many of the three are set */
+		progress: {
+			en: (done: number, total: number) => `${done} of ${total} set`,
+			fr: (done: number, total: number) => `${done} sur ${total} ${plural(done, 'réglé', 'réglés')}`
+		},
+		done: { en: 'Your terms are set.', fr: 'Vos conditions sont fixées.' },
+		/** Under the link and its "Copy your link" */
+		copyCaption: {
+			en: 'Send it to the recruiters who write to you.',
+			fr: 'Envoyez-le aux recruteurs qui vous écrivent.'
+		}
+	},
+	/** Past the last step */
+	ready: {
+		title: { en: 'Your link is ready', fr: 'Votre lien est prêt' },
+		review: { en: 'Review my settings', fr: 'Revoir mes réglages' }
 	}
 });

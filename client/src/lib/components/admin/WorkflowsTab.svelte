@@ -69,6 +69,11 @@ cannot be saved until it is fixed.
 	);
 	let changed = $derived(!sameSteps(steps, saved));
 
+	/** Whether the journey holds changes not saved yet (the "Get started" tab asks before replacing it) */
+	export function hasChanges(): boolean {
+		return changed;
+	}
+
 	// Unsaved steps hold text the owner wrote (a note): leaving the page asks first. A reload or
 	// a closed tab gets the browser's own prompt (confirm() cannot show there); every link
 	// ("See your Hire page"...), this one, also a link that reloads the page (the language

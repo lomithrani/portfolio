@@ -14,9 +14,10 @@ import { stubGoogle } from './support/google';
 // (a fake "Sign in with Google" button that hands a fake credential to the page). The steps of a
 // signed-in candidate stub the session (GET /isLogged) and every call that would change an account
 // (POST /login, POST /domain/claim, PUT /me/mode): nothing is claimed for real. The availability
-// of the names typed is asked to the real API (public, read-only). The owner's step 3 and the
-// `?import=1` link use the real session of the 'e2e-owner' domain (seed:e2e), with the résumé
-// import stubbed (Claude is never called).
+// of the names typed is asked to the real API (public, read-only). The owner's steps 3 and 4 and
+// the `?import=1` link use the real session of the 'e2e-owner' domain (seed:e2e), with the résumé
+// import stubbed (Claude is never called) and what the owner set up (GET /me/readiness) answered
+// in the browser: experiences-owner.test.ts changes that domain's experiences meanwhile.
 
 /** The stubbed candidate without a portfolio is the e2e candidate of seed:e2e (CANDIDATE_ID) */
 const CANDIDATE_EMAIL = 'e2e.candidate@example.com';
@@ -41,6 +42,55 @@ const stubImportStatus = (page: Page, status: { enabled: boolean; remaining: num
 	stubApi(page, 'GET', '/experiences/import', () => ({
 		json: { limit: 3, resetsAt: null, ...status }
 	}));
+
+type Readiness = {
+	domain: string | null;
+	experiences: number;
+	perfectJob: {
+		criteria: number;
+		essentials: Record<'pay' | 'workMode' | 'place' | 'contractTypes', boolean>;
+	};
+	journey: { saved: boolean; types: string[]; gate: boolean; meeting: boolean };
+	calendar: {
+		configured: boolean;
+		connected: boolean;
+		reconnect: boolean;
+		enabledSchedules: number;
+	};
+};
+
+/** What a portfolio just claimed has set up (GET /me/readiness): nothing */
+const newReadiness = (domain: string | null): Readiness => ({
+	domain,
+	experiences: 0,
+	perfectJob: {
+		criteria: 0,
+		essentials: { pay: false, workMode: false, place: false, contractTypes: false }
+	},
+	journey: { saved: false, types: ['meeting'], gate: false, meeting: true },
+	calendar: { configured: true, connected: false, reconnect: false, enabledSchedules: 0 }
+});
+
+/** Everything set up: the gate journey, the pay rated, a calendar to book in */
+const readyReadiness = (domain: string): Readiness => ({
+	domain,
+	experiences: 2,
+	perfectJob: {
+		criteria: 4,
+		essentials: { pay: true, workMode: true, place: true, contractTypes: true }
+	},
+	journey: {
+		saved: true,
+		types: ['note', 'job', 'job-match', 'meeting'],
+		gate: true,
+		meeting: true
+	},
+	calendar: { configured: true, connected: true, reconnect: false, enabledSchedules: 1 }
+});
+
+/** GET /me/readiness answered with `readiness` (given the requests answered before) */
+const stubReadiness = (page: Page, readiness: (index: number) => Readiness) =>
+	stubApi(page, 'GET', '/me/readiness', (_request, index) => ({ json: readiness(index) }));
 
 const card = (page: Page) => page.locator('#create');
 const addressField = (page: Page) => page.getByLabel('Choose your address');
@@ -315,6 +365,7 @@ test.describe('landing page, candidate steps', () => {
 		});
 		const name = `e2e-landing-${Date.now().toString(36)}`;
 		const claims = await stubApi(page, 'POST', '/domain/claim', () => ({ json: { name } }));
+		const readinessReads = await stubReadiness(page, () => newReadiness(name));
 		const modes = await stubApi(page, 'PUT', '/me/mode', () => ({
 			json: {
 				user: {
@@ -352,6 +403,8 @@ test.describe('landing page, candidate steps', () => {
 
 		await expect(currentStep(page)).toContainText('Add your résumé');
 		expect(claims.map((request) => request.postDataJSON())).toEqual([{ name }]);
+		// The portfolio claimed has no experience yet: step 3 is where its setup says it is
+		expect(readinessReads.length).toBeGreaterThan(0);
 		// The candidate space becomes the active one
 		await expect.poll(() => modes.length).toBe(1);
 		expect(modes[0].postDataJSON()).toEqual({ mode: 'candidate' });
@@ -410,6 +463,7 @@ test.describe('landing page, candidate steps', () => {
 			json: { user: { _id: CANDIDATE_ID, email: CANDIDATE_EMAIL, domain: name } }
 		}));
 		await stubImportStatus(page, { enabled: false, remaining: 0 });
+		await stubReadiness(page, () => newReadiness(name));
 
 		await gotoHydrated(page, '/');
 		await expect(currentStep(page)).toContainText('Claim your address');
@@ -457,6 +511,7 @@ test.describe('landing page, portfolio owner', () => {
 		const session = await ownerSession('e2e-owner');
 		await signIn(page, session);
 		await stubImportStatus(page, { enabled: true, remaining: 2 });
+		await stubReadiness(page, () => newReadiness('e2e-owner'));
 
 		await gotoHydrated(page, '/');
 		await expect(currentStep(page)).toContainText('Add your résumé');
@@ -477,6 +532,79 @@ test.describe('landing page, portfolio owner', () => {
 		await gotoHydrated(page, '/e2e-owner/experiences');
 		await expect(page.getByRole('button', { name: /Import (from )?résumé/ }).first()).toBeVisible();
 		await expect(page.getByRole('dialog', { name: 'Import from résumé' })).toHaveCount(0);
+	});
+
+	test('an owner with experiences sets their terms, and copies their link', async ({
+		page,
+		context
+	}) => {
+		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+		await stubGoogle(page);
+		await signIn(page, await ownerSession('e2e-owner'));
+		await stubImportStatus(page, { enabled: true, remaining: 2 });
+		// Two experiences and the pay rated: the journey and the calendar are left
+		const started = newReadiness('e2e-owner');
+		started.experiences = 2;
+		started.perfectJob = {
+			criteria: 1,
+			essentials: { ...started.perfectJob.essentials, pay: true }
+		};
+		await stubReadiness(page, () => started);
+
+		await gotoHydrated(page, '/');
+		const steps = card(page).getByRole('list', { name: 'Steps' }).getByRole('listitem');
+		await expect(steps).toHaveCount(4);
+		await expect(currentStep(page)).toContainText('Set your terms');
+		await expect(steps.nth(2)).toHaveAttribute('data-step-state', 'done');
+		await expect(steps.nth(2)).toContainText('2 experiences on your portfolio.');
+		await expect(card(page).getByRole('link', { name: 'Set my terms' })).toHaveAttribute(
+			'href',
+			'/e2e-owner/admin?tab=start'
+		);
+		await expect(currentStep(page)).toContainText('1 of 3 set');
+
+		const link = 'http://localhost:4173/e2e-owner';
+		await expect(currentStep(page).getByRole('textbox', { name: 'Your link' })).toHaveValue(link);
+		await currentStep(page).getByRole('button', { name: 'Copy your link' }).click();
+		await expect(currentStep(page).getByRole('button', { name: 'Link copied' })).toBeVisible();
+		await expect(
+			currentStep(page).getByText('Link copied: localhost:4173/e2e-owner')
+		).toBeAttached();
+		expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
+	});
+
+	test('once every step is done, the link is ready', async ({ page }) => {
+		await stubGoogle(page);
+		await signIn(page, await ownerSession('e2e-owner'));
+		await stubImportStatus(page, { enabled: true, remaining: 2 });
+		await stubReadiness(page, () => readyReadiness('e2e-owner'));
+
+		await gotoHydrated(page, '/');
+		await expect(card(page).getByRole('heading', { name: 'Your link is ready' })).toBeVisible();
+		await expect(currentStep(page)).toHaveCount(0);
+		await expect(card(page).locator('[data-step-state="done"]')).toHaveCount(4);
+		await expect(
+			card(page).getByText('Send your link to the next recruiter who writes to you.')
+		).toBeVisible();
+		await expect(card(page).getByRole('textbox', { name: 'Your link' })).toHaveValue(
+			'http://localhost:4173/e2e-owner'
+		);
+		await expect(card(page).getByRole('link', { name: 'Review my settings' })).toHaveAttribute(
+			'href',
+			'/e2e-owner/admin?tab=start'
+		);
+	});
+
+	test('a setup that cannot be read leaves the owner at step 3', async ({ page }) => {
+		await stubGoogle(page);
+		await signIn(page, await ownerSession('e2e-owner'));
+		await stubImportStatus(page, { enabled: true, remaining: 2 });
+		await stubApi(page, 'GET', '/me/readiness', () => ({ status: 500, text: 'Internal error' }));
+
+		await gotoHydrated(page, '/');
+		await expect(currentStep(page)).toContainText('Add your résumé');
+		// Still signed in: the card says so, and offers the import
+		await expect(card(page).getByRole('link', { name: 'Upload my résumé (PDF)' })).toBeVisible();
 	});
 
 	test('`?import=1` without the import available only leaves the URL', async ({ page }) => {

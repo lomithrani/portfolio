@@ -139,6 +139,140 @@ const preflight = (request: Request) => ({
 	}
 });
 
+test.describe('the admin page', () => {
+	const selectedTab = (page: Page) => page.getByRole('tab', { selected: true });
+
+	test('`?tab=` opens a tab, and the address follows the tab shown', async ({ page }) => {
+		await setPerfectJob({});
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin?tab=perfect-job`);
+		await expect(selectedTab(page)).toHaveText('Perfect job');
+		await expect(page.getByRole('heading', { name: 'Perfect job', level: 2 })).toBeVisible();
+
+		await page.getByRole('tab', { name: 'Hiring journey' }).click();
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=workflows$`));
+		// A reload opens on it again
+		await gotoHydrated(page, `/${DOMAIN}/admin?tab=workflows`);
+		await expect(selectedTab(page)).toHaveText('Hiring journey');
+		// A tab that is not one: the page opens where it would without it
+		await gotoHydrated(page, `/${DOMAIN}/admin?tab=nothing`);
+		await expect(selectedTab(page)).toHaveText(/^Get started/);
+	});
+
+	test('a perfect job starts from the essentials, which ask to be filled in', async ({ page }) => {
+		await setPerfectJob({});
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin?tab=perfect-job`);
+		const save = page.getByRole('button', { name: 'Save perfect job' });
+
+		await page.getByRole('button', { name: 'Start with the essentials' }).click();
+		await expect(page.getByRole('button', { name: 'Start with the essentials' })).toHaveCount(0);
+		// This API computes no travel times (no COMMUTE_TIMES): the cities say where the office is
+		const switchOf = (name: string) => criterion(page, name).getByRole('checkbox').first();
+		for (const name of ['Pay', 'Work mode', 'Location', 'Contract']) {
+			await expect(switchOf(name), name).toBeChecked();
+		}
+		await expect(switchOf('Commute')).not.toBeChecked();
+		await expect(switchOf('Work mode')).toBeFocused();
+		// The pay is a deal-breaker
+		await expect(
+			criterion(page, 'Pay').getByRole('checkbox', { name: 'Deal-breaker' })
+		).toBeChecked();
+		// Nothing is saved until what they ask is filled in
+		await expect(save).toBeDisabled();
+		await expect(page.getByText('Work mode: Pick at least one work mode.')).toBeVisible();
+
+		await criterion(page, 'Pay').getByLabel('Per year').fill('60 000');
+		await criterion(page, 'Work mode').getByRole('checkbox', { name: 'Full remote' }).check();
+		const cities = criterion(page, 'Location').getByLabel('Cities or postal codes');
+		await cities.fill('Lyon');
+		await cities.press('Enter');
+		await criterion(page, 'Contract').getByRole('checkbox', { name: 'CDI (permanent)' }).check();
+		await save.click();
+		await expect(toasts(page).getByText('Perfect job saved')).toBeVisible();
+		const stored = await ownerApi.get(`${API_URL}/perfect-job`);
+		expect((await stored.json()).criteria).toEqual({
+			pay: { importance: 5, dealBreaker: true, perYear: 60000 },
+			workMode: { importance: 4, modes: ['remote'] },
+			cities: { importance: 4, places: ['Lyon'] },
+			contractTypes: { importance: 3, types: ['cdi'] }
+		});
+	});
+
+	test('"Get started" lists what is left, and sets the gate journey in one click', async ({
+		page
+	}) => {
+		await setPerfectJob({});
+		await setJourney('meeting');
+		await signIn(page, owner);
+		// No tab named: the page opens on its checklist, which is not complete
+		await gotoHydrated(page, `/${DOMAIN}/admin`);
+		await expect(selectedTab(page)).toHaveText(/^Get started/);
+		const checklist = page.getByRole('list', { name: 'Checklist' });
+		const item = (id: string) => checklist.locator(`[data-item="${id}"]`);
+		await expect(item('resume')).toHaveAttribute('data-state', 'toDo');
+		await expect(item('perfectJob')).toHaveAttribute('data-state', 'toDo');
+		// A journey saved (the meeting alone) is one the owner chose
+		await expect(item('journey')).toHaveAttribute('data-state', 'done');
+		await expect(item('journey')).toContainText(
+			'Recruiters can book a meeting right away. No job is asked for first.'
+		);
+		await expect(item('share').getByRole('textbox', { name: 'Your link' })).toHaveValue(
+			`http://localhost:4173/${DOMAIN}`
+		);
+
+		// The gate journey, its note changed first, and an empty perfect job is said
+		const gate = item('journey').locator('[data-template="gate"]');
+		await expect(gate.getByRole('list', { name: 'Its steps' }).getByRole('listitem')).toHaveText([
+			'Read a note: Share the job first',
+			'Select or create a job',
+			'Match the perfect job',
+			'Book a meeting'
+		]);
+		await expect(gate).toContainText('Your perfect job has no criterion yet');
+		await gate.getByText('Change the note first').click();
+		await gate.getByLabel('Title').fill('Before we talk');
+
+		// A change left in the journey editor is lost too: asked first
+		await page.getByRole('tab', { name: 'Hiring journey' }).click();
+		await addStep(page, 'Read a note').click();
+		await page.getByRole('tab', { name: /^Get started/ }).click();
+		await gate.getByRole('button', { name: 'Use these steps' }).click();
+		const dialog = page.getByRole('alertdialog', { name: 'Replace your steps?' });
+		await expect(dialog).toContainText(
+			'Recruiters read a note (“Before we talk”), select or create a job, match the perfect job, then book a meeting.'
+		);
+		await expect(dialog).toContainText(
+			'The changes you have not saved in the Hiring journey tab are lost too.'
+		);
+		await dialog.getByRole('button', { name: 'Replace my steps' }).click();
+		await expect(toasts(page).getByText('Steps saved')).toBeVisible();
+		await expect(dialog).toHaveCount(0);
+		await expect(gate).toHaveCount(0);
+		await expect(item('journey')).toContainText(
+			'Recruiters read a note, select or create a job, match the perfect job, then book a meeting.'
+		);
+
+		const saved = await ownerApi.get(`${API_URL}/workflow`);
+		const { steps } = await saved.json();
+		expect(steps.map(({ id, type }: { id: string; type: string }) => `${id}:${type}`)).toEqual([
+			'note:note',
+			'job:job',
+			'job-match:job-match',
+			'meeting:meeting'
+		]);
+		expect(steps[0].config.title).toBe('Before we talk');
+		expect(steps[2].config).toEqual({ minScore: 70, showDetails: true });
+
+		// The editor starts again from what was saved, and the item leads to it
+		await item('journey').getByRole('button', { name: 'Change my steps' }).click();
+		await expect(selectedTab(page)).toHaveText('Hiring journey');
+		await expect(page.getByRole('tab', { name: 'Hiring journey' })).toBeFocused();
+		await expect(editorSteps(page)).toHaveCount(4);
+		await expect(page.getByRole('button', { name: 'Save journey' })).toBeDisabled();
+	});
+});
+
 test.describe('the hiring journey', () => {
 	test('the owner asks recruiters to pick a job before booking', async ({ page }) => {
 		await setJourney('meeting');
@@ -146,7 +280,9 @@ test.describe('the hiring journey', () => {
 
 		await expect(editorSteps(page)).toHaveCount(1);
 		await expect(editorStep(page, 'Step 1: Book a meeting')).toBeVisible();
-		await expect(page.getByText('Recruiters can book a meeting right away.')).toBeVisible();
+		await expect(
+			page.getByText('Recruiters can book a meeting right away.', { exact: true })
+		).toBeVisible();
 		const save = page.getByRole('button', { name: 'Save journey' });
 		await expect(save).toBeDisabled();
 		// One meeting step per journey: no second one can be added, and the page says why
@@ -338,7 +474,8 @@ test.describe('the hiring journey', () => {
 			void dialog.dismiss();
 		});
 		await page.getByRole('link', { name: 'See your Hire page' }).click();
-		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin$`));
+		// The address names the tab shown
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=workflows$`));
 		await expect(note.getByLabel('Title')).toHaveValue('2027-01-01');
 
 		await page.getByRole('button', { name: 'Save journey' }).click();

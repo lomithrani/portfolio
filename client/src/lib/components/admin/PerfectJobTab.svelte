@@ -9,9 +9,9 @@ said at the setting it is about, and nothing can be saved until it is fixed. Rec
 see the criteria.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
-	import { Scale } from 'svelte-heros-v2';
+	import { Scale, Sparkles } from 'svelte-heros-v2';
 	import {
 		COMMUTE_MODES,
 		COMMUTE_MODE_LABELS,
@@ -44,6 +44,8 @@ see the criteria.
 		commuteBudgetHint,
 		commutePlace,
 		criterionShares,
+		essentialsForm,
+		noCriterion,
 		perfectJobCriteria,
 		perfectJobForm,
 		perfectJobSummary,
@@ -101,6 +103,20 @@ see the criteria.
 	});
 	let shares = $derived(criterionShares(form));
 	let changed = $derived(!sameCriteria(form, saved));
+
+	// An owner who never rated anything starts from the essentials in one click (the "Get started"
+	// tab leads here for them): they are switched on, and the form asks for what they need
+	let root: HTMLElement | undefined = $state();
+	let offerEssentials = $derived(noCriterion(saved) && noCriterion(form));
+	let essentialsAnnouncement = $state('');
+
+	async function startWithEssentials() {
+		form = essentialsForm(travelTimes, $state.snapshot(form));
+		essentialsAnnouncement = travelTimes.enabled ? m.essentials.on.commute : m.essentials.on.cities;
+		await tick();
+		// The button went: the focus goes to the first of them in the page (the work mode's switch)
+		root?.querySelector<HTMLElement>('[data-criterion="workMode"] input')?.focus();
+	}
 	const at = (field: string) => problemAt(problems, field) ?? '';
 
 	// Unsaved criteria: leaving the page asks first. A reload or a closed tab gets the browser's
@@ -185,7 +201,7 @@ see the criteria.
 	onMount(load);
 </script>
 
-<div class="space-y-6">
+<div class="space-y-6" bind:this={root}>
 	<section class="space-y-2">
 		<h2 class="h3">{m.title}</h2>
 		<p class="opacity-75">{m.intro}</p>
@@ -220,6 +236,28 @@ see the criteria.
 				</p>
 			</div>
 		</div>
+
+		{#if offerEssentials}
+			<div
+				class="card preset-outlined-primary-500 flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center"
+				data-essentials
+			>
+				<Sparkles size="20" class="shrink-0 text-primary-700-300" aria-hidden="true" />
+				<div class="min-w-0 flex-1 space-y-1 text-sm">
+					<p class="font-semibold">{m.essentials.title}</p>
+					<p>{travelTimes.enabled ? m.essentials.text.commute : m.essentials.text.cities}</p>
+				</div>
+				<button
+					type="button"
+					class="btn preset-filled-primary-700-300 shrink-0 max-sm:w-full"
+					disabled={saving}
+					onclick={startWithEssentials}
+				>
+					{m.essentials.start}
+				</button>
+			</div>
+		{/if}
+		<p class="sr-only" aria-live="polite">{essentialsAnnouncement}</p>
 
 		<fieldset class="min-w-0 space-y-8" disabled={saving}>
 			<section class={groupClass} aria-labelledby="{uid}-group-role">

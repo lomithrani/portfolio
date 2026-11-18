@@ -231,6 +231,43 @@ export const savedForm = (form: PerfectJobForm, stored: PerfectJob): PerfectJobF
 	return { ...next, ...structuredClone(kept) };
 };
 
+// --- The essentials --------------------------------------------------------------------------
+
+/** No criterion is on: what the form sends is an empty perfect job (every job scores 100) */
+export const noCriterion = (form: PerfectJobForm): boolean =>
+	PERFECT_JOB_CRITERIA.every((criterion) => !form[criterion].enabled);
+
+/**
+ * The criteria "Start with the essentials" switches on, with how much each matters: the pay (a
+ * deal-breaker), the work mode with its remote days, where the office is (the commute where this
+ * site computes travel times, else the cities) and the contract. The ones a candidate checks in
+ * every call: they are also what GET /me/readiness calls the essentials
+ */
+export const essentialCriteria = (
+	commute: Pick<CommuteAvailability, 'enabled'>
+): { criterion: PerfectJobCriterion; importance: Importance; dealBreaker: boolean }[] => [
+	{ criterion: 'pay', importance: 5, dealBreaker: true },
+	{ criterion: 'workMode', importance: 4, dealBreaker: false },
+	{ criterion: commute.enabled ? 'commute' : 'cities', importance: 4, dealBreaker: false },
+	{ criterion: 'contractTypes', importance: 3, dealBreaker: false }
+];
+
+/**
+ * `form` with the essentials switched on (essentialCriteria). What they ask is left as it was
+ * typed, empty for an owner who typed nothing: the form says what to fill in before it can be
+ * saved, and nothing is saved until the owner saves
+ */
+export const essentialsForm = (
+	commute: Pick<CommuteAvailability, 'enabled'>,
+	form: PerfectJobForm = perfectJobForm()
+): PerfectJobForm => {
+	const next = structuredClone(form);
+	for (const { criterion, importance, dealBreaker } of essentialCriteria(commute)) {
+		Object.assign(next[criterion], { enabled: true, importance, dealBreaker });
+	}
+	return next;
+};
+
 // --- The commute -----------------------------------------------------------------------------
 
 /** Whether the API computes travel times, and by which modes (GET /perfect-job's `commute`) */

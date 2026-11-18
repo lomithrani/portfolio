@@ -6,7 +6,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount, tick, untrack } from 'svelte';
 	import { getLocale } from 'portfolio-common';
-	import { Briefcase, DocumentArrowUp, Plus } from 'svelte-heros-v2';
+	import { ArrowRight, Briefcase, DocumentArrowUp, Plus, RocketLaunch } from 'svelte-heros-v2';
 	import Experience from '#components/Experience.svelte';
 	import ExperienceEditor from '#components/experience-editor/ExperienceEditor.svelte';
 	import ProjectPreview from '#components/experience-list/ProjectPreview.svelte';
@@ -19,6 +19,7 @@
 	import { isDomainAdmin } from '#services/authentication.ts';
 	import type { FormData } from '#services/experienceForm.ts';
 	import { importStorageKey, type ImportStatus } from '#services/resumeImport.ts';
+	import { loadReadiness, setupProgress, type Readiness } from '#services/candidateSetup.ts';
 	import {
 		activeFilters,
 		applyFilters,
@@ -249,6 +250,24 @@
 			refreshImportStatus();
 		});
 	});
+
+	// --- How far the owner is in setting up their portfolio (GET /me/readiness) ----------------
+	// A link to the admin's "Get started" while its checklist is not complete. The experiences
+	// count is this page's (it follows what the owner adds here); failures show nothing
+	let ownerReadiness = $state.raw<Readiness | null>(null);
+	$effect(() => {
+		if (!isAdmin) return;
+		const request = new AbortController();
+		loadReadiness(request.signal).then((result) => {
+			if (!request.signal.aborted && result.ok) ownerReadiness = result.readiness;
+		});
+		return () => request.abort();
+	});
+	let setup = $derived(
+		isAdmin && ownerReadiness
+			? setupProgress({ ...ownerReadiness, experiences: allExperiences.length })
+			: null
+	);
 
 	// The editor takes the import's place while it adds one of its drafts (one dialog at a time:
 	// an open dialog makes the rest of the page inert, the other dialog included)
@@ -492,6 +511,7 @@
 							{@render importButton('min-h-11')}
 						{/if}
 					</div>
+					{@render setupLink()}
 				</section>
 			{:else}
 				<section
@@ -523,6 +543,8 @@
 			{#if isAdmin}
 				<div class="flex flex-wrap items-center gap-3">
 					<h2 class="text-xl font-bold md:text-2xl">{m.heading}</h2>
+					<!-- Beside the heading, where the row has room (under it on a phone) -->
+					{@render setupLink()}
 					<div class="ml-auto flex flex-wrap gap-2 max-sm:w-full" bind:this={toolbar}>
 						{#if importAvailable}
 							{@render importButton('min-h-10 max-sm:flex-1')}
@@ -633,6 +655,21 @@
 			>
 		{/if}
 	</button>
+{/snippet}
+
+<!-- The owner's way to the admin's "Get started", while its checklist is not complete -->
+{#snippet setupLink()}
+	{#if setup && !setup.complete}
+		<a
+			href={resolve('/[domain]/admin?tab=start', { domain: data.domain.name })}
+			class="btn btn-sm preset-tonal-primary min-h-9 max-w-full whitespace-normal"
+			data-setup-progress
+		>
+			<RocketLaunch size="16" class="shrink-0" aria-hidden="true" />
+			<span>{m.setup.title} {m.setup.progress(setup.done, setup.total)}</span>
+			<ArrowRight size="16" class="shrink-0" aria-hidden="true" />
+		</a>
+	{/if}
 {/snippet}
 
 <!-- Mounted for the owner; kept after a 401 cleared the session (the drafts and form stay) -->

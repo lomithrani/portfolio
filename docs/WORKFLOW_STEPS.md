@@ -42,6 +42,8 @@ language, unless the owner's own are given), a job step, a job match (`DEFAULT_J
 `showDetails: true`) and a meeting; `open` is `DEFAULT_WORKFLOW_STEPS`. Each template must pass
 `parseWorkflow` as it is built, in every language (`client/src/services/tests/workflow.test.ts`,
 `server/tests/workflows.test.ts`): a step type whose settings change must keep the templates valid.
+The admin's "Get started" tab (`client/src/lib/components/admin/StartTab.svelte`) offers them in one
+click, the gate's note editable first with the note step's settings form.
 
 The engine (`server/services/workflows.ts`) owns the order, the locks and the storage. It knows
 nothing about what a step is. A step type only answers two questions: where does this visitor

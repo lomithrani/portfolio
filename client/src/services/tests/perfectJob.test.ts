@@ -5,7 +5,10 @@ import {
 	commuteBudgetHint,
 	commutePlace,
 	criterionShares,
+	essentialCriteria,
+	essentialsForm,
 	formatDuration,
+	noCriterion,
 	perfectJobCriteria,
 	perfectJobForm,
 	perfectJobSummary,
@@ -220,6 +223,73 @@ describe('what the criteria weigh', () => {
 		expect(perfectJobSummary(perfectJobForm({ rttDays: { importance: 3, min: 10 } }))).toBe(
 			'A job is scored on one criterion: RTT days.'
 		);
+	});
+});
+
+describe('the essentials', () => {
+	const on = (form: ReturnType<typeof perfectJobForm>) =>
+		Object.fromEntries(
+			Object.entries(form)
+				.filter(([, rating]) => rating.enabled)
+				.map(([criterion, { importance, dealBreaker }]) => [criterion, { importance, dealBreaker }])
+		);
+
+	it('switches on the pay, the work mode, the place and the contract, the pay a deal-breaker', () => {
+		expect(on(essentialsForm({ enabled: false }))).toEqual({
+			pay: { importance: 5, dealBreaker: true },
+			workMode: { importance: 4, dealBreaker: false },
+			cities: { importance: 4, dealBreaker: false },
+			contractTypes: { importance: 3, dealBreaker: false }
+		});
+		// Where travel times are computed, the commute says where the office may be
+		expect(on(essentialsForm({ enabled: true }))).toEqual({
+			pay: { importance: 5, dealBreaker: true },
+			workMode: { importance: 4, dealBreaker: false },
+			commute: { importance: 4, dealBreaker: false },
+			contractTypes: { importance: 3, dealBreaker: false }
+		});
+		expect(essentialCriteria({ enabled: true }).map(({ criterion }) => criterion)).toEqual([
+			'pay',
+			'workMode',
+			'commute',
+			'contractTypes'
+		]);
+	});
+
+	it('asks for what they need before the form can be saved', () => {
+		const form = essentialsForm({ enabled: false });
+		expect(noCriterion(form)).toBe(false);
+		const { problems } = checkPerfectJob(form);
+		expect(problems.map((problem) => problem.field).sort()).toEqual([
+			'cities.places',
+			'contractTypes.types',
+			'pay.perYear',
+			'workMode.modes'
+		]);
+
+		form.pay.perYear = '60000';
+		form.workMode.modes = ['remote'];
+		form.cities.places = ['Lyon'];
+		form.contractTypes.types = ['cdi'];
+		expect(checkPerfectJob(form).problems).toEqual([]);
+		expect(parsePerfectJob(perfectJobCriteria(form)).criteria).toEqual({
+			pay: { importance: 5, dealBreaker: true, perYear: 60000 },
+			workMode: { importance: 4, modes: ['remote'] },
+			cities: { importance: 4, places: ['Lyon'] },
+			contractTypes: { importance: 3, types: ['cdi'] }
+		});
+	});
+
+	it('keeps what was typed, and leaves the form it starts from as it was', () => {
+		const typed = perfectJobForm();
+		typed.pay.perYear = '55000';
+		typed.skills.names = ['Go'];
+		const form = essentialsForm({ enabled: false }, typed);
+		expect(form.pay.perYear).toBe('55000');
+		// Typed for a criterion that stays off: kept, not switched on
+		expect(form.skills).toMatchObject({ enabled: false, names: ['Go'] });
+		expect(noCriterion(typed)).toBe(true);
+		expect(noCriterion(perfectJobForm())).toBe(true);
 	});
 });
 
