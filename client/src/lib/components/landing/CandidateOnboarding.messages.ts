@@ -103,8 +103,8 @@ export const m = defineMessages({
 		},
 		submit: { en: 'Claim this address', fr: 'Réserver cette adresse' },
 		onePerAccount: {
-			en: 'One address per account. It stays yours until you delete your account.',
-			fr: 'Une seule adresse par compte. Elle reste la vôtre tant que vous ne supprimez pas votre compte.'
+			en: 'One address per account. It stays yours as long as you keep your account and follow the terms.',
+			fr: "Une seule adresse par compte. Elle reste la vôtre tant que vous gardez votre compte et respectez les conditions d'utilisation."
 		},
 		/** Under the toast that says the portfolio was claimed */
 		claimed: {

@@ -258,8 +258,10 @@ in place of the publisher and contact, and the web deploy logs one warning at st
 SIREN the publisher is presented as an individual acting on a non-professional basis.
 
 Before going live, confirm what the texts state about the operations: log and trace retention ("up
-to 30 days", `LOG_RETENTION` in `client/src/lib/components/legal/legalDocuments.ts`), database
-backups, and the processors' transfer basis (Railway, Cloudflare, Anthropic, Google, GitHub, the
+to 30 days", `LOG_RETENTION` in `client/src/lib/components/legal/legalDocuments.ts`), what
+Cloudflare keeps of the page requests ("up to 31 days", `CLOUDFLARE_LOG_RETENTION` there: the
+retention of its traffic and security analytics on the Free, Pro and Business plans, 90 days on
+Enterprise; check the zone's plan and Cloudflare's data processing addendum), database backups, and the processors' transfer basis (Railway, Cloudflare, Anthropic, Google, GitHub, the
 monitoring provider: each on the [Data Privacy Framework
 list](https://www.dataprivacyframework.gov/list), or with standard contractual clauses in its data
 processing terms; for Cloudflare, that the account is covered by its customer data processing
@@ -272,20 +274,45 @@ are asked the same way. Reseed the e2e database after a bump (`bun run --cwd ser
 records the version in force for the e2e recruiter), locally and in the cloud environment.
 
 **Cloudflare.** The privacy policy names Cloudflare, Inc. as the content delivery network and
-proxy in front of the **web pages only** (`#recipients`, `#data-technical` and `#transfers`): on
-2026-11-18, `curl -sI https://portfolio.gentil.tech/` answered `server: cloudflare` with a
-`cf-ray`, while `https://api.portfolio.gentil.tech/health` and both staging hosts answered
-`server: railway-hikari` (Railway directly). Cloudflare set no cookie and added no script to the
-pages (no Web Analytics beacon, which "no analytics" in the privacy policy and the cookies page
-rules out); it sends `NEL` and `Report-To` headers, so a browser may report failed connections to
-it, which the privacy policy says. Run the same checks after changing a Cloudflare setting:
+proxy in front of the **web pages only** (`#recipients`, `#data-technical`, `#transfers` and its
+log retention in `#retention`): on 2026-11-18, `curl -sI https://portfolio.gentil.tech/` answered
+`server: cloudflare` with a `cf-ray`, while `https://api.portfolio.gentil.tech/health` and both
+staging hosts answered `server: railway-hikari` (Railway directly). The texts say that Cloudflare
+receives the requests and the pages sent back, not that it changes them, stores anything in the
+browser or adds a script: no Cloudflare cookie, no Web Analytics beacon (which "no analytics" in
+the privacy policy and the cookies page rules out), and **two zone settings that Cloudflare turns
+on by default must stay off**. Both were on when checked on 2026-11-18: turn them off before
+deploying the release that names Cloudflare in the privacy policy.
+
+- **Email Address Obfuscation** (Security, **Settings**, "Email Address Obfuscation" off, or a
+  configuration rule that turns it off for the hostname). On, it replaced every email address of
+  `/legal`, `/legal/privacy` and `/legal/terms` (the publisher's contact, the host's) with a
+  `/cdn-cgi/l/email-protection` link and added its script `email-decode.min.js` to those pages:
+  without JavaScript, and for anything reading the HTML, the legal notice's contact address read
+  "[email protected]".
+- **Network Error Logging** (Account home, **Network**, "Network Error Logging Monitoring" off,
+  or the zone setting `nel`). On, every answer carries `NEL` and `Report-To` headers: the
+  browser keeps a reporting policy for 7 days and sends Cloudflare a report when a connection to
+  the site fails, which neither the privacy policy nor the cookies page lists.
+
+Run the checks after changing a Cloudflare setting, and after each production deploy (also in
+[Verify a deploy](#verify-a-deploy)):
 
 ```bash
 for url in https://portfolio.gentil.tech/ https://api.portfolio.gentil.tech/health; do
-  echo "$url"; curl -s -o /dev/null -D - "$url" | grep -iE '^(server|cf-ray|set-cookie|nel):'
-done
-curl -s https://portfolio.gentil.tech/ | grep -c 'cdn-cgi\|cloudflareinsights'   # 0: no script added
+  echo "$url"; curl -s -o /dev/null -D - "$url" | grep -iE '^(server|cf-ray|set-cookie|nel|report-to):'
+done   # server (and cf-ray for the pages) only: no set-cookie, nel or report-to
+for p in / /legal /legal/privacy /legal/terms /legal/cookies '/legal?lang=fr'; do
+  printf '%s ' "$p"; curl -s "https://portfolio.gentil.tech$p" | grep -c 'cdn-cgi\|cloudflareinsights\|__cf_email__'
+done   # 0 for each page: no address rewritten, no script added
 ```
+
+The pages without an email address (the landing page, `/legal/cookies`) show nothing either way:
+check the legal notice, the privacy policy and the terms. If one of these features has to stay on,
+the texts change first, in both languages, with a `LEGAL_VERSION` bump: Email Address Obfuscation
+in `#recipients` (Cloudflare rewrites the email addresses shown on the pages and adds a script that
+decodes them), Network Error Logging in `#recipients` and on the cookies page (the reporting policy
+the browser keeps, for 7 days).
 
 Putting the API (or staging) behind Cloudflare changes the texts: say so in the privacy policy
 (both languages; the API carries the session cookie and every form's data), bump `LEGAL_VERSION`,
@@ -304,8 +331,9 @@ puts job offers and job seekers in touch, and is not a party to the employment c
 private organisation that runs placement sends the préfet a report **every year before 31 March**
 on the year before (article R5323-8): its placement turnover and that turnover's share of its
 total, and the number of job seekers received, placed and still registered on 31 December, by sex
-and age. Ask the DDETS of the publisher's département (Paris) for the form, and whether "not known"
-is accepted for sex and age: the site collects neither, and must not start to (data minimisation,
+and age. Ask the DDETS of the publisher's département (in Île-de-France, the unité départementale
+of the DRIEETS) for the model of the statement, which an arrêté sets, and whether "not known" is
+accepted for sex and age: the site collects neither, and must not start to (data minimisation,
 and a sex or age field next to hiring invites discrimination, article L5321-2). Placement turnover
 is 0 while the service is free, and placements are not tracked (the site never learns who was
 hired). The counts, from the production database, in January (counts only, nothing about a
@@ -1040,9 +1068,12 @@ that search engines are asked not to list a portfolio, never that it cannot be f
    curl -s -o /dev/null -D - https://example.com/louis.gentil/experiences | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
    curl -s -o /dev/null -D - https://api.example.com/health | grep -i '^x-robots-tag'                 # the same
    curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs   # 410: the job board is gone
+   curl -s https://example.com/legal | grep -c 'cdn-cgi\|__cf_email__'   # 0: the proxy changed nothing
    ```
 
-   The other checks of what search engines and link previews get: [Search engines](#search-engines).
+   The other checks of what search engines and link previews get: [Search engines](#search-engines);
+   of what Cloudflare adds to the pages (Email Address Obfuscation, Network Error Logging): the
+   loops under [Legal pages](#legal-pages).
 4. **In the browser**: open the site, sign in with Google, reload the page and check you are still
    signed in (the `auth` cookie is stored for the API domain). With `GOOGLE_CLIENT_SECRET` set,
    **Admin, Appointments** shows the calendar as connected (or offers to connect it).

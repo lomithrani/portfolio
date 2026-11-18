@@ -10,8 +10,8 @@ export const m = defineMessages({
 			fr: 'Votre portfolio trie les offres pour vous | Portfolio'
 		},
 		description: {
-			en: 'Portfolio is free and works as your job matchmaker: say what you want (pay, remote days, commute, skills) and set the steps recruiters follow. The job they bring is scored against what you want before they can book a meeting with you.',
-			fr: "Portfolio est gratuit et vous met en relation avec les bons postes : dites ce que vous cherchez (rémunération, télétravail, trajet, compétences), définissez les étapes que suivent les recruteurs, et l'offre qu'ils apportent est notée avant qu'ils puissent réserver un rendez-vous avec vous."
+			en: 'Portfolio is free and works as your job matchmaker: say what you want (pay, remote days, commute, skills) and set the steps recruiters follow. Add the job and match steps, and the job they bring is scored against what you want before they can book a meeting with you.',
+			fr: "Portfolio est gratuit et vous met en relation avec les bons postes : dites ce que vous cherchez (rémunération, télétravail, trajet, compétences) et définissez les étapes que suivent les recruteurs. Ajoutez les étapes de l'offre et de la correspondance, et l'offre qu'ils apportent est notée avant qu'ils puissent réserver un rendez-vous avec vous."
 		},
 		imageAlt: {
 			en: 'Your portfolio, your way. No more calls about the wrong job. The steps of a hiring journey: note, job, match 86 out of 100, book a meeting.',
@@ -27,8 +27,8 @@ export const m = defineMessages({
 			fr: 'Fini les appels pour le <nowrap>mauvais poste.</nowrap>'
 		},
 		lead: {
-			en: 'Say what you are looking for (pay, remote days, commute, skills) and choose the steps recruiters follow: the job they bring is scored against what you want, and only a match gets time in your calendar.',
-			fr: "Dites ce que vous cherchez (rémunération, télétravail, trajet, compétences) et choisissez les étapes que suivent les recruteurs : l'offre qu'ils apportent est notée, et seule une offre qui correspond obtient un créneau dans votre agenda."
+			en: 'Say what you are looking for (pay, remote days, commute, skills) and choose the steps recruiters follow: add the job and match steps, and the job they bring is scored against what you want; only a match then gets time in your calendar.',
+			fr: "Dites ce que vous cherchez (rémunération, télétravail, trajet, compétences) et choisissez les étapes que suivent les recruteurs : ajoutez celles de l'offre et de la correspondance, et l'offre qu'ils apportent est notée ; seule une offre qui correspond obtient alors un créneau dans votre agenda."
 		},
 		create: { en: 'Create your portfolio', fr: 'Créer mon portfolio' },
 		open: { en: 'Open my portfolio', fr: 'Ouvrir mon portfolio' },
@@ -197,8 +197,8 @@ export const m = defineMessages({
 		claim: {
 			title: { en: 'Claim your address', fr: 'Réservez votre adresse' },
 			text: {
-				en: "Pick the name in your portfolio's link. It stays yours until you delete your account.",
-				fr: "Choisissez le nom qui figure dans le lien de votre portfolio. Il reste à vous jusqu'à la suppression de votre compte."
+				en: "Pick the name in your portfolio's link. It stays yours as long as you keep your account and follow the terms.",
+				fr: "Choisissez le nom qui figure dans le lien de votre portfolio. Il reste à vous tant que vous gardez votre compte et respectez les conditions d'utilisation."
 			}
 		},
 		resume: {
@@ -228,8 +228,8 @@ export const m = defineMessages({
 		visibility: {
 			question: { en: 'Who can see my portfolio?', fr: 'Qui peut voir mon portfolio ?' },
 			answer: {
-				en: 'Anyone with its address can open it. We ask search engines not to list it, and the main ones, such as Google and Bing, do as asked (a page they had already listed can take a few weeks to disappear). It is public all the same, and an address can be passed on: write only what you want to be public. Your email address is not shown on it.',
-				fr: "Toute personne qui a son adresse peut l'ouvrir. Nous demandons aux moteurs de recherche de ne pas le référencer, et les principaux, comme Google et Bing, respectent cette demande (une page qu'ils avaient déjà référencée peut mettre quelques semaines à disparaître). Il reste public pour autant, et une adresse peut circuler : n'y écrivez que ce que vous voulez rendre public. Votre adresse e-mail n'y figure pas."
+				en: 'Anyone with its address can open it. We ask search engines not to list it, and the main ones, such as Google and Bing, do as asked (a page they had already listed can take a few weeks to disappear). It is public all the same, and an address can be passed on: write only what you want to be public. Your email address is not shown on it, but someone who books a meeting with you sees it in the invitation.',
+				fr: "Toute personne qui a son adresse peut l'ouvrir. Nous demandons aux moteurs de recherche de ne pas le référencer, et les principaux, comme Google et Bing, respectent cette demande (une page qu'ils avaient déjà référencée peut mettre quelques semaines à disparaître). Il reste public pour autant, et une adresse peut circuler : n'y écrivez que ce que vous voulez rendre public. Votre adresse e-mail n'y figure pas, mais une personne qui réserve un rendez-vous avec vous la voit dans l'invitation."
 			}
 		},
 		recruiters: {

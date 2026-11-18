@@ -35,6 +35,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	import LegalDocLink from '../LegalDocLink.svelte';
 	import PublisherDetails from '../PublisherDetails.svelte';
 	import {
+		CLOUDFLARE_LOG_RETENTION,
 		LOG_RETENTION,
 		SITE_NAME,
 		legalLastUpdated,
@@ -53,6 +54,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 	const lang = 'en';
 	const logRetention = LOG_RETENTION.en;
+	const cloudflareLogRetention = CLOUDFLARE_LOG_RETENTION.en;
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- the links left are external sites, mailto: and in-page anchors (facts.ts); the site's pages go through resolve() (LegalDocLink) -->
@@ -394,8 +396,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			<li>
 				Cloudflare, Inc. (USA): the content delivery network and proxy that the site's pages are
 				served through (the API is reached without it). It receives each request for a page, with
-				your IP address and your browser's details, and the page sent back, and your browser may
-				report to it the connections to these pages that fail (<a
+				your IP address and your browser's details, and the page sent back (<a
 					class="link-text"
 					href={LINKS.cloudflarePrivacy}
 					rel="noopener noreferrer">privacy policy</a
@@ -543,6 +544,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			<tr>
 				<td>Server logs, host logs and traces</td>
 				<td>{logRetention}</td>
+			</tr>
+			<tr>
+				<td>What Cloudflare keeps of the requests for the site's pages</td>
+				<td>{cloudflareLogRetention}</td>
 			</tr>
 			<tr>
 				<td>Messages you send us (requests, reports)</td>

@@ -84,7 +84,8 @@ meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law
 	of the French Labour Code). The service is currently <strong>free for recruiters</strong> too; we
 	will tell a recruiter before any paid feature applies to them, and charge them nothing they did
 	not agree to. There is <strong>no exclusivity</strong>: candidates and recruiters are free to use
-	other services at the same time, and to contact or hire each other without going through the site.
+	other services at the same time, and to contact each other or sign a contract without going
+	through the site.
 </p>
 <p>
 	The service is provided <strong>as it is</strong>. We work to keep it available and correct, but
@@ -215,8 +216,8 @@ meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law
 	decisions included, is not the employer, and is not a party to the employment contract that may
 	follow. The site does not assess candidates, and does not rank or filter them. The only score it
 	computes is that of a job description, against the criteria a candidate set for the job they are
-	looking for, when the candidate adds this step to their hiring journey: by fixed rules, not by an
-	AI model, and with the minimum the candidate chose (see the
+	looking for, when the candidate adds the step "Match the perfect job" to their hiring journey: by
+	fixed rules, not by an AI model, and with the minimum the candidate chose (see the
 	<LegalDocLink doc="privacy" {lang} hash="ai">privacy policy</LegalDocLink>).
 </p>
 

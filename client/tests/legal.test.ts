@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { stepManifest, withLocale } from 'portfolio-common';
 
 // The legal pages (legal notice, privacy policy, terms of use, cookies), in English and in French
 // (?lang=fr), and the legal links every page shows: the footer of the site's own pages, the
@@ -77,6 +78,25 @@ const sectionText = (page: Page, id: string) =>
 	});
 
 const CLOUDFLARE_PRIVACY = 'https://www.cloudflare.com/privacypolicy/';
+
+/**
+ * The text of a sub-section (`h4#id`): what follows its heading up to the next heading, with its
+ * spaces collapsed
+ */
+const subsectionText = (page: Page, id: string) =>
+	page.locator(`article[data-legal-document] h4#${id}`).evaluate((heading) => {
+		const parts: string[] = [];
+		let node = heading.nextElementSibling;
+		while (node && node.tagName !== 'H3' && node.tagName !== 'H4') {
+			parts.push(node.textContent ?? '');
+			node = node.nextElementSibling;
+		}
+		return parts.join(' ').replace(/\s+/g, ' ');
+	});
+
+/** The name of the job match step, as the owner's editor shows it, in each language */
+const jobMatchLabel = (locale: 'en' | 'fr') =>
+	withLocale(locale, () => stepManifest('job-match')!.label);
 
 test.describe('legal pages', () => {
 	for (const doc of PAGES) {
@@ -258,6 +278,9 @@ test.describe('legal pages', () => {
 		);
 		expect(service).toContain('The service is currently free for recruiters too');
 		expect(service).toContain('There is no exclusivity');
+		expect(service).toContain(
+			'to contact each other or sign a contract without going through the site.'
+		);
 		expect(service).toContain('it is not a party to any contract between them');
 		expect(await sectionText(page, 'content')).toContain(
 			'anyone who has its address can read it, even though search engines are asked not to list it.'
@@ -271,6 +294,10 @@ test.describe('legal pages', () => {
 		);
 		// The site scores job descriptions on a candidate's journey: it never says it scores nothing
 		expect(recruiters).toContain('The only score it computes is that of a job description');
+		// ...on the step that computes it, named as the owner's editor names it
+		expect(recruiters).toContain(
+			`when the candidate adds the step "${jobMatchLabel('en')}" to their hiring journey`
+		);
 		const article = page.locator('article[data-legal-document]');
 		await expect(article).not.toContainText('recruitment agency');
 		await expect(article).not.toContainText('does not select, score or rank');
@@ -282,6 +309,9 @@ test.describe('legal pages', () => {
 		);
 		expect(serviceFr).toContain('Le service est actuellement gratuit pour les recruteurs aussi');
 		expect(serviceFr).toContain("Il n'y a aucune exclusivité");
+		expect(serviceFr).toContain(
+			'de se contacter ou de conclure un contrat sans passer par le site.'
+		);
 		expect(await sectionText(page, 'content')).toContain(
 			'toute personne qui a son adresse peut le lire, même si les moteurs de recherche sont priés de ne pas le référencer.'
 		);
@@ -293,6 +323,9 @@ test.describe('legal pages', () => {
 			"L'éditeur ne prend part à aucune de leurs décisions, notamment d'embauche, n'est pas l'employeur et n'est pas partie au contrat de travail qui peut en découler."
 		);
 		expect(recruitersFr).toContain("La seule note qu'il calcule est celle d'une offre d'emploi");
+		expect(recruitersFr).toContain(
+			`lorsque le candidat ajoute l'étape « ${jobMatchLabel('fr')} » à son parcours de recrutement`
+		);
 		await expect(article).not.toContainText('cabinet de recrutement');
 	});
 
@@ -300,21 +333,42 @@ test.describe('legal pages', () => {
 		page
 	}) => {
 		await page.goto('/legal/privacy');
-		expect(await sectionText(page, 'recipients')).toContain(
-			"Cloudflare, Inc. (USA): the content delivery network and proxy that the site's pages are served through (the API is reached without it)."
+		const recipients = await sectionText(page, 'recipients');
+		expect(recipients).toContain(
+			"Cloudflare, Inc. (USA): the content delivery network and proxy that the site's pages are served through (the API is reached without it). It receives each request for a page, with your IP address and your browser's details, and the page sent back (privacy policy);"
+		);
+		// Its Network Error Logging is off (docs/DEPLOYMENT.md, "Legal pages"): no failure reports
+		expect(recipients).not.toContain('connections to these pages that fail');
+		expect(await subsectionText(page, 'data-technical')).toContain(
+			"The requests for the site's pages, though not those to its API, first go through Cloudflare, which therefore also sees your IP address"
 		);
 		expect(await sectionText(page, 'transfers')).toContain(
 			'Our host, Cloudflare, Anthropic, Google, GitHub and our monitoring provider may process data in the United States'
 		);
+		await expect(
+			page.locator('#retention ~ .legal-table tr', {
+				hasText: "What Cloudflare keeps of the requests for the site's pages"
+			})
+		).toContainText('up to 31 days');
 		await expect(page.locator(`article a[href="${CLOUDFLARE_PRIVACY}"]`)).toHaveCount(1);
 
 		await page.goto('/legal/privacy?lang=fr');
-		expect(await sectionText(page, 'recipients')).toContain(
-			"Cloudflare, Inc. (États-Unis) : le réseau de diffusion de contenu et le proxy par lesquels passent les pages du site (l'API est jointe sans lui)."
+		const recipientsFr = await sectionText(page, 'recipients');
+		expect(recipientsFr).toContain(
+			"Cloudflare, Inc. (États-Unis) : le réseau de diffusion de contenu et le proxy par lesquels passent les pages du site (l'API est jointe sans lui). Il reçoit chaque requête vers une page, avec votre adresse IP et les informations de votre navigateur, ainsi que la page renvoyée (politique de confidentialité) ;"
+		);
+		expect(recipientsFr).not.toContain('connexions à ces pages qui échouent');
+		expect(await subsectionText(page, 'data-technical')).toContain(
+			"Les requêtes vers les pages du site, mais pas celles vers son API, passent d'abord par Cloudflare, qui voit donc aussi votre adresse IP"
 		);
 		expect(await sectionText(page, 'transfers')).toContain(
 			'Notre hébergeur, Cloudflare, Anthropic, Google, GitHub et notre prestataire de supervision peuvent traiter des données aux États-Unis'
 		);
+		await expect(
+			page.locator('#retention ~ .legal-table tr', {
+				hasText: 'Ce que Cloudflare conserve des requêtes vers les pages du site'
+			})
+		).toContainText("jusqu'à 31 jours");
 		await expect(page.locator(`article a[href="${CLOUDFLARE_PRIVACY}"]`)).toHaveCount(1);
 	});
 

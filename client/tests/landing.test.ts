@@ -84,6 +84,31 @@ test.describe('landing page, signed out', () => {
 		await expect(currentStep(page)).toContainText('Sign in with Google');
 	});
 
+	test('its claims hold for a new portfolio, whose journey is the meeting alone', async ({
+		page
+	}) => {
+		await stubGoogle(page);
+		await page.goto('/');
+		// A job is scored only once the owner adds the job and match steps (DEFAULT_WORKFLOW_STEPS)
+		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+			'content',
+			/Add the job and match steps, and the job they bring is scored against what you want before they can book a meeting with you\.$/
+		);
+		const answer = (question: string) => page.locator('details', { hasText: question });
+		await expect(answer('Who can see my portfolio?')).toContainText(
+			'Your email address is not shown on it, but someone who books a meeting with you sees it in the invitation.'
+		);
+		await expect(answer('What do recruiters see of what I am looking for?')).toContainText(
+			'A recruiter who tries several jobs could still guess part of it from the scores.'
+		);
+		await expect(answer('Can I delete my account?')).toContainText(
+			'the step suggestions and feedback already on GitHub (which do not name you), stay'
+		);
+		await expect(page.getByText("Pick the name in your portfolio's link.")).toContainText(
+			'It stays yours as long as you keep your account and follow the terms.'
+		);
+	});
+
 	test('the footer leads to the recruiter space and holds the light/dark switch; the logo leads back', async ({
 		page
 	}) => {

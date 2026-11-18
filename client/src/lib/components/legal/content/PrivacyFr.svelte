@@ -35,6 +35,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	import LegalDocLink from '../LegalDocLink.svelte';
 	import PublisherDetails from '../PublisherDetails.svelte';
 	import {
+		CLOUDFLARE_LOG_RETENTION,
 		LOG_RETENTION,
 		SITE_NAME,
 		legalLastUpdated,
@@ -53,6 +54,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 	const lang = 'fr';
 	const logRetention = LOG_RETENTION.fr;
+	const cloudflareLogRetention = CLOUDFLARE_LOG_RETENTION.fr;
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- the links left are external sites, mailto: and in-page anchors (facts.ts); the site's pages go through resolve() (LegalDocLink) -->
@@ -424,10 +426,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				Cloudflare, Inc. (États-Unis) : le réseau de diffusion de contenu et le proxy par lesquels
 				passent les pages du site (l'API est jointe sans lui). Il reçoit chaque requête vers une
 				page, avec votre adresse IP et les informations de votre navigateur, ainsi que la page
-				renvoyée, et votre navigateur peut lui signaler les connexions à ces pages qui échouent (<a
-					class="link-text"
-					href={LINKS.cloudflarePrivacy}
-					rel="noopener noreferrer">politique de confidentialité</a
+				renvoyée (<a class="link-text" href={LINKS.cloudflarePrivacy} rel="noopener noreferrer"
+					>politique de confidentialité</a
 				>) ;
 			</li>
 			<li>
@@ -580,6 +580,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			<tr>
 				<td>Journaux du serveur, journaux de l'hébergeur et traces</td>
 				<td>{logRetention}</td>
+			</tr>
+			<tr>
+				<td>Ce que Cloudflare conserve des requêtes vers les pages du site</td>
+				<td>{cloudflareLogRetention}</td>
 			</tr>
 			<tr>
 				<td>Messages que vous nous envoyez (demandes, signalements)</td>
