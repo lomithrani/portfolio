@@ -20,14 +20,14 @@ import { createJob, deleteJobs, listRecruiterJobs } from './support/jobs';
 
 // The recruiter space, as the e2e recruiter (seeded by `bun run --cwd server seed:e2e`: a
 // recruiter space on the free plan, no domain, the terms in force accepted): the job editor, the
-// status and public page of a posting, its applicants added by name, the PDF import, the account
+// status of a posting (never public: no job board, no applicants), the PDF import, the account
 // menu, and the terms a recruiter accepts (the sign-in of the signed-out page, with Google
 // stubbed, and accepting them again, answered in the browser: the e2e recruiter's acceptance is
 // never changed). GET and POST /jobs/import are stubbed in the browser: Claude is never called (it
 // needs the operator's key and is billed); the drafts are saved for real, through POST /jobs of
 // the e2e API. Each test
 // names its postings with its own tag and removes them afterwards. The tests share the recruiter
-// (with client/tests/jobs-apply.test.ts, which runs in parallel), so they run one after the other
+// (with client/tests/hire-journey.test.ts, which runs in parallel), so they run one after the other
 // (as the tests of a file do by default: keep it that way) and never expect its list to be empty.
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e recruiter');
@@ -129,22 +129,28 @@ test.describe('the recruiter', () => {
 		await expect(fact(page, 'Working time')).toContainText('39 h/week');
 		await expect(fact(page, 'Pay')).toContainText('€42,000 – €50,000 gross per year');
 
-		// A draft: no public page yet
-		await expect(page.getByText('Drafts have no public page.')).toBeVisible();
-		expect((await page.request.get(`/jobs/${id}`)).status()).toBe(404);
+		// A draft: the recruiter's alone. No job description is ever public: no page to share, no
+		// applicants
+		const status = page.getByRole('complementary', { name: 'Manage this job description' });
+		await expect(status).toContainText('Only you can see it.');
+		await expect(status).toContainText(
+			"Drafts are yours alone. Pick an Open job description on a candidate's Hire page: only that candidate reads it."
+		);
+		await expect(page.getByRole('heading', { name: 'Public page' })).toHaveCount(0);
+		await expect(page.getByRole('heading', { name: 'Applicants' })).toHaveCount(0);
 
-		// Open: public, on the job board
+		// Open: it can be picked on a candidate's Hire page
 		await page.getByRole('button', { name: 'Change status' }).click();
 		await page.getByRole('menuitemradio', { name: /^Open/ }).click();
 		await expect(toasts(page).getByText('Status changed to Open', { exact: true })).toBeVisible();
-		await expect(page.getByRole('textbox', { name: 'Address of the public page' })).toHaveValue(
-			new URL(`/jobs/${id}`, page.url()).href
-		);
-		await gotoHydrated(page, '/jobs');
-		await page.getByRole('link', { name: title, exact: true }).click();
-		await expect(page).toHaveURL(new RegExp(`/jobs/${id}$`));
-		await expect(page.getByRole('heading', { level: 2, name: title, exact: true })).toBeVisible();
-		await expect(fact(page, 'Contract')).toContainText('CDD (fixed-term) · 12 months');
+		await expect(
+			toasts(page).getByText("Hiring: you can pick it on a candidate's Hire page.", {
+				exact: true
+			})
+		).toBeVisible();
+		await expect(page.getByRole('textbox', { name: 'Address of the public page' })).toHaveCount(0);
+		const stored = (await listRecruiterJobs(api)).find((job) => job._id === id);
+		expect(stored?.status).toBe('open');
 	});
 
 	test('has an input for every field a perfect job is scored on, the office address among them', async ({
@@ -306,7 +312,6 @@ test.describe('the recruiter', () => {
 	test('edits a job description, then deletes it', async ({ page }) => {
 		const title = `Backend engineer ${tag}`;
 		const { _id: id } = await createJob(api, { title, status: 'open' });
-		expect((await page.request.get(`/jobs/${id}`)).status()).toBe(200);
 		await openAsRecruiter(page, `/recruiter/jobs/${id}`);
 
 		await page.getByRole('link', { name: 'Edit', exact: true }).click();
@@ -340,8 +345,7 @@ test.describe('the recruiter', () => {
 		await expect(card).toHaveCount(0);
 		expect((await listRecruiterJobs(api)).map((job) => job._id)).not.toContain(id);
 
-		const response = await page.goto(`/jobs/${id}`);
-		expect(response?.status()).toBe(404);
+		await gotoHydrated(page, `/recruiter/jobs/${id}`);
 		await expect(page.getByRole('heading', { name: 'Job description not found' })).toBeVisible();
 	});
 
@@ -362,10 +366,9 @@ test.describe('the recruiter', () => {
 		await expect(
 			page.getByText(/^This job description was changed since you opened it/)
 		).toBeVisible();
-		// Nothing was overwritten: still open, still public
+		// Nothing was overwritten: still open, with its title
 		const stored = await (await api.get(`${API_URL}/recruiter/jobs/${id}`)).json();
 		expect([stored.status, stored.title]).toEqual(['open', title]);
-		expect((await page.request.get(`/jobs/${id}`)).status()).toBe(200);
 
 		// Reloaded: the saved posting, with the changes over it, flagged as older
 		await page.getByRole('button', { name: 'Reload', exact: true }).click();
@@ -431,86 +434,6 @@ test.describe('the recruiter', () => {
 		expect(saved).not.toHaveProperty('openings');
 	});
 
-	test('a posting deleted elsewhere is not reported as an applicant removed', async ({ page }) => {
-		const job = await createJob(api, { title: `Temp posting ${tag}`, status: 'open' });
-		const added = await api.post(`${API_URL}/jobs/${job._id}/applicants`, {
-			data: { domain: 'e2e-applicant' }
-		});
-		expect(added.ok()).toBe(true);
-		await openAsRecruiter(page, `/recruiter/jobs/${job._id}`);
-		const applicants = page.getByRole('list', { name: 'Applicants' });
-		await expect(applicants.getByRole('listitem')).toHaveCount(1);
-
-		// Deleted from another tab
-		expect((await api.delete(`${API_URL}/jobs/${job._id}`)).ok()).toBe(true);
-		await applicants.getByRole('button', { name: 'Remove e2e-applicant' }).click();
-		await page
-			.getByRole('alertdialog', { name: 'Remove e2e-applicant?' })
-			.getByRole('button', { name: 'Remove', exact: true })
-			.click();
-
-		await expect(page.getByRole('heading', { name: 'Job description not found' })).toBeVisible();
-		await expect(toasts(page).getByText(/removed from the applicants/)).toHaveCount(0);
-	});
-
-	test('adds a portfolio to the applicants by its name, then removes it', async ({ page }) => {
-		const job = await createJob(api, { title: `Data engineer ${tag}`, status: 'open' });
-		await openAsRecruiter(page, `/recruiter/jobs/${job._id}`);
-		await expect(page.getByText(/^No applicants yet\./)).toBeVisible();
-
-		const field = page.getByRole('textbox', { name: 'Add a candidate' });
-		const add = page.getByRole('button', { name: 'Add', exact: true });
-		const applicants = page.getByRole('list', { name: 'Applicants' });
-
-		// No such portfolio: said under the field
-		await field.fill(`nobody-${tag}`);
-		await add.click();
-		await expect(field).toHaveAttribute('aria-invalid', 'true');
-		await expect(field).toHaveAccessibleDescription(
-			/“nobody-.+” is not on Portfolio\. Check how it is spelled\.$/
-		);
-		await expect(applicants).toHaveCount(0);
-
-		await field.fill('e2e-applicant');
-		await add.click();
-		await expect(
-			toasts(page).getByText('e2e-applicant added to the applicants', { exact: true })
-		).toBeVisible();
-		// The toast (bottom right) can cover the form, and stays while the pointer is over it:
-		// dismissed, as a person would
-		await toasts(page).getByRole('button', { name: 'Dismiss notification' }).click();
-		await expect(field).not.toHaveAttribute('aria-invalid');
-		await expect(field).toHaveValue('');
-		await expect(applicants.getByRole('listitem')).toHaveCount(1);
-		await expect(applicants).toContainText('Added by you');
-		// Named by the portfolio: the candidate did not apply, their name stays theirs
-		await expect(applicants).not.toContainText('Ada Applicant');
-		await expect(applicants.getByRole('link', { name: /^e2e-applicant/ })).toHaveAttribute(
-			'href',
-			'/e2e-applicant/experiences'
-		);
-
-		// Listed once
-		await field.fill('e2e-applicant');
-		await add.click();
-		await expect(field).toHaveAccessibleDescription(/“e2e-applicant” is already an applicant\.$/);
-		await expect(applicants.getByRole('listitem')).toHaveCount(1);
-
-		await applicants.getByRole('button', { name: 'Remove e2e-applicant' }).click();
-		const dialog = page.getByRole('alertdialog', { name: 'Remove e2e-applicant?' });
-		await dialog.getByRole('button', { name: 'Remove', exact: true }).click();
-		await expect(dialog).toBeHidden();
-		await expect(
-			toasts(page).getByText('e2e-applicant removed from the applicants', { exact: true })
-		).toBeVisible();
-		await expect(applicants).toHaveCount(0);
-		await expect(page.getByText(/^No applicants yet\./)).toBeVisible();
-
-		// Gone for the API too
-		const detail = await api.get(`${API_URL}/recruiter/jobs/${job._id}`);
-		expect((await detail.json()).applicants).toEqual([]);
-	});
-
 	test('lists the meetings booked on Hire pages, and joins one with its Google Meet link', async ({
 		page
 	}) => {
@@ -522,7 +445,7 @@ test.describe('the recruiter', () => {
 				start: new Date(now - 10 * 60_000).toISOString(),
 				end: new Date(now + 20 * 60_000).toISOString(),
 				title: `Intro call ${tag}`,
-				portfolio: { name: 'e2e-applicant', title: 'Ada Applicant' },
+				portfolio: { name: 'e2e-shared', title: 'Sam Shared' },
 				location: 'google_meet',
 				locationDetails: null,
 				meetLink: 'https://meet.google.com/abc-defg-hij'
@@ -549,9 +472,9 @@ test.describe('the recruiter', () => {
 		const current = items.nth(0);
 		await expect(current.getByRole('heading', { level: 3 })).toHaveText(`Intro call ${tag}`);
 		await expect(current).toContainText('Now');
-		await expect(current.getByRole('link', { name: 'Ada Applicant' })).toHaveAttribute(
+		await expect(current.getByRole('link', { name: 'Sam Shared' })).toHaveAttribute(
 			'href',
-			'/e2e-applicant'
+			'/e2e-shared'
 		);
 		const join = current.getByRole('link', { name: /^Join Google Meet/ });
 		await expect(join).toHaveAttribute('href', 'https://meet.google.com/abc-defg-hij');
@@ -577,7 +500,7 @@ test.describe('the recruiter', () => {
 		).toBeVisible();
 	});
 
-	test('the account menu names the recruiter space; Browse jobs opens the job board', async ({
+	test('the account menu names the recruiter space, and leads to no job board', async ({
 		page
 	}) => {
 		await openAsRecruiter(page, '/recruiter');
@@ -591,9 +514,9 @@ test.describe('the recruiter', () => {
 			'Claim your portfolio'
 		);
 
-		await page.getByRole('menuitem', { name: 'Browse jobs' }).click();
-		await expect(page).toHaveURL(/\/jobs$/);
-		await expect(page.getByRole('heading', { level: 2, name: 'Open positions' })).toBeVisible();
+		await expect(page.getByRole('menuitem', { name: 'Account & privacy' })).toBeVisible();
+		await expect(page.getByRole('menuitem', { name: 'Browse jobs' })).toHaveCount(0);
+		await expect(page.getByRole('menu').locator('a[href="/jobs"]')).toHaveCount(0);
 	});
 
 	test('signed out, /recruiter presents the recruiter space and asks for nothing private', async ({
@@ -615,7 +538,10 @@ test.describe('the recruiter', () => {
 			page.getByRole('heading', { level: 3, name: 'Skills you can check, not just read' })
 		).toBeVisible();
 		await expect(page.getByText('Say exactly what you need')).toBeVisible();
-		await expect(page.getByRole('link', { name: 'Browse open jobs' })).toBeVisible();
+		await expect(page.getByText('Your meetings in one place')).toBeVisible();
+		// The job board is gone: nothing leads there
+		await expect(page.getByRole('link', { name: 'Browse open jobs' })).toHaveCount(0);
+		await expect(page.locator('a[href="/jobs"]')).toHaveCount(0);
 		await expect(page.getByRole('heading', { name: 'Your job descriptions' })).toHaveCount(0);
 		await expect(page.getByRole('link', { name: 'New job description' })).toHaveCount(0);
 		expect(

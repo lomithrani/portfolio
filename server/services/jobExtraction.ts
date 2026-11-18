@@ -217,8 +217,8 @@ const cleanText = (value: string) =>
 
 // Raw HTML in the model's markdown: a prompt-injected document can ask for
 // <style>, <form> or <input> elements, which the draft must not carry to the
-// editor's preview or, once saved, to the public job page (which shows such
-// markup as text anyway). Code keeps its text: `List<String>` is not a tag
+// editor's preview or, once saved, to the pages that show the posting (which
+// show such markup as text anyway). Code keeps its text: `List<String>` is not a tag
 const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g
 const HTML_RAW_TEXT_ELEMENT = /<(script|style|template|textarea|title|iframe|noscript|xmp)\b[^>]*>[\s\S]*?<\/\1\s*>/gi
 const HTML_TAG = /<\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>/gi

@@ -1,7 +1,7 @@
-// Job postings, their applicants and the public job pages against a real
-// MongoDB (MONGO_URL, which must be local or come from TEST_MONGO_URL). Each
-// test creates its own users (recruiters, candidates), recruiter spaces,
-// domains and postings, all named with a suffix unique to that test, and
+// Job postings of the recruiter space against a real MongoDB (MONGO_URL,
+// which must be local or come from TEST_MONGO_URL), and the routes of the
+// job board and its applications, which are gone. Each test creates its own
+// users (recruiters, candidates), recruiter spaces, domains and postings, all named with a suffix unique to that test, and
 // removes them after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
@@ -9,7 +9,7 @@ import { JOB_LIMITS, normalizeJobPosting } from 'portfolio-common';
 import type { JobPostingInput } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
-import { Domain, JobApplication, JobPosting, User } from '../models/database';
+import { Domain, JobPosting, User } from '../models/database';
 import { CONSENT, authCookie, openRecruiterSpace } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
@@ -108,17 +108,11 @@ const createJob = async (recruiter: TestUser, body: Record<string, unknown> = sa
   return result.json();
 };
 
-/** POST /jobs/:id/application as `candidate`, with the JSON body the route requires */
-const apply = (jobId: string, candidate: TestUser) =>
-  call('POST', `/jobs/${jobId}/application`, { body: {}, cookie: candidate.cookie });
-
-/** Removes what a test created: its users, their domains, postings and applications */
+/** Removes what a test created: its users, their domains and postings */
 const removeTestData = async (suffix: string) => {
   const named = new RegExp(`-${suffix}(@|$)`);
   const users = (await User.find({ email: named }, '_id').lean()).map((user) => user._id);
-  const jobs = (await JobPosting.find({ recruiter: { $in: users } }, '_id').lean()).map((job) => job._id);
-  await JobApplication.deleteMany({ $or: [{ job: { $in: jobs } }, { candidate: { $in: users } }] });
-  await JobPosting.deleteMany({ _id: { $in: jobs } });
+  await JobPosting.deleteMany({ recruiter: { $in: users } });
   await Domain.deleteMany({ $or: [{ admin: { $in: users } }, { name: named }] });
   await User.deleteMany({ _id: { $in: users } });
 };
@@ -129,8 +123,7 @@ beforeAll(async () => {
   assertDisposableDatabase(env.MONGO_URL);
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
   connected = true;
-  // The unique indexes the routes rely on (one application per candidate)
-  await Promise.all([User.init(), Domain.init(), JobPosting.init(), JobApplication.init()]);
+  await Promise.all([User.init(), Domain.init(), JobPosting.init()]);
 });
 
 afterAll(async () => {
@@ -157,12 +150,7 @@ describe('access', () => {
     ['POST', '/jobs', sampleJob()],
     ['PUT', job, sampleJob()],
     ['PUT', `${job}/status`, { status: 'closed' }],
-    ['DELETE', job],
-    ['POST', `${job}/applicants`, { domain: 'someone' }],
-    ['DELETE', `${job}/applicants/${UNKNOWN_ID}`],
-    ['GET', `${job}/application`],
-    ['POST', `${job}/application`],
-    ['DELETE', `${job}/application`]
+    ['DELETE', job]
   ];
 
   it.each(sessionRoutes)('%s %s requires a session (401)', async (method, path, body) => {
@@ -170,14 +158,33 @@ describe('access', () => {
     expect(result.status).toBe(401);
   });
 
-  it('serves the public pages without a session', async () => {
+  it('serves no job board, no public posting and no applications (404), signed in or not', async () => {
     const recruiter = await createRecruiter();
     const created = await createJob(recruiter);
+    const candidate = await createCandidate();
+    const id = created._id;
 
-    expect((await call('GET', '/jobs')).status).toBe(200);
-    const page = await call('GET', `/jobs/${created._id}`);
-    expect(page.status).toBe(200);
-    expect(page.json()._id).toBe(created._id);
+    const gone: [string, string, unknown?][] = [
+      ['GET', '/jobs'],
+      ['GET', `/jobs/${id}`],
+      ['GET', `/jobs/${id}/application`],
+      ['POST', `/jobs/${id}/application`, {}],
+      ['DELETE', `/jobs/${id}/application`],
+      ['POST', `/jobs/${id}/applicants`, { domain: candidate.domain }],
+      ['DELETE', `/jobs/${id}/applicants/${UNKNOWN_ID}`]
+    ];
+    for (const cookie of [undefined, candidate.cookie, recruiter.cookie]) {
+      for (const [method, path, body] of gone) {
+        const result = await call(method, path, { body, cookie });
+        expect([method, path, result.status]).toEqual([method, path, 404]);
+        // Never the posting
+        expect(result.text).not.toContain('Senior Backend Engineer');
+      }
+    }
+    // The recruiter's own read has no applicants
+    const detail = await call('GET', `/recruiter/jobs/${id}`, { cookie: recruiter.cookie });
+    expect(detail.status).toBe(200);
+    expect(detail.json()).not.toHaveProperty('applicants');
   });
 
   it('refuses the recruiter routes to an account without a recruiter space (403), creating nothing', async () => {
@@ -193,9 +200,7 @@ describe('access', () => {
       ['POST', '/jobs', sampleJob()],
       ['PUT', `/jobs/${id}`, sampleJob({ title: 'Taken over' })],
       ['PUT', `/jobs/${id}/status`, { status: 'closed' }],
-      ['DELETE', `/jobs/${id}`],
-      ['POST', `/jobs/${id}/applicants`, { domain: visitor.domain }],
-      ['DELETE', `/jobs/${id}/applicants/${UNKNOWN_ID}`]
+      ['DELETE', `/jobs/${id}`]
     ];
     for (const [method, path, body] of attempts) {
       const result = await call(method, path, { body, cookie: visitor.cookie });
@@ -206,7 +211,6 @@ describe('access', () => {
     const stored = await JobPosting.findById(id).lean();
     expect(stored?.title).toBe('Senior Backend Engineer');
     expect(stored?.status).toBe('open');
-    expect(await JobApplication.countDocuments({ job: id })).toBe(0);
   });
 
   it('refuses the recruiter routes to a recruiter without the terms in force (422 on consent), until accepted again', async () => {
@@ -268,9 +272,9 @@ describe('access', () => {
 
   it('rejects ids that are not ObjectIds (422)', async () => {
     const recruiter = await createRecruiter();
-    expect((await call('GET', '/jobs/not-an-id')).status).toBe(422);
     expect((await call('GET', '/recruiter/jobs/not-an-id', { cookie: recruiter.cookie })).status).toBe(422);
-    expect((await call('DELETE', `/jobs/${UNKNOWN_ID}/applicants/nope`, { cookie: recruiter.cookie })).status).toBe(422);
+    expect((await call('PUT', '/jobs/not-an-id/status', { body: { status: 'open' }, cookie: recruiter.cookie })).status).toBe(422);
+    expect((await call('DELETE', '/jobs/not-an-id', { cookie: recruiter.cookie })).status).toBe(422);
   });
 });
 
@@ -487,9 +491,9 @@ describe('postings', () => {
     // The same posting on every read
     const detail = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
     expect(detail.status).toBe(200);
-    expect(detail.json()).toEqual({ ...created, applicants: [] });
-    const page = await call('GET', `/jobs/${created._id}`);
-    expect(page.json()).toEqual(created);
+    expect(detail.json()).toEqual(created);
+    const list = await call('GET', '/recruiter/jobs', { cookie: recruiter.cookie });
+    expect(list.json()).toEqual({ jobs: [created] });
   });
 
   it('publishes a posting the first time it leaves draft, and keeps that date', async () => {
@@ -624,7 +628,6 @@ describe('postings', () => {
 
     expect([stale.status, stale.text]).toEqual([409, 'This job posting was changed since you opened it']);
     expect(await JobPosting.findById(created._id).lean()).toMatchObject({ status: 'open', title: 'Senior Backend Engineer' });
-    expect((await call('GET', `/jobs/${created._id}`)).status).toBe(200);
 
     // Unchanged forms are refused too: nothing to save, but the posting is not the one the editor showed
     const unchanged = await call('PUT', `/jobs/${created._id}`, {
@@ -660,31 +663,23 @@ describe('postings', () => {
     expect((await JobPosting.findById(created._id).lean())?.title).toBe('Senior Backend Engineer');
   });
 
-  it('deletes a posting with its applications', async () => {
+  it('deletes a posting', async () => {
     const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const other = await createCandidate('other');
     const created = await createJob(recruiter);
     const kept = await createJob(recruiter, sampleJob({ title: 'Kept' }));
-    expect((await apply(created._id, candidate)).status).toBe(200);
-    expect((await apply(kept._id, candidate)).status).toBe(200);
-    const added = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: other.domain }, cookie: recruiter.cookie });
-    expect(added.status).toBe(200);
 
     const result = await call('DELETE', `/jobs/${created._id}`, { cookie: recruiter.cookie });
 
     expect(result.status).toBe(200);
     expect(result.json()).toEqual({ id: created._id });
     expect(await JobPosting.exists({ _id: created._id })).toBeNull();
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-    // The recruiter's other posting keeps its applicant
-    expect(await JobApplication.countDocuments({ job: kept._id })).toBe(1);
+    // The recruiter's other posting stays
+    expect(await JobPosting.exists({ _id: kept._id })).not.toBeNull();
     expect((await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie })).status).toBe(404);
-    expect((await call('GET', `/jobs/${created._id}`)).status).toBe(404);
     expect((await call('DELETE', `/jobs/${created._id}`, { cookie: recruiter.cookie })).status).toBe(404);
   });
 
-  it("lists the recruiter's own postings, most recently updated first, with their applicant counts", async () => {
+  it("lists the recruiter's own postings, most recently updated first", async () => {
     const recruiter = await createRecruiter();
     const other = await createRecruiter('other-recruiter');
     const first = await createJob(recruiter, sampleJob({ title: 'First', status: 'draft' }));
@@ -694,24 +689,17 @@ describe('postings', () => {
     // Edited last: now the most recently updated
     await Bun.sleep(5);
     expect((await call('PUT', `/jobs/${first._id}/status`, { body: { status: 'open' }, cookie: recruiter.cookie })).status).toBe(200);
-    const [alice, bob] = await Promise.all([createCandidate('alice'), createCandidate('bob')]);
-    for (const candidate of [alice, bob]) {
-      expect((await apply(second._id, candidate)).status).toBe(200);
-    }
-    expect(
-      (await call('POST', `/jobs/${first._id}/applicants`, { body: { domain: alice.domain }, cookie: recruiter.cookie })).status
-    ).toBe(200);
 
     const result = await call('GET', '/recruiter/jobs', { cookie: recruiter.cookie });
 
     expect(result.status).toBe(200);
-    const { jobs } = result.json<{ jobs: { _id: string; title: string; applicantCount: number }[] }>();
-    expect(jobs.map(({ title, applicantCount }) => [title, applicantCount])).toEqual([
-      ['First', 1],
-      ['Third', 0],
-      ['Second', 2]
+    const { jobs } = result.json<{ jobs: { _id: string; title: string }[] }>();
+    expect(jobs.map(({ _id, title }) => [_id, title])).toEqual([
+      [first._id, 'First'],
+      [third._id, 'Third'],
+      [second._id, 'Second']
     ]);
-    expect(jobs[1]).toEqual({ ...third, applicantCount: 0 });
+    expect(jobs[1]).toEqual(third);
 
     // A recruiter space with no posting yet
     const newcomer = await createRecruiter('newcomer');
@@ -761,20 +749,14 @@ describe("another recruiter's posting", () => {
   it('is not found (404) by every recruiter route, and stays unchanged', async () => {
     const owner = await createRecruiter('owner');
     const intruder = await createUser('intruder', { recruiter: true, domain: true });
-    const candidate = await createCandidate();
     const created = await createJob(owner);
-    const listed = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: candidate.domain }, cookie: owner.cookie });
-    expect(listed.status).toBe(200);
-    const applicationId = listed.json()._id;
     const id = created._id;
 
     const attempts: [string, string, unknown?][] = [
       ['GET', `/recruiter/jobs/${id}`],
       ['PUT', `/jobs/${id}`, sampleJob({ title: 'Taken over' })],
       ['PUT', `/jobs/${id}/status`, { status: 'closed' }],
-      ['DELETE', `/jobs/${id}`],
-      ['POST', `/jobs/${id}/applicants`, { domain: intruder.domain }],
-      ['DELETE', `/jobs/${id}/applicants/${applicationId}`]
+      ['DELETE', `/jobs/${id}`]
     ];
     for (const [method, path, body] of attempts) {
       const result = await call(method, path, { body, cookie: intruder.cookie });
@@ -786,377 +768,6 @@ describe("another recruiter's posting", () => {
 
     const stored = await JobPosting.findById(id).lean();
     expect(stored).toMatchObject({ title: 'Senior Backend Engineer', status: 'open' });
-    expect(await JobApplication.countDocuments({ job: id })).toBe(1);
     expect((await call('GET', '/recruiter/jobs', { cookie: intruder.cookie })).json()).toEqual({ jobs: [] });
-  });
-});
-
-// ── Public pages ────────────────────────────────────────────
-
-describe('public pages', () => {
-  it('show a posting unless it is a draft', async () => {
-    const recruiter = await createRecruiter();
-    const draft = await createJob(recruiter, sampleJob({ status: 'draft' }));
-
-    const hidden = await call('GET', `/jobs/${draft._id}`);
-    expect(hidden.status).toBe(404);
-    expect(hidden.text).toBe('Job posting not found');
-    expect((await call('GET', `/jobs/${UNKNOWN_ID}`)).status).toBe(404);
-
-    for (const status of ['open', 'on_hold', 'filled', 'closed']) {
-      await call('PUT', `/jobs/${draft._id}/status`, { body: { status }, cookie: recruiter.cookie });
-      const page = await call('GET', `/jobs/${draft._id}`);
-      expect([status, page.status, page.json().status]).toEqual([status, 200, status]);
-    }
-  });
-
-  it('list the open postings only, most recently published first, without their descriptions', async () => {
-    const recruiter = await createRecruiter();
-    const older = await createJob(recruiter, sampleJob({ title: t.id('older') }));
-    await Bun.sleep(5);
-    const newer = await createJob(recruiter, sampleJob({ title: t.id('newer') }));
-    const hidden = await Promise.all(
-      ['draft', 'on_hold', 'filled', 'closed'].map((status) => createJob(recruiter, sampleJob({ title: t.id(status), status })))
-    );
-    // An edit does not move a posting up the list
-    await Bun.sleep(5);
-    const edited = await call('PUT', `/jobs/${older._id}`, {
-      body: sampleJob({ title: t.id('older'), company: 'Edited' }),
-      cookie: recruiter.cookie
-    });
-    expect(edited.status).toBe(200);
-
-    const result = await call('GET', '/jobs');
-
-    expect(result.status).toBe(200);
-    const { jobs } = result.json<{ jobs: { _id: string; status: string }[] }>();
-    expect(jobs.length).toBeLessThanOrEqual(100);
-    expect(jobs.every((job) => job.status === 'open')).toBe(true);
-    const mine = jobs.filter((job) => [older._id, newer._id, ...hidden.map((job) => job._id)].includes(job._id));
-    const { description: _newer, ...newerSummary } = newer;
-    const { description: _older, ...olderSummary } = edited.json();
-    expect(mine).toEqual([newerSummary, olderSummary]);
-  });
-
-  it('list 10 postings of one recruiter at most: no account can push the others out', async () => {
-    const employer = await createRecruiter('employer');
-    const flooder = await createRecruiter('flooder');
-    const kept = await createJob(employer, sampleJob({ title: t.id('kept') }));
-    await Bun.sleep(5);
-    const flood = [];
-    for (let n = 0; n < 12; n++) flood.push(await createJob(flooder, sampleJob({ title: t.id(`flood-${n}`) })));
-
-    const { jobs } = (await call('GET', '/jobs')).json<{ jobs: { _id: string }[] }>();
-
-    const ids = jobs.map((job) => job._id);
-    expect(ids).toContain(kept._id);
-    const listedFlood = flood.filter((job) => ids.includes(job._id));
-    // The 10 most recently published of the flood
-    expect(listedFlood.map((job) => job._id)).toEqual(flood.slice(2).map((job) => job._id));
-  });
-
-  it('never tell who posted a posting (no user id)', async () => {
-    const recruiter = await createUser('recruiter', { recruiter: true, domain: true });
-    const created = await createJob(recruiter, sampleJob({ title: t.id('confidential') }));
-    const candidate = await createCandidate();
-
-    const responses = [
-      await call('GET', '/jobs'),
-      await call('GET', `/jobs/${created._id}`),
-      await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })
-    ];
-
-    for (const response of responses) {
-      expect(response.status).toBe(200);
-      expect(response.text).not.toContain(recruiter.id);
-    }
-    expect(responses[0].text).toContain(created._id);
-  });
-});
-
-// ── Applications ────────────────────────────────────────────
-
-describe('applying', () => {
-  it('lists a candidate who applies with their portfolio, never their email', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-
-    expect((await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })).json()).toEqual({
-      applied: false
-    });
-    const applied = await apply(created._id, candidate);
-
-    expect(applied.status).toBe(200);
-    const appliedAt = applied.json().appliedAt;
-    expect(applied.json()).toEqual({ applied: true, appliedAt: expect.stringMatching(ISO_INSTANT), source: 'applied' });
-    expect((await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })).json()).toEqual({
-      applied: true,
-      appliedAt,
-      source: 'applied'
-    });
-
-    const detail = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
-    expect(detail.json().applicants).toEqual([
-      {
-        _id: expect.stringMatching(/^[0-9a-f]{24}$/),
-        appliedAt,
-        source: 'applied',
-        candidate: { name: 'candidate-first', surname: 'candidate-last' },
-        domain: { name: candidate.domain, headerTitle: 'candidate portfolio' }
-      }
-    ]);
-    expect(detail.text).not.toContain(candidate.email);
-    expect(detail.text).not.toContain(candidate.googleId);
-    expect(detail.text).not.toContain(candidate.id);
-  });
-
-  it('accepts one application per candidate (409), even when two arrive at once', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-
-    const results = await Promise.all(
-      [1, 2].map(() => apply(created._id, candidate))
-    );
-
-    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
-    expect(results.find((result) => result.status === 409)?.text).toBe('You already applied');
-    const again = await apply(created._id, candidate);
-    expect([again.status, again.text]).toEqual([409, 'You already applied']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(1);
-  });
-
-  it('needs a JSON body, so a cross-site request without a preflight never applies', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-    const url = `http://localhost/jobs/${created._id}/application`;
-
-    // What a no-cors fetch from another site sends with the cookie: no body,
-    // no Content-Type (a simple request, no CORS preflight)
-    const bodyless = await app.fetch(
-      new Request(url, { method: 'POST', headers: { Cookie: candidate.cookie, Origin: 'https://evil.example' } })
-    );
-    // An HTML form: refused before the route (app.ts)
-    const form = await app.fetch(
-      new Request(url, { method: 'POST', headers: { Cookie: candidate.cookie, 'Content-Type': 'text/plain' }, body: '{}' })
-    );
-
-    expect([bodyless.status, form.status]).toEqual([415, 415]);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-    expect((await apply(created._id, candidate)).status).toBe(200);
-  });
-
-  it('takes applications while the posting is open only', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter, sampleJob({ status: 'draft' }));
-
-    const toDraft = await apply(created._id, candidate);
-    expect([toDraft.status, toDraft.text]).toEqual([404, 'Job posting not found']);
-    expect((await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })).status).toBe(404);
-    expect((await apply(UNKNOWN_ID, candidate)).status).toBe(404);
-
-    for (const status of ['on_hold', 'filled', 'closed']) {
-      await call('PUT', `/jobs/${created._id}/status`, { body: { status }, cookie: recruiter.cookie });
-      const result = await apply(created._id, candidate);
-      expect([status, result.status, result.text]).toEqual([status, 409, 'This job posting is not taking applications']);
-    }
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-  });
-
-  it('needs a portfolio', async () => {
-    const recruiter = await createRecruiter();
-    const visitor = await createUser('visitor');
-    const created = await createJob(recruiter);
-
-    const result = await apply(created._id, visitor);
-
-    expect([result.status, result.text]).toEqual([403, 'Claim a portfolio before applying']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-  });
-
-  it("is not for the posting's own recruiter", async () => {
-    const recruiter = await createUser('recruiter', { recruiter: true, domain: true });
-    const created = await createJob(recruiter);
-
-    const result = await apply(created._id, recruiter);
-
-    expect([result.status, result.text]).toEqual([403, 'You cannot apply to your own job posting']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-    // What the job page asks to offer "Manage it": told to the recruiter alone
-    const own = await call('GET', `/jobs/${created._id}/application`, { cookie: recruiter.cookie });
-    expect([own.status, own.json()]).toEqual([200, { applied: false, own: true }]);
-    const candidate = await createCandidate();
-    const other = await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie });
-    expect([other.status, other.json()]).toEqual([200, { applied: false }]);
-  });
-
-  it('can be withdrawn, whoever listed the candidate', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-    const other = await createJob(recruiter, sampleJob({ title: 'Other' }));
-    expect((await apply(created._id, candidate)).status).toBe(200);
-    expect(
-      (await call('POST', `/jobs/${other._id}/applicants`, { body: { domain: candidate.domain }, cookie: recruiter.cookie })).status
-    ).toBe(200);
-    // Withdrawn even once the posting is no longer open
-    await call('PUT', `/jobs/${other._id}/status`, { body: { status: 'closed' }, cookie: recruiter.cookie });
-
-    for (const job of [created, other]) {
-      const withdrawn = await call('DELETE', `/jobs/${job._id}/application`, { cookie: candidate.cookie });
-      expect([withdrawn.status, withdrawn.json()]).toEqual([200, { applied: false }]);
-      const again = await call('DELETE', `/jobs/${job._id}/application`, { cookie: candidate.cookie });
-      expect([again.status, again.text]).toEqual([404, 'You have not applied to this job posting']);
-    }
-    expect((await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })).json()).toEqual({
-      applied: false
-    });
-    expect(await JobApplication.countDocuments({ candidate: candidate.id })).toBe(0);
-  });
-
-  it(`stops at ${JOB_LIMITS.applicantsPerJob} applicants (409)`, async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-    // Applications of portfolios that do not exist: left out of the list
-    await JobApplication.insertMany(
-      Array.from({ length: JOB_LIMITS.applicantsPerJob }, () => ({
-        job: created._id,
-        candidate: new Types.ObjectId(),
-        domain: new Types.ObjectId(),
-        source: 'applied'
-      }))
-    );
-
-    const result = await apply(created._id, candidate);
-    const added = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: candidate.domain }, cookie: recruiter.cookie });
-
-    const full = `This job posting has reached its limit of ${JOB_LIMITS.applicantsPerJob} applicants`;
-    expect([result.status, result.text]).toEqual([409, full]);
-    expect([added.status, added.text]).toEqual([409, full]);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(JOB_LIMITS.applicantsPerJob);
-    expect((await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie })).json().applicants).toEqual([]);
-  });
-
-  it('never goes over the applicant limit, even when applications arrive at once', async () => {
-    const recruiter = await createRecruiter();
-    const created = await createJob(recruiter);
-    await JobApplication.insertMany(
-      Array.from({ length: JOB_LIMITS.applicantsPerJob - 1 }, () => ({
-        job: created._id,
-        candidate: new Types.ObjectId(),
-        domain: new Types.ObjectId(),
-        source: 'applied'
-      }))
-    );
-    const candidates = await Promise.all([1, 2, 3, 4, 5, 6].map((n) => createCandidate(`candidate-${n}`)));
-
-    const results = await Promise.all(candidates.map((candidate) => apply(created._id, candidate)));
-
-    // One place left: one application at most takes it, the others are refused
-    const accepted = results.filter((result) => result.status === 200).length;
-    expect(accepted).toBeLessThanOrEqual(1);
-    const full = `This job posting has reached its limit of ${JOB_LIMITS.applicantsPerJob} applicants`;
-    expect(results.filter((result) => result.status !== 200).map((result) => [result.status, result.text])).toEqual(
-      Array.from({ length: candidates.length - accepted }, () => [409, full])
-    );
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(JOB_LIMITS.applicantsPerJob - 1 + accepted);
-  });
-});
-
-describe('applicants managed by the recruiter', () => {
-  it('adds a portfolio by its domain name, and removes it', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter, sampleJob({ status: 'draft' }));
-
-    const added = await call('POST', `/jobs/${created._id}/applicants`, {
-      body: { domain: `  ${candidate.domain!.toUpperCase()} ` },
-      cookie: recruiter.cookie
-    });
-
-    expect(added.status).toBe(200);
-    const applicant = added.json();
-    expect(applicant).toEqual({
-      _id: expect.stringMatching(/^[0-9a-f]{24}$/),
-      appliedAt: expect.stringMatching(ISO_INSTANT),
-      source: 'added_by_recruiter',
-      // The portfolio's public data only: the candidate shared nothing else
-      candidate: {},
-      domain: { name: candidate.domain, headerTitle: 'candidate portfolio' }
-    });
-    expect(added.text).not.toContain(candidate.email);
-    const detail = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
-    expect(detail.json().applicants).toEqual([applicant]);
-
-    const again = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: candidate.domain }, cookie: recruiter.cookie });
-    expect([again.status, again.text]).toEqual([409, 'Already an applicant']);
-
-    const removed = await call('DELETE', `/jobs/${created._id}/applicants/${applicant._id}`, { cookie: recruiter.cookie });
-    expect([removed.status, removed.json()]).toEqual([200, { id: applicant._id }]);
-    const removedAgain = await call('DELETE', `/jobs/${created._id}/applicants/${applicant._id}`, { cookie: recruiter.cookie });
-    expect([removedAgain.status, removedAgain.text]).toEqual([404, 'Applicant not found']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-  });
-
-  it('refuses an unknown domain, the recruiter\'s own portfolio and a candidate who already applied', async () => {
-    const recruiter = await createUser('recruiter', { recruiter: true, domain: true });
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-    expect((await apply(created._id, candidate)).status).toBe(200);
-
-    const add = (domain: string) =>
-      call('POST', `/jobs/${created._id}/applicants`, { body: { domain }, cookie: recruiter.cookie });
-    const unknown = await add(t.id('nobody'));
-    const own = await add(recruiter.domain!);
-    const listed = await add(candidate.domain!);
-
-    expect([unknown.status, unknown.text]).toEqual([404, 'Domain not found']);
-    expect([own.status, own.text]).toEqual([403, 'You cannot add your own portfolio']);
-    expect([listed.status, listed.text]).toEqual([409, 'Already an applicant']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(1);
-  });
-
-  it("never shows the account name of a portfolio it adds, only that of a candidate who applied", async () => {
-    const recruiter = await createRecruiter();
-    const applicant = await createCandidate('applicant');
-    const added = await createCandidate('added');
-    const created = await createJob(recruiter);
-    expect((await apply(created._id, applicant)).status).toBe(200);
-
-    // Any recruiter space can add any portfolio: the owner's account name
-    // (from Google) is not public, only the portfolio is
-    const listed = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: added.domain }, cookie: recruiter.cookie });
-
-    expect(listed.status).toBe(200);
-    const { source, candidate, domain } = listed.json();
-    expect([source, candidate, domain.name]).toEqual(['added_by_recruiter', {}, added.domain]);
-    const detail = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
-    const applicants = detail.json<{ applicants: { source: string; candidate: object; domain: { name: string } }[] }>().applicants;
-    expect(applicants.map((listed): unknown[] => [listed.source, listed.candidate, listed.domain.name])).toEqual([
-      ['applied', { name: 'applicant-first', surname: 'applicant-last' }, applicant.domain],
-      ['added_by_recruiter', {}, added.domain]
-    ]);
-    for (const text of [listed.text, detail.text]) {
-      expect(text).not.toContain('added-first');
-      expect(text).not.toContain('added-last');
-    }
-  });
-
-  it('removes only an applicant of that posting', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const first = await createJob(recruiter);
-    const second = await createJob(recruiter, sampleJob({ title: 'Second' }));
-    const added = await call('POST', `/jobs/${first._id}/applicants`, { body: { domain: candidate.domain }, cookie: recruiter.cookie });
-    const applicationId = added.json()._id;
-
-    const result = await call('DELETE', `/jobs/${second._id}/applicants/${applicationId}`, { cookie: recruiter.cookie });
-
-    expect([result.status, result.text]).toEqual([404, 'Applicant not found']);
-    expect(await JobApplication.exists({ _id: applicationId })).not.toBeNull();
   });
 });

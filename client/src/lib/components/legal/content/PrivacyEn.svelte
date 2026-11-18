@@ -153,24 +153,16 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <h4 id="data-recruiter">Recruiter space and job descriptions</h4>
 <p>
 	Recruiters write job descriptions: title, company, location, work mode, contract, working time,
-	pay, requirements, benefits and description. Once published, a job description is public, but it
-	never names the recruiter's account. A job description PDF can also be imported: it is sent to
-	Anthropic like a résumé, and not stored by us. Where this site computes travel times (see <a
-		class="link-text"
-		href="#data-perfect-job">perfect job</a
-	>), the address of a job's office (street, postal code and town) is sent to the Géoplateforme of
-	IGN, the map service that locates it: as it is typed in the job editor, when its fields are left,
-	and when the job description is scored in a hiring journey with a commute criterion, even for a
-	draft that is never published.
-</p>
-
-<h4 id="data-applications">Applications</h4>
-<p>
-	When you apply to a job description with your portfolio, the recruiter who published it sees your
-	application with your portfolio's address and header title. A recruiter can also add a public
-	portfolio to the list of applicants of one of their job descriptions; that portfolio's owner can
-	then appear in the recruiter's list. You can withdraw an application, and the recruiter can remove
-	it; it is deleted with the job description.
+	pay, requirements, benefits and description. A job description is not public: the site publishes
+	no job descriptions and lists none. Its recruiter keeps it in their recruiter space, and shows it
+	to a portfolio owner by picking it in that owner's <a class="link-text" href="#data-journey"
+		>hiring journey</a
+	>. A job description PDF can also be imported: it is sent to Anthropic like a résumé, and not
+	stored by us. Where this site computes travel times (see
+	<a class="link-text" href="#data-perfect-job">perfect job</a>), the address of a job's office
+	(street, postal code and town) is sent to the Géoplateforme of IGN, the map service that locates
+	it: as it is typed in the job editor (drafts included), when its fields are left, and when the job
+	description is scored in a hiring journey with a commute criterion.
 </p>
 
 <h4 id="data-journey">Hiring journey and meetings</h4>
@@ -313,7 +305,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				<td>Contract, art. 6(1)(b)</td>
 			</tr>
 			<tr>
-				<td>Recruiter space, public job pages and applications</td>
+				<td>Recruiter space and its job descriptions</td>
 				<td>Contract, art. 6(1)(b)</td>
 			</tr>
 			<tr>
@@ -370,17 +362,13 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <h3 id="recipients">Who receives your data</h3>
 <ul>
 	<li>
-		<strong>The public</strong>: the content of portfolios, published job descriptions (without the
-		recruiter's identity), journey notes and the public part of booking schedules; on GitHub, the
-		step suggestions and feedback you send (without your name).
-	</li>
-	<li>
-		<strong>Recruiters</strong>: the address and header title of the portfolios on the applicant
-		lists of their job descriptions.
+		<strong>The public</strong>: the content of portfolios, journey notes and the public part of
+		booking schedules; on GitHub, the step suggestions and feedback you send (without your name).
 	</li>
 	<li>
 		<strong>Portfolio owners</strong>: the name, email address and note of a visitor who books a
-		meeting, with the details of the journey steps before it, in their Google Calendar invitation.
+		meeting, with the details of the journey steps before it (such as the title and company of the
+		job description a recruiter picked), in their Google Calendar invitation.
 	</li>
 	<li>
 		<strong>Visitors who book a meeting</strong>: the email address of the portfolio owner's
@@ -478,7 +466,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			<tr>
 				<td>
 					Portfolio, experiences, hiring journey, perfect job (the address you travel from
-					included), booking schedules, job descriptions, applications
+					included), booking schedules, job descriptions
 				</td>
 				<td>Until you delete them, or your account</td>
 			</tr>
@@ -562,9 +550,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 		>your account page</a
 	>
 	is immediate: your account, your portfolio and its experiences, your hiring journey and the progress
-	of its visitors, your progress in other journeys, your booking schedules and reservations, your job
-	descriptions and their applications, and your applications are removed from our database at once, the
-	Google Calendar tokens are deleted and we ask Google to revoke the access (you can check it in your
+	of its visitors, your progress in other journeys, your booking schedules and reservations, and your
+	job descriptions are removed from our database at once, the Google Calendar tokens are deleted and we
+	ask Google to revoke the access (you can check it in your
 	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 		>Google account permissions</a
 	>), and your portfolio address becomes available to others. What stays: skill names in the shared
@@ -616,10 +604,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 <h3 id="required">What you have to provide</h3>
 <p>
-	A Google account is needed to sign in: without it you can read portfolios and job descriptions,
-	but not create a portfolio, apply or publish. Booking a meeting needs your name and email address,
-	which the portfolio owner needs to meet you. Everything else, including the résumé import, is
-	optional.
+	A Google account is needed to sign in: without it you can read a portfolio whose address you have,
+	but not create one or write a job description. Booking a meeting needs your name and email
+	address, which the portfolio owner needs to meet you. Everything else, including the résumé
+	import, is optional.
 </p>
 
 <h3 id="ai">AI and automated decisions</h3>
@@ -627,7 +615,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	The résumé and job description imports use Claude, an AI model made by Anthropic. Its drafts can
 	be incomplete or wrong: you review and edit them, and nothing is published until you add it. No
 	decision with legal or similarly significant effects on you is made by automated means: the site
-	does not score, rank or filter candidates, and recruiters see applications as they are.
+	does not score, rank or filter candidates.
 </p>
 <p>
 	Where this site enables it, Claude also sorts the feedback you send as a bug, a feature request or

@@ -26,8 +26,8 @@ import {
 } from 'portfolio-common';
 import { m } from './jobPosting.messages.ts';
 
-// Pure helpers of the job posting editor and of every page showing a posting (recruiter
-// dashboard, public job page). The rules live in portfolio-common (normalizeJobPosting,
+// Pure helpers of the job posting editor and of every page showing a posting (the recruiter's
+// dashboard and job pages). The rules live in portfolio-common (normalizeJobPosting,
 // validateJobPosting), shared with the API: the editor shows the API's own messages before
 // saving. Nothing here knows the UI.
 

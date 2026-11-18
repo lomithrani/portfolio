@@ -1,10 +1,9 @@
 <!--
 @component
 A job posting as candidates and its recruiter read it: status, title, company, the facts
-(JobFacts) and the Markdown description. Used by the recruiter's job page and the public job
-page: it has no controls of its own. Pass them as snippets: `actions` (next to the title: Apply,
-Edit...), `meta` (under the company: dates, applicant count...) and `children` (after the
-description: applicants...).
+(JobFacts) and the Markdown description. Used by the recruiter's job page: it has no controls of
+its own. Pass them as snippets: `actions` (next to the title: Edit...), `meta` (under the company:
+dates...) and `children` (after the description).
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -30,7 +29,7 @@ description: applicants...).
 		headingLevel?: 1 | 2 | 3;
 		/** Controls next to the title (they wrap under it on small screens) */
 		actions?: Snippet;
-		/** Under the company: dates, applicant count... */
+		/** Under the company: dates... */
 		meta?: Snippet;
 		/** After the description */
 		children?: Snippet;

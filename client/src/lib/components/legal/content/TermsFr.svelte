@@ -56,7 +56,7 @@ modifications, droit applicable.
 
 <h3 id="eligibility">Qui peut utiliser le site</h3>
 <p>
-	Tout le monde peut lire les portfolios et les offres d'emploi. Pour créer un compte, vous devez :
+	Toute personne qui a l'adresse d'un portfolio peut le lire. Pour créer un compte, vous devez :
 </p>
 <ul>
 	<li>
@@ -67,7 +67,7 @@ modifications, droit applicable.
 	</li>
 	<li>avoir un compte Google, avec lequel vous vous connectez ;</li>
 	<li>
-		si vous publiez des offres d'emploi pour une organisation, être autorisé à agir en son nom.
+		si vous rédigez des offres d'emploi pour une organisation, être autorisé à agir en son nom.
 	</li>
 </ul>
 <p>
@@ -80,8 +80,9 @@ modifications, droit applicable.
 <p>
 	{SITE_NAME} permet aux candidats de publier un portfolio de leurs expériences et projets à leur propre
 	adresse, avec une frise chronologique et des filtres par compétence, et de définir un parcours de recrutement
-	que les recruteurs suivent avant de réserver un rendez-vous avec eux. Les recruteurs peuvent publier
-	des offres d'emploi et voir les portfolios qui y postulent.
+	que les recruteurs suivent avant de réserver un rendez-vous avec eux. Les recruteurs rédigent des offres
+	d'emploi et en présentent une à un candidat en la choisissant sur la page Recruter de ce candidat, où
+	son parcours peut la noter au regard du poste qu'il recherche. Le site ne publie pas d'offres d'emploi.
 </p>
 <p>
 	Le service est <strong>gratuit</strong> et fourni <strong>en l'état</strong>. Nous faisons en
@@ -110,9 +111,10 @@ modifications, droit applicable.
 <p>
 	Vous conservez tous vos droits sur ce que vous publiez : portfolio, expériences et projets, notes
 	de parcours, offres d'emploi. Vous accordez à l'éditeur une licence gratuite, non exclusive et
-	mondiale pour héberger, stocker, reproduire et afficher ces contenus sur le site, et les mettre à
-	la disposition du public, tant qu'ils sont en ligne. La licence prend fin lorsque vous supprimez
-	le contenu ou votre compte.
+	mondiale pour héberger, stocker, reproduire et afficher ces contenus sur le site, et les montrer
+	aux personnes auxquelles ils sont destinés (un portfolio à toute personne qui a son adresse, une
+	offre d'emploi aux candidats dans le parcours de recrutement desquels elle est choisie), tant
+	qu'ils sont en ligne. La licence prend fin lorsque vous supprimez le contenu ou votre compte.
 </p>
 <p>Vous êtes responsable de vos contenus. En particulier, vous confirmez que :</p>
 <ul>
@@ -124,7 +126,7 @@ modifications, droit applicable.
 		des autres ;
 	</li>
 	<li>
-		vous comprenez qu'ils sont publics : ne publiez pas d'informations que vous voulez garder
+		vous comprenez qu'un portfolio est public : ne publiez pas d'informations que vous voulez garder
 		privées, comme des données de santé, des opinions religieuses ou politiques, des numéros
 		d'identité ou une adresse personnelle.
 	</li>

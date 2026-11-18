@@ -1,5 +1,5 @@
 // Texts of the account service (account.ts), and the words its forms share: the claim forms
-// (the landing card, the space chooser, the apply panel, the 404 page), the forms that open the
+// (the landing card, the space chooser, the 404 page), the forms that open the
 // recruiter space (the recruiter page, the job step of a hiring journey), the account menu and the
 // account page.
 import { defineMessages } from 'portfolio-common';

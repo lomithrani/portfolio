@@ -1,32 +1,26 @@
-import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test';
+import { expect, test, type Page, type Request } from '@playwright/test';
 import { LEGAL_VERSION } from 'portfolio-common';
 import {
 	API_URL,
 	JWT_SECRET,
-	apiAs,
 	blockGoogle,
 	gotoHydrated,
-	recruiterSession,
 	signIn,
 	signSession,
 	type OwnerSession
 } from './support/owner';
-import { createJob, deleteJobs } from './support/jobs';
 
-// The age and terms checkbox of the two claim forms a signed-in account without a portfolio
-// meets: the account menu's "Claim your portfolio" (SpaceChooser.svelte) and the apply panel of a
-// job page (apply/ClaimPortfolioForm.svelte). Signed in for real as the e2e candidate of seed:e2e
-// (no portfolio, no acceptance of the terms); what the session says about the terms (GET /isLogged)
-// and every request that would change the account (POST /domain/claim, PUT /me/mode) are answered
-// in the browser: nothing is claimed for real. The job page's posting belongs to the e2e recruiter,
-// named with this file's tag and removed afterwards.
+// The age and terms checkbox of the claim form a signed-in account without a portfolio meets: the
+// account menu's "Claim your portfolio" (SpaceChooser.svelte). Signed in for real as the e2e
+// candidate of seed:e2e (no portfolio, no acceptance of the terms); what the session says about
+// the terms (GET /isLogged) and every request that would change the account (POST /domain/claim,
+// PUT /me/mode) are answered in the browser: nothing is claimed for real.
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API secret to sign in without Google');
 
 /** The e2e candidate of seed:e2e (server/tests/seedE2e.ts): its id is fixed */
 const CANDIDATE_ID = '65e2e0000000000000000002';
 const CANDIDATE_EMAIL = 'e2e.candidate@example.com';
-const TAG_PREFIX = 'claimc';
 const CONSENT = { termsVersion: LEGAL_VERSION, ageConfirmed: true };
 const CONSENT_REFUSED = {
 	type: 'validation',
@@ -35,25 +29,8 @@ const CONSENT_REFUSED = {
 	message: 'Confirm your age and accept the terms of use to create your portfolio.'
 };
 
-let api: APIRequestContext;
-let tag = '';
-
-test.beforeAll(async () => {
-	api = await apiAs(await recruiterSession());
-	await deleteJobs(api, new RegExp(`\\b${TAG_PREFIX}-\\d+-[0-9a-z]+\\b`));
-});
-
-test.afterAll(async () => {
-	await api?.dispose();
-});
-
-test.beforeEach(async ({ page }, testInfo) => {
-	tag = `${TAG_PREFIX}-${testInfo.workerIndex}-${Date.now().toString(36)}`;
+test.beforeEach(async ({ page }) => {
 	await blockGoogle(page);
-});
-
-test.afterEach(async () => {
-	await deleteJobs(api, tag);
 });
 
 const candidateSession = async (): Promise<OwnerSession> => {
@@ -134,7 +111,7 @@ const FORMS: ClaimForm[] = [
 	{
 		name: 'the account menu',
 		open: async (page) => {
-			await gotoHydrated(page, '/jobs');
+			await gotoHydrated(page, '/legal');
 			await page.getByRole('button', { name: /^Account menu/ }).click();
 			await page.getByRole('menuitemradio', { name: /^Candidate space/ }).click();
 			const dialog = page.getByRole('dialog', { name: 'Claim your portfolio' });
@@ -142,17 +119,6 @@ const FORMS: ClaimForm[] = [
 			return dialog;
 		},
 		submit: 'Claim your portfolio'
-	},
-	{
-		name: 'a job page',
-		open: async (page) => {
-			const job = await createJob(api, { title: `Claim engineer ${tag}`, status: 'open' });
-			await gotoHydrated(page, `/jobs/${job._id}`);
-			const panel = page.getByRole('complementary', { name: 'Apply' });
-			await expect(panel.getByLabel('Portfolio name')).toBeVisible();
-			return panel;
-		},
-		submit: 'Claim this portfolio'
 	}
 ];
 

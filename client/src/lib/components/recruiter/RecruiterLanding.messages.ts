@@ -11,8 +11,8 @@ export const m = defineMessages({
 		fr: 'Trouvez des talents qui ont exactement les compétences recherchées'
 	},
 	lead: {
-		en: 'On Portfolio, a skill is not a keyword: it comes with the projects it was used in, and for how long. Publish your job, and meet the people it matches.',
-		fr: "Sur Portfolio, une compétence n'est pas un mot-clé : elle vient avec les projets où elle a servi, et leur durée. Publiez votre offre, et rencontrez les personnes à qui elle correspond."
+		en: "On Portfolio, a skill is not a keyword: it comes with the projects it was used in, and for how long. Share your job on a candidate's Hire page, and book a meeting when it matches.",
+		fr: "Sur Portfolio, une compétence n'est pas un mot-clé : elle vient avec les projets où elle a servi, et leur durée. Partagez votre offre sur la page Recruter d'un candidat, et réservez un rendez-vous si elle correspond."
 	},
 	free: {
 		en: 'Free to use. The same Google account can also hold your own portfolio, as a candidate: switch spaces from the account menu.',
@@ -76,14 +76,11 @@ export const m = defineMessages({
 				fr: "Partagez votre offre sur la page Recruter d'un candidat et voyez sa note au regard de ce qu'il recherche. Si elle correspond, réservez un rendez-vous dans son agenda : aucun appel qui s'arrête sur la rémunération ou le trajet."
 			}
 		},
-		applicants: {
-			title: {
-				en: 'Meet candidates through their portfolio',
-				fr: 'Rencontrez les candidats par leur portfolio'
-			},
+		meetings: {
+			title: { en: 'Your meetings in one place', fr: 'Vos rendez-vous au même endroit' },
 			text: {
-				en: 'See who applies, open their portfolio, and add the candidates you found yourself.',
-				fr: 'Voyez qui postule, ouvrez leur portfolio, et ajoutez les candidats que vous avez trouvés vous-même.'
+				en: "The meetings you book on candidates' Hire pages while signed in are listed in your recruiter space, with the link to join those held on Google Meet.",
+				fr: 'Les rendez-vous que vous réservez connecté sur la page Recruter des candidats sont listés dans votre espace recruteur, avec le lien pour rejoindre ceux qui ont lieu sur Google Meet.'
 			}
 		},
 		pdf: {
@@ -95,6 +92,5 @@ export const m = defineMessages({
 					`Lorsque l'import de PDF est proposé, Claude rédige à partir de votre fichier un brouillon de l'offre, que vous complétez. La formule gratuite comprend ${imports} imports.`
 			}
 		}
-	},
-	browse: { en: 'Browse open jobs', fr: 'Parcourir les offres ouvertes' }
+	}
 });

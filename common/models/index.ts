@@ -20,8 +20,7 @@ export {
 export type { BookingHorizon, DateRange } from './bookingDates';
 export {
 	JOB_STATUSES,
-	PUBLIC_JOB_STATUSES,
-	APPLICABLE_JOB_STATUS,
+	OPEN_JOB_STATUS,
 	WORK_MODES,
 	JOB_COUNTRIES,
 	FR_CONTRACT_TYPES,

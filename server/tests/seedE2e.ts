@@ -1,12 +1,12 @@
 // Seeds what the Playwright owner tests sign in as: per test file, a user and the domain it owns,
 // kept for that file alone (its tests add and remove the domain's experiences, so files running in
 // parallel never share one): 'e2e-owner' for client/tests/experiences-owner.test.ts, 'e2e-import'
-// for client/tests/resume-import.test.ts. client/tests/recruiter.test.ts and
-// client/tests/jobs-apply.test.ts sign in as the recruiter 'e2e.recruiter@example.com' (a
-// recruiter space, no domain, the terms in force accepted: every run records the version of the
-// code it runs, so a new LEGAL_VERSION never locks the e2e tests out of the recruiter routes, which
-// ask for it) and as the owner of 'e2e-applicant', who applies or is added to the
-// applicants. client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
+// for client/tests/resume-import.test.ts. client/tests/recruiter.test.ts signs in as the recruiter
+// 'e2e.recruiter@example.com' (a recruiter space, no domain, the terms in force accepted: every
+// run records the version of the code it runs, so a new LEGAL_VERSION never locks the e2e tests
+// out of the recruiter routes, which ask for it). 'e2e-shared' is a portfolio the tests may read
+// or point at but never change (its journey is the default one: a meeting step).
+// client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
 // and goes through it as the e2e recruiter. client/tests/account.test.ts (and the signed-in steps of
 // client/tests/landing.test.ts) use the candidate 'e2e.candidate@example.com': no domain, no
 // recruiter space, no acceptance of the terms; the tests that would change it (accepting the terms,
@@ -34,7 +34,7 @@ await mongoose.connect(mongoUrl);
 const owners = [
   { email: 'e2e.owner@example.com', name: 'Eve', surname: 'Owner', domain: 'e2e-owner' },
   { email: 'e2e.import@example.com', name: 'Ivy', surname: 'Importer', domain: 'e2e-import' },
-  { email: 'e2e.applicant@example.com', name: 'Ada', surname: 'Applicant', domain: 'e2e-applicant' },
+  { email: 'e2e.shared@example.com', name: 'Sam', surname: 'Shared', domain: 'e2e-shared' },
   { email: 'e2e.journey@example.com', name: 'Jay', surname: 'Journey', domain: 'e2e-journey' }
 ];
 

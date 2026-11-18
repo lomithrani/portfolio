@@ -42,7 +42,7 @@ description instead.
 		requestedJob,
 		sortJobChoices
 	} from '#services/workflow.ts';
-	import ApplySignIn from '#components/apply/ApplySignIn.svelte';
+	import SignInButton from '#components/hire/SignInButton.svelte';
 	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import RecruiterRules from '#components/legal/RecruiterRules.svelte';
@@ -298,7 +298,7 @@ description instead.
 		<p class="text-sm">{m.job.signIn}</p>
 		<!-- No space chosen: an account keeps the one it had (the portfolio's owner, checking their
 		     page signed out, must not end up in a recruiter space) -->
-		<ApplySignIn mode={null} />
+		<SignInButton />
 	</div>
 {:else if !user.recruiter || shown?.state === 'no-space'}
 	<div class="space-y-3">

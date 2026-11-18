@@ -130,13 +130,6 @@ export const m = defineMessages({
 				en: 'A recruiter sees the score of their job and, if you allow it, how it does on each criterion. Never what you asked for.',
 				fr: "Un recruteur voit la note de son offre et, si vous l'autorisez, son résultat sur chaque critère. Jamais ce que vous avez demandé."
 			}
-		},
-		apply: {
-			title: { en: 'Apply with your portfolio', fr: 'Postulez avec votre portfolio' },
-			text: {
-				en: 'Apply to the job descriptions published here in one step: the recruiter opens your portfolio.',
-				fr: 'Postulez en une étape aux offres publiées ici : le recruteur ouvre votre portfolio.'
-			}
 		}
 	},
 	yours: {
@@ -256,8 +249,8 @@ export const m = defineMessages({
 		deletion: {
 			question: { en: 'Can I delete my account?', fr: 'Puis-je supprimer mon compte ?' },
 			everything: {
-				en: 'Yes. Your <account>account page</account> deletes your account and everything tied to it at once: portfolio, hiring journey, applications and Google Calendar access. Your address becomes free for someone else.',
-				fr: "Oui. Votre <account>page de compte</account> supprime d'un coup votre compte et tout ce qui y est lié : portfolio, parcours de recrutement, candidatures et accès à Google Agenda. Votre adresse redevient libre pour quelqu'un d'autre."
+				en: 'Yes. Your <account>account page</account> deletes your account and everything tied to it at once: portfolio, hiring journey and Google Calendar access. Your address becomes free for someone else.',
+				fr: "Oui. Votre <account>page de compte</account> supprime d'un coup votre compte et tout ce qui y est lié : portfolio, parcours de recrutement et accès à Google Agenda. Votre adresse redevient libre pour quelqu'un d'autre."
 			},
 			remains: {
 				en: "Meetings already in someone's calendar and step suggestions already on GitHub (which do not name you) stay; server logs expire on their own. Details in the <privacy>privacy policy</privacy>.",
@@ -274,8 +267,8 @@ export const m = defineMessages({
 		data: {
 			question: { en: 'Which data do you keep?', fr: 'Quelles données conservez-vous ?' },
 			answer: {
-				en: 'Your Google account id and email address, what you publish, and what the features you use need, such as your applications or your meeting settings. The <privacy>privacy policy</privacy> lists everything, how long it is kept, and your rights.',
-				fr: "L'identifiant et l'adresse e-mail de votre compte Google, ce que vous publiez, et ce dont ont besoin les fonctions que vous utilisez, comme vos candidatures ou vos réglages de rendez-vous. La <privacy>politique de confidentialité</privacy> détaille tout, les durées de conservation et vos droits."
+				en: 'Your Google account id and email address, what you publish, and what the features you use need, such as your hiring journey or your meeting settings. The <privacy>privacy policy</privacy> lists everything, how long it is kept, and your rights.',
+				fr: "L'identifiant et l'adresse e-mail de votre compte Google, ce que vous publiez, et ce dont ont besoin les fonctions que vous utilisez, comme votre parcours de recrutement ou vos réglages de rendez-vous. La <privacy>politique de confidentialité</privacy> détaille tout, les durées de conservation et vos droits."
 			}
 		}
 	},

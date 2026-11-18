@@ -4,7 +4,6 @@
 	import { page } from '$app/state';
 	import { m } from './error.messages.ts';
 	import { m as domainM } from './[domain]/layout.messages.ts';
-	import { m as jobM } from '#services/applications.messages.ts';
 
 	// The app's own errors carry a code: their sentence is read here, in the page's language (a
 	// data request can be answered in another one, so the text the server chose may not match).
@@ -12,9 +11,7 @@
 	const byCode: Record<NonNullable<App.Error['code']>, () => string> = {
 		domainNotFound: () => domainM.domainNotFound,
 		notFound: () => domainM.notFound,
-		unavailable: () => domainM.unavailable,
-		jobNotFound: () => jobM.jobNotFound,
-		jobsUnavailable: () => jobM.jobsUnavailable
+		unavailable: () => domainM.unavailable
 	};
 	let message = $derived.by(() => {
 		const code = page.error?.code;

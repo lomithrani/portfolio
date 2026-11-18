@@ -2,7 +2,8 @@
 @component
 "Delete your account?": the account page's confirmation before DELETE /me. It lists what goes
 (the portfolio, whose address becomes free for others, the hiring journey, job descriptions,
-applications, meeting types and bookings, the account itself, this browser's drafts), that
+the progress in other journeys, meeting types and bookings, the account itself, this browser's
+drafts), that
 Google is asked to revoke the Google Calendar access, and that it cannot be undone; the person
 types DELETE to confirm. While the request runs the dialog cannot be closed. Once the account is gone
 (deleteAccount: the session and this browser's drafts are cleared too), a toast says so and the
@@ -233,7 +234,7 @@ site is held back, so the person sees how it ended.
 								{#if account?.recruiter}
 									<li>{m.deleted.jobs}</li>
 								{/if}
-								<li>{m.deleted.applications}</li>
+								<li>{m.deleted.journeys}</li>
 								<li>{m.deleted.meetings}</li>
 								<li>{m.deleted.account}</li>
 								<li>{m.deleted.drafts}</li>

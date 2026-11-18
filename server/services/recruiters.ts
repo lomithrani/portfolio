@@ -10,8 +10,7 @@ import { m } from './legal.messages';
 // the account chooses the recruiter mode (PUT /me/mode, or POST /login with
 // mode 'recruiter'), once it accepted the terms in force (services/users.ts
 // setActiveMode), then required by every recruiter route (job postings,
-// their applicants, job description imports, the job step of a hiring
-// journey), with the terms in force: a recruiter whose acceptance is older
+// job description imports, the job step of a hiring journey), with the terms in force: a recruiter whose acceptance is older
 // (or who opened the space before recruiters accepted the terms) accepts them
 // again (PUT /me/consent) before going on.
 

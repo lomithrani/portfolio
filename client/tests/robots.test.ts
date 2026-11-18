@@ -117,6 +117,20 @@ test('the landing page and the legal pages stay listed, with their canonical lin
 	}
 });
 
+test('the job board is gone: /jobs answers 410, and says why in the visitor’s language', async ({
+	request
+}) => {
+	const english = await request.get('/jobs');
+	expect(english.status()).toBe(410);
+	expect(await english.text()).toBe(
+		"Portfolio no longer publishes job descriptions: a recruiter shares theirs with a candidate on the candidate's Hire page."
+	);
+	const french = await request.get('/jobs?lang=fr');
+	expect(french.status()).toBe(410);
+	expect(french.headers()['content-language']).toBe('fr');
+	expect(await french.text()).toMatch(/^Portfolio ne publie plus d'offres d'emploi/);
+});
+
 test('robots.txt refuses nothing, so crawlers can read that a portfolio is not listed', async ({
 	request
 }) => {

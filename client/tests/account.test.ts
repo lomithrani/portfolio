@@ -170,7 +170,7 @@ test.describe('account page, signed in', () => {
 
 	test('the account menu opens the account page', async ({ page }) => {
 		await signIn(page, await candidateSession());
-		await gotoHydrated(page, '/jobs');
+		await gotoHydrated(page, '/legal');
 
 		await page.getByRole('button', { name: /^Account menu/ }).click();
 		await page.getByRole('menuitem', { name: 'Account & privacy' }).click();
@@ -355,7 +355,7 @@ test.describe('deleting the account', () => {
 			if (message.type() === 'warning' || message.type() === 'error') warnings.push(message.text());
 		});
 		await signIn(page, await candidateSession());
-		await gotoHydrated(page, '/jobs');
+		await gotoHydrated(page, '/legal');
 		// Client-side navigation, so that going back unmounts the page with the dialog open
 		await page.getByRole('button', { name: /^Account menu/ }).click();
 		await page.getByRole('menuitem', { name: 'Account & privacy' }).click();
@@ -365,7 +365,7 @@ test.describe('deleting the account', () => {
 		await expect(deleteDialog(page)).toBeVisible();
 		await page.goBack();
 
-		await expect(page).toHaveURL(/\/jobs$/);
+		await expect(page).toHaveURL(/\/legal$/);
 		await expect(deleteDialog(page)).toHaveCount(0);
 		expect(warnings.filter((text) => text.includes('derived_inert'))).toEqual([]);
 	});

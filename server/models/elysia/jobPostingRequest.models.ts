@@ -91,17 +91,6 @@ export const jobPostingEditRequest = t.Object({
 /** Body of PUT /jobs/:id/status */
 export const jobStatusRequest = t.Object({ status: jobStatus });
 
-/** Body of POST /jobs/:id/applicants: the portfolio (domain name) to add */
-export const jobApplicantRequest = t.Object({
-  domain: t.String({ minLength: 1, maxLength: 255 })
-});
-
-/** Route params of an applicant of a job posting */
-export const jobApplicantParams = t.Object({
-  id: t.String({ pattern: '^[0-9a-fA-F]{24}$' }),
-  applicationId: t.String({ pattern: '^[0-9a-fA-F]{24}$' })
-});
-
 /** Body of PUT /me/mode, and the optional mode of POST /login */
 // No default: t.UnionEnum defaults to its first value, which Elysia fills in
 // for a missing field (a /login without a mode would switch to 'candidate')

@@ -29,8 +29,8 @@
 		 */
 		showSignIn?: boolean;
 		/**
-		 * true: the logo is a link to the landing page (the site's own pages, the job pages and the
-		 * recruiter space: nothing else on them leads there). A portfolio's header keeps a plain logo.
+		 * true: the logo is a link to the landing page (the site's own pages and the recruiter
+		 * space: nothing else on them leads there). A portfolio's header keeps a plain logo.
 		 */
 		homeLink?: boolean;
 	} = $props();

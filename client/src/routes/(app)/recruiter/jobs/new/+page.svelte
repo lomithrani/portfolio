@@ -74,7 +74,7 @@
 		toaster.success({
 			title: m.created,
 			description:
-				saved.status === 'draft' ? m.createdDraft(JOB_STATUS_LABELS.open) : m.createdPublic,
+				saved.status === 'draft' ? m.createdDraft(JOB_STATUS_LABELS.open) : m.createdNotDraft,
 			// Created after the recruiter went elsewhere: they stay there, the toast leads to it
 			action: left ? { label: m.openIt, onClick: open } : undefined
 		});

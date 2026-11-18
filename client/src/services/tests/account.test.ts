@@ -183,7 +183,7 @@ describe('isCurrentSection', () => {
 		expect(isCurrentSection('/recruiter', '/recruiter')).toBe(true);
 		expect(isCurrentSection('/recruiter/jobs/1', '/recruiter')).toBe(true);
 		expect(isCurrentSection('/recruiters', '/recruiter')).toBe(false);
-		expect(isCurrentSection('/jobs', '/recruiter')).toBe(false);
+		expect(isCurrentSection('/legal', '/recruiter')).toBe(false);
 	});
 });
 
@@ -200,7 +200,7 @@ describe('spaceToRecord', () => {
 		// Without a recruiter space the page offers to create it: entering it creates nothing
 		expect(spaceToRecord({ recruiter: false, activeMode: 'candidate' }, '/recruiter')).toBeNull();
 		expect(spaceToRecord({ activeMode: 'candidate' }, '/recruiter')).toBeNull();
-		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/jobs')).toBeNull();
+		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/legal')).toBeNull();
 		expect(spaceToRecord({ recruiter: true, activeMode: 'candidate' }, '/recruiters')).toBeNull();
 		expect(spaceToRecord(undefined, '/recruiter')).toBeNull();
 	});
@@ -214,7 +214,7 @@ describe('spaceToRecord', () => {
 		expect(spaceToRecord({ ...both, activeMode: 'candidate' }, '/bo.both/experiences')).toBeNull();
 		expect(spaceToRecord(both, '/someone.else/experiences')).toBeNull();
 		expect(spaceToRecord(both, '/bo.both2/experiences')).toBeNull();
-		expect(spaceToRecord(both, '/jobs')).toBeNull();
+		expect(spaceToRecord(both, '/legal')).toBeNull();
 		expect(spaceToRecord({ ...both, domain: undefined }, '/bo.both/experiences')).toBeNull();
 	});
 });
@@ -242,7 +242,7 @@ describe('recordSpaceShown', () => {
 
 	it('records nothing on a page of no space, the active one, or signed out', async () => {
 		authenticationStore.set({ user: recruiter, expires });
-		await recordSpaceShown('/jobs');
+		await recordSpaceShown('/legal');
 		await recordSpaceShown('/rita/experiences');
 		authenticationStore.set(loggedOut);
 		await recordSpaceShown('/recruiter');

@@ -3,9 +3,9 @@
 What a page that exists in both languages says of its two addresses, in its `<head>`: the
 canonical link of the language shown, one `hreflang` alternate per language (English is the
 address alone, French adds `?lang=fr`: `localeAlternate`), and the Open Graph URL and locale.
-Mounted once by the `(app)` layout, on the pages search engines list (the job pages, the recruiter
-landing), it writes nothing on an error page; the landing page and the legal pages write their own,
-with their other share tags. A portfolio is not listed: it has none (PortfolioHead.svelte).
+Mounted once by the `(app)` layout, on the pages search engines list (the recruiter landing), it
+writes nothing on an error page; the landing page and the legal pages write their own, with their
+other share tags. A portfolio is not listed: it has none (PortfolioHead.svelte).
 -->
 <script lang="ts">
 	import { page } from '$app/state';
@@ -16,7 +16,7 @@ with their other share tags. A portfolio is not listed: it has none (PortfolioHe
 	let canonical = $derived(localeAlternate(page.url, locale));
 </script>
 
-<!-- An error page (a job that is gone, the API out of reach) is no page of the site: no tags -->
+<!-- An error page (the API out of reach) is no page of the site: no tags -->
 <svelte:head>
 	{#if !page.error}
 		<link rel="canonical" href={canonical} />

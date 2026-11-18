@@ -1,8 +1,8 @@
 import {
-	APPLICABLE_JOB_STATUS,
 	DEFAULT_JOB_MATCH_MIN_SCORE,
 	JOB_MATCH_STEP_LIMITS,
 	JOB_STATUS_LABELS,
+	OPEN_JOB_STATUS,
 	PERFECT_JOB_CRITERIA,
 	WORKFLOW_LIMITS,
 	isValidDomainName,
@@ -329,8 +329,7 @@ export const pickedJob = (view: unknown): JourneyJob | undefined => {
 };
 
 /** Only an open posting can be picked (the API's rule) */
-export const isPickable = (job: { status: JobStatus }): boolean =>
-	job.status === APPLICABLE_JOB_STATUS;
+export const isPickable = (job: { status: JobStatus }): boolean => job.status === OPEN_JOB_STATUS;
 
 /** Open postings first, each group in the order the API listed them (most recently updated) */
 export const sortJobChoices = <T extends { status: JobStatus }>(jobs: readonly T[]): T[] => [

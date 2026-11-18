@@ -7,7 +7,7 @@
 	import { Toast } from '@skeletonlabs/skeleton-svelte';
 	import { toaster } from '#services/toaster.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
-	import { isCurrentSection, recordSpaceShown } from '#services/account.ts';
+	import { recordSpaceShown } from '#services/account.ts';
 	import { sessionCheckedStore } from '#services/stores/index.ts';
 	import { untrack, type Snippet } from 'svelte';
 	import { get } from 'svelte/store';
@@ -19,18 +19,16 @@
 	import { NOINDEX, isNoindexRoute } from '#lib/robots.ts';
 	import { m } from './layout.messages.ts';
 
-	// Pages that belong to no portfolio: the recruiter space (/recruiter) and the public job pages
-	// (/jobs). Same header and toasts as a portfolio, without its rail: the account menu leads
-	// from one to the other (the spaces, Browse jobs), the header's logo to the landing page, and
-	// the language and light/dark switches close the page, next to the legal links.
+	// Pages that belong to no portfolio: the recruiter space (/recruiter). Same header and toasts
+	// as a portfolio, without its rail: the account menu leads from one space to the other, the
+	// header's logo to the landing page, and the language and light/dark switches close the page,
+	// next to the legal links.
 	let { children }: { children: Snippet } = $props();
 
 	$effect(() => {
 		if (!browser) return;
 		document.documentElement.dataset.theme = 'wintry';
 	});
-
-	let inRecruiterSpace = $derived(isCurrentSection(page.url.pathname, '/recruiter'));
 
 	// A page of the recruiter space records it as the account's active space (recordSpaceShown),
 	// so the account menu names the space shown: after each navigation (a link, a bookmark, the
@@ -44,11 +42,9 @@
 		if ($sessionCheckedStore) untrack(recordShown);
 	});
 
-	let header = $derived(inRecruiterSpace ? m.recruiter : m.jobs);
-
 	// The pages of the recruiter space that hold a job description are not listed by search
 	// engines (#lib/robots.ts; the server sends the same as a header): no canonical or hreflang
-	// link there, only the others name their addresses
+	// link there, only the recruiter landing names its addresses
 	let noindex = $derived(isNoindexRoute(page.route.id));
 </script>
 
@@ -62,7 +58,7 @@
 {/if}
 
 <div class="h-full flex flex-col">
-	<Header headerTitle={header.title} headerSubtitle={header.subtitle} homeLink />
+	<Header headerTitle={m.recruiter.title} headerSubtitle={m.recruiter.subtitle} homeLink />
 	<!-- relative: the page's absolutely positioned elements (sr-only text, live regions) are
 	     placed in this scroll container, not at the top of the document, which they would make
 	     scrollable: following an in-page link would then scroll the header out of reach -->

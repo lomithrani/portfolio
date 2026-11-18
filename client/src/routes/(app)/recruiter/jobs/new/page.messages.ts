@@ -13,9 +13,10 @@ export const m = defineMessages({
 	},
 	/** Under the heading (`open`: the status "Open" as portfolio-common names it) */
 	intro: {
-		en: (open: string) => `Describe the job: candidates see it once its status is ${open}.`,
+		en: (open: string) =>
+			`Describe the job: once its status is ${open}, you can pick it on a candidate's Hire page.`,
 		fr: (open: string) =>
-			`Décrivez le poste : les candidats voient l'offre dès que son statut est « ${open} ».`
+			`Décrivez le poste : dès que le statut de l'offre est « ${open} », vous pouvez la choisir sur la page Recruter d'un candidat.`
 	},
 	backToJourney: {
 		en: 'Back to the hiring journey',
@@ -35,8 +36,8 @@ export const m = defineMessages({
 		fr: "L'offre d'emploi importée n'est plus dans ce navigateur : elle a été enregistrée ou abandonnée. Partez de ce formulaire vide, ou importez de nouveau le PDF depuis <jobs>vos offres d'emploi</jobs>."
 	},
 	signInText: {
-		en: 'Sign in to write job descriptions and see the candidates who apply.',
-		fr: "Connectez-vous pour rédiger des offres d'emploi et voir les candidats qui postulent."
+		en: 'Sign in to write job descriptions.',
+		fr: "Connectez-vous pour rédiger des offres d'emploi."
 	},
 
 	// --- Toasts -------------------------------------------------------------------------------
@@ -44,13 +45,15 @@ export const m = defineMessages({
 	created: { en: 'Job description created', fr: "Offre d'emploi créée" },
 	/** `open`: the status "Open" as portfolio-common names it */
 	createdDraft: {
-		en: (open: string) => `It is a draft: only you can see it until you set its status to ${open}.`,
+		en: (open: string) =>
+			`It is a draft: set its status to ${open} to pick it on a candidate's Hire page.`,
 		fr: (open: string) =>
-			`Elle est enregistrée comme brouillon : vous seul pouvez la voir tant que son statut n'est pas « ${open} ».`
+			`Elle est enregistrée comme brouillon : passez son statut à « ${open} » pour la choisir sur la page Recruter d'un candidat.`
 	},
-	createdPublic: {
-		en: 'It is public on its job page.',
-		fr: 'Elle est publique sur sa page.'
+	/** Created with another status than draft */
+	createdNotDraft: {
+		en: "Pick it on a candidate's Hire page to show it to them: only an open job description can be picked.",
+		fr: "Choisissez-la sur la page Recruter d'un candidat pour la lui présenter : seule une offre d'emploi ouverte peut être choisie."
 	},
 	openIt: { en: 'Open it', fr: "Ouvrir l'offre" },
 	/** Created from a hiring journey, with the status Open */

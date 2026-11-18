@@ -200,7 +200,7 @@ describe('what a recruiter can say of a job (POST /jobs)', () => {
       expect({ status: created.status, text: created.status === 200 ? '' : created.text }).toEqual({ status: 200, text: '' });
       const read = await call('GET', `/recruiter/jobs/${created.json()._id}`, { cookie: recruiter.cookie });
       expect(read.status).toBe(200);
-      const { _id, createdAt, updatedAt, publishedAt, applicants, ...fields } = read.json();
+      const { _id, createdAt, updatedAt, publishedAt, ...fields } = read.json();
       // As sent, field for field
       expect(fields).toEqual(JSON.parse(JSON.stringify(posting)));
       for (const path of fieldPaths(fields)) stored.add(path);

@@ -61,6 +61,6 @@ export const account = new Elysia()
         auth: t.Optional(t.String())
       }),
       detail: {
-        summary: 'Delete the signed-in account and all its data (portfolio, journeys, job postings, applications, schedules)'
+        summary: 'Delete the signed-in account and all its data (portfolio, journeys, job postings, schedules)'
       }
     })

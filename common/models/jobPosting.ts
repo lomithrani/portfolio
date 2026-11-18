@@ -7,17 +7,16 @@ import { jobPostingMessages as m } from './jobPosting.messages';
 // ── Values ──────────────────────────────────────────────────
 
 /**
- * draft: only its recruiter sees it; open: public, takes applications; on_hold: public, paused
- * (no applications); filled: someone was hired; closed: withdrawn without hiring
+ * draft: being written; open: hiring, the recruiter can pick it on a candidate's Hire page (the
+ * job step); on_hold: paused; filled: someone was hired; closed: withdrawn without hiring. Only
+ * an open posting can be picked. No status makes a posting public: its recruiter reads it, and
+ * the candidates on whose Hire page they pick it
  */
 export const JOB_STATUSES = ['draft', 'open', 'on_hold', 'filled', 'closed'] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
-/** Statuses anyone can see (GET /jobs/:id); a draft is its recruiter's alone */
-export const PUBLIC_JOB_STATUSES: readonly JobStatus[] = ['open', 'on_hold', 'filled', 'closed'];
-
-/** Candidates can apply to a posting only while it is open */
-export const APPLICABLE_JOB_STATUS: JobStatus = 'open';
+/** The status of a posting that is hiring: the only one the job step of a hiring journey takes */
+export const OPEN_JOB_STATUS: JobStatus = 'open';
 
 /** on_site: at the office; hybrid: some days remote; remote: fully remote (no office to name) */
 export const WORK_MODES = ['on_site', 'hybrid', 'remote'] as const;
@@ -140,9 +139,7 @@ export const JOB_LIMITS = {
 	/** 0: the job is the CEO; 1: reports to the CEO */
 	levelsToCeo: { min: 0, max: 30 },
 	/** Postings a recruiter can keep */
-	jobsPerRecruiter: 200,
-	/** Applicants listed per posting */
-	applicantsPerJob: 1_000
+	jobsPerRecruiter: 200
 } as const;
 
 // ── Shape ───────────────────────────────────────────────────

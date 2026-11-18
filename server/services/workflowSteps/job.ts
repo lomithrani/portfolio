@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import { APPLICABLE_JOB_STATUS } from 'portfolio-common';
+import { OPEN_JOB_STATUS } from 'portfolio-common';
 import type { JobStatus } from 'portfolio-common';
 import { JobPosting } from '../../models/database';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../../errors';
@@ -74,7 +74,7 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
   evaluate: async (ctx) => {
     const job = await pickedJob(ctx);
     return {
-      status: job?.status === APPLICABLE_JOB_STATUS ? 'succeeded' : 'pending',
+      status: job?.status === OPEN_JOB_STATUS ? 'succeeded' : 'pending',
       ...(job ? { view: { job } } : {})
     };
   },
@@ -89,7 +89,7 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
     await requireRecruiterSpace(visitorId);
     const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }, { status: 1 }).lean();
     if (!job) throw new ResourceNotFoundError(JOB_NOT_FOUND);
-    if (job.status !== APPLICABLE_JOB_STATUS) throw new ConflictError(JOB_NOT_OPEN);
+    if (job.status !== OPEN_JOB_STATUS) throw new ConflictError(JOB_NOT_OPEN);
     return { job: job._id.toString(), selectedAt: new Date() };
   },
   // What the meeting is about

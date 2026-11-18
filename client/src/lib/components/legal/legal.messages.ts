@@ -7,7 +7,6 @@ import { defineMessages } from 'portfolio-common';
 export const m = defineMessages({
 	footer: {
 		label: { en: 'Site', fr: 'Site' },
-		jobs: { en: 'Browse jobs', fr: "Offres d'emploi" },
 		recruiters: { en: 'For recruiters', fr: 'Pour les recruteurs' }
 	},
 	links: {

@@ -11,8 +11,7 @@
 		InformationCircle,
 		PencilSquare,
 		Plus,
-		Trash,
-		Users
+		Trash
 	} from 'svelte-heros-v2';
 	import { currentConsent } from 'portfolio-common';
 	import Rich from '#lib/i18n/Rich.svelte';
@@ -46,9 +45,7 @@
 		type JobImportStatus
 	} from '#services/jobImport.ts';
 	import {
-		applicantCountText,
 		networkError,
-		deleteJobText,
 		failureText,
 		filterJobs,
 		formatDay,
@@ -539,13 +536,6 @@
 								{#snippet meta()}
 									<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 										<p class="flex flex-wrap items-center gap-x-4 gap-y-1">
-											<a
-												href={resolve('/(app)/recruiter/jobs/[id]#applicants', { id: job._id })}
-												class="inline-flex items-center gap-1.5 font-medium hover:underline"
-											>
-												<Users size="16" aria-hidden="true" />
-												{applicantCountText(job.applicantCount)}
-											</a>
 											<span>
 												<Rich text={m.updated(formatDay(job.updatedAt))}>
 													{#snippet time(day)}
@@ -667,7 +657,7 @@
 <ConfirmDialog
 	open={!!deleting && !!user}
 	title={deleting ? recruiterMessages.deleteJobTitle(deleting.job.title) : ''}
-	description={deleting ? deleteJobText(deleting.job.applicantCount) : ''}
+	description={recruiterMessages.deleteJob}
 	confirmLabel={common.delete}
 	busy={deleting?.busy ?? false}
 	error={deleting?.error ?? ''}

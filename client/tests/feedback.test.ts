@@ -73,7 +73,7 @@ test.beforeEach(async ({ page }) => {
 test.describe('feedback, signed out', () => {
 	test('offers nothing to send', async ({ page }) => {
 		const asked = await enabled(page);
-		await gotoHydrated(page, '/jobs');
+		await gotoHydrated(page, '/recruiter');
 		await expect(page.getByRole('link', { name: 'Privacy' }).first()).toBeVisible();
 		await expect(footerButton(page)).toHaveCount(0);
 		expect(asked).toHaveLength(0);
@@ -158,7 +158,7 @@ test.describe('feedback, signed in', () => {
 		page
 	}) => {
 		await enabled(page, false);
-		await gotoHydrated(page, '/jobs');
+		await gotoHydrated(page, '/recruiter');
 
 		await page.locator('[data-account-menu]').click();
 		await page.getByRole('menuitem', { name: 'Send feedback' }).click();
@@ -179,7 +179,7 @@ test.describe('feedback, signed in', () => {
 			headers: { 'retry-after': '3600' }
 		};
 		await stubFeedback(page, 'POST', () => answer);
-		await gotoHydrated(page, '/jobs');
+		await gotoHydrated(page, '/recruiter');
 
 		await footerButton(page).click();
 		await message(page).fill('I would like to add a photo to my portfolio.');

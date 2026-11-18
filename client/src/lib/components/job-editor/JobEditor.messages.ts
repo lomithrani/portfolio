@@ -194,8 +194,8 @@ export const m = defineMessages({
 	/** After the number of openings */
 	positions: { en: 'positions', fr: 'postes' },
 	descriptionIntro: {
-		en: 'The job, its team and its missions, as candidates will read them on the job page.',
-		fr: "Le poste, son équipe et ses missions, tels que les candidats les liront sur la page de l'offre."
+		en: 'The job, its team and its missions, as candidates will read them.',
+		fr: 'Le poste, son équipe et ses missions, tels que les candidats les liront.'
 	},
 	/** Markdown, like the description it shows the shape of */
 	descriptionPlaceholder: {
@@ -270,7 +270,7 @@ export const m = defineMessages({
 	},
 	/** How screen readers hear the unit of a pay amount (€) */
 	eurosGross: { en: 'euros, gross', fr: 'euros, brut' },
-	/** Before the pay as the job page writes it */
+	/** Before the pay as candidates read it */
 	candidatesSee: { en: 'Candidates see:', fr: 'Les candidats voient :' },
 	variablePayHint: {
 		en: 'Bonus, commission, profit-sharing… in a few words.',

@@ -12,7 +12,6 @@ import {
   AppointmentSchedule,
   Domain,
   Experience,
-  JobApplication,
   JobPosting,
   RateLimitCounter,
   Skill,
@@ -56,7 +55,7 @@ beforeAll(async () => {
   assertDisposableDatabase(env.MONGO_URL);
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
   connected = true;
-  await Promise.all([User.init(), Domain.init(), Skill.init(), JobApplication.init(), WorkflowInstance.init()]);
+  await Promise.all([User.init(), Domain.init(), Skill.init(), WorkflowInstance.init()]);
 });
 
 afterAll(async () => {
@@ -77,9 +76,7 @@ afterEach(async () => {
   const domains = await Domain.find({ $or: [{ admin: { $in: userIds } }, { name: named }] });
   await Experience.deleteMany({ _id: { $in: domains.flatMap((domain) => domain.experiences.map(String)) } });
   await Domain.deleteMany({ _id: { $in: domains.map((domain) => domain._id) } });
-  const jobIds = (await JobPosting.find({ recruiter: { $in: userIds } }, '_id')).map((job) => job._id);
-  await JobApplication.deleteMany({ $or: [{ job: { $in: jobIds } }, { candidate: { $in: userIds } }] });
-  await JobPosting.deleteMany({ _id: { $in: jobIds } });
+  await JobPosting.deleteMany({ recruiter: { $in: userIds } });
   await Workflow.deleteMany({ user: { $in: userIds } });
   await PerfectJob.deleteMany({ user: { $in: userIds } });
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: userIds } }, { visitor: { $in: userIds } }] });
@@ -151,7 +148,7 @@ const booking = (user: string, scheduleId: Types.ObjectId, hoursAhead: number) =
 /**
  * An account with data in every collection that references a user: a domain
  * with an experience (through the API), a hiring journey, progress of a
- * visitor in it, a job posting with an applicant, a schedule with a booking
+ * visitor in it, a job posting, a schedule with a booking
  */
 const accountWithData = async (name: string) => {
   const user = await login(name);
@@ -197,8 +194,7 @@ const accountWithData = async (name: string) => {
   const posting = await JobPosting.create(job(user.userId, t.id(`${name}-job`)));
   const scheduleDoc = await AppointmentSchedule.create(schedule(user.userId));
   await AppointmentBooking.create(booking(user.userId, scheduleDoc._id, 48 + Math.floor(Math.random() * 1000)));
-  const domain = (await Domain.findOne({ name: domainName }))!;
-  return { ...user, domainName, domain, experienceId: experience.json()._id as string, posting, schedule: scheduleDoc };
+  return { ...user, domainName, experienceId: experience.json()._id as string, posting, schedule: scheduleDoc };
 };
 
 /** Every document of the account `userId` still stored, by collection */
@@ -213,7 +209,6 @@ const remaining = async (userId: string, domainName: string, experienceId: strin
   workflowInstances: await WorkflowInstance.countDocuments({ $or: [{ owner: userId }, { visitor: userId }] }),
   perfectJobs: await PerfectJob.countDocuments({ user: userId }),
   jobPostings: await JobPosting.countDocuments({ recruiter: userId }),
-  jobApplications: await JobApplication.countDocuments({ candidate: userId }),
   appointmentSchedules: await AppointmentSchedule.countDocuments({ user: userId }),
   appointmentBookings: await AppointmentBooking.countDocuments({ user: userId }),
   bookedMeetings: await AppointmentBooking.countDocuments({ visitor: userId })
@@ -228,7 +223,6 @@ const nothing = {
   workflowInstances: 0,
   perfectJobs: 0,
   jobPostings: 0,
-  jobApplications: 0,
   appointmentSchedules: 0,
   appointmentBookings: 0,
   bookedMeetings: 0
@@ -267,9 +261,6 @@ describe('DELETE /me', () => {
   it("deletes the account and everything tied to it, and nothing of other accounts", async () => {
     const candidate = await accountWithData('candidate');
     const other = await accountWithData('other');
-    // Applications both ways: to the other's posting, and the other to this account's posting
-    await JobApplication.create({ job: other.posting._id, candidate: candidate.userId, domain: candidate.domain._id, source: 'applied' });
-    await JobApplication.create({ job: candidate.posting._id, candidate: other.userId, domain: other.domain._id, source: 'applied' });
     // Journey progress both ways
     const step = { meeting: { data: { booked: true }, updatedAt: new Date() } };
     await WorkflowInstance.create({ owner: candidate.userId, visitor: other.userId, steps: step });
@@ -289,7 +280,6 @@ describe('DELETE /me', () => {
       workflowInstances: 2,
       perfectJobs: 1,
       jobPostings: 1,
-      jobApplications: 1,
       appointmentSchedules: 1,
       appointmentBookings: 1,
       bookedMeetings: 1
@@ -300,13 +290,10 @@ describe('DELETE /me', () => {
     expect(result.status).toBe(204);
     expect(result.text).toBe('');
     expect(await remaining(candidate.userId, candidate.domainName, candidate.experienceId)).toEqual(nothing);
-    // The applications to the deleted posting went with it
-    expect(await JobApplication.countDocuments({ job: candidate.posting._id })).toBe(0);
     // The other account keeps everything of its own, minus what pointed at the deleted one
     expect(await remaining(other.userId, other.domainName, other.experienceId)).toEqual({
       ...otherBefore,
-      workflowInstances: 0,
-      jobApplications: 0
+      workflowInstances: 0
     });
     expect(await JobPosting.exists({ _id: other.posting._id })).not.toBeNull();
     expect(await AppointmentSchedule.exists({ _id: other.schedule._id })).not.toBeNull();

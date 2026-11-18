@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from 'svelte/server';
 import Markdown from './Markdown.svelte';
 
-// Markdown.svelte as the server renders it (the public job page is rendered on the server)
+// Markdown.svelte as the server renders it (as on a page rendered on the server)
 const rendered = (props: { content: string } & Record<string, unknown>) =>
 	render(Markdown, { props }).body;
 

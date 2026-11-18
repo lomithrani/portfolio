@@ -38,16 +38,14 @@ const portfolioHeadSource = Object.values(
 )[0];
 
 // The pages search engines may list, with their canonical links: the landing page, the legal
-// pages, the public job pages and the recruiter landing. A new page is either added here or
-// under one of NOINDEX_ROUTES (#lib/robots.ts)
+// pages and the recruiter landing. A new page is either added here or under one of
+// NOINDEX_ROUTES (#lib/robots.ts)
 const LISTED_PAGES = [
 	'/(site)',
 	'/(site)/legal',
 	'/(site)/legal/cookies',
 	'/(site)/legal/privacy',
 	'/(site)/legal/terms',
-	'/(app)/jobs',
-	'/(app)/jobs/[id]',
 	'/(app)/recruiter'
 ];
 

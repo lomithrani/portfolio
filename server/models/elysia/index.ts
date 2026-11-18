@@ -19,8 +19,6 @@ export {
   jobPostingEditRequest,
   jobStatus,
   jobStatusRequest,
-  jobApplicantRequest,
-  jobApplicantParams,
   userMode,
   jobImportRequest
 } from "./jobPostingRequest.models";

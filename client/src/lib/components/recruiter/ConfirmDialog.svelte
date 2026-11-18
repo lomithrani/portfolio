@@ -1,6 +1,6 @@
 <!--
 @component
-Asks before something that cannot be undone: deleting a job description, removing an applicant.
+Asks before something that cannot be undone: deleting a job description.
 The page runs the request (`busy` while it does) and closes the dialog once it is done; a failure
 shows as `error` in the dialog, which stays open for a retry. Focus starts on Cancel (the safe
 choice); Escape and the backdrop cancel, except while the request runs.

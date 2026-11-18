@@ -54,7 +54,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		expect(await languageCookie(page)).toBeUndefined();
 	});
 
-	test('reads a portfolio, the job board and the recruiter page in French', async ({ page }) => {
+	test('reads a portfolio and the recruiter page in French', async ({ page }) => {
 		const languages: string[] = [];
 		page.on('request', (request) => {
 			if (request.url().startsWith(API_URL)) {
@@ -68,10 +68,6 @@ test.describe('a visitor whose browser prefers French', () => {
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('louis.gentil');
 		await expect(page.getByRole('button', { name: 'Se connecter' })).toBeVisible();
 		await expect(page.getByRole('navigation', { name: 'Informations légales' })).toBeVisible();
-
-		await page.goto('/jobs');
-		await expect(page.getByRole('heading', { level: 2, name: 'Offres ouvertes' })).toBeVisible();
-		await expect(page.getByRole('heading', { level: 1, name: "Offres d'emploi" })).toBeVisible();
 
 		// Rendered in the browser only: the page's script reads the language off <html lang>
 		await page.goto('/recruiter');
@@ -143,8 +139,13 @@ test.describe('a visitor whose browser prefers English', () => {
 
 		// The rest of the site follows: a page opened in the app, then one loaded from the server
 		await page.getByRole('navigation', { name: 'Site' }).getByRole('link').first().click();
-		await expect(page).toHaveURL(/\/jobs$/);
-		await expect(page.getByRole('heading', { level: 2, name: 'Offres ouvertes' })).toBeVisible();
+		await expect(page).toHaveURL(/\/recruiter$/);
+		await expect(
+			page.getByRole('heading', {
+				level: 2,
+				name: 'Trouvez des talents qui ont exactement les compétences recherchées'
+			})
+		).toBeVisible();
 		await page.goto('/louis.gentil/experiences');
 		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
 	});
@@ -162,7 +163,7 @@ test.describe('a visitor whose browser prefers English', () => {
 		expect((await languageCookie(page))?.value).toBe('en');
 
 		// Kept without the parameter
-		await page.goto('/jobs');
+		await page.goto('/legal/terms');
 		await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 	});
 
@@ -191,24 +192,23 @@ test.describe('a visitor whose browser prefers English', () => {
 		await context.addCookies([{ name: 'lang', value: 'en', url: baseURL! }]);
 		// A shared address, opened from another site
 		await page.setExtraHTTPHeaders({ 'sec-fetch-site': 'cross-site' });
-		await page.goto('/jobs?lang=fr');
+		await page.goto('/louis.gentil/experiences?lang=fr');
 		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
 		expect((await languageCookie(page))?.value).toBe('en');
 
 		// The page's own data requests carry its address, `?lang=` included, from this site: they
 		// are no choice either (invalidateAll sends one)
-		const data = await page.request.get('/jobs/__data.json?lang=fr', {
+		const data = await page.request.get('/louis.gentil/experiences/__data.json?lang=fr', {
 			headers: { 'sec-fetch-site': 'same-origin' }
 		});
 		expect(data.ok()).toBe(true);
 		expect((await languageCookie(page))?.value).toBe('en');
 
-		// The job pages tell search engines where each language is
-		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/jobs\?lang=fr$/);
-		await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute(
-			'href',
-			/\/jobs$/
-		);
+		// A portfolio is not listed: it names no address of either language for search engines,
+		// but its preview says which language the link shows
+		await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
+		await expect(page.locator('link[rel="alternate"][hreflang]')).toHaveCount(0);
+		await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute('content', 'fr_FR');
 	});
 
 	test('a language the site does not have falls back to the browser, then English', async ({

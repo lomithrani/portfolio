@@ -157,24 +157,19 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <h4 id="data-recruiter">Espace recruteur et offres d'emploi</h4>
 <p>
 	Les recruteurs rédigent des offres d'emploi : intitulé, entreprise, lieu, mode de travail,
-	contrat, temps de travail, rémunération, prérequis, avantages et description. Une fois publiée,
-	une offre est publique, mais elle ne nomme jamais le compte du recruteur. Une offre peut aussi
-	être importée depuis un PDF : il est envoyé à Anthropic comme un CV, et nous ne le conservons pas.
-	Lorsque ce site calcule des temps de trajet (voir <a class="link-text" href="#data-perfect-job"
-		>poste idéal</a
-	>), l'adresse du lieu de travail d'une offre (rue, code postal et ville) est transmise à la
-	Géoplateforme de l'IGN, le service cartographique qui la localise : pendant sa saisie dans
-	l'éditeur d'offre, lorsque ses champs sont quittés, et lorsque l'offre est notée dans un parcours
-	de recrutement comportant un critère de trajet, même pour un brouillon jamais publié.
-</p>
-
-<h4 id="data-applications">Candidatures</h4>
-<p>
-	Lorsque vous postulez à une offre avec votre portfolio, le recruteur qui l'a publiée voit votre
-	candidature avec l'adresse et le titre de l'en-tête de votre portfolio. Un recruteur peut aussi
-	ajouter un portfolio public à la liste des candidats de l'une de ses offres ; le propriétaire de
-	ce portfolio peut alors figurer dans la liste du recruteur. Vous pouvez retirer une candidature,
-	et le recruteur peut la retirer de sa liste ; elle est supprimée avec l'offre.
+	contrat, temps de travail, rémunération, prérequis, avantages et description. Une offre n'est pas
+	publique : le site ne publie ni ne liste aucune offre. Son recruteur la conserve dans son espace
+	recruteur, et la présente au propriétaire d'un portfolio en la choisissant dans le <a
+		class="link-text"
+		href="#data-journey">parcours de recrutement</a
+	>
+	de celui-ci. Une offre peut aussi être importée depuis un PDF : il est envoyé à Anthropic comme un CV,
+	et nous ne le conservons pas. Lorsque ce site calcule des temps de trajet (voir
+	<a class="link-text" href="#data-perfect-job">poste idéal</a>), l'adresse du lieu de travail d'une
+	offre (rue, code postal et ville) est transmise à la Géoplateforme de l'IGN, le service
+	cartographique qui la localise : pendant sa saisie dans l'éditeur d'offre (brouillons compris),
+	lorsque ses champs sont quittés, et lorsque l'offre est notée dans un parcours de recrutement
+	comportant un critère de trajet.
 </p>
 
 <h4 id="data-journey">Parcours de recrutement et rendez-vous</h4>
@@ -325,7 +320,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				<td>Contrat, art. 6(1)(b)</td>
 			</tr>
 			<tr>
-				<td>Espace recruteur, pages publiques des offres et candidatures</td>
+				<td>Espace recruteur et ses offres d'emploi</td>
 				<td>Contrat, art. 6(1)(b)</td>
 			</tr>
 			<tr>
@@ -392,18 +387,14 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <h3 id="recipients">Qui reçoit vos données</h3>
 <ul>
 	<li>
-		<strong>Le public</strong> : le contenu des portfolios, les offres d'emploi publiées (sans l'identité
-		du recruteur), les notes des parcours et la partie publique des agendas de rendez-vous ; sur GitHub,
-		les suggestions d'étapes et les avis que vous envoyez (sans votre nom).
-	</li>
-	<li>
-		<strong>Les recruteurs</strong> : l'adresse et le titre de l'en-tête des portfolios figurant dans
-		la liste des candidats de leurs offres.
+		<strong>Le public</strong> : le contenu des portfolios, les notes des parcours et la partie publique
+		des agendas de rendez-vous ; sur GitHub, les suggestions d'étapes et les avis que vous envoyez (sans
+		votre nom).
 	</li>
 	<li>
 		<strong>Les propriétaires de portfolio</strong> : le nom, l'adresse e-mail et la note d'un visiteur
-		qui réserve un rendez-vous, avec les éléments des étapes précédentes du parcours, dans l'invitation
-		de leur agenda Google.
+		qui réserve un rendez-vous, avec les éléments des étapes précédentes du parcours (comme l'intitulé
+		et l'entreprise de l'offre choisie par un recruteur), dans l'invitation de leur agenda Google.
 	</li>
 	<li>
 		<strong>Les visiteurs qui réservent un rendez-vous</strong> : l'adresse e-mail du compte du propriétaire
@@ -507,7 +498,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			<tr>
 				<td>
 					Portfolio, expériences, parcours de recrutement, poste idéal (y compris l'adresse d'où
-					vous partez), agendas de rendez-vous, offres d'emploi, candidatures
+					vous partez), agendas de rendez-vous, offres d'emploi
 				</td>
 				<td>Jusqu'à ce que vous les supprimiez, ou votre compte</td>
 			</tr>
@@ -598,9 +589,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	>
 	est immédiate : votre compte, votre portfolio et ses expériences, votre parcours de recrutement et la
 	progression de ses visiteurs, votre progression dans d'autres parcours, vos agendas et réservations
-	de rendez-vous, vos offres d'emploi et leurs candidatures, ainsi que vos candidatures sont aussitôt
-	retirés de notre base de données, les jetons Google Agenda sont supprimés et nous demandons à Google
-	de révoquer l'accès (vous pouvez le vérifier dans les
+	de rendez-vous, ainsi que vos offres d'emploi sont aussitôt retirés de notre base de données, les jetons
+	Google Agenda sont supprimés et nous demandons à Google de révoquer l'accès (vous pouvez le vérifier
+	dans les
 	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 		>autorisations de votre compte Google</a
 	>), et l'adresse de votre portfolio redevient disponible. Ce qui reste : les noms de compétences
@@ -651,8 +642,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 <h3 id="required">Ce que vous devez fournir</h3>
 <p>
-	Un compte Google est nécessaire pour vous connecter : sans lui, vous pouvez lire les portfolios et
-	les offres d'emploi, mais pas créer de portfolio, postuler ni publier. La réservation d'un
+	Un compte Google est nécessaire pour vous connecter : sans lui, vous pouvez lire un portfolio dont
+	vous avez l'adresse, mais pas en créer un ni rédiger d'offre d'emploi. La réservation d'un
 	rendez-vous nécessite votre nom et votre adresse e-mail, dont le propriétaire du portfolio a
 	besoin pour vous rencontrer. Tout le reste, y compris l'import de CV, est facultatif.
 </p>
@@ -663,7 +654,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	brouillons peuvent être incomplets ou erronés : vous les relisez et les modifiez, et rien n'est
 	publié tant que vous ne l'ajoutez pas. Aucune décision produisant des effets juridiques ou vous
 	affectant de manière significative n'est prise par des moyens automatisés : le site ne note, ne
-	classe ni ne filtre les candidats, et les recruteurs voient les candidatures telles qu'elles sont.
+	classe ni ne filtre les candidats.
 </p>
 <p>
 	Lorsque ce site l'active, Claude trie aussi les avis que vous envoyez (bug, demande de

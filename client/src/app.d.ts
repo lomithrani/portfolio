@@ -11,7 +11,7 @@ declare global {
 			 * in the page's language (a data request can be answered in another one, see
 			 * hooks.server.ts), rather than show the text the server chose
 			 */
-			code?: 'domainNotFound' | 'notFound' | 'unavailable' | 'jobNotFound' | 'jobsUnavailable';
+			code?: 'domainNotFound' | 'notFound' | 'unavailable';
 		}
 		interface Locals {
 			/** The language of the request (hooks.server.ts) */

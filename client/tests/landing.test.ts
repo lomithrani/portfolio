@@ -115,7 +115,7 @@ test.describe('landing page, signed out', () => {
 		await expect(currentStep(page)).toContainText('Sign in with Google');
 	});
 
-	test('the footer leads to the job pages and holds the light/dark switch; the logo leads back', async ({
+	test('the footer leads to the recruiter space and holds the light/dark switch; the logo leads back', async ({
 		page
 	}) => {
 		await stubGoogle(page);
@@ -134,6 +134,9 @@ test.describe('landing page, signed out', () => {
 			'href',
 			'/recruiter'
 		);
+		// The job board is gone: no link to it
+		await expect(page.getByRole('link', { name: 'Browse jobs' })).toHaveCount(0);
+		await expect(page.locator('a[href="/jobs"]')).toHaveCount(0);
 
 		// The switch: one for the page, kept in this browser
 		const html = page.locator('html');
@@ -146,12 +149,13 @@ test.describe('landing page, signed out', () => {
 			String(!dark)
 		);
 
-		// The job pages: no bar either, the switch next to the legal links, the logo back to here
-		await site.getByRole('link', { name: 'Browse jobs' }).click();
-		await expect(page).toHaveURL(/\/jobs$/);
-		await expect(page.getByRole('heading', { level: 2, name: 'Open positions' })).toBeVisible();
+		// The recruiter space: no bar either, the switch next to the legal links, the logo back to here
+		await site.getByRole('link', { name: 'For recruiters' }).click();
+		await expect(page).toHaveURL(/\/recruiter$/);
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'Find talent with exactly the skills you need' })
+		).toBeVisible();
 		await expect(outsidePage).toHaveCount(0);
-		await expect(page.getByRole('navigation', { name: 'Jobs' })).toHaveCount(0);
 		await expect(
 			page
 				.locator('main > footer')

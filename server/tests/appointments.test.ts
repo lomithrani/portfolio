@@ -16,7 +16,6 @@ import {
   AppointmentSchedule,
   Domain,
   Experience,
-  JobApplication,
   JobPosting,
   RateLimitCounter,
   Skill,
@@ -394,9 +393,7 @@ const removeTestData = async (suffix: string) => {
   await Workflow.deleteMany({ user: { $in: userIds } });
   await PerfectJob.deleteMany({ user: { $in: userIds } });
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: userIds } }, { visitor: { $in: userIds } }] });
-  const jobIds = (await JobPosting.find({ recruiter: { $in: userIds } }, '_id')).map((job) => job._id);
-  await JobApplication.deleteMany({ $or: [{ job: { $in: jobIds } }, { candidate: { $in: userIds } }] });
-  await JobPosting.deleteMany({ _id: { $in: jobIds } });
+  await JobPosting.deleteMany({ recruiter: { $in: userIds } });
   await Skill.deleteMany({ displayName: named });
   await User.deleteMany({ _id: { $in: userIds } });
 };
@@ -1981,7 +1978,7 @@ describe('no Google token in any API response', () => {
       jobImportCounters.globalKey = savedJobImportKey;
     }
 
-    // Job postings and their applicants (tests/jobs.test.ts covers them)
+    // Job postings (tests/jobs.test.ts covers them)
     const jobBody = {
       title: 'Backend engineer',
       description: 'Build the billing service',
@@ -1996,22 +1993,13 @@ describe('no Google token in any API response', () => {
     const jobId = job.json()._id as string;
     expect((await call('PUT', `/jobs/${jobId}`, { ...auth, body: { ...jobBody, title: 'Staff engineer' } })).status).toBe(200);
     expect((await call('PUT', `/jobs/${jobId}/status`, { ...auth, body: { status: 'open' } })).status).toBe(200);
-    expect((await call('GET', '/jobs')).status).toBe(200);
-    expect((await call('GET', `/jobs/${jobId}`)).status).toBe(200);
     expect((await call('GET', '/recruiter/jobs', auth)).status).toBe(200);
     expect((await call('GET', `/recruiter/jobs/${jobId}`, auth)).status).toBe(200);
-    const added = await call('POST', `/jobs/${jobId}/applicants`, { ...auth, body: { domain: t.id('domain') } });
-    expect(added.status).toBe(200);
-    expect((await call('DELETE', `/jobs/${jobId}/applicants/${added.json()._id}`, auth)).status).toBe(200);
     // The job step of the owner's hiring journey (tests/workflows.test.ts covers it)
     expect((await call('PUT', '/workflow', { cookie: owner.cookie, body: workflowRequestBody })).status).toBe(200);
     expect(
       (await call('POST', `/workflow/domains/${t.id('domain')}/steps/job`, { ...auth, body: { input: { jobId } } })).status
     ).toBe(200);
-    const candidate = { cookie: owner.cookie };
-    expect((await call('GET', `/jobs/${jobId}/application`, candidate)).status).toBe(200);
-    expect((await call('POST', `/jobs/${jobId}/application`, { ...candidate, body: {} })).status).toBe(200);
-    expect((await call('DELETE', `/jobs/${jobId}/application`, candidate)).status).toBe(200);
     expect((await call('DELETE', `/jobs/${jobId}`, auth)).status).toBe(200);
 
     expect((await call('GET', '/appointments/calendars', auth)).status).toBe(200);

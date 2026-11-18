@@ -260,7 +260,8 @@ that each field is a string instead of returning `config` as it is.
 visitor books. Its lines go into the calendar event's description, between the "Booked via
 portfolio by ..." line and the visitor's notes, so both the owner and the visitor read them. The
 job step returns `Job: <title> — <company>` and, when the request came from an allowed web origin,
-the public link of the posting. The note describes nothing.
+a link to `/jobs/<id>` on that origin (the posting has no public page any more: the job board is
+gone). The note describes nothing.
 
 ### 3. The client entry: `client/src/lib/components/hire/steps/`
 

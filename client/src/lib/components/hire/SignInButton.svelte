@@ -1,9 +1,8 @@
 <!--
 @component
-A "Sign in with Google" button, with no space chooser: the apply panel's signs in to the candidate
-space (`mode`, the default: the visitor stays on the job page to apply); the hiring journey's job
-step passes null, so the account keeps the space it last chose (it creates its recruiter space next,
-if it has none).
+A "Sign in with Google" button, with no space chooser, for the steps of a hiring journey (the note
+and job steps): by default (`mode` null) the account keeps the space it last chose (on the job
+step it creates its recruiter space next, if it has none); `mode` signs in to that space instead.
 `onSignedIn` runs once the session is stored.
 Google's sign-in is loaded only once the visitor asks for it: a local "Sign in with Google" button
 first (nothing reaches accounts.google.com before), then Google's button and its One Tap prompt.
@@ -17,11 +16,11 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 	import { login } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
-	import { m } from './ApplySignIn.messages.ts';
+	import { m } from './SignInButton.messages.ts';
 
 	let {
 		onSignedIn,
-		mode = 'candidate'
+		mode = null
 	}: {
 		onSignedIn?: () => void;
 		/** The space to sign in to; null keeps the one the account last chose */
@@ -55,7 +54,7 @@ clicked (the header's sign-in takes it back when it is clicked in turn).
 			clickedAt = 0;
 			errorMessage = '';
 			status = 'signing-in';
-			// Read before signing in: once the session is stored, the panel replaces this component
+			// Read before signing in: once the session is stored, the step replaces this component
 			// (destroyed by the time login() returns), and still has to hear about it
 			const notify = onSignedIn;
 			const signedIn = await login(credential, mode ?? undefined);

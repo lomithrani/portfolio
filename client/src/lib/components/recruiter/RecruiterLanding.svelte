@@ -65,7 +65,7 @@ choosing a space.
 	const features = [
 		{ icon: DocumentText, ...m.features.job },
 		{ icon: ChartBar, ...m.features.match },
-		{ icon: Users, ...m.features.applicants },
+		{ icon: Users, ...m.features.meetings },
 		{
 			icon: DocumentArrowUp,
 			title: m.features.pdf.title,
@@ -259,10 +259,4 @@ choosing a space.
 			</li>
 		{/each}
 	</ul>
-
-	<p class="text-center">
-		<a href={resolve('/(app)/jobs')} class="btn btn-sm hover:preset-tonal underline">
-			{m.browse}
-		</a>
-	</p>
 </section>

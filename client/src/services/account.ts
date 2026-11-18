@@ -555,7 +555,7 @@ const isUnknownUser = (error: { status: unknown; value?: unknown }): boolean =>
 
 /**
  * Deletes the signed-in account and everything tied to it (DELETE /me): its portfolio, hiring
- * journey, job postings, applications and schedules; the API asks Google to revoke its Google
+ * journey, job postings and schedules; the API asks Google to revoke its Google
  * Calendar access and ends the session. Then this browser forgets the account: the session, its
  * drafts (clearUserBrowserData) and Google's automatic sign-in. A 401 saying the account no longer
  * exists counts as deleted: a retry after a lost answer (the first request did delete it), or a

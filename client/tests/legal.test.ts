@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 // The legal pages (legal notice, privacy policy, terms of use, cookies), in English and in French
 // (?lang=fr), and the legal links every page shows: the footer of the site's own pages, the
-// compact links at the end of the portfolios and of the job pages. Runs against the CI seed (the
+// compact links at the end of the portfolios and of the recruiter space. Runs against the CI seed (the
 // 'louis.gentil' portfolio exists); the visitor is anonymous. The publisher's details come from
 // the web server's LEGAL_* variables, which CI does not set: the pages then say so.
 
@@ -176,10 +176,8 @@ test.describe('legal pages', () => {
 		await expect(page.locator('nav:not(header nav, main nav)')).toHaveCount(0);
 		await expect(page.getByRole('navigation', { name: 'Site' })).toHaveCount(1);
 		const site = page.locator('main > footer').getByRole('navigation', { name: 'Site' });
-		await expect(site.getByRole('link', { name: "Offres d'emploi" })).toHaveAttribute(
-			'href',
-			'/jobs'
-		);
+		// The job board is gone: no link to it
+		await expect(site.getByRole('link', { name: "Offres d'emploi" })).toHaveCount(0);
 		await expect(site.getByRole('link', { name: 'Pour les recruteurs' })).toHaveAttribute(
 			'href',
 			'/recruiter'
@@ -281,8 +279,8 @@ test.describe('legal links', () => {
 		await expect(page.getByRole('heading', { level: 2, name: 'Privacy policy' })).toBeVisible();
 	});
 
-	test('the job pages link the legal pages at the end of the page', async ({ page }) => {
-		await page.goto('/jobs');
+	test('the recruiter space links the legal pages at the end of the page', async ({ page }) => {
+		await page.goto('/recruiter');
 		const nav = legalNav(page);
 		for (const name of COMPACT) {
 			await expect(nav.getByRole('link', { name, exact: true })).toBeAttached();

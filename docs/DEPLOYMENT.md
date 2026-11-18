@@ -819,6 +819,31 @@ the deploy.
   MONGO_URL="<production MONGO_URL>" bun run db:seed
   ```
 
+### The job board's applications (one-off)
+
+The public job board, applying to a job and the applicant lists are gone: no route reads or writes
+the `jobapplications` collection any more, and deleting an account no longer reaches it. Once the
+API without them runs on a stage, record how many applications it held, by source (counts only:
+no candidate, posting or portfolio), then drop the collection, in that stage's database (staging,
+then production):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  printjson(db.jobapplications.aggregate([{ $group: { _id: "$source", count: { $sum: 1 } } }]).toArray());
+  db.jobapplications.drop()'
+```
+
+Write the counts in the release's pull request: they are the only record left of the board's
+applications. Do it soon after the deploy: until then the collection holds personal data that the
+privacy policy no longer describes and that deleting an account no longer removes. `drop()`
+answers `false` once it is gone. Drop it from local and cloud-session databases too, and run
+`bun run --cwd server seed:e2e` again there: its portfolio `e2e-applicant` became `e2e-shared`
+(the old one is left unused).
+
+The overview dashboard loses its job application panels with this release: import
+`docs/grafana/overview.json` over the stack's **Portfolio · Overview** (Dashboards, New, Import,
+same uid, overwrite).
+
 ### Reserved portfolio names
 
 Every top-level route of the web app is a reserved portfolio name (`RESERVED_DOMAIN_NAMES` in
@@ -847,9 +872,10 @@ Portfolios are public to anyone with their address but are not listed by search 
 the API sends the same header on every answer. The pages rendered on the server (a portfolio's
 pages, `/account`) also carry a robots meta in their HTML; the 404 of a name nobody claimed has
 the header alone; `/recruiter/jobs/*` is rendered in the browser, so its meta is only written once
-its script ran (`curl` never sees it). The landing page, the legal pages, the job pages and
-`/recruiter` stay listed, with their canonical links (the one of `/recruiter`, rendered in the
-browser too, is written by its script).
+its script ran (`curl` never sees it). The landing page, the legal pages and `/recruiter` stay
+listed, with their canonical links (the one of `/recruiter`, rendered in the browser too, is
+written by its script). The job board is gone: `/jobs` answers `410 Gone`, which tells search
+engines to drop it, and the API's `GET /jobs` and `GET /jobs/<id>` answer 404.
 
 **robots.txt refuses nothing, on purpose.** A crawler has to fetch a page to read its `noindex`:
 a `Disallow` would hide the request, and a search engine can still list a refused address it
@@ -879,6 +905,8 @@ headers https://api.example.com/health | grep -i '^x-robots-tag'                
 curl -s https://example.com/louis.gentil/experiences | grep -o '<meta name="robots"[^>]*>'
 headers https://example.com/ | grep -ci '^x-robots-tag'                          # 0: the landing page is listed
 headers https://example.com/legal/privacy | grep -ci '^x-robots-tag'             # 0
+curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs               # 410: the job board is gone
+curl -s -o /dev/null -w '%{http_code}\n' https://api.example.com/jobs           # 404
 curl -s https://example.com/robots.txt | grep -iE '^(user-agent|allow|disallow)'   # each group with its user agents
 LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'
 curl -s -o /dev/null -w '%{http_code}\n' -A "$LINKEDIN" \
@@ -906,7 +934,9 @@ prefix**: `https://portfolio.gentil.tech/<name>/`). Do the same for the API's an
 this header had none (`GET /domain/<name>` is a whole portfolio as JSON): the prefix
 `https://api.portfolio.gentil.tech/domain/`, and `https://develop.api.portfolio.gentil.tech/domain/`
 for staging, whose portfolios found under `https://develop.portfolio.gentil.tech/<name>/` go too.
-Google hides them for about six months, long enough to read the `noindex`; **Pages** then lists
+The former job board goes the same way: the prefix `https://portfolio.gentil.tech/jobs` (and
+`https://api.portfolio.gentil.tech/jobs`, with their staging twins). Google hides them for about six
+months, long enough to read the `noindex` (or the `410` of the job board); **Pages** then lists
 them under "Excluded by 'noindex' tag". Do the same in
 [Bing Webmaster Tools](https://www.bing.com/webmasters) (**Content Removal**), whose index other
 engines use too.
@@ -936,6 +966,7 @@ that search engines are asked not to list a portfolio, never that it cannot be f
      | grep -i '^access-control-allow-origin'  # https://example.com
    curl -s -o /dev/null -D - https://example.com/louis.gentil/experiences | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
    curl -s -o /dev/null -D - https://api.example.com/health | grep -i '^x-robots-tag'                 # the same
+   curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs   # 410: the job board is gone
    ```
 
    The other checks of what search engines and link previews get: [Search engines](#search-engines).

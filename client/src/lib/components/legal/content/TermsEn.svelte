@@ -52,7 +52,7 @@ no age limit, the right to act for the employer), imports, meetings, moderation 
 </p>
 
 <h3 id="eligibility">Who may use the site</h3>
-<p>Anyone can read portfolios and job descriptions. To create an account you must:</p>
+<p>Anyone with the address of a portfolio can read it. To create an account you must:</p>
 <ul>
 	<li>
 		be at least <strong>{MINIMUM_AGE} years old</strong> and have reached the
@@ -60,7 +60,7 @@ no age limit, the right to act for the employer), imports, meetings, moderation 
 		for it (when you sign up from the home page, claim a portfolio or open the recruiter space);
 	</li>
 	<li>have a Google account, which you use to sign in;</li>
-	<li>if you publish job descriptions for an organisation, be allowed to act on its behalf.</li>
+	<li>if you write job descriptions for an organisation, be allowed to act on its behalf.</li>
 </ul>
 <p>
 	Using an account means that you meet these conditions, whether or not the site asked you to
@@ -72,7 +72,9 @@ no age limit, the right to act for the employer), imports, meetings, moderation 
 <p>
 	{SITE_NAME} lets candidates publish a portfolio of their experiences and projects at their own address,
 	with a timeline and skill filters, and set a hiring journey that recruiters follow before booking a
-	meeting with them. Recruiters can publish job descriptions and see the portfolios that apply.
+	meeting with them. Recruiters write job descriptions and share one with a candidate by picking it on
+	that candidate's Hire page, where the candidate's journey can score it against the job they are looking
+	for. The site does not publish job descriptions.
 </p>
 <p>
 	The service is <strong>free</strong> and provided <strong>as it is</strong>. We work to keep it
@@ -99,8 +101,10 @@ no age limit, the right to act for the employer), imports, meetings, moderation 
 <p>
 	You keep all your rights to what you publish: portfolio, experiences and projects, journey notes,
 	job descriptions. You grant the publisher a free, non-exclusive, worldwide licence to host, store,
-	reproduce and display this content on the site, and to make it available to the public, for as
-	long as it is online. The licence ends when you delete the content or your account.
+	reproduce and display this content on the site, and to show it to the people it is meant for (a
+	portfolio to anyone who has its address, a job description to the candidates whose hiring journey
+	it is picked in), for as long as it is online. The licence ends when you delete the content or
+	your account.
 </p>
 <p>You are responsible for your content. In particular, you confirm that:</p>
 <ul>
@@ -110,8 +114,8 @@ no age limit, the right to act for the employer), imports, meetings, moderation 
 		people's rights;
 	</li>
 	<li>
-		you understand that it is public: do not publish information you want to keep private, such as
-		health data, religious or political views, identity numbers or a home address.
+		you understand that a portfolio is public: do not publish information you want to keep private,
+		such as health data, religious or political views, identity numbers or a home address.
 	</li>
 </ul>
 <p>

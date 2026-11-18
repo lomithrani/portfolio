@@ -1,7 +1,7 @@
 <!--
 @component
 The signed-in account's menu in the header: its initials and current space on the trigger, then
-the two spaces (radio items: the active one is checked), Browse jobs, Account & privacy (/account:
+the two spaces (radio items: the active one is checked), Account & privacy (/account:
 the account's data, the terms it accepted, deleting it), Send feedback (the page's feedback dialog,
 when the server takes feedback) and Log out. Choosing a space
 opens its home, and the space is recorded once its page shows (recordSpaceShown, PUT /me/mode): a
@@ -27,7 +27,6 @@ form instead (`onClaimPortfolio`).
 		ChatBubbleLeftEllipsis,
 		Check,
 		ChevronDown,
-		MagnifyingGlass,
 		ShieldCheck,
 		UserCircle
 	} from 'svelte-heros-v2';
@@ -113,7 +112,7 @@ form instead (`onClaimPortfolio`).
 		// The menu gives the focus back to its trigger as it closes: the dialog's too, once closed
 		else if (value === 'feedback')
 			openFeedback(() => document.getElementById(ACCOUNT_MENU_TRIGGER_ID));
-		// 'jobs' and 'account' are links: the browser follows them
+		// 'account' is a link: the browser follows it
 	}
 
 	const itemClass = 'gap-3 py-2 cursor-pointer data-[state=checked]:bg-primary-500/10';
@@ -203,20 +202,6 @@ form instead (`onClaimPortfolio`).
 					</Menu.OptionItem>
 				</Menu.ItemGroup>
 				<Menu.Separator />
-				<Menu.Item value="jobs" valueText={m.browseJobs}>
-					{#snippet element(attributes)}
-						<a
-							{...attributes as HTMLAttributes<HTMLAnchorElement>}
-							href={resolve('/(app)/jobs')}
-							class="{itemClass} justify-start"
-						>
-							<span class="{iconClass} preset-tonal" aria-hidden="true">
-								<MagnifyingGlass size="18" />
-							</span>
-							<span class="font-medium">{m.browseJobs}</span>
-						</a>
-					{/snippet}
-				</Menu.Item>
 				<Menu.Item value="account" valueText={accountMessages.accountPrivacy}>
 					{#snippet element(attributes)}
 						<a
