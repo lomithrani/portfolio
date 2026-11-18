@@ -336,12 +336,13 @@ test.describe('the hiring journey', () => {
 			saved: true
 		});
 
-		// Their own Hire page is a preview: nothing is locked for them, and the job step, which
-		// asks nothing of them, says what it asks of recruiters
-		await page.getByRole('link', { name: 'See your Hire page' }).click();
+		// Their own page for recruiters is a preview: nothing is locked for them, and the job step,
+		// which asks nothing of them, says what it asks of recruiters
+		await page.getByRole('link', { name: 'See your page for recruiters' }).click();
 		await expect(
-			page.getByText('This is your hiring journey, as recruiters see it.')
+			page.getByRole('heading', { level: 1, name: `Propose a role to ${DOMAIN}` })
 		).toBeVisible();
+		await expect(page.getByText('This is your page for recruiters, as they see it.')).toBeVisible();
 		await expect(step(page, 'Step 1: Select or create a job')).toContainText(
 			'Recruiters pick one of their open job descriptions'
 		);
@@ -473,7 +474,7 @@ test.describe('the hiring journey', () => {
 			expect(dialog.message()).toContain('Leave without saving your hiring journey?');
 			void dialog.dismiss();
 		});
-		await page.getByRole('link', { name: 'See your Hire page' }).click();
+		await page.getByRole('link', { name: 'See your page for recruiters' }).click();
 		// The address names the tab shown
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=workflows$`));
 		await expect(note.getByLabel('Title')).toHaveValue('2027-01-01');
@@ -484,7 +485,7 @@ test.describe('the hiring journey', () => {
 		await expect(page.getByRole('button', { name: 'Save journey' })).toBeDisabled();
 
 		// Saved: nothing to ask. Visitors read the title as written
-		await page.getByRole('link', { name: 'See your Hire page' }).click();
+		await page.getByRole('link', { name: 'See your page for recruiters' }).click();
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire$`));
 		await expect(page.getByRole('heading', { name: 'Step 1: 2027-01-01' })).toBeVisible();
 	});
@@ -546,7 +547,9 @@ test.describe('the hiring journey', () => {
 		await expect(page.getByRole('heading', { name: 'Add a step' })).toBeFocused();
 		await expect(page.getByText('Your journey has no step.')).toBeVisible();
 		await expect(
-			page.getByText('Your Hire page offers nothing: recruiters are asked to reach out directly.')
+			page.getByText(
+				'Your page for recruiters offers nothing: recruiters are asked to reach out directly.'
+			)
 		).toBeVisible();
 
 		// Undo brings the saved journey back; removed again, the empty journey can be saved
@@ -563,8 +566,10 @@ test.describe('the hiring journey', () => {
 		const saved = await ownerApi.get(`${API_URL}/workflow`);
 		expect(await saved.json()).toEqual({ steps: [], saved: true });
 
-		await page.getByRole('link', { name: 'See your Hire page' }).click();
-		await expect(page.getByRole('heading', { level: 1, name: `Hire ${DOMAIN}` })).toBeVisible();
+		await page.getByRole('link', { name: 'See your page for recruiters' }).click();
+		await expect(
+			page.getByRole('heading', { level: 1, name: `Propose a role to ${DOMAIN}` })
+		).toBeVisible();
 		await expect(
 			page.getByText('Online booking is not available right now. Please reach out directly.')
 		).toBeVisible();
@@ -1478,8 +1483,15 @@ test.describe('the hiring journey', () => {
 	}) => {
 		await setJourney('meeting');
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		// Titled with neutral words, whatever the journey leads to, and saying what it offers
+		await expect(page).toHaveTitle(`Propose a role to ${DOMAIN}`);
 		await expect(
-			page.getByRole('heading', { level: 1, name: `Book a meeting with ${DOMAIN}` })
+			page.getByRole('heading', { level: 1, name: `Propose a role to ${DOMAIN}` })
+		).toBeVisible();
+		await expect(
+			page.getByText(
+				"Pick a time slot that suits you — you'll receive a calendar invitation by email."
+			)
 		).toBeVisible();
 		await expect(page.getByText('Online booking is not available right now.')).toBeVisible();
 		await expect(journeySteps(page)).toHaveCount(0);

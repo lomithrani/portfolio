@@ -828,7 +828,7 @@ test.describe("the timeline's zoom", () => {
 });
 
 test.describe('the floating corner of the page', () => {
-	test("offers visitors to hire the owner, and the owner their own page's heading", async ({
+	test("offers visitors to propose a role, and the owner their own page's heading", async ({
 		page
 	}) => {
 		const title = `Backend Engineer ${tag}`;
@@ -837,10 +837,12 @@ test.describe('the floating corner of the page', () => {
 			title,
 			projects: ['Streams', 'Billing', 'Platform', 'Tooling'].map((name) => project(name, ['Go']))
 		});
-		const hire = page.getByRole('link', { name: 'Hire me' });
+		const dock = page.locator('[data-page-dock]');
+		// The corner's (the rail has one too, out of sight unless it is opened)
+		const hire = dock.getByRole('link', { name: 'Propose a role' });
 		const views = page.getByRole('group', { name: 'View' });
 
-		// A visitor: no heading, the view switch and "Hire me" in the corner, in both views
+		// A visitor: no heading, the view switch and "Propose a role" in the corner, in both views
 		await gotoHydrated(page, `/${DOMAIN}/experiences`);
 		await expect(card(page, title)).toBeVisible();
 		await expect(page.getByRole('heading', { level: 2, name: 'Experiences' })).toHaveCount(0);
@@ -851,7 +853,6 @@ test.describe('the floating corner of the page', () => {
 		await expect(hire).toBeInViewport();
 		// At the end of the page it covers nothing of the last card, on a wide screen as on the
 		// narrowest phone, where it stays one row
-		const dock = page.locator('[data-page-dock]');
 		for (const size of [
 			{ width: 1280, height: 500 },
 			{ width: 320, height: 568 }
@@ -878,7 +879,7 @@ test.describe('the floating corner of the page', () => {
 		await hire.click();
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire$`));
 
-		// The owner: their heading and buttons, the view switch, and no "Hire me"
+		// The owner: their heading and buttons, the view switch, and no "Propose a role"
 		await openAsOwner(page);
 		await expect(page.getByRole('heading', { level: 2, name: 'Experiences' })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Add experience', exact: true })).toBeVisible();
@@ -894,6 +895,40 @@ test.describe('the floating corner of the page', () => {
 		await expect(add).toBeVisible();
 		await expect(add).toHaveAccessibleName('Add experience');
 		expect((await dock.boundingBox())!.height).toBeLessThan(60);
+	});
+
+	test('keeps "Propose a role" on the view switch\'s row on phones, in English and French', async ({
+		page
+	}) => {
+		await createExperience({ title: `Backend Engineer ${tag}` });
+		const dock = page.locator('[data-page-dock]');
+		for (const { lang, name, list } of [
+			{ lang: 'en', name: 'Propose a role', list: 'List' },
+			{ lang: 'fr', name: 'Proposer un poste', list: 'Liste' }
+		]) {
+			// Phones: the view switch shows its icons alone there, and "Propose a role" drops its own
+			// on the narrowest
+			for (const width of [390, 360, 320]) {
+				await page.setViewportSize({ width, height: 700 });
+				await gotoHydrated(page, `/${DOMAIN}/experiences?lang=${lang}`);
+				const link = dock.getByRole('link', { name, exact: true });
+				await expect(link).toBeVisible();
+				await expect(dock.getByRole('button', { name: list, exact: true })).toBeVisible();
+				const corner = (await dock.boundingBox())!;
+				const label = `${lang} at ${width} px`;
+				// One row: the link's words on one line, and both inside the corner, which keeps clear
+				// of the screen's edges (nothing overflows it on either side)
+				expect(corner.height, label).toBeLessThan(60);
+				expect((await link.boundingBox())!.height, label).toBeLessThanOrEqual(48);
+				for (const part of [link, dock.getByRole('group')]) {
+					const box = (await part.boundingBox())!;
+					expect(box.x, label).toBeGreaterThanOrEqual(corner.x - 0.5);
+					expect(box.x + box.width, label).toBeLessThanOrEqual(corner.x + corner.width + 0.5);
+				}
+				// The rail's link says the same (12 px labels: on two lines at most)
+				await expect(page.locator(`.drawer-content a[href="/${DOMAIN}/hire"]`)).toHaveText(name);
+			}
+		}
 	});
 });
 
@@ -1163,13 +1198,24 @@ test.describe('the navigation rail', () => {
 		await expect(railLink(page)).toBeInViewport({ ratio: 1 });
 		await expect(page.getByRole('button', { name: 'Close sidebar' })).toBeVisible();
 		await expect(railLinks(page)).toHaveCount(3);
-		for (const link of await railLinks(page).all()) {
-			const fits = await link.evaluate(
-				(element) =>
-					element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight
-			);
-			expect(fits, await link.innerText()).toBe(true);
-		}
+		const labelsFit = async () => {
+			for (const link of await railLinks(page).all()) {
+				const fits = await link.evaluate(
+					(element) =>
+						element.scrollWidth <= element.clientWidth &&
+						element.scrollHeight <= element.clientHeight
+				);
+				expect(fits, await link.innerText()).toBe(true);
+			}
+		};
+		await labelsFit();
+		// In French too, where "Proposer un poste" goes on two lines
+		await gotoHydrated(page, `/${DOMAIN}/experiences?lang=fr`);
+		await page.getByRole('button', { name: 'Ouvrir la barre latérale' }).focus();
+		await page.keyboard.press('Enter');
+		await expect(railLinks(page)).toHaveCount(3);
+		await expect(railLinks(page).nth(1)).toHaveText('Proposer un poste');
+		await labelsFit();
 	});
 
 	test('stops showing as soon as it no longer fits: a narrower window, a wider page', async ({

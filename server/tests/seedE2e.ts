@@ -8,7 +8,9 @@
 // or point at but never change: its journey, set here on every run, is a job step then the
 // meeting, on which client/tests/job-view.test.ts alone has the e2e recruiter pick its jobs.
 // client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
-// and goes through it as the e2e recruiter. The candidate 'e2e.candidate@example.com' (no domain, no
+// and goes through it as the e2e recruiter. client/tests/share-kit.test.ts signs in as the owner of
+// 'e2e-share-kit' (the default journey, never saved: the tests answer the readiness and the perfect
+// job they need in the browser, so it stays that way). The candidate 'e2e.candidate@example.com' (no domain, no
 // recruiter space, no acceptance of the terms) is signed in as by client/tests/account.test.ts,
 // claim-consent.test.ts, feedback.test.ts, recruiter.test.ts, hire-journey.test.ts, job-view.test.ts
 // and the signed-in steps of landing.test.ts; the tests that would change it (accepting the terms,
@@ -38,7 +40,8 @@ const owners = [
   { email: 'e2e.owner@example.com', name: 'Eve', surname: 'Owner', domain: 'e2e-owner' },
   { email: 'e2e.import@example.com', name: 'Ivy', surname: 'Importer', domain: 'e2e-import' },
   { email: 'e2e.shared@example.com', name: 'Sam', surname: 'Shared', domain: 'e2e-shared' },
-  { email: 'e2e.journey@example.com', name: 'Jay', surname: 'Journey', domain: 'e2e-journey' }
+  { email: 'e2e.journey@example.com', name: 'Jay', surname: 'Journey', domain: 'e2e-journey' },
+  { email: 'e2e.sharekit@example.com', name: 'Skye', surname: 'Sharer', domain: 'e2e-share-kit' }
 ];
 
 for (const owner of owners) {

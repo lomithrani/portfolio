@@ -176,14 +176,16 @@ export const missingEssentials = (readiness: Readiness): Essential[] =>
 
 /**
  * The tabs of the admin page (/[domain]/admin), as `?tab=` names them: a link opens one
- * (/<domain>/admin?tab=start), and the page keeps the one shown in its address
+ * (/<domain>/admin?tab=start; the account menu's "Share your link": ?tab=share), and the page
+ * keeps the one shown in its address
  */
 export const ADMIN_TABS = [
 	'start',
 	'appearance',
 	'workflows',
 	'perfect-job',
-	'appointments'
+	'appointments',
+	'share'
 ] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 

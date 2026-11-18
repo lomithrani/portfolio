@@ -15,8 +15,8 @@ export const m = defineMessages({
 			title: { en: 'Title', fr: 'Titre' },
 			titlePlaceholder: { en: 'e.g. Before you book', fr: 'ex. : Avant de réserver' },
 			titleHelp: {
-				en: "The step's name on your Hire page.",
-				fr: "Le nom de l'étape sur votre page Recruter."
+				en: "The step's name on your page for recruiters.",
+				fr: "Le nom de l'étape sur votre page recruteurs."
 			},
 			text: { en: 'Note', fr: 'Note' },
 			textPlaceholder: {
@@ -220,12 +220,8 @@ export const m = defineMessages({
 			fr: 'Vous avez réservé un rendez-vous. Vous pouvez réserver un autre créneau.'
 		},
 		ask: { en: 'Pick a time slot that suits you.', fr: 'Choisissez un créneau qui vous convient.' },
-		/** How the Hire page presents itself when the journey leads to a meeting (StepGoal) */
+		/** What the Hire page says under its title when the journey leads to a meeting (StepGoal) */
 		goal: {
-			heading: {
-				en: (ownerName: string) => `Book a meeting with ${ownerName}`,
-				fr: (ownerName: string) => `Réserver un rendez-vous avec ${ownerName}`
-			},
 			alone: {
 				en: "Pick a time slot that suits you — you'll receive a calendar invitation by email.",
 				fr: 'Choisissez un créneau qui vous convient : vous recevrez une invitation par e-mail.'

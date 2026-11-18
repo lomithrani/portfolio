@@ -84,13 +84,13 @@ export const m = defineMessages({
 	},
 	/**
 	 * What each status means for the posting (the editor's hint, the toast of a status change):
-	 * no status makes it public, only an open one can be picked on a candidate's Hire page
+	 * no status makes it public, only an open one can be picked on a candidate's page for recruiters
 	 */
 	statusDescriptions: {
 		draft: { en: 'Only you can see it.', fr: 'Vous seul pouvez la voir.' },
 		open: {
-			en: "Hiring: you can pick it on a candidate's Hire page.",
-			fr: "Recrutement en cours : vous pouvez la choisir sur la page Recruter d'un candidat."
+			en: "Hiring: you can pick it on a candidate's page for recruiters.",
+			fr: "Recrutement en cours : vous pouvez la choisir sur la page recruteurs d'un candidat."
 		},
 		on_hold: {
 			en: 'Paused: it cannot be picked for now.',

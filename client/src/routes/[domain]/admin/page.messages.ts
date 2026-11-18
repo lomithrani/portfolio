@@ -8,7 +8,8 @@ export const m = defineMessages({
 		appearance: { en: 'Appearance', fr: 'Apparence' },
 		workflows: { en: 'Hiring journey', fr: 'Parcours de recrutement' },
 		perfectJob: { en: 'Perfect job', fr: 'Poste idéal' },
-		appointments: { en: 'Appointments', fr: 'Rendez-vous' }
+		appointments: { en: 'Appointments', fr: 'Rendez-vous' },
+		share: { en: 'Share', fr: 'Partager' }
 	},
 	/** On the "Get started" tab while its checklist is not complete: "2/4" */
 	progressBadge: {

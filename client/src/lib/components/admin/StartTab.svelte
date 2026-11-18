@@ -3,7 +3,8 @@
 The admin's "Get started" tab: what the owner still has to set before they share their link, as a
 checklist read from GET /me/readiness (services/candidateSetup.ts decides what each item asks):
 their experiences, what they want in a job (the Perfect job tab), the steps recruiters go through,
-the calendar recruiters book in, then the link itself, with a button that copies it. Every item
+the calendar recruiters book in, then the link itself, with a button that copies it (and the Share
+tab's replies and LinkedIn text). Every item
 can wait, and none blocks the others or the link.
 
 The steps can be set here in one click: the gate journey of portfolio-common (journeyTemplate:
@@ -254,10 +255,16 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 					<h3 class="font-semibold">{m.share.title}</h3>
 					<p class="text-sm text-surface-700-300">{m.share.text}</p>
 					<CopyLink {link} />
-					<a class={linkButton} href={resolve('/[domain]/hire', { domain: domainName })}>
-						<Eye size="16" aria-hidden="true" />
-						{m.share.see}
-					</a>
+					<div class="flex flex-wrap gap-2">
+						<a class={linkButton} href={resolve('/[domain]/hire', { domain: domainName })}>
+							<Eye size="16" aria-hidden="true" />
+							{m.share.see}
+						</a>
+						<button type="button" class={linkButton} onclick={() => openTab('share')}>
+							{m.share.more}
+							<ArrowRight size="16" aria-hidden="true" />
+						</button>
+					</div>
 				</div>
 			</li>
 		</ol>

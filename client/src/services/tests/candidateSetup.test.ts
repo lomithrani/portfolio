@@ -186,8 +186,10 @@ describe('the checklist', () => {
 describe('the admin page’s tabs', () => {
 	it('reads the tab an address names, and nothing else', () => {
 		for (const tab of ADMIN_TABS) expect(adminTab(tab)).toBe(tab);
+		// The account menu's "Share your link" opens the Share tab
+		expect(adminTab('share')).toBe('share');
 		expect(adminTab('Start')).toBeUndefined();
-		expect(adminTab('share')).toBeUndefined();
+		expect(adminTab('sharing')).toBeUndefined();
 		expect(adminTab('')).toBeUndefined();
 		expect(adminTab(null)).toBeUndefined();
 		expect(adminTab(undefined)).toBeUndefined();

@@ -272,7 +272,7 @@ describe("the owner's editor", () => {
 			'Recruiters can book a meeting right away.'
 		);
 		expect(journeySummary([])).toBe(
-			'Your Hire page offers nothing: recruiters are asked to reach out directly.'
+			'Your page for recruiters offers nothing: recruiters are asked to reach out directly.'
 		);
 		const steps = withStepConfig(editorSteps('note', 'note', 'job', 'meeting'), 'note', NOTE);
 		expect(journeySummary(steps, title)).toBe(

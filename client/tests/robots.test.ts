@@ -125,7 +125,7 @@ test('the job board is gone: /jobs answers 410, and says why in the visitor’s 
 	const english = await request.get('/jobs');
 	expect(english.status()).toBe(410);
 	expect(await english.text()).toBe(
-		"Portfolio no longer publishes job descriptions: a recruiter shares theirs with a candidate on the candidate's Hire page."
+		"Portfolio no longer publishes job descriptions: a recruiter shares theirs with a candidate on the candidate's page for recruiters."
 	);
 	const french = await request.get('/jobs?lang=fr');
 	expect(french.status()).toBe(410);

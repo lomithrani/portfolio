@@ -170,6 +170,8 @@ export const m = defineMessages({
 			en: 'Send it to the recruiters who write to you, or put it on your profiles: it opens your portfolio, from which recruiters reach your page for recruiters.',
 			fr: "Envoyez-le aux recruteurs qui vous écrivent, ou ajoutez-le à vos profils : il ouvre votre portfolio, d'où les recruteurs rejoignent votre page recruteurs."
 		},
-		see: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' }
+		see: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' },
+		/** The Share tab: a reply to recruiters, a LinkedIn text */
+		more: { en: 'Reply and LinkedIn texts', fr: 'Textes de réponse et LinkedIn' }
 	}
 });

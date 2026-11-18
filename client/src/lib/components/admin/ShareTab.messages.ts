@@ -1,0 +1,94 @@
+import { defineMessages } from 'portfolio-common';
+
+// The texts of the admin's Share tab. The texts it writes for the owner to copy (the reply, the
+// LinkedIn text) are in services/shareKit.messages.ts: in the language the owner picks for them.
+export const m = defineMessages({
+	title: { en: 'Share your link', fr: 'Partager votre lien' },
+	intro: {
+		en: 'Your portfolio is a career page you keep, like a professional profile: put your link where recruiters find you, and answer the ones who write to you from here. Nothing on this tab is saved or sent: you copy what you want.',
+		fr: "Votre portfolio est une page de carrière que vous gardez, comme un profil professionnel : mettez votre lien là où les recruteurs vous trouvent, et répondez d'ici à ceux qui vous écrivent. Rien n'est enregistré ni envoyé depuis cet onglet : vous copiez ce que vous voulez."
+	},
+	link: {
+		title: { en: 'Your link', fr: 'Votre lien' },
+		caption: {
+			en: 'It opens your portfolio. From there, “Propose a role” leads recruiters to your page for recruiters.',
+			fr: 'Il ouvre votre portfolio. De là, « Proposer un poste » mène les recruteurs à votre page recruteurs.'
+		},
+		see: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' }
+	},
+	/** The language of the reply and of the LinkedIn text: the recruiter's, whatever the page's */
+	language: {
+		legend: { en: 'Language of the texts', fr: 'Langue des textes' },
+		hint: {
+			en: 'The one the recruiter wrote in, whatever the language of this page.',
+			fr: 'Celle dans laquelle le recruteur vous a écrit, quelle que soit la langue de cette page.'
+		},
+		/** A language, inside a sentence: "Your reply, in English" */
+		name: {
+			english: { en: 'English', fr: 'anglais' },
+			french: { en: 'French', fr: 'français' }
+		}
+	},
+	reply: {
+		title: { en: 'Reply to a recruiter', fr: 'Répondre à un recruteur' },
+		/** The journey has a job step */
+		asksThere: {
+			en: 'It asks them to share the role on your page for recruiters, with its pay range, and says what comes next there.',
+			fr: 'Elle lui demande de présenter le poste sur votre page recruteurs, avec sa fourchette de rémunération, et dit ce qui suit sur cette page.'
+		},
+		/** The journey asks for no job */
+		asksBack: {
+			en: 'It asks them to send you the job description, with its pay range. Your page for recruiters does not ask for the job: to have them share it there first, ask for it in your steps.',
+			fr: "Elle lui demande de vous envoyer l'offre d'emploi, avec sa fourchette de rémunération. Votre page recruteurs ne demande pas le poste : pour qu'il l'y présente d'abord, demandez-le dans vos étapes."
+		},
+		setSteps: { en: 'Set my steps', fr: 'Régler mes étapes' },
+		label: {
+			en: (language: string) => `Your reply, in ${language}`,
+			fr: (language: string) => `Votre réponse, en ${language}`
+		},
+		copy: { en: 'Copy the reply', fr: 'Copier la réponse' }
+	},
+	facts: {
+		legend: {
+			en: 'Add what you ask for (optional)',
+			fr: 'Ajouter ce que vous demandez (facultatif)'
+		},
+		hint: {
+			en: 'Left unticked, the reply says nothing of it. Once ticked, it is filled in from your perfect job: change it as you like, nothing is saved.',
+			fr: "Non coché, la réponse n'en dit rien. Une fois coché, il est rempli depuis votre poste idéal : modifiez-le à votre guise, rien n'est enregistré."
+		},
+		pay: { en: 'The pay I ask for', fr: 'La rémunération que je demande' },
+		amount: { en: 'Gross amount, in euros', fr: 'Montant brut, en euros' },
+		per: { en: 'Per', fr: 'Par' },
+		perYear: { en: 'a year', fr: 'an' },
+		perDay: { en: 'a day', fr: 'jour' },
+		remoteDays: { en: 'Remote days a week', fr: 'Jours de télétravail par semaine' },
+		/** The remote days left to choose */
+		remoteDaysNone: { en: 'Choose', fr: 'Choisir' },
+		/** Five remote days a week */
+		fullyRemote: { en: 'Fully remote', fr: 'Télétravail complet' },
+		places: { en: 'Where', fr: 'Où' },
+		placesExample: { en: 'Paris, Lyon', fr: 'Paris, Lyon' },
+		contracts: { en: 'Contracts', fr: 'Contrats' },
+		loading: {
+			en: 'Filling it in from your perfect job…',
+			fr: 'Remplissage depuis votre poste idéal…'
+		},
+		failed: {
+			en: 'Could not read your perfect job: fill it in yourself.',
+			fr: 'Impossible de lire votre poste idéal : remplissez-le vous-même.'
+		}
+	},
+	linkedIn: {
+		title: { en: 'On LinkedIn', fr: 'Sur LinkedIn' },
+		hint: {
+			en: 'Paste it in the About section of your profile, and add your link to its contact info as a website.',
+			fr: 'Collez-le dans la section Infos de votre profil, et ajoutez votre lien à ses coordonnées comme site web.'
+		},
+		label: {
+			en: (language: string) => `Your LinkedIn text, in ${language}`,
+			fr: (language: string) => `Votre texte LinkedIn, en ${language}`
+		},
+		copy: { en: 'Copy the text', fr: 'Copier le texte' }
+	}
+});

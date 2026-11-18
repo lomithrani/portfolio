@@ -152,7 +152,7 @@ test.describe('the recruiter', () => {
 		const status = page.getByRole('complementary', { name: 'Manage this job description' });
 		await expect(status).toContainText('Only you can see it.');
 		await expect(status).toContainText(
-			"Drafts are yours alone. Pick an Open job description on a candidate's Hire page: only that candidate reads it."
+			"Drafts are yours alone. Pick an Open job description on a candidate's page for recruiters: only that candidate reads it."
 		);
 		await expect(page.getByRole('heading', { name: 'Public page' })).toHaveCount(0);
 		await expect(page.getByRole('heading', { name: 'Applicants' })).toHaveCount(0);
@@ -202,7 +202,7 @@ test.describe('the recruiter', () => {
 		).toBeVisible();
 		expect((await listRecruiterJobs(api)).find((job) => job._id === id)?.status).toBe('draft');
 
-		// Open: it can be picked on a candidate's Hire page, and its terms are locked
+		// Open: it can be picked on a candidate's page for recruiters, and its terms are locked
 		await page.getByRole('button', { name: 'Change status' }).click();
 		await page.getByRole('menuitemradio', { name: /^Open/ }).click();
 		await confirm.getByRole('button', { name: 'Open', exact: true }).click();
@@ -213,7 +213,7 @@ test.describe('the recruiter', () => {
 			)
 		).toBeVisible();
 		await expect(
-			toasts(page).getByText("Hiring: you can pick it on a candidate's Hire page.", {
+			toasts(page).getByText("Hiring: you can pick it on a candidate's page for recruiters.", {
 				exact: true
 			})
 		).toBeVisible();
@@ -906,7 +906,7 @@ test.describe('the recruiter', () => {
 		expect(saved).not.toHaveProperty('openings');
 	});
 
-	test('lists the meetings booked on Hire pages, and joins one with its Google Meet link', async ({
+	test('lists the meetings booked on pages for recruiters, and joins one with its Google Meet link', async ({
 		page
 	}) => {
 		// Answered in the browser: the e2e database has no Google Calendar

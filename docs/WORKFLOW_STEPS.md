@@ -1,7 +1,10 @@
 # Hiring journey steps
 
 The Hire page of a portfolio (`/<domain>/hire`) is its **hiring journey**: the steps a visitor (a
-recruiter) goes through, in the order the portfolio's owner chose. This document explains how a
+recruiter) goes through, in the order the portfolio's owner chose. "Hire page" is its name in the
+code and these docs only: people read neutral words, "Propose a role" (the link visitors follow,
+and the page's title "Propose a role to <owner>") and "page for recruiters" (what the owner and
+recruiters call it). This document explains how a
 journey is built and how to add a new kind of step to it. It uses the `note` step (the owner writes
 a note, the visitor reads it and confirms) as the worked example, because it is the smallest step
 that has settings, something to submit and something to show.
@@ -299,7 +302,7 @@ The registry `client/src/lib/components/hire/steps/index.ts` maps a type name to
 | `wantsOpen(step, address)` | no | Whether the address asks for this step to be shown unfolded. The job step uses it when the address carries a `?job=` other than the job picked. |
 | `reopenLabel` | no | What the button that unfolds the step says once it is done ("Change" for the job step); "Open" when unset. |
 | `ownerPreview` | no | Set it to `true` when the owner's preview should show the step itself (the note, without its button) instead of the manifest's description. The `Visitor` then gets `journey.own` and must offer the owner nothing to submit: the API refuses the owner on their own journey. |
-| `goal` | for an `access` type | How the Hire page presents itself when the journey leads to this step: `heading(ownerName)` (the page's title), `alone` (the line under it when the step is the whole journey) and `after` (the same line when steps come before it). `registry.test.ts` fails when an `access` type has none. |
+| `goal` | for an `access` type | What the Hire page says under its title when the journey leads to this step (the title is the same for every journey, "Propose a role to <owner>"): `alone` (the line when the step is the whole journey) and `after` (the same line when steps come before it). `registry.test.ts` fails when an `access` type has none. |
 
 The entry's type is `ClientStep` in `types.ts` of that folder, with the props below. Today's
 components there are `NoteStep.svelte`, `NoteSettings.svelte`, `JobStep.svelte` and

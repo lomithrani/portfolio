@@ -21,8 +21,8 @@ export const m = defineMessages({
 	unknownStepName: { en: 'Unavailable step', fr: 'Étape indisponible' },
 	summary: {
 		empty: {
-			en: 'Your Hire page offers nothing: recruiters are asked to reach out directly.',
-			fr: 'Votre page Recruter ne propose rien : les recruteurs sont invités à prendre contact directement.'
+			en: 'Your page for recruiters offers nothing: recruiters are asked to reach out directly.',
+			fr: 'Votre page recruteurs ne propose rien : les recruteurs sont invités à prendre contact directement.'
 		},
 		/** A step named with its own title: the type's label, lowercased, then the title */
 		titled: {

@@ -286,7 +286,7 @@ test('the hire page renders the booking view inside the hydrated portfolio layou
 
 	expect(response?.status()).toBe(200);
 	expect((await schedules).status()).toBe(200);
-	await expect(page.getByRole('heading', { name: /^Book a meeting with / })).toBeVisible();
+	await expect(page.getByRole('heading', { level: 1, name: /^Propose a role to / })).toBeVisible();
 	// The CI API has no Google Calendar (GOOGLE_CLIENT_SECRET unset): nothing is bookable
 	await expect(page.getByText('Online booking is not available right now.')).toBeVisible();
 });

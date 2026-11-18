@@ -9,6 +9,7 @@
 	import WorkflowsTab from '#components/admin/WorkflowsTab.svelte';
 	import PerfectJobTab from '#components/admin/PerfectJobTab.svelte';
 	import AppointmentsTab from '#components/admin/AppointmentsTab.svelte';
+	import ShareTab from '#components/admin/ShareTab.svelte';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { clearAuthentication, isDomainAdmin } from '#services/authentication.ts';
 	import { accountMessages } from '#services/account.messages.ts';
@@ -35,7 +36,7 @@
 	 * started"), and the address follows the tab shown (replaceState), so a reload or a shared link
 	 * opens on it. Without one the page opens on "Get started" while the checklist is not complete
 	 * (null until that is known), else on the appearance. A tab can lead to another (the perfect
-	 * job to the journey that uses it, "Get started" to each item's tab)
+	 * job to the journey that uses it, "Get started" to each item's tab, Share to "Get started")
 	 */
 	let tab = $state<AdminTab | null>(adminTab(page.url.searchParams.get('tab')) ?? null);
 	let tabList: HTMLElement | undefined = $state();
@@ -70,8 +71,8 @@
 		if (tab === null) tab = defaultAdminTab(readiness);
 	}
 
-	// Read once the owner is known; again each time "Get started" is shown (what the other tabs
-	// saved changes it)
+	// Read once the owner is known; again each time "Get started" or Share is shown (what the
+	// other tabs saved changes it: Share says what the journey asks of recruiters)
 	let readinessAsked = false;
 	$effect(() => {
 		if (!isAdmin || readinessAsked) return;
@@ -80,11 +81,15 @@
 	});
 
 	// --- The tab shown -----------------------------------------------------------------------
+	/** The tabs that show what the readiness says */
+	const READS_READINESS = new Set<AdminTab>(['start', 'share']);
+
 	/** Shows `next`, and keeps it in the address */
 	function show(next: AdminTab) {
 		const previous = tab;
 		tab = next;
-		if (next === 'start' && previous !== null && previous !== 'start') void refreshReadiness();
+		if (READS_READINESS.has(next) && previous !== null && previous !== next)
+			void refreshReadiness();
 		const current = [...new URLSearchParams(location.search)];
 		if (current.some(([key, value]) => key === 'tab' && value === next)) return;
 		const search = new URLSearchParams([
@@ -172,6 +177,7 @@
 					<Tabs.Trigger value="workflows">{m.tabs.workflows}</Tabs.Trigger>
 					<Tabs.Trigger value="perfect-job">{m.tabs.perfectJob}</Tabs.Trigger>
 					<Tabs.Trigger value="appointments">{m.tabs.appointments}</Tabs.Trigger>
+					<Tabs.Trigger value="share">{m.tabs.share}</Tabs.Trigger>
 					<Tabs.Indicator />
 				</Tabs.List>
 				{#if moreTabs}
@@ -207,6 +213,9 @@
 				</Tabs.Content>
 				<Tabs.Content value="appointments">
 					<AppointmentsTab />
+				</Tabs.Content>
+				<Tabs.Content value="share">
+					<ShareTab domainName={data.domainName} {readiness} {openTab} />
 				</Tabs.Content>
 			</div>
 		</Tabs>

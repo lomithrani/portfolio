@@ -48,7 +48,7 @@
 	// Admin-only UI appears once the session has been checked with the API (in the browser,
 	// after hydration): never for a stale local session, and the SSR markup stays the same
 	let isAdmin = $derived($sessionCheckedStore && isDomainAdmin($authenticationStore, data.domain));
-	// "Hire me" is for everyone but the owner. The server renders it (it cannot know the visitor);
+	// "Propose a role" is for everyone but the owner. The server renders it (it cannot know the visitor);
 	// in the browser it steps aside as soon as the kept session says this is the owner's own
 	// portfolio, before the API confirms it (a stale session is cleared, and brings it back)
 	let hydrated = $state(false);
@@ -427,16 +427,22 @@
 </svelte:head>
 
 <!-- The page's floating corner: the view switch, and next to it what this visitor is most likely
-	here for: "Hire me" for a visitor, "Add experience" for the owner on a small screen once the
+	here for: "Propose a role" for a visitor, "Add experience" for the owner on a small screen once the
 	toolbar has scrolled away. First in the page, so the keyboard reaches it before the list.
-	Always one row (the page's bottom padding and the toasts count on its height): the owner's
-	button reads "Add" there, and the view switch drops its labels on the narrowest screens -->
+	Always one row (the page's bottom padding and the toasts count on its height), in English and
+	French: the owner's button reads "Add" there, the view switch drops its labels on phones next
+	to "Propose a role" (on the narrowest next to "Add"), and "Propose a role" its icon on the
+	narrowest -->
 {#if allExperiences.length > 0}
 	<div
 		class="dock pointer-events-none fixed z-10 flex items-stretch justify-end gap-2"
 		data-page-dock
 	>
-		<ViewSwitch bind:view class="pointer-events-auto shadow-xl" />
+		<ViewSwitch
+			bind:view
+			besideLink={!isAdmin && !maybeOwner}
+			class="pointer-events-auto shadow-xl"
+		/>
 		{#if isAdmin}
 			{#if !toolbarVisible}
 				<button
@@ -456,13 +462,14 @@
 				</button>
 			{/if}
 		{:else if !maybeOwner}
+			<!-- Its icon steps aside on the narrowest phones, where the row would not hold it -->
 			<a
 				href={resolve('/[domain]/hire', { domain: data.domain.name })}
-				class="btn preset-filled-primary-700-300 pointer-events-auto min-h-11 px-5 font-semibold shadow-xl"
-				data-hire-me
+				class="btn preset-filled-primary-700-300 pointer-events-auto min-h-11 px-5 font-semibold shadow-xl max-[22.4rem]:px-4"
+				data-propose-role
 			>
-				<Briefcase size="20" aria-hidden="true" />
-				{m.hireMe}
+				<Briefcase size="20" class="max-[22.4rem]:hidden" aria-hidden="true" />
+				{m.proposeRole}
 			</a>
 		{/if}
 	</div>

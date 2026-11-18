@@ -3,7 +3,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { Check, Eye, LockClosed, XMark } from 'svelte-heros-v2';
+	import { Check, Eye, LockClosed, Share, XMark } from 'svelte-heros-v2';
 	import { DEFAULT_WORKFLOW_STEPS, stepManifest } from 'portfolio-common';
 	import { portfolioTextApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
@@ -24,7 +24,9 @@
 		type JourneyStep,
 		type StepState
 	} from '#services/workflow.ts';
+	import { portfolioLink } from '#services/candidateSetup.ts';
 	import { clientStep, type ClientStep, type SubmitResult } from '#components/hire/steps/index.ts';
+	import CopyLink from '#components/share/CopyLink.svelte';
 	import { m as bookingMessages } from '#components/hire/MeetingBooking.messages.ts';
 	import { m as datesMessages } from '#services/bookingDates.messages.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
@@ -63,8 +65,8 @@
 	let loaded = $state.raw<JourneyState>({ state: 'loading' });
 	let journey = $derived(loaded.state === 'ready' ? loaded.journey : null);
 	let states = $derived(journey ? stepStates(journey) : []);
-	// What the page is about: the step the journey leads to. Until the journey is known, the one
-	// every portfolio starts with
+	// What the page leads to (said under its title): the step the journey leads to. Until the
+	// journey is known, the one every portfolio starts with
 	let goal = $derived.by(() => {
 		const steps = journey?.steps ?? DEFAULT_WORKFLOW_STEPS;
 		const before = goalStepIndex(steps);
@@ -231,9 +233,34 @@
 	/>
 {/snippet}
 
+<!-- The owner's preview: what it is, where the steps are changed, and their link to share -->
+{#snippet ownerNote()}
+	<div class="card preset-tonal flex items-start gap-3 p-4 text-sm" role="note" data-owner-note>
+		<Eye size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
+		<div class="min-w-0 flex-1 space-y-3">
+			<p>
+				<Rich text={m.own}>
+					{#snippet admin(text)}<a
+							class="underline underline-offset-2"
+							href={resolve('/[domain]/admin', { domain: data.domainName })}>{text}</a
+						>{/snippet}
+				</Rich>
+			</p>
+			<CopyLink link={portfolioLink(page.url.origin, data.domainName)} tone="tonal" />
+			<a
+				class="btn btn-sm preset-tonal"
+				href={resolve('/[domain]/admin?tab=share', { domain: data.domainName })}
+			>
+				<Share size="16" aria-hidden="true" />
+				{m.moreWays}
+			</a>
+		</div>
+	</div>
+{/snippet}
+
 <div class="max-w-3xl mx-auto p-6 space-y-8">
 	<section class="space-y-2">
-		<h1 class="h2">{goal ? goal.heading(ownerName) : m.title(ownerName)}</h1>
+		<h1 class="h2">{m.title(ownerName)}</h1>
 		{#if journey}
 			<p class="opacity-75">{journeyIntro(ownerName, goal)}</p>
 		{/if}
@@ -249,25 +276,15 @@
 			</button>
 		</div>
 	{:else if journey && journey.steps.length === 0}
+		{#if journey.own}{@render ownerNote()}{/if}
 		<section class="card p-6">
 			<p class="opacity-75">{datesMessages.bookingUnavailable}</p>
 		</section>
 	{:else if journey && bare}
+		{#if journey.own}{@render ownerNote()}{/if}
 		{@render visitor(bare, journey.steps[0], journey)}
 	{:else if journey}
-		{#if journey.own}
-			<div class="card preset-tonal flex items-start gap-3 p-4 text-sm" role="note">
-				<Eye size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
-				<p>
-					<Rich text={m.own}>
-						{#snippet admin(text)}<a
-								class="underline underline-offset-2"
-								href={resolve('/[domain]/admin', { domain: data.domainName })}>{text}</a
-							>{/snippet}
-					</Rich>
-				</p>
-			</div>
-		{/if}
+		{#if journey.own}{@render ownerNote()}{/if}
 		<ol class="space-y-4" aria-label={m.journey}>
 			{#each journey.steps as step, index (step.id)}
 				{@const state = states[index]}

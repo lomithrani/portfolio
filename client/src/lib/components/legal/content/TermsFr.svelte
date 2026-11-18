@@ -84,8 +84,8 @@ modifications, droit applicable.
 	{SITE_NAME} permet aux candidats de publier un portfolio de leurs expériences et projets à leur propre
 	adresse, avec une frise chronologique et des filtres par compétence, et de définir un parcours de recrutement
 	que les recruteurs suivent avant de réserver un rendez-vous avec eux. Les recruteurs rédigent des offres
-	d'emploi et en présentent une à un candidat en la choisissant sur la page Recruter de ce candidat, où
-	son parcours peut la noter au regard du poste qu'il recherche. Le site ne publie pas d'offres d'emploi.
+	d'emploi et en présentent une à un candidat en la choisissant sur la page recruteurs de ce candidat,
+	où son parcours peut la noter au regard du poste qu'il recherche. Le site ne publie pas d'offres d'emploi.
 </p>
 <p>
 	<strong>Les candidats ne paient jamais</strong> le service : la loi française interdit d'exiger

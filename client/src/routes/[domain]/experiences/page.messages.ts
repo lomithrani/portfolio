@@ -12,8 +12,11 @@ export const m = defineMessages({
 		fr: (owner: string) =>
 			`${owner} : expériences professionnelles, projets personnels, formations et cours.`
 	},
-	/** The floating corner's link to the Hire page: one line next to the view switch at 390 px */
-	hireMe: { en: 'Hire me', fr: 'Me recruter' },
+	/**
+	 * The floating corner's link to the page for recruiters (/hire): one line next to the view
+	 * switch at 390 px. Neutral: having a portfolio says nothing about looking for a job
+	 */
+	proposeRole: { en: 'Propose a role', fr: 'Proposer un poste' },
 	/** The owner's heading above their buttons */
 	heading: { en: 'Experiences', fr: 'Expériences' },
 	/** The owner's link to the admin's "Get started" while its checklist is not complete */

@@ -75,8 +75,8 @@ meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law
 	{SITE_NAME} lets candidates publish a portfolio of their experiences and projects at their own address,
 	with a timeline and skill filters, and set a hiring journey that recruiters follow before booking a
 	meeting with them. Recruiters write job descriptions and share one with a candidate by picking it on
-	that candidate's Hire page, where the candidate's journey can score it against the job they are looking
-	for. The site does not publish job descriptions.
+	that candidate's page for recruiters, where the candidate's journey can score it against the job they
+	are looking for. The site does not publish job descriptions.
 </p>
 <p>
 	<strong>Candidates never pay</strong> for the service: French law forbids asking people looking

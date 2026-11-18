@@ -44,10 +44,11 @@ export interface SettingsProps {
 	idPrefix: string;
 }
 
-/** For a step a journey leads to (an `access` step): how the Hire page presents itself */
+/**
+ * For a step a journey leads to (an `access` step): what the Hire page says of it under its title
+ * (the page's title is the same for every journey: "Propose a role to <owner>")
+ */
 export interface StepGoal {
-	/** The page's title */
-	heading(ownerName: string): string;
 	/** Under the title when the step is the whole journey */
 	alone: string;
 	/** Under the title after "<owner> asks recruiters to complete N steps first." */
@@ -82,6 +83,6 @@ export interface ClientStep {
 	 * the API refuses the owner on their own journey
 	 */
 	ownerPreview?: true;
-	/** Required for an `access` type (registry.test.ts): the Hire page is titled after it */
+	/** Required for an `access` type (registry.test.ts): what the Hire page says it leads to */
 	goal?: StepGoal;
 }

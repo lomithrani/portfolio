@@ -14,9 +14,9 @@ export const m = defineMessages({
 	/** Under the heading (`open`: the status "Open" as portfolio-common names it) */
 	intro: {
 		en: (open: string) =>
-			`Describe the job: once its status is ${open}, you can pick it on a candidate's Hire page.`,
+			`Describe the job: once its status is ${open}, you can pick it on a candidate's page for recruiters.`,
 		fr: (open: string) =>
-			`Décrivez le poste : dès que le statut de l'offre est « ${open} », vous pouvez la choisir sur la page Recruter d'un candidat.`
+			`Décrivez le poste : dès que le statut de l'offre est « ${open} », vous pouvez la choisir sur la page recruteurs d'un candidat.`
 	},
 	/** Under the heading, when the form starts from a copy (`title`: the posting copied) */
 	introDuplicate: {
@@ -80,14 +80,14 @@ export const m = defineMessages({
 	/** `open`: the status "Open" as portfolio-common names it */
 	createdDraft: {
 		en: (open: string) =>
-			`It is a draft: set its status to ${open} to pick it on a candidate's Hire page.`,
+			`It is a draft: set its status to ${open} to pick it on a candidate's page for recruiters.`,
 		fr: (open: string) =>
-			`Elle est enregistrée comme brouillon : passez son statut à « ${open} » pour la choisir sur la page Recruter d'un candidat.`
+			`Elle est enregistrée comme brouillon : passez son statut à « ${open} » pour la choisir sur la page recruteurs d'un candidat.`
 	},
 	/** Created with another status than draft */
 	createdNotDraft: {
-		en: "Pick it on a candidate's Hire page to show it to them: only an open job description can be picked.",
-		fr: "Choisissez-la sur la page Recruter d'un candidat pour la lui présenter : seule une offre d'emploi ouverte peut être choisie."
+		en: "Pick it on a candidate's page for recruiters to show it to them: only an open job description can be picked.",
+		fr: "Choisissez-la sur la page recruteurs d'un candidat pour la lui présenter : seule une offre d'emploi ouverte peut être choisie."
 	},
 	openIt: { en: 'Open it', fr: "Ouvrir l'offre" },
 	/** Created from a hiring journey, with the status Open */

@@ -4,16 +4,16 @@ export const m = defineMessages({
 	pageTitle: { en: 'Your job descriptions | Recruiter', fr: "Vos offres d'emploi | Recruteur" },
 	title: { en: 'Your job descriptions', fr: "Vos offres d'emploi" },
 	lead: {
-		en: "Open one, then pick it on a candidate's Hire page to show it to them.",
-		fr: "Ouvrez-en une, puis choisissez-la sur la page Recruter d'un candidat pour la lui présenter."
+		en: "Open one, then pick it on a candidate's page for recruiters to show it to them.",
+		fr: "Ouvrez-en une, puis choisissez-la sur la page recruteurs d'un candidat pour la lui présenter."
 	},
 
 	/** Signed in without a recruiter space */
 	space: {
 		title: { en: 'Create your recruiter space', fr: 'Créez votre espace recruteur' },
 		text: {
-			en: "Your account has a candidate space. Add a recruiter space to write job descriptions and bring them to candidates' Hire pages. You can switch between both from the account menu.",
-			fr: "Votre compte a un espace candidat. Ajoutez un espace recruteur pour rédiger des offres d'emploi et les présenter sur la page Recruter des candidats. Vous pouvez passer de l'un à l'autre depuis le menu du compte."
+			en: "Your account has a candidate space. Add a recruiter space to write job descriptions and bring them to candidates' pages for recruiters. You can switch between both from the account menu.",
+			fr: "Votre compte a un espace candidat. Ajoutez un espace recruteur pour rédiger des offres d'emploi et les présenter sur la page recruteurs des candidats. Vous pouvez passer de l'un à l'autre depuis le menu du compte."
 		},
 		/** Create was pressed with the age and terms box unticked */
 		tickTheBox: {

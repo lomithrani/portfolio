@@ -3,8 +3,19 @@
 	import type { ExperienceView } from '#services/timeline.ts';
 	import { m } from './ViewSwitch.messages.ts';
 
-	let { view = $bindable(), class: classes = '' }: { view: ExperienceView; class?: string } =
-		$props();
+	let {
+		view = $bindable(),
+		besideLink = false,
+		class: classes = ''
+	}: {
+		view: ExperienceView;
+		/**
+		 * It shares its row with "Propose a role", longer than the owner's "Add": its labels step
+		 * aside on every phone, not only on the narrowest
+		 */
+		besideLink?: boolean;
+		class?: string;
+	} = $props();
 
 	const views = [
 		{ value: 'list', label: m.list, icon: ListBullet },
@@ -29,9 +40,9 @@
 			onclick={() => (view = value)}
 		>
 			<Icon size="16" aria-hidden="true" />
-			<!-- Icons alone under 360 px: the switch shares its row with "Hire me" (the label stays
-				the button's name) -->
-			<span class="max-[22.4rem]:sr-only">{label}</span>
+			<!-- Icons alone where the row is short: under 448 px next to "Propose a role", under
+				360 px next to the owner's "Add" (the label stays the button's name) -->
+			<span class={besideLink ? 'max-[28rem]:sr-only' : 'max-[22.4rem]:sr-only'}>{label}</span>
 		</button>
 	{/each}
 </div>

@@ -1,7 +1,8 @@
 <!--
 @component
 The signed-in account's menu in the header: its initials and current space on the trigger, then
-the two spaces (radio items: the active one is checked), Account & privacy (/account:
+the two spaces (radio items: the active one is checked), Share your link for a portfolio owner
+(the admin's Share tab: /<domain>/admin?tab=share), Account & privacy (/account:
 the account's data, the terms it accepted, deleting it), Send feedback (the page's feedback dialog,
 when the server takes feedback) and Log out. Choosing a space
 opens its home, and the space is recorded once its page shows (recordSpaceShown, PUT /me/mode): a
@@ -27,6 +28,7 @@ form instead (`onClaimPortfolio`).
 		ChatBubbleLeftEllipsis,
 		Check,
 		ChevronDown,
+		Share,
 		ShieldCheck,
 		UserCircle
 	} from 'svelte-heros-v2';
@@ -112,7 +114,7 @@ form instead (`onClaimPortfolio`).
 		// The menu gives the focus back to its trigger as it closes: the dialog's too, once closed
 		else if (value === 'feedback')
 			openFeedback(() => document.getElementById(ACCOUNT_MENU_TRIGGER_ID));
-		// 'account' is a link: the browser follows it
+		// 'share' and 'account' are links: the browser follows them
 	}
 
 	const itemClass = 'gap-3 py-2 cursor-pointer data-[state=checked]:bg-primary-500/10';
@@ -202,6 +204,22 @@ form instead (`onClaimPortfolio`).
 					</Menu.OptionItem>
 				</Menu.ItemGroup>
 				<Menu.Separator />
+				{#if user.domain}
+					<Menu.Item value="share" valueText={m.shareLink}>
+						{#snippet element(attributes)}
+							<a
+								{...attributes as HTMLAttributes<HTMLAnchorElement>}
+								href={resolve('/[domain]/admin?tab=share', { domain: user.domain ?? '' })}
+								class="{itemClass} justify-start"
+							>
+								<span class="{iconClass} preset-tonal-primary" aria-hidden="true">
+									<Share size="18" />
+								</span>
+								<span class="font-medium">{m.shareLink}</span>
+							</a>
+						{/snippet}
+					</Menu.Item>
+				{/if}
 				<Menu.Item value="account" valueText={accountMessages.accountPrivacy}>
 					{#snippet element(attributes)}
 						<a

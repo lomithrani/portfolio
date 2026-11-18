@@ -1,14 +1,19 @@
 import { defineMessages } from 'portfolio-common';
 
 export const m = defineMessages({
-	/** The page's title, also its heading for a journey that leads nowhere */
+	/**
+	 * The page's title and heading, whatever the journey leads to. Neutral (the page is the
+	 * owner's page for recruiters): having a portfolio says nothing about looking for a job
+	 */
 	title: {
-		en: (ownerName: string) => `Hire ${ownerName}`,
-		fr: (ownerName: string) => `Recruter ${ownerName}`
+		en: (ownerName: string) => `Propose a role to ${ownerName}`,
+		fr: (ownerName: string) => `Proposer un poste à ${ownerName}`
 	},
 	description: {
-		en: (ownerName: string) => `Book a meeting with ${ownerName}.`,
-		fr: (ownerName: string) => `Réservez un rendez-vous avec ${ownerName}.`
+		en: (ownerName: string) =>
+			`Propose a role to ${ownerName}: their page for recruiters, with the steps they ask you to follow.`,
+		fr: (ownerName: string) =>
+			`Proposez un poste à ${ownerName} : sa page recruteurs, avec les étapes à suivre.`
 	},
 	journeyFailed: {
 		en: 'Could not load this hiring journey. Try again in a moment.',
@@ -27,9 +32,11 @@ export const m = defineMessages({
 	},
 	/** The owner's preview */
 	own: {
-		en: 'This is your hiring journey, as recruiters see it. Its steps never stop you. <admin>Change the steps</admin>',
-		fr: 'Voici votre parcours de recrutement, tel que les recruteurs le voient. Ses étapes ne vous arrêtent jamais. <admin>Modifier les étapes</admin>'
+		en: 'This is your page for recruiters, as they see it. Its steps never stop you. <admin>Change the steps</admin>',
+		fr: 'Voici votre page recruteurs, telle que les recruteurs la voient. Ses étapes ne vous arrêtent jamais. <admin>Modifier les étapes</admin>'
 	},
+	/** The owner's preview: their Share tab (reply and LinkedIn texts), under "Copy your link" */
+	moreWays: { en: 'More ways to share', fr: 'Plus de façons de partager' },
 	journey: { en: 'Hiring journey', fr: 'Parcours de recrutement' },
 	/** Before a step's name, for screen readers: "Step 2: Pick a job (done)" */
 	step: {
