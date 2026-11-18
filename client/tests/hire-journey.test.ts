@@ -1,9 +1,11 @@
 import { expect, test, type APIRequestContext, type Page, type Request } from '@playwright/test';
 import {
 	API_URL,
+	E2E_CANDIDATE_ID,
 	JWT_SECRET,
 	apiAs,
 	blockGoogle,
+	candidateSession,
 	gotoHydrated,
 	ownerSession,
 	recruiterSession,
@@ -12,8 +14,9 @@ import {
 	type OwnerSession
 } from './support/owner';
 import { stubAddressSearch } from './support/addresses';
+import { TERMS_REQUIRED, stubApi } from './support/api';
 import { createJob, deleteJobs } from './support/jobs';
-import { PERFECT_JOB_CRITERIA } from 'portfolio-common';
+import { LEGAL_VERSION, PERFECT_JOB_CRITERIA } from 'portfolio-common';
 
 // The hiring journey of 'e2e-journey' (seeded by `bun run --cwd server seed:e2e`, changed by this
 // file alone): its owner adds, sets and orders the steps in the admin tab, and the e2e recruiter
@@ -22,7 +25,9 @@ import { PERFECT_JOB_CRITERIA } from 'portfolio-common';
 // opens. No Google Calendar is connected: the
 // meeting step says online booking is unavailable (the booking itself is covered by the API's
 // tests). The recruiter is shared with the other recruiter files, which run in parallel: each
-// test names its postings with its own tag and removes them afterwards.
+// test names its postings with its own tag and removes them afterwards. The e2e candidate (no
+// recruiter space, no acceptance of the terms) opens a recruiter space from the job step, with the
+// requests that would change it answered in the browser, so it stays that way.
 
 test.skip(
 	!JWT_SECRET,
@@ -625,6 +630,92 @@ test.describe('the hiring journey', () => {
 		await expect(
 			jobStep.getByRole('radio', { name: new RegExp(`Staff engineer ${tag}`) })
 		).toBeChecked();
+	});
+
+	test('an account without a recruiter space ticks the age and terms box to create it from the job step', async ({
+		page
+	}) => {
+		await setJourney('job', 'meeting');
+		const candidate = await candidateSession();
+		const opened = await stubApi(page, 'PUT', '/me/mode', () => ({
+			json: {
+				user: {
+					_id: E2E_CANDIDATE_ID,
+					email: 'e2e.candidate@example.com',
+					activeMode: 'recruiter',
+					recruiter: true,
+					termsVersion: LEGAL_VERSION
+				}
+			}
+		}));
+		await stubApi(page, 'GET', '/recruiter/jobs', () => ({ json: { jobs: [] } }));
+
+		await signIn(page, candidate);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		const jobStep = step(page, 'Step 1: Select or create a job');
+		await expect(jobStep).toContainText('Your job descriptions live in a recruiter space.');
+		await expect(
+			jobStep.getByRole('link', { name: /what they ask of recruiters/ })
+		).toHaveAttribute('href', '/legal/terms#recruiters');
+
+		// Not without the box
+		await jobStep.getByRole('button', { name: 'Create my recruiter space' }).click();
+		await expect(
+			jobStep.getByText(
+				'Tick the box to confirm your age and accept the terms before you create your recruiter space.'
+			)
+		).toBeVisible();
+		expect(opened).toHaveLength(0);
+
+		await jobStep.getByRole('checkbox', { name: /at least 16 years old/ }).check();
+		await jobStep.getByRole('button', { name: 'Create my recruiter space' }).click();
+
+		await expect(jobStep).toContainText('You have no job description yet.');
+		expect(opened.map((request) => request.postDataJSON())).toEqual([
+			{ mode: 'recruiter', consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } }
+		]);
+	});
+
+	test('a recruiter who has not accepted the terms in force accepts them on the job step', async ({
+		page
+	}) => {
+		await setJourney('job', 'meeting');
+		await createJob(recruiterApi, { title: `Staff engineer ${tag}`, status: 'open' });
+		// An acceptance older than the terms in force, refused until accepted again (answered in the
+		// browser: the e2e recruiter's acceptance is never changed)
+		const user = {
+			_id: recruiter.ownerId,
+			email: 'e2e.recruiter@example.com',
+			activeMode: 'recruiter',
+			recruiter: true,
+			termsVersion: '2025-01-01'
+		};
+		await stubApi(page, 'GET', '/isLogged', () => ({
+			json: { logged: true, user, expires: recruiter.exp }
+		}));
+		let accepted = false;
+		await stubApi(page, 'GET', '/recruiter/jobs', () => (accepted ? undefined : TERMS_REQUIRED));
+		const acceptances = await stubApi(page, 'PUT', '/me/consent', () => {
+			accepted = true;
+			return { json: { user: { ...user, termsVersion: LEGAL_VERSION } } };
+		});
+
+		await signIn(page, recruiter);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		const jobStep = step(page, 'Step 1: Select or create a job');
+		const terms = jobStep.locator('[data-terms-acceptance]');
+		await expect(terms.getByRole('heading', { level: 3, name: 'Terms of use' })).toBeVisible();
+		await expect(terms).toContainText('accept them to keep using your recruiter space');
+
+		await terms.getByRole('checkbox', { name: /at least 16 years old/ }).check();
+		await terms.getByRole('button', { name: 'Accept the terms' }).click();
+
+		await expect(
+			jobStep.getByRole('radio', { name: new RegExp(`Staff engineer ${tag}`) })
+		).toBeVisible();
+		expect(acceptances.map((request) => request.postDataJSON())).toEqual([
+			{ termsVersion: LEGAL_VERSION, ageConfirmed: true, source: 'recruiter' }
+		]);
 	});
 
 	test('a recruiter writes the job from the journey and comes back to pick it', async ({

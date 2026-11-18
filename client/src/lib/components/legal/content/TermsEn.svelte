@@ -2,7 +2,9 @@
 @component
 Terms of use (English): eligibility (age and working age), the service, accounts and portfolios,
 user content and its licence, prohibited content (discriminatory job descriptions, minors),
-imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law.
+recruiters (accepted when opening the recruiter space; real positions, the pay actually offered,
+no age limit, the right to act for the employer), imports, meetings, moderation (DSA arts 14, 16,
+17), termination, liability, changes, law.
 -->
 <script module lang="ts">
 	import type { LegalSection } from '../legalDocuments.ts';
@@ -44,7 +46,7 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 	These terms of use set the rules between you and the publisher of {SITE_NAME} (see the
 	<LegalDocLink doc="notice" {lang}>legal notice</LegalDocLink>) when you use the site. You accept
 	them by ticking the confirmation box when the site asks for it (when you sign up from the home
-	page or claim a portfolio), and by using an account. This is version
+	page, claim a portfolio or open the recruiter space), and by using an account. This is version
 	{LEGAL_VERSION}, in force since {legalLastUpdated(lang)}. How we process personal data is
 	explained in the <LegalDocLink doc="privacy" {lang}>privacy policy</LegalDocLink>.
 </p>
@@ -55,7 +57,7 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 	<li>
 		be at least <strong>{MINIMUM_AGE} years old</strong> and have reached the
 		<strong>minimum legal working age in your country</strong>, which you confirm when the site asks
-		for it (when you sign up from the home page or claim a portfolio);
+		for it (when you sign up from the home page, claim a portfolio or open the recruiter space);
 	</li>
 	<li>have a Google account, which you use to sign in;</li>
 	<li>if you publish job descriptions for an organisation, be allowed to act on its behalf.</li>
@@ -161,11 +163,35 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 
 <h3 id="recruiters">Job descriptions and recruiters</h3>
 <p>
-	Recruiters are responsible for their job descriptions: they describe a real position, with the
-	pay, contract and conditions actually offered, and they comply with employment law. Before hiring,
-	recruiters must check that the candidate is legally allowed to do the job, including their age and
-	right to work. The site does not select, score or rank candidates, and it is not a recruitment
-	agency or an employer.
+	To open the recruiter space, recruiters accept these terms (the site asks for them then, unless
+	they already accepted the version in force), and they accept them again when they change
+	materially, before they use the space again. Recruiters are responsible for their job
+	descriptions, and commit to:
+</p>
+<ul>
+	<li>
+		describe a <strong>real position</strong>, open or about to open, with the contract and
+		conditions actually offered;
+	</li>
+	<li>
+		state the <strong>pay actually offered</strong>: a job description must not mislead about the
+		position, its pay, its place of work or anything else it offers (article L5331-3 of the French
+		Labour Code);
+	</li>
+	<li>
+		set <strong>no age limit</strong>, unless the law requires one (article L5331-2 of the French
+		Labour Code), nor any other discriminatory criterion (see
+		<a class="link-text" href="#prohibited">what is not allowed</a>);
+	</li>
+	<li>
+		be the employer, or be <strong>allowed to act on its behalf</strong>;
+	</li>
+	<li>comply with employment law.</li>
+</ul>
+<p>
+	Before hiring, recruiters must check that the candidate is legally allowed to do the job,
+	including their age and right to work. The site does not select, score or rank candidates, and it
+	is not a recruitment agency or an employer.
 </p>
 
 <h3 id="imports">Résumé and job description imports</h3>
@@ -235,8 +261,8 @@ imports, meetings, moderation (DSA arts 14, 16, 17), termination, liability, cha
 <p>
 	When we change these terms materially, we update their date and version, tell you on the site or
 	by email before the change applies, and ask you to accept the new version when you next sign up or
-	claim a portfolio, or from your account page. If you do not accept it, you can stop using the site
-	and delete your account.
+	claim a portfolio, before you use the recruiter space again, or from your account page. If you do
+	not accept it, you can stop using the site and delete your account.
 </p>
 
 <h3 id="law">Governing law and disputes</h3>

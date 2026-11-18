@@ -14,9 +14,13 @@
 		Trash,
 		Users
 	} from 'svelte-heros-v2';
+	import { currentConsent } from 'portfolio-common';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { SIGN_IN_ID } from '#components/Login.svelte';
+	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
+	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
+	import RecruiterRules from '#components/legal/RecruiterRules.svelte';
 	import JobCard from '#components/jobs/JobCard.svelte';
 	import JobImport from '#components/job-import/JobImport.svelte';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
@@ -27,7 +31,7 @@
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
 	import { errorStatus } from '#services/apiErrors.ts';
-	import { switchMode } from '#services/account.ts';
+	import { hasAcceptedCurrentTerms, isConsentProblem, switchMode } from '#services/account.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
 		clearJobDraft,
@@ -59,15 +63,19 @@
 
 	// The recruiter's dashboard: the meetings they booked on candidates' Hire pages
 	// (UpcomingMeetings, GET /appointments/booked), their job descriptions (GET /recruiter/jobs), with the PDF import
-	// (GET / POST /jobs/import) and deletion. Signed out: what the space does and a sign-in; signed
-	// in without a recruiter space: a button to create it. Rendered in the browser only
-	// (recruiter/+layout.ts).
+	// (GET / POST /jobs/import) and deletion. Signed out: what the space does and a sign-in (the
+	// age and terms box first); signed in without a recruiter space: a button to create it, after
+	// the age and terms box for an account that has not accepted the terms in force (the one place,
+	// with the job step of a hiring journey, where a recruiter space is created); a recruiter who
+	// has not accepted the terms in force (the API answers 422 on `consent`): the terms to accept
+	// before anything else. Rendered in the browser only (recruiter/+layout.ts).
 
 	type ListState =
 		| { kind: 'idle' }
 		| { kind: 'loading'; userId: string }
 		| { kind: 'loaded'; userId: string; jobs: RecruiterJob[] }
 		| { kind: 'no-space'; userId: string }
+		| { kind: 'terms'; userId: string }
 		| { kind: 'error'; userId: string };
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -106,6 +114,9 @@
 					clearAuthentication();
 				} else if (code === 403) {
 					listState = { kind: 'no-space', userId };
+				} else if (isConsentProblem(code, error?.value)) {
+					// The terms in force are not accepted: the page asks for them first
+					listState = { kind: 'terms', userId };
 				} else {
 					listState = { kind: 'error', userId };
 				}
@@ -189,23 +200,46 @@
 
 	let creatingSpace = $state(false);
 	let createError = $state('');
+	const consentId = 'recruiter-space-consent';
+	/** The age and terms box, ticked to create the space */
+	let consent = $state(false);
+	let consentError = $state('');
+	/** The API asked for the confirmation although the session said the terms were accepted */
+	let consentAsked = $state(false);
+	// Asked of an account that has not accepted the terms in force: creating the space records them
+	let needsConsent = $derived(!!user && (consentAsked || !hasAcceptedCurrentTerms(user)));
 
 	async function createSpace() {
 		const userId = user?._id;
 		if (creatingSpace || !userId) return;
-		creatingSpace = true;
 		createError = '';
+		if (needsConsent && !consent) {
+			consentError = m.space.tickTheBox;
+			document.getElementById(consentId)?.focus();
+			return;
+		}
+		creatingSpace = true;
 		// This function loads the list once the space exists: the effect above, run again when
 		// switchMode stores the account, leaves it alone (one load, not two)
 		const before = requested;
 		requested = userId;
-		const result = await switchMode('recruiter');
+		const result = await switchMode('recruiter', needsConsent ? currentConsent() : undefined);
 		creatingSpace = false;
 		if (!result.ok) {
 			// Unless the session ended meanwhile (the effect then forgot the account)
 			if (requested === userId) requested = before;
-			if (result.reason === 'session-expired') toaster.error({ title: result.message });
-			else createError = result.message;
+			if (result.reason === 'session-expired') {
+				toaster.error({ title: result.message });
+			} else if (result.cause === 'consent') {
+				// The box shows (again): ticking it is what is missing, unless this page is outdated
+				consentAsked = true;
+				consent = false;
+				consentError = result.message;
+				await tick();
+				document.getElementById(consentId)?.focus();
+			} else {
+				createError = result.message;
+			}
 			return;
 		}
 		toaster.success({
@@ -339,6 +373,19 @@
 		{:else if user.recruiter === false || listState.kind === 'no-space'}
 			<PageNotice title={m.space.title} icon={Briefcase}>
 				<p>{m.space.text}</p>
+				<div class="pt-2 text-start">
+					{#if needsConsent}
+						<AgeTermsConsent
+							bind:checked={consent}
+							error={consent ? undefined : consentError || undefined}
+							disabled={creatingSpace}
+							id={consentId}
+							recruiter
+						/>
+					{:else}
+						<RecruiterRules />
+					{/if}
+				</div>
 				{#if createError}
 					<p
 						class="flex items-start justify-center gap-2 text-sm font-medium text-error-700-300"
@@ -369,6 +416,20 @@
 					</button>
 				{/snippet}
 			</PageNotice>
+		{:else if listState.kind === 'terms'}
+			<!-- Nothing of the space before the terms in force are accepted (the API refuses it) -->
+			<TermsAcceptance
+				{user}
+				source="recruiter"
+				required
+				level={2}
+				onAccepted={() => {
+					if (listState.kind !== 'terms') return;
+					focusHeading = true;
+					loadJobs(listState.userId);
+					refreshImportStatus();
+				}}
+			/>
 		{:else}
 			<!-- First: a meeting may be about to start -->
 			<UpcomingMeetings userId={user._id} />

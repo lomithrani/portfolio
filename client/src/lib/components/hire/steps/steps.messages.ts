@@ -47,6 +47,11 @@ export const m = defineMessages({
 			en: 'Your job descriptions live in a recruiter space. Create yours (it is free) to pick one or write a new one.',
 			fr: "Vos offres d'emploi se trouvent dans un espace recruteur. Créez le vôtre (c'est gratuit) pour en choisir une ou en rédiger une nouvelle."
 		},
+		/** Create was pressed with the age and terms box unticked */
+		tickTheBox: {
+			en: 'Tick the box to confirm your age and accept the terms before you create your recruiter space.',
+			fr: 'Cochez la case pour confirmer votre âge et accepter les conditions avant de créer votre espace recruteur.'
+		},
 		creatingSpace: { en: 'Creating…', fr: 'Création…' },
 		createSpace: { en: 'Create my recruiter space', fr: 'Créer mon espace recruteur' },
 		loadingJobs: {

@@ -15,6 +15,11 @@ export const m = defineMessages({
 			en: 'Your account has a candidate space. Add a recruiter space to write job descriptions and see the candidates who apply. You can switch between both from the account menu.',
 			fr: "Votre compte a un espace candidat. Ajoutez un espace recruteur pour rédiger des offres d'emploi et voir les candidats qui postulent. Vous pouvez passer de l'un à l'autre depuis le menu du compte."
 		},
+		/** Create was pressed with the age and terms box unticked */
+		tickTheBox: {
+			en: 'Tick the box to confirm your age and accept the terms before you create your recruiter space.',
+			fr: 'Cochez la case pour confirmer votre âge et accepter les conditions avant de créer votre espace recruteur.'
+		},
 		create: { en: 'Create my recruiter space', fr: 'Créer mon espace recruteur' },
 		creating: { en: 'Creating your space…', fr: 'Création de votre espace…' },
 		/** The toast once created */

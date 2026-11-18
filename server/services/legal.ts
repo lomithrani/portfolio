@@ -73,11 +73,14 @@ export const recordConsent = async (
 };
 
 /**
- * Gate of the routes that need the terms in force (POST /domain/claim): an
- * account that accepted them goes through; otherwise the confirmation sent
- * with the request is checked and recorded from `source`. Throws
- * FieldValidationError (422 on `consent`) without one, or for an invalid one,
- * and CouldntVerifyJwtError (401) when the account no longer exists.
+ * Gate of the routes that need the terms in force (POST /domain/claim, and
+ * opening the recruiter space: PUT /me/mode, POST /login with the mode
+ * 'recruiter'): an account that accepted them goes through; otherwise the
+ * confirmation sent with the request is checked and recorded from `source`.
+ * Throws FieldValidationError (422 on `consent`, saying what it was for:
+ * the portfolio, or the recruiter space for the source 'recruiter') without
+ * one, or for an invalid one, and CouldntVerifyJwtError (401) when the
+ * account no longer exists.
  */
 export const requireCurrentTerms = async (
   userId: string,
@@ -86,7 +89,10 @@ export const requireCurrentTerms = async (
 ): Promise<void> => {
   if (await userAcceptedCurrentTerms(userId)) return;
   if (input === undefined || input === null) {
-    throw new FieldValidationError('consent', () => m.claimConsentRequired);
+    throw new FieldValidationError(
+      'consent',
+      source === 'recruiter' ? () => m.recruiterConsentRequired : () => m.claimConsentRequired
+    );
   }
   if (await recordConsent(userId, input, source)) return;
   // Nothing recorded: accepted meanwhile by a concurrent request, or the

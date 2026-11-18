@@ -416,6 +416,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		if (code === 413) {
 			return showSubmitError({ message: m.tooLarge });
 		}
+		if (code === 422 && validationProperty(error.value) === 'consent') {
+			return showSubmitError({
+				message: m.termsRequired,
+				link: { href: recruiterHref, label: m.openRecruiterSpace }
+			});
+		}
 		if (code === 400 || code === 422) {
 			const field = jobFieldOfProperty(validationProperty(error.value));
 			if (field && text) {

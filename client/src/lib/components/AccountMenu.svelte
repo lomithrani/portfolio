@@ -6,8 +6,9 @@ the account's data, the terms it accepted, deleting it), Send feedback (the page
 when the server takes feedback) and Log out. Choosing a space
 opens its home, and the space is recorded once its page shows (recordSpaceShown, PUT /me/mode): a
 page that keeps the visitor (unsaved changes) leaves the space as it was. The recruiter space is
-created first, the first time. A candidate without a portfolio is sent to the claim form instead
-(`onClaimPortfolio`).
+not created from here: /recruiter offers to create it, after the age and terms box when the
+account has not accepted the terms in force. A candidate without a portfolio is sent to the claim
+form instead (`onClaimPortfolio`).
 -->
 <script module lang="ts">
 	/** The trigger's id: where the focus goes back once the space chooser closes */
@@ -36,13 +37,11 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 	import {
 		recordSpaceShown,
 		spaceLabel,
-		switchMode,
 		userDisplayName,
 		userInitials
 	} from '#services/account.ts';
 	import type { AuthUser } from '#services/stores/index.ts';
 	import { accountMessages } from '#services/account.messages.ts';
-	import { toaster } from '#services/toaster.ts';
 	import { feedbackAvailability, openFeedback } from '#services/feedback.ts';
 	import { m } from './AccountMenu.messages.ts';
 
@@ -97,14 +96,7 @@ created first, the first time. A candidate without a portfolio is sent to the cl
 	async function openRecruiterSpace() {
 		pending = 'recruiter';
 		try {
-			// The first time, the space is created (which makes it the active one)
-			if (!user.recruiter) {
-				const result = await switchMode('recruiter');
-				if (!result.ok) {
-					toaster.error({ title: result.message });
-					return;
-				}
-			}
+			// Without a space yet, the page offers to create it (with the terms, when not accepted)
 			await goto(resolve('/(app)/recruiter'));
 		} finally {
 			pending = null;

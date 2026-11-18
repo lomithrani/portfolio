@@ -34,6 +34,21 @@ export const m = defineMessages({
 			fr: "Vous n'avez pas encore accepté les conditions d'utilisation. Vous devez le faire avant de créer votre portfolio."
 		}
 	},
+	/** In the recruiter space, whose routes need the terms in force (`source` 'recruiter') */
+	recruiter: {
+		/** The account accepted an older version (`accepted`); the terms in force are dated `current` */
+		outdated: {
+			en: (accepted: string, current: string) =>
+				`You accepted the version of <date>${accepted}</date>. The terms changed on <date>${current}</date>: read the <terms>Terms of use</terms> and accept them to keep using your recruiter space.`,
+			fr: (accepted: string, current: string) =>
+				`Vous avez accepté la version du <date>${accepted}</date>. Les conditions ont changé le <date>${current}</date> : lisez les <terms>conditions d'utilisation</terms> et acceptez-les pour continuer à utiliser votre espace recruteur.`
+		},
+		/** A recruiter space opened before recruiters accepted the terms */
+		notAccepted: {
+			en: 'Read the <terms>Terms of use</terms> and accept them to keep using your recruiter space: they say what is asked of recruiters.',
+			fr: "Lisez les <terms>conditions d'utilisation</terms> et acceptez-les pour continuer à utiliser votre espace recruteur : elles disent ce qui est demandé aux recruteurs."
+		}
+	},
 	accept: { en: 'Accept the terms', fr: 'Accepter les conditions' },
 	done: {
 		title: { en: 'Terms accepted', fr: 'Conditions acceptées' },

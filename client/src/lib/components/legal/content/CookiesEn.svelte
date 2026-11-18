@@ -103,11 +103,11 @@ French loi Informatique et Libertés art. 82), how to clear them.
 	<strong>When Google is involved.</strong> Google's sign-in script is loaded only after you ask for something
 	that needs it: clicking a "Sign in" or "Sign in with Google" button (in the header of portfolios, job
 	pages and the recruiter space, in the apply panel of a job page or in a hiring journey), ticking the
-	age and terms box on the home page or in a claim form, connecting Google Calendar, and also signing
-	out or deleting your account, to turn off Google's automatic sign-in on this browser (otherwise Google
-	would sign you straight back in). Loading it sends your IP address and browser details to Google, even
-	if you do not sign in. Once loaded, it stays loaded until you leave or reload the site, including on
-	the pages you open next, such as the legal pages.
+	age and terms box on the home page, on the recruiter space's page or in a claim form, connecting Google
+	Calendar, and also signing out or deleting your account, to turn off Google's automatic sign-in on this
+	browser (otherwise Google would sign you straight back in). Loading it sends your IP address and browser
+	details to Google, even if you do not sign in. Once loaded, it stays loaded until you leave or reload
+	the site, including on the pages you open next, such as the legal pages.
 </p>
 
 <h3 id="local-storage">Local storage</h3>

@@ -13,10 +13,9 @@ import { env } from '../env';
 import { createApp } from '../app';
 import { ConflictError, JourneyStepLockedError, MissingAuthCookieError, ResourceNotFoundError } from '../errors';
 import { Domain, JobPosting, PerfectJob, User, Workflow, WorkflowInstance } from '../models/database';
-import { enableRecruiterSpace } from '../services/recruiters';
 import { assertStepOpen, openStepOfType, recordStepData } from '../services/workflows';
 import { serverStep, serverStepTypes } from '../services/workflowSteps';
-import { authCookie } from './helpers';
+import { CONSENT, authCookie, openRecruiterSpace } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
@@ -51,7 +50,7 @@ const createUser = async (
 ): Promise<TestUser> => {
   const user = await User.create({ email: t.email(name), googleId: t.id(`sub-${name}`), name });
   const id = user._id.toString();
-  if (recruiter) expect(await enableRecruiterSpace(id)).toBe(true);
+  if (recruiter) expect(await openRecruiterSpace(id)).toBe(true);
   let domainName: string | undefined;
   if (domain) {
     domainName = t.id(name);
@@ -855,6 +854,23 @@ describe('submitting a step (POST /workflow/domains/:domainName/steps/:stepId)',
       });
     }
     expect(await WorkflowInstance.countDocuments({ owner: owner.id })).toBe(0);
+  });
+
+  it('refuses the pick of a recruiter without the terms in force (422 on consent), until accepted again', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), meeting());
+    const jobId = await createJob(recruiter);
+    // Accepted before the terms in force changed
+    await User.updateOne({ _id: recruiter.id }, { $set: { 'legalAcceptances.0.version': '2025-01-01' } });
+
+    const refused = await submit(owner.domain, 'job', { jobId }, recruiter);
+    expect(refused.status).toBe(422);
+    expect(refused.json()).toMatchObject({ property: 'consent' });
+    expect(await WorkflowInstance.countDocuments({ owner: owner.id })).toBe(0);
+
+    expect((await call('PUT', '/me/consent', { body: { ...CONSENT, source: 'recruiter' }, cookie: recruiter.cookie })).status).toBe(200);
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).json().steps[0].status).toBe('succeeded');
   });
 
   it('needs a session, a portfolio, a step of the journey, and a step that takes something', async () => {

@@ -111,12 +111,12 @@ Libertés art. 82), comment les effacer.
 	demande de votre part qui en a besoin : un clic sur un bouton « Se connecter » ou « Se connecter avec
 	Google » (dans l'en-tête des portfolios, des pages d'offres et de l'espace recruteur, dans le panneau
 	de candidature d'une offre ou dans un parcours de recrutement), la case d'âge et de conditions cochée
-	sur la page d'accueil ou dans un formulaire de création de portfolio, la connexion de Google Agenda,
-	ainsi que la déconnexion ou la suppression de votre compte, pour désactiver la connexion automatique
-	de Google sur ce navigateur (sans quoi Google vous reconnecterait aussitôt). Son chargement transmet
-	à Google votre adresse IP et des informations sur votre navigateur, même si vous ne vous connectez pas.
-	Une fois chargé, il le reste jusqu'à ce que vous quittiez ou rechargiez le site, y compris sur les pages
-	que vous ouvrez ensuite, comme les pages légales.
+	sur la page d'accueil, sur la page de l'espace recruteur ou dans un formulaire de création de portfolio,
+	la connexion de Google Agenda, ainsi que la déconnexion ou la suppression de votre compte, pour désactiver
+	la connexion automatique de Google sur ce navigateur (sans quoi Google vous reconnecterait aussitôt).
+	Son chargement transmet à Google votre adresse IP et des informations sur votre navigateur, même si
+	vous ne vous connectez pas. Une fois chargé, il le reste jusqu'à ce que vous quittiez ou rechargiez
+	le site, y compris sur les pages que vous ouvrez ensuite, comme les pages légales.
 </p>
 
 <h3 id="local-storage">Stockage local</h3>

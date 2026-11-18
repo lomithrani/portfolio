@@ -368,15 +368,23 @@ export const jobStepNote = (view: unknown, state: 'open' | 'done'): string => {
 
 /**
  * What a failed pick means. `reload-jobs`: the recruiter's jobs are not what the step shows
- * (it loads them again)
+ * (it loads them again); `terms`: the recruiter has not accepted the terms in force (a 422 on
+ * `consent`: the step asks for them, TermsAcceptance)
  */
 export const pickJobFailure = (
 	status: number | undefined,
 	value: unknown
-): StepFailure<'reload-jobs'> => {
+): StepFailure<'reload-jobs' | 'terms'> => {
 	if (isNetworkFailure(value)) return submitFailure(status, value);
 	const text = bodyText(value);
 	switch (status) {
+		case 422:
+			return value &&
+				typeof value === 'object' &&
+				'property' in value &&
+				value.property === 'consent'
+				? { message: m.job.pick.terms, kind: 'terms' }
+				: { message: m.job.pick.failed, kind: 'error' };
 		case 401:
 			return { message: m.job.pick.signedOut, kind: 'signed-out' };
 		case 403:

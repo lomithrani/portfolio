@@ -81,7 +81,9 @@ test.describe('a visitor whose browser prefers French', () => {
 				name: 'Trouvez des talents qui ont exactement les compétences recherchées'
 			})
 		).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Se connecter avec Google' })).toBeVisible();
+		// The sign-in starts with the age and terms box, in French too
+		await expect(page.getByRole('checkbox', { name: /au moins 16 ans/ })).toBeVisible();
+		await expect(page.getByText('Cochez la case pour continuer')).toBeVisible();
 
 		// The API is asked in the page's language, whatever the browser's own header says
 		expect(languages.length).toBeGreaterThan(0);

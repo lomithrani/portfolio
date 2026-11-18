@@ -1,6 +1,8 @@
 // Account modes (candidate / recruiter) against a real MongoDB (MONGO_URL,
 // local or from TEST_MONGO_URL): /login, /isLogged, GET /me and PUT /me/mode,
-// and the recruiter space they create. Each test logs in its own users and
+// and the recruiter space they create once the account accepted the terms in
+// force (tests/consent.test.ts covers the acceptance itself, and
+// tests/jobs.test.ts the recruiter routes that ask for it). Each test logs in its own users and
 // claims its own domains, all named with a suffix unique to that test, and
 // removes them after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
@@ -68,10 +70,15 @@ const call = async (method: string, path: string, { body, cookie }: { body?: unk
   };
 };
 
-/** POST /login with Google as this test's user `name` (sub and email derived from it) */
-const login = async (name: string, mode?: string) => {
+/** The body of POST /login as this test's user `name` (sub and email derived from it) */
+const loginBody = async (name: string, mode?: string, fields: Record<string, unknown> = {}) => {
   const token = await signGoogleIdToken({ claims: { sub: t.id(`sub-${name}`), email: t.email(name) } });
-  const result = await call('POST', '/login', { body: mode === undefined ? { token } : { token, mode } });
+  return { token, ...(mode === undefined ? {} : { mode }), ...fields };
+};
+
+/** POST /login with Google as this test's user `name`, with the extra body fields given (consent...) */
+const login = async (name: string, mode?: string, fields: Record<string, unknown> = {}) => {
+  const result = await call('POST', '/login', { body: await loginBody(name, mode, fields) });
   expect(result.status).toBe(200);
   const cookie = `auth=${parseCookie(result.headers.get('Set-Cookie') ?? '')['auth']}`;
   const user = result.json().user;
@@ -79,11 +86,16 @@ const login = async (name: string, mode?: string) => {
 };
 
 const me = (cookie: string) => call('GET', '/me', { cookie });
-const switchMode = (cookie: string, mode: unknown) => call('PUT', '/me/mode', { body: { mode }, cookie });
+const switchMode = (cookie: string, mode: unknown, consent?: unknown) =>
+  call('PUT', '/me/mode', { body: consent === undefined ? { mode } : { mode, consent }, cookie });
 const isLogged = (cookie: string) => call('GET', '/isLogged', { cookie });
 
 /** The user as stored, recruiter space included */
 const stored = (userId: string) => User.findById(userId).lean();
+/** Where the account accepted the terms, in order */
+const consentSources = async (userId: string) =>
+  ((await stored(userId))?.legalAcceptances ?? []).map((acceptance) => acceptance.source);
+const sessionIssued = (headers: Headers) => (headers.get('Set-Cookie') ?? '').includes('auth=ey');
 
 /**
  * From now on, the modifiedCount of every User.updateOne that writes a whole
@@ -125,11 +137,19 @@ describe('a new account', () => {
     expect((await stored(userId))?.recruiter).toBeUndefined();
   });
 
-  it('chosen as a recruiter on login gets its recruiter space on the free plan', async () => {
+  it('chosen as a recruiter on login, with the terms, gets its recruiter space on the free plan', async () => {
     const before = Date.now();
-    const { cookie, userId, user } = await login('recruiter', 'recruiter');
+    const { cookie, userId, user } = await login('recruiter', 'recruiter', { consent: CONSENT });
 
-    expect(user).toEqual({ _id: userId, email: t.email('recruiter'), activeMode: 'recruiter', recruiter: true });
+    expect(user).toEqual({
+      _id: userId,
+      email: t.email('recruiter'),
+      activeMode: 'recruiter',
+      recruiter: true,
+      termsVersion: LEGAL_VERSION
+    });
+    // Accepted from the recruiter space's sign-in: the default source with this mode
+    expect(await consentSources(userId)).toEqual(['recruiter']);
     const doc = await stored(userId);
     expect(doc?.activeMode).toBe('recruiter');
     expect(doc?.recruiter).toEqual({ enabledAt: expect.any(Date), plan: 'free', jobImportsUsed: 0 });
@@ -137,6 +157,23 @@ describe('a new account', () => {
     expect(doc!.recruiter!.enabledAt.getTime()).toBeLessThanOrEqual(Date.now());
     expect(await findRecruiterSpace(userId)).toEqual({ enabledAt: doc!.recruiter!.enabledAt, plan: 'free', jobImportsUsed: 0 });
     expect((await me(cookie)).json().user).toEqual(user);
+  });
+
+  it('chosen as a recruiter on login without the terms gets no space and no session (422 on consent)', async () => {
+    const result = await call('POST', '/login', { body: await loginBody('no-terms', 'recruiter') });
+
+    expect(result.status).toBe(422);
+    expect(result.json()).toEqual({
+      type: 'validation',
+      on: 'body',
+      property: 'consent',
+      message: 'Confirm your age and accept the terms of use to open your recruiter space.'
+    });
+    expect(sessionIssued(result.headers)).toBe(false);
+    const doc = await User.findOne({ email: t.email('no-terms') }).lean();
+    expect(doc?.recruiter).toBeUndefined();
+    expect(doc?.activeMode).toBeUndefined();
+    expect(doc?.legalAcceptances).toBeUndefined();
   });
 });
 
@@ -152,7 +189,7 @@ describe('POST /login', () => {
   });
 
   it('without a mode keeps the mode the account last chose', async () => {
-    await login('returning', 'recruiter');
+    await login('returning', 'recruiter', { consent: CONSENT });
     await switchMode((await login('returning')).cookie, 'candidate');
 
     const { user } = await login('returning');
@@ -161,22 +198,39 @@ describe('POST /login', () => {
 
   it('with a mode switches an existing account to it', async () => {
     const first = await login('existing', 'candidate');
-    const { user } = await login('existing', 'recruiter');
+    const { user } = await login('existing', 'recruiter', { consent: CONSENT, consentSource: 'recruiter' });
 
-    expect(user).toEqual({ _id: first.userId, email: t.email('existing'), activeMode: 'recruiter', recruiter: true });
+    expect(user).toEqual({
+      _id: first.userId,
+      email: t.email('existing'),
+      activeMode: 'recruiter',
+      recruiter: true,
+      termsVersion: LEGAL_VERSION
+    });
+    expect(await consentSources(first.userId)).toEqual(['recruiter']);
+  });
+
+  it('back into an existing recruiter space asks for nothing more, even with older terms', async () => {
+    const { userId } = await login('back', 'recruiter', { consent: CONSENT });
+    // Accepted before the terms in force: the recruiter routes ask again (tests/jobs.test.ts)
+    await User.updateOne({ _id: userId }, { $set: { 'legalAcceptances.0.version': '2025-01-01' } });
+
+    const { user } = await login('back', 'recruiter');
+
+    expect(user).toMatchObject({ activeMode: 'recruiter', recruiter: true, termsVersion: '2025-01-01' });
   });
 });
 
 describe('PUT /me/mode', () => {
   it('creates the recruiter space once: switching back and forth keeps it and its imports used', async () => {
-    const { cookie, userId } = await login('switch', 'recruiter');
+    const { cookie, userId } = await login('switch', 'recruiter', { consent: CONSENT });
     await User.updateOne({ _id: userId }, { $set: { 'recruiter.jobImportsUsed': 2 } });
     const space = (await stored(userId))!.recruiter!;
 
     const toCandidate = await switchMode(cookie, 'candidate');
     expect(toCandidate.status).toBe(200);
     expect(toCandidate.json()).toEqual({
-      user: { _id: userId, email: t.email('switch'), activeMode: 'candidate', recruiter: true }
+      user: { _id: userId, email: t.email('switch'), activeMode: 'candidate', recruiter: true, termsVersion: LEGAL_VERSION }
     });
     expect((await stored(userId))?.recruiter).toEqual(space);
 
@@ -190,13 +244,54 @@ describe('PUT /me/mode', () => {
     expect(doc?.recruiter).toEqual({ enabledAt: space.enabledAt, plan: 'free', jobImportsUsed: 2 });
   });
 
-  it('creates the recruiter space of a candidate account the first time it chooses it', async () => {
+  it('creates the recruiter space of a candidate account the first time it chooses it, with the terms', async () => {
     const { cookie, userId } = await login('upgrade', 'candidate');
+
+    const result = await switchMode(cookie, 'recruiter', CONSENT);
+
+    expect(result.json().user).toEqual({
+      _id: userId,
+      email: t.email('upgrade'),
+      activeMode: 'recruiter',
+      recruiter: true,
+      termsVersion: LEGAL_VERSION
+    });
+    expect((await stored(userId))?.recruiter).toEqual({ enabledAt: expect.any(Date), plan: 'free', jobImportsUsed: 0 });
+    expect(await consentSources(userId)).toEqual(['recruiter']);
+  });
+
+  it('refuses to create the recruiter space without the terms in force (422 on consent), and creates nothing', async () => {
+    const { cookie, userId } = await login('refused', 'candidate');
+
+    const refused = await switchMode(cookie, 'recruiter');
+    expect(refused.status).toBe(422);
+    expect(refused.json()).toMatchObject({ property: 'consent', message: expect.stringContaining('recruiter space') });
+
+    // An older version accepted before is not enough either, and an older version sent is refused
+    await User.updateOne(
+      { _id: userId },
+      { $set: { legalAcceptances: [{ version: '2025-01-01', acceptedAt: new Date(), ageConfirmationKey: 'age-v0', source: 'landing' }] } }
+    );
+    expect((await switchMode(cookie, 'recruiter')).json()).toMatchObject({ property: 'consent' });
+    const stale = await switchMode(cookie, 'recruiter', { termsVersion: '2025-01-01', ageConfirmed: true });
+    expect(stale.status).toBe(422);
+    expect(stale.json()).toMatchObject({ property: 'consent.termsVersion' });
+
+    const doc = await stored(userId);
+    expect(doc?.recruiter).toBeUndefined();
+    expect(doc?.activeMode).toBe('candidate');
+    expect(await consentSources(userId)).toEqual(['landing']);
+  });
+
+  it('creates it without a confirmation for an account that accepted the terms in force elsewhere', async () => {
+    const { cookie, userId } = await login('accepted', 'candidate', { consent: CONSENT });
 
     const result = await switchMode(cookie, 'recruiter');
 
-    expect(result.json().user).toEqual({ _id: userId, email: t.email('upgrade'), activeMode: 'recruiter', recruiter: true });
-    expect((await stored(userId))?.recruiter).toEqual({ enabledAt: expect.any(Date), plan: 'free', jobImportsUsed: 0 });
+    expect(result.status).toBe(200);
+    expect(result.json().user).toMatchObject({ activeMode: 'recruiter', recruiter: true, termsVersion: LEGAL_VERSION });
+    // Once per version: the acceptance of the landing page stays the one on record
+    expect(await consentSources(userId)).toEqual(['landing']);
   });
 
   it.each([
@@ -301,17 +396,18 @@ describe('enableRecruiterSpace', () => {
     const { cookie, userId } = await login('double');
     const writes = recruiterSpaceWrites();
 
-    const results = await Promise.all([switchMode(cookie, 'recruiter'), switchMode(cookie, 'recruiter')]);
+    const results = await Promise.all([switchMode(cookie, 'recruiter', CONSENT), switchMode(cookie, 'recruiter', CONSENT)]);
 
     expect(results.map((result) => result.status)).toEqual([200, 200]);
     expect(results.map((result) => result.json().user)).toEqual([
       expect.objectContaining({ activeMode: 'recruiter', recruiter: true }),
       expect.objectContaining({ activeMode: 'recruiter', recruiter: true })
     ]);
-    // Both requests tried to create it, one did
+    // Both requests tried to create it, one did; the terms are recorded once too
     expect(writes).toHaveLength(2);
     expect(sum(writes)).toBe(1);
     expect((await stored(userId))?.recruiter).toEqual({ enabledAt: expect.any(Date), plan: 'free', jobImportsUsed: 0 });
+    expect(await consentSources(userId)).toEqual(['recruiter']);
   });
 
   it('answers false, and creates nothing, for an account that no longer exists', async () => {
@@ -323,7 +419,7 @@ describe('enableRecruiterSpace', () => {
 
 describe('the user DTO', () => {
   it('never carries the Google Calendar connection, its tokens or the Google id', async () => {
-    const first = await login('calendar', 'recruiter');
+    const first = await login('calendar', 'recruiter', { consent: CONSENT });
     const secrets = [`refresh-${t.suffix}`, `access-${t.suffix}`];
     await User.updateOne(
       { _id: first.userId },
@@ -352,7 +448,7 @@ describe('the user DTO', () => {
         expect(body).not.toContain(secret);
       }
       const { user } = JSON.parse(body);
-      expect(Object.keys(user).sort()).toEqual(['_id', 'activeMode', 'email', 'recruiter']);
+      expect(Object.keys(user).sort()).toEqual(['_id', 'activeMode', 'email', 'recruiter', 'termsVersion']);
     }
   });
 

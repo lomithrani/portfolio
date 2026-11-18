@@ -10,8 +10,7 @@ import type { JobPostingInput } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import { Domain, JobApplication, JobPosting, User } from '../models/database';
-import { enableRecruiterSpace } from '../services/recruiters';
-import { authCookie } from './helpers';
+import { CONSENT, authCookie, openRecruiterSpace } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
@@ -90,7 +89,7 @@ const createUser = async (
   const googleId = t.id(`sub-${name}`);
   const user = await User.create({ email, googleId, name: `${name}-first`, surname: `${name}-last` });
   const id = user._id.toString();
-  if (recruiter) expect(await enableRecruiterSpace(id)).toBe(true);
+  if (recruiter) expect(await openRecruiterSpace(id)).toBe(true);
   let domainName: string | undefined;
   if (domain) {
     domainName = t.id(name);
@@ -208,6 +207,63 @@ describe('access', () => {
     expect(stored?.title).toBe('Senior Backend Engineer');
     expect(stored?.status).toBe('open');
     expect(await JobApplication.countDocuments({ job: id })).toBe(0);
+  });
+
+  it('refuses the recruiter routes to a recruiter without the terms in force (422 on consent), until accepted again', async () => {
+    const recruiter = await createRecruiter();
+    const created = await createJob(recruiter);
+    const id = created._id;
+    // Accepted before the terms in force changed
+    const older = { version: '2025-01-01', acceptedAt: new Date('2025-01-02'), ageConfirmationKey: 'age-v0', source: 'recruiter' };
+    await User.updateOne({ _id: recruiter.id }, { $set: { legalAcceptances: [older] } });
+
+    const attempts: [string, string, unknown?][] = [
+      ['GET', '/recruiter/jobs'],
+      ['GET', `/recruiter/jobs/${id}`],
+      ['POST', '/jobs', sampleJob({ title: 'Another one' })],
+      ['PUT', `/jobs/${id}`, sampleJob({ title: 'Changed' })],
+      ['PUT', `/jobs/${id}/status`, { status: 'closed' }],
+      ['DELETE', `/jobs/${id}`],
+      ['GET', '/jobs/import']
+    ];
+    for (const [method, path, body] of attempts) {
+      const result = await call(method, path, { body, cookie: recruiter.cookie });
+      expect([method, path, result.status, result.json()]).toEqual([
+        method,
+        path,
+        422,
+        {
+          type: 'validation',
+          on: 'body',
+          property: 'consent',
+          message: 'Accept the terms of use in force to use your recruiter space.'
+        }
+      ]);
+    }
+    expect(await JobPosting.countDocuments({ recruiter: recruiter.id })).toBe(1);
+    const stored = await JobPosting.findById(id).lean();
+    expect(stored?.title).toBe('Senior Backend Engineer');
+    expect(stored?.status).toBe('open');
+
+    // A space opened before recruiters accepted the terms has none at all: the same
+    await User.updateOne({ _id: recruiter.id }, { $unset: { legalAcceptances: 1 } });
+    expect((await call('GET', '/recruiter/jobs', { cookie: recruiter.cookie })).json()).toMatchObject({ property: 'consent' });
+
+    // Accepted again from the recruiter space: back in
+    const accepted = await call('PUT', '/me/consent', { body: { ...CONSENT, source: 'recruiter' }, cookie: recruiter.cookie });
+    expect(accepted.status).toBe(200);
+    const list = await call('GET', '/recruiter/jobs', { cookie: recruiter.cookie });
+    expect(list.status).toBe(200);
+    expect(list.json().jobs.map((job: { _id: string }) => job._id)).toEqual([id]);
+    const [acceptance] = (await User.findById(recruiter.id).lean())?.legalAcceptances ?? [];
+    expect(acceptance).toMatchObject({ version: CONSENT.termsVersion, source: 'recruiter' });
+  });
+
+  it('asks an account without a recruiter space to create one first (403), whatever its terms', async () => {
+    // Neither a space nor the terms: the space is what is missing first
+    const user = await createUser('nothing');
+    const result = await call('GET', '/recruiter/jobs', { cookie: user.cookie });
+    expect([result.status, result.text]).toEqual([403, 'Create your recruiter space first']);
   });
 
   it('rejects ids that are not ObjectIds (422)', async () => {

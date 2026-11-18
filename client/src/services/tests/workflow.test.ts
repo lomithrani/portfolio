@@ -452,6 +452,10 @@ describe('the job step', () => {
 		expect(pickJobFailure(409, 'This hiring journey changed: reload the page').kind).toBe(
 			'changed'
 		);
+		expect(
+			pickJobFailure(422, { type: 'validation', property: 'consent', message: 'Accept the terms' })
+		).toEqual({ message: 'Accept the terms of use in force to pick a job.', kind: 'terms' });
+		expect(pickJobFailure(422, { type: 'validation', property: 'input.jobId' }).kind).toBe('error');
 		expect(pickJobFailure(503, new TypeError('Failed to fetch'))).toEqual({
 			message: networkError(),
 			kind: 'error'

@@ -1,7 +1,8 @@
-// /recruiter for a visitor who is not signed in: what the recruiter space is for. It sells the
-// value of skills: on a portfolio a skill comes with the projects it was used in and their
-// length (the experiences page's filters, previews and timeline). Keep the copy to what the code
-// does: there is no search of portfolios by skill.
+// /recruiter for a visitor who is not signed in: what the recruiter space is for, and its sign-in
+// (the age and terms box first, then Google's button). It sells the value of skills: on a
+// portfolio a skill comes with the projects it was used in and their length (the experiences
+// page's filters, previews and timeline). Keep the copy to what the code does: there is no search
+// of portfolios by skill.
 import { defineMessages } from 'portfolio-common';
 
 export const m = defineMessages({
@@ -17,6 +18,10 @@ export const m = defineMessages({
 		en: 'Free to use. The same Google account can also hold your own portfolio, as a candidate: switch spaces from the account menu.',
 		fr: "Gratuit. Avec le même compte Google, vous pouvez aussi avoir votre propre portfolio de candidat : changez d'espace depuis le menu du compte."
 	},
+	/** In place of Google's button until the age and terms box is ticked */
+	tickToContinue: { en: 'Tick the box to continue', fr: 'Cochez la case pour continuer' },
+	/** Google's button clicked once the box was unticked */
+	tickToSignIn: { en: 'Tick the box to sign in.', fr: 'Cochez la case pour vous connecter.' },
 	welcome: {
 		title: { en: 'Welcome to your recruiter space', fr: 'Bienvenue dans votre espace recruteur' },
 		description: {

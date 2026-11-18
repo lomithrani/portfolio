@@ -1,5 +1,6 @@
 // Texts of the account service (account.ts), and the words its forms share: the claim forms
-// (the landing card, the space chooser, the apply panel, the 404 page), the account menu and the
+// (the landing card, the space chooser, the apply panel, the 404 page), the forms that open the
+// recruiter space (the recruiter page, the job step of a hiring journey), the account menu and the
 // account page.
 import { defineMessages } from 'portfolio-common';
 
@@ -91,6 +92,13 @@ export const accountMessages = defineMessages({
 		claimedFirstExperience: {
 			en: (name: string) => `${name} is yours. Add your first experience to it.`,
 			fr: (name: string) => `${name} est à vous. Ajoutez-y votre première expérience.`
+		}
+	},
+	recruiter: {
+		/** Opening the recruiter space when the API asks for the age and terms confirmation */
+		consent: {
+			en: 'Confirm your age and accept the terms of use to open your recruiter space.',
+			fr: "Confirmez votre âge et acceptez les conditions d'utilisation pour ouvrir votre espace recruteur."
 		}
 	},
 	/** What a screen reader hears while a space opens */

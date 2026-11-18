@@ -48,13 +48,17 @@ export const googleAuth = new Elysia()
 
       const found = await findOrCreateGoogleUser(identity);
       // Recorded before the session exists: an account signed in with the
-      // confirmation never has a session without it
-      // From where the box was ticked: the landing page, or a claim form that signs in first
-      const recorded = accepted ? await recordConsent(found.id, accepted, consentSource ?? 'landing') : false;
+      // confirmation never has a session without it. From where the box was
+      // ticked: the landing page, a claim form that signs in first, or the
+      // recruiter space's sign-in (the default with the mode 'recruiter')
+      const source = consentSource ?? (mode === 'recruiter' ? 'recruiter' : 'landing');
+      const recorded = accepted ? await recordConsent(found.id, accepted, source) : false;
       // The space picked on the login screen, set (and the recruiter space
-      // created) before the session is issued, as PUT /me/mode would
+      // created) before the session is issued, as PUT /me/mode would: opening
+      // the recruiter space needs the terms in force, accepted just above or
+      // before (422 on `consent` otherwise, and no session)
       const user = mode
-        ? await setActiveMode(found.id, mode)
+        ? await setActiveMode(found.id, mode, accepted)
         : recorded
           ? await findAccount(found.id)
           : found;
@@ -85,8 +89,9 @@ export const googleAuth = new Elysia()
         // Sent when the person ticked the age and terms checkbox before
         // signing in; recorded with the source consentSource
         consent: t.Optional(consentRequest),
-        // Where that checkbox was: the landing page (default), or the claim
-        // form of a portfolio page, which signs in before claiming
+        // Where that checkbox was: the landing page (default), the claim
+        // form of a portfolio page, which signs in before claiming, or the
+        // recruiter space (default with the mode 'recruiter')
         consentSource: t.Optional(loginConsentSource)
       })
     })

@@ -19,9 +19,8 @@ import {
   WorkflowInstance
 } from '../models/database';
 import { logger } from '../services/logger';
-import { enableRecruiterSpace } from '../services/recruiters';
 import { commuteArrival } from '../services/transitous';
-import { authCookie } from './helpers';
+import { authCookie, openRecruiterSpace } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 const testNames = () => {
@@ -149,7 +148,7 @@ interface TestUser {
 const createUser = async (name: string, { recruiter = false, domain = false } = {}): Promise<TestUser> => {
   const user = await User.create({ email: t.email(name), googleId: t.id(`sub-${name}`), name });
   const id = user._id.toString();
-  if (recruiter) expect(await enableRecruiterSpace(id)).toBe(true);
+  if (recruiter) expect(await openRecruiterSpace(id)).toBe(true);
   let domainName: string | undefined;
   if (domain) {
     domainName = t.id(name);

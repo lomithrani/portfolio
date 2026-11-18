@@ -11,10 +11,9 @@ import { createApp } from '../app';
 import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from 'portfolio-common';
 import type { PerfectJob as PerfectJobCriteria } from 'portfolio-common';
 import { JobPosting, PerfectJob, User } from '../models/database';
-import { enableRecruiterSpace } from '../services/recruiters';
 import { COMPLETE_POSTINGS, fieldPaths } from './completePostings';
 import { perfectJobOf } from '../services/perfectJobs';
-import { authCookie } from './helpers';
+import { authCookie, openRecruiterSpace } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
@@ -194,7 +193,7 @@ describe('the perfect job (GET, PUT /perfect-job)', () => {
 describe('what a recruiter can say of a job (POST /jobs)', () => {
   it('stores and returns every field of a posting, the ones the perfect job reads among them', async () => {
     const recruiter = await createUser('recruiter');
-    expect(await enableRecruiterSpace(recruiter.id)).toBe(true);
+    expect(await openRecruiterSpace(recruiter.id)).toBe(true);
     const stored = new Set<string>();
     for (const posting of COMPLETE_POSTINGS) {
       const created = await call('POST', '/jobs', { body: posting, cookie: recruiter.cookie });

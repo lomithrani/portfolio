@@ -95,6 +95,11 @@ export const m = defineMessages({
 		fr: "Ce compte n'a pas encore d'espace recruteur. Ouvrez l'espace recruteur pour le créer, puis revenez enregistrer : vos modifications sont conservées dans ce navigateur."
 	},
 	openRecruiterSpace: { en: 'Open the recruiter space', fr: "Ouvrir l'espace recruteur" },
+	/** The API refused the save: the recruiter has not accepted the terms in force (422 on consent) */
+	termsRequired: {
+		en: 'Accept the terms of use in force to save: open the recruiter space to accept them, then come back to save. Your changes are kept in this browser.',
+		fr: "Acceptez les conditions d'utilisation en vigueur pour enregistrer : ouvrez l'espace recruteur pour les accepter, puis revenez enregistrer. Vos modifications sont conservées dans ce navigateur."
+	},
 	cannotSave: {
 		en: 'You cannot save this job description.',
 		fr: "Vous ne pouvez pas enregistrer cette offre d'emploi."

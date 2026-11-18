@@ -1200,7 +1200,7 @@ describe('hiring journey gate', () => {
 
   /** `other` as a recruiter with one job posting of `status` */
   const recruiterJob = async (status: string) => {
-    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter' }, cookie: other.cookie })).status).toBe(200);
+    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter', consent: CONSENT }, cookie: other.cookie })).status).toBe(200);
     const job = await call('POST', '/jobs', {
       cookie: other.cookie,
       body: {
@@ -1949,7 +1949,7 @@ describe('no Google token in any API response', () => {
 
     // Account spaces (tests/account.test.ts covers them)
     expect((await call('GET', '/me', auth)).status).toBe(200);
-    expect((await call('PUT', '/me/mode', { ...auth, body: { mode: 'recruiter' } })).status).toBe(200);
+    expect((await call('PUT', '/me/mode', { ...auth, body: { mode: 'recruiter', consent: CONSENT } })).status).toBe(200);
 
     // Job description import (tests/jobImport.test.ts covers it), answered
     // like the résumé import's

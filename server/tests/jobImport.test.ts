@@ -31,8 +31,7 @@ import {
 } from '../services/jobImport';
 import { logger } from '../services/logger';
 import { peekRateLimit } from '../services/rateLimit';
-import { enableRecruiterSpace } from '../services/recruiters';
-import { authCookie, messageStream, messageStreamEvents, sseResponse } from './helpers';
+import { authCookie, messageStream, messageStreamEvents, openRecruiterSpace, sseResponse } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
@@ -239,7 +238,7 @@ const createUser = async (name: string, { space = true, jobImportsUsed = 0 } = {
   const userId = user._id.toString();
   userIds.push(userId);
   if (space) {
-    expect(await enableRecruiterSpace(userId)).toBe(true);
+    expect(await openRecruiterSpace(userId)).toBe(true);
     if (jobImportsUsed) await User.updateOne({ _id: userId }, { $set: { 'recruiter.jobImportsUsed': jobImportsUsed } });
   }
   return { userId, cookie: await authCookie(userId) };

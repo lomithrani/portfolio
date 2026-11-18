@@ -56,6 +56,19 @@ export const recruiterSession = async (): Promise<OwnerSession> => {
 	return { ownerId: E2E_RECRUITER_ID, token: await signSession(E2E_RECRUITER_ID, exp), exp };
 };
 
+/**
+ * The e2e candidate ('e2e.candidate@example.com', seeded by `seed:e2e` without a domain, a
+ * recruiter space or an acceptance of the terms): the tests that sign in as it answer every request
+ * that would change it in the browser, so it stays that way
+ */
+export const E2E_CANDIDATE_ID = '65e2e0000000000000000002';
+
+/** A session for the e2e candidate, valid for an hour */
+export const candidateSession = async (): Promise<OwnerSession> => {
+	const exp = Math.floor(Date.now() / 1000) + 3600;
+	return { ownerId: E2E_CANDIDATE_ID, token: await signSession(E2E_CANDIDATE_ID, exp), exp };
+};
+
 /** An API client that sends the session's auth cookie (to set up and clean up through the API) */
 export const apiAs = ({ token }: OwnerSession) =>
 	playwrightRequest.newContext({ extraHTTPHeaders: { cookie: `auth=${token}` } });

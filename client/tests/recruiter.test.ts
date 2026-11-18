@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
 import {
 	API_URL,
+	E2E_RECRUITER_ID,
 	JWT_SECRET,
 	apiAs,
 	blockGoogle,
@@ -10,16 +11,21 @@ import {
 	toasts,
 	type OwnerSession
 } from './support/owner';
-import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from 'portfolio-common';
+import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS, LEGAL_VERSION } from 'portfolio-common';
+import { TERMS_REQUIRED, inAnHour, stubApi } from './support/api';
+import { stubGoogle } from './support/google';
 import { jobFormFieldOf } from '../src/services/jobPosting';
 import { stubAddressSearch } from './support/addresses';
 import { createJob, deleteJobs, listRecruiterJobs } from './support/jobs';
 
 // The recruiter space, as the e2e recruiter (seeded by `bun run --cwd server seed:e2e`: a
-// recruiter space on the free plan, no domain): the job editor, the status and public page of a
-// posting, its applicants added by name, the PDF import and the account menu. GET and POST
-// /jobs/import are stubbed in the browser: Claude is never called (it needs the operator's key
-// and is billed); the drafts are saved for real, through POST /jobs of the e2e API. Each test
+// recruiter space on the free plan, no domain, the terms in force accepted): the job editor, the
+// status and public page of a posting, its applicants added by name, the PDF import, the account
+// menu, and the terms a recruiter accepts (the sign-in of the signed-out page, with Google
+// stubbed, and accepting them again, answered in the browser: the e2e recruiter's acceptance is
+// never changed). GET and POST /jobs/import are stubbed in the browser: Claude is never called (it
+// needs the operator's key and is billed); the drafts are saved for real, through POST /jobs of
+// the e2e API. Each test
 // names its postings with its own tag and removes them afterwards. The tests share the recruiter
 // (with client/tests/jobs-apply.test.ts, which runs in parallel), so they run one after the other
 // (as the tests of a file do by default: keep it that way) and never expect its list to be empty.
@@ -615,6 +621,107 @@ test.describe('the recruiter', () => {
 		expect(
 			asked.filter((path) => path.startsWith('/recruiter') || path === '/jobs/import')
 		).toEqual([]);
+	});
+
+	test('signed out, Google is loaded once the age and terms box is ticked, and the sign-in sends it', async ({
+		page
+	}) => {
+		const google = await stubGoogle(page);
+		const user = {
+			_id: E2E_RECRUITER_ID,
+			email: 'e2e.recruiter@example.com',
+			activeMode: 'recruiter',
+			recruiter: true,
+			termsVersion: LEGAL_VERSION
+		};
+		// Signed out on arrival; signed in once POST /login answered
+		let signedIn = false;
+		await stubApi(page, 'GET', '/isLogged', () => ({
+			json: signedIn ? { logged: true, user, expires: inAnHour() } : { logged: false }
+		}));
+		const logins = await stubApi(page, 'POST', '/login', () => {
+			signedIn = true;
+			return { json: { user, expires: inAnHour() } };
+		});
+		await stubApi(page, 'GET', '/recruiter/jobs', () => ({ json: { jobs: [] } }));
+		await gotoHydrated(page, '/recruiter');
+
+		const box = page.getByRole('checkbox', { name: /at least 16 years old/ });
+		await expect(box).not.toBeChecked();
+		await expect(page.getByText('Tick the box to continue')).toBeVisible();
+		// What the terms ask of recruiters, a click away
+		await expect(page.getByRole('link', { name: /what they ask of recruiters/ })).toHaveAttribute(
+			'href',
+			'/legal/terms#recruiters'
+		);
+		await page.waitForTimeout(500);
+		expect(google).toEqual([]);
+
+		await box.check();
+		await page.getByRole('button', { name: 'Stub Google sign-in' }).click();
+
+		await expect(toasts(page).getByText('Welcome to your recruiter space')).toBeVisible();
+		expect(google.length).toBeGreaterThan(0);
+		expect(logins).toHaveLength(1);
+		expect(logins[0].postDataJSON()).toEqual({
+			token: 'stub-credential',
+			mode: 'recruiter',
+			consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true },
+			consentSource: 'recruiter'
+		});
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'Your job descriptions' })
+		).toBeVisible();
+	});
+
+	test('a recruiter who has not accepted the terms in force accepts them before the dashboard shows', async ({
+		page
+	}) => {
+		const user = {
+			_id: E2E_RECRUITER_ID,
+			email: 'e2e.recruiter@example.com',
+			name: 'Rita',
+			surname: 'Recruiter',
+			activeMode: 'recruiter',
+			recruiter: true,
+			termsVersion: '2025-01-01'
+		};
+		await stubApi(page, 'GET', '/isLogged', () => ({
+			json: { logged: true, user, expires: inAnHour() }
+		}));
+		// Refused until accepted, then the e2e recruiter's own list
+		let accepted = false;
+		const lists = await stubApi(page, 'GET', '/recruiter/jobs', () =>
+			accepted ? undefined : TERMS_REQUIRED
+		);
+		const acceptances = await stubApi(page, 'PUT', '/me/consent', () => {
+			accepted = true;
+			return { json: { user: { ...user, termsVersion: LEGAL_VERSION } } };
+		});
+		await openAsRecruiter(page, '/recruiter');
+
+		const terms = page.locator('[data-terms-acceptance]');
+		await expect(terms.getByRole('heading', { level: 2, name: 'Terms of use' })).toBeVisible();
+		await expect(terms).toContainText('accept them to keep using your recruiter space');
+		await expect(page.getByRole('heading', { name: 'Your job descriptions' })).toHaveCount(0);
+		expect(lists).toHaveLength(1);
+
+		// The box first
+		await terms.getByRole('button', { name: 'Accept the terms' }).click();
+		await expect(
+			terms.getByText('Tick the box to confirm your age and accept the terms.')
+		).toBeVisible();
+		expect(acceptances).toHaveLength(0);
+
+		await terms.getByRole('checkbox', { name: /at least 16 years old/ }).check();
+		await terms.getByRole('button', { name: 'Accept the terms' }).click();
+
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'Your job descriptions' })
+		).toBeVisible();
+		expect(acceptances.map((request) => request.postDataJSON())).toEqual([
+			{ termsVersion: LEGAL_VERSION, ageConfirmed: true, source: 'recruiter' }
+		]);
 	});
 });
 

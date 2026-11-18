@@ -205,9 +205,21 @@ const bodyProperty = (value: unknown): string =>
 		? value.property
 		: '';
 
-/** A 422 about the age and terms confirmation (`consent`, `consent.termsVersion`...) */
-const isConsentProblem = (status: number | undefined, body: unknown): boolean =>
+/**
+ * A 422 about the age and terms confirmation (`consent`, `consent.termsVersion`...): a claim or
+ * the opening of the recruiter space without it, or a recruiter route of an account that has not
+ * accepted the terms in force (its recruiter pages then ask to accept them, TermsAcceptance)
+ */
+export const isConsentProblem = (status: number | undefined, body: unknown): boolean =>
 	status === 422 && /^consent(\.|$)/.test(bodyProperty(body));
+
+/**
+ * The message of a refused confirmation: the version this page sends is outdated (only a reload
+ * helps), else `missing` (the form shows its checkbox)
+ */
+const consentMessage = (body: unknown, missing: string): string =>
+	// The client always sends the version it was built with: a refused one is outdated
+	bodyProperty(body) === 'consent.termsVersion' ? legalMessages.staleTerms : missing;
 
 /**
  * What a failed POST /domain/claim was about: 'name' (invalid or already taken: the person picks
@@ -231,12 +243,7 @@ export const claimFailureCause = (
 export const claimErrorMessage = (status: number | undefined, body: unknown): string => {
 	const text = bodyText(body);
 	if (status === 401) return accountMessages.sessionExpired;
-	if (isConsentProblem(status, body)) {
-		// The client always sends the version it was built with: a refused one is outdated
-		return bodyProperty(body) === 'consent.termsVersion'
-			? legalMessages.staleTerms
-			: accountMessages.claim.consent;
-	}
+	if (isConsentProblem(status, body)) return consentMessage(body, accountMessages.claim.consent);
 	if (status === 409 && /already own/i.test(text)) {
 		return accountMessages.claim.ownsPortfolio;
 	}
@@ -268,18 +275,24 @@ const failure = (reason: AccountFailureReason, message: string): AccountFailure 
 	message
 });
 
-const accountRequest = async (
+/**
+ * An account request: 401 clears the session, `refusal` says what another error was about (its
+ * failure, or undefined for the plain `errorMessage`)
+ */
+const accountRequest = async <Failure extends AccountFailure = AccountFailure>(
 	request: () => Promise<{ data: unknown; error: { status: unknown; value?: unknown } | null }>,
-	errorMessage: string
-): Promise<AccountResult> => {
+	errorMessage: string,
+	refusal?: (status: number | undefined, value: unknown) => Failure | undefined
+): Promise<{ ok: true; user: AuthUser } | AccountFailure | Failure> => {
 	try {
 		const { data, error } = await request();
 		if (error) {
-			if (errorStatus(error) === 401) {
+			const status = errorStatus(error);
+			if (status === 401) {
 				clearAuthentication();
 				return failure('session-expired', accountMessages.sessionExpired);
 			}
-			return failure('error', errorMessage);
+			return refusal?.(status, error.value) ?? failure('error', errorMessage);
 		}
 		const user = readUser(data);
 		if (!user) return failure('error', errorMessage);
@@ -290,14 +303,28 @@ const accountRequest = async (
 	}
 };
 
+export type SwitchFailure = AccountFailure & { cause?: 'consent' };
+export type SwitchResult = { ok: true; user: AuthUser } | SwitchFailure;
+
 /**
  * Makes `mode` the account's active space (PUT /me/mode): choosing 'recruiter' the first time
- * creates the recruiter space. Updates the persisted session with the account returned.
+ * creates the recruiter space, which needs the terms in force: `consent` (the age and terms
+ * checkbox ticked where the space is opened, portfolio-common currentConsent()) is required by
+ * the API from an account that has not accepted them (hasAcceptedCurrentTerms), recorded from the
+ * source 'recruiter'; without it the switch fails with the cause 'consent'. Updates the persisted
+ * session with the account returned.
  */
-export const switchMode = (mode: UserMode): Promise<AccountResult> =>
-	accountRequest(
-		() => portfolioApi.me.mode.put({ mode }, withCredentials),
-		switchErrorMessage(mode)
+export const switchMode = (mode: UserMode, consent?: ConsentInput): Promise<SwitchResult> =>
+	accountRequest<SwitchFailure>(
+		() => portfolioApi.me.mode.put({ mode, ...(consent ? { consent } : {}) }, withCredentials),
+		switchErrorMessage(mode),
+		(status, value) =>
+			isConsentProblem(status, value)
+				? {
+						...failure('error', consentMessage(value, accountMessages.recruiter.consent)),
+						cause: 'consent'
+					}
+				: undefined
 	);
 
 /** The space being recorded by recordSpaceShown: one request at a time per space */
@@ -437,13 +464,17 @@ export const domainAvailabilityMessage = (
 	}
 };
 
+/** Where PUT /me/consent says the terms were accepted: a claim form, the account page, the recruiter space */
+export type AcceptTermsSource = 'claim' | 'account' | 'recruiter';
+
 /**
  * Records that the signed-in account accepts the Terms of use in force, with the age confirmation
- * (PUT /me/consent): for an account that signed in without the checkbox. `source` says where it
- * was given. Updates the persisted session with the account returned (its termsVersion).
+ * (PUT /me/consent): for an account that signed in without the checkbox, or a recruiter whose
+ * acceptance is older than the terms in force. `source` says where it was given. Updates the
+ * persisted session with the account returned (its termsVersion).
  */
 export const acceptTerms = async (
-	source: 'claim' | 'account' = 'account'
+	source: AcceptTermsSource = 'account'
 ): Promise<AccountResult> => {
 	try {
 		const { data, error } = await portfolioApi.me.consent.put(

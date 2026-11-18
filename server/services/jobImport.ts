@@ -183,7 +183,8 @@ const quotaOf = (
 
 /**
  * GET /jobs/import: whether the feature is on and what is left of this
- * recruiter's imports. Throws 403 without a recruiter space
+ * recruiter's imports. Throws 403 without a recruiter space, 422 (on
+ * `consent`) without the terms in force
  */
 export async function getJobImportStatus(userId: string): Promise<JobImportStatus> {
   const space = await requireRecruiterSpace(userId)
@@ -234,10 +235,11 @@ export const readJobPdf = (file: string) =>
 
 /**
  * POST /jobs/import: checks that the feature is on, that the caller has a
- * recruiter space (403) and the file; counts the import against the
- * recruiter's plan (402 when it has none left) and the site's daily limit,
- * and the attempt against the recruiter's attempts of the day; has Claude
- * extract the job posting and returns it normalised.
+ * recruiter space (403) with the terms in force (422 on `consent`) and the
+ * file; counts the import against the recruiter's plan (402 when it has none
+ * left) and the site's daily limit, and the attempt against the recruiter's
+ * attempts of the day; has Claude extract the job posting and returns it
+ * normalised.
  */
 export async function importJobDescription(userId: string, file: string, fileName?: string): Promise<JobImportResult> {
   const settings = currentSettings()

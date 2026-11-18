@@ -262,7 +262,12 @@ Before going live, confirm what the texts state about the operations: log and tr
 database backups, and the processors' transfer basis (Railway, Anthropic, Google, GitHub, the
 monitoring provider). When the Terms of use or the Privacy policy change materially, bump
 `LEGAL_VERSION` in `common/models/legal.ts`: accounts are asked to accept the new version, and a
-claim needs it.
+claim needs it, as does the recruiter space: opening one, and every recruiter route, which answers
+422 on `consent` until the recruiter accepts the new version (the recruiter pages then show the
+terms to accept). Recruiter spaces opened before recruiters accepted the terms (before the
+`recruiter` consent source) are asked the same way. Reseed the e2e database after a bump (`bun run
+--cwd server seed:e2e` records the version in force for the e2e recruiter), locally and in the
+cloud environment.
 
 ## Google Calendar appointments
 

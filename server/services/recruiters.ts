@@ -1,13 +1,19 @@
 import { DEFAULT_RECRUITER_PLAN, RECRUITER_PLANS } from 'portfolio-common';
 import type { RecruiterPlan } from 'portfolio-common';
 import { User } from '../models/database';
-import { RecruiterSpaceRequiredError } from '../errors';
+import { FieldValidationError, RecruiterSpaceRequiredError } from '../errors';
 import { restorePlanImports } from './accountQuotas';
+import { userAcceptedCurrentTerms } from './legal';
+import { m } from './legal.messages';
 
 // The recruiter space of an account (User.recruiter): created the first time
 // the account chooses the recruiter mode (PUT /me/mode, or POST /login with
-// mode 'recruiter'), then required by every recruiter route (job postings,
-// their applicants, job description imports).
+// mode 'recruiter'), once it accepted the terms in force (services/users.ts
+// setActiveMode), then required by every recruiter route (job postings,
+// their applicants, job description imports, the job step of a hiring
+// journey), with the terms in force: a recruiter whose acceptance is older
+// (or who opened the space before recruiters accepted the terms) accepts them
+// again (PUT /me/consent) before going on.
 
 export interface RecruiterSpace {
   enabledAt: Date;
@@ -31,10 +37,15 @@ export async function findRecruiterSpace(userId: string): Promise<RecruiterSpace
   };
 }
 
-/** The account's recruiter space; throws 403 (RecruiterSpaceRequiredError) without one */
+/**
+ * The account's recruiter space; throws 403 (RecruiterSpaceRequiredError)
+ * without one, then 422 on `consent` (FieldValidationError) while the
+ * account has not accepted the terms in force
+ */
 export async function requireRecruiterSpace(userId: string): Promise<RecruiterSpace> {
-  const space = await findRecruiterSpace(userId);
+  const [space, accepted] = await Promise.all([findRecruiterSpace(userId), userAcceptedCurrentTerms(userId)]);
   if (!space) throw new RecruiterSpaceRequiredError(RECRUITER_REQUIRED);
+  if (!accepted) throw new FieldValidationError('consent', () => m.recruiterTermsRequired);
   return space;
 }
 

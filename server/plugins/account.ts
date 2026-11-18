@@ -1,7 +1,7 @@
 import Elysia, { t } from 'elysia';
 import { userLogged } from './userLogged';
 import { clearAuthCookie } from './auth';
-import { acceptTermsRequest, deleteAccountRequest, userMode } from '../models/elysia';
+import { acceptTermsRequest, consentRequest, deleteAccountRequest, userMode } from '../models/elysia';
 import { deleteAccount } from '../services/accountDeletion';
 import { recordConsent } from '../services/legal';
 import { accountDto, findAccount, setActiveMode } from '../services/users';
@@ -16,13 +16,20 @@ export const account = new Elysia()
       summary: 'The signed-in account: its active mode, recruiter space and domain'
     }
   })
-  .put('/me/mode', async ({ body: { mode }, userId }) => ({
-    user: await accountDto(await setActiveMode(userId, mode))
+  // Opening the recruiter space (the first 'recruiter') needs the terms in
+  // force: an account that has not accepted them sends the age and terms
+  // confirmation ticked where it opens the space, recorded from the source
+  // 'recruiter' (services/users.ts setActiveMode); 422 on `consent` otherwise
+  .put('/me/mode', async ({ body: { mode, consent }, userId }) => ({
+    user: await accountDto(await setActiveMode(userId, mode, consent))
   }),
     {
-      body: t.Object({ mode: userMode }),
+      body: t.Object({
+        mode: userMode,
+        consent: t.Optional(consentRequest)
+      }),
       detail: {
-        summary: 'Switch between the candidate and recruiter spaces (the recruiter space is created on first choice)'
+        summary: 'Switch between the candidate and recruiter spaces (the recruiter space is created on first choice, once the terms in force are accepted)'
       }
     })
   // The account accepts the Terms of use in force, with the age confirmation

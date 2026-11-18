@@ -3,7 +3,9 @@
 // parallel never share one): 'e2e-owner' for client/tests/experiences-owner.test.ts, 'e2e-import'
 // for client/tests/resume-import.test.ts. client/tests/recruiter.test.ts and
 // client/tests/jobs-apply.test.ts sign in as the recruiter 'e2e.recruiter@example.com' (a
-// recruiter space, no domain) and as the owner of 'e2e-applicant', who applies or is added to the
+// recruiter space, no domain, the terms in force accepted: every run records the version of the
+// code it runs, so a new LEGAL_VERSION never locks the e2e tests out of the recruiter routes, which
+// ask for it) and as the owner of 'e2e-applicant', who applies or is added to the
 // applicants. client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
 // and goes through it as the e2e recruiter. client/tests/account.test.ts (and the signed-in steps of
 // client/tests/landing.test.ts) use the candidate 'e2e.candidate@example.com': no domain, no
@@ -12,7 +14,9 @@
 // Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose, { Types } from "mongoose";
+import { currentConsent } from "portfolio-common";
 import { Domain, User } from "../models/database";
+import { recordConsent } from "../services/legal";
 import { redactConnectionString } from "../services/redact";
 
 const mongoUrl = Bun.env.MONGO_URL;
@@ -51,7 +55,7 @@ for (const owner of owners) {
 // A recruiter space without a domain, on the free plan with no import used. Its id is fixed:
 // with no domain, the e2e tests could not look it up (client/tests/support/owner.ts signs its
 // session with E2E_RECRUITER_ID)
-await User.findOneAndUpdate(
+const recruiter = await User.findOneAndUpdate(
   { email: 'e2e.recruiter@example.com' },
   {
     $setOnInsert: {
@@ -62,8 +66,11 @@ await User.findOneAndUpdate(
       recruiter: { enabledAt: new Date(), plan: 'free', jobImportsUsed: 0 }
     }
   },
-  { upsert: true }
+  { upsert: true, returnDocument: 'after' }
 );
+// The recruiter routes ask for the terms in force: accepted from the recruiter space, once per
+// version (a run after a new LEGAL_VERSION adds it, the next ones change nothing)
+await recordConsent(recruiter._id, currentConsent(), 'recruiter');
 
 // A candidate without a portfolio (nor recruiter space, nor acceptance of the terms). Its id is
 // fixed for the same reason (CANDIDATE_ID of client/tests/account.test.ts and landing.test.ts)

@@ -79,8 +79,9 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
     };
   },
   /**
-   * Needs a recruiter space (403) and a posting of theirs (404 otherwise,
-   * like any unknown id) that is open (409)
+   * Needs a recruiter space (403) with the terms in force (422 on `consent`:
+   * services/recruiters.ts) and a posting of theirs (404 otherwise, like any
+   * unknown id) that is open (409)
    */
   submit: async ({ visitorId, input }) => {
     const id = jobId(inputFields(input)?.jobId);

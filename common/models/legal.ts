@@ -28,11 +28,17 @@ export const AGE_CONFIRMATION_KEY = AGE_CONFIRMATION_KEYS.en;
 /** Key of the wording shown in the language in use */
 export const ageConfirmationKey = (): string => localized(AGE_CONFIRMATION_KEYS);
 
-/** What a client sends when the person ticked the confirmation (POST /login, PUT /me/consent, POST /domain/claim) */
+/**
+ * What a client sends when the person ticked the confirmation (POST /login, PUT /me/consent,
+ * POST /domain/claim, PUT /me/mode when it opens the recruiter space)
+ */
 export type ConsentInput = { termsVersion: string; ageConfirmed: true };
 
-/** Where an acceptance was given: the landing page's sign-in, a claim form, the account page */
-export const CONSENT_SOURCES = ['landing', 'claim', 'account'] as const;
+/**
+ * Where an acceptance was given: the landing page's sign-in, a claim form, the account page, or
+ * the recruiter space (its sign-in, its creation, or accepting again from it)
+ */
+export const CONSENT_SOURCES = ['landing', 'claim', 'account', 'recruiter'] as const;
 export type ConsentSource = (typeof CONSENT_SOURCES)[number];
 
 /** Longest termsVersion the API reads (a version is a date: 10 characters) */

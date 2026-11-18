@@ -58,7 +58,8 @@ import {
 import { m } from '../services/jobPostings.messages';
 
 // Job postings of the recruiter space, their applicants and the public job
-// pages. Recruiter routes need a recruiter space (403 without one) and only
+// pages. Recruiter routes need a recruiter space (403 without one) with the
+// terms in force (422 on `consent`: services/recruiters.ts) and only
 // ever find the caller's own postings: another recruiter's answers 404, like
 // an unknown id, so ids leak nothing. Candidate routes need a session only;
 // applying also needs a portfolio (a domain).
@@ -133,7 +134,7 @@ const jobsPublic = new Elysia()
 
 const jobsRecruiter = new Elysia()
   .use(userLogged)
-  // After the session and request checks: what needs a recruiter space
+  // After the session and request checks: what needs a recruiter space (and the terms in force)
   .onBeforeHandle(async ({ userId }) => {
     await requireRecruiterSpace(userId);
   })

@@ -318,6 +318,54 @@ describe('switchMode', () => {
 		expect(get(authenticationStore)).toEqual({ user: updated, expires });
 	});
 
+	it('sends the age and terms confirmation that opens the recruiter space', async () => {
+		const updated = {
+			...user,
+			activeMode: 'recruiter',
+			recruiter: true,
+			termsVersion: LEGAL_VERSION
+		};
+		mockModePut.mockResolvedValue({ data: { user: updated }, error: null });
+
+		await expect(switchMode('recruiter', currentConsent())).resolves.toEqual({
+			ok: true,
+			user: updated
+		});
+		expect(mockModePut).toHaveBeenCalledWith(
+			{ mode: 'recruiter', consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } },
+			withCredentials
+		);
+		expect(hasAcceptedCurrentTerms(get(authenticationStore).user)).toBe(true);
+	});
+
+	it('says when the API asks for the confirmation, or refuses the version this page sends', async () => {
+		const refusal = (property: string) =>
+			apiError(422, { type: 'validation', on: 'body', property, message: 'x' });
+
+		mockModePut.mockResolvedValue(refusal('consent'));
+		await expect(switchMode('recruiter')).resolves.toEqual({
+			ok: false,
+			reason: 'error',
+			message: accountMessages.recruiter.consent,
+			cause: 'consent'
+		});
+
+		mockModePut.mockResolvedValue(refusal('consent.termsVersion'));
+		await expect(switchMode('recruiter', currentConsent())).resolves.toEqual({
+			ok: false,
+			reason: 'error',
+			message: legalMessages.staleTerms,
+			cause: 'consent'
+		});
+
+		// Another 422 is not about the terms
+		mockModePut.mockResolvedValue(refusal('mode'));
+		const other = await switchMode('recruiter');
+		expect(other).toMatchObject({ ok: false, reason: 'error' });
+		expect(other).not.toHaveProperty('cause');
+		expect(get(authenticationStore).user).toEqual(user);
+	});
+
 	it('clears the session on 401', async () => {
 		mockModePut.mockResolvedValue(apiError(401));
 
@@ -593,12 +641,12 @@ describe('acceptTerms', () => {
 		expect(hasAcceptedCurrentTerms(get(authenticationStore).user)).toBe(true);
 	});
 
-	it('says where it was given', async () => {
+	it.each(['claim', 'recruiter'] as const)('says where it was given: %s', async (source) => {
 		mockConsentPut.mockResolvedValue({ data: { user }, error: null });
 
-		await acceptTerms('claim');
+		await acceptTerms(source);
 		expect(mockConsentPut).toHaveBeenCalledWith(
-			{ termsVersion: LEGAL_VERSION, ageConfirmed: true, source: 'claim' },
+			{ termsVersion: LEGAL_VERSION, ageConfirmed: true, source },
 			withCredentials
 		);
 	});

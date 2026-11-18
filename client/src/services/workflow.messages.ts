@@ -110,6 +110,10 @@ export const m = defineMessages({
 				en: 'Create your recruiter space to pick a job.',
 				fr: 'Créez votre espace recruteur pour choisir une offre.'
 			},
+			terms: {
+				en: 'Accept the terms of use in force to pick a job.',
+				fr: "Acceptez les conditions d'utilisation en vigueur pour choisir une offre."
+			},
 			gone: {
 				en: 'This job description no longer exists. Pick another one.',
 				fr: "Cette offre n'existe plus. Choisissez-en une autre."

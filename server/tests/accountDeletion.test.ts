@@ -465,7 +465,7 @@ describe('DELETE /me', () => {
         createdCounters.add((await takeRateLimit(key, { limit: 100, windowMs })).counterId);
       }
     }
-    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter' }, cookie: before.cookie })).status).toBe(200);
+    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter', consent: CONSENT }, cookie: before.cookie })).status).toBe(200);
     await User.updateOne({ _id: before.userId }, { $set: { 'recruiter.jobImportsUsed': 3 } });
 
     expect((await deleteMe(before.cookie)).status).toBe(204);
@@ -495,7 +495,7 @@ describe('DELETE /me', () => {
       expect((await peekRateLimit(key, { windowMs })).count).toBe(count);
     }
     // The plan's job imports come back with the new recruiter space
-    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter' }, cookie: after.cookie })).status).toBe(200);
+    expect((await call('PUT', '/me/mode', { body: { mode: 'recruiter', consent: CONSENT }, cookie: after.cookie })).status).toBe(200);
     expect((await User.findById(after.userId).lean())?.recruiter?.jobImportsUsed).toBe(3);
 
     // Another Google identity starts from nothing

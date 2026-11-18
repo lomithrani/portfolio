@@ -4,7 +4,10 @@ The job step of a portfolio's hiring journey: the recruiter picks one of their o
 descriptions (GET /recruiter/jobs), or writes a new one and comes back here to pick it
 (/recruiter/jobs/new?journey=<portfolio>, back on the Hire page with ?job=<id>: the job the
 address asks for is the one selected). Before that, a visitor signs in (keeping the space the
-account had) and an account without a recruiter space creates it here.
+account had) and an account without a recruiter space creates it here, after the age and terms box
+when it has not accepted the terms in force (the API records them from the source 'recruiter'); a
+recruiter who has not accepted the terms in force (the API answers 422 on `consent`) accepts them
+here (TermsAcceptance) before picking.
 The pick is submitted to the step (`{ jobId }`); the job picked comes back as the step's view.
 Not for the portfolio's owner (the API refuses their pick): the page shows them the step's
 description instead.
@@ -14,10 +17,10 @@ description instead.
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { Briefcase, DocumentArrowUp, PlusCircle } from 'svelte-heros-v2';
-	import type { JobStatus } from 'portfolio-common';
+	import { currentConsent, type JobStatus } from 'portfolio-common';
 	import { portfolioApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
-	import { switchMode } from '#services/account.ts';
+	import { hasAcceptedCurrentTerms, isConsentProblem, switchMode } from '#services/account.ts';
 	import { isSessionValid } from '#services/authentication.ts';
 	import { loadImportedDraft, type ImportedJobDraft } from '#services/jobDrafts.ts';
 	import {
@@ -40,6 +43,9 @@ description instead.
 		sortJobChoices
 	} from '#services/workflow.ts';
 	import ApplySignIn from '#components/apply/ApplySignIn.svelte';
+	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
+	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
+	import RecruiterRules from '#components/legal/RecruiterRules.svelte';
 	import JobImport from '#components/job-import/JobImport.svelte';
 	import JobStatusBadge from '#components/jobs/JobStatusBadge.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
@@ -57,6 +63,7 @@ description instead.
 		| { key: string; state: 'loading' }
 		| { key: string; state: 'loaded'; jobs: JobChoice[] }
 		| { key: string; state: 'no-space' }
+		| { key: string; state: 'terms' }
 		| { key: string; state: 'error'; message: string };
 
 	// The signed-in account, once the session has been checked with the API
@@ -80,6 +87,13 @@ description instead.
 	let pickError = $state('');
 	let creatingSpace = $state(false);
 	let spaceError = $state('');
+	const consentId = `${uid}-consent`;
+	/** The age and terms box, ticked to create the recruiter space */
+	let consent = $state(false);
+	let consentError = $state('');
+	/** The API asked for the confirmation although the session said the terms were accepted */
+	let consentAsked = $state(false);
+	let needsConsent = $derived(!!user && (consentAsked || !hasAcceptedCurrentTerms(user)));
 
 	// Messages about an account go with it: a sign-in after an expired session starts clean
 	let account = $derived(user?._id ?? null);
@@ -88,6 +102,9 @@ description instead.
 		untrack(() => {
 			pickError = '';
 			spaceError = '';
+			consent = false;
+			consentError = '';
+			consentAsked = false;
 		});
 	});
 
@@ -178,6 +195,11 @@ description instead.
 					jobs = { key, state: 'no-space' };
 					return;
 				}
+				// The terms in force are not accepted: the step asks for them first
+				if (isConsentProblem(status, error?.value)) {
+					jobs = { key, state: 'terms' };
+					return;
+				}
 				jobs = { key, state: 'error', message: failureText(error?.value, m.job.jobsFailed) };
 				return;
 			}
@@ -210,11 +232,26 @@ description instead.
 	});
 
 	async function createRecruiterSpace() {
-		creatingSpace = true;
+		if (creatingSpace) return;
 		spaceError = '';
-		const result = await switchMode('recruiter');
+		if (needsConsent && !consent) {
+			consentError = m.job.tickTheBox;
+			document.getElementById(consentId)?.focus();
+			return;
+		}
+		creatingSpace = true;
+		const result = await switchMode('recruiter', needsConsent ? currentConsent() : undefined);
 		creatingSpace = false;
 		if (!result.ok) {
+			if (result.cause === 'consent') {
+				// The box shows (again): ticking it is what is missing, unless this page is outdated
+				consentAsked = true;
+				consent = false;
+				consentError = result.message;
+				await tick();
+				document.getElementById(consentId)?.focus();
+				return;
+			}
 			spaceError = result.message;
 			return;
 		}
@@ -235,6 +272,8 @@ description instead.
 			if (failure.kind === 'signed-out' || failure.kind === 'locked') locked(failure.kind);
 			if (failure.kind === 'changed') reload();
 			if (failure.kind === 'reload-jobs' && jobsKey) await loadJobs(jobsKey);
+			// The terms to accept show in place of the list (their acceptance loads it again)
+			if (failure.kind === 'terms' && jobsKey) jobs = { key: jobsKey, state: 'terms' };
 			return;
 		}
 		toaster.success({ title: m.job.picked });
@@ -264,6 +303,17 @@ description instead.
 {:else if !user.recruiter || shown?.state === 'no-space'}
 	<div class="space-y-3">
 		<p class="text-sm">{m.job.noSpace}</p>
+		{#if needsConsent}
+			<AgeTermsConsent
+				bind:checked={consent}
+				error={consent ? undefined : consentError || undefined}
+				disabled={creatingSpace}
+				id={consentId}
+				recruiter
+			/>
+		{:else}
+			<RecruiterRules />
+		{/if}
 		<button
 			type="button"
 			class="btn preset-filled-primary-700-300 min-h-11"
@@ -276,6 +326,21 @@ description instead.
 		{#if spaceError}
 			<p class="text-sm text-error-700-300" role="alert">{spaceError}</p>
 		{/if}
+	</div>
+{:else if shown?.state === 'terms'}
+	<div class="space-y-3">
+		{#if pickError}
+			<p class="text-sm text-error-700-300" role="alert">{pickError}</p>
+		{/if}
+		<TermsAcceptance
+			{user}
+			source="recruiter"
+			required
+			onAccepted={() => {
+				pickError = '';
+				if (jobsKey) void loadJobs(jobsKey);
+			}}
+		/>
 	</div>
 {:else if !shown || shown.state === 'loading'}
 	<p class="text-sm opacity-60" role="status">{m.job.loadingJobs}</p>

@@ -22,6 +22,7 @@
 	import JobDetails from '#components/jobs/JobDetails.svelte';
 	import EditorPlaceholder from '#components/job-editor/EditorPlaceholder.svelte';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
+	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import AddApplicantForm from '#components/recruiter/AddApplicantForm.svelte';
 	import ApplicantList from '#components/recruiter/ApplicantList.svelte';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
@@ -30,6 +31,7 @@
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
 	import { errorStatus } from '#services/apiErrors.ts';
+	import { isConsentProblem } from '#services/account.ts';
 	import { clearJobDraft, jobDraftStorageKey } from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
@@ -52,7 +54,8 @@
 	// One of the recruiter's job descriptions (GET /recruiter/jobs/:id): the posting as candidates
 	// read it, its status (PUT /jobs/:id/status), its public page, its applicants (added with
 	// POST /jobs/:id/applicants, removed with DELETE /jobs/:id/applicants/:applicationId) and its
-	// deletion. Rendered in the browser only (recruiter/+layout.ts).
+	// deletion. A recruiter who has not accepted the terms in force (422 on `consent`) accepts them
+	// first (TermsAcceptance). Rendered in the browser only (recruiter/+layout.ts).
 
 	type LoadState =
 		| { kind: 'idle' }
@@ -60,6 +63,7 @@
 		| { kind: 'loaded'; key: string; userId: string; job: RecruiterJobDetail }
 		| { kind: 'not-found' }
 		| { kind: 'no-space' }
+		| { kind: 'terms' }
 		| { kind: 'error' };
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -97,6 +101,9 @@
 					clearAuthentication();
 				} else if (code === 403) {
 					loadState = { kind: 'no-space' };
+				} else if (isConsentProblem(code, error?.value)) {
+					// The terms in force are not accepted: the page asks for them first
+					loadState = { kind: 'terms' };
 				} else if (code === 404 || code === 422) {
 					// 422: not a posting id at all
 					loadState = { kind: 'not-found' };
@@ -491,6 +498,8 @@
 							</a>
 						{/snippet}
 					</PageNotice>
+				{:else if loadState.kind === 'terms'}
+					<TermsAcceptance {user} source="recruiter" required level={2} onAccepted={retry} />
 				{:else if loadState.kind === 'not-found'}
 					<PageNotice title={m.notFound.title} icon={DocumentMagnifyingGlass}>
 						<p>{m.notFound.text}</p>

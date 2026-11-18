@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Request, type Route } from '@playwright/test';
 import { LEGAL_VERSION, legalMessages } from 'portfolio-common';
 import { API_URL, JWT_SECRET, gotoHydrated, ownerSession, signIn } from './support/owner';
+import { stubGoogle } from './support/google';
 
 // The landing page (/) and its onboarding card. Google is never reached: its script is stubbed
 // (a fake "Sign in with Google" button that hands a fake credential to the page). The steps of a
@@ -13,30 +14,6 @@ import { API_URL, JWT_SECRET, gotoHydrated, ownerSession, signIn } from './suppo
 /** Id of the stubbed candidate without a portfolio (the e2e candidate of seed:e2e) */
 const CANDIDATE_ID = '65e2e0000000000000000002';
 const CANDIDATE_EMAIL = 'e2e.candidate@example.com';
-
-/** Google Identity Services: a button that signs in with a fake credential when clicked */
-const GSI_STUB = `
-window.google = { accounts: { id: {
-	initialize(options) { window.__gsiCallback = options.callback; },
-	renderButton(element) {
-		const button = document.createElement('button');
-		button.type = 'button';
-		button.textContent = 'Stub Google sign-in';
-		button.onclick = () => window.__gsiCallback && window.__gsiCallback({ credential: 'stub-credential' });
-		element.replaceChildren(button);
-	},
-	prompt() {}, cancel() {}, disableAutoSelect() {}
-} } };`;
-
-/** Requests the page sent to Google's sign-in (the stubbed script included) */
-const stubGoogle = async (page: Page) => {
-	const requests: string[] = [];
-	await page.route('https://accounts.google.com/**', (route) => {
-		requests.push(route.request().url());
-		return route.fulfill({ contentType: 'application/javascript', body: GSI_STUB });
-	});
-	return requests;
-};
 
 /**
  * Answers `method path` of the API in the browser with `answer`, with the CORS headers the API

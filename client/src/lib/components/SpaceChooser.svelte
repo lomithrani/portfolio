@@ -3,7 +3,8 @@
 "How do you want to continue?": the dialog that asks a signed-in account which space to use,
 right after a sign-in from the header, or from the account menu (`start: 'claim'` opens it on the
 claim form). Candidate goes to the portfolio the account owns (or claims one first: POST
-/domain/claim), Recruiter to /recruiter (its space is created the first time). Either choice is
+/domain/claim), Recruiter to /recruiter, which offers to create the space the first time (after the
+age and terms box when the account has not accepted the terms in force). Either choice is
 recorded as the account's active mode (PUT /me/mode) once its page shows (recordSpaceShown: a page
 that keeps the person, with unsaved changes, records nothing). An account that has not accepted
 the Terms of use in force ticks the age and terms checkbox (AgeTermsConsent) before claiming: the
@@ -39,7 +40,6 @@ focused; closing the dialog keeps the person where they are.
 		recordSpaceShown,
 		refreshAccount,
 		suggestDomainName,
-		switchMode,
 		type AccountFailure
 	} from '#services/account.ts';
 	import { accountMessages } from '#services/account.messages.ts';
@@ -181,17 +181,7 @@ focused; closing the dialog keeps the person where they are.
 	async function chooseRecruiter() {
 		if (busy) return;
 		errorMessage = '';
-		// The first time, the space is created (which makes it the active one)
-		if (!user?.recruiter) {
-			busy = 'recruiter';
-			const result = await switchMode('recruiter');
-			busy = null;
-			if (!result.ok) {
-				if (result.reason === 'session-expired') sessionExpired(result);
-				else await showError(result.message);
-				return;
-			}
-		}
+		// Without a space yet, the page offers to create it (with the terms, when not accepted)
 		onClose();
 		await goto(resolve('/(app)/recruiter'));
 		// The space of the page shown: the recruiter space, or the page that kept the person

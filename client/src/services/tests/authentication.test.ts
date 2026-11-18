@@ -333,6 +333,40 @@ describe('signIn', () => {
 		expect(get(authenticationStore)).toEqual(loggedOut);
 	});
 
+	it("says 'consent' when the API asks for the confirmation (the recruiter space opened without it)", async () => {
+		mockLoginPost.mockResolvedValue({
+			data: null,
+			error: { status: 422, value: { type: 'validation', property: 'consent', message: 'x' } }
+		});
+
+		await expect(signIn('cred', { mode: 'recruiter' })).resolves.toEqual({
+			ok: false,
+			reason: 'consent'
+		});
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
+	it('sends the recruiter space as where the box was ticked', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await signIn('cred', {
+			mode: 'recruiter',
+			consent: currentConsent(),
+			consentSource: 'recruiter'
+		});
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{
+				token: 'cred',
+				mode: 'recruiter',
+				consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true },
+				consentSource: 'recruiter'
+			},
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
 	it("says 'error' for any other failure", async () => {
 		mockLoginPost.mockResolvedValue({
 			data: null,

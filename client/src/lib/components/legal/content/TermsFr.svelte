@@ -2,8 +2,10 @@
 @component
 Conditions d'utilisation (français), traduction fidèle de TermsEn.svelte : conditions d'âge et
 d'âge légal de travail, le service, comptes et portfolios, contenus et licence, contenus interdits
-(offres discriminatoires, mineurs), imports, rendez-vous, modération (DSA art. 14, 16, 17),
-résiliation, responsabilité, modifications, droit applicable.
+(offres discriminatoires, mineurs), recruteurs (acceptation à l'ouverture de l'espace recruteur ;
+poste réel, rémunération réellement proposée, aucune limite d'âge, droit d'agir pour l'employeur),
+imports, rendez-vous, modération (DSA art. 14, 16, 17), résiliation, responsabilité,
+modifications, droit applicable.
 -->
 <script module lang="ts">
 	import type { LegalSection } from '../legalDocuments.ts';
@@ -45,9 +47,10 @@ résiliation, responsabilité, modifications, droit applicable.
 	Ces conditions d'utilisation fixent les règles entre vous et l'éditeur de {SITE_NAME} (voir les
 	<LegalDocLink doc="notice" {lang}>mentions légales</LegalDocLink>) lorsque vous utilisez le site.
 	Vous les acceptez en cochant la case de confirmation lorsque le site vous le demande (lors de
-	votre inscription depuis la page d'accueil ou de la création d'un portfolio), et en utilisant un
-	compte. Il s'agit de la version {LEGAL_VERSION}, en vigueur depuis le {legalLastUpdated(lang)}. La
-	manière dont nous traitons les données personnelles est expliquée dans la
+	votre inscription depuis la page d'accueil, de la création d'un portfolio ou de l'ouverture de
+	l'espace recruteur), et en utilisant un compte. Il s'agit de la version {LEGAL_VERSION}, en
+	vigueur depuis le {legalLastUpdated(lang)}. La manière dont nous traitons les données personnelles
+	est expliquée dans la
 	<LegalDocLink doc="privacy" {lang}>politique de confidentialité</LegalDocLink>.
 </p>
 
@@ -59,8 +62,8 @@ résiliation, responsabilité, modifications, droit applicable.
 	<li>
 		avoir au moins <strong>{MINIMUM_AGE} ans</strong> et avoir atteint
 		<strong>l'âge légal minimum pour travailler dans votre pays</strong>, ce que vous confirmez
-		lorsque le site vous le demande (lors de l'inscription depuis la page d'accueil ou de la
-		création d'un portfolio) ;
+		lorsque le site vous le demande (lors de l'inscription depuis la page d'accueil, de la création
+		d'un portfolio ou de l'ouverture de l'espace recruteur) ;
 	</li>
 	<li>avoir un compte Google, avec lequel vous vous connectez ;</li>
 	<li>
@@ -180,8 +183,32 @@ résiliation, responsabilité, modifications, droit applicable.
 
 <h3 id="recruiters">Offres d'emploi et recruteurs</h3>
 <p>
-	Les recruteurs sont responsables de leurs offres d'emploi : elles décrivent un poste réel, avec la
-	rémunération, le contrat et les conditions réellement proposés, et respectent le droit du travail.
+	Pour ouvrir l'espace recruteur, les recruteurs acceptent ces conditions (le site les leur demande
+	alors, sauf s'ils ont déjà accepté la version en vigueur), et les acceptent de nouveau
+	lorsqu'elles changent de manière importante, avant d'utiliser de nouveau l'espace. Les recruteurs
+	sont responsables de leurs offres d'emploi et s'engagent à :
+</p>
+<ul>
+	<li>
+		décrire un <strong>poste réel</strong>, ouvert ou sur le point de l'être, avec le contrat et les
+		conditions réellement proposés ;
+	</li>
+	<li>
+		indiquer la <strong>rémunération réellement proposée</strong> : une offre ne doit pas induire en erreur
+		sur le poste, sa rémunération, son lieu de travail ou tout autre élément qu'elle propose (article
+		L5331-3 du code du travail) ;
+	</li>
+	<li>
+		ne fixer <strong>aucune limite d'âge</strong>, sauf si la loi l'impose (article L5331-2 du code
+		du travail), ni aucun autre critère discriminatoire (voir
+		<a class="link-text" href="#prohibited">ce qui est interdit</a>) ;
+	</li>
+	<li>
+		être l'employeur, ou être <strong>autorisés à agir en son nom</strong> ;
+	</li>
+	<li>respecter le droit du travail.</li>
+</ul>
+<p>
 	Avant d'embaucher, les recruteurs doivent vérifier que le candidat est légalement autorisé à
 	occuper le poste, notamment son âge et son droit au travail. Le site ne sélectionne, ne note ni ne
 	classe les candidats, et il n'est ni un cabinet de recrutement ni un employeur.
@@ -263,8 +290,8 @@ résiliation, responsabilité, modifications, droit applicable.
 	Lorsque nous modifions ces conditions de manière importante, nous mettons à jour leur date et leur
 	version, vous en informons sur le site ou par e-mail avant que la modification ne s'applique, et
 	vous demandons d'accepter la nouvelle version lors de votre prochaine inscription ou création d'un
-	portfolio, ou depuis la page de votre compte. Si vous ne l'acceptez pas, vous pouvez cesser
-	d'utiliser le site et supprimer votre compte.
+	portfolio, avant d'utiliser de nouveau l'espace recruteur, ou depuis la page de votre compte. Si
+	vous ne l'acceptez pas, vous pouvez cesser d'utiliser le site et supprimer votre compte.
 </p>
 
 <h3 id="law">Droit applicable et litiges</h3>
