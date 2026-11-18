@@ -17,6 +17,7 @@ import {
 	type WorkflowStepManifest,
 	type WorkflowStepStatus
 } from 'portfolio-common';
+import { isConsentProblem } from './apiErrors';
 import { isNetworkFailure, networkError } from './recruiter';
 import { m } from './workflow.messages';
 
@@ -378,10 +379,7 @@ export const pickJobFailure = (
 	const text = bodyText(value);
 	switch (status) {
 		case 422:
-			return value &&
-				typeof value === 'object' &&
-				'property' in value &&
-				value.property === 'consent'
+			return isConsentProblem(status, value)
 				? { message: m.job.pick.terms, kind: 'terms' }
 				: { message: m.job.pick.failed, kind: 'error' };
 		case 401:

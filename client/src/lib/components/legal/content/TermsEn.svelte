@@ -153,8 +153,8 @@ meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law
 	</li>
 	<li>publish other people's personal data without a legal basis;</li>
 	<li>
-		publish discriminatory job descriptions, that is, that select candidates on their origin, sex,
-		sexual orientation, gender identity, age, family situation, pregnancy, disability, state of
+		write or share discriminatory job descriptions, that is, that select candidates on their origin,
+		sex, sexual orientation, gender identity, age, family situation, pregnancy, disability, state of
 		health, religious beliefs, political opinions, trade union activity, physical appearance,
 		surname, place of residence or any other criterion forbidden by article L1132-1 of the French
 		Labour Code or the law that applies to the job;
@@ -163,7 +163,7 @@ meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law
 		target people below the legal working age, or offer work that the law forbids for minors to
 		people under 18;
 	</li>
-	<li>publish fake job offers, scams, or ask candidates for money;</li>
+	<li>write or share fake job offers, scams, or ask candidates for money;</li>
 	<li>send spam, unsolicited advertising, or book meetings you do not intend to attend;</li>
 	<li>
 		collect portfolios or job descriptions by automated means (scraping), other than search engines
@@ -225,8 +225,8 @@ meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law
 <p>
 	The imports send your PDF to Claude, an AI model made by Anthropic, which proposes drafts. The
 	drafts can be incomplete or wrong: review them before adding them, as you are responsible for what
-	you publish. Only send documents you have the right to use. Imports are limited in number, and we
-	may suspend the feature, for example to prevent abuse.
+	you put on the site. Only send documents you have the right to use. Imports are limited in number,
+	and we may suspend the feature, for example to prevent abuse.
 </p>
 
 <h3 id="meetings">Hiring journeys and meetings</h3>

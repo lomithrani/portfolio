@@ -91,8 +91,9 @@ const scored = async ({ ownerId, visitorId, config, earlier }: JobMatchContext):
 
 export const jobMatchStep: ServerStep<JobMatchStepConfig, undefined, JobMatchView> = {
   type: 'job-match',
-  // No job to score (none picked, or it is not theirs anymore): the job step before it is not
-  // done either, so this one is locked. Under the minimum, the journey stops here
+  // No job to score (none picked, it is not theirs anymore, or they have not accepted the terms
+  // in force): the job step before it is not done either, so this one is locked, with nothing
+  // computed (no score, no travel time). Under the minimum, the journey stops here
   evaluate: async (ctx) => {
     const view = await scored(ctx);
     if (!view) return { status: 'pending' };

@@ -1,7 +1,7 @@
 <!--
 @component
 Cookies and local storage (English): the session cookie, the language cookie, Google Identity
-Services cookies, each
+Services cookies, Cloudflare (in front of the pages: no cookie, no script), each
 localStorage key with its purpose and lifetime, why there is no consent banner (ePrivacy art. 5(3),
 French loi Informatique et Libertés art. 82), how to clear them.
 -->
@@ -31,12 +31,18 @@ French loi Informatique et Libertés art. 82), how to clear them.
 	which remembers the language you chose, and uses your browser's <strong>local storage</strong> for
 	your theme and your unsaved drafts. There is no analytics, no advertising and no social media
 	tracker. Google's sign-in is loaded only when you ask for it (for example by clicking "Sign in");
-	it then sets its own cookie <code>g_state</code> on this site's domain and its cookies on accounts.google.com,
-	under Google's policy. Everything listed here is strictly necessary for a service you ask for, which
-	is why the site does not ask for your consent with a banner (article 5(3) of the ePrivacy Directive,
-	article 82 of the French loi Informatique et Libertés). The descriptions of a portfolio can also show
-	images hosted on other sites, chosen by its owner: your browser loads them from those sites, which receive
-	your IP address and browser details and apply their own rules.
+	it then sets its own cookie <code>g_state</code> on this site's domain and its cookies on
+	accounts.google.com, under Google's policy. Everything listed here is strictly necessary for a
+	service you ask for, which is why the site does not ask for your consent with a banner (article
+	5(3) of the ePrivacy Directive, article 82 of the French loi Informatique et Libertés). The
+	descriptions of a portfolio can also show images hosted on other sites, chosen by its owner: your
+	browser loads them from those sites, which receive your IP address and browser details and apply
+	their own rules. The site's pages are served through Cloudflare, a content delivery network, which
+	sets no cookie and adds no script on this site (see the <LegalDocLink
+		doc="privacy"
+		{lang}
+		hash="recipients">privacy policy</LegalDocLink
+	>).
 </p>
 
 <h3 id="cookies">Cookies</h3>

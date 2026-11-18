@@ -14,7 +14,7 @@ import { portfolioApi } from '#services';
 import { authenticationStore, type AuthUser } from './stores';
 import { clearAuthentication, isSessionValid, readUser, termsVersionText } from './authentication';
 import { disableGoogleAutoSelect } from './googleIdentity';
-import { errorStatus } from './apiErrors';
+import { bodyProperty, errorStatus, isConsentProblem } from './apiErrors';
 import { accountMessages } from './account.messages';
 
 // The account's spaces (portfolio-common USER_MODES): the candidate space is the portfolio of the
@@ -203,19 +203,8 @@ const bodyText = (value: unknown): string => {
 	return '';
 };
 
-/** The field a 422 validation error names (`property`), '' for any other body */
-const bodyProperty = (value: unknown): string =>
-	value && typeof value === 'object' && 'property' in value && typeof value.property === 'string'
-		? value.property
-		: '';
-
-/**
- * A 422 about the age and terms confirmation (`consent`, `consent.termsVersion`...): a claim or
- * the opening of the recruiter space without it, or a recruiter route of an account that has not
- * accepted the terms in force (its recruiter pages then ask to accept them, TermsAcceptance)
- */
-export const isConsentProblem = (status: number | undefined, body: unknown): boolean =>
-	status === 422 && /^consent(\.|$)/.test(bodyProperty(body));
+// Shared with the journey's job step (pickJobFailure of workflow.ts): one rule for that refusal
+export { isConsentProblem };
 
 /**
  * The message of a refused confirmation: the version this page sends is outdated (only a reload

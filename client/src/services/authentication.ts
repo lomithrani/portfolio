@@ -194,14 +194,13 @@ const signIn = async (
 };
 
 /**
- * Exchanges a Google ID token for the API's auth cookie (signIn). Returns false (and leaves the
- * user logged out) when the API rejects the token or when the cookie does not round-trip.
+ * Exchanges a Google ID token for the API's auth cookie (signIn), in the space the account last
+ * chose and without a confirmation: a sign-in that chooses a space or sends the age and terms
+ * checkbox goes through signIn, which says why it failed. Returns false (and leaves the user
+ * logged out) when the API rejects the token or when the cookie does not round-trip.
  */
-const login = async (
-	googleCredential: string,
-	mode?: UserMode,
-	consent?: ConsentInput
-): Promise<boolean> => (await signIn(googleCredential, { mode, consent })).ok;
+const login = async (googleCredential: string): Promise<boolean> =>
+	(await signIn(googleCredential)).ok;
 
 const logout = async (): Promise<void> => {
 	try {

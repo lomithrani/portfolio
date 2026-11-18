@@ -273,11 +273,25 @@ Recruiter spaces opened before recruiters accepted the terms (before the `recrui
 are asked the same way. Reseed the e2e database after a bump (`bun run --cwd server seed:e2e`
 records the version in force for the e2e recruiter), locally and in the cloud environment.
 
+**Tell the accounts before a bump reaches production.** Both documents promise it (`#changes` of
+the Terms and of the Privacy policy: "tell you on the site or by email before the change
+applies"), and nothing on the site does it: the checkbox only shows once the release is deployed,
+and from then on every recruiter route answers 422 on `consent` until the new version is accepted.
+So, before deploying a release that bumps `LEGAL_VERSION` to production, email every account a
+short notice, in English and French: what changes, when it applies, that they will be asked to
+accept the new version (recruiters before they use their space again), and that they can delete
+their account instead. Read the addresses at that moment from production's database, for example
+`mongosh "$MONGO_URL" --quiet --eval 'db.users.find({}, { email: 1, _id: 0 }).forEach((u) => print(u.email))'`,
+send the notice with the addresses in Bcc, and keep no copy of the list. List this step in the
+release pull request's deployment notes. If no notice can be sent before the deploy, change
+`#changes` first (both documents, both languages) so it no longer promises one.
+
 **Cloudflare.** The privacy policy names Cloudflare, Inc. as the content delivery network and
 proxy in front of the **web pages only** (`#recipients`, `#data-technical`, `#transfers` and its
 log retention in `#retention`): on 2026-11-18, `curl -sI https://portfolio.gentil.tech/` answered
 `server: cloudflare` with a `cf-ray`, while `https://api.portfolio.gentil.tech/health` and both
-staging hosts answered `server: railway-hikari` (Railway directly). The texts say that Cloudflare
+staging hosts answered `server: railway-hikari` (Railway directly). The cookies page names it too
+(`#summary`: it "sets no cookie and adds no script on this site"). The texts say that Cloudflare
 receives the requests and the pages sent back, not that it changes them, stores anything in the
 browser or adds a script: no Cloudflare cookie, no Web Analytics beacon (which "no analytics" in
 the privacy policy and the cookies page rules out), and **two zone settings that Cloudflare turns
@@ -783,7 +797,10 @@ The production services deploy from **`main`**, the staging services from **`dev
 Work goes to `develop`: every pull request targets it (`develop` is the repository's default
 branch) and is squash-merged. A release brings `develop` into `main`:
 
-1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship.
+1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship. When the release
+   bumps `LEGAL_VERSION` (`git diff <latest tag> develop -- common/models/legal.ts`), email the
+   accounts first, before running the workflow (the merge deploys production on its own): see
+   "Tell the accounts before a bump reaches production" under [Legal pages](#legal-pages).
 2. Run the `Release` workflow (after its one-time setup, below): **Actions**, **Release**, **Run
    workflow** (branch `develop`), and pick what the release brings since the last one
    ([semantic versioning](https://semver.org)):

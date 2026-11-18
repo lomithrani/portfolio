@@ -197,64 +197,6 @@ describe('login', () => {
 		expect(get(authenticationStore)).toEqual(session);
 	});
 
-	it('sends the chosen space and stores the account the API returned', async () => {
-		const session = {
-			user: { ...user, activeMode: 'recruiter', recruiter: true, domain: 'jane' },
-			expires: nowSeconds() + 3600
-		};
-		mockLoginPost.mockResolvedValue({ data: session, error: null });
-		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
-
-		await expect(login('google-cred-token', 'recruiter')).resolves.toBe(true);
-		expect(mockLoginPost).toHaveBeenCalledWith(
-			{ token: 'google-cred-token', mode: 'recruiter' },
-			{ fetch: { credentials: 'include' } }
-		);
-		expect(get(authenticationStore)).toEqual(session);
-	});
-
-	it('sends the age and terms confirmation with the chosen space when given', async () => {
-		const session = {
-			user: { ...user, activeMode: 'candidate', termsVersion: LEGAL_VERSION },
-			expires: nowSeconds() + 3600
-		};
-		mockLoginPost.mockResolvedValue({ data: session, error: null });
-		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
-
-		await expect(login('google-cred-token', 'candidate', currentConsent())).resolves.toBe(true);
-		expect(mockLoginPost).toHaveBeenCalledWith(
-			{
-				token: 'google-cred-token',
-				mode: 'candidate',
-				consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true }
-			},
-			{ fetch: { credentials: 'include' } }
-		);
-		expect(get(authenticationStore)).toEqual(session);
-	});
-
-	it('sends the confirmation without a space', async () => {
-		const session = validSession();
-		mockLoginPost.mockResolvedValue({ data: session, error: null });
-		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
-
-		await login('google-cred-token', undefined, currentConsent());
-		expect(mockLoginPost).toHaveBeenCalledWith(
-			{ token: 'google-cred-token', consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } },
-			{ fetch: { credentials: 'include' } }
-		);
-	});
-
-	it('stays signed out when the API refuses an outdated confirmation (422)', async () => {
-		mockLoginPost.mockResolvedValue(apiError(422));
-
-		await expect(
-			login('token', 'candidate', { termsVersion: '2025-01-01', ageConfirmed: true })
-		).resolves.toBe(false);
-		expect(mockIsLoggedGet).not.toHaveBeenCalled();
-		expect(get(authenticationStore)).toEqual(loggedOut);
-	});
-
 	it('returns false when the API rejects the token (401)', async () => {
 		mockLoginPost.mockResolvedValue(apiError(401));
 
@@ -286,6 +228,69 @@ describe('login', () => {
 });
 
 describe('signIn', () => {
+	it('sends the chosen space and stores the account the API returned', async () => {
+		const session = {
+			user: { ...user, activeMode: 'recruiter', recruiter: true, domain: 'jane' },
+			expires: nowSeconds() + 3600
+		};
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(signIn('google-cred-token', { mode: 'recruiter' })).resolves.toEqual({ ok: true });
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'google-cred-token', mode: 'recruiter' },
+			{ fetch: { credentials: 'include' } }
+		);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('sends the age and terms confirmation with the chosen space when given', async () => {
+		const session = {
+			user: { ...user, activeMode: 'candidate', termsVersion: LEGAL_VERSION },
+			expires: nowSeconds() + 3600
+		};
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await expect(
+			signIn('google-cred-token', { mode: 'candidate', consent: currentConsent() })
+		).resolves.toEqual({ ok: true });
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{
+				token: 'google-cred-token',
+				mode: 'candidate',
+				consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true }
+			},
+			{ fetch: { credentials: 'include' } }
+		);
+		expect(get(authenticationStore)).toEqual(session);
+	});
+
+	it('sends the confirmation without a space', async () => {
+		const session = validSession();
+		mockLoginPost.mockResolvedValue({ data: session, error: null });
+		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
+
+		await signIn('google-cred-token', { consent: currentConsent() });
+		expect(mockLoginPost).toHaveBeenCalledWith(
+			{ token: 'google-cred-token', consent: { termsVersion: LEGAL_VERSION, ageConfirmed: true } },
+			{ fetch: { credentials: 'include' } }
+		);
+	});
+
+	it('stays signed out when the API refuses an outdated confirmation (422)', async () => {
+		mockLoginPost.mockResolvedValue(apiError(422));
+
+		await expect(
+			signIn('token', {
+				mode: 'candidate',
+				consent: { termsVersion: '2025-01-01', ageConfirmed: true }
+			})
+		).resolves.toMatchObject({ ok: false });
+		expect(mockIsLoggedGet).not.toHaveBeenCalled();
+		expect(get(authenticationStore)).toEqual(loggedOut);
+	});
+
 	it('sends where the box was ticked with the confirmation, and succeeds', async () => {
 		const session = validSession();
 		mockLoginPost.mockResolvedValue({ data: session, error: null });
@@ -474,7 +479,7 @@ describe('session with a parsed terms version', () => {
 		mockLoginPost.mockResolvedValue({ data: session, error: null });
 		mockIsLoggedGet.mockResolvedValue({ data: { logged: true, ...session }, error: null });
 
-		await expect(login('google-jwt', 'candidate', currentConsent())).resolves.toBe(true);
+		await expect(login('google-jwt')).resolves.toBe(true);
 		expect(get(authenticationStore).user).toEqual({ ...user, termsVersion: LEGAL_VERSION });
 
 		authenticationStore.set({ ...loggedOut });

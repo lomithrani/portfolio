@@ -896,6 +896,25 @@ describe('submitting a step (POST /workflow/domains/:domainName/steps/:stepId)',
     expect((await openStepOfType(owner.id, recruiter.id, 'meeting', noStep)).stepId).toBe('meeting');
   });
 
+  it('scores nothing for a recruiter without the terms in force, until accepted again', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    await setJourney(owner, job(), jobMatch(0, true), meeting());
+    await setPerfectJob(owner, { contractTypes: { importance: 3, types: ['cdi'] } });
+    const jobId = await createJob(recruiter);
+    expect((await submit(owner.domain, 'job', { jobId }, recruiter)).status).toBe(200);
+    expect((await journeyOf(owner.domain, recruiter)).steps[1]).toMatchObject({ status: 'succeeded', view: { score: 100 } });
+
+    // The terms changed since the pick: no score, no criteria, nothing derived from the perfect job
+    await User.updateOne({ _id: recruiter.id }, { $set: { 'legalAcceptances.0.version': '2025-01-01' } });
+    const stale = await journeyOf(owner.domain, recruiter);
+    expect(statuses(stale)).toEqual(['job:pending', 'job-match:pending', 'meeting:pending']);
+    expect(stale.steps[1]).toEqual({ id: 'job-match', type: 'job-match', status: 'pending', config: { minScore: 0 } });
+
+    expect((await call('PUT', '/me/consent', { body: { ...CONSENT, source: 'recruiter' }, cookie: recruiter.cookie })).status).toBe(200);
+    expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:succeeded', 'job-match:succeeded', 'meeting:pending']);
+  });
+
   it('needs a session, a portfolio, a step of the journey, and a step that takes something', async () => {
     const owner = await createUser('owner', { domain: true });
     const visitor = await createUser('visitor');

@@ -74,8 +74,8 @@ focused; closing the dialog keeps the person where they are.
 	const freshOn = <T,>(_opening: unknown, value: T): T => value;
 
 	let step = $derived<Step>(open ? start : 'choose');
-	/** The request in flight: its choice cannot be made twice, nor the dialog closed */
-	let busy = $derived<UserMode | 'claim' | null>(freshOn(open, null));
+	/** The claim in flight: it cannot be made twice, nor the dialog closed (the spaces are links) */
+	let busy = $derived<'claim' | null>(freshOn(open, null));
 	/** A failure that is not about the name typed */
 	let errorMessage = $derived(freshOn(open, ''));
 	let name = $derived(
@@ -119,9 +119,7 @@ focused; closing the dialog keeps the person where they are.
 	);
 	let host = $derived(page.url.host);
 
-	let statusText = $derived(
-		busy === 'claim' ? m.claimingPortfolio : busy ? accountMessages.opening[busy] : ''
-	);
+	let statusText = $derived(busy === 'claim' ? m.claimingPortfolio : '');
 
 	const initialFocus = () => {
 		if (step === 'claim') return nameInput ?? null;
@@ -437,7 +435,6 @@ focused; closing the dialog keeps the person where they are.
 	onclick: () => void;
 })}
 	{@const isLastUsed = lastUsed === mode}
-	{@const isBusy = busy === mode}
 	<button
 		type="button"
 		class="{choiceClass} {isLastUsed
@@ -446,7 +443,6 @@ focused; closing the dialog keeps the person where they are.
 		aria-labelledby="{uid}-{mode}-title"
 		aria-describedby={`${uid}-${mode}-description${isLastUsed ? ` ${uid}-${mode}-last` : ''}`}
 		aria-disabled={busy ? 'true' : undefined}
-		aria-busy={isBusy ? 'true' : undefined}
 		data-space={mode}
 		bind:this={
 			() => (mode === 'recruiter' ? recruiterButton : candidateButton),
@@ -463,9 +459,7 @@ focused; closing the dialog keeps the person where they are.
 				: 'preset-tonal-primary'}"
 			aria-hidden="true"
 		>
-			{#if isBusy}
-				<ArrowPath size="22" class="animate-spin" />
-			{:else if mode === 'recruiter'}
+			{#if mode === 'recruiter'}
 				<Briefcase size="22" />
 			{:else}
 				<UserCircle size="22" />

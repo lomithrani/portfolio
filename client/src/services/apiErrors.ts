@@ -6,6 +6,21 @@
 export const errorStatus = (error: { status: unknown } | null | undefined): number | undefined =>
 	typeof error?.status === 'number' ? error.status : undefined;
 
+/** The field a 422 validation error names (`property`), '' for any other body */
+export const bodyProperty = (value: unknown): string =>
+	value && typeof value === 'object' && 'property' in value && typeof value.property === 'string'
+		? value.property
+		: '';
+
+/**
+ * A 422 about the age and terms confirmation (`consent`, `consent.termsVersion`...): a claim or
+ * the opening of the recruiter space without it, or a recruiter route (the job step's pick
+ * included) of an account that has not accepted the terms in force (its recruiter pages then ask
+ * to accept them, TermsAcceptance)
+ */
+export const isConsentProblem = (status: number | undefined, body: unknown): boolean =>
+	status === 422 && /^consent(\.|$)/.test(bodyProperty(body));
+
 // Body of the API's 404 for GET /domain/:name when no domain has that name
 // (DomainDoesNotExistError). Any other 404 (route miss, wrong API URL, a proxy or the hosting
 // edge answering) means the API could not be asked, not that the domain is free.

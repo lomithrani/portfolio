@@ -169,18 +169,21 @@ modifications, droit applicable.
 	</li>
 	<li>publier les données personnelles d'autres personnes sans base légale ;</li>
 	<li>
-		publier des offres d'emploi discriminatoires, c'est-à-dire qui sélectionnent les candidats selon
-		leur origine, leur sexe, leur orientation sexuelle, leur identité de genre, leur âge, leur
-		situation de famille, leur grossesse, leur handicap, leur état de santé, leurs convictions
-		religieuses, leurs opinions politiques, leurs activités syndicales, leur apparence physique,
-		leur nom de famille, leur lieu de résidence ou tout autre critère interdit par l'article L1132-1
-		du code du travail ou par la loi applicable au poste ;
+		rédiger ou partager des offres d'emploi discriminatoires, c'est-à-dire qui sélectionnent les
+		candidats selon leur origine, leur sexe, leur orientation sexuelle, leur identité de genre, leur
+		âge, leur situation de famille, leur grossesse, leur handicap, leur état de santé, leurs
+		convictions religieuses, leurs opinions politiques, leurs activités syndicales, leur apparence
+		physique, leur nom de famille, leur lieu de résidence ou tout autre critère interdit par
+		l'article L1132-1 du code du travail ou par la loi applicable au poste ;
 	</li>
 	<li>
 		viser des personnes n'ayant pas atteint l'âge légal pour travailler, ou proposer à des personnes
 		de moins de 18 ans des travaux que la loi interdit aux mineurs ;
 	</li>
-	<li>publier de fausses offres d'emploi, des arnaques, ou demander de l'argent aux candidats ;</li>
+	<li>
+		rédiger ou partager de fausses offres d'emploi, des arnaques, ou demander de l'argent aux
+		candidats ;
+	</li>
 	<li>
 		envoyer du spam, de la publicité non sollicitée, ou réserver des rendez-vous auxquels vous ne
 		comptez pas vous rendre ;
@@ -246,9 +249,9 @@ modifications, droit applicable.
 <p>
 	Les imports envoient votre PDF à Claude, un modèle d'IA conçu par Anthropic, qui propose des
 	brouillons. Les brouillons peuvent être incomplets ou erronés : relisez-les avant de les ajouter,
-	car vous êtes responsable de ce que vous publiez. N'envoyez que des documents que vous avez le
-	droit d'utiliser. Le nombre d'imports est limité, et nous pouvons suspendre la fonctionnalité, par
-	exemple pour empêcher les abus.
+	car vous êtes responsable de ce que vous mettez sur le site. N'envoyez que des documents que vous
+	avez le droit d'utiliser. Le nombre d'imports est limité, et nous pouvons suspendre la
+	fonctionnalité, par exemple pour empêcher les abus.
 </p>
 
 <h3 id="meetings">Parcours de recrutement et rendez-vous</h3>

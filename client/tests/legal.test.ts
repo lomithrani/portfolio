@@ -372,6 +372,46 @@ test.describe('legal pages', () => {
 		await expect(page.locator(`article a[href="${CLOUDFLARE_PRIVACY}"]`)).toHaveCount(1);
 	});
 
+	test('the cookies page names Cloudflare, which stores nothing in the browser', async ({
+		page
+	}) => {
+		await page.goto('/legal/cookies');
+		expect(await sectionText(page, 'summary')).toContain(
+			"The site's pages are served through Cloudflare, a content delivery network, which sets no cookie and adds no script on this site (see the privacy policy)."
+		);
+		await expect(
+			page.locator('#summary ~ p a[href="/legal/privacy#recipients"]', {
+				hasText: 'privacy policy'
+			})
+		).toHaveCount(1);
+
+		await page.goto('/legal/cookies?lang=fr');
+		expect(await sectionText(page, 'summary')).toContain(
+			"Les pages du site passent par Cloudflare, un réseau de diffusion de contenu, qui ne dépose aucun cookie et n'ajoute aucun script sur ce site (voir la politique de confidentialité)."
+		);
+	});
+
+	test('the legal notice counts job descriptions as content shared, not published', async ({
+		page
+	}) => {
+		await page.goto('/legal');
+		expect(await sectionText(page, 'report')).toContain(
+			'a portfolio, a job description shared on a hiring journey, a hiring journey note or anything else users put on the site.'
+		);
+		expect(await sectionText(page, 'intellectual-property')).toContain(
+			'Content that users put on the site (portfolios, experiences and projects, job descriptions, hiring journey notes) belongs to the people who wrote it.'
+		);
+		await expect(page.locator('article[data-legal-document]')).not.toContainText('users publish');
+
+		await page.goto('/legal?lang=fr');
+		expect(await sectionText(page, 'report')).toContain(
+			"un portfolio, une offre d'emploi partagée dans un parcours de recrutement, une note d'un parcours de recrutement ou tout autre contenu que les utilisateurs mettent sur le site."
+		);
+		await expect(page.locator('article[data-legal-document]')).not.toContainText(
+			'publiés par les utilisateurs'
+		);
+	});
+
 	test('the privacy policy carries the Google Limited Use statement', async ({ page }) => {
 		await page.goto('/legal/privacy');
 		await expect(

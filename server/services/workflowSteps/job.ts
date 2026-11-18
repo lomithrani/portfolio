@@ -70,12 +70,15 @@ const pickedJob = async ({ visitorId, data }: JobContext): Promise<JourneyJobDto
 
 /**
  * The whole posting a visitor picked on a job step, from what that step
- * stored (`data`), while it is still theirs: for a later step that works on
- * it (the job match)
+ * stored (`data`), while it is still theirs and they have accepted the terms
+ * in force (as the job step holds a pick): for a later step that works on it
+ * (the job match, which scores nothing for a recruiter who has not accepted
+ * them again)
  */
 export const pickedPosting = async (visitorId: string, data: unknown): Promise<JobPostingDto | undefined> => {
   const id = pickedJobId(data);
   if (!id || !Types.ObjectId.isValid(visitorId)) return undefined;
+  if (!(await userAcceptedCurrentTerms(visitorId))) return undefined;
   const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }).lean();
   return job ? toJobPostingDto(job) : undefined;
 };

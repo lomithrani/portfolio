@@ -8,10 +8,12 @@
 // or point at but never change: its journey, set here on every run, is a job step then the
 // meeting, on which client/tests/job-view.test.ts alone has the e2e recruiter pick its jobs.
 // client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
-// and goes through it as the e2e recruiter. client/tests/account.test.ts (and the signed-in steps of
-// client/tests/landing.test.ts) use the candidate 'e2e.candidate@example.com': no domain, no
-// recruiter space, no acceptance of the terms; the tests that would change it (accepting the terms,
-// claiming, deleting the account) answer those requests in the browser, so it stays that way.
+// and goes through it as the e2e recruiter. The candidate 'e2e.candidate@example.com' (no domain, no
+// recruiter space, no acceptance of the terms) is signed in as by client/tests/account.test.ts,
+// claim-consent.test.ts, feedback.test.ts, recruiter.test.ts, hire-journey.test.ts, job-view.test.ts
+// and the signed-in steps of landing.test.ts; the tests that would change it (accepting the terms,
+// claiming, opening a recruiter space or recording a space: PUT /me/mode, deleting the account)
+// answer those requests in the browser, so it stays that way.
 // Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose, { Types } from "mongoose";
