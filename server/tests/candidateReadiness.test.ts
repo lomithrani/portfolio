@@ -25,6 +25,7 @@ let app: ReturnType<typeof createApp>;
 let t: ReturnType<typeof testNames>;
 let connected = false;
 const savedCalendar = env.googleCalendarEnabled;
+const savedCommute = env.commuteTimesEnabled;
 
 const call = async (method: string, path: string, { body, cookie }: { body?: unknown; cookie?: string } = {}) => {
   const headers: Record<string, string> = {};
@@ -67,16 +68,36 @@ const readiness = async (user: TestUser) => {
   return answer;
 };
 
-/** A meeting type of `user`, stored directly (the schedule routes are covered by tests/appointments.test.ts) */
-const createSchedule = (user: TestUser, enabled: boolean) =>
-  AppointmentSchedule.create({ user: user.id, title: t.id('call'), timezone: 'Europe/Paris', enabled });
+/** The hours of a meeting type: Mondays, 9 to 12 */
+const MONDAY_MORNINGS = [{ dayOfWeek: 1, startTime: '09:00', endTime: '12:00' }];
+
+/** A day `days` from today (UTC), as a date override names it */
+const dayFromToday = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+/**
+ * A meeting type of `user`, stored directly (the schedule routes are covered by
+ * tests/appointments.test.ts): with weekly hours unless `availability` or `dateOverrides` say
+ */
+const createSchedule = (
+  user: TestUser,
+  enabled: boolean,
+  { availability = MONDAY_MORNINGS, dateOverrides = [] }: { availability?: unknown[]; dateOverrides?: unknown[] } = {}
+) =>
+  AppointmentSchedule.create({
+    user: user.id,
+    title: t.id('call'),
+    timezone: 'Europe/Paris',
+    enabled,
+    availability,
+    dateOverrides
+  });
 
 /** What a new account has: nothing set up, the default journey */
 const NOTHING = {
   domain: null,
   experiences: 0,
   perfectJob: { criteria: 0, essentials: { pay: false, workMode: false, place: false, contractTypes: false } },
-  journey: { saved: false, types: ['meeting'], gate: false, meeting: true },
+  journey: { saved: false, types: ['meeting'], blocked: false, gate: false, meeting: true },
   calendar: { connected: false, reconnect: false, enabledSchedules: 0 }
 };
 
@@ -89,6 +110,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   env.googleCalendarEnabled = savedCalendar;
+  env.commuteTimesEnabled = savedCommute;
   if (connected) await mongoose.disconnect();
 });
 
@@ -100,6 +122,7 @@ beforeEach(() => {
 afterEach(async () => {
   mock.restore();
   env.googleCalendarEnabled = savedCalendar;
+  env.commuteTimesEnabled = savedCommute;
   if (!connected) return;
   const named = new RegExp(`-${t.suffix}(@|$)`);
   const users = (await User.find({ email: named }, '_id').lean()).map((user) => user._id);
@@ -149,12 +172,29 @@ describe('GET /me/readiness', () => {
       criteria: 5,
       essentials: { pay: true, workMode: true, place: true, contractTypes: true }
     });
+    // The whole answer, but the portfolio's name: its random suffix could hold one of the values
+    const text = answer.text.replaceAll(owner.domain!, '');
     for (const value of ['87654', '87 654', 'Villeurbanne', 'Elixir', 'hybrid', 'cdi', 'dealBreaker', 'importance']) {
-      expect(answer.text).not.toContain(value);
+      expect(text).not.toContain(value);
     }
   });
 
-  it('counts the commute as where the office is, and leaves out what is not rated', async () => {
+  const ESSENTIAL_OF = { pay: 'pay', workMode: 'workMode', cities: 'place', contractTypes: 'contractTypes' } as const;
+  it.each([
+    ['pay', { importance: 5, perYear: 50_000 }],
+    ['workMode', { importance: 4, modes: ['remote'] }],
+    ['cities', { importance: 4, places: ['Lyon'] }],
+    ['contractTypes', { importance: 3, types: ['cdi'] }]
+  ] as const)('says the %s criterion rated, and no other essential', async (criterion, setting) => {
+    const owner = await createUser('owner');
+    const saved = await call('PUT', '/perfect-job', { body: { criteria: { [criterion]: setting } }, cookie: owner.cookie });
+    expect(saved.status).toBe(200);
+    const essentials = { pay: false, workMode: false, place: false, contractTypes: false, [ESSENTIAL_OF[criterion]]: true };
+    expect((await readiness(owner)).json().perfectJob).toEqual({ criteria: 1, essentials });
+  });
+
+  it('counts the commute as where the office is while travel times are computed, and leaves out what is not rated', async () => {
+    env.commuteTimesEnabled = true;
     const owner = await createUser('owner');
     // Stored as the API keeps it, without a lookup (the address routes are covered by tests/commute.test.ts)
     await PerfectJob.create({
@@ -170,6 +210,13 @@ describe('GET /me/readiness', () => {
       essentials: { pay: false, workMode: false, place: true, contractTypes: false }
     });
     expect(answer.text).not.toContain('République');
+
+    // Travel times off: the commute is left out of every score, so it says nothing of the office
+    env.commuteTimesEnabled = false;
+    expect((await readiness(owner)).json().perfectJob).toEqual({
+      criteria: 2,
+      essentials: { pay: false, workMode: false, place: false, contractTypes: false }
+    });
   });
 
   it('tells the gate from other journeys, and a saved journey from the default one', async () => {
@@ -182,6 +229,7 @@ describe('GET /me/readiness', () => {
     expect(gate.json().journey).toEqual({
       saved: true,
       types: ['note', 'job', 'job-match', 'meeting'],
+      blocked: false,
       gate: true,
       meeting: true
     });
@@ -190,14 +238,32 @@ describe('GET /me/readiness', () => {
     expect(gate.text).not.toContain(title);
     expect(gate.text).not.toContain('minScore');
 
+    // Without the note, with notes between its steps, whatever the match's settings: still the gate
+    const note = (id: string) => ({ id, type: 'note', config: { title: t.id(id), text: 'Read me.' } });
+    const job = { id: 'job', type: 'job', config: {} };
+    const match = (config: object) => ({ id: 'job-match', type: 'job-match', config });
+    const meeting = { id: 'meeting', type: 'meeting', config: {} };
+    for (const steps of [
+      [job, match({ minScore: 70, showDetails: true }), meeting],
+      [job, note('a'), match({ minScore: 70, showDetails: true }), note('b'), meeting],
+      [job, match({ minScore: 35, showDetails: false }), meeting]
+    ]) {
+      await save(steps);
+      expect((await readiness(owner)).json().journey).toEqual({
+        saved: true,
+        types: steps.map((step) => step.type),
+        blocked: false,
+        gate: true,
+        meeting: true
+      });
+    }
+
     // A job without its match, and the default journey saved as it is, are no gate
-    await save([
-      { id: 'job', type: 'job', config: {} },
-      { id: 'meeting', type: 'meeting', config: {} }
-    ]);
+    await save([job, meeting]);
     expect((await readiness(owner)).json().journey).toEqual({
       saved: true,
       types: ['job', 'meeting'],
+      blocked: false,
       gate: false,
       meeting: true
     });
@@ -206,20 +272,63 @@ describe('GET /me/readiness', () => {
 
     // A journey without a meeting step leads nowhere
     await save([]);
-    expect((await readiness(owner)).json().journey).toEqual({ saved: true, types: [], gate: false, meeting: false });
+    expect((await readiness(owner)).json().journey).toEqual({
+      saved: true,
+      types: [],
+      blocked: false,
+      gate: false,
+      meeting: false
+    });
   });
 
-  it('names a stored step that is not one, and is no gate when it stands in for a step of the gate', async () => {
+  // Written by hand, or by an older version: never through PUT /workflow, which refuses them all
+  it.each([
+    ['a stored step that is not one', [{ id: 'job', type: 'job', config: {} }, { type: 'job-match' }], ['job', '']],
+    [
+      'a step of a type this version does not have',
+      [
+        { id: 'job', type: 'job', config: {} },
+        { id: 'job-match', type: 'job-match', config: { minScore: 70, showDetails: true } },
+        { id: 'old', type: 'interview', config: {} }
+      ],
+      ['job', 'job-match', 'interview']
+    ],
+    [
+      'a job match without a job step before it',
+      [{ id: 'job-match', type: 'job-match', config: { minScore: 70, showDetails: true } }],
+      ['job-match']
+    ]
+  ])('says the meeting cannot be reached behind %s, and that it is no gate', async (_name, before, beforeTypes) => {
     const owner = await createUser('owner');
-    // Written by hand, or by an older version: never through PUT /workflow
     await Workflow.collection.insertOne({
       user: new Types.ObjectId(owner.id),
-      steps: [{ id: 'job', type: 'job', config: {} }, { type: 'job-match' }, { id: 'meeting', type: 'meeting', config: {} }]
+      steps: [...before, { id: 'meeting', type: 'meeting', config: {} }]
     });
     expect((await readiness(owner)).json().journey).toEqual({
       saved: true,
-      types: ['job', '', 'meeting'],
+      types: [...beforeTypes, 'meeting'],
+      blocked: true,
       gate: false,
+      meeting: false
+    });
+  });
+
+  it('says nothing blocks a journey whose step that is not one comes after the meeting', async () => {
+    const owner = await createUser('owner');
+    await Workflow.collection.insertOne({
+      user: new Types.ObjectId(owner.id),
+      steps: [
+        { id: 'job', type: 'job', config: {} },
+        { id: 'job-match', type: 'job-match', config: { minScore: 70, showDetails: true } },
+        { id: 'meeting', type: 'meeting', config: {} },
+        { id: 'old', type: 'interview', config: {} }
+      ]
+    });
+    expect((await readiness(owner)).json().journey).toEqual({
+      saved: true,
+      types: ['job', 'job-match', 'meeting', 'interview'],
+      blocked: false,
+      gate: true,
       meeting: true
     });
   });
@@ -228,8 +337,20 @@ describe('GET /me/readiness', () => {
     env.googleCalendarEnabled = true;
     const owner = await createUser('owner', { domain: true });
     await createSchedule(owner, true);
-    await createSchedule(owner, true);
+    // Hours on one day of its own only
+    await createSchedule(owner, true, {
+      availability: [],
+      dateOverrides: [{ date: dayFromToday(7), available: true, windows: [{ startTime: '14:00', endTime: '16:00' }] }]
+    });
+    // Not counted: turned off; turned on without hours (as a new one starts), or only with days
+    // off, or with hours only on a day that is over
     await createSchedule(owner, false);
+    await createSchedule(owner, true, { availability: [] });
+    await createSchedule(owner, true, { availability: [], dateOverrides: [{ date: dayFromToday(3), available: false }] });
+    await createSchedule(owner, true, {
+      availability: [],
+      dateOverrides: [{ date: dayFromToday(-3), available: true, windows: [{ startTime: '14:00', endTime: '16:00' }] }]
+    });
     await User.updateOne(
       { _id: owner.id },
       { $set: { 'googleCalendar.refreshToken': t.id('refresh-token'), 'googleCalendar.connectedAt': new Date() } }
@@ -262,14 +383,21 @@ describe('GET /me/readiness', () => {
   it("never reads another account's documents", async () => {
     env.googleCalendarEnabled = true;
     const owner = await createUser('owner', { domain: true, experiences: 3 });
-    await call('PUT', '/perfect-job', {
+    const perfectJob = await call('PUT', '/perfect-job', {
       body: { criteria: { pay: { importance: 5, perYear: 70_000 } } },
       cookie: owner.cookie
     });
-    await call('PUT', '/workflow', { body: { steps: journeyTemplate('gate') }, cookie: owner.cookie });
+    expect(perfectJob.status).toBe(200);
+    const journey = await call('PUT', '/workflow', { body: { steps: journeyTemplate('gate') }, cookie: owner.cookie });
+    expect(journey.status).toBe(200);
     await createSchedule(owner, true);
     await User.updateOne({ _id: owner.id }, { $set: { 'googleCalendar.refreshToken': t.id('refresh-token') } });
-    expect((await readiness(owner)).json()).toMatchObject({ experiences: 3, journey: { gate: true } });
+    expect((await readiness(owner)).json()).toMatchObject({
+      experiences: 3,
+      perfectJob: { criteria: 1, essentials: { pay: true } },
+      journey: { gate: true },
+      calendar: { connected: true, enabledSchedules: 1 }
+    });
 
     // The route takes no account to read: the session's is the only one
     const other = await createUser('other');

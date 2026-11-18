@@ -61,6 +61,12 @@ const isStepId = (stepId: string) => WORKFLOW_LIMITS.stepId.test(stepId);
 /** What a step's type does; undefined for a type this version does not have (in either registry) */
 const stepBehaviour = (type: string): ServerStep | undefined => (stepManifest(type) ? serverStep(type) : undefined);
 
+/**
+ * Whether this version has the step type `type`, in both registries: a stored step of a type it
+ * does not have can never succeed, and the journey stops there (candidateReadiness says so)
+ */
+export const knownStepType = (type: string): boolean => stepBehaviour(type) !== undefined;
+
 const settings = (value: unknown): object =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {};
 

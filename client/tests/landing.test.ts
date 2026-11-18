@@ -50,7 +50,7 @@ type Readiness = {
 		criteria: number;
 		essentials: Record<'pay' | 'workMode' | 'place' | 'contractTypes', boolean>;
 	};
-	journey: { saved: boolean; types: string[]; gate: boolean; meeting: boolean };
+	journey: { saved: boolean; types: string[]; blocked: boolean; gate: boolean; meeting: boolean };
 	calendar: {
 		configured: boolean;
 		connected: boolean;
@@ -67,7 +67,7 @@ const newReadiness = (domain: string | null): Readiness => ({
 		criteria: 0,
 		essentials: { pay: false, workMode: false, place: false, contractTypes: false }
 	},
-	journey: { saved: false, types: ['meeting'], gate: false, meeting: true },
+	journey: { saved: false, types: ['meeting'], blocked: false, gate: false, meeting: true },
 	calendar: { configured: true, connected: false, reconnect: false, enabledSchedules: 0 }
 });
 
@@ -82,6 +82,7 @@ const readyReadiness = (domain: string): Readiness => ({
 	journey: {
 		saved: true,
 		types: ['note', 'job', 'job-match', 'meeting'],
+		blocked: false,
 		gate: true,
 		meeting: true
 	},

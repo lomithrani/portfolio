@@ -25,8 +25,14 @@ export interface Readiness {
 		/** false: the default journey (a meeting step only), never saved by the owner */
 		saved: boolean;
 		types: string[];
+		/**
+		 * A step before the meeting can never succeed (a step that is not available anymore):
+		 * recruiters never reach the meeting, and `gate` and `meeting` are false
+		 */
+		blocked: boolean;
 		/** A job step, then a job match, then a meeting */
 		gate: boolean;
+		/** It leads to a meeting recruiters can reach */
 		meeting: boolean;
 	};
 	calendar: {
@@ -35,6 +41,7 @@ export interface Readiness {
 		connected: boolean;
 		/** Google refused the stored access: the owner connects again */
 		reconnect: boolean;
+		/** The appointment schedules turned on that have hours (weekly, or on a day of their own) */
 		enabledSchedules: number;
 	};
 }
@@ -74,6 +81,7 @@ export const readReadiness = (data: unknown): Readiness | null => {
 			types: Array.isArray(journey.types)
 				? journey.types.filter((type): type is string => typeof type === 'string')
 				: [],
+			blocked: flag(journey.blocked),
 			gate: flag(journey.gate),
 			meeting: flag(journey.meeting)
 		},
@@ -112,9 +120,9 @@ export interface SetupItem {
  * - perfectJob: the pay is rated, the essential the gate journey asks recruiters for first (the
  *   other essentials are suggested, not required: what matters is the owner's to say);
  * - journey: the owner chose their steps (saved a journey, any journey, the gate or the meeting
- *   alone), and it leads to a meeting;
+ *   alone), and it leads to a meeting that no step before it blocks;
  * - calendar: Google Calendar is connected (and Google has not refused it since), with a meeting
- *   type open to booking.
+ *   type turned on that has hours to book.
  */
 export const setupItems = (readiness: Readiness): SetupItem[] => {
 	const { experiences, perfectJob, journey, calendar } = readiness;

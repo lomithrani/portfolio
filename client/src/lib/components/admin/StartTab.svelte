@@ -312,9 +312,11 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 {/snippet}
 
 {#snippet journey(readiness: Readiness)}
-	{@const { saved, meeting, gate, types } = readiness.journey}
+	{@const { saved, blocked, meeting, gate, types } = readiness.journey}
 	{#if !saved}
 		<p class="text-sm text-surface-700-300">{m.journey.toDo}</p>
+	{:else if blocked}
+		<p class="text-sm text-surface-700-300">{m.journey.blocked}</p>
 	{:else if !meeting}
 		<p class="text-sm text-surface-700-300">{m.journey.noMeeting}</p>
 	{:else}

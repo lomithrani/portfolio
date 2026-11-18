@@ -68,6 +68,14 @@ export const m = defineMessages({
 			en: 'Today anyone books a meeting from your page for recruiters. Ask for the job first, or keep the meeting alone.',
 			fr: "Aujourd'hui, n'importe qui réserve un rendez-vous depuis votre page recruteurs. Demandez d'abord le poste, ou gardez seulement le rendez-vous."
 		},
+		/**
+		 * A step before the meeting is not available anymore (a journey saved by an older version):
+		 * it can never be passed
+		 */
+		blocked: {
+			en: 'A step of yours is not available anymore: recruiters cannot get past it, nor book a meeting. Remove it from your steps, or ask for the job first.',
+			fr: "L'une de vos étapes n'est plus disponible : les recruteurs ne peuvent pas la franchir, ni réserver de rendez-vous. Retirez-la de vos étapes, ou demandez d'abord le poste."
+		},
 		/** A journey was saved, but it leads to no meeting */
 		noMeeting: {
 			en: 'Your steps lead to no meeting: recruiters cannot book one. Ask for the job first, or add a meeting step.',
@@ -144,8 +152,8 @@ export const m = defineMessages({
 			fr: 'Connectez Google Agenda et créez un agenda de rendez-vous (sa durée et vos horaires), pour que les recruteurs puissent réserver un créneau.'
 		},
 		schedule: {
-			en: 'Connected. Create an appointment schedule (its length and your hours), or turn one on, so recruiters can book a slot.',
-			fr: 'Connecté. Créez un agenda de rendez-vous (sa durée et vos horaires), ou activez-en un, pour que les recruteurs puissent réserver un créneau.'
+			en: 'Connected. Create an appointment schedule (its length and your hours), or turn one on and give it your hours, so recruiters can book a slot.',
+			fr: 'Connecté. Créez un agenda de rendez-vous (sa durée et vos horaires), ou activez-en un et donnez-lui vos horaires, pour que les recruteurs puissent réserver un créneau.'
 		},
 		done: {
 			en: (count: number) =>

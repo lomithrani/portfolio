@@ -22,7 +22,7 @@ const NEW: Readiness = {
 		criteria: 0,
 		essentials: { pay: false, workMode: false, place: false, contractTypes: false }
 	},
-	journey: { saved: false, types: ['meeting'], gate: false, meeting: true },
+	journey: { saved: false, types: ['meeting'], blocked: false, gate: false, meeting: true },
 	calendar: { configured: true, connected: false, reconnect: false, enabledSchedules: 0 }
 };
 
@@ -37,6 +37,7 @@ const READY: Readiness = {
 	journey: {
 		saved: true,
 		types: ['note', 'job', 'job-match', 'meeting'],
+		blocked: false,
 		gate: true,
 		meeting: true
 	},
@@ -61,7 +62,7 @@ describe('reading GET /me/readiness', () => {
 				domain: 42,
 				experiences: -1,
 				perfectJob: { criteria: 2.5, essentials: { pay: 'yes' } },
-				journey: { saved: 1, types: ['note', 7, 'meeting'] },
+				journey: { saved: 1, types: ['note', 7, 'meeting'], blocked: 'yes' },
 				calendar: 'connected'
 			})
 		).toEqual({
@@ -71,7 +72,13 @@ describe('reading GET /me/readiness', () => {
 				criteria: 0,
 				essentials: { pay: false, workMode: false, place: false, contractTypes: false }
 			},
-			journey: { saved: false, types: ['note', 'meeting'], gate: false, meeting: false },
+			journey: {
+				saved: false,
+				types: ['note', 'meeting'],
+				blocked: false,
+				gate: false,
+				meeting: false
+			},
 			calendar: { configured: false, connected: false, reconnect: false, enabledSchedules: 0 }
 		});
 	});
@@ -124,8 +131,23 @@ describe('the checklist', () => {
 		expect(done({ ...NEW, journey: READY.journey }).journey).toBe(true);
 		// Saved, but it leads nowhere a recruiter can book
 		expect(
-			done({ ...NEW, journey: { saved: true, types: ['note'], gate: false, meeting: false } })
-				.journey
+			done({
+				...NEW,
+				journey: { saved: true, types: ['note'], blocked: false, gate: false, meeting: false }
+			}).journey
+		).toBe(false);
+		// A step before the meeting is not available anymore: recruiters never reach it
+		expect(
+			done({
+				...NEW,
+				journey: {
+					saved: true,
+					types: ['interview', 'meeting'],
+					blocked: true,
+					gate: false,
+					meeting: false
+				}
+			}).journey
 		).toBe(false);
 	});
 

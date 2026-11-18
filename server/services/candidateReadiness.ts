@@ -1,9 +1,10 @@
-import { ratedCriteria } from 'portfolio-common';
+import { ratedCriteria, stepManifest } from 'portfolio-common';
 import { env } from '../env';
 import { AppointmentSchedule, Domain } from '../models/database';
+import { commuteAvailability } from './commute';
 import { getCalendarConnection } from './googleCalendar';
 import { perfectJobOf } from './perfectJobs';
-import { ownerJourney } from './workflows';
+import { knownStepType, ownerJourney } from './workflows';
 
 // What a candidate still has to set up before they share the link of their
 // portfolio (GET /me/readiness): the one place that decides it, for the
@@ -24,7 +25,8 @@ export interface CandidateReadiness {
     criteria: number;
     /**
      * Whether the criteria that tell most jobs apart are rated: the pay, the work mode, where
-     * the office is (the cities, or the commute) and the contract types
+     * the office is (the cities, or the commute while this server computes travel times: off,
+     * the commute is left out of every score) and the contract types
      */
     essentials: { pay: boolean; workMode: boolean; place: boolean; contractTypes: boolean };
   };
@@ -34,11 +36,19 @@ export interface CandidateReadiness {
     /** The types of its steps, in order ('' for a stored step that is not one) */
     types: string[];
     /**
+     * A step before the meeting can never succeed, so recruiters never reach the meeting: its
+     * type is not one this version has (a stored step that is not one, a type removed since), or
+     * a step type it needs is not before it. Only a journey written by hand or by an older
+     * version (PUT /workflow refuses both); `gate` and `meeting` are then false
+     */
+    blocked: boolean;
+    /**
      * Recruiters share a job, which is scored against the perfect job, before they can book: a
-     * job step, then a job match, then a meeting (the gate template, journeyTemplate)
+     * job step, then a job match, then a meeting (the gate template, journeyTemplate), whatever
+     * comes between them and whatever their settings
      */
     gate: boolean;
-    /** It leads to a meeting */
+    /** It leads to a meeting recruiters can reach */
     meeting: boolean;
   };
   calendar: {
@@ -48,7 +58,11 @@ export interface CandidateReadiness {
     connected: boolean;
     /** Google refused the stored grant, and the owner has not connected again since */
     reconnect: boolean;
-    /** The meeting types (Appointments tab) recruiters can book */
+    /**
+     * The meeting types (Appointments tab) recruiters can book: turned on, with hours (weekly
+     * hours, or a day of their own with hours, from yesterday on). One turned on without hours
+     * offers no slot: not counted
+     */
     enabledSchedules: number;
   };
 }
@@ -61,6 +75,31 @@ const isGate = (types: readonly string[]) => {
   return job !== -1 && job < match && match < meeting;
 };
 
+/** A step before the first meeting can never succeed: see CandidateReadiness.journey.blocked */
+const isBlocked = (types: readonly string[]) => {
+  const before = types.slice(0, Math.max(types.indexOf('meeting'), 0));
+  const neededMissing = (type: string, index: number) =>
+    (stepManifest(type)?.needs ?? []).some((needed) => !before.slice(0, index).includes(needed));
+  return before.some((type, index) => !knownStepType(type) || neededMissing(type, index));
+};
+
+/**
+ * How many meeting types of `userId` offer slots: turned on, with weekly hours or a day of their
+ * own with hours (from yesterday on, in UTC: a day that is still today somewhere). What a slot
+ * also needs (the notice, the calendar's busy times) changes by the hour: not counted
+ */
+const bookableSchedules = (userId: string) => {
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return AppointmentSchedule.countDocuments({
+    user: userId,
+    enabled: true,
+    $or: [
+      { 'availability.0': { $exists: true } },
+      { dateOverrides: { $elemMatch: { available: true, date: { $gte: yesterday }, 'windows.0': { $exists: true } } } }
+    ]
+  });
+};
+
 /** Where the account `userId` stands in setting up its portfolio: see CandidateReadiness */
 export async function candidateReadiness(userId: string): Promise<CandidateReadiness> {
   const [domain, perfectJob, journey, connection, enabledSchedules] = await Promise.all([
@@ -68,10 +107,11 @@ export async function candidateReadiness(userId: string): Promise<CandidateReadi
     perfectJobOf(userId),
     ownerJourney(userId),
     getCalendarConnection(userId),
-    AppointmentSchedule.countDocuments({ user: userId, enabled: true })
+    bookableSchedules(userId)
   ]);
   const rated = new Set(ratedCriteria(perfectJob));
   const types = journey.steps.map((step) => step.type);
+  const blocked = isBlocked(types);
   return {
     domain: domain?.name ?? null,
     experiences: domain?.experiences?.length ?? 0,
@@ -80,11 +120,17 @@ export async function candidateReadiness(userId: string): Promise<CandidateReadi
       essentials: {
         pay: rated.has('pay'),
         workMode: rated.has('workMode'),
-        place: rated.has('cities') || rated.has('commute'),
+        place: rated.has('cities') || (rated.has('commute') && commuteAvailability().enabled),
         contractTypes: rated.has('contractTypes')
       }
     },
-    journey: { saved: journey.saved, types, gate: isGate(types), meeting: types.includes('meeting') },
+    journey: {
+      saved: journey.saved,
+      types,
+      blocked,
+      gate: !blocked && isGate(types),
+      meeting: !blocked && types.includes('meeting')
+    },
     calendar: {
       configured: env.googleCalendarEnabled,
       connected: connection.connected,
