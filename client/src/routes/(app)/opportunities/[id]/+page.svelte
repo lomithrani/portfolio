@@ -172,7 +172,7 @@
 				{#if user.email}
 					<p>
 						<Rich text={m.notShared.signedInAs(user.email)}>
-							{#snippet strong(email)}<strong class="break-all">{email}</strong>{/snippet}
+							{#snippet strong(email)}<strong class="wrap-anywhere">{email}</strong>{/snippet}
 						</Rich>
 					</p>
 				{/if}
