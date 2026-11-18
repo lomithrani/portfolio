@@ -293,17 +293,20 @@ describe('scorePerfectJob', () => {
     expect(match(rtt, posting({ workingTime: { arrangement: 'annual_days', daysPerYear: 218, rttDaysPerYear: 0 } }))).toBe(0);
   });
 
-  it('compares the middle of the pay range to the pay asked, down to 20% under it', () => {
+  it('compares the bottom of the pay range to the pay asked, down to 20% under it', () => {
     const pay = (min: number, max: number, period: ScoredJob['pay']['period'] = 'year', workingTime?: ScoredJob['workingTime']) =>
       posting({ pay: { min, max, currency: 'EUR', period }, ...(workingTime ? { workingTime } : {}) });
     const perYear: PerfectJob = { pay: { importance: 3, perYear: 60000 } };
     expect(match(perYear, pay(60000, 60000))).toBe(1);
-    expect(match(perYear, pay(50000, 70000))).toBe(1);
+    expect(match(perYear, pay(60000, 70000))).toBe(1);
     expect(match(perYear, pay(80000, 90000))).toBe(1);
+    // A range that only reaches it at the top or in the middle does not match: its bottom is under
+    expect(match(perYear, pay(50000, 70000))).toBeCloseTo(1 / 6);
     // 10% under: half; 20% under or more: nothing
     expect(match(perYear, pay(54000, 54000))).toBeCloseTo(0.5);
     expect(match(perYear, pay(48000, 48000))).toBeCloseTo(0);
     expect(match(perYear, pay(30000, 40000))).toBe(0);
+    expect(match(perYear, pay(40000, 80000))).toBe(0);
     // Other periods, over a year: 12 months, 218 days (or the posting's own), 35 hours a week (or the posting's)
     expect(match(perYear, pay(5000, 5000, 'month'))).toBe(1);
     expect(match(perYear, pay(4500, 4500, 'month'))).toBeCloseTo(0.5);
@@ -322,6 +325,29 @@ describe('scorePerfectJob', () => {
     expect(match(perDay, pay(500, 500, 'day'))).toBe(1);
     expect(match(perDay, pay(109000, 109000))).toBe(1);
     expect(match(perDay, pay(60000, 60000))).toBe(0);
+    // The bottom of a day rate's range too
+    expect(match(perDay, pay(450, 700, 'day'))).toBeCloseTo(0.5);
+  });
+
+  it('never raises the pay score when the top of the range is raised', () => {
+    const pay = (min: number, max: number, period: ScoredJob['pay']['period'] = 'year') =>
+      posting({ pay: { min, max, currency: 'EUR', period } });
+    const asked: PerfectJob[] = [
+      { pay: { importance: 3, perYear: 60000 } },
+      { pay: { importance: 3, perDay: 500 } },
+      { pay: { importance: 3, perYear: 60000, perDay: 600 } }
+    ];
+    for (const perfectJob of asked) {
+      for (const [min, period] of [[54000, 'year'], [4500, 'month'], [450, 'day'], [30, 'hour']] as const) {
+        const scores = [1, 1.5, 2, 4, 100].map((widened) => scorePerfectJob(perfectJob, pay(min, min * widened, period)));
+        expect(new Set(scores.map(({ score }) => score)).size).toBe(1);
+        expect(new Set(scores.map(({ criteria }) => criteria[0].match)).size).toBe(1);
+      }
+    }
+    // With a deal-breaker too: a range whose bottom is 20% under stays at 0, however high its top
+    const dealBreaker: PerfectJob = { pay: { importance: 5, dealBreaker: true, perYear: 60000 } };
+    expect(scorePerfectJob(dealBreaker, pay(48000, 48000)).score).toBe(0);
+    expect(scorePerfectJob(dealBreaker, pay(48000, 200000)).score).toBe(0);
   });
 
   it('weighs the commute over a week: the way there and back, for each day at the office', () => {
@@ -472,7 +498,8 @@ describe('what the criteria read of a job posting (JOB_FIELD_CRITERIA)', () => {
       contractTypes: { importance: 3, types: ['cdd'] },
       workingTime: { importance: 3, arrangements: ['weekly_hours'], maxHoursPerWeek: 37 },
       rttDays: { importance: 3, min: 10 },
-      pay: { importance: 3, perYear: 60000 },
+      // The bottom of its range, €30 an hour for 37 hours a week, is €57,720 a year
+      pay: { importance: 3, perYear: 57000 },
       skills: { importance: 3, names: ['Go', 'TypeScript'] },
       travel: { importance: 3, max: 'occasional' }
     };

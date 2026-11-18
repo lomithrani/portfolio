@@ -626,7 +626,8 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
       seniority: { importance: 4, levels: ['senior', 'lead'] },
       workMode: { importance: 5, modes: ['remote', 'hybrid'], minRemoteDays: 4 },
       contractTypes: { importance: 3, dealBreaker: true, types: ['freelance'] },
-      pay: { importance: 2, perYear: 55000 }
+      // The bottom of the posting's range reaches it
+      pay: { importance: 2, perYear: 50000 }
     });
     const shown = (await journeyOf(owner.domain, recruiter)).steps[1];
     expect(shown.status).toBe('failed');
@@ -642,7 +643,7 @@ describe("a portfolio's journey (GET /workflow/domains/:domainName)", () => {
         { criterion: 'pay', outcome: 'match' }
       ]
     });
-    expect(JSON.stringify(shown)).not.toMatch(/importance|55000|freelance|lead|levels|modes/);
+    expect(JSON.stringify(shown)).not.toMatch(/importance|50000|freelance|lead|levels|modes/);
 
     await setJourney(owner, job(), jobMatch(100, false), meeting());
     expect((await journeyOf(owner.domain, recruiter)).steps[1].view).toEqual({

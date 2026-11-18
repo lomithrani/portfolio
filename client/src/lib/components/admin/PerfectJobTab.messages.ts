@@ -218,9 +218,9 @@ export const m = defineMessages({
 		/** `percent`: how far under the pay asked a job stops matching */
 		description: {
 			en: (percent: number) =>
-				`The gross pay (brut) you ask for, in euros. A job matches when the middle of its range reaches it, partly when it is under, and not at all ${percent}% under.`,
+				`The gross pay (brut) you ask for, in euros. A job matches when the bottom of its range reaches it, partly when it is under, and not at all ${percent}% under.`,
 			fr: (percent: number) =>
-				`La rémunération brute que vous demandez, en euros. Une offre correspond quand le milieu de sa fourchette l'atteint, en partie quand il est en dessous, et plus du tout à ${percent} % en dessous.`
+				`La rémunération brute que vous demandez, en euros. Une offre correspond quand le bas de sa fourchette l'atteint, en partie quand il est en dessous, et plus du tout à ${percent} % en dessous.`
 		},
 		perYear: { en: 'Per year', fr: 'Par an' },
 		perYearPlaceholder: { en: 'e.g. 70 000', fr: 'ex. : 70 000' },

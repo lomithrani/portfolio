@@ -1211,6 +1211,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{m.sections.pay} <span class="text-error-700-300" aria-hidden="true">*</span>
 					</h3>
 					<p class={introClass}>{m.payIntro}</p>
+					<p class="mt-1 {introClass}">{m.payScoredOnMinimum}</p>
 				</div>
 				<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
 					<Field field="payMin" label={labels.payMin} unit="€" unitLabel={m.eurosGross} required>

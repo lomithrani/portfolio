@@ -258,6 +258,11 @@ export const m = defineMessages({
 		en: 'Gross amounts (brut) in euros. The same minimum and maximum for a fixed pay.',
 		fr: 'Montants bruts en euros. Le même minimum et le même maximum pour une rémunération fixe.'
 	},
+	/** Under the pay's intro: the job match scores the bottom of the range */
+	payScoredOnMinimum: {
+		en: "A candidate's pay criterion is compared with the minimum of your range: they see the maximum, but it is not scored.",
+		fr: "Le critère de rémunération d'un candidat est comparé au minimum de votre fourchette : il voit le maximum, mais celui-ci n'est pas noté."
+	},
 	/** How screen readers hear the unit of a pay amount (€) */
 	eurosGross: { en: 'euros, gross', fr: 'euros, brut' },
 	/** Before the pay as the job page writes it */

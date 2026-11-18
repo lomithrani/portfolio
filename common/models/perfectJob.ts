@@ -61,8 +61,8 @@ export const MANAGEMENT_ROLES = ['manager', 'contributor'] as const;
 export type ManagementRole = (typeof MANAGEMENT_ROLES)[number];
 
 /**
- * How far under the pay asked a job stops matching at all: at 20% under or less the pay
- * criterion scores nothing, in between it scores in proportion
+ * How far under the pay asked the bottom of a job's pay range stops matching at all: at 20% under
+ * or less the pay criterion scores nothing, in between it scores in proportion
  */
 export const PAY_TOLERANCE = 0.2;
 
@@ -213,8 +213,9 @@ export const JOB_FIELD_CRITERIA: Record<JobFieldPath, readonly PerfectJobCriteri
 	'workingTime.hoursPerWeek': ['workingTime', 'pay'],
 	'workingTime.daysPerYear': ['pay'],
 	'workingTime.rttDaysPerYear': ['rttDays'],
+	// The pay is scored on the bottom of the range: the top is shown to candidates, never scored
 	'pay.min': ['pay'],
-	'pay.max': ['pay'],
+	'pay.max': [],
 	'pay.currency': [],
 	'pay.period': ['pay'],
 	'pay.variable': [],
@@ -631,22 +632,26 @@ export const officeDaysPerWeek = (location: ScoredJob['location']): number => {
 	return Math.max(0, WORK_DAYS_PER_WEEK - remote);
 };
 
-/** What the job pays in the middle of its range, converted to a year or a day */
-const jobPay = (job: ScoredJob, per: 'year' | 'day'): number => {
+/**
+ * What the job pays at the bottom of its range, converted to a year or a day: the least it
+ * offers, so that widening a range upwards never raises a score (the top of the range is shown
+ * to candidates, never scored)
+ */
+const jobPayFloor = (job: ScoredJob, per: 'year' | 'day'): number => {
 	const { pay, workingTime } = job;
-	const middle = (pay.min + pay.max) / 2;
+	const floor = pay.min;
 	const daysPerYear = workingTime.daysPerYear ?? FR_FORFAIT_JOURS_STANDARD_DAYS;
 	const hoursPerWeek = workingTime.hoursPerWeek ?? FR_FULL_TIME_HOURS_PER_WEEK;
 	const perYear =
 		pay.period === 'year'
-			? middle
+			? floor
 			: pay.period === 'month'
-				? middle * 12
+				? floor * 12
 				: pay.period === 'day'
-					? middle * daysPerYear
-					: middle * hoursPerWeek * 52;
+					? floor * daysPerYear
+					: floor * hoursPerWeek * 52;
 	if (per === 'year') return perYear;
-	return pay.period === 'day' ? middle : perYear / daysPerYear;
+	return pay.period === 'day' ? floor : perYear / daysPerYear;
 };
 
 const TRAVEL_RANK: Record<TravelFrequency, number> = { none: 0, occasional: 1, frequent: 2 };
@@ -719,7 +724,7 @@ const SCORERS: {
 		const per = perDay !== undefined && (job.pay.period === 'day' || perYear === undefined) ? 'day' : 'year';
 		const asked = per === 'day' ? perDay : perYear;
 		if (asked === undefined) return 1;
-		const offered = jobPay(job, per);
+		const offered = jobPayFloor(job, per);
 		if (offered >= asked) return 1;
 		return clamp((offered - asked * (1 - PAY_TOLERANCE)) / (asked * PAY_TOLERANCE));
 	},
