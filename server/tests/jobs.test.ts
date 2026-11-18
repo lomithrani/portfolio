@@ -1,8 +1,9 @@
 // Job postings of the recruiter space against a real MongoDB (MONGO_URL,
 // which must be local or come from TEST_MONGO_URL), and the routes of the
 // job board and its applications, which are gone. Each test creates its own
-// users (recruiters, candidates), recruiter spaces, domains and postings, all named with a suffix unique to that test, and
-// removes them after: tests pass in any order (--randomize).
+// users (recruiters, candidates), recruiter spaces, domains and postings, all
+// named with a suffix unique to that test, and removes them after: tests pass
+// in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
 import { JOB_LIMITS, normalizeJobPosting } from 'portfolio-common';

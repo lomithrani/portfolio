@@ -1,10 +1,13 @@
 import { defineMessages } from 'portfolio-common';
 
 export const m = defineMessages({
-	/** Under the company (`day`: '3 Nov 2026', shown as a <time>): job offers are dated */
-	published: {
-		en: (day: string) => `Published <time>${day}</time>`,
-		fr: (day: string) => `Publiée le <time>${day}</time>`
+	/**
+	 * Under the company (`day`: '3 Nov 2026', shown as a <time>): job offers are dated, by the day
+	 * the job first left the draft status (`publishedAt`: nothing is published)
+	 */
+	opened: {
+		en: (day: string) => `Opened <time>${day}</time>`,
+		fr: (day: string) => `Ouverte le <time>${day}</time>`
 	},
 	updated: {
 		en: (day: string) => `Updated <time>${day}</time>`,

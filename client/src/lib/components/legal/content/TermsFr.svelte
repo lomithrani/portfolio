@@ -109,12 +109,13 @@ modifications, droit applicable.
 
 <h3 id="content">Vos contenus</h3>
 <p>
-	Vous conservez tous vos droits sur ce que vous publiez : portfolio, expériences et projets, notes
-	de parcours, offres d'emploi. Vous accordez à l'éditeur une licence gratuite, non exclusive et
-	mondiale pour héberger, stocker, reproduire et afficher ces contenus sur le site, et les montrer
-	aux personnes auxquelles ils sont destinés (un portfolio à toute personne qui a son adresse, une
-	offre d'emploi aux candidats dans le parcours de recrutement desquels elle est choisie), tant
-	qu'ils sont en ligne. La licence prend fin lorsque vous supprimez le contenu ou votre compte.
+	Vous conservez tous vos droits sur ce que vous mettez sur le site : portfolio, expériences et
+	projets, notes de parcours, offres d'emploi. Vous accordez à l'éditeur une licence gratuite, non
+	exclusive et mondiale pour héberger, stocker, reproduire et afficher ces contenus sur le site, et
+	les montrer aux personnes auxquelles ils sont destinés (un portfolio à toute personne qui a son
+	adresse, une offre d'emploi aux candidats dans le parcours de recrutement desquels elle est
+	choisie), tant qu'ils sont en ligne. La licence prend fin lorsque vous supprimez le contenu ou
+	votre compte.
 </p>
 <p>Vous êtes responsable de vos contenus. En particulier, vous confirmez que :</p>
 <ul>

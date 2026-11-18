@@ -133,7 +133,7 @@
 					<p class="flex flex-wrap gap-x-4 gap-y-1">
 						{#if job.publishedAt}
 							<span>
-								<Rich text={m.published(formatDay(job.publishedAt))}>
+								<Rich text={m.opened(formatDay(job.publishedAt))}>
 									{#snippet time(day)}<time datetime={isoDate(job.publishedAt)}>{day}</time
 										>{/snippet}
 								</Rich>

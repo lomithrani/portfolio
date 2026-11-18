@@ -20,9 +20,10 @@ export const m = defineMessages({
 		en: (day: string) => `Created <time>${day}</time>`,
 		fr: (day: string) => `Créée le <time>${day}</time>`
 	},
-	published: {
-		en: (day: string) => `Published <time>${day}</time>`,
-		fr: (day: string) => `Publiée le <time>${day}</time>`
+	/** The day it first left the draft status (`publishedAt`): nothing is published */
+	opened: {
+		en: (day: string) => `Opened <time>${day}</time>`,
+		fr: (day: string) => `Ouverte le <time>${day}</time>`
 	},
 	/** Small screens: the link to the management panel, after the description */
 	manageLink: { en: 'Go to its status', fr: 'Aller à son statut' },

@@ -7,11 +7,12 @@ Candidates get a public portfolio of their experiences and projects that they ma
 (`/<name>/experiences`: a theme, a list or a timeline, skill filters) and a hiring journey
 recruiters go through before booking a meeting (a note to read, the job to share, its score
 against what the candidate is looking for); recruiters write job descriptions and share one on a
-candidate's Hire page (there is no job board). The home page (`/`) is the candidate landing page: it shows both with two short recordings of
-the app, previews the portfolio's address and checks it is free as you type, then walks through
-three steps (sign in with Google after confirming your age and accepting the terms, claim the
-address, import a PDF résumé). Legal notice, privacy policy, terms
-and cookies are at `/legal`; each account can delete itself at `/account`.
+candidate's Hire page (there is no job board). The home page (`/`) is the candidate landing
+page: it shows both with two short recordings of the app, previews the portfolio's address and
+checks it is free as you type, then walks through three steps (sign in with Google after
+confirming your age and accepting the terms, claim the address, import a PDF résumé). Legal
+notice, privacy policy, terms and cookies are at `/legal`; each account can delete itself at
+`/account`.
 
 The whole site is in English and French: a page opens in the visitor's browser language, and the
 language switch (or `?lang=fr` / `?lang=en` on any address) changes it. How texts are written and

@@ -99,12 +99,12 @@ no maximum age, the right to act for the employer), imports, meetings, moderatio
 
 <h3 id="content">Your content</h3>
 <p>
-	You keep all your rights to what you publish: portfolio, experiences and projects, journey notes,
-	job descriptions. You grant the publisher a free, non-exclusive, worldwide licence to host, store,
-	reproduce and display this content on the site, and to show it to the people it is meant for (a
-	portfolio to anyone who has its address, a job description to the candidates whose hiring journey
-	it is picked in), for as long as it is online. The licence ends when you delete the content or
-	your account.
+	You keep all your rights to what you put on the site: portfolio, experiences and projects, journey
+	notes, job descriptions. You grant the publisher a free, non-exclusive, worldwide licence to host,
+	store, reproduce and display this content on the site, and to show it to the people it is meant
+	for (a portfolio to anyone who has its address, a job description to the candidates whose hiring
+	journey it is picked in), for as long as it is online. The licence ends when you delete the
+	content or your account.
 </p>
 <p>You are responsible for your content. In particular, you confirm that:</p>
 <ul>

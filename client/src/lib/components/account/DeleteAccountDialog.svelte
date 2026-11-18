@@ -3,12 +3,12 @@
 "Delete your account?": the account page's confirmation before DELETE /me. It lists what goes
 (the portfolio, whose address becomes free for others, the hiring journey, job descriptions,
 the progress in other journeys, meeting types and bookings, the account itself, this browser's
-drafts), that
-Google is asked to revoke the Google Calendar access, and that it cannot be undone; the person
-types DELETE to confirm. While the request runs the dialog cannot be closed. Once the account is gone
-(deleteAccount: the session and this browser's drafts are cleared too), a toast says so and the
-home page opens; a 401 saying the account no longer exists counts as deleted (a retry after a lost
-answer). Another 401 (the session expired) closes the dialog and the page asks to sign in again.
+drafts), that Google is asked to revoke the Google Calendar access, and that it cannot be
+undone; the person types DELETE to confirm. While the request runs the dialog cannot be closed.
+Once the account is gone (deleteAccount: the session and this browser's drafts are cleared too),
+a toast says so and the home page opens; a 401 saying the account no longer exists counts as
+deleted (a retry after a lost answer). Another 401 (the session expired) closes the dialog and
+the page asks to sign in again.
 
 The dialog closes itself before any navigation (an open Dialog's focus trap would otherwise read
 state of the destroyed page: derived_inert); while the deletion runs, a navigation inside the

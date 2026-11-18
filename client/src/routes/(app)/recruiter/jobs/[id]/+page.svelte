@@ -258,7 +258,7 @@
 							</span>
 							{#if job.publishedAt}
 								<span>
-									<Rich text={m.published(formatDay(job.publishedAt))}>
+									<Rich text={m.opened(formatDay(job.publishedAt))}>
 										{#snippet time(day)}
 											<time datetime={isoDate(job.publishedAt)}>{day}</time>
 										{/snippet}

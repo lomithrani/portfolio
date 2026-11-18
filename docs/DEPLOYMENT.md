@@ -822,10 +822,12 @@ the deploy.
 ### The job board's applications (one-off)
 
 The public job board, applying to a job and the applicant lists are gone: no route reads or writes
-the `jobapplications` collection any more, and deleting an account no longer reaches it. Once the
-API without them runs on a stage, record how many applications it held, by source (counts only:
-no candidate, posting or portfolio), then drop the collection, in that stage's database (staging,
-then production):
+the `jobapplications` collection any more, except deleting an account, which still removes the
+account's own applications from it (as candidate, for its portfolio, to its job descriptions:
+`LEGACY_JOB_APPLICATIONS_COLLECTION` of `server/services/accountDeletion.ts`) until it is gone.
+Once the API without them runs on a stage, record how many applications it held, by source
+(counts only: no candidate, posting or portfolio), then drop the collection, in that stage's
+database (staging, then production):
 
 ```bash
 mongosh "<MONGO_URL of the stage>" --quiet --eval '
@@ -835,8 +837,8 @@ mongosh "<MONGO_URL of the stage>" --quiet --eval '
 
 Write the counts in the release's pull request: they are the only record left of the board's
 applications. Do it soon after the deploy: until then the collection holds personal data that the
-privacy policy no longer describes and that deleting an account no longer removes. `drop()`
-answers `false` once it is gone. Drop it from local and cloud-session databases too, and run
+privacy policy no longer describes. `drop()` answers `false` once it is gone. Once it is dropped on
+both stages, a later release removes `LEGACY_JOB_APPLICATIONS_COLLECTION` from account deletion. Drop it from local and cloud-session databases too, and run
 `bun run --cwd server seed:e2e` again there: its portfolio `e2e-applicant` became `e2e-shared`
 (the old one is left unused).
 

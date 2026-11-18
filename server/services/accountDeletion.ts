@@ -35,7 +35,10 @@ import { logger } from './logger';
 //   from among them). The travel times computed from that address stay in
 //   CommuteCache until they expire (30 days at most): their keys are hashes
 //   that show neither the address nor the account
-// - JobPosting.recruiter
+// - JobPosting.recruiter, and the documents of the legacy `jobapplications`
+//   collection (the removed job board's applications, no longer read, dropped
+//   by hand after the deploy: docs/DEPLOYMENT.md) to those postings, of the
+//   account as candidate and of its domains
 // - AppointmentSchedule.user and AppointmentBooking.user; AppointmentBooking.visitor
 //   (the meetings the account booked on other portfolios) is unset: the
 //   meeting stays booked in its owner's calendar, and its slot held
@@ -51,6 +54,8 @@ export interface AccountDeletionSummary {
   workflowInstances: number;
   perfectJobs: number;
   jobPostings: number;
+  /** Documents of the legacy `jobapplications` collection (the removed job board) */
+  legacyJobApplications: number;
   appointmentSchedules: number;
   appointmentBookings: number;
   /** Bookings the account made on other portfolios, no longer tied to it */
@@ -61,6 +66,12 @@ export interface AccountDeletionSummary {
 
 /** Collection of the old /workflows API (`{ user, name, description, enabled, steps }`), still stored, never read */
 export const LEGACY_WORKFLOWS_COLLECTION = 'workflows';
+
+/**
+ * Collection of the removed job board's applications (`{ job, candidate, domain, source }`), never
+ * read; dropped by hand on each stage (docs/DEPLOYMENT.md), then this goes too
+ */
+export const LEGACY_JOB_APPLICATIONS_COLLECTION = 'jobapplications';
 
 const unknownUser = () => new CouldntVerifyJwtError(UNKNOWN_USER);
 
@@ -84,6 +95,7 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     .lean<{ _id: Types.ObjectId; experiences: Types.ObjectId[] }[]>();
   const domainIds = domains.map((domain) => domain._id);
   const experienceIds = domains.flatMap((domain) => domain.experiences);
+  const jobIds = (await JobPosting.find({ recruiter: id }, { _id: 1 }).lean()).map((job) => job._id);
 
   const [
     experiences,
@@ -91,6 +103,7 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     workflows,
     perfectJobs,
     legacyWorkflows,
+    legacyJobApplications,
     appointmentBookings,
     appointmentSchedules,
     bookedMeetings
@@ -101,12 +114,16 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     PerfectJob.deleteMany({ user: id }),
     // The old /workflows API wrote there; no model reads it any more
     mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).deleteMany({ user: { $in: [id, userId] } }),
+    // The removed job board wrote there, until the collection is dropped
+    mongoose.connection.collection(LEGACY_JOB_APPLICATIONS_COLLECTION).deleteMany({
+      $or: [{ candidate: id }, { domain: { $in: domainIds } }, { job: { $in: jobIds } }]
+    }),
     AppointmentBooking.deleteMany({ user: id }),
     AppointmentSchedule.deleteMany({ user: id }),
     AppointmentBooking.updateMany({ visitor: id }, { $unset: { visitor: 1 } })
   ]);
-  // The domains after their experiences: an interrupted deletion leaves
-  // nothing pointing at what is gone
+  // The postings after their applications, then the domains after their
+  // experiences: an interrupted deletion leaves nothing pointing at what is gone
   const jobPostings = await JobPosting.deleteMany({ recruiter: id });
   const removedDomains = await Domain.deleteMany({ _id: { $in: domainIds } });
   // Before the account, which holds the Google id and the plan's imports used
@@ -121,6 +138,7 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     workflowInstances: workflowInstances.deletedCount,
     perfectJobs: perfectJobs.deletedCount,
     jobPostings: jobPostings.deletedCount,
+    legacyJobApplications: legacyJobApplications.deletedCount,
     appointmentSchedules: appointmentSchedules.deletedCount,
     appointmentBookings: appointmentBookings.deletedCount,
     bookedMeetings: bookedMeetings.modifiedCount,

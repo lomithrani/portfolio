@@ -1,9 +1,10 @@
 <!--
 @component
 A job posting as candidates and its recruiter read it: status, title, company, the facts
-(JobFacts) and the Markdown description. Used by the recruiter's job page and by the private page
-of a job shared with a candidate (/opportunities/:id): it has no controls of its own. Pass them as snippets: `actions` (next to the title: Edit...), `meta` (under the company:
-dates...) and `children` (after the description).
+(JobFacts) and the Markdown description, rendered without raw HTML. Used by the recruiter's job
+page and by the private page of a job shared with a candidate (/opportunities/:id): it has no
+controls of its own. Pass them as snippets: `actions` (next to the title: Edit...), `meta` (under
+the company: dates...) and `children` (after the description).
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -16,15 +17,12 @@ dates...) and `children` (after the description).
 
 	let {
 		job,
-		showStatus = true,
 		headingLevel = 2,
 		actions,
 		meta,
 		children
 	}: {
 		job: JobPostingLike;
-		/** Show the status badge */
-		showStatus?: boolean;
 		/** Level of the title's heading; the sections below rank under it */
 		headingLevel?: 1 | 2 | 3;
 		/** Controls next to the title (they wrap under it on small screens) */
@@ -45,7 +43,7 @@ dates...) and `children` (after the description).
 <article class="relative space-y-6" aria-labelledby="{uid}-title">
 	<header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
 		<div class="min-w-0 flex-1 space-y-2">
-			{#if showStatus && job.status}
+			{#if job.status}
 				<JobStatusBadge status={job.status} />
 			{/if}
 			<svelte:element

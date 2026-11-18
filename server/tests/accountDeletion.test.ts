@@ -22,7 +22,11 @@ import {
 } from '../models/database';
 import { REVOKE_ENDPOINT } from '../services/googleCalendar';
 import { logger } from '../services/logger';
-import { LEGACY_WORKFLOWS_COLLECTION, deleteAccount } from '../services/accountDeletion';
+import {
+  LEGACY_JOB_APPLICATIONS_COLLECTION,
+  LEGACY_WORKFLOWS_COLLECTION,
+  deleteAccount
+} from '../services/accountDeletion';
 import { CARRIED_PLAN_IMPORTS_MS, carriedPlanImportsKey } from '../services/accountQuotas';
 import { hashValue, peekRateLimit, rateLimitKey, takeRateLimit } from '../services/rateLimit';
 import { RESUME_IMPORT_MONTHLY_WINDOW_MS, resumeImportAttemptsKey, resumeImportUserKey } from '../services/resumeImport';
@@ -48,6 +52,8 @@ const testNames = () => {
 let t: ReturnType<typeof testNames>;
 /** Rate limit counters a test created (removed after it), by _id prefix */
 const createdCounters = new Set<string>();
+/** Documents a test wrote to the legacy `jobapplications` collection (removed after it) */
+const createdApplications = new Set<Types.ObjectId>();
 let app: ReturnType<typeof createApp>;
 let connected = false;
 
@@ -83,6 +89,8 @@ afterEach(async () => {
   await AppointmentSchedule.deleteMany({ user: { $in: userIds } });
   await AppointmentBooking.deleteMany({ user: { $in: userIds } });
   await mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).deleteMany({ name: named });
+  await legacyApplications().deleteMany({ _id: { $in: [...createdApplications] } });
+  createdApplications.clear();
   await RateLimitCounter.deleteMany({ _id: { $in: [...createdCounters] } });
   createdCounters.clear();
   await Skill.deleteMany({ displayName: new RegExp(named.source, 'i') });
@@ -130,6 +138,30 @@ const job = (recruiter: string, title: string): Record<string, unknown> => ({
   pay: { min: 45000, max: 55000, currency: 'EUR', period: 'year' }
 });
 
+const legacyApplications = () => mongoose.connection.collection(LEGACY_JOB_APPLICATIONS_COLLECTION);
+
+/**
+ * An application of the removed job board, as its JobApplication model stored it in the legacy
+ * collection that stays until it is dropped by hand
+ */
+const legacyApplication = async (fields: {
+  job: Types.ObjectId;
+  candidate: Types.ObjectId | string;
+  domain: Types.ObjectId;
+  source?: 'applied' | 'added_by_recruiter';
+}) => {
+  const { insertedId } = await legacyApplications().insertOne({
+    job: fields.job,
+    candidate: new Types.ObjectId(fields.candidate),
+    domain: fields.domain,
+    source: fields.source ?? 'applied',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
+  createdApplications.add(insertedId);
+  return insertedId;
+};
+
 const schedule = (user: string) => ({ user, title: 'Intro call', timezone: 'Europe/Paris' });
 
 const booking = (user: string, scheduleId: Types.ObjectId, hoursAhead: number) => {
@@ -148,7 +180,8 @@ const booking = (user: string, scheduleId: Types.ObjectId, hoursAhead: number) =
 /**
  * An account with data in every collection that references a user: a domain
  * with an experience (through the API), a hiring journey, progress of a
- * visitor in it, a job posting, a schedule with a booking
+ * visitor in it, a job posting with an application of the removed job board
+ * (from a stranger), a schedule with a booking
  */
 const accountWithData = async (name: string) => {
   const user = await login(name);
@@ -192,9 +225,23 @@ const accountWithData = async (name: string) => {
     steps: []
   });
   const posting = await JobPosting.create(job(user.userId, t.id(`${name}-job`)));
+  const strangerApplication = await legacyApplication({
+    job: posting._id,
+    candidate: new Types.ObjectId(),
+    domain: new Types.ObjectId()
+  });
   const scheduleDoc = await AppointmentSchedule.create(schedule(user.userId));
   await AppointmentBooking.create(booking(user.userId, scheduleDoc._id, 48 + Math.floor(Math.random() * 1000)));
-  return { ...user, domainName, experienceId: experience.json()._id as string, posting, schedule: scheduleDoc };
+  const domainId = (await Domain.findOne({ name: domainName }, { _id: 1 }).lean())!._id;
+  return {
+    ...user,
+    domainName,
+    domainId,
+    experienceId: experience.json()._id as string,
+    posting,
+    strangerApplication,
+    schedule: scheduleDoc
+  };
 };
 
 /** Every document of the account `userId` still stored, by collection */
@@ -270,6 +317,24 @@ describe('DELETE /me', () => {
       ...booking(other.userId, other.schedule._id, 2000),
       visitor: candidate.userId
     });
+    // Applications of the removed job board, still in the legacy collection: to the other's
+    // posting, the other's to this account's posting, and one naming only this account's domain
+    const applied = await legacyApplication({
+      job: other.posting._id,
+      candidate: candidate.userId,
+      domain: candidate.domainId
+    });
+    const applicant = await legacyApplication({
+      job: candidate.posting._id,
+      candidate: other.userId,
+      domain: other.domainId,
+      source: 'added_by_recruiter'
+    });
+    const listedDomain = await legacyApplication({
+      job: new Types.ObjectId(),
+      candidate: new Types.ObjectId(),
+      domain: candidate.domainId
+    });
     const otherBefore = await remaining(other.userId, other.domainName, other.experienceId);
     expect(await remaining(candidate.userId, candidate.domainName, candidate.experienceId)).toEqual({
       user: 1,
@@ -298,6 +363,10 @@ describe('DELETE /me', () => {
     expect(await JobPosting.exists({ _id: other.posting._id })).not.toBeNull();
     expect(await AppointmentSchedule.exists({ _id: other.schedule._id })).not.toBeNull();
     expect(await AppointmentBooking.findById(visited._id).lean()).toMatchObject({ eventId: 'evt2000' });
+    const gone = [applied, applicant, listedDomain, candidate.strangerApplication];
+    expect(await legacyApplications().countDocuments({ _id: { $in: gone } })).toBe(0);
+    // The other's posting keeps its applicant
+    expect(await legacyApplications().countDocuments({ _id: other.strangerApplication })).toBe(1);
     expect((await AppointmentBooking.findById(visited._id).lean())?.visitor).toBeUndefined();
     // The skills catalogue is shared: the other portfolio still uses the skill
     expect(await Skill.exists({ displayName: t.id('shared-skill') })).not.toBeNull();
@@ -526,6 +595,7 @@ describe('deleteAccount', () => {
       workflows: 1,
       legacyWorkflows: 1,
       jobPostings: 1,
+      legacyJobApplications: 1,
       googleCalendar: 'none'
     });
     expect(await remaining(account.userId, account.domainName, account.experienceId)).toEqual(nothing);
