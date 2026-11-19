@@ -101,7 +101,7 @@ const TEMPLATES = {
 		/** The sizes of the texts: the French ones are longer, smaller to fit the row */
 		size: {
 			en: { headline: 60, journey: 19, side: 21, gap: 14 },
-			fr: { headline: 48, journey: 18, side: 19, sideWidth: 300, gap: 12 }
+			fr: { headline: 48, journey: 18, side: 19, gap: 12 }
 		},
 		/** Under the headline: the steps of a hiring journey, as the alternative text names them */
 		steps: landingImageSteps,

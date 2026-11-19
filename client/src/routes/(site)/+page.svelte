@@ -5,6 +5,7 @@
 		ArrowRight,
 		Banknotes,
 		Bars3BottomLeft,
+		Briefcase,
 		BuildingOffice2,
 		Check,
 		ChevronDown,
@@ -91,7 +92,7 @@
 	const promises = [
 		{ icon: Gift, ...m.promises.free },
 		{
-			icon: Banknotes,
+			icon: Briefcase,
 			title: m.promises.pay.title,
 			text: m.promises.pay.text(JOB_LIMITS.pay.maxRangeRatio)
 		},

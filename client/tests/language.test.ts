@@ -27,7 +27,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		await expect(
 			page.getByRole('heading', {
 				level: 2,
-				name: "Votre carrière, à vos conditions. La rémunération d'abord. L'appel ensuite."
+				name: "Votre carrière, à vos conditions. Vos attentes d'abord. L'appel ensuite."
 			})
 		).toBeVisible();
 		await expect(page.getByRole('heading', { level: 2, name: 'Envoyez votre lien' })).toBeVisible();
@@ -37,7 +37,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		// The range cap in French numbers, the law cited in the answer about paying
 		await expect(
 			page.getByRole('listitem').filter({
-				has: page.getByRole('heading', { name: "La rémunération d'abord, si vous le demandez" })
+				has: page.getByRole('heading', { name: "L'offre d'abord, si vous le demandez" })
 			})
 		).toContainText('elle est notée comme si son haut valait au plus 1,5 fois son bas');
 		await expect(page.locator('details', { hasText: 'Devrai-je payer un jour' })).toContainText(
@@ -54,7 +54,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		).toContainText('Jamais à vos frais : les candidats ne paient pas.');
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 			'content',
-			"Votre carrière, à vos conditions. La rémunération d'abord. L'appel ensuite."
+			"Votre carrière, à vos conditions. Vos attentes d'abord. L'appel ensuite."
 		);
 		await expect(page.getByRole('banner')).toContainText('La page de carrière que vous gardez');
 
@@ -88,11 +88,11 @@ test.describe('a visitor whose browser prefers French', () => {
 		await expect(page).toHaveTitle('Votre carrière, à vos conditions | Portfolio');
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 			'content',
-			"Votre carrière, à vos conditions. La rémunération d'abord. L'appel ensuite."
+			"Votre carrière, à vos conditions. Vos attentes d'abord. L'appel ensuite."
 		);
 		await expect(page.locator('meta[property="og:image:alt"]')).toHaveAttribute(
 			'content',
-			/^Votre carrière, à vos conditions\. La rémunération d'abord\. L'appel ensuite\./
+			/^Votre carrière, à vos conditions\. Vos attentes d'abord\. L'appel ensuite\./
 		);
 		await expect(page.getByRole('heading', { level: 2, name: 'Envoyez votre lien' })).toBeVisible();
 		await expect(

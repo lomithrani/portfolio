@@ -24,8 +24,8 @@ export const m = defineMessages({
 		 * meeting alone (DEFAULT_WORKFLOW_STEPS)
 		 */
 		description: {
-			en: 'Free for talent, always. Send recruiters your link: your page can ask for the job and its pay first, score it against what you want, and only then open your calendar.',
-			fr: "Gratuit pour les talents, toujours. Envoyez votre lien aux recruteurs : votre page peut demander d'abord l'offre et sa rémunération, la noter selon ce que vous voulez, et seulement ensuite ouvrir votre agenda."
+			en: 'Free for talent, always. Send recruiters your link: your page can ask for the job first, score it against your expectations, and only then open your calendar.',
+			fr: "Gratuit pour les talents, toujours. Envoyez votre lien aux recruteurs : votre page peut demander d'abord l'offre, la noter selon vos attentes, et seulement ensuite ouvrir votre agenda."
 		},
 		/**
 		 * The steps of a hiring journey the share image draws (render.mjs), the third with the score
@@ -38,8 +38,8 @@ export const m = defineMessages({
 		},
 		/** What the share image shows (client/scripts/og-image/render.mjs, its `landing` picture) */
 		imageAlt: {
-			en: 'Your career, on your terms. The pay first. The call after. The steps of a hiring journey: note, job, scored 86 out of 100, book a meeting. You never pay. The pay range first, if you ask. Your steps, your order.',
-			fr: "Votre carrière, à vos conditions. La rémunération d'abord. L'appel ensuite. Les étapes d'un parcours de recrutement : note, offre, notée 86 sur 100, rendez-vous. Vous ne payez jamais. La rémunération d'abord, si vous le demandez. Vos étapes, dans votre ordre."
+			en: 'Your career, on your terms. Your expectations first. The call after. The steps of a hiring journey: note, job, scored 86 out of 100, book a meeting. You never pay. The job first, if you ask. Your steps, your order.',
+			fr: "Votre carrière, à vos conditions. Vos attentes d'abord. L'appel ensuite. Les étapes d'un parcours de recrutement : note, offre, notée 86 sur 100, rendez-vous. Vous ne payez jamais. L'offre d'abord, si vous le demandez. Vos étapes, dans votre ordre."
 		}
 	},
 	hero: {
@@ -55,15 +55,17 @@ export const m = defineMessages({
 		/**
 		 * The coloured line, each sentence a `phrase` kept whole on one line, as the share image
 		 * keeps it (+page.svelte sizes the headline for the longest to fit its column, so a line
-		 * never holds « d'abord. » alone). Backed by: the gate journey
-		 * (journeyTemplate('gate'): a job step, then the job match, then the meeting), every job
-		 * description stating its pay range (validateJobPosting, `pay.min` and `pay.max`, of
-		 * common/models/jobPosting.ts) and the meeting locked until the steps before it succeed
-		 * (openStepOfType of server/services/workflows.ts). The lead says it takes asking for the job
+		 * never holds « d'abord. » alone). "Your expectations": what the owner asks for in a job,
+		 * their perfect job's criteria, not the pay alone. Backed by: the gate journey
+		 * (journeyTemplate('gate'): a job step, then the job match, then the meeting), the job match
+		 * step scoring the job against the owner's criteria (server/services/workflowSteps/jobMatch.ts,
+		 * scorePerfectJob of common/models/perfectJob.ts) and the meeting locked until the steps
+		 * before it succeed (openStepOfType of server/services/workflows.ts). The lead says it takes
+		 * asking for the job
 		 */
 		headlineAccent: {
-			en: '<phrase>The pay first.</phrase> <phrase>The call after.</phrase>',
-			fr: "<phrase>La rémunération d'abord.</phrase> <phrase>L'appel ensuite.</phrase>"
+			en: '<phrase>Your expectations first.</phrase> <phrase>The call after.</phrase>',
+			fr: "<phrase>Vos attentes d'abord.</phrase> <phrase>L'appel ensuite.</phrase>"
 		},
 		/**
 		 * Backed by: the admin's Get started tab, whose "Ask for the job first" saves the gate journey
@@ -213,14 +215,15 @@ export const m = defineMessages({
 		 * opened before the cap may state a wider range (requireOpenablePay of
 		 * server/services/jobPostings.ts refuses only a first opening); the job step's line in the
 		 * meeting invitation (`describe` of server/services/workflowSteps/job.ts, opportunityPath).
-		 * "If you ask": the default journey is the meeting alone (DEFAULT_WORKFLOW_STEPS). "The pay
-		 * range", in English: the share image draws this title under "You never pay", where "the pay
-		 * first" could read as "you pay first"
+		 * "If you ask": the default journey is the meeting alone (DEFAULT_WORKFLOW_STEPS). "The job",
+		 * not "the pay": the job comes first, its pay range with it, and the share image draws this
+		 * title under "You never pay", where "the pay first" could read as "you pay first"
 		 */
 		pay: {
 			title: {
-				en: 'The pay range first, if you ask',
-				fr: "La rémunération d'abord, si vous le demandez"
+				en: 'The job first, if you ask',
+				// No-break spaces: the balanced title breaks after the comma, never after « si »
+				fr: "L'offre d'abord, si\u00a0vous\u00a0le\u00a0demandez"
 			},
 			text: {
 				en: (ratio: number) =>

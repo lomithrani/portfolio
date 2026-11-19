@@ -130,7 +130,7 @@ test.describe('landing page, signed out', () => {
 		await expect(
 			page.getByRole('heading', {
 				level: 2,
-				name: 'Your career, on your terms. The pay first. The call after.'
+				name: 'Your career, on your terms. Your expectations first. The call after.'
 			})
 		).toBeVisible();
 		// The sections, in the order the page tells them
@@ -157,10 +157,10 @@ test.describe('landing page, signed out', () => {
 		// right above it
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 			'content',
-			'Your career, on your terms. The pay first. The call after.'
+			'Your career, on your terms. Your expectations first. The call after.'
 		);
 		await expect(page.getByRole('banner')).toContainText('The career page you keep');
-		await expect(page.getByRole('banner')).not.toContainText('The pay first');
+		await expect(page.getByRole('banner')).not.toContainText('Your expectations first');
 		await expect(page.getByRole('link', { name: 'See an example' })).toHaveAttribute(
 			'href',
 			'/louis.gentil/experiences'
@@ -180,11 +180,11 @@ test.describe('landing page, signed out', () => {
 		await expect(page).toHaveTitle('Your career, on your terms | Portfolio');
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 			'content',
-			'Your career, on your terms. The pay first. The call after.'
+			'Your career, on your terms. Your expectations first. The call after.'
 		);
 		await expect(page.locator('meta[property="og:image:alt"]')).toHaveAttribute(
 			'content',
-			'Your career, on your terms. The pay first. The call after. The steps of a hiring journey: note, job, scored 86 out of 100, book a meeting. You never pay. The pay range first, if you ask. Your steps, your order.'
+			'Your career, on your terms. Your expectations first. The call after. The steps of a hiring journey: note, job, scored 86 out of 100, book a meeting. You never pay. The job first, if you ask. Your steps, your order.'
 		);
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
 			'content',
@@ -206,7 +206,7 @@ test.describe('landing page, signed out', () => {
 		// is the meeting alone): the page says the journey "can", and how
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
 			'content',
-			/your page can ask for the job and its pay first, score it against what you want, and only then open your calendar\.$/
+			/your page can ask for the job first, score it against your expectations, and only then open your calendar\.$/
 		);
 		await expect(page.getByText('Ask for the job first, in one click:')).toBeVisible();
 		await expect(page.getByText('Your portfolio starts with the meeting alone.')).toBeVisible();
@@ -221,10 +221,10 @@ test.describe('landing page, signed out', () => {
 			page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: title }) });
 		// Never an unconditional "recruiters show the pay first", and the range cap as scored (a
 		// posting opened before the cap may state a wider range)
-		await expect(promise('The pay range first, if you ask')).toContainText(
+		await expect(promise('The job first, if you ask')).toContainText(
 			'your page asks recruiters for the job before the meeting'
 		);
-		await expect(promise('The pay range first, if you ask')).toContainText(
+		await expect(promise('The job first, if you ask')).toContainText(
 			'it is scored as if its top were at most 1.5 times its bottom'
 		);
 		// The minimum is shown to recruiters: the promise says so
