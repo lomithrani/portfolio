@@ -127,8 +127,8 @@ export const m = defineMessages({
 			fr: "Écrivez un nombre entier d'euros, par exemple 65000 : d'ici là, la réponse ne dit rien de la rémunération."
 		},
 		per: { en: 'Per', fr: 'Par' },
-		perYear: { en: 'a year', fr: 'an' },
-		perDay: { en: 'a day', fr: 'jour' },
+		perYear: { en: 'year', fr: 'an' },
+		perDay: { en: 'day', fr: 'jour' },
 		remoteDays: { en: 'Remote days a week', fr: 'Jours de télétravail par semaine' },
 		/** The remote days left to choose */
 		remoteDaysNone: { en: 'Choose', fr: 'Choisir' },

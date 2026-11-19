@@ -184,7 +184,7 @@
 						></span
 					>
 				</h2>
-				<p class="max-w-xl text-lg text-surface-700-300">{m.hero.lead}</p>
+				<p class="max-w-xl text-lg text-pretty text-surface-700-300">{m.hero.lead}</p>
 				<div class="flex flex-wrap gap-3">
 					{#if ownedDomain}
 						<a
@@ -425,7 +425,7 @@
 				aria-hidden="true"
 			/>
 		</summary>
-		<div class="space-y-2 px-4 pb-4 text-surface-700-300">
+		<div class="space-y-2 px-4 pb-4 text-pretty text-surface-700-300">
 			{@render answer()}
 		</div>
 	</details>

@@ -102,7 +102,9 @@ describe('the page for recruiters, served with a meeting type to book', () => {
 		expect(page.indexOf('Before you start')).toBeLessThan(page.indexOf('Step 1:'));
 		// Without JavaScript, the steps are said, not gone through; the first one is unfolded
 		expect(page).toContain('Turn on JavaScript in your browser to go through the steps.');
-		expect(page).toContain('Step 1: Before we talk Read the note, then confirm it. Remote only.');
+		expect(page).toContain(
+			'Step 1: Before we talk Read the note, then confirm that you have read it. Remote only.'
+		);
 	});
 
 	it('describes the steps in its meta and link preview, in English and French', () => {

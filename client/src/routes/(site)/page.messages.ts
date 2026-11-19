@@ -238,7 +238,7 @@ export const m = defineMessages({
 		 */
 		private: {
 			title: {
-				en: 'The pay you ask for stays private',
+				en: 'The pay you ask\u00a0for stays private',
 				fr: 'La rémunération que vous demandez reste privée'
 			},
 			text: {
@@ -414,7 +414,7 @@ export const m = defineMessages({
 		 * server/plugins/auth.ts, which signs in with a Google credential only: no password exists
 		 */
 		signIn: {
-			title: { en: 'Sign in with Google', fr: 'Connectez-vous avec Google' },
+			title: { en: 'Sign in with Google', fr: 'Connectez\u2011vous avec Google' },
 			text: {
 				en: 'Confirm your age, accept the terms, and sign in. No password to create.',
 				fr: 'Confirmez votre âge, acceptez les conditions et connectez-vous. Aucun mot de passe à créer.'
@@ -476,7 +476,7 @@ export const m = defineMessages({
 		looking: {
 			question: {
 				en: "Does having a portfolio mean I'm looking?",
-				fr: 'Avoir un portfolio, est-ce chercher un emploi ?'
+				fr: 'Avoir un portfolio, est\u2011ce chercher un emploi ?'
 			},
 			answer: {
 				en: 'No. Like a professional profile, it is a career tool you keep whether you are looking or not. It is how recruiters reach you on your terms, whenever they come: the link to your page for recruiters reads “Propose a role”, never “Hire me”.',

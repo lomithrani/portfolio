@@ -2081,7 +2081,7 @@ test.describe('the hiring journey', () => {
 		// the served page unfolds the first step and says what the steps take: hirePageRender.test.ts
 		await expect(journeySteps(page).getByRole('listitem')).toHaveCount(4);
 		await expect(step(page, 'Step 1: Before you book')).toContainText(
-			'Read the note, then confirm it.'
+			'Read the note, then confirm that you have read it.'
 		);
 		await expect(step(page, 'Step 1: Before you book').locator('strong')).toHaveCount(0);
 		await expect(step(page, 'Step 2: Select or create a job (locked)')).toContainText(

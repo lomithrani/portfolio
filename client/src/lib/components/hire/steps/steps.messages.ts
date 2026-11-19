@@ -5,7 +5,10 @@ import { defineMessages } from 'portfolio-common';
 export const m = defineMessages({
 	note: {
 		read: { en: 'You have read this note.', fr: 'Vous avez lu cette note.' },
-		ask: { en: 'Read the note, then confirm it.', fr: 'Lisez la note, puis confirmez-la.' },
+		ask: {
+			en: 'Read the note, then confirm that you have read it.',
+			fr: "Lisez la note, puis confirmez l'avoir lue."
+		},
 		/** What the step asks, before the visitor starts ("Before you start") */
 		asks: {
 			en: (ownerName: string) => `Read ${ownerName}'s note, then confirm that you have read it.`,

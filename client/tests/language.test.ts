@@ -45,7 +45,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		);
 		// The founder's two questions, answered in French
 		await expect(
-			page.locator('details', { hasText: 'Avoir un portfolio, est-ce chercher un emploi ?' })
+			page.locator('details', { hasText: 'Avoir un portfolio, est\u2011ce chercher un emploi ?' })
 		).toContainText(
 			'le lien vers votre page recruteurs dit « Proposer un poste », jamais « Me recruter »'
 		);
