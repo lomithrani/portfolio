@@ -462,13 +462,14 @@
 				</button>
 			{/if}
 		{:else if !maybeOwner}
-			<!-- Its icon steps aside on the narrowest phones, where the row would not hold it -->
+			<!-- Its icon steps aside on phones under 400 px, where the row would not hold it with
+				the French label next to the view switch -->
 			<a
 				href={resolve('/[domain]/hire', { domain: data.domain.name })}
-				class="btn preset-filled-primary-700-300 pointer-events-auto min-h-11 px-5 font-semibold shadow-xl max-[22.4rem]:px-4"
+				class="btn preset-filled-primary-700-300 pointer-events-auto min-h-11 px-5 font-semibold shadow-xl max-[25rem]:px-4"
 				data-propose-role
 			>
-				<Briefcase size="20" class="max-[22.4rem]:hidden" aria-hidden="true" />
+				<Briefcase size="20" class="max-[25rem]:hidden" aria-hidden="true" />
 				{m.proposeRole}
 			</a>
 		{/if}
