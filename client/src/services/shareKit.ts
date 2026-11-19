@@ -7,7 +7,7 @@ import {
 	type Locale,
 	type PerfectJob
 } from 'portfolio-common';
-import type { Readiness } from './candidateSetup';
+import { calendarOpen, type Readiness } from './candidateSetup';
 import { m } from './shareKit.messages';
 
 // The share kit of the admin's Share tab (ShareTab.svelte): the texts an owner copies to answer a
@@ -17,7 +17,8 @@ import { m } from './shareKit.messages';
 // job and its pay range; it says nothing of what the owner asks for, unless they tick a fact
 // (their pay, remote days, places, contracts), which the tab prefills from their perfect job
 // (GET /perfect-job) only once ticked. What a text says of the journey is what the owner's
-// journey does (GET /me/readiness): a reply never promises a step their page does not have.
+// journey does (GET /me/readiness): a reply never promises a step their page does not have, nor a
+// meeting nobody can book yet.
 
 // --- The journey -------------------------------------------------------------------------
 
@@ -27,21 +28,36 @@ export interface SharedJourney {
 	job: boolean;
 	/** The job is scored against the perfect job, then a meeting can be booked (the gate) */
 	scored: boolean;
-	/** It leads to a meeting recruiters can reach */
+	/** It leads to a meeting recruiters can reach and book */
 	meeting: boolean;
+	/**
+	 * The steps lead to a meeting, but nobody can book it yet (the calendar is not open): the texts
+	 * then send recruiters nowhere on the page for recruiters, which would stop them at "No online
+	 * booking" (and a job shared there before a meeting never reaches the owner)
+	 */
+	calendarClosed: boolean;
 }
 
 /** Unknown (the readiness could not be read): the texts ask for the job themselves, and promise nothing */
-export const UNKNOWN_JOURNEY: SharedJourney = { job: false, scored: false, meeting: false };
+export const UNKNOWN_JOURNEY: SharedJourney = {
+	job: false,
+	scored: false,
+	meeting: false,
+	calendarClosed: false
+};
 
 /** What the journey of the readiness asks of recruiters */
 export const sharedJourney = (readiness: Readiness | null): SharedJourney => {
 	if (!readiness) return UNKNOWN_JOURNEY;
-	const { journey } = readiness;
+	const { journey, calendar } = readiness;
+	if (journey.meeting && !calendarOpen(calendar)) {
+		return { ...UNKNOWN_JOURNEY, calendarClosed: true };
+	}
 	return {
 		job: !journey.blocked && journey.types.includes('job'),
 		scored: journey.gate,
-		meeting: journey.meeting
+		meeting: journey.meeting,
+		calendarClosed: false
 	};
 };
 

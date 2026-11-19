@@ -18,7 +18,10 @@ const PORTFOLIO = 'https://portfolio.example/jane.doe';
 const plain = (text: string) => text.replace(/[\u00a0\u202f]/g, ' ');
 const PAGE = `${PORTFOLIO}/hire`;
 
-const readiness = (journey: Partial<Readiness['journey']>): Readiness => ({
+const readiness = (
+	journey: Partial<Readiness['journey']>,
+	calendar: Partial<Readiness['calendar']> = {}
+): Readiness => ({
 	domain: 'jane.doe',
 	experiences: 1,
 	perfectJob: {
@@ -33,15 +36,24 @@ const readiness = (journey: Partial<Readiness['journey']>): Readiness => ({
 		meeting: true,
 		...journey
 	},
-	calendar: { configured: true, connected: true, reconnect: false, enabledSchedules: 1 }
+	calendar: {
+		configured: true,
+		connected: true,
+		reconnect: false,
+		enabledSchedules: 1,
+		...calendar
+	}
 });
 
 /** The gate: a note, a job, its match, the meeting */
-const GATE: SharedJourney = { job: true, scored: true, meeting: true };
+const GATE: SharedJourney = { job: true, scored: true, meeting: true, calendarClosed: false };
 /** The default journey: the meeting alone */
-const MEETING: SharedJourney = { job: false, scored: false, meeting: true };
+const MEETING: SharedJourney = { job: false, scored: false, meeting: true, calendarClosed: false };
 /** A job step then the meeting, without a score */
-const JOB: SharedJourney = { job: true, scored: false, meeting: true };
+const JOB: SharedJourney = { job: true, scored: false, meeting: true, calendarClosed: false };
+/** Steps that lead to a meeting nobody can book yet: the calendar is not open */
+const CLOSED: SharedJourney = { ...UNKNOWN_JOURNEY, calendarClosed: true };
+const GATE_TYPES = ['note', 'job', 'job-match', 'meeting'];
 
 /** A perfect job stating every fact the kit reads, and a commute it must never read */
 const CRITERIA: PerfectJob = {
@@ -61,16 +73,37 @@ describe('what the texts say of the journey', () => {
 	it('reads the journey the readiness describes', () => {
 		expect(sharedJourney(null)).toEqual(UNKNOWN_JOURNEY);
 		expect(sharedJourney(readiness({}))).toEqual(MEETING);
-		expect(
-			sharedJourney(
-				readiness({ types: ['note', 'job', 'job-match', 'meeting'], gate: true, meeting: true })
-			)
-		).toEqual(GATE);
+		expect(sharedJourney(readiness({ types: GATE_TYPES, gate: true, meeting: true }))).toEqual(
+			GATE
+		);
 		expect(sharedJourney(readiness({ types: ['job', 'meeting'] }))).toEqual(JOB);
 		// A step that blocks the meeting: no promise of the job step either
 		expect(
 			sharedJourney(
 				readiness({ types: ['job', 'gone', 'meeting'], blocked: true, gate: false, meeting: false })
+			)
+		).toEqual(UNKNOWN_JOURNEY);
+	});
+
+	it('sends recruiters to the page for recruiters only once they can book there', () => {
+		const gate = { types: GATE_TYPES, gate: true, meeting: true };
+		for (const calendar of [
+			{ connected: false },
+			{ reconnect: true },
+			{ enabledSchedules: 0 },
+			// A site that takes no Google Calendar connection
+			{ configured: false, connected: false, enabledSchedules: 0 }
+		]) {
+			expect(sharedJourney(readiness({}, calendar))).toEqual(CLOSED);
+			expect(sharedJourney(readiness(gate, calendar))).toEqual(CLOSED);
+		}
+		// A journey that leads to no meeting says nothing of the calendar
+		expect(
+			sharedJourney(
+				readiness(
+					{ types: ['job', 'gone', 'meeting'], blocked: true, meeting: false },
+					{ connected: false }
+				)
 			)
 		).toEqual(UNKNOWN_JOURNEY);
 	});
@@ -193,6 +226,18 @@ describe('the reply to a recruiter', () => {
 		expect(unknown).not.toContain('meeting');
 	});
 
+	it('promises no meeting while nobody can book one', () => {
+		for (const locale of ['en', 'fr'] as const) {
+			const text = replyText(locale, { portfolio: PORTFOLIO, journey: CLOSED });
+			expect(text).toBe(replyText(locale, { portfolio: PORTFOLIO, journey: UNKNOWN_JOURNEY }));
+			expect(text).not.toContain('/hire');
+			expect(text).not.toMatch(/meeting|rendez-vous|scored|notée/);
+		}
+		expect(replyText('en', { portfolio: PORTFOLIO, journey: CLOSED })).toContain(
+			'could you send me the job description, with its pay range? My experiences and projects are in my portfolio:'
+		);
+	});
+
 	it('says nothing of what the owner asks for until a fact is ticked', () => {
 		const bare = replyText('en', { portfolio: PORTFOLIO, journey: GATE });
 		expect(bare).not.toContain('matter to me');
@@ -241,6 +286,10 @@ describe('the LinkedIn text', () => {
 			`Recruiters: to propose a role, start on my page for recruiters: ${PAGE}`
 		);
 		expect(linkedInText('en', { portfolio: PORTFOLIO, journey: UNKNOWN_JOURNEY })).toBe(
+			`My experiences and projects: ${PORTFOLIO}`
+		);
+		// Nobody can book yet: the portfolio alone
+		expect(linkedInText('en', { portfolio: PORTFOLIO, journey: CLOSED })).toBe(
 			`My experiences and projects: ${PORTFOLIO}`
 		);
 		expect(plain(linkedInText('fr', { portfolio: PORTFOLIO, journey: MEETING }))).toBe(

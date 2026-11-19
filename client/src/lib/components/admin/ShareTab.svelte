@@ -4,7 +4,8 @@ The admin's Share tab: the owner's link with a button that copies it, the reply 
 wrote to them and a text for their LinkedIn profile (services/shareKit.ts writes both), in English
 or in French whatever the page's language: the recruiter's, which the owner picks. The reply asks
 the recruiter for the job and its pay range, and says what the owner's journey does with it
-(GET /me/readiness, which the page reads). What the owner asks for (their pay, remote days, places,
+(GET /me/readiness, which the page reads), sending recruiters to the page for recruiters only once
+they can book there (the calendar open). What the owner asks for (their pay, remote days, places,
 contracts) goes in only once they tick it: then it is filled in from their perfect job (GET
 /perfect-job, asked once, when a first fact is ticked), and stays theirs to change. Nothing here is
 saved or sent anywhere: the owner copies what they want.
@@ -82,6 +83,19 @@ saved or sent anywhere: the owner copies what they want.
 		...(ticked.places ? { places } : {}),
 		...(ticked.contracts ? { contracts } : {})
 	});
+
+	/** What the reply asks, and where: as the journey and the calendar have it */
+	let replyHint = $derived(
+		journey.job
+			? m.reply.asksThere
+			: journey.calendarClosed
+				? readiness?.calendar.configured
+					? m.reply.calendarClosed
+					: m.reply.bookingUnavailable
+				: readiness
+					? m.reply.asksBack
+					: m.reply.asksUnknown
+	);
 
 	let reply = $derived(replyText(locale, { portfolio, journey, facts }));
 	let linkedIn = $derived(linkedInText(locale, { portfolio, journey }));
@@ -188,10 +202,15 @@ saved or sent anywhere: the owner copies what they want.
 	<section class="space-y-4" aria-labelledby="{uid}-reply">
 		<div class="space-y-2">
 			<h3 class="h4" id="{uid}-reply">{m.reply.title}</h3>
-			<p class="text-sm text-surface-700-300">
-				{journey.job ? m.reply.asksThere : m.reply.asksBack}
-			</p>
-			{#if !journey.job && readiness}
+			<p class="text-sm text-surface-700-300">{replyHint}</p>
+			{#if journey.calendarClosed}
+				{#if readiness?.calendar.configured}
+					<button type="button" class={linkButton} onclick={() => openTab('appointments')}>
+						{m.reply.openCalendar}
+						<ArrowRight size="16" aria-hidden="true" />
+					</button>
+				{/if}
+			{:else if !journey.job && readiness}
 				<button type="button" class={linkButton} onclick={() => openTab('start')}>
 					{m.reply.setSteps}
 					<ArrowRight size="16" aria-hidden="true" />

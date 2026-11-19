@@ -11,8 +11,8 @@ import {
 
 // The owner's share kit: the account menu's "Share your link", the admin's Share tab (the link, the
 // reply to a recruiter and the LinkedIn text, in English or in French whatever the page's
-// language, what the owner asks for added only once ticked) and "Copy your link" on their page for
-// recruiters. They sign in as the owner of 'e2e-share-kit' (seeded by `bun run --cwd server
+// language, what the owner asks for added only once ticked, the page for recruiters named only
+// once recruiters can book there) and "Copy your link" on their page for recruiters. They sign in as the owner of 'e2e-share-kit' (seeded by `bun run --cwd server
 // seed:e2e`, kept for these tests), and answer in the browser what the owner set up (GET
 // /me/readiness) and their perfect job (GET /perfect-job): the portfolio stays as seeded.
 
@@ -28,8 +28,14 @@ test.beforeAll(async () => {
 	session = await ownerSession(DOMAIN);
 });
 
-/** What the owner set up (GET /me/readiness): `gate`, the gate journey; else the meeting alone */
-const readiness = (gate: boolean) => ({
+/** A calendar recruiters can book in: connected, with a meeting type turned on */
+const OPEN_CALENDAR = { configured: true, connected: true, reconnect: false, enabledSchedules: 1 };
+
+/**
+ * What the owner set up (GET /me/readiness): `gate`, the gate journey; else the meeting alone.
+ * `calendar`: the calendar open by default
+ */
+const readiness = (gate: boolean, calendar = OPEN_CALENDAR) => ({
 	domain: DOMAIN,
 	experiences: 2,
 	perfectJob: {
@@ -45,7 +51,7 @@ const readiness = (gate: boolean) => ({
 				meeting: true
 			}
 		: { saved: false, types: ['meeting'], blocked: false, gate: false, meeting: true },
-	calendar: { configured: true, connected: true, reconnect: false, enabledSchedules: 1 }
+	calendar
 });
 
 /** The owner's perfect job (GET /perfect-job): the facts the kit can add, and a commute */
@@ -65,10 +71,10 @@ const PERFECT_JOB = {
 	commute: { enabled: true, modes: ['transit', 'bike', 'car', 'walk'], transit: 'here' }
 };
 
-const openAsOwner = async (page: Page, { gate = true } = {}) => {
+const openAsOwner = async (page: Page, { gate = true, calendar = OPEN_CALENDAR } = {}) => {
 	await blockGoogle(page);
 	await signIn(page, session);
-	await stubApi(page, 'GET', '/me/readiness', () => ({ json: readiness(gate) }));
+	await stubApi(page, 'GET', '/me/readiness', () => ({ json: readiness(gate, calendar) }));
 	return stubApi(page, 'GET', '/perfect-job', () => ({ json: PERFECT_JOB }));
 };
 
@@ -187,6 +193,41 @@ test('without a job step, the reply asks for the job itself, and leads to the st
 		'true'
 	);
 	await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=start$`));
+});
+
+test('while nobody can book, the texts give the portfolio, and lead to the calendar', async ({
+	page
+}) => {
+	// The gate journey, its calendar not connected: recruiters would stop at "No online booking"
+	await openAsOwner(page, {
+		calendar: { ...OPEN_CALENDAR, connected: false, enabledSchedules: 0 }
+	});
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=share`);
+	const tab = shareTab(page);
+	await expect(
+		tab.getByText(
+			'Recruiters cannot book on your page for recruiters until your calendar is open',
+			{
+				exact: false
+			}
+		)
+	).toBeVisible();
+	await expect(reply(page)).toHaveValue(
+		new RegExp(
+			`could you send me the job description, with its pay range\\? My experiences and projects are in my portfolio:\\n\\n${LINK}\\n\\n`
+		)
+	);
+	await expect(reply(page)).not.toHaveValue(/\/hire|meeting|scored/);
+	await expect(tab.getByRole('textbox', { name: 'Your LinkedIn text, in English' })).toHaveValue(
+		`My experiences and projects: ${LINK}`
+	);
+	await expect(tab.getByRole('button', { name: 'Set my steps' })).toHaveCount(0);
+	await tab.getByRole('button', { name: 'Open my calendar settings' }).click();
+	await expect(page.getByRole('tab', { name: 'Appointments' })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=appointments$`));
 });
 
 test('the page for recruiters gives its owner their link to copy', async ({ page, context }) => {

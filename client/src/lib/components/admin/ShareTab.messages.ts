@@ -41,7 +41,27 @@ export const m = defineMessages({
 			en: 'It asks them to send you the job description, with its pay range. Your page for recruiters does not ask for the job: to have them share it there first, ask for it in your steps.',
 			fr: "Elle lui demande de vous envoyer l'offre d'emploi, avec sa fourchette de rémunération. Votre page recruteurs ne demande pas le poste : pour qu'il l'y présente d'abord, demandez-le dans vos étapes."
 		},
+		/** What the account set up could not be read (yet): the reply promises nothing of the page */
+		asksUnknown: {
+			en: 'It asks them to send you the job description, with its pay range, and gives your portfolio.',
+			fr: "Elle lui demande de vous envoyer l'offre d'emploi, avec sa fourchette de rémunération, et donne votre portfolio."
+		},
+		/**
+		 * The steps lead to a meeting, but the calendar is not open: nobody can book, so the reply
+		 * does not send recruiters to the page for recruiters
+		 */
+		calendarClosed: {
+			en: 'Recruiters cannot book on your page for recruiters until your calendar is open: until then, the reply asks for the job description, with its pay range, and gives your portfolio.',
+			fr: "Les recruteurs ne peuvent pas réserver sur votre page recruteurs tant que votre agenda n'est pas ouvert : d'ici là, la réponse demande l'offre d'emploi, avec sa fourchette de rémunération, et donne votre portfolio."
+		},
+		/** The same, on a site that takes no Google Calendar connection: nothing the owner can do */
+		bookingUnavailable: {
+			en: 'Online booking is not available on this site for now: the reply asks for the job description, with its pay range, and gives your portfolio.',
+			fr: "La réservation en ligne n'est pas disponible sur ce site pour le moment : la réponse demande l'offre d'emploi, avec sa fourchette de rémunération, et donne votre portfolio."
+		},
 		setSteps: { en: 'Set my steps', fr: 'Régler mes étapes' },
+		/** After calendarClosed: the admin's Appointments tab */
+		openCalendar: { en: 'Open my calendar settings', fr: "Ouvrir mes réglages d'agenda" },
 		label: {
 			en: (language: string) => `Your reply, in ${language}`,
 			fr: (language: string) => `Votre réponse, en ${language}`

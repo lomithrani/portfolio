@@ -115,6 +115,14 @@ export interface SetupItem {
 }
 
 /**
+ * Recruiters can book a slot (the calendar item is done): Google Calendar is connected on a site
+ * that takes it, Google has not refused it since, and a meeting type turned on has hours to book.
+ * Until then the meeting step offers no slot ("No online booking")
+ */
+export const calendarOpen = (calendar: Readiness['calendar']): boolean =>
+	calendar.configured && calendar.connected && !calendar.reconnect && calendar.enabledSchedules > 0;
+
+/**
  * Whether each item is done:
  * - resume: the portfolio has an experience;
  * - perfectJob: the pay is rated, the essential the gate journey asks recruiters for first (the
@@ -130,11 +138,7 @@ export const setupItems = (readiness: Readiness): SetupItem[] => {
 		resume: experiences > 0,
 		perfectJob: perfectJob.essentials.pay,
 		journey: journey.saved && journey.meeting,
-		calendar:
-			calendar.configured &&
-			calendar.connected &&
-			!calendar.reconnect &&
-			calendar.enabledSchedules > 0
+		calendar: calendarOpen(calendar)
 	};
 	return SETUP_ITEMS.map((id) => ({
 		id,
