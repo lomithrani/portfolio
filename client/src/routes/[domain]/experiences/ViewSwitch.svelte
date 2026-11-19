@@ -33,15 +33,17 @@
 	{#each views as { value, label, icon: Icon } (value)}
 		<button
 			type="button"
-			class="btn btn-sm min-h-9 gap-1.5 px-3 {view === value
+			class="btn btn-sm min-h-9 gap-1.5 px-3 {besideLink ? 'max-[21.25rem]:px-2' : ''} {view ===
+			value
 				? 'preset-filled-primary-700-300'
 				: 'hover:preset-tonal'}"
 			aria-pressed={view === value}
 			onclick={() => (view = value)}
 		>
 			<Icon size="16" aria-hidden="true" />
-			<!-- Icons alone where the row is short: under 448 px next to "Propose a role", under
-				360 px next to the owner's "Add" (the label stays the button's name) -->
+			<!-- Icons alone where the row is short: under 448 px next to "Propose a role" (closer
+				together under 340 px), under 360 px next to the owner's "Add" (the label stays the
+				button's name) -->
 			<span class={besideLink ? 'max-[28rem]:sr-only' : 'max-[22.4rem]:sr-only'}>{label}</span>
 		</button>
 	{/each}
