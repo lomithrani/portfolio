@@ -3,9 +3,10 @@
 The owner's hiring journey (GET, PUT /workflow): the steps recruiters go through on the Hire
 page, in the order chosen here. Steps are added from the step types of portfolio-common
 (stepManifests), moved, removed, and set with their type's settings form (the client's registry,
-components/hire/steps/). A step that does not exist yet can be suggested (StepSuggestion.svelte). The journey is checked on every change with the rules the API enforces
-(parseWorkflow): what is wrong is said at the step and the setting it is about, and the journey
-cannot be saved until it is fixed.
+components/hire/steps/). A step that does not exist yet can be suggested (StepSuggestion.svelte).
+The journey is checked on every change with the rules the API enforces (parseWorkflow): what is
+wrong is said at the step and the setting it is about, and the journey cannot be saved until it
+is fixed.
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
@@ -90,8 +91,8 @@ cannot be saved until it is fixed.
 
 	// Unsaved steps hold text the owner wrote (a note): leaving the page asks first. A reload or
 	// a closed tab gets the browser's own prompt (confirm() cannot show there); every link
-	// ("See your Hire page"...), this one, also a link that reloads the page (the language
-	// switch): cancelling it without asking would ignore the click
+	// ("See your page for recruiters"...), this one, also a link that reloads the page (the
+	// language switch): cancelling it without asking would ignore the click
 	beforeNavigate((navigation) => {
 		if (!changed) return;
 		if (navigation.type === 'leave') {

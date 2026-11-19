@@ -29,6 +29,24 @@ export const m = defineMessages({
 			french: { en: 'French', fr: 'français' }
 		}
 	},
+	/**
+	 * What the account set up (GET /me/readiness) could not be read, or read again: the texts then
+	 * promise nothing of the page for recruiters, whatever was read before
+	 */
+	readinessFailed: {
+		'session-expired': {
+			en: 'Your session expired, so what your steps ask of recruiters could not be read. Sign in again in another tab, then try again.',
+			fr: "Votre session a expiré : ce que vos étapes demandent aux recruteurs n'a pas pu être lu. Reconnectez-vous dans un autre onglet, puis réessayez."
+		},
+		network: {
+			en: 'Could not reach the server to read what your steps ask of recruiters. Check your connection and try again.',
+			fr: 'Impossible de joindre le serveur pour lire ce que vos étapes demandent aux recruteurs. Vérifiez votre connexion et réessayez.'
+		},
+		error: {
+			en: 'What your steps ask of recruiters could not be read. Try again.',
+			fr: "Ce que vos étapes demandent aux recruteurs n'a pas pu être lu. Réessayez."
+		}
+	},
 	reply: {
 		title: { en: 'Reply to a recruiter', fr: 'Répondre à un recruteur' },
 		/** The journey has a job step */
@@ -39,8 +57,28 @@ export const m = defineMessages({
 		/** The journey asks for no job */
 		asksBack: {
 			en: 'It asks them to send you the job description, with its pay range. Your page for recruiters does not ask for the job: to have them share it there first, ask for it in your steps.',
-			fr: "Elle lui demande de vous envoyer l'offre d'emploi, avec sa fourchette de rémunération. Votre page recruteurs ne demande pas le poste : pour qu'il l'y présente d'abord, demandez-le dans vos étapes."
+			fr: "Elle lui demande de vous envoyer l'offre d'emploi, avec sa fourchette de rémunération. Votre page recruteurs ne demande pas l'offre : pour qu'il l'y présente d'abord, demandez-la dans vos étapes."
 		},
+		/**
+		 * After asksThere, for the gate with a perfect job that has no criterion: the texts do not say
+		 * the job is scored
+		 */
+		nothingToScore: {
+			en: 'Your perfect job has no criterion yet: every job would score 100, so the texts do not say the job is scored. Say what you want first.',
+			fr: "Votre poste idéal n'a encore aucun critère : toute offre obtiendrait 100, les textes ne disent donc pas que l'offre est notée. Dites d'abord ce que vous voulez."
+		},
+		/** After nothingToScore: the admin's Perfect job tab */
+		setPerfectJob: { en: 'Set my perfect job', fr: 'Définir mon poste idéal' },
+		/**
+		 * A step before the meeting can never be passed (a journey saved by an older version): the
+		 * reply sends recruiters nowhere on the page for recruiters
+		 */
+		blocked: {
+			en: 'A step of your page for recruiters is not available anymore: recruiters cannot get past it. Until you remove it from your steps, the reply asks for the job description, with its pay range, and gives your portfolio.',
+			fr: "L'une des étapes de votre page recruteurs n'est plus disponible : les recruteurs ne peuvent pas la franchir. Tant que vous ne l'avez pas retirée de vos étapes, la réponse demande l'offre d'emploi, avec sa fourchette de rémunération, et donne votre portfolio."
+		},
+		/** After blocked: the admin's Hiring journey tab, where a step is removed */
+		changeSteps: { en: 'Change my steps', fr: 'Modifier mes étapes' },
 		/** What the account set up could not be read (yet): the reply promises nothing of the page */
 		asksUnknown: {
 			en: 'It asks them to send you the job description, with its pay range, and gives your portfolio.',
@@ -79,6 +117,11 @@ export const m = defineMessages({
 		},
 		pay: { en: 'The pay I ask for', fr: 'La rémunération que je demande' },
 		amount: { en: 'Gross amount, in euros', fr: 'Montant brut, en euros' },
+		/** Under the amount, when it is not a whole number above 0: the reply leaves the pay out */
+		amountInvalid: {
+			en: 'Write a whole number of euros, such as 65000: until then, the reply leaves the pay out.',
+			fr: "Écrivez un nombre entier d'euros, par exemple 65000 : d'ici là, la réponse ne dit rien de la rémunération."
+		},
 		per: { en: 'Per', fr: 'Par' },
 		perYear: { en: 'a year', fr: 'an' },
 		perDay: { en: 'a day', fr: 'jour' },

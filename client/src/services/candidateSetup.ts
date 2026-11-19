@@ -251,9 +251,11 @@ export const copyText = async (
 
 // --- The request -------------------------------------------------------------------------
 
+/** Why the readiness could not be read */
+export type ReadinessFailure = 'session-expired' | 'network' | 'error';
+
 export type ReadinessResult =
-	| { ok: true; readiness: Readiness }
-	| { ok: false; reason: 'session-expired' | 'network' | 'error' };
+	{ ok: true; readiness: Readiness } | { ok: false; reason: ReadinessFailure };
 
 /**
  * GET /me/readiness for the signed-in account. A 401 is only reported ('session-expired'): the

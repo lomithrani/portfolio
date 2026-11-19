@@ -20,7 +20,8 @@
 		loadReadiness,
 		setupProgress,
 		type AdminTab,
-		type Readiness
+		type Readiness,
+		type ReadinessFailure
 	} from '#services/candidateSetup.ts';
 	import { networkError } from '#services/recruiter.ts';
 	import type { PageData } from './$types';
@@ -46,6 +47,8 @@
 	let readiness = $state.raw<Readiness | null>(null);
 	let readinessStatus = $state<'loading' | 'ready' | 'error'>('loading');
 	let readinessError = $state('');
+	/** Why the last read failed, null once one succeeded (Share then trusts no readiness) */
+	let readinessFailure = $state<ReadinessFailure | null>(null);
 	let readinessRequest: AbortController | undefined;
 
 	/**
@@ -63,6 +66,7 @@
 		if (first) readinessStatus = 'loading';
 		const result = await loadReadiness(request.signal);
 		if (request.signal.aborted) return;
+		readinessFailure = result.ok ? null : result.reason;
 		if (result.ok) {
 			readiness = result.readiness;
 			readinessStatus = 'ready';
@@ -224,7 +228,14 @@
 					<AppointmentsTab />
 				</Tabs.Content>
 				<Tabs.Content value="share">
-					<ShareTab domainName={data.domainName} {readiness} {openTab} />
+					<ShareTab
+						domainName={data.domainName}
+						{readiness}
+						failure={readinessFailure}
+						reload={refreshReadiness}
+						shown={tab === 'share'}
+						{openTab}
+					/>
 				</Tabs.Content>
 			</div>
 		</Tabs>

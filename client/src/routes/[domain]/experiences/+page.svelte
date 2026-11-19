@@ -50,9 +50,9 @@
 	// Admin-only UI appears once the session has been checked with the API (in the browser,
 	// after hydration): never for a stale local session, and the SSR markup stays the same
 	let isAdmin = $derived($sessionCheckedStore && isDomainAdmin($authenticationStore, data.domain));
-	// "Propose a role" is for everyone but the owner. The server renders it (it cannot know the visitor);
-	// in the browser it steps aside as soon as the kept session says this is the owner's own
-	// portfolio, before the API confirms it (a stale session is cleared, and brings it back)
+	// "Propose a role" is for everyone but the owner. The server renders it (it cannot know the
+	// visitor); in the browser it steps aside as soon as the kept session says this is the owner's
+	// own portfolio, before the API confirms it (a stale session is cleared, and brings it back)
 	let hydrated = $state(false);
 	onMount(() => {
 		hydrated = true;
@@ -433,12 +433,12 @@
 <OpenGraph {...preview} image="portfolio" />
 
 <!-- The page's floating corner: the view switch, and next to it what this visitor is most likely
-	here for: "Propose a role" for a visitor, "Add experience" for the owner on a small screen once the
-	toolbar has scrolled away. First in the page, so the keyboard reaches it before the list.
+	here for: "Propose a role" for a visitor, "Add experience" for the owner on a small screen once
+	the toolbar has scrolled away. First in the page, so the keyboard reaches it before the list.
 	Always one row (the page's bottom padding and the toasts count on its height), in English and
-	French: the owner's button reads "Add" there, the view switch drops its labels on phones next
-	to "Propose a role" (on the narrowest next to "Add"), and "Propose a role" its icon on the
-	narrowest -->
+	French: the owner's button reads "Add" there, the view switch drops its labels under 448 px
+	next to "Propose a role" (under 360 px next to "Add"), "Propose a role" its icon under 400 px,
+	and under 340 px its text is smaller and the view switch's buttons closer -->
 {#if allExperiences.length > 0}
 	<div
 		class="dock pointer-events-none fixed z-10 flex items-stretch justify-end gap-2"

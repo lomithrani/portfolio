@@ -1218,6 +1218,31 @@ test.describe('the navigation rail', () => {
 		await labelsFit();
 	});
 
+	test('names the page for recruiters as the owner reads it, with labels that fit', async ({
+		page
+	}) => {
+		await page.setViewportSize({ width: 880, height: 700 });
+		await openAsOwner(page);
+		for (const { lang, open, label } of [
+			{ lang: 'en', open: 'Open sidebar', label: 'Page for recruiters' },
+			{ lang: 'fr', open: 'Ouvrir la barre latérale', label: 'Page recruteurs' }
+		]) {
+			await gotoHydrated(page, `/${DOMAIN}/experiences?lang=${lang}`);
+			await page.getByRole('button', { name: open }).focus();
+			await page.keyboard.press('Enter');
+			// Its pages (the admin's too), then the language switch
+			await expect(railLinks(page)).toHaveCount(4);
+			const hire = page.locator(`aside a[href="/${DOMAIN}/hire"]`);
+			// Not "Propose a role": the owner does not propose a role to themselves
+			await expect(hire).toHaveText(label);
+			const fits = await hire.evaluate(
+				(element) =>
+					element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight
+			);
+			expect(fits, label).toBe(true);
+		}
+	});
+
 	test('stops showing as soon as it no longer fits: a narrower window, a wider page', async ({
 		page
 	}) => {
@@ -1265,6 +1290,28 @@ test.describe('the navigation rail', () => {
 		await expect(railLinks(page)).toHaveCount(3);
 		await context.close();
 	});
+});
+
+test('before the page hydrates, the floating corner proposes a role, in English and French', async ({
+	browser
+}) => {
+	// The server renders the corner (it cannot know the visitor): what a page without JavaScript
+	// shows. It holds the view switch only once the portfolio has an experience
+	await createExperience({ title: `Staff Engineer ${tag}`, projects: [project('Platform')] });
+	const context = await browser.newContext({ javaScriptEnabled: false });
+	const page = await context.newPage();
+	await blockGoogle(page);
+	for (const { lang, name } of [
+		{ lang: 'en', name: 'Propose a role' },
+		{ lang: 'fr', name: 'Proposer un poste' }
+	]) {
+		await page.goto(`/${DOMAIN}/experiences?lang=${lang}`);
+		const link = page.locator('[data-page-dock]').getByRole('link', { name, exact: true });
+		await expect(link).toBeVisible();
+		// The server writes it relative to the page (../e2e-owner/hire)
+		await expect(link).toHaveAttribute('href', new RegExp(`(^|/)${DOMAIN}/hire$`));
+	}
+	await context.close();
 });
 
 test.describe('the owner’s setup', () => {

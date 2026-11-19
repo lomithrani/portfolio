@@ -83,7 +83,7 @@ export const m = defineMessages({
 		/** After `toDo`, above the gate journey and "Keep the meeting alone" */
 		choose: {
 			en: 'Ask for the job first, or keep the meeting alone.',
-			fr: "Demandez d'abord le poste, ou gardez seulement le rendez-vous."
+			fr: "Demandez d'abord l'offre, ou gardez seulement le rendez-vous."
 		},
 		/** A journey the owner saved: the meeting alone */
 		meetingAlone: {
@@ -91,7 +91,7 @@ export const m = defineMessages({
 			fr: 'Votre page recruteurs ne demande rien avant le rendez-vous.'
 		},
 		/** After `meetingAlone`, above the gate journey */
-		askFirst: { en: 'To ask for the job first:', fr: "Pour demander d'abord le poste :" },
+		askFirst: { en: 'To ask for the job first:', fr: "Pour demander d'abord l'offre :" },
 		/**
 		 * The steps lead to a meeting, but the calendar item is not done: no slot can be booked yet
 		 * (said only on a site that takes Google Calendar connections)
@@ -106,15 +106,15 @@ export const m = defineMessages({
 		 */
 		blocked: {
 			en: 'A step of yours is not available anymore: recruiters cannot get past it, nor book a meeting. Remove it from your steps, or ask for the job first.',
-			fr: "L'une de vos étapes n'est plus disponible : les recruteurs ne peuvent pas la franchir, ni réserver de rendez-vous. Retirez-la de vos étapes, ou demandez d'abord le poste."
+			fr: "L'une de vos étapes n'est plus disponible : les recruteurs ne peuvent pas la franchir, ni réserver de rendez-vous. Retirez-la de vos étapes, ou demandez d'abord l'offre."
 		},
 		/** A journey was saved, but it leads to no meeting */
 		noMeeting: {
 			en: 'Your steps lead to no meeting: recruiters cannot book one. Ask for the job first, or add a meeting step.',
-			fr: "Vos étapes ne mènent à aucun rendez-vous : les recruteurs ne peuvent pas en réserver. Demandez d'abord le poste, ou ajoutez une étape de rendez-vous."
+			fr: "Vos étapes ne mènent à aucun rendez-vous : les recruteurs ne peuvent pas en réserver. Demandez d'abord l'offre, ou ajoutez une étape de rendez-vous."
 		},
 		gate: {
-			title: { en: 'Ask for the job first', fr: "Demander d'abord le poste" },
+			title: { en: 'Ask for the job first', fr: "Demander d'abord l'offre" },
 			text: {
 				en: (minScore: number) =>
 					`Recruiters read your note, share one of their job descriptions, and see it scored against what you want, criterion by criterion. They book a meeting only once it scores at least ${minScore} out of 100.`,

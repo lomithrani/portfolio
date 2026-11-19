@@ -27,7 +27,11 @@
 		},
 		{
 			path: '/hire',
-			label: m.links.hire,
+			// Visitors propose a role (the server renders this: it cannot know the visitor); the owner
+			// reads what the page is to them, once the session says it is theirs
+			get label() {
+				return isAdmin ? m.links.hireOwner : m.links.hire;
+			},
 			selected: pathStartsWith,
 			// As on the floating corner's "Propose a role"
 			icon: Briefcase

@@ -988,6 +988,8 @@ test.describe('the recruiter', () => {
 
 		await expect(page.getByRole('menuitem', { name: 'Account & privacy' })).toBeVisible();
 		await expect(page.getByRole('menuitem', { name: 'Browse jobs' })).toHaveCount(0);
+		// No portfolio, no link to share
+		await expect(page.getByRole('menuitem', { name: 'Share your link' })).toHaveCount(0);
 		await expect(page.getByRole('menu').locator('a[href="/jobs"]')).toHaveCount(0);
 	});
 

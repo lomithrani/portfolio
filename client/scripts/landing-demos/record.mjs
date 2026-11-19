@@ -1,13 +1,17 @@
 // Records the landing page's two demos (client/static/landing/demo-style.* and demo-journey.*,
 // played by components/landing/DemoVideo.svelte) against the real app running locally, on a
-// phone-sized screen. Record them again when what they show changes (the experiences page, the
-// Hire page, the job match):
+// phone-sized screen. Record them again when what they show changes: the experiences page and its
+// floating corner ("Propose a role") for demo-style; the candidate's page for recruiters (the Hire
+// page, "Propose a role to Jane Doe") and the job match for demo-journey:
 //
 //   bun run db:up && bun run db:seed
 //   COMMUTE_TIMES=true bun run start:server      # the commute needs the travel times
 //   bun run build:client && bun run start:client
 //   bun scripts/landing-demos/seed.mjs           # from client/: the fictional candidate and recruiter
 //   bun scripts/landing-demos/record.mjs         # needs ffmpeg with libvpx-vp9 and libx264
+//
+// Name the films to record only some: `bun scripts/landing-demos/record.mjs style`. demo-style
+// films the portfolio signed out: it needs Jane's experiences, not the recruiter or the commute.
 //
 // With an API whose JWT_SECRET is not server/.env.example's, pass it to both scripts
 // (JWT_SECRET=... bun scripts/...): they sign the sessions of the two fictional accounts with it.
@@ -123,6 +127,10 @@ const journey = async () => {
 	await page.context().close();
 };
 
-await style();
-await journey();
+const films = { style, journey };
+const asked = process.argv.slice(2);
+for (const name of asked) if (!(name in films)) throw new Error(`No film named ${name}`);
+for (const [name, record] of Object.entries(films)) {
+	if (!asked.length || asked.includes(name)) await record();
+}
 await browser.close();

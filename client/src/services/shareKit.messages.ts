@@ -17,10 +17,13 @@ export const m = defineMessages({
 			en: 'Before we talk, could you share the role on my page for recruiters, with its pay range?',
 			fr: "Avant d'échanger, pourriez-vous présenter le poste sur ma page recruteurs, avec sa fourchette de rémunération ?"
 		},
-		/** After shareThere: the journey scores the job, then a meeting can be booked */
+		/**
+		 * After shareThere: the journey scores the job, then a meeting can be booked (not "right
+		 * away": a note can come between the score and the meeting)
+		 */
 		scored: {
-			en: 'It is scored against what I am looking for and, if it fits, you can book a meeting with me there right away.',
-			fr: "L'offre est notée au regard de ce que je recherche et, si elle correspond, vous pouvez y réserver tout de suite un rendez-vous avec moi."
+			en: 'It is scored against what I am looking for and, if it fits, you can book a meeting with me there.',
+			fr: "L'offre est notée au regard de ce que je recherche et, si elle correspond, vous pouvez y réserver un rendez-vous avec moi."
 		},
 		/** After shareThere: a meeting can be booked, without a score */
 		thenBook: {

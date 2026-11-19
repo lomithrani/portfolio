@@ -1,6 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
-import { stubApi } from './support/api';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import { stubApi, type StubAnswer } from './support/api';
 import {
+	API_URL,
 	JWT_SECRET,
 	blockGoogle,
 	gotoHydrated,
@@ -9,12 +10,14 @@ import {
 	type OwnerSession
 } from './support/owner';
 
-// The owner's share kit: the account menu's "Share your link", the admin's Share tab (the link, the
-// reply to a recruiter and the LinkedIn text, in English or in French whatever the page's
+// The owner's share kit: the account menu's "Share your link", the admin's Share tab (the link,
+// the reply to a recruiter and the LinkedIn text, in English or in French whatever the page's
 // language, what the owner asks for added only once ticked, the page for recruiters named only
-// once recruiters can book there) and "Copy your link" on their page for recruiters. They sign in as the owner of 'e2e-share-kit' (seeded by `bun run --cwd server
-// seed:e2e`, kept for these tests), and answer in the browser what the owner set up (GET
-// /me/readiness) and their perfect job (GET /perfect-job): the portfolio stays as seeded.
+// once recruiters can book there and get through it) and "Copy your link" on their page for
+// recruiters, whose title the server writes in both languages. They sign in as the owner of
+// 'e2e-share-kit' (seeded by `bun run --cwd server seed:e2e`, kept for these tests), and answer in
+// the browser what the owner set up (GET /me/readiness) and their perfect job (GET /perfect-job):
+// the portfolio stays as seeded.
 
 const DOMAIN = 'e2e-share-kit';
 const LINK = `http://localhost:4173/${DOMAIN}`;
@@ -31,26 +34,56 @@ test.beforeAll(async () => {
 /** A calendar recruiters can book in: connected, with a meeting type turned on */
 const OPEN_CALENDAR = { configured: true, connected: true, reconnect: false, enabledSchedules: 1 };
 
-/**
- * What the owner set up (GET /me/readiness): `gate`, the gate journey; else the meeting alone.
- * `calendar`: the calendar open by default
- */
-const readiness = (gate: boolean, calendar = OPEN_CALENDAR) => ({
+const GATE_JOURNEY = {
+	saved: true,
+	types: ['note', 'job', 'job-match', 'meeting'],
+	blocked: false,
+	gate: true,
+	meeting: true
+};
+const MEETING_JOURNEY = {
+	saved: false,
+	types: ['meeting'],
+	blocked: false,
+	gate: false,
+	meeting: true
+};
+/** A step of a type this version does not have, before the meeting: nobody gets through */
+const BLOCKED_JOURNEY = {
+	saved: true,
+	types: ['job', 'gone', 'meeting'],
+	blocked: true,
+	gate: false,
+	meeting: false
+};
+
+type Setup = {
+	/** The gate journey (the default), else the meeting alone */
+	gate?: boolean;
+	/** Another journey than those two */
+	journey?: typeof GATE_JOURNEY;
+	/** The calendar open by default */
+	calendar?: typeof OPEN_CALENDAR;
+	/** How many criteria the perfect job rates */
+	criteria?: number;
+	/** The answer of each read of the readiness (`index`: how many came before), else the above */
+	readinessAnswer?: (index: number) => StubAnswer;
+};
+
+/** What the owner set up (GET /me/readiness) */
+const readiness = ({ gate = true, journey, calendar = OPEN_CALENDAR, criteria = 4 }: Setup) => ({
 	domain: DOMAIN,
 	experiences: 2,
 	perfectJob: {
-		criteria: 4,
-		essentials: { pay: true, workMode: true, place: true, contractTypes: true }
+		criteria,
+		essentials: {
+			pay: criteria > 0,
+			workMode: criteria > 0,
+			place: criteria > 0,
+			contractTypes: criteria > 0
+		}
 	},
-	journey: gate
-		? {
-				saved: true,
-				types: ['note', 'job', 'job-match', 'meeting'],
-				blocked: false,
-				gate: true,
-				meeting: true
-			}
-		: { saved: false, types: ['meeting'], blocked: false, gate: false, meeting: true },
+	journey: journey ?? (gate ? GATE_JOURNEY : MEETING_JOURNEY),
 	calendar
 });
 
@@ -71,16 +104,60 @@ const PERFECT_JOB = {
 	commute: { enabled: true, modes: ['transit', 'bike', 'car', 'walk'], transit: 'here' }
 };
 
-const openAsOwner = async (page: Page, { gate = true, calendar = OPEN_CALENDAR } = {}) => {
+/** Signs in as the owner, their readiness and perfect job answered here: returns their reads */
+const openAsOwner = async (
+	page: Page,
+	setup: Setup = {},
+	perfectJob: (index: number) => StubAnswer = () => ({ json: PERFECT_JOB })
+) => {
 	await blockGoogle(page);
 	await signIn(page, session);
-	await stubApi(page, 'GET', '/me/readiness', () => ({ json: readiness(gate, calendar) }));
-	return stubApi(page, 'GET', '/perfect-job', () => ({ json: PERFECT_JOB }));
+	const readinessReads = await stubApi(
+		page,
+		'GET',
+		'/me/readiness',
+		(_, index) => setup.readinessAnswer?.(index) ?? { json: readiness(setup) }
+	);
+	const perfectJobReads = await stubApi(page, 'GET', '/perfect-job', (_, index) =>
+		perfectJob(index)
+	);
+	return { readinessReads, perfectJobReads };
 };
 
 const shareTab = (page: Page) => page.getByRole('tabpanel', { name: 'Share' });
 const reply = (page: Page, language = 'English') =>
 	shareTab(page).getByRole('textbox', { name: `Your reply, in ${language}` });
+const linkedInOf = (page: Page) =>
+	shareTab(page).getByRole('textbox', { name: 'Your LinkedIn text, in English' });
+/** The buttons that lead from the reply's hint to another tab */
+const LEADS = [
+	'Set my steps',
+	'Open my calendar settings',
+	'Change my steps',
+	'Set my perfect job'
+];
+const leadsShown = async (tab: Locator) => {
+	const shown: string[] = [];
+	for (const name of LEADS) {
+		if (await tab.getByRole('button', { name, exact: true }).count()) shown.push(name);
+	}
+	return shown;
+};
+/** Texts that promise nothing of the page for recruiters: the job asked for, and the portfolio */
+const expectPortfolioOnly = async (page: Page) => {
+	await expect(reply(page)).toHaveValue(
+		new RegExp(
+			`could you send me the job description, with its pay range\\? My experiences and projects are in my portfolio:\\n\\n${LINK}\\n\\n`
+		)
+	);
+	await expect(reply(page)).not.toHaveValue(/\/hire|meeting|scored/);
+	await expect(linkedInOf(page)).toHaveValue(`My experiences and projects: ${LINK}`);
+};
+/** Shows another tab of the admin page, then Share again: the page reads the readiness again */
+const showShareAgain = async (page: Page) => {
+	await page.getByRole('tab', { name: 'Appearance' }).click();
+	await page.getByRole('tab', { name: 'Share' }).click();
+};
 
 test('the account menu leads to the Share tab, which writes the reply and the LinkedIn text', async ({
 	page,
@@ -88,9 +165,13 @@ test('the account menu leads to the Share tab, which writes the reply and the Li
 }) => {
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	await openAsOwner(page);
-	// Whatever is typed or ticked here, nothing leaves the page
+	// Whatever is typed or ticked here, nothing leaves the page: no request's body, query string
+	// or path on the API carries it
 	const sent: string[] = [];
 	page.on('request', (request) => {
+		const url = new URL(request.url());
+		sent.push(url.search);
+		if (request.url().startsWith(API_URL)) sent.push(url.pathname);
 		const body = request.postData();
 		if (body) sent.push(body);
 	});
@@ -171,7 +252,11 @@ test('the account menu leads to the Share tab, which writes the reply and the Li
 		await linkedIn.inputValue()
 	);
 
-	expect(sent.filter((body) => /65000|70000|Lyon|freelance/i.test(body))).toEqual([]);
+	const typed = /65000|70000|Lyon|freelance/i;
+	expect(sent.filter((part) => typed.test(part))).toEqual([]);
+	// Nor is it kept in the browser
+	const kept = await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
+	expect(kept).not.toMatch(typed);
 });
 
 test('without a job step, the reply asks for the job itself, and leads to the steps', async ({
@@ -212,22 +297,265 @@ test('while nobody can book, the texts give the portfolio, and lead to the calen
 			}
 		)
 	).toBeVisible();
-	await expect(reply(page)).toHaveValue(
-		new RegExp(
-			`could you send me the job description, with its pay range\\? My experiences and projects are in my portfolio:\\n\\n${LINK}\\n\\n`
-		)
-	);
-	await expect(reply(page)).not.toHaveValue(/\/hire|meeting|scored/);
-	await expect(tab.getByRole('textbox', { name: 'Your LinkedIn text, in English' })).toHaveValue(
-		`My experiences and projects: ${LINK}`
-	);
-	await expect(tab.getByRole('button', { name: 'Set my steps' })).toHaveCount(0);
+	await expectPortfolioOnly(page);
+	expect(await leadsShown(tab)).toEqual(['Open my calendar settings']);
 	await tab.getByRole('button', { name: 'Open my calendar settings' }).click();
 	await expect(page.getByRole('tab', { name: 'Appointments' })).toHaveAttribute(
 		'aria-selected',
 		'true'
 	);
 	await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=appointments$`));
+});
+
+test('on a site without Google Calendar, the texts give the portfolio, with nothing to set', async ({
+	page
+}) => {
+	// As on CI's API, which has no GOOGLE_CLIENT_SECRET
+	await openAsOwner(page, {
+		calendar: { configured: false, connected: false, reconnect: false, enabledSchedules: 0 }
+	});
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=share`);
+	const tab = shareTab(page);
+	await expect(tab.locator('[data-reply-hint]')).toHaveText(
+		/^Online booking is not available on this site for now: /
+	);
+	await expectPortfolioOnly(page);
+	expect(await leadsShown(tab)).toEqual([]);
+});
+
+test('a step nobody can get past: the texts give the portfolio, and lead to the steps', async ({
+	page
+}) => {
+	await openAsOwner(page, { journey: BLOCKED_JOURNEY });
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=share`);
+	const tab = shareTab(page);
+	await expect(tab.locator('[data-reply-hint]')).toHaveText(
+		/^A step of your page for recruiters is not available anymore: recruiters cannot get past it\./
+	);
+	// Never that the page asks for no job: it does, recruiters only cannot get through it
+	await expect(tab.getByText('does not ask for the job', { exact: false })).toHaveCount(0);
+	await expectPortfolioOnly(page);
+	expect(await leadsShown(tab)).toEqual(['Change my steps']);
+	await tab.getByRole('button', { name: 'Change my steps' }).click();
+	const journeyTab = page.getByRole('tab', { name: 'Hiring journey' });
+	await expect(journeyTab).toHaveAttribute('aria-selected', 'true');
+	await expect(journeyTab).toBeFocused();
+	await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=workflows$`));
+});
+
+test('the gate with nothing to score against: the texts do not say the job is scored', async ({
+	page
+}) => {
+	await openAsOwner(page, { criteria: 0 });
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=share`);
+	const tab = shareTab(page);
+	await expect(
+		tab.getByText('Your perfect job has no criterion yet: every job would score 100', {
+			exact: false
+		})
+	).toBeVisible();
+	await expect(reply(page)).toHaveValue(
+		/could you share the role on my page for recruiters, with its pay range\? You can then book a meeting with me there\./
+	);
+	await expect(reply(page)).not.toHaveValue(/scored/);
+	await expect(linkedInOf(page)).toHaveValue(/It asks for the job and its pay range first: /);
+	await expect(linkedInOf(page)).not.toHaveValue(/scores/);
+	expect(await leadsShown(tab)).toEqual(['Set my perfect job']);
+	await tab.getByRole('button', { name: 'Set my perfect job' }).click();
+	await expect(page.getByRole('tab', { name: 'Perfect job' })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=perfect-job$`));
+});
+
+test('while what the steps ask cannot be read, the texts promise nothing of the page', async ({
+	page
+}) => {
+	// The first read fails, the second succeeds, the one once the tab is shown again fails
+	await openAsOwner(page, {
+		readinessAnswer: (index) =>
+			index === 1 ? undefined : { status: 500, text: 'Internal Server Error' }
+	});
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=share`);
+	const tab = shareTab(page);
+	const notice = tab.locator('[data-readiness-failed]');
+	await expect(notice).toContainText(
+		'What your steps ask of recruiters could not be read. Try again.'
+	);
+	await expect(tab.locator('[data-reply-hint]')).toHaveText(
+		'It asks them to send you the job description, with its pay range, and gives your portfolio.'
+	);
+	await expectPortfolioOnly(page);
+	expect(await leadsShown(tab)).toEqual([]);
+
+	// Read again: what the steps ask
+	await notice.getByRole('button', { name: 'Try again' }).click();
+	await expect(notice).toHaveCount(0);
+	await expect(reply(page)).toHaveValue(new RegExp(`\\n\\n${PAGE}\\n\\n`));
+
+	// Shown again, the tab is read again: failing, the texts no longer trust what was read before
+	// (the steps may have changed in the Hiring journey tab meanwhile)
+	await showShareAgain(page);
+	await expect(notice).toBeVisible();
+	await expectPortfolioOnly(page);
+	expect(await leadsShown(tab)).toEqual([]);
+});
+
+test('an amount the reply cannot carry is said, and the perfect job is read again', async ({
+	page
+}) => {
+	let perfectJob = PERFECT_JOB;
+	await openAsOwner(page, {}, () => ({ json: perfectJob }));
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=share`);
+	const facts = shareTab(page).locator('[data-share-facts]');
+	await facts.getByRole('checkbox', { name: 'The pay I ask for' }).check();
+	const amount = facts.getByRole('textbox', { name: 'Gross amount, in euros' });
+	await expect(amount).toHaveValue('65000');
+
+	// Written as the reply cannot carry it: said under the field, and left out of the reply
+	await amount.fill('65,000');
+	const problem = facts.getByText(
+		'Write a whole number of euros, such as 65000: until then, the reply leaves the pay out.'
+	);
+	await expect(problem).toBeVisible();
+	await expect(amount).toHaveAttribute('aria-invalid', 'true');
+	await expect(amount).toHaveAccessibleDescription(/^Write a whole number of euros/);
+	await expect(reply(page)).not.toHaveValue(/Pay:/);
+	await amount.fill('65 000');
+	await expect(problem).toHaveCount(0);
+	await expect(amount).not.toHaveAttribute('aria-invalid');
+	await expect(reply(page)).toHaveValue(/- Pay: at least €65,000 gross a year/);
+
+	// The Perfect job tab saved other places meanwhile: once the tab was shown again, the next
+	// fact ticked is filled in from them, and what was filled in before stays the owner's
+	perfectJob = {
+		...PERFECT_JOB,
+		criteria: {
+			...PERFECT_JOB.criteria,
+			pay: { ...PERFECT_JOB.criteria.pay, perYear: 80000 },
+			cities: { importance: 3, places: ['Marseille'] }
+		}
+	};
+	await showShareAgain(page);
+	await facts.getByRole('checkbox', { name: 'Where' }).check();
+	await expect(facts.getByRole('textbox', { name: 'Where' })).toHaveValue('Marseille');
+	await expect(amount).toHaveValue('65 000');
+});
+
+test('"Get started" leads to the Share tab from its link item', async ({ page }) => {
+	await openAsOwner(page);
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=start`);
+	await page
+		.getByRole('tabpanel', { name: /^Get started/ })
+		.getByRole('button', { name: 'Reply and LinkedIn texts' })
+		.click();
+	const share = page.getByRole('tab', { name: 'Share' });
+	await expect(share).toHaveAttribute('aria-selected', 'true');
+	await expect(share).toBeFocused();
+	await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=share$`));
+	await expect(shareTab(page).getByRole('heading', { name: 'Share your link' })).toBeVisible();
+});
+
+test('on a phone, the Share tab and the owner’s note fit the screen, in French', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await openAsOwner(page);
+	/** Nothing runs past the screen's right edge: the page does not scroll sideways */
+	const fitsScreen = () =>
+		page.evaluate(() => {
+			const scroller = document.getElementById('page')!;
+			return (
+				document.documentElement.scrollWidth <= window.innerWidth &&
+				scroller.scrollWidth <= scroller.clientWidth
+			);
+		});
+	const withinScreen = async (locator: Locator) => {
+		const box = (await locator.boundingBox())!;
+		expect(box.x, await locator.innerText()).toBeGreaterThanOrEqual(0);
+		expect(box.x + box.width, await locator.innerText()).toBeLessThanOrEqual(390);
+	};
+
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=share&lang=fr`);
+	const tab = page.getByRole('tabpanel', { name: 'Partager' });
+	await tab.getByRole('radio', { name: 'Français' }).check();
+	// Every fact ticked, filled in from the perfect job: the longest reply
+	for (const fact of ['pay', 'remoteDays', 'places', 'contracts']) {
+		await tab.locator(`[data-fact="${fact}"]`).check();
+	}
+	await expect(tab.getByRole('textbox', { name: 'Où' })).toHaveValue('Paris, Lyon');
+	await expect(tab.getByRole('textbox', { name: 'Votre réponse, en français' })).toHaveValue(
+		/Contrat\s:\sCDI, Freelance/
+	);
+	expect(await fitsScreen()).toBe(true);
+	for (const control of [
+		tab.getByRole('button', { name: 'Copier votre lien' }),
+		tab.getByRole('textbox', { name: 'Montant brut, en euros' }),
+		tab.getByRole('combobox', { name: 'Par', exact: true }),
+		tab.getByRole('textbox', { name: 'Votre réponse, en français' }),
+		tab.getByRole('button', { name: 'Copier la réponse' }),
+		tab.getByRole('button', { name: 'Copier le texte' })
+	]) {
+		await control.scrollIntoViewIfNeeded();
+		await expect(control).toBeInViewport();
+		await withinScreen(control);
+	}
+
+	await gotoHydrated(page, `/${DOMAIN}/hire?lang=fr`);
+	const note = page.locator('[data-owner-note]');
+	await expect(note).toBeVisible();
+	expect(await fitsScreen()).toBe(true);
+	for (const part of [
+		note,
+		note.getByRole('textbox'),
+		note.getByRole('button', { name: 'Copier votre lien' }),
+		note.getByRole('link', { name: 'Plus de façons de partager' })
+	]) {
+		await withinScreen(part);
+	}
+});
+
+test('the page for recruiters is named in the HTML the server sends, in both languages', async ({
+	request
+}) => {
+	// No script runs: what a link preview, a crawler or a browser without JavaScript reads
+	/** French texts keep their non-breaking spaces (before ":"): compared as spaces */
+	const plain = (text: string) => text.replace(/[\u00a0\u202f]/g, ' ');
+	const text = (html: string) =>
+		plain(
+			html
+				.replace(/<!--[\s\S]*?-->/g, '')
+				.replace(/<[^>]+>/g, '')
+				.trim()
+		);
+	for (const { path, title, description } of [
+		{
+			path: `/${DOMAIN}/hire`,
+			title: `Propose a role to ${DOMAIN}`,
+			description: `Propose a role to ${DOMAIN}: their page for recruiters, with the steps they ask you to follow.`
+		},
+		{
+			path: `/${DOMAIN}/hire?lang=fr`,
+			title: `Proposer un poste à ${DOMAIN}`,
+			description: `Proposez un poste à ${DOMAIN} : sa page recruteurs, avec les étapes à suivre.`
+		}
+	]) {
+		const response = await request.get(path);
+		expect({ path, status: response.status() }).toEqual({ path, status: 200 });
+		const html = await response.text();
+		const titles = [...html.matchAll(/<title>([\s\S]*?)<\/title>/g)].map((match) => text(match[1]));
+		expect({ path, titles }).toEqual({ path, titles: [title] });
+		const descriptions = [...html.matchAll(/<meta name="description" content="([^"]*)"/g)].map(
+			(match) => plain(match[1])
+		);
+		expect({ path, descriptions }).toEqual({ path, descriptions: [description] });
+		// The page's heading (the header's is the portfolio's name)
+		const headings = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map((match) =>
+			text(match[1])
+		);
+		expect({ path, headings }).toEqual({ path, headings: [DOMAIN, title] });
+	}
 });
 
 test('the page for recruiters gives its owner their link to copy', async ({ page, context }) => {
