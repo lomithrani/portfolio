@@ -32,9 +32,6 @@ export const previewImage = (kind: PreviewImageKind, origin: string): PreviewIma
 	...PREVIEW_IMAGE_SIZE
 });
 
-/** og:locale of a language */
-export const ogLocale = (locale: Locale): string => (locale === 'fr' ? 'fr_FR' : 'en_GB');
-
 type PortfolioHeading = {
 	name: string;
 	headerTitle?: string | null;

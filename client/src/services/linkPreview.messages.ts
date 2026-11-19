@@ -28,31 +28,34 @@ export const m = defineMessages({
 	},
 	/**
 	 * A portfolio's page for recruiters (/hire), whatever its journey: the default one is a meeting
-	 * alone, an owner's can ask for a job first, or have no step at all. So no step is named and no
-	 * meeting promised: steps open one after the other (openWorkflowSteps), and submitting one or
-	 * booking needs a Google sign-in
+	 * alone, open to anyone, signed out too; an owner's can ask for a note to be read, a job, a score
+	 * first. So no step is named or counted, and nothing is said that a journey may not ask (a
+	 * sign-in, a job, a score): only that its steps, one or several, open one after the other
+	 * (openWorkflowSteps). Neutral too: anyone sees the picture where the link is posted (a LinkedIn
+	 * feed, a chat), and having a portfolio says nothing about looking for a job, so it never calls
+	 * the owner a candidate
 	 */
 	hire: {
 		headline: {
-			en: "A candidate's page for recruiters.",
-			fr: "La page recruteurs d'un candidat."
+			en: 'A page for recruiters.',
+			fr: 'Une page recruteurs.'
 		},
 		accent: {
-			en: 'Propose a role by following their steps.',
-			fr: 'Proposez un poste en suivant ses étapes.'
+			en: 'Propose a role, step by step.',
+			fr: 'Proposez un poste, étape par étape.'
 		},
-		/** The steps drawn under the headline: the first done, the second open, the third locked */
+		/** The steps drawn under the headline: the first open, the next ones faded (there may be none) */
 		step: {
 			en: (number: number) => `Step ${number}`,
 			fr: (number: number) => `Étape ${number}`
 		},
 		side: {
-			en: ['Each step opens in turn', 'Sign in with Google'],
-			fr: ["Chaque étape s'ouvre à son tour", 'Connexion avec Google']
+			en: ['One step or several', 'Each one opens in turn'],
+			fr: ['Une étape ou plusieurs', "Chacune s'ouvre à son tour"]
 		},
 		alt: {
-			en: "A candidate's page for recruiters: propose a role by following their steps. Each step opens in turn; sign in with Google.",
-			fr: "La page recruteurs d'un candidat : proposez un poste en suivant ses étapes. Chaque étape s'ouvre à son tour ; connexion avec Google."
+			en: 'A page for recruiters: propose a role, step by step. One step or several, each one opening in turn.',
+			fr: "Une page recruteurs : proposez un poste, étape par étape. Une étape ou plusieurs, chacune s'ouvre à son tour."
 		}
 	}
 });

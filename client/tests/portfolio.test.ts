@@ -84,7 +84,8 @@ test.describe('experiences page', () => {
 		const response = await gotoHydrated(page, `/${DOMAIN}/experiences`);
 
 		expect(response?.status()).toBe(200);
-		await expect(page).toHaveTitle('Louis Gentil | Resume');
+		// Headed with its address name, as its header: the portfolio has no title
+		await expect(page).toHaveTitle(`${DOMAIN} | Resume`);
 		await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 		await expect(page.getByText('No experiences have been published yet.')).toBeVisible();
 		await expect(page.getByText('This domain is not yet claimed')).toHaveCount(0);

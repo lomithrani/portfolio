@@ -5,8 +5,10 @@
 //   of a hiring journey (src/routes/(site)/page.messages.ts);
 // - portfolio: og-portfolio.png and og-portfolio-fr.png, the picture of every portfolio's
 //   experiences page: what a skill shows there, over a timeline (src/services/linkPreview.messages.ts);
-// - hire: og-hire.png and og-hire-fr.png, the picture of every page for recruiters: steps that
-//   open one after the other (linkPreview.messages.ts).
+// - hire: og-hire.png and og-hire-fr.png, the picture of every page for recruiters: its steps,
+//   one or several, that open one after the other (linkPreview.messages.ts).
+// The files of a portfolio's pictures are the ones its pages name (PREVIEW_IMAGES of
+// src/services/linkPreview.ts).
 // Render them again when one of those texts changes:
 //
 //   bun scripts/og-image/render.mjs                  # from client/: every image; needs the Inter font installed
@@ -19,6 +21,7 @@ import { chromium } from '@playwright/test';
 import { withLocale } from 'portfolio-common';
 import { plainText } from '../../src/lib/i18n/rich.ts';
 import { m } from '../../src/routes/(site)/page.messages.ts';
+import { PREVIEW_IMAGES } from '../../src/services/linkPreview.ts';
 import { m as preview } from '../../src/services/linkPreview.messages.ts';
 import { m as skillPreview } from '../../src/services/projectPreview.messages.ts';
 import { formatMonthCount } from '../../src/services/experienceDates.ts';
@@ -30,7 +33,6 @@ const escape = (text) =>
 	text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 const check = `<span class="check"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M5 10.5l3.2 3.2L15 7" fill="none" stroke="#052e16" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
-const lock = `<span class="lock"><svg viewBox="0 0 20 20" width="16" height="16"><rect x="4.5" y="9" width="11" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M7 9V6.8a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></span>`;
 const arrow = `<span class="arrow">→</span>`;
 
 /** The page every image is drawn on: the brand, a headline with its accent, then `row` */
@@ -124,7 +126,7 @@ const TEMPLATES = {
 		}
 	},
 	portfolio: {
-		files: { en: 'og-portfolio.png', fr: 'og-portfolio-fr.png' },
+		files: PREVIEW_IMAGES.portfolio,
 		size: {
 			en: { headline: 48, side: 21, rowGap: 44 },
 			fr: { headline: 42, side: 20, rowGap: 44 }
@@ -193,19 +195,19 @@ const TEMPLATES = {
 		}
 	},
 	hire: {
-		files: { en: 'og-hire.png', fr: 'og-hire-fr.png' },
+		files: PREVIEW_IMAGES.hire,
 		size: {
 			en: { headline: 56, journey: 20, side: 21, gap: 14 },
 			fr: { headline: 50, journey: 19, side: 20, gap: 12 }
 		},
 		html(locale) {
-			// No step is named (every journey has its own): the first done, the second open, the third
-			// locked until then
+			// No step is named (every journey has its own), and none is locked or counted: the first
+			// open, the next ones faded, as a journey may have only the one (the default meeting)
 			const step = preview.hire.step;
 			const journey = [
-				`<span class="step">${check}${escape(step(1))}</span>`,
-				`<span class="step open"><i>2</i>${escape(step(2))}</span>`,
-				`<span class="step locked">${lock}${escape(step(3))}</span>`
+				`<span class="step open"><i>1</i>${escape(step(1))}</span>`,
+				`<span class="step maybe">${escape(step(2))}</span>`,
+				`<span class="step maybe">${escape(step(3))}</span>`
 			].join(arrow);
 			return page(locale, {
 				headline: preview.hire.headline,
@@ -215,8 +217,8 @@ const TEMPLATES = {
 				style: `
 	.open { padding: 10px 16px 10px 10px; border-radius: 999px; background: #1d4ed8; }
 	.open i { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #fff; color: #1d4ed8; align-items: center; justify-content: center; font-style: normal; font-size: 16px; font-weight: 700; }
-	.locked { color: rgb(255 255 255 / 0.55); }
-	.lock { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgb(255 255 255 / 0.3); align-items: center; justify-content: center; }`
+	.maybe { padding: 9px 16px; border-radius: 999px; border: 1.5px dashed rgb(255 255 255 / 0.3); color: rgb(255 255 255 / 0.5); }
+	.maybe:last-child { opacity: 0.6; }`
 			});
 		}
 	}

@@ -149,6 +149,7 @@ describe('domainNameProblem', () => {
 		expect(domainNameProblem('jane.')).toMatch(/Start and end/);
 		expect(domainNameProblem('jane..doe')).toMatch(/two dots/);
 		expect(domainNameProblem('config.json')).toMatch(/file name/);
+		expect(domainNameProblem('og-hire.png')).toMatch(/file name/);
 		expect(domainNameProblem('a'.repeat(64))).toMatch(/at most 63/);
 	});
 });

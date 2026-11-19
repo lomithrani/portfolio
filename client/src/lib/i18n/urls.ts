@@ -21,3 +21,9 @@ export const localeAlternate = (url: PageUrl, locale: Locale): string => {
 	if (locale !== 'en') target.searchParams.set(LOCALE_PARAM, locale);
 	return target.href;
 };
+
+/**
+ * `og:locale` of a language, for the share tags of every page that writes one (the landing page,
+ * the legal pages, LocaleLinks.svelte, a portfolio's OpenGraph.svelte)
+ */
+export const ogLocale = (locale: Locale): string => (locale === 'fr' ? 'fr_FR' : 'en_GB');

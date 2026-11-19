@@ -5,7 +5,6 @@ import { LOCALES, withLocale } from 'portfolio-common';
 import {
 	PREVIEW_IMAGES,
 	PREVIEW_IMAGE_SIZE,
-	ogLocale,
 	portfolioName,
 	portfolioPreview,
 	previewImage,
@@ -62,13 +61,22 @@ describe('the picture of a preview', () => {
 					expect(alt.toLowerCase()).toContain(words(m[kind].accent));
 				});
 		expect(withLocale('fr', () => previewImage('hire', 'https://a.example').alt)).toMatch(
-			/^La page recruteurs d'un candidat/
+			/^Une page recruteurs/
 		);
 	});
 
-	test('og:locale names the language and its region', () => {
-		expect(ogLocale('en')).toBe('en_GB');
-		expect(ogLocale('fr')).toBe('fr_FR');
+	test('the page for recruiters promises nothing a journey may not ask, and stays neutral', () => {
+		// The default journey is a meeting alone, open to anyone signed out: no sign-in, no job, no
+		// score is asked of every recruiter. And anyone sees the picture where the link is posted:
+		// it never calls the owner a candidate (having a portfolio says nothing about looking)
+		for (const locale of LOCALES)
+			withLocale(locale, () => {
+				const { headline, accent, side, alt } = m.hire;
+				const texts = [headline, accent, ...side, alt].join(' ').toLowerCase();
+				expect(texts).not.toMatch(/sign|connexion|connect|google|login/);
+				expect(texts).not.toMatch(/\bjob\b|\boffre|score|pay\b|rémunération|meeting|rendez-vous/);
+				expect(texts).not.toMatch(/candidat/);
+			});
 	});
 });
 

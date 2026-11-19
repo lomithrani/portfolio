@@ -116,6 +116,11 @@ test.describe('landing page, signed out', () => {
 			'content',
 			'summary_large_image'
 		);
+		// X's own alternative text of the picture: the same as og:image:alt
+		await expect(page.locator('meta[name="twitter:image:alt"]')).toHaveAttribute(
+			'content',
+			(await page.locator('meta[property="og:image:alt"]').getAttribute('content')) ?? 'missing'
+		);
 		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/$/);
 		await expect(
 			page.getByRole('heading', {

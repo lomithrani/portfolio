@@ -20,7 +20,7 @@
 	import { isDomainAdmin } from '#services/authentication.ts';
 	import type { FormData } from '#services/experienceForm.ts';
 	import { importStorageKey, type ImportStatus } from '#services/resumeImport.ts';
-	import { portfolioPreview } from '#services/linkPreview.ts';
+	import { portfolioName, portfolioPreview } from '#services/linkPreview.ts';
 	import { loadReadiness, setupProgress, type Readiness } from '#services/candidateSetup.ts';
 	import {
 		activeFilters,
@@ -144,14 +144,9 @@
 		});
 	};
 
-	let ownerName = $derived(
-		data.domain.headerTitle ||
-			data.domainName
-				.split(/[.\-_]+/)
-				.filter(Boolean)
-				.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-				.join(' ')
-	);
+	// The name the portfolio is headed with (its title, or its address name, as the layout's
+	// header): the page's title, its description and its preview all say the same one
+	let ownerName = $derived(portfolioName(data.domain));
 	let preview = $derived(portfolioPreview(data.domain, m.description(ownerName)));
 
 	// One editor for the page: Add, every card's Edit and the résumé import's Edit open it

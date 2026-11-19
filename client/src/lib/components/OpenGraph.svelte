@@ -1,19 +1,19 @@
 <!--
 @component
 The preview a shared link gets (LinkedIn, Slack, messaging apps), in the page's `<head>`: every
-Open Graph tag and `twitter:card`, written once. Mounted by the pages of a portfolio a visitor is
-sent to, the experiences page and the page for recruiters, with what they show anyone: a title, a
-description, and a generic picture of Portfolio in the page's language (`previewImage` of
-`#services/linkPreview.ts`). Not listed by search engines all the same: PortfolioHead.svelte writes
-their robots meta, and they name no canonical or `hreflang` address. `og:url` is the page's
-address without its states (`?view=`, `?job=`...), with `?lang=fr` in French, as the language
-switch would give it.
+Open Graph tag, `twitter:card` and `twitter:image:alt`, written once. Mounted by the pages of a
+portfolio a visitor is sent to, the experiences page and the page for recruiters, with what they
+show anyone: a title, a description, and a generic picture of Portfolio in the page's language
+(`previewImage` of `#services/linkPreview.ts`). Not listed by search engines all the same:
+PortfolioHead.svelte writes their robots meta, and they name no canonical or `hreflang` address.
+`og:url` is the page's address without its states (`?view=`, `?job=`...), with `?lang=fr` in
+French, as the language switch would give it.
 -->
 <script lang="ts">
 	import { page } from '$app/state';
 	import { getLocale } from 'portfolio-common';
-	import { localeAlternate } from '#lib/i18n/urls.ts';
-	import { ogLocale, previewImage, type PreviewImageKind } from '#services/linkPreview.ts';
+	import { localeAlternate, ogLocale } from '#lib/i18n/urls.ts';
+	import { previewImage, type PreviewImageKind } from '#services/linkPreview.ts';
 
 	let {
 		title,
@@ -44,4 +44,6 @@ switch would give it.
 	<meta property="og:image:height" content={String(picture.height)} />
 	<meta property="og:image:alt" content={picture.alt} />
 	<meta name="twitter:card" content="summary_large_image" />
+	<!-- X reads the picture from og:image, but its alternative text only from here -->
+	<meta name="twitter:image:alt" content={picture.alt} />
 </svelte:head>

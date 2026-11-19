@@ -1,4 +1,10 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import {
+	expect,
+	test,
+	type APIRequestContext,
+	type Page,
+	type PlaywrightWorkerArgs
+} from '@playwright/test';
 import { API_URL } from './support/owner.ts';
 
 // Search engines (client/src/lib/robots.ts): a portfolio's pages, the 404 of a name nobody
@@ -7,9 +13,14 @@ import { API_URL } from './support/owner.ts';
 // canonical links; robots.txt refuses nothing, so crawlers and link previews can still fetch a
 // portfolio, whose experiences page and page for recruiters carry their preview tags
 // (OpenGraph.svelte) in the server's HTML; the API asks the same of every answer. Runs against the
-// CI seed: the portfolio 'louis.gentil' exists; the visitor is anonymous.
+// CI seed: the portfolio 'louis.gentil' exists, and 'e2e-preview' (seed:e2e) with a title and a
+// tagline; the visitor is anonymous.
 
 const DOMAIN = 'louis.gentil';
+// A portfolio with a title and a tagline (server/tests/seedE2e.ts), only read here: what its
+// owner wrote, with what an HTML attribute must escape
+const PREVIEW = 'e2e-preview';
+const PREVIEW_HEADING = { name: 'Jane "JD" Doe & Co', tagline: 'Staff engineer <Lyon> & more' };
 // A valid name nobody claimed: the root error page offers to claim it
 const UNCLAIMED = 'e2e-robots-nobody-claimed-this';
 
@@ -21,8 +32,8 @@ const robotsHeader = (response: { headers(): Record<string, string> } | null) =>
  * What the portfolio is headed with ([domain]/+layout.svelte), as the API gives it: its title, or
  * its address name, and its tagline
  */
-const portfolioHeading = async (request: APIRequestContext) => {
-	const domain = (await (await request.get(`${API_URL}/domain/${DOMAIN}`)).json()) as {
+const portfolioHeading = async (request: APIRequestContext, name = DOMAIN) => {
+	const domain = (await (await request.get(`${API_URL}/domain/${name}`)).json()) as {
 		name: string;
 		headerTitle?: string;
 		headerSubtitle?: string;
@@ -56,6 +67,52 @@ const previewTags = async (page: Page): Promise<Record<string, string>> => {
 	const names = tags.map(([name]) => name);
 	expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
 	return Object.fromEntries(tags);
+};
+
+/** Text of the server's HTML, its entities decoded */
+const decode = (text: string) =>
+	text.replace(
+		/&(quot|#34|lt|gt|#39|amp);/g,
+		(entity, name: string) =>
+			({ quot: '"', '#34': '"', lt: '<', gt: '>', '#39': "'", amp: '&' })[name] ?? entity
+	);
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * What a link preview's crawler (LinkedIn's) reads of a page: the server's answer, no script run,
+ * and the values of its tags as they are written there. A fresh context: a crawler keeps no
+ * cookie, so no `?lang=` fetched before changes the language of the next page
+ */
+const crawl = async (
+	playwright: PlaywrightWorkerArgs['playwright'],
+	baseURL: string | undefined,
+	path: string
+) => {
+	const context = await playwright.request.newContext({
+		baseURL,
+		extraHTTPHeaders: {
+			'user-agent': 'LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'
+		}
+	});
+	try {
+		// Redirects followed, as a crawler does: the bare address sends on to the experiences
+		const response = await context.get(path);
+		expect({ path, status: response.status() }).toEqual({ path, status: 200 });
+		const html = await response.text();
+		const values = (attribute: 'property' | 'name', key: string) =>
+			[...html.matchAll(new RegExp(`<meta ${attribute}="${key}" content="([^"]*)"`, 'g'))].map(
+				(match) => decode(match[1])
+			);
+		return {
+			html,
+			title: [...html.matchAll(/<title>([^<]*)<\/title>/g)].map((match) => decode(match[1])),
+			og: (key: string) => values('property', key),
+			meta: (key: string) => values('name', key)
+		};
+	} finally {
+		await context.dispose();
+	}
 };
 
 test.describe('a portfolio', () => {
@@ -105,9 +162,12 @@ test.describe('a portfolio', () => {
 				'og:image:width': '1200',
 				'og:image:height': '630',
 				'og:image:alt': expect.stringMatching(/\w/),
-				'twitter:card': 'summary_large_image'
+				'twitter:card': 'summary_large_image',
+				'twitter:image:alt': tags['og:image:alt']
 			});
 			if (image === 'og-hire') await expect(page).toHaveTitle(tags['og:title']);
+			// Without a tagline, the page's description names the portfolio as its title does
+			else if (!tagline) expect(description).toMatch(new RegExp(`^${escapeRegExp(name)}:`));
 			const picture = await request.get(new URL(tags['og:image']).pathname);
 			expect(picture.status()).toBe(200);
 			expect(picture.headers()['content-type']).toBe('image/png');
@@ -140,7 +200,7 @@ test.describe('a portfolio', () => {
 			'og:url': atSite(baseURL, `/${DOMAIN}/hire?lang=fr`),
 			'og:locale': 'fr_FR',
 			'og:image': atSite(baseURL, '/og-hire-fr.png'),
-			'og:image:alt': expect.stringMatching(/^La page recruteurs d'un candidat/)
+			'og:image:alt': expect.stringMatching(/^Une page recruteurs/)
 		});
 		expect((await request.get(new URL(hire['og:image']).pathname)).ok()).toBe(true);
 
@@ -152,40 +212,98 @@ test.describe('a portfolio', () => {
 
 	test('a link preview reads its tags in the HTML the server sends', async ({
 		request,
+		playwright,
 		baseURL
 	}) => {
-		// What LinkedIn's crawler gets: no script runs, the tags are in the server's answer
-		const headers = {
-			'user-agent': 'LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'
-		};
-		for (const { path, url, image } of [
+		const { name, tagline } = await portfolioHeading(request);
+		for (const { path, url, image, french } of [
+			// The link people copy (CopyLink, the share kit): the bare address, sent on to the
+			// experiences page, in the language it asks for
+			{ path: `/${DOMAIN}`, url: `/${DOMAIN}/experiences`, image: 'og-portfolio.png' },
+			{
+				path: `/${DOMAIN}?lang=fr`,
+				url: `/${DOMAIN}/experiences?lang=fr`,
+				image: 'og-portfolio-fr.png',
+				french: true
+			},
 			{
 				path: `/${DOMAIN}/experiences?view=timeline`,
 				url: `/${DOMAIN}/experiences`,
 				image: 'og-portfolio.png'
 			},
-			{ path: `/${DOMAIN}/hire?lang=fr`, url: `/${DOMAIN}/hire?lang=fr`, image: 'og-hire-fr.png' }
+			{ path: `/${DOMAIN}/hire`, url: `/${DOMAIN}/hire`, image: 'og-hire.png' },
+			{
+				path: `/${DOMAIN}/hire?lang=fr`,
+				url: `/${DOMAIN}/hire?lang=fr`,
+				image: 'og-hire-fr.png',
+				french: true
+			}
 		]) {
-			const response = await request.get(path, { headers });
-			expect({ path, status: response.status() }).toEqual({ path, status: 200 });
-			const html = await response.text();
-			const tag = (property: string) =>
-				[...html.matchAll(new RegExp(`<meta property="${property}" content="([^"]*)"`, 'g'))].map(
-					(match) => match[1]
-				);
-			expect({ path, url: tag('og:url') }).toEqual({ path, url: [atSite(baseURL, url)] });
-			expect({ path, image: tag('og:image') }).toEqual({
+			const { og, meta, html } = await crawl(playwright, baseURL, path);
+			const hire = path.includes('/hire');
+			const description = meta('description');
+			expect({ path, descriptions: description.length }).toEqual({ path, descriptions: 1 });
+			const title = hire ? `${french ? 'Proposer un poste à' : 'Propose a role to'} ${name}` : name;
+			const alt = hire
+				? french
+					? /^Une page recruteurs/
+					: /^A page for recruiters/
+				: french
+					? /^Des compétences à vérifier/
+					: /^Skills you can check/;
+			expect({
 				path,
-				image: [atSite(baseURL, `/${image}`)]
-			});
-			expect({ path, titles: tag('og:title').length }).toEqual({ path, titles: 1 });
-			expect({ path, descriptions: tag('og:description').length }).toEqual({
+				title: og('og:title'),
+				description: og('og:description'),
+				url: og('og:url'),
+				locale: og('og:locale'),
+				image: og('og:image'),
+				alt: og('og:image:alt'),
+				card: meta('twitter:card'),
+				twitterAlt: meta('twitter:image:alt')
+			}).toEqual({
 				path,
-				descriptions: 1
+				title: [title],
+				// The page for recruiters: its own description (the journey's steps); the experiences
+				// page: the tagline, or its own description
+				description: hire || !tagline ? description : [tagline],
+				url: [atSite(baseURL, url)],
+				locale: [french ? 'fr_FR' : 'en_GB'],
+				image: [atSite(baseURL, `/${image}`)],
+				alt: [expect.stringMatching(alt)],
+				card: ['summary_large_image'],
+				twitterAlt: og('og:image:alt')
 			});
-			expect(html).toContain('<meta name="twitter:card" content="summary_large_image"');
 			expect(html).toMatch(/<meta name="robots" content="[^"]*\bnoindex\b/);
 		}
+	});
+
+	test("its title and tagline are its preview, escaped in the server's HTML", async ({
+		request,
+		playwright,
+		baseURL
+	}) => {
+		// As seed:e2e sets them on every run
+		expect(await portfolioHeading(request, PREVIEW)).toEqual(PREVIEW_HEADING);
+		const { name, tagline } = PREVIEW_HEADING;
+
+		const experiences = await crawl(playwright, baseURL, `/${PREVIEW}/experiences`);
+		expect(experiences.og('og:title')).toEqual([name]);
+		expect(experiences.og('og:description')).toEqual([tagline]);
+		// The page's own title and description name it the same way
+		expect(experiences.title).toEqual([`${name} | Resume`]);
+		expect(experiences.meta('description')).toEqual([
+			`${name}: professional experiences, personal and educational projects and courses.`
+		]);
+
+		const hire = await crawl(playwright, baseURL, `/${PREVIEW}/hire?lang=fr`);
+		expect(hire.og('og:title')).toEqual([`Proposer un poste à ${name}`]);
+		expect(hire.title).toEqual([`Proposer un poste à ${name}`]);
+		expect(hire.og('og:description')).toEqual(hire.meta('description'));
+		expect(hire.og('og:description')[0]).toContain(name);
+
+		// What the owner wrote never reaches the HTML as markup
+		for (const { html } of [experiences, hire]) expect(html).not.toContain('<Lyon>');
 	});
 
 	test('its bare address redirects to its experiences, not listed either', async ({ request }) => {

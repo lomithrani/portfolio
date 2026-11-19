@@ -1009,8 +1009,20 @@ mongosh "<MONGO_URL of the stage>" --quiet --eval '
   ).toArray()'
 ```
 
-An empty array (`[]`) means nothing to do. Otherwise, rename the domain (`db.domains.updateOne`
-with a free name) and tell its owner before deploying that stage.
+The files of `client/static` answer at the site's root too (`/og-hire.png`, `/logo.svg`...), so
+no name ending with a picture, icon or video extension can be claimed either (`.png`, `.jpg`,
+`.svg`, `.webp`, `.ico`, `.webm`, `.mp4`...: `FILE_EXTENSION_PATTERN` of the same file). Before
+deploying the version that refuses them, check once that no portfolio has one: its pages would
+still load, but the site would take its name for an invalid one (a recruiter writing a job from
+its page for recruiters would not be sent back there):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  db.domains.find({ name: /\.(png|jpe?g|gif|svg|webp|avif|ico|webm|mp4)$/ }, { name: 1, admin: 1 }).toArray()'
+```
+
+An empty array (`[]`) from each query means nothing to do. Otherwise, rename the domain
+(`db.domains.updateOne` with a free name) and tell its owner before deploying that stage.
 
 ## Search engines
 
@@ -1064,8 +1076,12 @@ curl -s https://example.com/robots.txt | grep -iE '^(user-agent|allow|disallow)'
 LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'
 curl -s -o /dev/null -w '%{http_code}\n' -A "$LINKEDIN" \
   https://example.com/louis.gentil/experiences                                   # 200, not a challenge (403 or 503)
+curl -sL -A "$LINKEDIN" https://example.com/louis.gentil \
+  | grep -o '<meta property="og:\(url\|image\|locale\)"[^>]*>'                   # the link people copy: og:url .../louis.gentil/experiences, og:image .../og-portfolio.png, og:locale en_GB
+curl -sL -A "$LINKEDIN" 'https://example.com/louis.gentil?lang=fr' \
+  | grep -o '<meta property="og:\(url\|image\|locale\)"[^>]*>'                   # og:url .../experiences?lang=fr, og:image .../og-portfolio-fr.png, og:locale fr_FR
 curl -s -A "$LINKEDIN" https://example.com/louis.gentil/experiences \
-  | grep -o '<meta property="og:[^>]*>\|<meta name="twitter:[^>]*>'             # og:title (the portfolio's title), og:description (its tagline), og:image .../og-portfolio.png, og:url, og:locale en_GB, twitter:card
+  | grep -o '<meta property="og:[^>]*>\|<meta name="twitter:[^>]*>'             # og:title (the portfolio's title), og:description (its tagline), og:image .../og-portfolio.png, og:url, og:locale en_GB, twitter:card, twitter:image:alt
 curl -s -A "$LINKEDIN" 'https://example.com/louis.gentil/hire?lang=fr' \
   | grep -o '<meta property="og:[^>]*>'                                          # og:title « Proposer un poste à … », og:description « … : réserver un rendez-vous, en 2 minutes environ » (the journey's steps), og:image .../og-hire-fr.png, og:url ...?lang=fr, og:locale fr_FR
 curl -s https://example.com/louis.gentil/hire | grep -o 'Before you start\|About [0-9]* minutes'   # the page rendered on the server, from the journey
@@ -1079,8 +1095,9 @@ ClaudeBot...). The page fetched as LinkedInBot must be the portfolio itself, wit
 not a challenge page that also answers 200.
 
 LinkedIn's [Post Inspector](https://www.linkedin.com/post-inspector/) on a portfolio's addresses
-then shows their previews: `/<name>/experiences` and `/<name>/hire`, each in English and with
-`?lang=fr`, with their title, description and picture. LinkedIn keeps a link's preview for about a
+then shows their previews: `/<name>` first (the link its owner copies, sent on to its
+experiences), then `/<name>/experiences` and `/<name>/hire`, each in English and with `?lang=fr`,
+with their title, description and picture. LinkedIn keeps a link's preview for about a
 week: inspecting the address fetches it again, after a change of the pictures or of a
 portfolio's title.
 

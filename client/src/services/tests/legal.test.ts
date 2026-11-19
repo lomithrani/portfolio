@@ -1,3 +1,5 @@
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
 	AGE_CONFIRMATION_KEY,
@@ -107,5 +109,22 @@ describe('reserved domain names', () => {
 	it('still accepts names that only start like one', () => {
 		expect(isValidDomainName('legal.eagle')).toBe(true);
 		expect(isValidDomainName('helpful')).toBe(true);
+	});
+
+	it('reserves the name of every file served at the root of the site', () => {
+		// A file of client/static answers at /<its name>, before any route: a portfolio claimed under
+		// that name would have its bare address (the link people copy) serve the file instead
+		const root = fileURLToPath(new URL('../../../static/', import.meta.url));
+		const files = readdirSync(root, { withFileTypes: true })
+			.filter((entry) => entry.isFile())
+			.map((entry) => entry.name);
+		expect(files).toEqual(expect.arrayContaining(['og-hire.png', 'og-portfolio-fr.png']));
+		for (const file of files)
+			expect({ file, valid: isValidDomainName(file) }).toEqual({ file, valid: false });
+		for (const name of ['jane.jpg', 'jane.jpeg', 'jane.webm', 'jane.mp4', 'jane.ico', 'jane.webp'])
+			expect({ name, valid: isValidDomainName(name) }).toEqual({ name, valid: false });
+		// A name that only looks like one
+		expect(isValidDomainName('png.dev')).toBe(true);
+		expect(isValidDomainName('jane.pngs')).toBe(true);
 	});
 });

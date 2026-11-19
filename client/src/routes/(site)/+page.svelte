@@ -18,7 +18,7 @@
 	import CandidateOnboarding from '#components/landing/CandidateOnboarding.svelte';
 	import DemoVideo from '#components/landing/DemoVideo.svelte';
 	import Rich from '#lib/i18n/Rich.svelte';
-	import { localeAlternate } from '#lib/i18n/urls.ts';
+	import { localeAlternate, ogLocale } from '#lib/i18n/urls.ts';
 	import { isSessionValid } from '#services/authentication.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { m as layout } from './layout.messages.ts';
@@ -104,12 +104,13 @@
 	<meta property="og:title" content={layout.home.subtitle} />
 	<meta property="og:description" content={m.meta.description} />
 	<meta property="og:url" content={canonical} />
-	<meta property="og:locale" content={locale === 'fr' ? 'fr_FR' : 'en_GB'} />
+	<meta property="og:locale" content={ogLocale(locale)} />
 	<meta property="og:image" content={ogImage} />
 	<meta property="og:image:width" content="1200" />
 	<meta property="og:image:height" content="630" />
 	<meta property="og:image:alt" content={m.meta.imageAlt} />
 	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:image:alt" content={m.meta.imageAlt} />
 </svelte:head>
 
 <div class="relative isolate overflow-hidden">

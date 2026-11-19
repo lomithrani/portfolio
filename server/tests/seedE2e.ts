@@ -10,7 +10,9 @@
 // client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
 // and goes through it as the e2e recruiter. client/tests/share-kit.test.ts signs in as the owner of
 // 'e2e-share-kit' (the default journey, never saved: the tests answer the readiness and the perfect
-// job they need in the browser, so it stays that way). The candidate 'e2e.candidate@example.com' (no domain, no
+// job they need in the browser, so it stays that way). 'e2e-preview' is read, never changed, by
+// client/tests/robots.test.ts: its title and tagline, set here on every run, are the preview of a
+// shared link, with characters the HTML must escape. The candidate 'e2e.candidate@example.com' (no domain, no
 // recruiter space, no acceptance of the terms) is signed in as by client/tests/account.test.ts,
 // claim-consent.test.ts, feedback.test.ts, recruiter.test.ts, hire-journey.test.ts, job-view.test.ts
 // and the signed-in steps of landing.test.ts; the tests that would change it (accepting the terms,
@@ -41,8 +43,17 @@ const owners = [
   { email: 'e2e.import@example.com', name: 'Ivy', surname: 'Importer', domain: 'e2e-import' },
   { email: 'e2e.shared@example.com', name: 'Sam', surname: 'Shared', domain: 'e2e-shared' },
   { email: 'e2e.journey@example.com', name: 'Jay', surname: 'Journey', domain: 'e2e-journey' },
-  { email: 'e2e.sharekit@example.com', name: 'Skye', surname: 'Sharer', domain: 'e2e-share-kit' }
+  { email: 'e2e.sharekit@example.com', name: 'Skye', surname: 'Sharer', domain: 'e2e-share-kit' },
+  { email: 'e2e.preview@example.com', name: 'Pia', surname: 'Preview', domain: 'e2e-preview' }
 ];
+
+// The heading of 'e2e-preview', which its link preview carries (og:title, og:description): text
+// its owner wrote, with what an HTML attribute must escape (PREVIEW_HEADING of
+// client/tests/robots.test.ts)
+const E2E_PREVIEW_HEADING = {
+  headerTitle: 'Jane "JD" Doe & Co',
+  headerSubtitle: 'Staff engineer <Lyon> & more'
+};
 
 for (const owner of owners) {
   const user = await User.findOneAndUpdate(
@@ -53,7 +64,11 @@ for (const owner of owners) {
 
   await Domain.findOneAndUpdate(
     { name: owner.domain },
-    { $setOnInsert: { admin: user._id, experiences: [] } },
+    {
+      $setOnInsert: { admin: user._id, experiences: [] },
+      // Set on every run, as PUT /domain stores it (a database seeded before has none)
+      ...(owner.domain === 'e2e-preview' ? { $set: E2E_PREVIEW_HEADING } : {})
+    },
     { upsert: true }
   );
 
