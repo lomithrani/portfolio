@@ -110,7 +110,10 @@ const journey = async () => {
 		await page.waitForTimeout(300);
 	};
 
-	await f.hold(1500);
+	// The page's title and its "Before you start", then Jane's note, read and confirmed
+	await f.hold(1800);
+	await f.scroll(await f.topOf(heading('What I am looking for'), 90), 800);
+	await f.hold(1600);
 	await f.tap(page.getByRole('button', { name: 'I have read this' }));
 	await settle();
 	await f.hold(500);

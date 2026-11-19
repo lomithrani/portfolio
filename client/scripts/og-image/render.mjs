@@ -2,7 +2,7 @@
 // and French. Their texts are read from the messages of the pages they preview, so an image and
 // its page cannot say different things:
 // - landing: client/static/og-image.png and og-image-fr.png, the hero's headline over the steps
-//   of a hiring journey (src/routes/(site)/page.messages.ts);
+//   of a hiring journey, beside three of its promises (src/routes/(site)/page.messages.ts);
 // - portfolio: og-portfolio.png and og-portfolio-fr.png, the picture of every portfolio's
 //   experiences page: what a skill shows there, over a timeline (src/services/linkPreview.messages.ts);
 // - hire: og-hire.png and og-hire-fr.png, the picture of every page for recruiters: its steps,
@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { withLocale } from 'portfolio-common';
-import { plainText } from '../../src/lib/i18n/rich.ts';
+import { richParts } from '../../src/lib/i18n/rich.ts';
 import { m } from '../../src/routes/(site)/page.messages.ts';
 import { PREVIEW_IMAGES } from '../../src/services/linkPreview.ts';
 import { m as preview } from '../../src/services/linkPreview.messages.ts';
@@ -35,8 +35,19 @@ const escape = (text) =>
 const check = `<span class="check"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M5 10.5l3.2 3.2L15 7" fill="none" stroke="#052e16" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
 const arrow = `<span class="arrow">→</span>`;
 
-/** The page every image is drawn on: the brand, a headline with its accent, then `row` */
-const page = (locale, { headline, accent, size, row, style = '' }) => `<!doctype html>
+/** A message's `<nowrap>` passages kept on one line, as the page shows them; the rest escaped */
+const nowrapHtml = (text) =>
+	richParts(text)
+		.map(({ tag, text }) =>
+			tag === 'nowrap' ? `<b class="nowrap">${escape(text)}</b>` : escape(text)
+		)
+		.join('');
+
+/**
+ * The page every image is drawn on: the brand, a headline with its accent (`accentHtml` when it
+ * holds markup, else `accent`, escaped), then `row`
+ */
+const page = (locale, { headline, accent, accentHtml, size, row, style = '' }) => `<!doctype html>
 <html lang="${locale}">
 <meta charset="utf-8" />
 <style>
@@ -55,6 +66,7 @@ const page = (locale, { headline, accent, size, row, style = '' }) => `<!doctype
 	.brand svg { width: 56px; height: 56px; }
 	h1 { margin-top: auto; font-size: ${size.headline}px; line-height: 1.16; font-weight: 800; letter-spacing: -0.02em; }
 	h1 span { display: block; background: linear-gradient(90deg, #60a5fa, #a5b4fc 70%, #c4b5fd); -webkit-background-clip: text; color: transparent; }
+	h1 .nowrap { white-space: nowrap; font-weight: inherit; }
 	.row { margin-top: ${size.rowGap ?? 64}px; display: flex; align-items: center; justify-content: space-between; gap: 40px; }
 	.journey {
 		display: flex; align-items: center; gap: ${size.gap}px; padding: 18px 20px; white-space: nowrap;
@@ -65,11 +77,12 @@ const page = (locale, { headline, accent, size, row, style = '' }) => `<!doctype
 	.check { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #22c55e; align-items: center; justify-content: center; }
 	.arrow { color: rgb(255 255 255 / 0.45); font-weight: 400; }
 	.side { text-align: right; font-size: ${size.side}px; line-height: 1.65; color: rgb(255 255 255 / 0.78); white-space: nowrap; }
+	.side div { ${size.sideWidth ? `max-width: ${size.sideWidth}px; white-space: normal; text-wrap: balance; line-height: 1.35; margin-top: 6px;` : ''} }
 	${style}
 </style>
 <body>
 	<div class="brand">${logo}Portfolio</div>
-	<h1>${escape(headline)}<span>${escape(accent)}</span></h1>
+	<h1>${escape(headline)}<span>${accentHtml ?? escape(accent)}</span></h1>
 	<div class="row">${row}</div>
 </body>
 </html>`;
@@ -86,25 +99,17 @@ const TEMPLATES = {
 			en: {
 				steps: ['Note', 'Job', 'Match'],
 				last: 'Book a meeting',
-				side: [
-					'Free for talent',
-					'Pay · Remote · Commute · Skills',
-					'Only a match books a meeting'
-				],
 				size: { headline: 60, journey: 19, side: 21, gap: 14 }
 			},
 			fr: {
 				// The glossary's words (docs/I18N.md), longer than the English: smaller, to fit the row
 				steps: ['Note', 'Offre', 'Correspondance'],
 				last: 'Rendez-vous',
-				side: [
-					'Gratuit pour les talents',
-					'Rémunération · Télétravail · Trajet',
-					'Rendez-vous pour les bonnes offres'
-				],
-				size: { headline: 54, journey: 16, side: 18, gap: 10 }
+				size: { headline: 48, journey: 16, side: 17, sideWidth: 280, gap: 10 }
 			}
 		},
+		/** Beside the journey: three of the page's promises, as it words them (and their alt text) */
+		side: () => [m.promises.free.title, m.promises.pay.title, m.promises.steps.title],
 		html(locale) {
 			const t = this.text[locale];
 			const steps = t.steps
@@ -115,9 +120,9 @@ const TEMPLATES = {
 				.join('');
 			return page(locale, {
 				headline: m.hero.headline,
-				accent: plainText(m.hero.headlineAccent),
+				accentHtml: nowrapHtml(m.hero.headlineAccent),
 				size: t.size,
-				row: `<div class="journey">${steps}<span class="last"><i>4</i>${escape(t.last)}</span></div>${side(t.side)}`,
+				row: `<div class="journey">${steps}<span class="last"><i>4</i>${escape(t.last)}</span></div>${side(this.side())}`,
 				style: `
 	.step b { color: #86efac; font-weight: 700; }
 	.last { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px 10px 10px; border-radius: 999px; background: #1d4ed8; }

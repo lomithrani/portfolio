@@ -23,16 +23,30 @@ test.describe('a visitor whose browser prefers French', () => {
 		expect(response?.status()).toBe(200);
 		expect(response?.headers()['content-language']).toBe('fr');
 		await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
-		await expect(page).toHaveTitle('Votre portfolio trie les offres pour vous | Portfolio');
+		await expect(page).toHaveTitle('Votre carrière, à vos conditions | Portfolio');
 		await expect(
 			page.getByRole('heading', {
 				level: 2,
-				name: 'Votre portfolio, à votre image. Fini les appels pour le mauvais poste.'
+				name: "Votre carrière, à vos conditions. La rémunération d'abord. L'appel ensuite."
 			})
 		).toBeVisible();
+		await expect(page.getByRole('heading', { level: 2, name: 'Envoyez votre lien' })).toBeVisible();
 		await expect(
-			page.getByRole('heading', { level: 2, name: "D'abord le bon poste, ensuite l'appel" })
+			page.getByRole('heading', { level: 2, name: 'Nos engagements envers vous' })
 		).toBeVisible();
+		// The range cap in French numbers, the law cited in the answer about paying
+		await expect(
+			page.getByRole('listitem').filter({
+				has: page.getByRole('heading', { name: "La rémunération d'abord, si vous le demandez" })
+			})
+		).toContainText('ne dépasse pas 1,5 fois le bas');
+		await expect(page.locator('details', { hasText: 'Devrai-je payer un jour' })).toContainText(
+			'(article L5321-3 du code du travail)'
+		);
+		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+			'content',
+			"Votre carrière, à vos conditions. La rémunération d'abord, l'appel ensuite."
+		);
 
 		// Search engines find each language at its own address
 		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/\?lang=fr$/);
@@ -93,9 +107,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		await languageSwitch(page).click();
 		await expect(page).toHaveURL(/\/\?lang=en$/);
 		await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-		await expect(
-			page.getByRole('heading', { level: 2, name: 'First the match, then the call' })
-		).toBeVisible();
+		await expect(page.getByRole('heading', { level: 2, name: 'Send your link' })).toBeVisible();
 		expect((await languageCookie(page))?.value).toBe('en');
 
 		// Without the parameter too: the choice wins over the browser's preference

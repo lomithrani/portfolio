@@ -15,9 +15,14 @@ export const m = defineMessages({
 		en: "On Portfolio, a skill is not a keyword: it comes with the projects it was used in, and for how long. When a candidate's page for recruiters asks for a job, share yours there, and book a meeting once you have been through their steps.",
 		fr: "Sur Portfolio, une compétence n'est pas un mot-clé : elle vient avec les projets où elle a servi, et leur durée. Lorsque la page recruteurs d'un candidat demande une offre, partagez-y la vôtre, et réservez un rendez-vous une fois ses étapes franchies."
 	},
+	/**
+	 * Backed by: the Terms of use (#service: free for recruiters for now, told before any paid
+	 * feature applies to them, charged nothing they did not agree to): never "free forever"; one
+	 * account holds both spaces (USER_MODES of common/models/account.ts, the account menu)
+	 */
 	free: {
-		en: 'Free to use. The same Google account can also hold your own portfolio, as a candidate: switch spaces from the account menu.',
-		fr: "Gratuit. Avec le même compte Google, vous pouvez aussi avoir votre propre portfolio de candidat : changez d'espace depuis le menu du compte."
+		en: 'Free for recruiters today: you would be told before any paid feature applied to you. The same Google account can also hold your own portfolio, as a candidate: switch spaces from the account menu.',
+		fr: "Gratuit pour les recruteurs aujourd'hui : vous seriez prévenu avant qu'une fonction payante ne s'applique à vous. Avec le même compte Google, vous pouvez aussi avoir votre propre portfolio de candidat : changez d'espace depuis le menu du compte."
 	},
 	/** In place of Google's button until the age and terms box is ticked */
 	tickToContinue: { en: 'Tick the box to continue', fr: 'Cochez la case pour continuer' },
@@ -63,6 +68,10 @@ export const m = defineMessages({
 		}
 	},
 	features: {
+		/**
+		 * Backed by: JobPostingInput of common/models/jobPosting.ts and JOB_FIELD_CRITERIA of
+		 * common/models/perfectJob.ts (the fields the criteria read)
+		 */
 		job: {
 			title: { en: 'Say exactly what you need', fr: 'Dites exactement ce que vous cherchez' },
 			text: {
@@ -70,13 +79,21 @@ export const m = defineMessages({
 				fr: 'Compétences, contrat, temps de travail, fourchette de rémunération, télétravail : ce que les candidats regardent, et ce à quoi leur portfolio peut comparer votre offre.'
 			}
 		},
+		/**
+		 * Backed by: the job step and the job match step (server/services/workflowSteps/job.ts,
+		 * jobMatch.ts: the score and, with the candidate's showDetails, each criterion's outcome),
+		 * only on a journey that has them; the meeting opens once the steps before it succeeded
+		 * (openStepOfType of server/services/workflows.ts). What is checked is only what the
+		 * candidate rated: never "no call about pay"
+		 */
 		match: {
 			title: { en: 'A match before the meeting', fr: 'Une correspondance avant le rendez-vous' },
 			text: {
-				en: "Share your job on a candidate's page for recruiters and, when their journey scores it, see how it does against what they want. When it matches, book a meeting in their calendar: no call that ends on pay or commute.",
-				fr: "Partagez votre offre sur la page recruteurs d'un candidat et, lorsque son parcours la note, voyez son résultat au regard de ce qu'il recherche. Si elle correspond, réservez un rendez-vous dans son agenda : aucun appel qui s'arrête sur la rémunération ou le trajet."
+				en: "Share your job on a candidate's page for recruiters and, when their journey scores it, see how it does against what they want. When it passes, book a meeting in their calendar: what they asked for was checked before the call.",
+				fr: "Partagez votre offre sur la page recruteurs d'un candidat et, lorsque son parcours la note, voyez son résultat au regard de ce qu'il recherche. Si elle passe, réservez un rendez-vous dans son agenda : ce qu'il demande a été vérifié avant l'appel."
 			}
 		},
+		/** Backed by: GET /appointments/booked (server/services/bookedMeetings.ts), UpcomingMeetings.svelte */
 		meetings: {
 			title: { en: 'Your meetings in one place', fr: 'Vos rendez-vous au même endroit' },
 			text: {
