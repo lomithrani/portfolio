@@ -125,10 +125,10 @@ describe("the client's step types", () => {
 		}
 		// What a recruiter wants to know before they sign in: who learns their name and email, when
 		expect(clientStep('meeting')?.goal?.next('Louis')).toBe(
-			"Once you book, you receive a calendar invitation by email, and the meeting goes into Louis's calendar: only then does Louis get your name and email address."
+			"Once you book, you receive a calendar invitation by email, and the meeting goes into Louis's calendar: only then do they get your name and email address."
 		);
 		expect(withLocale('fr', () => clientStep('meeting')?.goal?.next('Louis'))).toBe(
-			"Une fois le créneau réservé, vous recevez une invitation par e-mail, et Louis retrouve le rendez-vous dans son agenda\u00a0: ce n'est qu'à ce moment-là que Louis reçoit votre nom et votre adresse e-mail."
+			"Une fois le créneau réservé, vous recevez une invitation par e-mail, et Louis retrouve le rendez-vous dans son agenda\u00a0: ce n'est qu'à ce moment-là que votre nom et votre adresse e-mail lui parviennent."
 		);
 		// Read when shown, in the visitor's language
 		expect(withLocale('fr', () => clientStep('meeting')?.goal?.alone)).toBe(

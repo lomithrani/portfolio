@@ -1978,7 +1978,7 @@ test.describe('the hiring journey', () => {
 			'The job description and its pay range, or its PDF where import is offered'
 		]);
 		await expect(before).toContainText(
-			`Once you book, you receive a calendar invitation by email, and the meeting goes into ${DOMAIN}'s calendar: only then does ${DOMAIN} get your name and email address.`
+			`Once you book, you receive a calendar invitation by email, and the meeting goes into ${DOMAIN}'s calendar: only then do they get your name and email address.`
 		);
 		// Described with its steps once the page knows the meeting can be booked
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute(

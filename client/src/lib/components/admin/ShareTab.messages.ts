@@ -85,8 +85,8 @@ export const m = defineMessages({
 		 * does not send recruiters to the page for recruiters
 		 */
 		calendarClosed: {
-			en: 'Recruiters cannot book on your page for recruiters until your calendar is open: until then, the reply asks for the job description, with its pay range, and gives your portfolio.',
-			fr: "Les recruteurs ne peuvent pas réserver sur votre page recruteurs tant que votre agenda n'est pas ouvert : d'ici là, la réponse demande l'offre d'emploi, avec sa fourchette de rémunération, et donne votre portfolio."
+			en: 'Until your calendar is open, recruiters cannot book on your page for recruiters, so the reply asks for the job description, with its pay range, and gives your portfolio.',
+			fr: "Tant que votre agenda n'est pas ouvert, les recruteurs ne peuvent pas réserver sur votre page recruteurs : la réponse demande donc l'offre d'emploi, avec sa fourchette de rémunération, et donne votre portfolio."
 		},
 		/** The same, on a site that takes no Google Calendar connection: nothing the owner can do */
 		bookingUnavailable: {
@@ -154,13 +154,13 @@ export const m = defineMessages({
 		},
 		/**
 		 * Why the text gives only the portfolio, as the reply's hint says it of the reply: the page for
-		 * recruiters is left out while recruiters could not book there or get through it, or while
+		 * recruiters is left out while recruiters cannot book there or get through it, or while
 		 * what the steps ask could not be read
 		 */
 		portfolioOnly: {
 			calendarClosed: {
-				en: 'Until your calendar is open, this text gives only your portfolio: recruiters could not book on your page for recruiters yet.',
-				fr: "Tant que votre agenda n'est pas ouvert, ce texte ne donne que votre portfolio : les recruteurs ne pourraient pas encore réserver sur votre page recruteurs."
+				en: 'Until your calendar is open, this text gives only your portfolio: recruiters cannot book on your page for recruiters yet.',
+				fr: "Tant que votre agenda n'est pas ouvert, ce texte ne donne que votre portfolio : les recruteurs ne peuvent pas encore réserver sur votre page recruteurs."
 			},
 			bookingUnavailable: {
 				en: 'Online booking is not available on this site for now, so this text gives only your portfolio.',

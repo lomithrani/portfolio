@@ -49,7 +49,7 @@ describe('BeforeYouStart', () => {
 			'What you need A Google account, to sign in The job description and its pay range, or its PDF where import is offered'
 		);
 		expect(card).toContain(
-			"What happens next Once you book, you receive a calendar invitation by email, and the meeting goes into Louis's calendar: only then does Louis get your name and email address."
+			"What happens next Once you book, you receive a calendar invitation by email, and the meeting goes into Louis's calendar: only then do they get your name and email address."
 		);
 	});
 
@@ -72,6 +72,8 @@ describe('BeforeYouStart', () => {
 		const card = withLocale('fr', () => text(GATE));
 		expect(card).toContain('Avant de commencer');
 		expect(card).toContain('8 minutes environ');
-		expect(card).toContain("ce n'est qu'à ce moment-là que Louis reçoit votre nom");
+		expect(card).toContain(
+			"ce n'est qu'à ce moment-là que votre nom et votre adresse e-mail lui parviennent"
+		);
 	});
 });

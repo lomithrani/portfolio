@@ -402,7 +402,8 @@
 
 <div class="max-w-3xl mx-auto p-6 space-y-8">
 	<section class="space-y-2">
-		<h1 class="h2">{m.title(ownerName)}</h1>
+		<!-- Balanced: the owner's name never leaves one word alone on the last line -->
+		<h1 class="h2 text-balance">{m.title(ownerName)}</h1>
 		{#if journey}
 			<p class="opacity-75">{journeyIntro(ownerName, goal, { closed })}</p>
 		{/if}

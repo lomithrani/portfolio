@@ -311,7 +311,7 @@ test('while nobody can book, the texts give the portfolio, and lead to the calen
 	const tab = shareTab(page);
 	await expect(
 		tab.getByText(
-			'Recruiters cannot book on your page for recruiters until your calendar is open',
+			'Until your calendar is open, recruiters cannot book on your page for recruiters, so the reply asks for the job description',
 			{
 				exact: false
 			}
@@ -320,7 +320,7 @@ test('while nobody can book, the texts give the portfolio, and lead to the calen
 	await expectPortfolioOnly(page);
 	// The LinkedIn text, read on its own, says why too
 	await expect(tab.locator('[data-linkedin-reason]')).toHaveText(
-		'Until your calendar is open, this text gives only your portfolio: recruiters could not book on your page for recruiters yet.'
+		'Until your calendar is open, this text gives only your portfolio: recruiters cannot book on your page for recruiters yet.'
 	);
 	expect(await leadsShown(tab)).toEqual(['Open my calendar settings']);
 	await tab.getByRole('button', { name: 'Open my calendar settings' }).click();

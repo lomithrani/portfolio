@@ -697,12 +697,21 @@ test.describe('landing page, portfolio owner', () => {
 				end
 			);
 		expect(await shows(false)).toBe(true);
+		const fades = currentStep(page).locator('[data-fade]');
+		await expect(fades).toHaveCount(0);
 		await expect(currentStep(page)).toContainText(
 			'It opens your portfolio. From there, “Propose a role” leads recruiters to your page for recruiters.'
 		);
 		await page.setViewportSize({ width: 390, height: 844 });
 		await expect.poll(() => shows(true)).toBe(true);
+		// Narrower, the field cuts the address's start, which fades out there (never half a letter)
+		await page.setViewportSize({ width: 320, height: 720 });
+		await expect.poll(() => shows(true)).toBe(true);
+		expect(await shows(false)).toBe(false);
+		await expect(fades).toHaveCount(1);
+		await expect(fades).toHaveAttribute('data-fade', 'start');
 		await page.setViewportSize({ width: 1280, height: 720 });
+		await expect(fades).toHaveCount(0);
 		await currentStep(page).getByRole('button', { name: 'Copy your link' }).click();
 		await expect(currentStep(page).getByRole('button', { name: 'Link copied' })).toBeVisible();
 		await expect(

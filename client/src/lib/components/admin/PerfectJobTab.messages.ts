@@ -61,7 +61,7 @@ export const m = defineMessages({
 			fr: "Chaque critère activé ajoute son importance, de 1 à 5, à un total. La note, sur 100, est la part de ce total à laquelle l'offre correspond."
 		},
 		partly: {
-			en: 'Some criteria can match partly: a pay a little under yours, fewer remote days.',
+			en: 'Some criteria can match partly: pay a little under yours, fewer remote days.',
 			fr: 'Certains critères peuvent correspondre en partie : une rémunération un peu inférieure à la vôtre, moins de jours de télétravail.'
 		},
 		notStated: {

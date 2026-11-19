@@ -503,7 +503,7 @@
 					<h2 id="empty-owner-title" class="text-xl font-bold">
 						{m.emptyOwner.title}
 					</h2>
-					<p class="mx-auto max-w-md text-surface-700-300">
+					<p class="mx-auto max-w-md text-balance text-surface-700-300">
 						{m.emptyOwner.text}
 					</p>
 					<div class="flex flex-wrap justify-center gap-3">
@@ -675,7 +675,8 @@
 			data-setup-progress
 		>
 			<RocketLaunch size="16" class="shrink-0" aria-hidden="true" />
-			<span
+			<!-- Its own line height: the button's is one line's, and two lines would touch -->
+			<span class="leading-snug"
 				><Rich text={m.setup(setup.done, setup.total)}
 					>{#snippet count(text)}<span class="whitespace-nowrap">{text}</span>{/snippet}</Rich
 				></span

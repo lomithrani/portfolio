@@ -282,9 +282,9 @@ export const m = defineMessages({
 			 */
 			next: {
 				en: (ownerName: string) =>
-					`Once you book, you receive a calendar invitation by email, and the meeting goes into ${ownerName}'s calendar: only then does ${ownerName} get your name and email address.`,
+					`Once you book, you receive a calendar invitation by email, and the meeting goes into ${ownerName}'s calendar: only then do they get your name and email address.`,
 				fr: (ownerName: string) =>
-					`Une fois le créneau réservé, vous recevez une invitation par e-mail, et ${ownerName} retrouve le rendez-vous dans son agenda : ce n'est qu'à ce moment-là que ${ownerName} reçoit votre nom et votre adresse e-mail.`
+					`Une fois le créneau réservé, vous recevez une invitation par e-mail, et ${ownerName} retrouve le rendez-vous dans son agenda : ce n'est qu'à ce moment-là que votre nom et votre adresse e-mail lui parviennent.`
 			}
 		}
 	},

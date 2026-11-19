@@ -247,7 +247,7 @@
 								aria-hidden="true">{index + 1}</span
 							>
 							<div class="space-y-1">
-								<h3 class="font-semibold">{step.title}</h3>
+								<h3 class="font-semibold text-balance">{step.title}</h3>
 								<p class="text-sm text-surface-700-300">{step.text}</p>
 							</div>
 						</li>
@@ -313,7 +313,9 @@
 		>
 			<div class="space-y-6 lg:order-2">
 				<div class="space-y-3">
-					<h2 id="yours-title" class="text-2xl font-bold md:text-3xl">{m.yours.title}</h2>
+					<h2 id="yours-title" class="text-2xl font-bold text-balance md:text-3xl">
+						{m.yours.title}
+					</h2>
 					<p class="text-surface-700-300">{m.yours.intro}</p>
 				</div>
 				<ul class="space-y-5">
@@ -325,7 +327,7 @@
 								<feature.icon size="22" aria-hidden="true" />
 							</span>
 							<div class="space-y-1">
-								<h3 class="font-semibold">{feature.title}</h3>
+								<h3 class="font-semibold text-balance">{feature.title}</h3>
 								<p class="text-sm text-surface-700-300">{feature.text}</p>
 							</div>
 						</li>
@@ -358,7 +360,7 @@
 							class="flex size-9 items-center justify-center rounded-full preset-tonal-primary font-bold"
 							aria-hidden="true">{index + 1}</span
 						>
-						<h3 class="font-semibold">
+						<h3 class="font-semibold text-balance">
 							<span class="sr-only">{m.how.step(index + 1)}</span>
 							{step.title}
 						</h3>
@@ -415,7 +417,8 @@
 		<summary
 			class="flex cursor-pointer list-none items-center justify-between gap-4 rounded-container p-4 font-semibold outline-none focus-visible:ring-2 focus-visible:ring-primary-500 [&::-webkit-details-marker]:hidden"
 		>
-			{summary}
+			<!-- Balanced: a question never ends with one word alone on its last line -->
+			<span class="text-balance">{summary}</span>
 			<ChevronDown
 				size="18"
 				class="shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none"
