@@ -15,6 +15,7 @@
 	import { accountMessages } from '#services/account.messages.ts';
 	import {
 		adminTab,
+		adminTabSearch,
 		defaultAdminTab,
 		loadReadiness,
 		setupProgress,
@@ -101,12 +102,8 @@
 		tab = next;
 		if (READS_READINESS.has(next) && previous !== null && previous !== next)
 			void refreshReadiness();
-		const current = [...new URLSearchParams(location.search)];
-		if (current.some(([key, value]) => key === 'tab' && value === next)) return;
-		const search = new URLSearchParams([
-			...current.filter(([key]) => key !== 'tab'),
-			['tab', next]
-		]).toString();
+		const search = adminTabSearch(location.search, next);
+		if (search === null) return;
 		replaceState(
 			resolve(`/[domain]/admin?${search}`, { domain: data.domainName }),
 			page.state

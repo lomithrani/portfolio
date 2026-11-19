@@ -10,6 +10,7 @@ vi.mock('#services', () => ({
 import {
 	ADMIN_TABS,
 	adminTab,
+	adminTabSearch,
 	copyText,
 	defaultAdminTab,
 	linkText,
@@ -210,6 +211,23 @@ describe('the admin page’s tabs', () => {
 		expect(defaultAdminTab(READY)).toBe('appearance');
 		// Not read: the tab says why
 		expect(defaultAdminTab(null)).toBe('start');
+	});
+
+	it('keeps the tab shown in the address, with its other parameters', () => {
+		expect(adminTabSearch('', 'start')).toBe('tab=start');
+		expect(adminTabSearch('?tab=start', 'workflows')).toBe('tab=workflows');
+		// The other parameters stay, in their order; the tab comes last
+		expect(adminTabSearch('?lang=fr&tab=perfect-job', 'workflows')).toBe('lang=fr&tab=workflows');
+		expect(adminTabSearch('?tab=start&lang=fr&a=1', 'share')).toBe('lang=fr&a=1&tab=share');
+		expect(adminTabSearch('?lang=fr', 'appointments')).toBe('lang=fr&tab=appointments');
+		// Already there: the address stays
+		expect(adminTabSearch('?tab=share', 'share')).toBeNull();
+		expect(adminTabSearch('?lang=fr&tab=share', 'share')).toBeNull();
+		// Named twice (the first one opens the page): written once
+		expect(adminTabSearch('?tab=start&tab=share', 'share')).toBe('tab=share');
+		expect(adminTabSearch('?tab=share&tab=share', 'share')).toBe('tab=share');
+		// An unknown one is replaced
+		expect(adminTabSearch('?tab=sharing', 'share')).toBe('tab=share');
 	});
 });
 

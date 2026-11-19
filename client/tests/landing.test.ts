@@ -519,6 +519,9 @@ test.describe('landing page, portfolio owner', () => {
 		await expect(
 			card(page).getByRole('heading', { name: 'Your portfolio is online' })
 		).toBeVisible();
+		await expect(
+			card(page).getByText('Add your experiences and set your terms, then share your link.')
+		).toBeVisible();
 		await expect(addressField(page)).toHaveCount(0);
 		await expect(preview(page)).toContainText('/e2e-owner');
 		await expect(page.getByRole('link', { name: 'Open my portfolio' }).first()).toHaveAttribute(
@@ -563,6 +566,11 @@ test.describe('landing page, portfolio owner', () => {
 			'/e2e-owner/admin?tab=start'
 		);
 		await expect(currentStep(page)).toContainText('1 of 3 set');
+		// The card's subtitle says what is left, and the step promises no more than the code does
+		await expect(card(page).getByText('Set your terms, then share your link.')).toBeVisible();
+		await expect(currentStep(page)).toContainText(
+			'Recruiters never see the figures you set: only whether their job matches, when your steps score it.'
+		);
 
 		const link = 'http://localhost:4173/e2e-owner';
 		await expect(currentStep(page).getByRole('textbox', { name: 'Your link' })).toHaveValue(link);
@@ -668,6 +676,7 @@ test.describe('landing page, portfolio owner', () => {
 		// On a phone the field and its button fit the card
 		await page.setViewportSize({ width: 390, height: 844 });
 		for (const control of [
+			currentStep(page).getByRole('link', { name: 'Set my terms' }),
 			field,
 			currentStep(page).getByRole('button', { name: 'Copy your link' })
 		]) {

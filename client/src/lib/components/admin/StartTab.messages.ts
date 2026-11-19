@@ -46,11 +46,12 @@ export const m = defineMessages({
 		/**
 		 * Backed by: server/services/workflowSteps/jobMatch.ts (a visitor's view: their score, the
 		 * step's minimum and, with showDetails, each criterion's name and outcome, never what is
-		 * asked), server/plugins/perfectJob.ts (the perfect job is read by its owner only)
+		 * asked; a job is scored only by that step, which the default journey has not),
+		 * server/plugins/perfectJob.ts (the perfect job is read by its owner only)
 		 */
 		toDo: {
-			en: 'Rate the pay first, then what else matters to you. Recruiters never see what you ask: only how their job scores against it.',
-			fr: "Notez d'abord la rémunération, puis ce qui compte aussi pour vous. Les recruteurs ne voient jamais ce que vous demandez : seulement la note de leur offre."
+			en: 'Rate the pay first, then what else matters to you. Recruiters never see the figures you set: only whether their job matches, when your steps score it.',
+			fr: "Notez d'abord la rémunération, puis ce qui compte aussi pour vous. Les recruteurs ne voient jamais les chiffres que vous fixez : seulement si leur offre correspond, lorsque vos étapes la notent."
 		},
 		done: {
 			en: (count: number) =>
@@ -118,7 +119,7 @@ export const m = defineMessages({
 				en: (minScore: number) =>
 					`Recruiters read your note, share one of their job descriptions, and see it scored against what you want, criterion by criterion. They book a meeting only once it scores at least ${minScore} out of 100.`,
 				fr: (minScore: number) =>
-					`Les recruteurs lisent votre note, présentent l'une de leurs offres d'emploi et voient sa note au regard de ce que vous voulez, critère par critère. Ils ne réservent un rendez-vous qu'une fois la note de ${minScore} sur 100 atteinte.`
+					`Les recruteurs lisent votre note, présentent l'une de leurs offres d'emploi et voient son résultat au regard de ce que vous voulez, critère par critère. Ils ne réservent un rendez-vous qu'une fois une note d'au moins ${minScore} sur 100 obtenue.`
 			},
 			/** Before the steps of the gate journey, for screen readers */
 			steps: { en: 'Its steps', fr: 'Ses étapes' },

@@ -554,9 +554,11 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 			<p class="text-sm text-surface-700-300">
 				{current === 'ready'
 					? m.subtitle.ready
-					: ownedDomain
-						? m.subtitle.online
-						: m.subtitle.create}
+					: current === 4
+						? m.subtitle.terms
+						: ownedDomain
+							? m.subtitle.online
+							: m.subtitle.create}
 			</p>
 		</div>
 

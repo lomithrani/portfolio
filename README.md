@@ -9,8 +9,9 @@ recruiters go through before booking a meeting (a note to read, the job to share
 against what the candidate is looking for); recruiters write job descriptions and share one on a
 candidate's Hire page (there is no job board). The home page (`/`) is the candidate landing
 page: it shows both with two short recordings of the app, previews the portfolio's address and
-checks it is free as you type, then walks through three steps (sign in with Google after
-confirming your age and accepting the terms, claim the address, import a PDF résumé). Legal
+checks it is free as you type, then walks through four steps (sign in with Google after
+confirming your age and accepting the terms, claim the address, import a PDF résumé, set your
+terms: what you want in a job, your steps and your calendar, then copy your link). Legal
 notice, privacy policy, terms and cookies are at `/legal`; each account can delete itself at
 `/account`.
 

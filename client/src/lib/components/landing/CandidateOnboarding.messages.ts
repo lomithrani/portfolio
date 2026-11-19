@@ -15,9 +15,15 @@ export const m = defineMessages({
 			en: 'Four steps, a few minutes. You never pay.',
 			fr: 'Quatre étapes, quelques minutes. Vous ne payez jamais.'
 		},
+		/** An owner at step 3 (or while their setup is read) */
 		online: {
-			en: 'Fill it with your experiences, then share its address.',
-			fr: 'Ajoutez-y vos expériences, puis partagez son adresse.'
+			en: 'Add your experiences and set your terms, then share your link.',
+			fr: 'Ajoutez vos expériences et fixez vos conditions, puis partagez votre lien.'
+		},
+		/** An owner at step 4: the experiences are there */
+		terms: {
+			en: 'Set your terms, then share your link.',
+			fr: 'Fixez vos conditions, puis partagez votre lien.'
 		},
 		/** Every step is done */
 		ready: {
@@ -169,11 +175,12 @@ export const m = defineMessages({
 		/**
 		 * Backed by: server/services/workflowSteps/jobMatch.ts (a visitor's view: their score, the
 		 * step's minimum and, with showDetails, each criterion's name and outcome, never what is
-		 * asked), server/plugins/perfectJob.ts (the perfect job is read by its owner only)
+		 * asked; a job is scored only by that step, which the default journey has not),
+		 * server/plugins/perfectJob.ts (the perfect job is read by its owner only)
 		 */
 		intro: {
-			en: 'Say what you want in a job, choose the steps recruiters go through, and open your calendar. Recruiters never see what you ask: only how their job scores against it.',
-			fr: "Dites ce que vous voulez d'un poste, choisissez les étapes que suivent les recruteurs et ouvrez votre agenda. Les recruteurs ne voient jamais ce que vous demandez : seulement la note de leur offre."
+			en: 'Say what you want in a job, choose the steps recruiters go through, and open your calendar. Recruiters never see the figures you set: only whether their job matches, when your steps score it.',
+			fr: "Dites ce que vous voulez d'un poste, choisissez les étapes que suivent les recruteurs et ouvrez votre agenda. Les recruteurs ne voient jamais les chiffres que vous fixez : seulement si leur offre correspond, lorsque vos étapes la notent."
 		},
 		open: { en: 'Set my terms', fr: 'Fixer mes conditions' },
 		/** Next to the button: how many of the three are set */

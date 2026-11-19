@@ -162,6 +162,16 @@ test.describe('the admin page', () => {
 		// A tab that is not one: the page opens where it would without it
 		await gotoHydrated(page, `/${DOMAIN}/admin?tab=nothing`);
 		await expect(selectedTab(page)).toHaveText(/^Get started/);
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=nothing$`));
+		await page.getByRole('tab', { name: 'Appearance' }).click();
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=appearance$`));
+
+		// The address's other parameters stay as the tab changes (the language, here)
+		await gotoHydrated(page, `/${DOMAIN}/admin?lang=fr&tab=perfect-job`);
+		await expect(selectedTab(page)).toHaveText('Poste idéal');
+		await page.locator('[role="tab"][data-value="workflows"]').click();
+		await expect(selectedTab(page)).toHaveText('Parcours de recrutement');
+		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?lang=fr&tab=workflows$`));
 	});
 
 	test('a perfect job starts from the essentials, which ask to be filled in', async ({ page }) => {
@@ -311,6 +321,10 @@ test.describe('the admin page', () => {
 			'data-state',
 			'done'
 		);
+		// The essentials left are suggested, as one list
+		await expect(checklist.locator('[data-item="perfectJob"]')).toContainText(
+			'You could also rate the work mode, where you work and the contract.'
+		);
 		await expect(badge.locator('.sr-only')).toHaveText(
 			`${before.done + 1} of ${before.total} done`
 		);
@@ -423,6 +437,23 @@ test.describe('the admin page', () => {
 		await page.getByRole('tab', { name: /^Get started/ }).click();
 
 		const replace = page.getByRole('alertdialog', { name: 'Replace your steps?' });
+		// The session expired meanwhile: said where the steps are, the note changed is kept, and
+		// the page is not signed out
+		const gate = journey.locator('[data-template="gate"]');
+		await gate.getByText('Change the note first').click();
+		await gate.getByLabel('Title').fill('Before we talk');
+		const refused = await stubApi(page, 'PUT', '/workflow', (_, index) =>
+			index === 0 ? { status: 401, text: 'Unauthorized' } : undefined
+		);
+		await gate.getByRole('button', { name: 'Use these steps' }).click();
+		await expect(journey.getByRole('alert')).toHaveText(
+			'Your session expired. Sign in again in another tab, then try again.'
+		);
+		expect(refused).toHaveLength(1);
+		await expect(replace).toHaveCount(0);
+		await expect(gate.getByLabel('Title')).toHaveValue('Before we talk');
+		await expect(checklist).toBeVisible();
+
 		const storedTypes = async () =>
 			((await (await ownerApi.get(`${API_URL}/workflow`)).json()).steps as { type: string }[]).map(
 				({ type }) => type
@@ -437,9 +468,12 @@ test.describe('the admin page', () => {
 		const kept = await (await ownerApi.get(`${API_URL}/workflow`)).json();
 		expect(kept.steps).toEqual(DEFAULT_WORKFLOW_STEPS);
 
-		// Still never saved, as answered here: the gate is saved without asking either
+		// Still never saved, as answered here: the gate is saved without asking either, with the
+		// note changed before
 		await journey.getByRole('button', { name: 'Use these steps' }).click();
 		await expect.poll(storedTypes).toEqual(journeyTemplate('gate').map(({ type }) => type));
+		const gateSaved = await (await ownerApi.get(`${API_URL}/workflow`)).json();
+		expect(gateSaved.steps[0].config.title).toBe('Before we talk');
 		await expect(replace).toHaveCount(0);
 		expect(dialogs).toEqual([]);
 	});

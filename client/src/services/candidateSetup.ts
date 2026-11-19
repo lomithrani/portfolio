@@ -204,6 +204,21 @@ export const adminTab = (value: string | null | undefined): AdminTab | undefined
 export const defaultAdminTab = (readiness: Readiness | null): AdminTab =>
 	readiness && setupProgress(readiness).complete ? 'appearance' : 'start';
 
+/**
+ * The admin page's query once `tab` is shown (`search`: location.search, "?lang=fr&tab=start"):
+ * its other parameters kept, in their order, and `tab` last, once. null when it already names
+ * that tab alone: the address stays
+ */
+export const adminTabSearch = (search: string, tab: AdminTab): string | null => {
+	const current = [...new URLSearchParams(search)];
+	const tabs = current.filter(([key]) => key === 'tab');
+	if (tabs.length === 1 && tabs[0][1] === tab) return null;
+	return new URLSearchParams([
+		...current.filter(([key]) => key !== 'tab'),
+		['tab', tab]
+	]).toString();
+};
+
 // --- The link ----------------------------------------------------------------------------
 
 /**
@@ -242,7 +257,8 @@ export type ReadinessResult =
 
 /**
  * GET /me/readiness for the signed-in account. A 401 is only reported ('session-expired'): the
- * caller decides whether it signs the page out (the admin page does; the landing page does not)
+ * caller decides whether it signs the page out (the admin page does on its first read only,
+ * before any tab holds what the owner typed; the landing page never does)
  */
 export const loadReadiness = async (signal?: AbortSignal): Promise<ReadinessResult> => {
 	try {
