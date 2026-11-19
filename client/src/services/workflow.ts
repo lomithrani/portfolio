@@ -278,17 +278,24 @@ export const journeyEffort = <Need extends string>(
  * The Hire page's description (its meta description, and a shared link's): what the journey
  * asks, from the steps as anyone signed out gets them (the server's render), with `minutes`, about
  * how long they take (journeyEffort). `steps` undefined: the journey is not known (left to the
- * browser), the page's description names no step
+ * browser), the page's description names no step. `closed`: the step the journey leads to cannot
+ * be done now (a meeting nobody can book: the owner's calendar has no meeting type), so no step is
+ * named nor a duration said, only that the owner takes no meeting requests online
  */
 export const journeyDescription = (
 	ownerName: string,
 	steps: readonly { type: string }[] | undefined,
-	minutes: number
+	minutes: number,
+	{ closed = false }: { closed?: boolean } = {}
 ): string => {
 	if (!steps) return m.description.unknown(ownerName);
-	if (steps.length === 0) return m.description.none(ownerName);
-	const duration = plural(minutes, m.description.inAbout.one, m.description.inAbout.other(minutes));
-	return m.description.steps(ownerName, steps.map(stepPhrase), duration);
+	if (steps.length === 0 || closed) return m.description.none(ownerName);
+	const phrases = steps.map(stepPhrase);
+	return plural(
+		minutes,
+		m.description.steps.one(ownerName, phrases),
+		m.description.steps.other(ownerName, phrases, minutes)
+	);
 };
 
 /**

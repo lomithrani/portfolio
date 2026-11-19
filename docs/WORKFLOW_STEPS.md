@@ -304,8 +304,8 @@ The registry `client/src/lib/components/hire/steps/index.ts` maps a type name to
 | `wantsOpen(step, address)` | no | Whether the address asks for this step to be shown unfolded. The job step uses it when the address carries a `?job=` other than the job picked. |
 | `reopenLabel` | no | What the button that unfolds the step says once it is done ("Change" for the job step); "Open" when unset. |
 | `ownerPreview` | no | Set it to `true` when the owner's preview should show the step itself (the note, without its button) instead of the manifest's description. The `Visitor` then gets `journey.own` and must offer the owner nothing to submit: the API refuses the owner on their own journey. |
-| `effort` | yes | What the step takes from a visitor, said in "Before you start" on the Hire page before they start: `asks(step, ownerName)` (what it asks, in a sentence, from the settings visitors get of it: the job match says its minimum), `minutes` (about how long it takes; 0 for a step worked out for them, as the job match is) and `needs` (what to have at hand, each a `StepNeed` of `types.ts` whose text is in `needs` of `steps.messages.ts`: `googleAccount` for a step the visitor submits, which needs a session; `jobDescription` for the job step; none for a meeting alone, which is booked signed out). The card says each need once and adds up the minutes. It is rendered on the server from the journey as anyone signed out gets it, so `asks` reads only `step.config` (what `visitorConfig` returns), never `step.view`. `registry.test.ts` fails when an entry has none, or says nothing in a language. |
-| `goal` | for an `access` type | What the Hire page says under its title when the journey leads to this step (the title is the same for every journey, "Propose a role to <owner>"): `alone` (the line when the step is the whole journey) and `after` (the same line when steps come before it), and `next(ownerName)`, what happens once it is done ("Before you start": the meeting's says the calendar invitation). `registry.test.ts` fails when an `access` type has none. |
+| `effort` | yes | What the step takes from a visitor, said in "Before you start" on the Hire page before they start: `asks(step, ownerName)` (what it asks, in a sentence, from the settings visitors get of it: the job match says its minimum), `minutes` (about how long it takes; 0 for a step worked out for them, as the job match is) and `needs` (what to have at hand, each a `StepNeed` of `types.ts` whose text is in `needs` of `steps.messages.ts`: `googleAccount` for a step the visitor submits, which needs a session; `jobDescription` for the job step; none for a meeting alone, which is booked signed out). The card says each need once and adds up the minutes. A step whose time varies says so in `asks` (the job step counts a pick's minutes, and says writing a job description takes longer). It is rendered on the server from the journey as anyone signed out gets it, so `asks` reads only `step.config` (what `visitorConfig` returns), never `step.view`. `registry.test.ts` fails when an entry has none, or says nothing in a language. |
+| `goal` | for an `access` type | What the Hire page says under its title when the journey leads to this step (the title is the same for every journey, "Propose a role to <owner>"): `alone` (the line when the step is the whole journey) and `after` (the same line when steps come before it), and `next(ownerName)`, what happens once it is done ("Before you start": the meeting's says the calendar invitation, and that only then does the owner get the recruiter's name and email address). `booking: true` for a step that books the owner's calendar (the meeting): it can be done only while the calendar offers a meeting type, which the page knows as `bookable`; otherwise the page promises nothing of it (its intro says the owner takes no meeting requests online, no "Before you start", a description without the steps). Read the texts when they are shown (getters over the messages), never into a constant. `registry.test.ts` fails when an `access` type has none. |
 
 The entry's type is `ClientStep` in `types.ts` of that folder, with the props below. Today's
 components there are `NoteStep.svelte`, `NoteSettings.svelte`, `JobStep.svelte` and
@@ -322,6 +322,8 @@ The `Visitor` component receives these props:
 | `reload()` | Loads the journey again, when it may be out of date (the owner changed it, the session ended). |
 | `locked(reason)` | Tells the page that the API refused a request of this step with 401 (`'signed-out'`) or 403 (`'locked'`). |
 | `succeeded()` | Tells the page that the step succeeded without a submit (the meeting was booked). |
+| `bookable` | Whether the owner's calendar offers a meeting type to book (`GET /appointments/domains/:domainName/schedules`, asked by the server's render and again in the browser), null while not known. The meeting step starts from it, so that "Online booking is not available right now." is in the server's HTML. |
+| `schedulesFound(count)` | Tells the page how many meeting types the step found when it asked for them: the page follows it. |
 
 The `Settings` component receives `config` (the step's current settings), `onChange(config)` (call
 it with the whole new settings on each edit), `problem` (`{ field?, message }` when `parseWorkflow`
@@ -345,11 +347,15 @@ either. Four things the page does for every step:
   it: `GET /workflow/domains/:domainName` without a session, so each step's `config` is what its
   `visitorConfig` returns and nothing else, and no `view`. The first step is shown open, the rest
   locked, with "Before you start" (`hire/BeforeYouStart.svelte`, from each entry's `effort` and the
-  goal's `next`) above them; the browser then loads the journey again with the session. So the
-  `Visitor` of a step that can be the first one must render on the server: no `window`,
-  `document` or storage outside event handlers and effects, and its loading states hold their place
-  without words (a placeholder, its status for screen readers only), as `MeetingBooking.svelte`
-  does for the meeting types.
+  goal's `next`) above them, unless the goal is a `booking` and the owner's calendar offers nothing
+  to book (`bookable` false). The browser then loads the journey again with the session; until it
+  answers, a visitor the kept session names gets no control on the steps (the server's are anyone
+  signed out's). So the `Visitor` of a step that can be the first one must render on the server:
+  no `window`, `document` or storage outside event handlers and effects, and its loading states
+  hold their place without words (a placeholder, its status for screen readers only), as
+  `MeetingBooking.svelte` does for the meeting types. `client/tests/hire-journey.test.ts` loads,
+  with JavaScript off, a journey starting with each type that can come first (a `requirement` type
+  without `needs`).
 
 - The owner previews their journey with no step locked. A `requirement` step shows its description
   to the owner instead of its controls, unless its entry sets `ownerPreview`; `access` steps are

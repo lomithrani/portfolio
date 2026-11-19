@@ -1,5 +1,11 @@
 import { defineMessages } from 'portfolio-common';
 
+/** The steps' phrases in a sentence: "a, b, then c", `then` being the language's word before the last */
+const inOrder = (phrases: readonly string[], then: string): string =>
+	phrases.length === 1
+		? phrases[0]
+		: `${phrases.slice(0, -1).join(', ')}, ${then} ${phrases.at(-1)}`;
+
 // The texts of workflow.ts: the owner's journey editor, the Hire page and its steps.
 export const m = defineMessages({
 	// --- The owner's editor ---
@@ -46,25 +52,28 @@ export const m = defineMessages({
 	// --- The visitor's journey ---
 	/**
 	 * The Hire page's description (journeyDescription): its meta description and a shared link's.
-	 * `phrases`: the labels of the steps, lowercased, in order (one at least); `duration`: about how
-	 * long they take (`inAbout`)
+	 * `phrases`: the labels of the steps, lowercased, in order (one at least); through plural():
+	 * `minutes`, about how long they take
 	 */
 	description: {
 		steps: {
-			en: (ownerName: string, phrases: readonly string[], duration: string) =>
-				`Propose a role to ${ownerName} on their page for recruiters: ${phrases.length === 1 ? phrases[0] : `${phrases.slice(0, -1).join(', ')}, then ${phrases.at(-1)}`}, ${duration}.`,
-			fr: (ownerName: string, phrases: readonly string[], duration: string) =>
-				`Proposez un poste à ${ownerName} sur sa page recruteurs : ${phrases.length === 1 ? phrases[0] : `${phrases.slice(0, -1).join(', ')}, puis ${phrases.at(-1)}`}, ${duration}.`
-		},
-		/** About how long the steps take, through plural() */
-		inAbout: {
-			one: { en: 'in about a minute', fr: 'en une minute environ' },
+			one: {
+				en: (ownerName: string, phrases: readonly string[]) =>
+					`Propose a role to ${ownerName} on their page for recruiters: ${inOrder(phrases, 'then')}, in about a minute.`,
+				fr: (ownerName: string, phrases: readonly string[]) =>
+					`Proposez un poste à ${ownerName} sur sa page recruteurs : ${inOrder(phrases, 'puis')}, en une minute environ.`
+			},
 			other: {
-				en: (minutes: number) => `in about ${minutes} minutes`,
-				fr: (minutes: number) => `en ${minutes} minutes environ`
+				en: (ownerName: string, phrases: readonly string[], minutes: number) =>
+					`Propose a role to ${ownerName} on their page for recruiters: ${inOrder(phrases, 'then')}, in about ${minutes} minutes.`,
+				fr: (ownerName: string, phrases: readonly string[], minutes: number) =>
+					`Proposez un poste à ${ownerName} sur sa page recruteurs : ${inOrder(phrases, 'puis')}, en ${minutes} minutes environ.`
 			}
 		},
-		/** A journey without steps */
+		/**
+		 * A journey without steps, or one that leads to a meeting nobody can book now (the owner's
+		 * calendar has no meeting type): no step is named, no duration said
+		 */
 		none: {
 			en: (ownerName: string) =>
 				`Propose a role to ${ownerName} on their page for recruiters. They do not take meeting requests online right now.`,

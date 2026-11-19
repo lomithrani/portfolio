@@ -97,6 +97,12 @@ describe("the client's step types", () => {
 		expect(withLocale('fr', () => asks?.({ ...match, config: { minScore: 70 } }, 'Louis'))).toMatch(
 			/^Votre offre est notée sur 100 .* vous voyez son résultat/
 		);
+		// Writing a job on the way takes longer than the minutes counted, which are a pick's
+		expect(
+			clientStep('job')?.effort.asks({ id: 'job', type: 'job', status: 'pending' }, 'Louis')
+		).toBe(
+			'Pick one of your open job descriptions, or write a new one, which takes longer: Louis sees it in the meeting invitation.'
+		);
 		expect(
 			clientStep('note')?.effort.asks(
 				{ id: 'note', type: 'note', status: 'pending', config: { title: 'Hi', text: 'Read me' } },
@@ -117,8 +123,18 @@ describe("the client's step types", () => {
 			expect(goal, manifest.type).toBeDefined();
 			expect(goal?.next('Louis'), manifest.type).toMatch(/\w/);
 		}
+		// What a recruiter wants to know before they sign in: who learns their name and email, when
 		expect(clientStep('meeting')?.goal?.next('Louis')).toBe(
-			"Once you book, you receive a calendar invitation by email, and the meeting goes into Louis's calendar."
+			"Once you book, you receive a calendar invitation by email, and the meeting goes into Louis's calendar: only then does Louis get your name and email address."
 		);
+		expect(withLocale('fr', () => clientStep('meeting')?.goal?.next('Louis'))).toBe(
+			"Une fois le créneau réservé, vous recevez une invitation par e-mail, et Louis retrouve le rendez-vous dans son agenda\u00a0: ce n'est qu'à ce moment-là que Louis reçoit votre nom et votre adresse e-mail."
+		);
+		// Read when shown, in the visitor's language
+		expect(withLocale('fr', () => clientStep('meeting')?.goal?.alone)).toBe(
+			'Choisissez un créneau qui vous convient\u00a0: vous recevrez une invitation par e-mail.'
+		);
+		// A meeting is offered only while the owner's calendar has a meeting type to book
+		expect(clientStep('meeting')?.goal?.booking).toBe(true);
 	});
 });

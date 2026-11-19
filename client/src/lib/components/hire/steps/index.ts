@@ -40,7 +40,8 @@ const CLIENT_STEPS: Record<string, ClientStep> = {
 		get reopenLabel() {
 			return m.job.reopen;
 		},
-		// Picking needs a session and a recruiter space; a job written on the way takes longer
+		// Picking needs a session and a recruiter space. The minutes are a pick's, or a short job's:
+		// one written on the way takes longer, which `asks` says
 		effort: {
 			asks: (_step, ownerName) => m.job.asks(ownerName),
 			minutes: 5,
@@ -68,7 +69,18 @@ const CLIENT_STEPS: Record<string, ClientStep> = {
 		note: (_step, state) => (state === 'done' ? m.meeting.booked : m.meeting.ask),
 		// Booked signed out when it is the whole journey: a name and an email address
 		effort: { asks: () => m.meeting.asks, minutes: 2 },
-		goal: m.meeting.goal
+		// Read when shown: the texts are the visitor's language
+		goal: {
+			get alone() {
+				return m.meeting.goal.alone;
+			},
+			get after() {
+				return m.meeting.goal.after;
+			},
+			next: (ownerName) => m.meeting.goal.next(ownerName),
+			// Offered only while the owner's calendar has a meeting type to book
+			booking: true
+		}
 	}
 };
 

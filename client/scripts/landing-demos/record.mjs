@@ -16,12 +16,16 @@
 // With an API whose JWT_SECRET is not server/.env.example's, pass it to both scripts
 // (JWT_SECRET=... bun scripts/...): they sign the sessions of the two fictional accounts with it.
 // DEMO_CHROMIUM is the browser to launch when Playwright's own is not installed. Google is never
-// reached; the travel times are the API's (Géoplateforme), cached after the first run.
+// reached; the travel times are the API's (Géoplateforme), cached after the first run. Jane's
+// calendar cannot be connected without Google: demo-journey answers the browser's request for her
+// meeting types with one, so the page is the one a candidate whose calendar is open shows (with
+// "Before you start"; without a meeting type it says no meeting is taken online). The film stops at
+// the job match: nothing asks Google for a slot.
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
-import { JANE, SAM, WEB, film, mongo, signIn } from './lib.mjs';
+import { API, JANE, SAM, WEB, film, mongo, signIn } from './lib.mjs';
 
 const out = fileURLToPath(new URL('../../static/landing/', import.meta.url));
 const frames = path.join(os.tmpdir(), 'landing-demos');
@@ -98,6 +102,29 @@ const journey = async () => {
 		`db.workflowinstances.deleteMany({ owner: ObjectId('${JANE}'), visitor: ObjectId('${SAM}') })`
 	);
 	const page = await phone(SAM);
+	// Jane's meeting types, as the API lists them once her calendar is connected
+	await page.route(`${API}/appointments/domains/jane.doe/schedules`, (route) =>
+		route.fulfill({
+			json: [
+				{
+					id: '65de000000000000000000aa',
+					title: 'Intro call',
+					description: null,
+					durationMinutes: 30,
+					minNoticeHours: 24,
+					maxAdvanceDays: 30,
+					timezone: 'Europe/Paris',
+					locationType: 'google_meet',
+					locationDetails: null,
+					availability: [{ dayOfWeek: 2, startTime: '09:00', endTime: '12:00' }]
+				}
+			],
+			headers: {
+				'access-control-allow-origin': WEB,
+				'access-control-allow-credentials': 'true'
+			}
+		})
+	);
 	await page.goto(`${WEB}/jane.doe/hire`, { waitUntil: 'networkidle' });
 	await page.waitForTimeout(600);
 	const f = await film(page, path.join(frames, 'journey'));

@@ -529,17 +529,18 @@ test('the page for recruiters is named in the HTML the server sends, in both lan
 				.replace(/<[^>]+>/g, '')
 				.trim()
 		);
-	// The description says the steps of the journey the server rendered: the seeded meeting alone
+	// The description says what the journey the server rendered offers: the seeded meeting alone,
+	// which nobody can book without a calendar (none is connected here), so it promises no meeting
 	for (const { path, title, description } of [
 		{
 			path: `/${DOMAIN}/hire`,
 			title: `Propose a role to ${DOMAIN}`,
-			description: `Propose a role to ${DOMAIN} on their page for recruiters: book a meeting, in about 2 minutes.`
+			description: `Propose a role to ${DOMAIN} on their page for recruiters. They do not take meeting requests online right now.`
 		},
 		{
 			path: `/${DOMAIN}/hire?lang=fr`,
 			title: `Proposer un poste à ${DOMAIN}`,
-			description: `Proposez un poste à ${DOMAIN} sur sa page recruteurs : réserver un rendez-vous, en 2 minutes environ.`
+			description: `Proposez un poste à ${DOMAIN} sur sa page recruteurs. ${DOMAIN} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
 		}
 	]) {
 		const response = await request.get(path);

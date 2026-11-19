@@ -46,7 +46,8 @@
 	// Rendered on the server from the journey as anyone signed out stands in it (+page.server.ts),
 	// with "Before you start": what the steps ask, what to have at hand, how long they take. The
 	// browser then loads it again with the session (the visitor's own progress), and loads it
-	// alone when the server could not.
+	// alone when the server could not. A journey that leads to a meeting nobody can book (the
+	// owner's calendar has no meeting type: `bookable`) promises nothing of it.
 
 	let { data }: { data: PageData } = $props();
 
@@ -66,9 +67,22 @@
 			: undefined
 	);
 
+	/** The account the kept session names ('' signed out): whom a load in the browser runs for */
+	const keptAccount = (): string =>
+		isSessionValid($authenticationStore) ? String($authenticationStore.user?._id ?? '') : '';
+
 	type JourneyState =
 		| { state: 'loading' }
-		| { state: 'ready'; journey: Journey }
+		| {
+				state: 'ready';
+				journey: Journey;
+				/** The server's render (as anyone signed out stands in it), or the browser's load */
+				from: 'server' | 'browser';
+				/** Whom it was loaded for: the account the kept session named, '' signed out */
+				viewer: string;
+				/** A later load failed: said above the steps, with "Try again" */
+				failure?: string;
+		  }
 		| { state: 'error'; message: string };
 
 	let loaded = $state.raw<JourneyState>({ state: 'loading' });
@@ -82,12 +96,19 @@
 		const texts = before === -1 ? undefined : clientStep(steps[before].type)?.goal;
 		return texts && { before, ...texts };
 	});
+	// Whether the owner's calendar offers a meeting type to book: the server's answer, then the
+	// browser's (the page asks at once, the booking each time it lists them). null: not known
+	let bookable = $state<boolean | null>(untrack(() => data.bookable));
+	// The journey leads to a meeting nobody can book now: nothing promises it (the intro says the
+	// owner takes no meeting requests online, the description names no step, no "Before you start")
+	let closed = $derived(bookable === false && goal?.booking === true);
 	// The page's description: what the journey asks, and about how long it takes
 	let description = $derived(
 		journeyDescription(
 			ownerName,
 			journey?.steps,
-			journeyEffort(journey?.steps.map((step) => clientStep(step.type)?.effort) ?? []).minutes
+			journeyEffort(journey?.steps.map((step) => clientStep(step.type)?.effort) ?? []).minutes,
+			{ closed }
 		)
 	);
 	// A journey that is only the step it leads to shows that step alone, without the list
@@ -126,18 +147,39 @@
 		);
 	};
 
-	/** `follow`: the address can ask for a step (not after a submit, which settles what it asked) */
-	function showJourney(next: Journey, { follow = true } = {}) {
-		loaded = { state: 'ready', journey: next };
+	/**
+	 * `follow`: the address can ask for a step (not after a submit, which settles what it asked).
+	 * `viewer`: whom it was loaded for (the browser's loads)
+	 */
+	function showJourney(
+		next: Journey,
+		{ follow = true, viewer = '' }: { follow?: boolean; viewer?: string } = {}
+	) {
+		loaded = { state: 'ready', journey: next, from: 'browser', viewer };
 		const asked = follow ? stepAskedFor(next) : -1;
 		expanded = asked === -1 ? activeStepIndex(next) : asked;
 	}
 
-	// The journey the server rendered, as anyone signed out stands in it: the first paint, until
-	// the browser's own load (with the session) answers
+	/** The journey the server rendered, as anyone signed out stands in it; `failure`: said above it */
+	function showServerJourney(serverJourney: Journey, failure?: string) {
+		showJourney(serverJourney);
+		loaded = { state: 'ready', journey: serverJourney, from: 'server', viewer: '', failure };
+	}
+
+	// The journey the server rendered: the first paint, until the browser's own load (with the
+	// session) answers
 	untrack(() => {
-		if (data.journey) showJourney(data.journey);
+		if (data.journey) showServerJourney(data.journey);
 	});
+
+	// The server's journey is anyone signed out's: until the browser's load answers, a visitor the
+	// kept session names (the owner, a recruiter part way through) gets no control acting on it,
+	// which would not be theirs (the owner's own note to confirm, a step they already did). Once
+	// hydrated: the server's render is a signed-out visitor's
+	let hydrated = $state(false);
+	let provisional = $derived(
+		hydrated && loaded.state === 'ready' && loaded.from === 'server' && keptAccount() !== ''
+	);
 
 	// Also when the page is already shown: the job editor's toast can lead back here
 	afterNavigate((navigation) => {
@@ -149,6 +191,7 @@
 
 	async function loadJourney() {
 		const current = ++request;
+		const viewer = keptAccount();
 		if (loaded.state !== 'ready') loaded = { state: 'loading' };
 		try {
 			const { data: answer, error } = await portfolioTextApi.workflow
@@ -156,26 +199,54 @@
 				.get(withCredentials);
 			if (current !== request) return;
 			if (error || !answer) {
-				failed(failureText(error?.value, m.journeyFailed));
+				failed(failureText(error?.value, m.journeyFailed), viewer);
 				return;
 			}
-			showJourney(answer);
+			showJourney(answer, { viewer });
 		} catch {
-			if (current === request) failed(networkError());
+			if (current === request) failed(networkError(), viewer);
 		}
 	}
 
 	/**
-	 * The journey could not be loaded: said in place of the steps, or, when some are shown (the
-	 * server's render, an earlier load), over them, which stay
+	 * The journey could not be loaded for `viewer`. Steps the browser loaded for them stay, and a
+	 * toast says so. The server's (as anyone signed out stands in them) stay too, read-only for a
+	 * signed-in visitor, with the failure and "Try again" above them. Another account's never stay
+	 * on screen (after a sign-out, on a shared computer): the server's take their place, else the
+	 * failure takes the steps' place
 	 */
-	function failed(message: string) {
-		if (loaded.state === 'ready') toaster.error({ title: message });
-		else loaded = { state: 'error', message };
+	function failed(message: string, viewer: string) {
+		if (loaded.state !== 'ready') {
+			loaded = { state: 'error', message };
+		} else if (loaded.from === 'browser' && loaded.viewer === viewer) {
+			toaster.error({ title: message });
+		} else if (loaded.viewer === '') {
+			loaded = { ...loaded, failure: message };
+		} else if (data.journey) {
+			showServerJourney(data.journey, message);
+		} else {
+			loaded = { state: 'error', message };
+		}
+	}
+
+	/** Whether the owner's calendar offers a meeting type to book, asked again in the browser */
+	async function loadBookable() {
+		try {
+			const { data: found, error } = await portfolioTextApi.appointments
+				.domains({ domainName: encodeURIComponent(data.domainName) })
+				.schedules.get();
+			if (!error && Array.isArray(found)) bookable = found.length > 0;
+		} catch {
+			// What the server said stays
+		}
 	}
 
 	// Loaded at once: the API reads the session cookie itself
-	onMount(() => void loadJourney());
+	onMount(() => {
+		hydrated = true;
+		void loadJourney();
+		void loadBookable();
+	});
 
 	// Then again whenever the account changes once the session is known: a sign-in (from a step,
 	// the header, another tab) or a sign-out. The first check only confirms the cookie the
@@ -206,7 +277,7 @@
 			if (error || !next) return { ok: false, status: errorStatus(error), value: error?.value };
 			// A load still under way would show the journey as it was before
 			request++;
-			showJourney(next, { follow: false });
+			showJourney(next, { follow: false, viewer: keptAccount() });
 			void focusStep(expanded);
 			return { ok: true };
 		} catch (cause) {
@@ -216,9 +287,9 @@
 
 	/** A step succeeded without a submit: the next one opens, without loading the journey again */
 	function onStepSucceeded(stepId: string) {
-		if (!journey || journey.own) return;
+		if (loaded.state !== 'ready' || !journey || journey.own) return;
 		loaded = {
-			state: 'ready',
+			...loaded,
 			journey: {
 				...journey,
 				steps: journey.steps.map((step) =>
@@ -265,7 +336,19 @@
 		reload={() => void loadJourney()}
 		locked={onStepLocked}
 		succeeded={() => onStepSucceeded(step.id)}
+		{bookable}
+		schedulesFound={(count) => (bookable = count > 0)}
 	/>
+{/snippet}
+
+<!-- The journey could not be loaded: in place of the steps, or above the ones shown -->
+{#snippet failure(message: string)}
+	<div class="card preset-tonal-error space-y-3 p-4" role="alert">
+		<p class="text-sm">{message}</p>
+		<button type="button" class="btn btn-sm preset-tonal" onclick={() => loadJourney()}>
+			{common.retry}
+		</button>
+	</div>
 {/snippet}
 
 <!-- The owner's preview: what it is, where the steps are changed, and their link to share -->
@@ -297,12 +380,16 @@
 	<section class="space-y-2">
 		<h1 class="h2">{m.title(ownerName)}</h1>
 		{#if journey}
-			<p class="opacity-75">{journeyIntro(ownerName, goal)}</p>
+			<p class="opacity-75">{journeyIntro(ownerName, closed ? undefined : goal)}</p>
 		{/if}
 	</section>
 
 	{#if loaded.state === 'loading'}
-		<!-- The server could not render the journey: loaded in the browser -->
+		<!-- The server could not render the journey: loaded in the browser, which a page without
+		     JavaScript never does (its own bottom margin: a <noscript> is inline) -->
+		<noscript>
+			<p class="card preset-tonal-warning mb-8 p-4 text-sm">{m.noScript}</p>
+		</noscript>
 		<div class="space-y-3" role="status">
 			<span class="sr-only">{m.loading}</span>
 			<div
@@ -311,20 +398,18 @@
 			></div>
 		</div>
 	{:else if loaded.state === 'error'}
-		<div class="card preset-tonal-error space-y-3 p-4" role="alert">
-			<p class="text-sm">{loaded.message}</p>
-			<button type="button" class="btn btn-sm preset-tonal" onclick={() => loadJourney()}>
-				{common.retry}
-			</button>
-		</div>
+		{@render failure(loaded.message)}
 	{:else if journey && journey.steps.length === 0}
 		{#if journey.own}{@render ownerNote()}{/if}
+		{#if loaded.state === 'ready' && loaded.failure}{@render failure(loaded.failure)}{/if}
 		<section class="card p-6">
 			<p class="opacity-75">{datesMessages.bookingUnavailable}</p>
 		</section>
 	{:else if journey}
 		{#if journey.own}{@render ownerNote()}{/if}
-		<BeforeYouStart {journey} {ownerName} />
+		{#if loaded.state === 'ready' && loaded.failure}{@render failure(loaded.failure)}{/if}
+		<!-- Nothing to prepare for a meeting nobody can book: the intro says so -->
+		{#if !closed}<BeforeYouStart {journey} {ownerName} />{/if}
 		<!-- What the server rendered is the whole page without JavaScript: it says what each step
 		     asks, but going through them needs the browser. Its own bottom margin: a <noscript> is
 		     inline, the page's spacing does not reach the steps under it -->
@@ -341,7 +426,7 @@
 				{@const state = states[index]}
 				{@const entry = clientStep(step.type)}
 				{@const name = stepName(step, entry?.title?.(step))}
-				{@const live = isLive(journey.own === true, step, state)}
+				{@const live = !provisional && isLive(journey.own === true, step, state)}
 				{@const unfolded = expanded === index && live}
 				<li
 					class={[

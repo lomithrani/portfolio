@@ -29,6 +29,14 @@ export interface StepProps {
 	locked(reason: 'signed-out' | 'locked'): void;
 	/** The step succeeded without a submit (the meeting was booked) */
 	succeeded(): void;
+	/**
+	 * Whether the owner's calendar offers a meeting type to book (GET
+	 * /appointments/domains/:domainName/schedules, asked by the server's render and again in the
+	 * browser); null while it is not known
+	 */
+	bookable: boolean | null;
+	/** How many meeting types a step found when it asked for them: the page follows it */
+	schedulesFound(count: number): void;
 }
 
 /** What the owner's editor gives the settings form of a step */
@@ -55,6 +63,13 @@ export interface StepGoal {
 	after: string;
 	/** What happens once the visitor did it ("Before you start", on the Hire page) */
 	next(ownerName: string): string;
+	/**
+	 * The step books a meeting in the owner's calendar: it can be done only while the calendar offers
+	 * a meeting type (`bookable`). Otherwise the Hire page promises nothing of it: its intro says the
+	 * owner takes no meeting requests online, and neither "Before you start" nor the page's
+	 * description says how long the steps take or what happens next
+	 */
+	booking?: true;
 }
 
 /**

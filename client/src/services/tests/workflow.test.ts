@@ -456,6 +456,19 @@ describe("the visitor's journey", () => {
 		expect(journeyDescription('Louis', [], 1)).toBe(
 			'Propose a role to Louis on their page for recruiters. They do not take meeting requests online right now.'
 		);
+		// A meeting nobody can book (the owner's calendar has no meeting type): neither the steps nor
+		// a duration are promised, whatever comes before the meeting
+		for (const steps of [gate, DEFAULT_WORKFLOW_STEPS]) {
+			expect(journeyDescription('Louis', steps, 8, { closed: true })).toBe(
+				'Propose a role to Louis on their page for recruiters. They do not take meeting requests online right now.'
+			);
+		}
+		expect(withLocale('fr', () => journeyDescription('Louis', gate, 8, { closed: true }))).toBe(
+			'Proposez un poste à Louis sur sa page recruteurs. Louis ne prend pas de demandes de rendez-vous en ligne pour le moment.'
+		);
+		expect(withLocale('fr', () => journeyDescription('Louis', [{ type: 'meeting' }], 1))).toBe(
+			'Proposez un poste à Louis sur sa page recruteurs\u00a0: réserver un rendez-vous, en une minute environ.'
+		);
 		// The journey is not known (the browser loads it): no step is named
 		expect(journeyDescription('Louis', undefined, 1)).toBe(
 			'Propose a role to Louis: their page for recruiters, with the steps they ask you to follow.'

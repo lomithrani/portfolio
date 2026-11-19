@@ -39,12 +39,15 @@ export const m = defineMessages({
 	job: {
 		/** The button unfolding the step once a job is picked */
 		reopen: { en: 'Change', fr: 'Modifier' },
-		/** What the step asks, before the visitor starts ("Before you start") */
+		/**
+		 * What the step asks, before the visitor starts ("Before you start"). The minutes counted are a
+		 * pick's: writing a job description on the way takes longer
+		 */
 		asks: {
 			en: (ownerName: string) =>
-				`Pick one of your open job descriptions, or write a new one: ${ownerName} sees it in the meeting invitation.`,
+				`Pick one of your open job descriptions, or write a new one, which takes longer: ${ownerName} sees it in the meeting invitation.`,
 			fr: (ownerName: string) =>
-				`Choisissez l'une de vos offres d'emploi ouvertes, ou rédigez-en une nouvelle : ${ownerName} la voit dans l'invitation au rendez-vous.`
+				`Choisissez l'une de vos offres d'emploi ouvertes, ou rédigez-en une nouvelle, ce qui prend plus de temps : ${ownerName} la voit dans l'invitation au rendez-vous.`
 		},
 		jobsFailed: {
 			en: 'Could not load your job descriptions.',
@@ -264,12 +267,21 @@ export const m = defineMessages({
 				en: "Then pick a time slot: you'll receive a calendar invitation by email.",
 				fr: 'Choisissez ensuite un créneau : vous recevrez une invitation par e-mail.'
 			},
-			/** What happens once the meeting is booked ("Before you start") */
+			/**
+			 * What happens once the meeting is booked ("Before you start"), and that the owner learns who
+			 * the recruiter is only then.
+			 * Backed by: POST /appointments/book (server/plugins/appointments.ts), which invites the name
+			 * and address typed in the booking form and puts the job picked in the invitation
+			 * (`describe` of server/services/workflowSteps/job.ts); before it, nothing shows the owner
+			 * who went through their steps: no route lists a journey's visitors (WorkflowInstance is read
+			 * only for the visitor's own progress, server/services/workflows.ts), and a posting's DTO
+			 * never names its recruiter (server/services/jobPostings.ts)
+			 */
 			next: {
 				en: (ownerName: string) =>
-					`Once you book, you receive a calendar invitation by email, and the meeting goes into ${ownerName}'s calendar.`,
+					`Once you book, you receive a calendar invitation by email, and the meeting goes into ${ownerName}'s calendar: only then does ${ownerName} get your name and email address.`,
 				fr: (ownerName: string) =>
-					`Une fois le créneau réservé, vous recevez une invitation par e-mail, et ${ownerName} retrouve le rendez-vous dans son agenda.`
+					`Une fois le créneau réservé, vous recevez une invitation par e-mail, et ${ownerName} retrouve le rendez-vous dans son agenda : ce n'est qu'à ce moment-là que ${ownerName} reçoit votre nom et votre adresse e-mail.`
 			}
 		}
 	},

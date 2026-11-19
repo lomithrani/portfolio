@@ -20,7 +20,9 @@ import {
 	DEFAULT_WORKFLOW_STEPS,
 	LEGAL_VERSION,
 	PERFECT_JOB_CRITERIA,
-	journeyTemplate
+	journeyTemplate,
+	stepManifest,
+	stepManifests
 } from 'portfolio-common';
 
 // The hiring journey of 'e2e-journey' (seeded by `bun run --cwd server seed:e2e`, changed by this
@@ -143,6 +145,46 @@ const preflight = (request: Request) => ({
 		'access-control-allow-headers': request.headers()['access-control-request-headers'] ?? ''
 	}
 });
+
+/**
+ * Answers the browser's calls to the appointment routes with one meeting type, without a free date:
+ * no Google Calendar is connected here, so the API lists none (and the server's render of the Hire
+ * page knows nothing can be booked), but the page asks again in the browser
+ */
+const stubMeetingType = (page: Page) =>
+	page.route(`${API_URL}/appointments/**`, async (route) => {
+		const request = route.request();
+		if (request.method() === 'OPTIONS') return route.fulfill(preflight(request));
+		const headers = cors(request);
+		const { pathname } = new URL(request.url());
+		if (pathname.endsWith(`/domains/${DOMAIN}/schedules`)) {
+			const meetingType = {
+				id: '65e2e00000000000000000ab',
+				title: 'Intro call',
+				description: null,
+				durationMinutes: 30,
+				minNoticeHours: 0,
+				maxAdvanceDays: 30,
+				timezone: 'Europe/Paris',
+				locationType: 'google_meet',
+				locationDetails: null,
+				availability: [{ dayOfWeek: 1, startTime: '09:00', endTime: '10:00' }]
+			};
+			return route.fulfill({ json: [meetingType], headers });
+		}
+		if (pathname.endsWith('/available-dates')) {
+			const today = new Date().toISOString().slice(0, 10);
+			return route.fulfill({
+				json: { horizon: { first: today, last: today }, dates: [] },
+				headers
+			});
+		}
+		return route.fulfill({ status: 404, body: 'Not stubbed', headers });
+	});
+
+/** What the page never says of a meeting nobody can book: an invitation, how long it all takes */
+const MEETING_PROMISE =
+	/calendar invitation|invitation par e-mail|About (a|\d+) minutes?|minutes? environ/;
 
 test.describe('the admin page', () => {
 	const selectedTab = (page: Page) => page.getByRole('tab', { selected: true });
@@ -639,8 +681,9 @@ test.describe('the hiring journey', () => {
 		await blockGoogle(visitor);
 		await signIn(visitor, recruiter);
 		await gotoHydrated(visitor, `/${DOMAIN}/hire`);
+		// No Google Calendar here: the page says no meeting is taken online, its steps stay
 		await expect(
-			visitor.getByText(`${DOMAIN} asks recruiters to complete 2 steps first.`)
+			visitor.getByText(`${DOMAIN} does not take meeting requests online right now.`)
 		).toBeVisible();
 		const noteStep = step(visitor, 'Step 1: Before you book');
 		const jobStep = step(visitor, 'Step 2: Select or create a job');
@@ -1705,26 +1748,144 @@ test.describe('the hiring journey', () => {
 	}) => {
 		await setJourney('meeting');
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
-		// Titled with neutral words, whatever the journey leads to, and saying what it offers
+		// Titled with neutral words, whatever the journey leads to
 		await expect(page).toHaveTitle(`Propose a role to ${DOMAIN}`);
 		await expect(
 			page.getByRole('heading', { level: 1, name: `Propose a role to ${DOMAIN}` })
 		).toBeVisible();
+		await expect(journeySteps(page)).toHaveCount(0);
+		// No Google Calendar here: nothing can be booked, and nothing promises a meeting
+		await expect(
+			page.getByText(`${DOMAIN} does not take meeting requests online right now.`)
+		).toBeVisible();
+		await expect(page.getByText('Online booking is not available right now.')).toBeVisible();
+		await expect(page.getByRole('region', { name: 'Before you start' })).toHaveCount(0);
+		await expect(page.getByText(MEETING_PROMISE)).toHaveCount(0);
+
+		// With a meeting type to book: what the page offers, how long it takes, that it needs no account
+		await stubMeetingType(page);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
 		await expect(
 			page.getByText(
 				"Pick a time slot that suits you — you'll receive a calendar invitation by email."
 			)
 		).toBeVisible();
-		await expect(page.getByText('Online booking is not available right now.')).toBeVisible();
-		await expect(journeySteps(page)).toHaveCount(0);
-		// Before the booking: how long it takes, and that it needs no account
 		const before = page.getByRole('region', { name: 'Before you start' });
 		await expect(before).toContainText('About 2 minutes');
 		await expect(before).toContainText('Nothing to prepare, and no account needed.');
 		await expect(before.getByRole('list', { name: 'What each step asks' })).toHaveCount(0);
+		await expect(page.getByText('Online booking is not available right now.')).toHaveCount(0);
 	});
 
-	test('the page is rendered on the server: without JavaScript it says what each step asks', async ({
+	test('with a meeting type to book, "Before you start" says what the steps take, also on a phone', async ({
+		page
+	}) => {
+		// Long words in the owner's title wrap rather than widen the page
+		const title = 'Before you book: what I look for (remote-first-only-please-and-thank-you)';
+		await setSteps(
+			{ id: 'note', type: 'note', config: { title, text: 'I only take **remote** roles.' } },
+			{ id: 'job', type: 'job' },
+			{ id: 'job-match', type: 'job-match', config: { minScore: 70, showDetails: true } },
+			{ id: 'meeting', type: 'meeting' }
+		);
+		await stubMeetingType(page);
+		await page.setViewportSize({ width: 390, height: 844 });
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+
+		await expect(
+			page.getByText(
+				`${DOMAIN} asks recruiters to complete 3 steps first. Then pick a time slot: you'll receive a calendar invitation by email.`
+			)
+		).toBeVisible();
+		// What each step asks (the steps after the first are locked below), what to have at hand, how
+		// long it takes, and what happens then
+		const before = page.getByRole('region', { name: 'Before you start' });
+		await expect(
+			before.getByRole('list', { name: 'What each step asks' }).getByRole('listitem')
+		).toHaveText([
+			new RegExp(
+				`Before you book.*\\s*Read ${DOMAIN}'s note, then confirm that you have read it\\.`
+			),
+			new RegExp(
+				`Select or create a job\\s*Pick one of your open job descriptions, or write a new one, which takes longer: ${DOMAIN} sees it in the meeting invitation\\.`
+			),
+			new RegExp(
+				`Match the perfect job\\s*Your job is scored out of 100 against what ${DOMAIN} is looking for: you see your score, never what they ask for\\. At least 70 opens the next step\\.`
+			),
+			/Book a meeting\s*Pick a time slot, then give your name and email address\./
+		]);
+		await expect(before).toContainText('About 8 minutes');
+		await expect(before.getByRole('definition').getByRole('listitem')).toHaveText([
+			'A Google account, to sign in',
+			'The job description and its pay range, or its PDF where import is offered'
+		]);
+		await expect(before).toContainText(
+			`Once you book, you receive a calendar invitation by email, and the meeting goes into ${DOMAIN}'s calendar: only then does ${DOMAIN} get your name and email address.`
+		);
+		// Described with its steps once the page knows the meeting can be booked
+		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+			'content',
+			`Propose a role to ${DOMAIN} on their page for recruiters: read a note, select or create a job, match the perfect job, then book a meeting, in about 8 minutes.`
+		);
+
+		// At 390 px the card stays within the screen, and the page does not scroll sideways. It comes
+		// before the steps on purpose: what the journey takes is read before starting, the first step
+		// is a scroll away
+		const box = await before.boundingBox();
+		expect(box?.x).toBeGreaterThanOrEqual(0);
+		expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			390
+		);
+		await expect(step(page, `Step 1: ${title}`)).toBeVisible();
+	});
+
+	test('a load in the browser that fails keeps the steps the server rendered, with "Try again"', async ({
+		page
+	}) => {
+		await setSteps(
+			{ id: 'note', type: 'note', config: { title: 'Before you book', text: 'Remote only.' } },
+			{ id: 'meeting', type: 'meeting' }
+		);
+		// The recruiter already confirmed the note: the server's render, as anyone signed out stands
+		// in the journey, has it to do
+		await submitStep('note', { acknowledged: true });
+		const journeyRoute = `${API_URL}/workflow/domains/${DOMAIN}`;
+		await page.route(journeyRoute, (route) => {
+			const request = route.request();
+			if (request.method() === 'OPTIONS') return route.fulfill(preflight(request));
+			if (request.method() !== 'GET') return route.fallback();
+			return route.fulfill({ status: 503, body: 'Unavailable', headers: cors(request) });
+		});
+		await signIn(page, recruiter);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+
+		// The steps stay (the server's render does not go through page.route), with the failure above
+		// them, and no control acting on steps that are not this recruiter's
+		const failure = page
+			.getByRole('alert')
+			.filter({ hasText: 'Could not load this hiring journey.' });
+		await expect(failure).toContainText(
+			'Could not load this hiring journey. Try again in a moment.'
+		);
+		await expect(journeySteps(page).getByRole('listitem')).toHaveCount(2);
+		await expect(step(page, 'Step 1: Before you book')).toBeVisible();
+		await expect(journeySteps(page).getByRole('button')).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'I have read this' })).toHaveCount(0);
+
+		// Once the API answers again: where the recruiter stands
+		await page.unroute(journeyRoute);
+		await failure.getByRole('button', { name: 'Try again' }).click();
+		await expect(
+			page.getByRole('heading', { name: 'Step 1: Before you book (done)' })
+		).toBeVisible();
+		await expect(failure).toHaveCount(0);
+		await expect(step(page, 'Step 2: Book a meeting')).toContainText(
+			'Pick a time slot that suits you.'
+		);
+	});
+
+	test('the page is rendered on the server: without JavaScript it shows the steps, and promises no meeting nobody can book', async ({
 		browser
 	}) => {
 		await setSteps(
@@ -1746,32 +1907,14 @@ test.describe('the hiring journey', () => {
 		await expect(
 			page.getByRole('heading', { level: 1, name: `Propose a role to ${DOMAIN}` })
 		).toBeVisible();
+		// No Google Calendar here: the journey leads to a meeting nobody can book. The page says so,
+		// and neither "Before you start" nor the description promises it (what they say when it can
+		// be booked: the test above, and BeforeYouStart.test.ts for the server's render)
 		await expect(
-			page.getByText(`${DOMAIN} asks recruiters to complete 3 steps first.`)
+			page.getByText(`${DOMAIN} does not take meeting requests online right now.`)
 		).toBeVisible();
-		// Before they start: what each step asks (the steps after the first are locked below), what
-		// to have at hand, how long it takes, and what happens then
-		const before = page.getByRole('region', { name: 'Before you start' });
-		await expect(
-			before.getByRole('list', { name: 'What each step asks' }).getByRole('listitem')
-		).toHaveText([
-			new RegExp(`Before you book\\s*Read ${DOMAIN}'s note, then confirm that you have read it\\.`),
-			new RegExp(
-				`Select or create a job\\s*Pick one of your open job descriptions, or write a new one: ${DOMAIN} sees it in the meeting invitation\\.`
-			),
-			new RegExp(
-				`Match the perfect job\\s*Your job is scored out of 100 against what ${DOMAIN} is looking for: you see your score, never what they ask for\\. At least 70 opens the next step\\.`
-			),
-			/Book a meeting\s*Pick a time slot, then give your name and email address\./
-		]);
-		await expect(before).toContainText('About 8 minutes');
-		await expect(before.getByRole('definition').getByRole('listitem')).toHaveText([
-			'A Google account, to sign in',
-			'The job description and its pay range, or its PDF where import is offered'
-		]);
-		await expect(before).toContainText(
-			`Once you book, you receive a calendar invitation by email, and the meeting goes into ${DOMAIN}'s calendar.`
-		);
+		await expect(page.getByRole('region', { name: 'Before you start' })).toHaveCount(0);
+		await expect(page.getByText(MEETING_PROMISE)).toHaveCount(0);
 		// The steps, as anyone signed out stands in them: the note to read first, the rest locked
 		await expect(journeySteps(page).getByRole('listitem')).toHaveCount(4);
 		await expect(step(page, 'Step 1: Before you book').locator('strong')).toHaveText('remote');
@@ -1789,8 +1932,8 @@ test.describe('the hiring journey', () => {
 			noScript('Turn on JavaScript in your browser to go through the steps\\.')
 		);
 		await expect(page.getByText(/Loading/)).toHaveCount(0);
-		// Described with its steps, for a shared link too
-		const description = `Propose a role to ${DOMAIN} on their page for recruiters: read a note, select or create a job, match the perfect job, then book a meeting, in about 8 minutes.`;
+		// Described for a shared link too, without the steps or a duration
+		const description = `Propose a role to ${DOMAIN} on their page for recruiters. They do not take meeting requests online right now.`;
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', description);
 		await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
 			'content',
@@ -1800,38 +1943,54 @@ test.describe('the hiring journey', () => {
 		expect(await page.content()).not.toContain('showDetails');
 
 		await page.goto(`/${DOMAIN}/hire?lang=fr`);
-		const avant = page.getByRole('region', { name: 'Avant de commencer' });
-		await expect(avant).toContainText('8 minutes environ');
-		await expect(avant).toContainText('Un compte Google, pour vous connecter');
-		await expect(avant).toContainText(
-			`Votre offre est notée sur 100 par rapport à ce que recherche ${DOMAIN}\u00a0: vous voyez son résultat, jamais ce qui est demandé.`
-		);
+		await expect(
+			page.getByText(`${DOMAIN} ne prend pas de demandes de rendez-vous en ligne pour le moment.`)
+		).toBeVisible();
+		await expect(page.getByRole('region', { name: 'Avant de commencer' })).toHaveCount(0);
+		await expect(page.getByText(MEETING_PROMISE)).toHaveCount(0);
 		expect(await page.content()).toMatch(
 			noScript('Activez JavaScript dans votre navigateur pour suivre les étapes\\.')
 		);
 		await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
 			'content',
-			`Proposez un poste à ${DOMAIN} sur sa page recruteurs\u00a0: lire une note, choisir ou créer une offre, correspondre au poste idéal, puis réserver un rendez-vous, en 8 minutes environ.`
+			`Proposez un poste à ${DOMAIN} sur sa page recruteurs. ${DOMAIN} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
 		);
 
-		// The booking page: the meeting types load in the browser, without a word on the first paint
-		// (back in English: the French link saved the language)
+		// Every step type that can come first renders on the server, open, its loading states
+		// holding their place without words (docs/WORKFLOW_STEPS.md). Back in English: the French
+		// link saved the language
+		const settings: Record<string, { title?: string; text?: string }> = {
+			note: { title: 'Before you book', text: 'Remote only.' }
+		};
+		const firsts = stepManifests()
+			.filter((manifest) => manifest.kind === 'requirement' && !manifest.needs?.length)
+			.map((manifest) => manifest.type);
+		expect(firsts).toEqual(expect.arrayContaining(['note', 'job']));
+		for (const type of firsts) {
+			await setSteps(
+				{ id: type, type, ...(settings[type] ? { config: settings[type] } : {}) },
+				{ id: 'meeting', type: 'meeting' }
+			);
+			const response = await page.goto(`/${DOMAIN}/hire?lang=en`);
+			expect({ type, status: response?.status() }).toEqual({ type, status: 200 });
+			const name = settings[type]?.title ?? stepManifest(type)?.label;
+			await expect(step(page, `Step 1: ${name}`)).toBeVisible();
+			await expect(step(page, 'Step 2: Book a meeting (locked)')).toBeVisible();
+			await expect(page.getByText(/Loading|Checking/)).toHaveCount(0);
+		}
+
+		// The booking page: no meeting type, said on the first paint, without a placeholder
 		await setJourney('meeting');
 		await page.goto(`/${DOMAIN}/hire?lang=en`);
 		await expect(
-			page.getByText(
-				"Pick a time slot that suits you — you'll receive a calendar invitation by email."
-			)
+			page.getByText(`${DOMAIN} does not take meeting requests online right now.`)
 		).toBeVisible();
-		await expect(page.getByRole('region', { name: 'Before you start' })).toContainText(
-			'Nothing to prepare, and no account needed.'
-		);
-		await expect(page.getByRole('status').getByText('Loading availability…')).toHaveClass(
-			/\bsr-only\b/
-		);
+		await expect(page.getByText('Online booking is not available right now.')).toBeVisible();
+		await expect(page.getByText(/Loading/)).toHaveCount(0);
+		await expect(page.getByText(MEETING_PROMISE)).toHaveCount(0);
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
 			'content',
-			`Propose a role to ${DOMAIN} on their page for recruiters: book a meeting, in about 2 minutes.`
+			`Propose a role to ${DOMAIN} on their page for recruiters. They do not take meeting requests online right now.`
 		);
 		await context.close();
 	});
