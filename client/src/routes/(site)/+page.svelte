@@ -29,8 +29,9 @@
 	import { m as layout } from './layout.messages.ts';
 	import { m } from './page.messages.ts';
 
-	// The landing page (/), for talent: a career tool they keep, whose link makes recruiters show
-	// the job and its pay before the call. The hero and the card that creates a portfolio
+	// The landing page (/), for talent: a career tool they keep, whose link can make recruiters show
+	// the job and its pay before the call (the gate journey, one click from Get started; the default
+	// journey is the meeting alone). The hero and the card that creates a portfolio
 	// (CandidateOnboarding), then "Send your link" (the hiring journey, with its recording), "Our
 	// promises to you" (seven, each message naming the code that backs it), the calls the perfect
 	// job's criteria stop, "Make it yours" (with its recording), how it works (the card's four

@@ -16,7 +16,11 @@
 // With an API whose JWT_SECRET is not server/.env.example's, pass it to both scripts
 // (JWT_SECRET=... bun scripts/...): they sign the sessions of the two fictional accounts with it.
 // DEMO_CHROMIUM is the browser to launch when Playwright's own is not installed. Google is never
-// reached; the travel times are the API's (Géoplateforme), cached after the first run. Jane's
+// reached. The travel times are the API's, cached after the first run: the Géoplateforme's, or,
+// with the API started offline (from server/: `COMMUTE_TIMES=true bun --preload
+// ../client/scripts/landing-demos/offline-geoplateforme.mjs index.ts`), figures that file computes
+// for seed.mjs's two addresses, nothing outside localhost being asked. The committed film was
+// recorded offline: the film shows the commute's outcome only, never a time. Jane's
 // calendar cannot be connected without Google: demo-journey answers the browser's request for her
 // meeting types with one, so the page is the one a candidate whose calendar is open shows (with
 // "Before you start"; without a meeting type it says no meeting is taken online). The film stops at
@@ -139,7 +143,7 @@ const journey = async () => {
 
 	// The page's title and its "Before you start", then Jane's note, read and confirmed
 	await f.hold(1800);
-	await f.scroll(await f.topOf(heading('What I am looking for'), 90), 800);
+	await f.scroll(await f.topOf(heading('My conditions'), 90), 800);
 	await f.hold(1600);
 	await f.tap(page.getByRole('button', { name: 'I have read this' }));
 	await settle();

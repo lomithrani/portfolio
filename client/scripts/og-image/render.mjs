@@ -21,6 +21,7 @@ import { chromium } from '@playwright/test';
 import { withLocale } from 'portfolio-common';
 import { richParts } from '../../src/lib/i18n/rich.ts';
 import { m } from '../../src/routes/(site)/page.messages.ts';
+import { landingImageSide } from '../../src/routes/(site)/shareImage.ts';
 import { PREVIEW_IMAGES } from '../../src/services/linkPreview.ts';
 import { m as preview } from '../../src/services/linkPreview.messages.ts';
 import { m as skillPreview } from '../../src/services/projectPreview.messages.ts';
@@ -109,7 +110,7 @@ const TEMPLATES = {
 			}
 		},
 		/** Beside the journey: three of the page's promises, as it words them (and their alt text) */
-		side: () => [m.promises.free.title, m.promises.pay.title, m.promises.steps.title],
+		side: landingImageSide,
 		html(locale) {
 			const t = this.text[locale];
 			const steps = t.steps

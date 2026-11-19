@@ -1098,6 +1098,16 @@ with their title, description and picture. LinkedIn keeps a link's preview for a
 week: inspecting the address fetches it again, after a change of the pictures or of a
 portfolio's title.
 
+**After a release that changes the landing page's preview or demos** (its title, description,
+`og-image.png`, `og-image-fr.png`, or the recordings `client/static/landing/demo-*.webm`, `.mp4`
+and `.jpg`, which keep their addresses when they change), inspect `https://<your domain>/` and
+`https://<your domain>/?lang=fr` in the Post Inspector, so links already shared show the new
+title and picture. If Cloudflare keeps static files in its cache (it does by default for these
+extensions), purge those addresses (**Caching**, **Configuration**, **Custom Purge**:
+`/og-image.png`, `/og-image-fr.png`, `/landing/demo-journey.webm`, `.mp4`, `.jpg`, and
+`demo-style.*` when they changed), then check what is served:
+`curl -sI https://<your domain>/og-image.png | grep -i '^\(last-modified\|etag\|cf-cache-status\)'`.
+
 **Pages listed before.** A `noindex` counts from the next time a search engine reads the page,
 which can take weeks. Verify the domain in
 [Google Search Console](https://search.google.com/search-console) (a domain property, with the

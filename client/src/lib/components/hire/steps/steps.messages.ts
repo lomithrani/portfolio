@@ -111,46 +111,49 @@ export const m = defineMessages({
 	jobMatch: {
 		/**
 		 * What the step asks, before the visitor starts ("Before you start"): with the minimum its
-		 * settings show visitors, then without one. Next to a note step, the score is « résultat »
+		 * settings show visitors, then without one. Next to a note step, the score is « résultat ».
+		 * Neutral, like every text of this step: the job is scored against the owner's criteria,
+		 * never "what they are looking for" (having a portfolio says nothing about looking for a job,
+		 * as the landing's FAQ says)
 		 */
 		asks: {
 			en: (ownerName: string, minScore: number) =>
-				`Your job is scored out of 100 against what ${ownerName} is looking for: you see your score, never what they ask for. At least ${minScore} opens the next step.`,
+				`Your job is scored out of 100 against ${ownerName}'s criteria: you see your score, never what they ask for. At least ${minScore} opens the next step.`,
 			fr: (ownerName: string, minScore: number) =>
-				`Votre offre est notée sur 100 par rapport à ce que recherche ${ownerName} : vous voyez son résultat, jamais ce qui est demandé. Il faut au moins ${minScore} pour ouvrir l'étape suivante.`
+				`Votre offre est notée sur 100 selon les critères de ${ownerName} : vous voyez son résultat, jamais ce qui est demandé. Il faut au moins ${minScore} pour ouvrir l'étape suivante.`
 		},
 		asksNoMin: {
 			en: (ownerName: string) =>
-				`Your job is scored out of 100 against what ${ownerName} is looking for: you see your score, never what they ask for.`,
+				`Your job is scored out of 100 against ${ownerName}'s criteria: you see your score, never what they ask for.`,
 			fr: (ownerName: string) =>
-				`Votre offre est notée sur 100 par rapport à ce que recherche ${ownerName} : vous voyez son résultat, jamais ce qui est demandé.`
+				`Votre offre est notée sur 100 selon les critères de ${ownerName} : vous voyez son résultat, jamais ce qui est demandé.`
 		},
 		ask: {
 			en: (ownerName: string) =>
-				`The job you pick is scored out of 100 against what ${ownerName} is looking for.`,
+				`The job you pick is scored out of 100 against ${ownerName}'s criteria.`,
 			fr: (ownerName: string) =>
-				`L'offre que vous choisissez est notée sur 100 par rapport à ce que recherche ${ownerName}.`
+				`L'offre que vous choisissez est notée sur 100 selon les critères de ${ownerName}.`
 		},
 		askMin: {
 			en: (ownerName: string, minScore: number) =>
-				`The job you pick is scored out of 100 against what ${ownerName} is looking for: at least ${minScore} opens the next step.`,
+				`The job you pick is scored out of 100 against ${ownerName}'s criteria: at least ${minScore} opens the next step.`,
 			fr: (ownerName: string, minScore: number) =>
-				`L'offre que vous choisissez est notée sur 100 par rapport à ce que recherche ${ownerName} : il faut au moins ${minScore} pour ouvrir l'étape suivante.`
+				`L'offre que vous choisissez est notée sur 100 selon les critères de ${ownerName} : il faut au moins ${minScore} pour ouvrir l'étape suivante.`
 		},
 		/** Before and after the score, for screen readers: "Score: 62 out of 100" */
 		score: { en: 'Score:', fr: 'Note :' },
 		outOf100: { en: 'out of 100', fr: 'sur 100' },
 		closeEnough: {
 			en: (title: string, ownerName: string) =>
-				`${title} is close enough to what ${ownerName} is looking for.`,
+				`${title} matches ${ownerName}'s criteria closely enough.`,
 			fr: (title: string, ownerName: string) =>
-				`${title} est assez proche de ce que recherche ${ownerName}.`
+				`${title} correspond assez aux critères de ${ownerName}.`
 		},
 		notCloseEnough: {
 			en: (title: string, ownerName: string) =>
-				`${title} is not close enough to what ${ownerName} is looking for.`,
+				`${title} does not match ${ownerName}'s criteria closely enough.`,
 			fr: (title: string, ownerName: string) =>
-				`${title} n'est pas assez proche de ce que recherche ${ownerName}.`
+				`${title} ne correspond pas assez aux critères de ${ownerName}.`
 		},
 		asksFor: {
 			en: (ownerName: string, minScore: number) =>
@@ -205,7 +208,7 @@ export const m = defineMessages({
 		/** The same, the owner not sharing the criteria */
 		raiseWithoutDetails: {
 			en: (ownerName: string) =>
-				`${ownerName} does not share what they are looking for here. A job description that says more (seniority, skills, remote days, travel…) can score higher: what it leaves out counts as not matching. Its pay and conditions have been locked since it was opened: duplicate it, complete the copy and open it, then pick it above.`,
+				`${ownerName} does not share their criteria here. A job description that says more (seniority, skills, remote days, travel…) can score higher: what it leaves out counts as not matching. Its pay and conditions have been locked since it was opened: duplicate it, complete the copy and open it, then pick it above.`,
 			fr: (ownerName: string) =>
 				`${ownerName} ne partage pas ses critères ici. Une offre qui en dit plus (niveau d'expérience, compétences, jours de télétravail, déplacements…) peut obtenir une meilleure note : ce qu'elle ne précise pas compte comme ne correspondant pas. Sa rémunération et ses conditions sont verrouillées depuis son ouverture : dupliquez-la, complétez la copie et ouvrez-la, puis choisissez-la à l'étape ci-dessus.`
 		},

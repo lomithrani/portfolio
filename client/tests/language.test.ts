@@ -39,10 +39,19 @@ test.describe('a visitor whose browser prefers French', () => {
 			page.getByRole('listitem').filter({
 				has: page.getByRole('heading', { name: "La rémunération d'abord, si vous le demandez" })
 			})
-		).toContainText('ne dépasse pas 1,5 fois le bas');
+		).toContainText("celle-ci est notée avec un haut d'au plus 1,5 fois le bas");
 		await expect(page.locator('details', { hasText: 'Devrai-je payer un jour' })).toContainText(
 			'(article L5321-3 du code du travail)'
 		);
+		// The founder's two questions, answered in French
+		await expect(
+			page.locator('details', { hasText: 'Avoir un portfolio, est-ce chercher un emploi ?' })
+		).toContainText(
+			'le lien vers votre page recruteurs dit « Proposer un poste », jamais « Me recruter »'
+		);
+		await expect(
+			page.locator('details', { hasText: "Comment Portfolio gagne-t-il de l'argent ?" })
+		).toContainText('Jamais à vos frais : les candidats ne paient pas.');
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 			'content',
 			"Votre carrière, à vos conditions. La rémunération d'abord, l'appel ensuite."
@@ -66,6 +75,29 @@ test.describe('a visitor whose browser prefers French', () => {
 
 		// Nobody chose: nothing is saved
 		expect(await languageCookie(page)).toBeUndefined();
+	});
+
+	test("the landing page's French share tags are in the HTML the server sends", async ({
+		browser
+	}) => {
+		// What a link preview reads, without the browser running anything
+		const context = await browser.newContext({ javaScriptEnabled: false });
+		const page = await context.newPage();
+		await page.goto('/?lang=fr');
+		await expect(page).toHaveTitle('Votre carrière, à vos conditions | Portfolio');
+		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+			'content',
+			"Votre carrière, à vos conditions. La rémunération d'abord, l'appel ensuite."
+		);
+		await expect(page.locator('meta[property="og:image:alt"]')).toHaveAttribute(
+			'content',
+			/^Votre carrière, à vos conditions\. La rémunération d'abord\. L'appel ensuite\./
+		);
+		await expect(page.getByRole('heading', { level: 2, name: 'Envoyez votre lien' })).toBeVisible();
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'Nos engagements envers vous' })
+		).toBeVisible();
+		await context.close();
 	});
 
 	test('reads a portfolio and the recruiter page in French', async ({ page }) => {
@@ -94,6 +126,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		// The sign-in starts with the age and terms box, in French too
 		await expect(page.getByRole('checkbox', { name: /au moins 16 ans/ })).toBeVisible();
 		await expect(page.getByText('Cochez la case pour continuer')).toBeVisible();
+		await expect(page.getByText(/^Gratuit pour les recruteurs aujourd'hui/)).toBeVisible();
 
 		// The API is asked in the page's language, whatever the browser's own header says
 		expect(languages.length).toBeGreaterThan(0);

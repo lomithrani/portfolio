@@ -131,9 +131,25 @@ test.describe('landing page, signed out', () => {
 				name: 'Your career, on your terms. The pay first. The call after.'
 			})
 		).toBeVisible();
-		await expect(page.getByRole('heading', { level: 2, name: 'Send your link' })).toBeVisible();
+		// The sections, in the order the page tells them
+		const sections = [
+			'Send your link',
+			'Our promises to you',
+			'Calls you can stop taking',
+			'Make it yours',
+			'How it works',
+			'Questions',
+			'Set your terms once'
+		];
+		const headings = (await page.getByRole('heading', { level: 2 }).allTextContents()).map(
+			(heading) => heading.trim()
+		);
+		expect(headings.filter((heading) => sections.includes(heading))).toEqual(sections);
+		// How it works ends on the card's fourth step (the card has its own "Step 4" heading)
 		await expect(
-			page.getByRole('heading', { level: 2, name: 'Our promises to you' })
+			page
+				.getByRole('region', { name: 'How it works' })
+				.getByRole('heading', { level: 3, name: 'Step 4: Set your terms', exact: true })
 		).toBeVisible();
 		// The share picture's title is the headline in one line
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
@@ -149,6 +165,33 @@ test.describe('landing page, signed out', () => {
 		await expect(currentStep(page)).toContainText('Sign in with Google');
 	});
 
+	test('its share tags and sections are in the HTML the server sends, as link previews read it', async ({
+		browser
+	}) => {
+		// LinkedIn or Slack read the server's HTML: nothing here waits for the browser to run
+		const context = await browser.newContext({ javaScriptEnabled: false });
+		const page = await context.newPage();
+		await page.goto('/');
+		await expect(page).toHaveTitle('Your career, on your terms | Portfolio');
+		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+			'content',
+			'Your career, on your terms. The pay first, the call after.'
+		);
+		await expect(page.locator('meta[property="og:image:alt"]')).toHaveAttribute(
+			'content',
+			'Your career, on your terms. The pay first. The call after. The steps of a hiring journey: note, job, match 86 out of 100, book a meeting. You never pay. The pay first, if you ask. Your steps, your order.'
+		);
+		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+			'content',
+			/^Free for talent, always\./
+		);
+		await expect(page.getByRole('heading', { level: 2, name: 'Send your link' })).toBeVisible();
+		await expect(
+			page.getByRole('heading', { level: 2, name: 'Our promises to you' })
+		).toBeVisible();
+		await context.close();
+	});
+
 	test('its claims hold for a new portfolio, whose journey is the meeting alone', async ({
 		page
 	}) => {
@@ -161,15 +204,27 @@ test.describe('landing page, signed out', () => {
 			/your page can ask for the job and its pay first, score it against what you want, and only then open your calendar\.$/
 		);
 		await expect(page.getByText('Ask for the job first, in one click:')).toBeVisible();
-		await expect(page.getByText('A new portfolio starts with the meeting alone.')).toBeVisible();
+		await expect(page.getByText('Your portfolio starts with the meeting alone.')).toBeVisible();
+		// The steps are the ones the owner asks for: the default journey asks for none before the
+		// meeting, so nothing says every recruiter goes through steps first
+		await expect(
+			page.getByText('Recruiters follow the steps you choose to ask for, in your order')
+		).toBeVisible();
+		const main = (await page.locator('main').textContent()) ?? '';
+		expect(main).not.toMatch(/every recruiter goes through|they go through your steps before/i);
 		const promise = (title: string) =>
 			page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: title }) });
-		// Never an unconditional "recruiters show the pay first", and the range cap as validated
+		// Never an unconditional "recruiters show the pay first", and the range cap as scored (a
+		// posting opened before the cap may state a wider range)
 		await expect(promise('The pay first, if you ask')).toContainText(
-			'its top at most 1.5 times its bottom'
+			'your page asks recruiters for the job before the meeting'
 		);
+		await expect(promise('The pay first, if you ask')).toContainText(
+			'it is scored with its top at most 1.5 times its bottom'
+		);
+		// The minimum is shown to recruiters: the promise says so
 		await expect(promise('The pay you ask for stays private')).toContainText(
-			'When your steps score their job'
+			'When your steps score their job, recruiters see its score and the minimum you set'
 		);
 		await expect(promise('Recruiters come through your link')).toContainText(
 			'search engines are asked not to list your portfolio. Anyone with its address can open it'
@@ -186,7 +241,10 @@ test.describe('landing page, signed out', () => {
 			answer('Do I ever pay?').getByRole('link', { name: 'terms of use' })
 		).toHaveAttribute('href', '/legal/terms#service');
 		await expect(answer("Does having a portfolio mean I'm looking?")).toContainText(
-			'your page for recruiters reads “Propose a role”, never “Hire me”.'
+			'the link to your page for recruiters reads “Propose a role”, never “Hire me”.'
+		);
+		await expect(answer('Is Portfolio only for senior profiles?')).toContainText(
+			'they book a call through your page, after the steps you choose to ask for.'
 		);
 		await expect(answer('How does Portfolio make money?')).toContainText(
 			'Not from you, ever: candidates never pay.'
@@ -204,7 +262,7 @@ test.describe('landing page, signed out', () => {
 			'the step suggestions and feedback already on GitHub (which do not name you), stay'
 		);
 		await expect(page.getByText("Pick the name in your portfolio's link.")).toContainText(
-			'It stays yours as long as you keep your account and follow the terms.'
+			'Search engines are asked not to list your portfolio, and the name stays yours as long as you keep your account and follow the terms.'
 		);
 	});
 

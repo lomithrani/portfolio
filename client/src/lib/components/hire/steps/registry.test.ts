@@ -88,11 +88,11 @@ describe("the client's step types", () => {
 		const match = { id: 'job-match', type: 'job-match', status: 'pending' as const };
 		const asks = clientStep('job-match')?.effort.asks;
 		expect(asks?.({ ...match, config: { minScore: 70 } }, 'Louis')).toBe(
-			'Your job is scored out of 100 against what Louis is looking for: you see your score, never what they ask for. At least 70 opens the next step.'
+			"Your job is scored out of 100 against Louis's criteria: you see your score, never what they ask for. At least 70 opens the next step."
 		);
 		// A minimum that is not one is not said
 		expect(asks?.({ ...match, config: { minScore: 'high' } }, 'Louis')).toBe(
-			'Your job is scored out of 100 against what Louis is looking for: you see your score, never what they ask for.'
+			"Your job is scored out of 100 against Louis's criteria: you see your score, never what they ask for."
 		);
 		expect(withLocale('fr', () => asks?.({ ...match, config: { minScore: 70 } }, 'Louis'))).toMatch(
 			/^Votre offre est notée sur 100 .* vous voyez son résultat/

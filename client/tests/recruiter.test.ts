@@ -1013,6 +1013,14 @@ test.describe('the recruiter', () => {
 		).toBeVisible();
 		await expect(page.getByText('Say exactly what you need')).toBeVisible();
 		await expect(page.getByText('Your meetings in one place')).toBeVisible();
+		// Free today as the Terms say (told before any paid feature), never "free forever"; and the
+		// match checks only what the candidate rated, so it promises no call spared on pay
+		await expect(
+			page.getByText(/^Free for recruiters today: you would be told before any paid feature/)
+		).toBeVisible();
+		expect(await page.locator('main').textContent()).not.toMatch(
+			/free forever|no call that ends on pay/i
+		);
 		// The job board is gone: nothing leads there
 		await expect(page.getByRole('link', { name: 'Browse open jobs' })).toHaveCount(0);
 		await expect(page.locator('a[href="/jobs"]')).toHaveCount(0);

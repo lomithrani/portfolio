@@ -1734,7 +1734,7 @@ test.describe('the hiring journey', () => {
 			contractTypes: { importance: 5, dealBreaker: true, types: ['freelance'] }
 		});
 		await matchStep.getByRole('button', { name: 'Open' }).click();
-		await expect(matchStep).toContainText('close enough');
+		await expect(matchStep).toContainText(`matches ${DOMAIN}'s criteria closely enough.`);
 		await page.reload();
 		await expect(matchStep).toContainText(
 			`Remote engineer ${tag} scores 0 out of 100: at least 60 is needed.`
@@ -1810,7 +1810,7 @@ test.describe('the hiring journey', () => {
 				`Select or create a job\\s*Pick one of your open job descriptions, or write a new one, which takes longer: ${DOMAIN} sees it in the meeting invitation\\.`
 			),
 			new RegExp(
-				`Match the perfect job\\s*Your job is scored out of 100 against what ${DOMAIN} is looking for: you see your score, never what they ask for\\. At least 70 opens the next step\\.`
+				`Match the perfect job\\s*Your job is scored out of 100 against ${DOMAIN}'s criteria: you see your score, never what they ask for\\. At least 70 opens the next step\\.`
 			),
 			/Book a meeting\s*Pick a time slot, then give your name and email address\./
 		]);
