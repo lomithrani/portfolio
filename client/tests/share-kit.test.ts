@@ -56,6 +56,14 @@ const BLOCKED_JOURNEY = {
 	gate: false,
 	meeting: false
 };
+/** No step at all, which the API accepts: nothing leads recruiters to a meeting */
+const EMPTY_JOURNEY = {
+	saved: true,
+	types: [],
+	blocked: false,
+	gate: false,
+	meeting: false
+};
 
 type Setup = {
 	/** The gate journey (the default), else the meeting alone */
@@ -279,6 +287,11 @@ test('without a job step, the reply asks for the job itself, and leads to the st
 		/could you send me the job description, with its pay range\? You can then book a meeting with me on my page for recruiters:/
 	);
 	await expect(reply(page)).not.toHaveValue(/scored/);
+	// The LinkedIn text leads to the page for recruiters, where a meeting can be booked
+	await expect(linkedInOf(page)).toHaveValue(
+		`Recruiters: to propose a role, start on my page for recruiters: ${PAGE}\n\nMy experiences and projects: ${LINK}`
+	);
+	await expect(tab.locator('[data-linkedin-reason]')).toHaveCount(0);
 	await tab.getByRole('button', { name: 'Set my steps' }).click();
 	await expect(page.getByRole('tab', { name: /Get started/ })).toHaveAttribute(
 		'aria-selected',
@@ -358,6 +371,22 @@ test('a step nobody can get past: the texts give the portfolio, and lead to the 
 	await expect(journeyTab).toHaveAttribute('aria-selected', 'true');
 	await expect(journeyTab).toBeFocused();
 	await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin\\?tab=workflows$`));
+});
+
+test('steps that lead to no meeting: the texts give the portfolio, and lead to the steps', async ({
+	page
+}) => {
+	await openAsOwner(page, { journey: EMPTY_JOURNEY });
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=share`);
+	const tab = shareTab(page);
+	await expect(tab.locator('[data-reply-hint]')).toHaveText(
+		/^It asks them to send you the job description, with its pay range\. Your page for recruiters does not ask for the job/
+	);
+	await expectPortfolioOnly(page);
+	await expect(tab.locator('[data-linkedin-reason]')).toHaveText(
+		'Your steps lead to no meeting, so this text gives only your portfolio.'
+	);
+	expect(await leadsShown(tab)).toEqual(['Set my steps']);
 });
 
 test('the gate with nothing to score against: the texts do not say the job is scored', async ({

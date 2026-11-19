@@ -12,8 +12,11 @@ export const m = defineMessages({
 		fr: (link: string) => `Lien copié : ${link}`
 	},
 	/**
-	 * A caption: what the portfolio's link opens (the Share tab, the owner's preview of their page
-	 * for recruiters, where "your link" could be read as that page's address)
+	 * A caption under the field and its "Copy your link" button: what the portfolio's link opens,
+	 * where "your link" could be read as the address of the page for recruiters. Shown on the Share
+	 * tab, in the owner's preview of their page for recruiters, and on the landing card's step 4 and
+	 * ready state (`stacked`: the button under the field). It follows the button, its antecedent
+	 * (« Il » is « votre lien »)
 	 */
 	opens: {
 		en: 'It opens your portfolio. From there, “Propose a role” leads recruiters to your page for recruiters.',

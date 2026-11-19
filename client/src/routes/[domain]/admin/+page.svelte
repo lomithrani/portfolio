@@ -116,13 +116,17 @@
 
 	/**
 	 * A tab's link to another tab: shows it, at the top of the page, with the focus on its name (the
-	 * button pressed is in the tab just hidden)
+	 * button pressed is in the tab just hidden). The focus does not scroll: it would stop the page's
+	 * smooth scroll to the top before it starts, and the row of tabs follows the tab shown already
+	 * (`revealTab`)
 	 */
 	async function openTab(next: AdminTab) {
 		show(next);
 		await tick();
 		document.getElementById('page')?.scrollTo({ top: 0 });
-		tabList?.querySelector<HTMLElement>(`[role="tab"][data-value="${next}"]`)?.focus();
+		tabList
+			?.querySelector<HTMLElement>(`[role="tab"][data-value="${next}"]`)
+			?.focus({ preventScroll: true });
 	}
 
 	// A link to this page naming another tab (the page stays: follow its address)

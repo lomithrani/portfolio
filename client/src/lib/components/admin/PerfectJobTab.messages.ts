@@ -57,8 +57,8 @@ export const m = defineMessages({
 	scoring: {
 		title: { en: 'How a job is scored', fr: 'Comment une offre est notée' },
 		importance: {
-			en: 'Each criterion you switch on counts for its importance, from 1 to 5. The score, out of 100, is the share of that total the job matches.',
-			fr: "Chaque critère activé compte selon son importance, de 1 à 5. La note est la part du total à laquelle l'offre correspond, sur 100."
+			en: 'Each criterion you switch on adds its importance, from 1 to 5, to a total. The score, out of 100, is the share of that total the job matches.',
+			fr: "Chaque critère activé ajoute son importance, de 1 à 5, à un total. La note, sur 100, est la part de ce total à laquelle l'offre correspond."
 		},
 		partly: {
 			en: 'Some criteria can match partly: a pay a little under yours, fewer remote days.',

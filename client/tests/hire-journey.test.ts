@@ -576,6 +576,81 @@ test.describe('the admin page', () => {
 		await expect.poll(inSight).toBe(true);
 		await expect(edges).toHaveCount(2);
 	});
+
+	test('a button of "Get started" shows its tab at the top of the page, its name focused', async ({
+		page
+	}) => {
+		await setPerfectJob({});
+		await signIn(page, owner);
+		await page.setViewportSize({ width: 1280, height: 500 });
+		await gotoHydrated(page, `/${DOMAIN}/admin?tab=start`);
+		const open = page
+			.getByRole('list', { name: 'Checklist' })
+			.locator('[data-item="perfectJob"]')
+			.getByRole('button', { name: 'Set my perfect job' });
+		await expect(open).toBeVisible();
+		// The page scrolled down, the button near the top of the screen
+		const scroller = page.locator('#page');
+		const scrollTop = () => scroller.evaluate((main) => main.scrollTop);
+		await open.evaluate((button) => {
+			const main = document.getElementById('page')!;
+			const top = main.scrollTop + button.getBoundingClientRect().top - 200;
+			main.scrollTo({ top, behavior: 'instant' });
+		});
+		const scrolled = await scrollTop();
+		expect(scrolled).toBeGreaterThan(0);
+
+		await open.click();
+		const perfectJobTab = page.getByRole('tab', { name: 'Perfect job' });
+		await expect(perfectJobTab).toHaveAttribute('aria-selected', 'true');
+		await expect(perfectJobTab).toBeFocused();
+		// The tab is taller than that: the page reaches its top by scrolling to it, not by clamping
+		expect(
+			await scroller.evaluate((main) => main.scrollHeight - main.clientHeight)
+		).toBeGreaterThan(scrolled);
+		await expect.poll(scrollTop).toBe(0);
+		await expect(page.getByRole('heading', { name: 'Perfect job', level: 2 })).toBeInViewport();
+	});
+
+	test('on a narrow phone, "Get started" fits the screen, in French', async ({ page }) => {
+		// As on a site that takes calendars, none connected yet, steps never saved: every item has
+		// its buttons, the gate's choices included
+		await stubApi(page, 'GET', '/me/readiness', () => ({
+			json: {
+				domain: DOMAIN,
+				experiences: 0,
+				perfectJob: {
+					criteria: 0,
+					essentials: { pay: false, workMode: false, place: false, contractTypes: false }
+				},
+				journey: { saved: false, types: ['meeting'], blocked: false, gate: false, meeting: true },
+				calendar: { configured: true, connected: false, reconnect: false, enabledSchedules: 0 }
+			}
+		}));
+		await signIn(page, owner);
+		await page.setViewportSize({ width: 320, height: 700 });
+		await gotoHydrated(page, `/${DOMAIN}/admin?lang=fr&tab=start`);
+		const checklist = page.getByRole('list', { name: 'Liste à régler' });
+		await expect(
+			checklist.getByRole('button', { name: "Ouvrir mes réglages d'agenda" })
+		).toBeVisible();
+		await expect(
+			checklist.getByRole('button', { name: 'Garder le rendez-vous seul' })
+		).toBeVisible();
+		// Every button within its card, and the page does not scroll sideways
+		const overflowing = await checklist.locator('li[data-item]').evaluateAll((items) =>
+			items.flatMap((item) => {
+				const card = item.getBoundingClientRect();
+				return [...item.querySelectorAll<HTMLElement>('.btn')]
+					.filter((button) => button.getBoundingClientRect().right > card.right)
+					.map((button) => button.innerText);
+			})
+		);
+		expect(overflowing).toEqual([]);
+		expect(
+			await page.locator('#page').evaluate((main) => main.scrollWidth <= main.clientWidth)
+		).toBe(true);
+	});
 });
 
 test.describe('the hiring journey', () => {

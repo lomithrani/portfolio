@@ -1,10 +1,11 @@
 <!--
 @component
-The link of a portfolio with a button that copies it (the admin's "Get started" tab, the landing
-page's onboarding card). The link stays in a read-only field: when the browser refuses to copy it
-(no permission, no clipboard), the field is selected for the person to copy it themselves. What
-happened is read out (a polite live region), and the button says it for a while. A link wider
-than its field shows its end, the portfolio's name, rather than the start every link shares.
+The link of a portfolio with a button that copies it (the admin's "Get started" and Share tabs, the
+owner's preview of their page for recruiters, the landing page's onboarding card). The link stays
+in a read-only field: when the browser refuses to copy it (no permission, no clipboard), the field
+is selected for the person to copy it themselves. What happened is read out (a polite live
+region), and the button says it for a while. A link wider than its field shows its end, the
+portfolio's name, rather than the start every link shares.
 -->
 <script lang="ts">
 	import { tick } from 'svelte';

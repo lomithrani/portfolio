@@ -232,9 +232,17 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 			missingEssentials(readiness).map((essential) => m.perfectJob.essentials[essential])
 		);
 
-	const linkButton = 'btn btn-sm preset-tonal';
-	/** The gate's choices: as tall as a button on one line, a label on two lines stays legible */
-	const choiceButton = 'max-w-full whitespace-normal py-1.5 text-center leading-5';
+	/**
+	 * A button's label wraps rather than overflow its card on a narrow phone (in French), on lines
+	 * that stay legible
+	 */
+	const wraps = 'max-w-full whitespace-normal text-center leading-5';
+	/** A small button: as tall as Skeleton's on one line */
+	const smallButton = `btn btn-sm ${wraps} py-0.75`;
+	/** What leads to another page or tab */
+	const linkButton = `${smallButton} preset-tonal`;
+	/** The gate's choices: as tall as a button on one line */
+	const choiceButton = `${wraps} py-1.5`;
 </script>
 
 <div class="space-y-6">
@@ -402,7 +410,7 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 		</p>
 		<div class="flex flex-wrap items-center gap-2">
 			<a
-				class="btn btn-sm preset-filled-primary-700-300"
+				class="{smallButton} preset-filled-primary-700-300"
 				href={resolve('/[domain]/experiences?import=1', { domain: domainName })}
 			>
 				<DocumentArrowUp size="16" aria-hidden="true" />
