@@ -1717,5 +1717,122 @@ test.describe('the hiring journey', () => {
 		).toBeVisible();
 		await expect(page.getByText('Online booking is not available right now.')).toBeVisible();
 		await expect(journeySteps(page)).toHaveCount(0);
+		// Before the booking: how long it takes, and that it needs no account
+		const before = page.getByRole('region', { name: 'Before you start' });
+		await expect(before).toContainText('About 2 minutes');
+		await expect(before).toContainText('Nothing to prepare, and no account needed.');
+		await expect(before.getByRole('list', { name: 'What each step asks' })).toHaveCount(0);
+	});
+
+	test('the page is rendered on the server: without JavaScript it says what each step asks', async ({
+		browser
+	}) => {
+		await setSteps(
+			{
+				id: 'note',
+				type: 'note',
+				config: { title: 'Before you book', text: 'I only take **remote** roles.' }
+			},
+			{ id: 'job', type: 'job' },
+			{ id: 'job-match', type: 'job-match', config: { minScore: 70, showDetails: true } },
+			{ id: 'meeting', type: 'meeting' }
+		);
+		// What the server sends: what a page without JavaScript, or a link preview, gets
+		const context = await browser.newContext({ javaScriptEnabled: false });
+		const page = await context.newPage();
+		await blockGoogle(page);
+		await page.goto(`/${DOMAIN}/hire`);
+
+		await expect(
+			page.getByRole('heading', { level: 1, name: `Propose a role to ${DOMAIN}` })
+		).toBeVisible();
+		await expect(
+			page.getByText(`${DOMAIN} asks recruiters to complete 3 steps first.`)
+		).toBeVisible();
+		// Before they start: what each step asks (the steps after the first are locked below), what
+		// to have at hand, how long it takes, and what happens then
+		const before = page.getByRole('region', { name: 'Before you start' });
+		await expect(
+			before.getByRole('list', { name: 'What each step asks' }).getByRole('listitem')
+		).toHaveText([
+			new RegExp(`Before you book\\s*Read ${DOMAIN}'s note, then confirm that you have read it\\.`),
+			new RegExp(
+				`Select or create a job\\s*Pick one of your open job descriptions, or write a new one: ${DOMAIN} sees it in the meeting invitation\\.`
+			),
+			new RegExp(
+				`Match the perfect job\\s*Your job is scored out of 100 against what ${DOMAIN} is looking for: you see your score, never what they ask for\\. At least 70 opens the next step\\.`
+			),
+			/Book a meeting\s*Pick a time slot, then give your name and email address\./
+		]);
+		await expect(before).toContainText('About 8 minutes');
+		await expect(before.getByRole('definition').getByRole('listitem')).toHaveText([
+			'A Google account, to sign in',
+			'The job description and its pay range, or its PDF where import is offered'
+		]);
+		await expect(before).toContainText(
+			`Once you book, you receive a calendar invitation by email, and the meeting goes into ${DOMAIN}'s calendar.`
+		);
+		// The steps, as anyone signed out stands in them: the note to read first, the rest locked
+		await expect(journeySteps(page).getByRole('listitem')).toHaveCount(4);
+		await expect(step(page, 'Step 1: Before you book').locator('strong')).toHaveText('remote');
+		await expect(step(page, 'Step 2: Select or create a job (locked)')).toContainText(
+			'Complete the step above first.'
+		);
+		await expect(step(page, 'Step 4: Book a meeting (locked)')).toContainText(
+			'Complete the steps above first.'
+		);
+		// Said in a <noscript>, which a browser shows with its scripts turned off (Playwright only
+		// stops them from running: the page's markup is read instead)
+		const noScript = (text: string) =>
+			new RegExp(`<noscript>(?:(?!</noscript>).)*${text}(?:(?!</noscript>).)*</noscript>`, 's');
+		expect(await page.content()).toMatch(
+			noScript('Turn on JavaScript in your browser to go through the steps\\.')
+		);
+		await expect(page.getByText(/Loading/)).toHaveCount(0);
+		// Described with its steps, for a shared link too
+		const description = `Propose a role to ${DOMAIN} on their page for recruiters: read a note, select or create a job, match the perfect job, then book a meeting, in about 8 minutes.`;
+		await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', description);
+		await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
+			'content',
+			description
+		);
+		// Only what the steps show anyone: the owner's other settings stay out of the page
+		expect(await page.content()).not.toContain('showDetails');
+
+		await page.goto(`/${DOMAIN}/hire?lang=fr`);
+		const avant = page.getByRole('region', { name: 'Avant de commencer' });
+		await expect(avant).toContainText('8 minutes environ');
+		await expect(avant).toContainText('Un compte Google, pour vous connecter');
+		await expect(avant).toContainText(
+			`Votre offre est notée sur 100 par rapport à ce que recherche ${DOMAIN}\u00a0: vous voyez son résultat, jamais ce qui est demandé.`
+		);
+		expect(await page.content()).toMatch(
+			noScript('Activez JavaScript dans votre navigateur pour suivre les étapes\\.')
+		);
+		await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
+			'content',
+			`Proposez un poste à ${DOMAIN} sur sa page recruteurs\u00a0: lire une note, choisir ou créer une offre, correspondre au poste idéal, puis réserver un rendez-vous, en 8 minutes environ.`
+		);
+
+		// The booking page: the meeting types load in the browser, without a word on the first paint
+		// (back in English: the French link saved the language)
+		await setJourney('meeting');
+		await page.goto(`/${DOMAIN}/hire?lang=en`);
+		await expect(
+			page.getByText(
+				"Pick a time slot that suits you — you'll receive a calendar invitation by email."
+			)
+		).toBeVisible();
+		await expect(page.getByRole('region', { name: 'Before you start' })).toContainText(
+			'Nothing to prepare, and no account needed.'
+		);
+		await expect(page.getByRole('status').getByText('Loading availability…')).toHaveClass(
+			/\bsr-only\b/
+		);
+		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+			'content',
+			`Propose a role to ${DOMAIN} on their page for recruiters: book a meeting, in about 2 minutes.`
+		);
+		await context.close();
 	});
 });

@@ -9,6 +9,7 @@ import {
 	newWorkflowStep,
 	normalizeDomainName,
 	openWorkflowSteps,
+	plural,
 	stepManifest,
 	type JobStatus,
 	type PerfectJobCriterion,
@@ -46,6 +47,26 @@ export interface Journey {
 	/** The caller owns the portfolio: a preview, where no step is locked */
 	own?: true;
 }
+
+const STEP_STATUSES: readonly WorkflowStepStatus[] = ['pending', 'succeeded', 'failed'];
+
+/**
+ * The journey as anyone signed out stands in it, from GET /workflow/domains/:domainName asked
+ * without a session (the Hire page's server render): each step's id, type, status and the
+ * settings its type shows visitors, never a `view` or `own`, which are a signed-in caller's.
+ * null when the answer is not a journey
+ */
+export const anonymousJourney = (answer: unknown): Journey | null => {
+	const steps = (answer as { steps?: unknown } | null | undefined)?.steps;
+	if (!Array.isArray(steps)) return null;
+	const kept = steps.flatMap((entry): JourneyStep[] => {
+		const { id, type, status, config } = (entry ?? {}) as Record<string, unknown>;
+		const known = STEP_STATUSES.find((name) => name === status);
+		if (typeof id !== 'string' || typeof type !== 'string' || !known) return [];
+		return [{ id, type, status: known, ...(config === undefined ? {} : { config }) }];
+	});
+	return kept.length === steps.length ? { steps: kept } : null;
+};
 
 // --- The owner's editor ------------------------------------------------------------------
 
@@ -149,12 +170,17 @@ export const journeySummary = <Step extends { type: string }>(
 ): string => {
 	if (steps.length === 0) return m.summary.empty;
 	const phrases = steps.map((step) => {
-		const label = stepName(step);
-		const phrase = label.charAt(0).toLowerCase() + label.slice(1);
+		const phrase = stepPhrase(step);
 		const own = title(step);
 		return own ? m.summary.titled(phrase, own) : phrase;
 	});
 	return phrases.length === 1 ? m.summary.one(phrases[0]) : m.summary.many(phrases);
+};
+
+/** A step's type label as a phrase in a sentence: "book a meeting" */
+const stepPhrase = (step: { type: string }): string => {
+	const label = stepName(step);
+	return label.charAt(0).toLowerCase() + label.slice(1);
 };
 
 /**
@@ -231,6 +257,38 @@ export const journeyIntro = (
 	if (!goal) return m.intro.noGoal(ownerName);
 	if (goal.before === 0) return goal.alone;
 	return m.intro.stepsFirst(ownerName, goal.before, goal.after);
+};
+
+/**
+ * What going through the steps takes, from each step's effort (undefined for a type this version
+ * does not have): about how many minutes in all, one at least, and what to have at hand, each need
+ * once, in the order the steps first need it
+ */
+export const journeyEffort = <Need extends string>(
+	efforts: readonly ({ minutes: number; needs?: readonly Need[] } | undefined)[]
+): { minutes: number; needs: Need[] } => ({
+	minutes: Math.max(
+		1,
+		efforts.reduce((sum, effort) => sum + (effort?.minutes ?? 0), 0)
+	),
+	needs: [...new Set(efforts.flatMap((effort) => effort?.needs ?? []))]
+});
+
+/**
+ * The Hire page's description (its meta description, and a shared link's): what the journey
+ * asks, from the steps as anyone signed out gets them (the server's render), with `minutes`, about
+ * how long they take (journeyEffort). `steps` undefined: the journey is not known (left to the
+ * browser), the page's description names no step
+ */
+export const journeyDescription = (
+	ownerName: string,
+	steps: readonly { type: string }[] | undefined,
+	minutes: number
+): string => {
+	if (!steps) return m.description.unknown(ownerName);
+	if (steps.length === 0) return m.description.none(ownerName);
+	const duration = plural(minutes, m.description.inAbout.one, m.description.inAbout.other(minutes));
+	return m.description.steps(ownerName, steps.map(stepPhrase), duration);
 };
 
 /**

@@ -1,8 +1,8 @@
 import { defineMessages } from 'portfolio-common';
 
 export const m = defineMessages({
-	/** Also what the Hire page says while its journey loads */
-	loading: { en: 'Loading availability...', fr: 'Chargement des disponibilités…' },
+	/** For screen readers, while the meeting types load */
+	loading: { en: 'Loading availability…', fr: 'Chargement des disponibilités…' },
 
 	// --- Meeting types ---
 	meetingType: { en: 'Meeting type', fr: 'Type de rendez-vous' },

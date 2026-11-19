@@ -53,6 +53,28 @@ export interface StepGoal {
 	alone: string;
 	/** Under the title after "<owner> asks recruiters to complete N steps first." */
 	after: string;
+	/** What happens once the visitor did it ("Before you start", on the Hire page) */
+	next(ownerName: string): string;
+}
+
+/**
+ * What a visitor needs at hand for a step, beyond what the step asks on the page. Each one is said
+ * once in "Before you start", however many steps need it (its text: `needs` in steps.messages.ts)
+ */
+export type StepNeed = 'googleAccount' | 'jobDescription';
+
+/**
+ * What a step takes from a visitor, said before they start (the Hire page's "Before you start"
+ * card, rendered on the server from the journey as anyone signed out gets it: only the settings
+ * the type's `visitorConfig` makes public)
+ */
+export interface StepEffort {
+	/** What the step asks of the visitor, in a sentence */
+	asks(step: JourneyStep, ownerName: string): string;
+	/** About how many minutes it takes (0: nothing to do, the step is worked out for them) */
+	minutes: number;
+	/** What to have at hand for it; nothing when unset */
+	needs?: readonly StepNeed[];
 }
 
 export interface ClientStep {
@@ -83,6 +105,8 @@ export interface ClientStep {
 	 * the API refuses the owner on their own journey
 	 */
 	ownerPreview?: true;
+	/** What the step takes: what it asks, how long, what to have at hand (every type has one) */
+	effort: StepEffort;
 	/** Required for an `access` type (registry.test.ts): what the Hire page says it leads to */
 	goal?: StepGoal;
 }

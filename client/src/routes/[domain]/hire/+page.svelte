@@ -16,6 +16,8 @@
 		activeStepIndex,
 		goalStepIndex,
 		isBareJourney,
+		journeyDescription,
+		journeyEffort,
 		journeyIntro,
 		stepName,
 		stepNote,
@@ -27,9 +29,9 @@
 	import { portfolioLink } from '#services/candidateSetup.ts';
 	import { portfolioName } from '#services/linkPreview.ts';
 	import { clientStep, type ClientStep, type SubmitResult } from '#components/hire/steps/index.ts';
+	import BeforeYouStart from '#components/hire/BeforeYouStart.svelte';
 	import CopyLink from '#components/share/CopyLink.svelte';
 	import OpenGraph from '#components/OpenGraph.svelte';
-	import { m as bookingMessages } from '#components/hire/MeetingBooking.messages.ts';
 	import { m as datesMessages } from '#services/bookingDates.messages.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import Rich from '#lib/i18n/Rich.svelte';
@@ -41,6 +43,10 @@
 	// booking page); otherwise each step in turn: a step opens once the ones before it succeeded.
 	// What a step shows and does is its type's (components/hire/steps/): the page knows the order,
 	// the locks and the journey's routes. The API checks the steps again on each request.
+	// Rendered on the server from the journey as anyone signed out stands in it (+page.server.ts),
+	// with "Before you start": what the steps ask, what to have at hand, how long they take. The
+	// browser then loads it again with the session (the visitor's own progress), and loads it
+	// alone when the server could not.
 
 	let { data }: { data: PageData } = $props();
 
@@ -76,6 +82,14 @@
 		const texts = before === -1 ? undefined : clientStep(steps[before].type)?.goal;
 		return texts && { before, ...texts };
 	});
+	// The page's description: what the journey asks, and about how long it takes
+	let description = $derived(
+		journeyDescription(
+			ownerName,
+			journey?.steps,
+			journeyEffort(journey?.steps.map((step) => clientStep(step.type)?.effort) ?? []).minutes
+		)
+	);
 	// A journey that is only the step it leads to shows that step alone, without the list
 	let bare = $derived(
 		journey && isBareJourney(journey) ? clientStep(journey.steps[0].type) : undefined
@@ -119,6 +133,12 @@
 		expanded = asked === -1 ? activeStepIndex(next) : asked;
 	}
 
+	// The journey the server rendered, as anyone signed out stands in it: the first paint, until
+	// the browser's own load (with the session) answers
+	untrack(() => {
+		if (data.journey) showJourney(data.journey);
+	});
+
 	// Also when the page is already shown: the job editor's toast can lead back here
 	afterNavigate((navigation) => {
 		if (navigation.type === 'enter' || !navigation.to) return;
@@ -136,13 +156,22 @@
 				.get(withCredentials);
 			if (current !== request) return;
 			if (error || !answer) {
-				loaded = { state: 'error', message: failureText(error?.value, m.journeyFailed) };
+				failed(failureText(error?.value, m.journeyFailed));
 				return;
 			}
 			showJourney(answer);
 		} catch {
-			if (current === request) loaded = { state: 'error', message: networkError() };
+			if (current === request) failed(networkError());
 		}
+	}
+
+	/**
+	 * The journey could not be loaded: said in place of the steps, or, when some are shown (the
+	 * server's render, an earlier load), over them, which stay
+	 */
+	function failed(message: string) {
+		if (loaded.state === 'ready') toaster.error({ title: message });
+		else loaded = { state: 'error', message };
 	}
 
 	// Loaded at once: the API reads the session cookie itself
@@ -219,11 +248,11 @@
 
 <svelte:head>
 	<title>{m.title(ownerName)}</title>
-	<meta name="description" content={m.description(ownerName)} />
+	<meta name="description" content={description} />
 </svelte:head>
-<!-- A shared link's preview: the page's title and description, over the generic picture of a
-     page for recruiters (it names no step: the journey is loaded in the browser) -->
-<OpenGraph title={m.title(ownerName)} description={m.description(ownerName)} image="hire" />
+<!-- A shared link's preview: the page's title, its description (the steps, from the journey the
+     server rendered), over the generic picture of a page for recruiters -->
+<OpenGraph title={m.title(ownerName)} {description} image="hire" />
 
 {#snippet visitor(entry: ClientStep, step: JourneyStep, shown: Journey)}
 	<entry.Visitor
@@ -273,7 +302,14 @@
 	</section>
 
 	{#if loaded.state === 'loading'}
-		<p class="text-sm opacity-50" role="status">{bookingMessages.loading}</p>
+		<!-- The server could not render the journey: loaded in the browser -->
+		<div class="space-y-3" role="status">
+			<span class="sr-only">{m.loading}</span>
+			<div
+				class="placeholder h-40 w-full animate-pulse motion-reduce:animate-none"
+				aria-hidden="true"
+			></div>
+		</div>
 	{:else if loaded.state === 'error'}
 		<div class="card preset-tonal-error space-y-3 p-4" role="alert">
 			<p class="text-sm">{loaded.message}</p>
@@ -286,11 +322,20 @@
 		<section class="card p-6">
 			<p class="opacity-75">{datesMessages.bookingUnavailable}</p>
 		</section>
-	{:else if journey && bare}
-		{#if journey.own}{@render ownerNote()}{/if}
-		{@render visitor(bare, journey.steps[0], journey)}
 	{:else if journey}
 		{#if journey.own}{@render ownerNote()}{/if}
+		<BeforeYouStart {journey} {ownerName} />
+		<!-- What the server rendered is the whole page without JavaScript: it says what each step
+		     asks, but going through them needs the browser. Its own bottom margin: a <noscript> is
+		     inline, the page's spacing does not reach the steps under it -->
+		<noscript>
+			<p class="card preset-tonal-warning mb-8 p-4 text-sm">{m.noScript}</p>
+		</noscript>
+	{/if}
+
+	{#if journey && bare}
+		{@render visitor(bare, journey.steps[0], journey)}
+	{:else if journey && journey.steps.length > 0}
 		<ol class="space-y-4" aria-label={m.journey}>
 			{#each journey.steps as step, index (step.id)}
 				{@const state = states[index]}

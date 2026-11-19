@@ -44,6 +44,41 @@ export const m = defineMessages({
 	},
 
 	// --- The visitor's journey ---
+	/**
+	 * The Hire page's description (journeyDescription): its meta description and a shared link's.
+	 * `phrases`: the labels of the steps, lowercased, in order (one at least); `duration`: about how
+	 * long they take (`inAbout`)
+	 */
+	description: {
+		steps: {
+			en: (ownerName: string, phrases: readonly string[], duration: string) =>
+				`Propose a role to ${ownerName} on their page for recruiters: ${phrases.length === 1 ? phrases[0] : `${phrases.slice(0, -1).join(', ')}, then ${phrases.at(-1)}`}, ${duration}.`,
+			fr: (ownerName: string, phrases: readonly string[], duration: string) =>
+				`Proposez un poste à ${ownerName} sur sa page recruteurs : ${phrases.length === 1 ? phrases[0] : `${phrases.slice(0, -1).join(', ')}, puis ${phrases.at(-1)}`}, ${duration}.`
+		},
+		/** About how long the steps take, through plural() */
+		inAbout: {
+			one: { en: 'in about a minute', fr: 'en une minute environ' },
+			other: {
+				en: (minutes: number) => `in about ${minutes} minutes`,
+				fr: (minutes: number) => `en ${minutes} minutes environ`
+			}
+		},
+		/** A journey without steps */
+		none: {
+			en: (ownerName: string) =>
+				`Propose a role to ${ownerName} on their page for recruiters. They do not take meeting requests online right now.`,
+			fr: (ownerName: string) =>
+				`Proposez un poste à ${ownerName} sur sa page recruteurs. ${ownerName} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
+		},
+		/** The journey is not known yet (it is loaded in the browser) */
+		unknown: {
+			en: (ownerName: string) =>
+				`Propose a role to ${ownerName}: their page for recruiters, with the steps they ask you to follow.`,
+			fr: (ownerName: string) =>
+				`Proposez un poste à ${ownerName} : sa page recruteurs, avec les étapes à suivre.`
+		}
+	},
 	intro: {
 		noGoal: {
 			en: (ownerName: string) => `${ownerName} does not take meeting requests online right now.`,

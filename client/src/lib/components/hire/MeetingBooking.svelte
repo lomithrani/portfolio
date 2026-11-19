@@ -448,7 +448,15 @@ hiring journey; requests carry the session, which the API checks against the ste
 			</button>
 		</section>
 	{:else if schedulesLoading}
-		<p class="text-sm opacity-50">{m.loading}</p>
+		<!-- The meeting types load in the browser: the page's first paint (rendered on the server)
+		     holds their place without words -->
+		<div class="space-y-3" role="status">
+			<span class="sr-only">{m.loading}</span>
+			<div
+				class="placeholder h-24 w-full animate-pulse motion-reduce:animate-none"
+				aria-hidden="true"
+			></div>
+		</div>
 	{:else if schedules.length === 0}
 		<section class="card p-6">
 			<p class="opacity-75">{datesMessages.bookingUnavailable}</p>

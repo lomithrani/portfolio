@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { stepManifests } from 'portfolio-common';
-import { clientStep, clientStepTypes } from './index';
+import { LOCALES, stepManifests, withLocale } from 'portfolio-common';
+import { clientStep, clientStepTypes, stepNeedText, type StepNeed } from './index';
 
 // A step type is defined once per workspace under the same name (docs/WORKFLOW_STEPS.md): the
 // API's tests check its registry against portfolio-common's, this one the client's.
@@ -50,14 +50,75 @@ describe("the client's step types", () => {
 		expect(clientStep('note')?.failedNote).toBeUndefined();
 	});
 
+	it('says what every step takes before the visitor starts: what it asks, how long, what to have', () => {
+		const needs: StepNeed[] = ['googleAccount', 'jobDescription'];
+		for (const type of clientStepTypes()) {
+			const effort = clientStep(type)?.effort;
+			expect(effort, type).toBeDefined();
+			expect(Number.isInteger(effort?.minutes) && (effort?.minutes ?? -1) >= 0, type).toBe(true);
+			for (const need of effort?.needs ?? []) expect(needs, type).toContain(need);
+			const step = { id: type, type, status: 'pending' as const };
+			for (const locale of LOCALES) {
+				withLocale(locale, () => {
+					expect(effort?.asks(step, 'Louis').trim(), `${type} (${locale})`).not.toBe('');
+				});
+			}
+		}
+		for (const need of needs) {
+			for (const locale of LOCALES) {
+				withLocale(locale, () => expect(stepNeedText(need).trim(), need).not.toBe(''));
+			}
+		}
+	});
+
+	it('asks a Google account of the steps a visitor submits, and the job of the job step', () => {
+		expect(clientStep('note')?.effort.needs).toEqual(['googleAccount']);
+		expect(clientStep('job')?.effort.needs).toEqual(['googleAccount', 'jobDescription']);
+		// Scored from the job picked: nothing to do, nothing more to have
+		expect(clientStep('job-match')?.effort).toMatchObject({ minutes: 0 });
+		expect(clientStep('job-match')?.effort.needs).toBeUndefined();
+		// A meeting alone is booked signed out, with a name and an email address
+		expect(clientStep('meeting')?.effort.needs).toBeUndefined();
+		expect(stepNeedText('jobDescription')).toBe(
+			'The job description and its pay range, or its PDF where import is offered'
+		);
+	});
+
+	it('says what a step asks with the settings visitors get of it', () => {
+		const match = { id: 'job-match', type: 'job-match', status: 'pending' as const };
+		const asks = clientStep('job-match')?.effort.asks;
+		expect(asks?.({ ...match, config: { minScore: 70 } }, 'Louis')).toBe(
+			'Your job is scored out of 100 against what Louis is looking for: you see your score, never what they ask for. At least 70 opens the next step.'
+		);
+		// A minimum that is not one is not said
+		expect(asks?.({ ...match, config: { minScore: 'high' } }, 'Louis')).toBe(
+			'Your job is scored out of 100 against what Louis is looking for: you see your score, never what they ask for.'
+		);
+		expect(withLocale('fr', () => asks?.({ ...match, config: { minScore: 70 } }, 'Louis'))).toMatch(
+			/^Votre offre est notée sur 100 .* vous voyez son résultat/
+		);
+		expect(
+			clientStep('note')?.effort.asks(
+				{ id: 'note', type: 'note', status: 'pending', config: { title: 'Hi', text: 'Read me' } },
+				'Louis'
+			)
+		).toBe("Read Louis's note, then confirm that you have read it.");
+	});
+
 	it('presents the Hire page for the step a journey leads to', () => {
 		expect(clientStep('meeting')?.goal?.alone).toBe(
 			"Pick a time slot that suits you — you'll receive a calendar invitation by email."
 		);
 		expect(clientStep('job')?.goal).toBeUndefined();
-		// The page says what the last access step offers: each access type says how
+		// The page says what the last access step offers, and what happens once it is done: each
+		// access type says how
 		for (const manifest of stepManifests().filter((manifest) => manifest.kind === 'access')) {
-			expect(clientStep(manifest.type)?.goal, manifest.type).toBeDefined();
+			const goal = clientStep(manifest.type)?.goal;
+			expect(goal, manifest.type).toBeDefined();
+			expect(goal?.next('Louis'), manifest.type).toMatch(/\w/);
 		}
+		expect(clientStep('meeting')?.goal?.next('Louis')).toBe(
+			"Once you book, you receive a calendar invitation by email, and the meeting goes into Louis's calendar."
+		);
 	});
 });

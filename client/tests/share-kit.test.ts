@@ -529,16 +529,17 @@ test('the page for recruiters is named in the HTML the server sends, in both lan
 				.replace(/<[^>]+>/g, '')
 				.trim()
 		);
+	// The description says the steps of the journey the server rendered: the seeded meeting alone
 	for (const { path, title, description } of [
 		{
 			path: `/${DOMAIN}/hire`,
 			title: `Propose a role to ${DOMAIN}`,
-			description: `Propose a role to ${DOMAIN}: their page for recruiters, with the steps they ask you to follow.`
+			description: `Propose a role to ${DOMAIN} on their page for recruiters: book a meeting, in about 2 minutes.`
 		},
 		{
 			path: `/${DOMAIN}/hire?lang=fr`,
 			title: `Proposer un poste à ${DOMAIN}`,
-			description: `Proposez un poste à ${DOMAIN} : sa page recruteurs, avec les étapes à suivre.`
+			description: `Proposez un poste à ${DOMAIN} sur sa page recruteurs : réserver un rendez-vous, en 2 minutes environ.`
 		}
 	]) {
 		const response = await request.get(path);

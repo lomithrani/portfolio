@@ -1067,7 +1067,8 @@ curl -s -o /dev/null -w '%{http_code}\n' -A "$LINKEDIN" \
 curl -s -A "$LINKEDIN" https://example.com/louis.gentil/experiences \
   | grep -o '<meta property="og:[^>]*>\|<meta name="twitter:[^>]*>'             # og:title (the portfolio's title), og:description (its tagline), og:image .../og-portfolio.png, og:url, og:locale en_GB, twitter:card
 curl -s -A "$LINKEDIN" 'https://example.com/louis.gentil/hire?lang=fr' \
-  | grep -o '<meta property="og:[^>]*>'                                          # og:title « Proposer un poste à … », og:image .../og-hire-fr.png, og:url ...?lang=fr, og:locale fr_FR
+  | grep -o '<meta property="og:[^>]*>'                                          # og:title « Proposer un poste à … », og:description « … : réserver un rendez-vous, en 2 minutes environ » (the journey's steps), og:image .../og-hire-fr.png, og:url ...?lang=fr, og:locale fr_FR
+curl -s https://example.com/louis.gentil/hire | grep -o 'Before you start\|About [0-9]* minutes'   # the page rendered on the server, from the journey
 curl -s -o /dev/null -w '%{http_code} %{content_type}\n' -A "$LINKEDIN" \
   https://example.com/og-hire-fr.png                                             # 200 image/png
 ```

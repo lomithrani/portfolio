@@ -19,6 +19,7 @@ import {
 	activeStepIndex,
 	addStep,
 	addStepProblem,
+	anonymousJourney,
 	asksForAnotherJob,
 	goalStepIndex,
 	initialJobChoice,
@@ -31,6 +32,8 @@ import {
 	jobMatchOutcomeText,
 	jobMatchSettings,
 	jobStepNote,
+	journeyDescription,
+	journeyEffort,
 	journeyIntro,
 	journeyReturnDomain,
 	journeySummary,
@@ -385,6 +388,77 @@ describe("the visitor's journey", () => {
 		);
 		expect(journeyIntro('Louis', undefined)).toBe(
 			'Louis does not take meeting requests online right now.'
+		);
+	});
+
+	it("keeps of the server's journey what anyone signed out gets", () => {
+		const answer = {
+			steps: [
+				{ id: 'note', type: 'note', status: 'pending', config: NOTE },
+				{ id: 'job', type: 'job', status: 'pending', view: { job: JOB } },
+				{ id: 'meeting', type: 'meeting', status: 'succeeded' }
+			],
+			own: true
+		};
+		// A view and `own` are a signed-in caller's: never kept, nor written into the page
+		expect(anonymousJourney(answer)).toEqual({
+			steps: [
+				{ id: 'note', type: 'note', status: 'pending', config: NOTE },
+				{ id: 'job', type: 'job', status: 'pending' },
+				{ id: 'meeting', type: 'meeting', status: 'succeeded' }
+			]
+		});
+		expect(anonymousJourney({ steps: [] })).toEqual({ steps: [] });
+		// Anything else is no journey: the browser loads it
+		for (const junk of [
+			null,
+			undefined,
+			'Domain not found',
+			{},
+			{ steps: 'note' },
+			{ steps: [{ id: 'note', type: 'note', status: 'skipped' }] },
+			{ steps: [{ id: 1, type: 'note', status: 'pending' }] },
+			{ steps: [null] }
+		]) {
+			expect(anonymousJourney(junk)).toBeNull();
+		}
+	});
+
+	it('adds up what the steps take, each need said once', () => {
+		expect(
+			journeyEffort([
+				{ minutes: 1, needs: ['account'] },
+				{ minutes: 5, needs: ['account', 'job'] },
+				{ minutes: 0 },
+				undefined,
+				{ minutes: 2 }
+			])
+		).toEqual({ minutes: 8, needs: ['account', 'job'] });
+		// One minute at least
+		expect(journeyEffort([{ minutes: 0 }])).toEqual({ minutes: 1, needs: [] });
+		expect(journeyEffort([])).toEqual({ minutes: 1, needs: [] });
+	});
+
+	it('describes the page with what its journey asks', () => {
+		const gate = [{ type: 'note' }, { type: 'job' }, { type: 'job-match' }, { type: 'meeting' }];
+		expect(journeyDescription('Louis', gate, 8)).toBe(
+			'Propose a role to Louis on their page for recruiters: read a note, select or create a job, match the perfect job, then book a meeting, in about 8 minutes.'
+		);
+		expect(journeyDescription('Louis', DEFAULT_WORKFLOW_STEPS, 2)).toBe(
+			'Propose a role to Louis on their page for recruiters: book a meeting, in about 2 minutes.'
+		);
+		expect(journeyDescription('Louis', [{ type: 'meeting' }], 1)).toBe(
+			'Propose a role to Louis on their page for recruiters: book a meeting, in about a minute.'
+		);
+		expect(withLocale('fr', () => journeyDescription('Louis', gate, 8))).toBe(
+			'Proposez un poste à Louis sur sa page recruteurs\u00a0: lire une note, choisir ou créer une offre, correspondre au poste idéal, puis réserver un rendez-vous, en 8 minutes environ.'
+		);
+		expect(journeyDescription('Louis', [], 1)).toBe(
+			'Propose a role to Louis on their page for recruiters. They do not take meeting requests online right now.'
+		);
+		// The journey is not known (the browser loads it): no step is named
+		expect(journeyDescription('Louis', undefined, 1)).toBe(
+			'Propose a role to Louis: their page for recruiters, with the steps they ask you to follow.'
 		);
 	});
 

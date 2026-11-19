@@ -6,6 +6,12 @@ export const m = defineMessages({
 	note: {
 		read: { en: 'You have read this note.', fr: 'Vous avez lu cette note.' },
 		ask: { en: 'Read the note, then confirm it.', fr: 'Lisez la note, puis confirmez-la.' },
+		/** What the step asks, before the visitor starts ("Before you start") */
+		asks: {
+			en: (ownerName: string) => `Read ${ownerName}'s note, then confirm that you have read it.`,
+			fr: (ownerName: string) =>
+				`Lisez la note que ${ownerName} a écrite, puis confirmez l'avoir lue.`
+		},
 		signIn: {
 			en: 'Sign in to confirm that you have read this.',
 			fr: 'Connectez-vous pour confirmer que vous avez lu ceci.'
@@ -33,6 +39,13 @@ export const m = defineMessages({
 	job: {
 		/** The button unfolding the step once a job is picked */
 		reopen: { en: 'Change', fr: 'Modifier' },
+		/** What the step asks, before the visitor starts ("Before you start") */
+		asks: {
+			en: (ownerName: string) =>
+				`Pick one of your open job descriptions, or write a new one: ${ownerName} sees it in the meeting invitation.`,
+			fr: (ownerName: string) =>
+				`Choisissez l'une de vos offres d'emploi ouvertes, ou rédigez-en une nouvelle : ${ownerName} la voit dans l'invitation au rendez-vous.`
+		},
 		jobsFailed: {
 			en: 'Could not load your job descriptions.',
 			fr: "Impossible de charger vos offres d'emploi."
@@ -93,6 +106,22 @@ export const m = defineMessages({
 	},
 
 	jobMatch: {
+		/**
+		 * What the step asks, before the visitor starts ("Before you start"): with the minimum its
+		 * settings show visitors, then without one. Next to a note step, the score is « résultat »
+		 */
+		asks: {
+			en: (ownerName: string, minScore: number) =>
+				`Your job is scored out of 100 against what ${ownerName} is looking for: you see your score, never what they ask for. At least ${minScore} opens the next step.`,
+			fr: (ownerName: string, minScore: number) =>
+				`Votre offre est notée sur 100 par rapport à ce que recherche ${ownerName} : vous voyez son résultat, jamais ce qui est demandé. Il faut au moins ${minScore} pour ouvrir l'étape suivante.`
+		},
+		asksNoMin: {
+			en: (ownerName: string) =>
+				`Your job is scored out of 100 against what ${ownerName} is looking for: you see your score, never what they ask for.`,
+			fr: (ownerName: string) =>
+				`Votre offre est notée sur 100 par rapport à ce que recherche ${ownerName} : vous voyez son résultat, jamais ce qui est demandé.`
+		},
 		ask: {
 			en: (ownerName: string) =>
 				`The job you pick is scored out of 100 against what ${ownerName} is looking for.`,
@@ -220,6 +249,11 @@ export const m = defineMessages({
 			fr: 'Vous avez réservé un rendez-vous. Vous pouvez réserver un autre créneau.'
 		},
 		ask: { en: 'Pick a time slot that suits you.', fr: 'Choisissez un créneau qui vous convient.' },
+		/** What the step asks, before the visitor starts ("Before you start") */
+		asks: {
+			en: 'Pick a time slot, then give your name and email address.',
+			fr: 'Choisissez un créneau, puis indiquez votre nom et votre adresse e-mail.'
+		},
 		/** What the Hire page says under its title when the journey leads to a meeting (StepGoal) */
 		goal: {
 			alone: {
@@ -229,7 +263,31 @@ export const m = defineMessages({
 			after: {
 				en: "Then pick a time slot: you'll receive a calendar invitation by email.",
 				fr: 'Choisissez ensuite un créneau : vous recevrez une invitation par e-mail.'
+			},
+			/** What happens once the meeting is booked ("Before you start") */
+			next: {
+				en: (ownerName: string) =>
+					`Once you book, you receive a calendar invitation by email, and the meeting goes into ${ownerName}'s calendar.`,
+				fr: (ownerName: string) =>
+					`Une fois le créneau réservé, vous recevez une invitation par e-mail, et ${ownerName} retrouve le rendez-vous dans son agenda.`
 			}
+		}
+	},
+
+	/**
+	 * What a visitor needs at hand for the steps (StepNeed), each said once in "Before you start".
+	 * The job description: every posting states its pay range (validateJobPosting); the PDF
+	 * import is offered only where the API has it on (GET /jobs/import), which a visitor signed out
+	 * cannot know
+	 */
+	needs: {
+		googleAccount: {
+			en: 'A Google account, to sign in',
+			fr: 'Un compte Google, pour vous connecter'
+		},
+		jobDescription: {
+			en: 'The job description and its pay range, or its PDF where import is offered',
+			fr: "L'offre d'emploi et sa fourchette de rémunération, ou son PDF lorsque l'import est proposé"
 		}
 	}
 });

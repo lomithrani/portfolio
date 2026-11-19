@@ -9,11 +9,12 @@ export const m = defineMessages({
 		en: (ownerName: string) => `Propose a role to ${ownerName}`,
 		fr: (ownerName: string) => `Proposer un poste à ${ownerName}`
 	},
-	description: {
-		en: (ownerName: string) =>
-			`Propose a role to ${ownerName}: their page for recruiters, with the steps they ask you to follow.`,
-		fr: (ownerName: string) =>
-			`Proposez un poste à ${ownerName} : sa page recruteurs, avec les étapes à suivre.`
+	/** For screen readers, while the journey loads in the browser (the server could not render it) */
+	loading: { en: 'Loading the steps…', fr: 'Chargement des étapes…' },
+	/** Without JavaScript: the steps are said, not gone through */
+	noScript: {
+		en: 'Turn on JavaScript in your browser to go through the steps.',
+		fr: 'Activez JavaScript dans votre navigateur pour suivre les étapes.'
 	},
 	journeyFailed: {
 		en: 'Could not load this hiring journey. Try again in a moment.',
