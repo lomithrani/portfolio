@@ -179,8 +179,8 @@ export const m = defineMessages({
 		 * server/plugins/perfectJob.ts (the perfect job is read by its owner only)
 		 */
 		intro: {
-			en: 'Say what you want in a job, choose the steps recruiters go through, and open your calendar. Recruiters never see the figures you set: only whether their job matches, when your steps score it.',
-			fr: "Dites ce que vous voulez d'un poste, choisissez les étapes que suivent les recruteurs et ouvrez votre agenda. Les recruteurs ne voient jamais les chiffres que vous fixez : seulement si leur offre correspond, lorsque vos étapes la notent."
+			en: 'Say what you want in a job, choose the steps recruiters go through, and open your calendar. Recruiters never see what you ask for: only how their job does against your criteria, and the minimum you set, when your steps score it.',
+			fr: "Dites ce que vous voulez d'un poste, choisissez les étapes que suivent les recruteurs et ouvrez votre agenda. Les recruteurs ne voient jamais ce que vous demandez : seulement le résultat de leur offre face à vos critères, et le minimum que vous fixez, lorsque vos étapes la notent."
 		},
 		open: { en: 'Set my terms', fr: 'Fixer mes conditions' },
 		/** Next to the button: how many of the three are set */

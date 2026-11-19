@@ -322,7 +322,7 @@ The `Visitor` component receives these props:
 | `reload()` | Loads the journey again, when it may be out of date (the owner changed it, the session ended). |
 | `locked(reason)` | Tells the page that the API refused a request of this step with 401 (`'signed-out'`) or 403 (`'locked'`). |
 | `succeeded()` | Tells the page that the step succeeded without a submit (the meeting was booked). |
-| `bookable` | Whether the owner's calendar offers a meeting type to book (`GET /appointments/domains/:domainName/schedules`, asked by the server's render and again in the browser), null while not known. The meeting step starts from it, so that "Online booking is not available right now." is in the server's HTML. |
+| `bookable` | Whether the owner's calendar offers a meeting type to book (`GET /appointments/domains/:domainName/schedules`, which lists only those with hours, as the readiness checklist counts them; asked by the server's render, and again in the browser unless the render found one), null while not known. The meeting step starts from it, so that "Online booking is not available right now." is in the server's HTML. |
 | `schedulesFound(count)` | Tells the page how many meeting types the step found when it asked for them: the page follows it. |
 
 The `Settings` component receives `config` (the step's current settings), `onChange(config)` (call
@@ -348,14 +348,16 @@ either. Four things the page does for every step:
   `visitorConfig` returns and nothing else, and no `view`. The first step is shown open, the rest
   locked, with "Before you start" (`hire/BeforeYouStart.svelte`, from each entry's `effort` and the
   goal's `next`) above them, unless the goal is a `booking` and the owner's calendar offers nothing
-  to book (`bookable` false). The browser then loads the journey again with the session; until it
+  to book (`bookable` false: then the steps stay read-only for visitors, none unfolds or takes a
+  submission, until a meeting can follow them). The browser then loads the journey again with the session; until it
   answers, a visitor the kept session names gets no control on the steps (the server's are anyone
   signed out's). So the `Visitor` of a step that can be the first one must render on the server:
   no `window`, `document` or storage outside event handlers and effects, and its loading states
   hold their place without words (a placeholder, its status for screen readers only), as
-  `MeetingBooking.svelte` does for the meeting types. `client/tests/hire-journey.test.ts` loads,
-  with JavaScript off, a journey starting with each type that can come first (a `requirement` type
-  without `needs`).
+  `MeetingBooking.svelte` does for the meeting types. `client/src/services/tests/hirePageRender.test.ts`
+  renders, with a meeting type to book, a journey starting with each type that can come first (a
+  `requirement` type without `needs`), unfolded; `client/tests/hire-journey.test.ts` loads them
+  with JavaScript off (the e2e API books nothing: listed, read-only).
 
 - The owner previews their journey with no step locked. A `requirement` step shows its description
   to the owner instead of its controls, unless its entry sets `ownerPreview`; `access` steps are
@@ -380,7 +382,7 @@ either. Four things the page does for every step:
 
 ## A step that can fail: the job match
 
-The `job-match` step ("Match the perfect job") scores the job the visitor picked on the job step
+The `job-match` step ("Get the job scored") scores the job the visitor picked on the job step
 against the owner's **perfect job**, and returns `failed` under the minimum score the owner set
 in the step's settings. It is the example of three things no other step does.
 

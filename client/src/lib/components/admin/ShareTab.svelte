@@ -49,6 +49,7 @@ saved or sent anywhere: the owner copies what they want.
 	} from '#services/shareKit.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import CopyLink from '#components/share/CopyLink.svelte';
+	import { m as copyMessages } from '#components/share/CopyLink.messages.ts';
 	import CopyText from '#components/share/CopyText.svelte';
 	import { m } from './ShareTab.messages.ts';
 
@@ -215,7 +216,7 @@ saved or sent anywhere: the owner copies what they want.
 
 	<section class="space-y-3" aria-labelledby="{uid}-link">
 		<h3 class="h4" id="{uid}-link">{m.link.title}</h3>
-		<CopyLink link={portfolio} caption={m.link.caption} />
+		<CopyLink link={portfolio} caption={copyMessages.opens} />
 		<a class={linkButton} href={resolve('/[domain]/hire', { domain: domainName })}>
 			<Eye size="16" aria-hidden="true" />
 			{m.link.see}

@@ -132,9 +132,9 @@ describe('the step types (portfolio-common)', () => {
 		const noteOf = (steps: WorkflowStep[]) => steps[0].config as NoteStepConfig;
 		const english = noteOf(journeyTemplate('gate'));
 		const french = withLocale('fr', () => noteOf(journeyTemplate('gate')));
-		expect(english.title).toBe('Share the job first');
+		expect(english.title).toBe('Before we talk');
 		expect(english.text).toContain('with its pay range');
-		expect(french.title).toBe("Présentez d'abord le poste");
+		expect(french.title).toBe("Avant d'échanger");
 		expect(french.text).toContain('fourchette de rémunération');
 		expect(
 			noteOf(journeyTemplate('gate', { noteTitle: 'My terms', noteText: 'Remote only.' }))
@@ -389,6 +389,18 @@ describe("the visitor's journey", () => {
 		expect(journeyIntro('Louis', undefined)).toBe(
 			'Louis does not take meeting requests online right now.'
 		);
+		// A meeting nobody can book: no slot promised, and the steps before it wait
+		expect(journeyIntro('Louis', { before: 0, ...texts }, { closed: true })).toBe(
+			'Louis does not take meeting requests online right now.'
+		);
+		expect(journeyIntro('Louis', { before: 2, ...texts }, { closed: true })).toBe(
+			'Louis does not take meeting requests online right now: the steps open once they do.'
+		);
+		expect(
+			withLocale('fr', () => journeyIntro('Louis', { before: 2, ...texts }, { closed: true }))
+		).toBe(
+			"Louis ne prend pas de demandes de rendez-vous en ligne pour le moment\u00a0: les étapes s'ouvriront dès que ce sera le cas."
+		);
 	});
 
 	it("keeps of the server's journey what anyone signed out gets", () => {
@@ -442,36 +454,36 @@ describe("the visitor's journey", () => {
 	it('describes the page with what its journey asks', () => {
 		const gate = [{ type: 'note' }, { type: 'job' }, { type: 'job-match' }, { type: 'meeting' }];
 		expect(journeyDescription('Louis', gate, 8)).toBe(
-			'Propose a role to Louis on their page for recruiters: read a note, select or create a job, match the perfect job, then book a meeting, in about 8 minutes.'
+			"On Louis's page for recruiters: read a note, select or create a job, get the job scored, then book a meeting, in about 8 minutes."
 		);
 		expect(journeyDescription('Louis', DEFAULT_WORKFLOW_STEPS, 2)).toBe(
-			'Propose a role to Louis on their page for recruiters: book a meeting, in about 2 minutes.'
+			"On Louis's page for recruiters: book a meeting, in about 2 minutes."
 		);
 		expect(journeyDescription('Louis', [{ type: 'meeting' }], 1)).toBe(
-			'Propose a role to Louis on their page for recruiters: book a meeting, in about a minute.'
+			"On Louis's page for recruiters: book a meeting, in about a minute."
 		);
 		expect(withLocale('fr', () => journeyDescription('Louis', gate, 8))).toBe(
-			'Proposez un poste à Louis sur sa page recruteurs\u00a0: lire une note, choisir ou créer une offre, correspondre au poste idéal, puis réserver un rendez-vous, en 8 minutes environ.'
+			"Sur la page recruteurs de Louis\u00a0: lire une note, choisir ou créer une offre, faire noter l'offre, puis réserver un rendez-vous, en 8 minutes environ."
 		);
 		expect(journeyDescription('Louis', [], 1)).toBe(
-			'Propose a role to Louis on their page for recruiters. They do not take meeting requests online right now.'
+			"Louis's page for recruiters. They do not take meeting requests online right now."
 		);
 		// A meeting nobody can book (the owner's calendar has no meeting type): neither the steps nor
 		// a duration are promised, whatever comes before the meeting
 		for (const steps of [gate, DEFAULT_WORKFLOW_STEPS]) {
 			expect(journeyDescription('Louis', steps, 8, { closed: true })).toBe(
-				'Propose a role to Louis on their page for recruiters. They do not take meeting requests online right now.'
+				"Louis's page for recruiters. They do not take meeting requests online right now."
 			);
 		}
 		expect(withLocale('fr', () => journeyDescription('Louis', gate, 8, { closed: true }))).toBe(
-			'Proposez un poste à Louis sur sa page recruteurs. Louis ne prend pas de demandes de rendez-vous en ligne pour le moment.'
+			'La page recruteurs de Louis. Louis ne prend pas de demandes de rendez-vous en ligne pour le moment.'
 		);
 		expect(withLocale('fr', () => journeyDescription('Louis', [{ type: 'meeting' }], 1))).toBe(
-			'Proposez un poste à Louis sur sa page recruteurs\u00a0: réserver un rendez-vous, en une minute environ.'
+			'Sur la page recruteurs de Louis\u00a0: réserver un rendez-vous, en une minute environ.'
 		);
 		// The journey is not known (the browser loads it): no step is named
 		expect(journeyDescription('Louis', undefined, 1)).toBe(
-			'Propose a role to Louis: their page for recruiters, with the steps they ask you to follow.'
+			"Louis's page for recruiters, with the steps they ask you to follow."
 		);
 	});
 
@@ -634,7 +646,7 @@ describe('the job match step', () => {
 			ok: false,
 			problem: {
 				message:
-					'“Match the perfect job” works on what recruiters did in “Select or create a job”: move it below that step.',
+					'“Get the job scored” works on what recruiters did in “Select or create a job”: move it below that step.',
 				stepId: 'job-match'
 			}
 		});
@@ -647,7 +659,7 @@ describe('the job match step', () => {
 			problem: { stepId: 'job-match', field: 'minScore' }
 		});
 		expect(journeySummary(steps)).toBe(
-			'Recruiters select or create a job, match the perfect job, then book a meeting.'
+			'Recruiters select or create a job, get the job scored, then book a meeting.'
 		);
 	});
 

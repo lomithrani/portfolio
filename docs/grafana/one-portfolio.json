@@ -143,7 +143,7 @@
 		{
 			"type": "stat",
 			"title": "Hire page opened",
-			"description": "Times a browser opened the Hire page (it reads the hiring journey). Crawlers that run no JavaScript are not counted.",
+			"description": "Times a browser opened the Hire page, the page for recruiters (it loads the hiring journey). The server's render of the page is left out (its requests carry `x-portfolio-render: server`): crawlers and link previews (LinkedIn, Slack) are not counted, and a visit counts once.",
 			"datasource": {
 				"type": "tempo",
 				"uid": "grafanacloud-traces"
@@ -152,7 +152,7 @@
 				{
 					"refId": "A",
 					"queryType": "traceql",
-					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/workflow/domains/:domainName\" && span.http.request.method=\"GET\" && span.url.path=\"/workflow/domains/${domain}\" && span.http.response.status_code<400} | count_over_time()",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/workflow/domains/:domainName\" && span.http.request.method=\"GET\" && span.url.path=\"/workflow/domains/${domain}\" && span.http.response.status_code<400 && span.\"http.request.header.x-portfolio-render\" = nil} | count_over_time()",
 					"limit": 50,
 					"tableType": "traces",
 					"metricsQueryType": "instant"
@@ -245,7 +245,7 @@
 		{
 			"type": "stat",
 			"title": "Booking calendar opened",
-			"description": "Times a browser read the meeting schedules, on the Hire page's booking step.",
+			"description": "Times a browser listed the meeting types: the Hire page's booking step, once the steps before it are done, and a check the page makes as it loads when its server render found none. The server's render of the page is left out (its requests carry `x-portfolio-render: server`).",
 			"datasource": {
 				"type": "tempo",
 				"uid": "grafanacloud-traces"
@@ -254,7 +254,7 @@
 				{
 					"refId": "A",
 					"queryType": "traceql",
-					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/appointments/domains/:domainName/schedules\" && span.http.request.method=\"GET\" && span.url.path=\"/appointments/domains/${domain}/schedules\" && span.http.response.status_code<400} | count_over_time()",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/appointments/domains/:domainName/schedules\" && span.http.request.method=\"GET\" && span.url.path=\"/appointments/domains/${domain}/schedules\" && span.http.response.status_code<400 && span.\"http.request.header.x-portfolio-render\" = nil} | count_over_time()",
 					"limit": 50,
 					"tableType": "traces",
 					"metricsQueryType": "instant"
@@ -369,7 +369,7 @@
 		{
 			"type": "timeseries",
 			"title": "Hiring journey over time",
-			"description": "What visitors did on the Hire page, per hour.",
+			"description": "What visitors did on the Hire page, per hour, in browsers: the server's render of the page (crawlers, link previews) is left out.",
 			"datasource": {
 				"type": "tempo",
 				"uid": "grafanacloud-traces"
@@ -378,7 +378,7 @@
 				{
 					"refId": "A",
 					"queryType": "traceql",
-					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/workflow/domains/:domainName\" && span.http.request.method=\"GET\" && span.url.path=\"/workflow/domains/${domain}\" && span.http.response.status_code<400} | count_over_time()",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/workflow/domains/:domainName\" && span.http.request.method=\"GET\" && span.url.path=\"/workflow/domains/${domain}\" && span.http.response.status_code<400 && span.\"http.request.header.x-portfolio-render\" = nil} | count_over_time()",
 					"limit": 50,
 					"tableType": "traces",
 					"metricsQueryType": "range"
@@ -394,7 +394,7 @@
 				{
 					"refId": "C",
 					"queryType": "traceql",
-					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/appointments/domains/:domainName/schedules\" && span.http.request.method=\"GET\" && span.url.path=\"/appointments/domains/${domain}/schedules\" && span.http.response.status_code<400} | count_over_time()",
+					"query": "{resource.service.name=~\"${stage:raw}\" && span.http.route=\"/appointments/domains/:domainName/schedules\" && span.http.request.method=\"GET\" && span.url.path=\"/appointments/domains/${domain}/schedules\" && span.http.response.status_code<400 && span.\"http.request.header.x-portfolio-render\" = nil} | count_over_time()",
 					"limit": 50,
 					"tableType": "traces",
 					"metricsQueryType": "range"

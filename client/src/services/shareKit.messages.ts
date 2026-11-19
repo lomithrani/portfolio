@@ -19,11 +19,13 @@ export const m = defineMessages({
 		},
 		/**
 		 * After shareThere: the journey scores the job, then a meeting can be booked (not "right
-		 * away": a note can come between the score and the meeting)
+		 * away": a note can come between the score and the meeting). Against "my criteria", never
+		 * "what I am looking for": these texts go to recruiters and on a public profile, and having
+		 * a portfolio says nothing about looking for a job
 		 */
 		scored: {
-			en: 'It is scored against what I am looking for and, if it fits, you can book a meeting with me there.',
-			fr: "L'offre est notée au regard de ce que je recherche et, si elle correspond, vous pouvez y réserver un rendez-vous avec moi."
+			en: 'It is scored against my criteria and, if it fits, you can book a meeting with me there.',
+			fr: "L'offre est notée selon mes critères et, si elle correspond, vous pouvez y réserver un rendez-vous avec moi."
 		},
 		/** After shareThere: a meeting can be booked, without a score */
 		thenBook: {
@@ -71,7 +73,7 @@ export const m = defineMessages({
 				`Télétravail : au moins ${days} ${plural(days, 'jour', 'jours')} par semaine`
 		},
 		/** Five remote days a week */
-		fullyRemote: { en: 'Remote work: fully remote', fr: 'Télétravail : complet' },
+		fullyRemote: { en: 'Remote work: fully remote', fr: 'Télétravail : 100 %' },
 		/** `places`: as the owner typed them */
 		places: {
 			en: (places: string) => `Location: ${places}`,
@@ -85,12 +87,12 @@ export const m = defineMessages({
 	},
 	/** The LinkedIn text (the profile's About section): what the page asks, then the portfolio */
 	linkedIn: {
-		/** The journey asks for the job and scores it */
+		/** The journey asks for the job and scores it (against "my criteria", as the reply says) */
 		scored: {
 			en: (link: string) =>
-				`Recruiters: to propose a role, start on my page for recruiters. It asks for the job and its pay range first, and scores it against what I am looking for: ${link}`,
+				`Recruiters: to propose a role, start on my page for recruiters. It asks for the job and its pay range first, and scores it against my criteria: ${link}`,
 			fr: (link: string) =>
-				`Recruteurs : pour me proposer un poste, commencez par ma page recruteurs. Elle demande d'abord l'offre et sa fourchette de rémunération, et la note au regard de ce que je recherche : ${link}`
+				`Recruteurs : pour me proposer un poste, commencez par ma page recruteurs. Elle demande d'abord l'offre et sa fourchette de rémunération, et la note selon mes critères : ${link}`
 		},
 		/** The journey asks for the job, without scoring it */
 		asksJob: {

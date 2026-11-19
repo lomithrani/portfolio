@@ -39,7 +39,7 @@ test.describe('a visitor whose browser prefers French', () => {
 			page.getByRole('listitem').filter({
 				has: page.getByRole('heading', { name: "La rémunération d'abord, si vous le demandez" })
 			})
-		).toContainText("celle-ci est notée avec un haut d'au plus 1,5 fois le bas");
+		).toContainText('elle est notée comme si son haut valait au plus 1,5 fois son bas');
 		await expect(page.locator('details', { hasText: 'Devrai-je payer un jour' })).toContainText(
 			'(article L5321-3 du code du travail)'
 		);

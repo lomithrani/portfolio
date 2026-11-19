@@ -248,7 +248,7 @@ describe('the reply to a recruiter', () => {
 		expect(text).toBe(
 			[
 				'Hello,',
-				'Thank you for your message. Before we talk, could you share the role on my page for recruiters, with its pay range? It is scored against what I am looking for and, if it fits, you can book a meeting with me there.',
+				'Thank you for your message. Before we talk, could you share the role on my page for recruiters, with its pay range? It is scored against my criteria and, if it fits, you can book a meeting with me there.',
 				PAGE,
 				'Best regards,'
 			].join('\n\n')
@@ -321,9 +321,9 @@ describe('the reply to a recruiter', () => {
 		expect(plain(text)).toBe(
 			[
 				'Bonjour,',
-				"Merci pour votre message. Avant d'échanger, pourriez-vous présenter le poste sur ma page recruteurs, avec sa fourchette de rémunération ? L'offre est notée au regard de ce que je recherche et, si elle correspond, vous pouvez y réserver un rendez-vous avec moi.",
+				"Merci pour votre message. Avant d'échanger, pourriez-vous présenter le poste sur ma page recruteurs, avec sa fourchette de rémunération ? L'offre est notée selon mes critères et, si elle correspond, vous pouvez y réserver un rendez-vous avec moi.",
 				`${PAGE}?lang=fr`,
-				'Ce qui compte pour moi :\n- Télétravail : complet',
+				'Ce qui compte pour moi :\n- Télétravail : 100 %',
 				'Bien cordialement,'
 			].join('\n\n')
 		);
@@ -334,10 +334,41 @@ describe('the reply to a recruiter', () => {
 	});
 });
 
+describe('the texts sent to recruiters', () => {
+	it('never say the owner is looking for a job, in either language', () => {
+		// The reply goes to a recruiter and the LinkedIn text on a public profile: having a
+		// portfolio says nothing about looking for a job, so the page scores against "my criteria"
+		const facts = {
+			pay: { amount: 65000, per: 'year' as const },
+			remoteDays: 2,
+			places: 'Paris',
+			contracts: ['cdi' as const]
+		};
+		for (const locale of ['en', 'fr'] as const) {
+			for (const journey of [
+				GATE,
+				MEETING,
+				JOB,
+				NOTHING_TO_SCORE,
+				CLOSED,
+				BLOCKED,
+				UNKNOWN_JOURNEY
+			]) {
+				for (const text of [
+					replyText(locale, { portfolio: PORTFOLIO, journey, facts }),
+					linkedInText(locale, { portfolio: PORTFOLIO, journey })
+				]) {
+					expect(text).not.toMatch(/looking for|recherch/i);
+				}
+			}
+		}
+	});
+});
+
 describe('the LinkedIn text', () => {
 	it('says what the page for recruiters asks, then gives the portfolio', () => {
 		expect(linkedInText('en', { portfolio: PORTFOLIO, journey: GATE })).toBe(
-			`Recruiters: to propose a role, start on my page for recruiters. It asks for the job and its pay range first, and scores it against what I am looking for: ${PAGE}\n\nMy experiences and projects: ${PORTFOLIO}`
+			`Recruiters: to propose a role, start on my page for recruiters. It asks for the job and its pay range first, and scores it against my criteria: ${PAGE}\n\nMy experiences and projects: ${PORTFOLIO}`
 		);
 		expect(linkedInText('en', { portfolio: PORTFOLIO, journey: JOB })).toContain(
 			`It asks for the job and its pay range first: ${PAGE}`

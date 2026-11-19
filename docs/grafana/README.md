@@ -25,6 +25,17 @@ Nothing identifies a visitor: these are counts of records and of requests the se
 handle. There is no view counter in the browser, so the dashboards cannot tell a signed-in visitor
 from an anonymous one, and what is counted where pages are rendered includes crawlers.
 
+The page for recruiters (the Hire page) is rendered on the server, crawlers and link previews
+included: that render asks the API for the journey and the meeting types with the header
+`x-portfolio-render: server` (`client/src/routes/[domain]/hire/+page.server.ts`), which the API's
+OpenTelemetry plugin records on the span like every request header
+(`http.request.header.x-portfolio-render`). The one-portfolio dashboard's Hire page panels leave
+those requests out (`span."http.request.header.x-portfolio-render" = nil`), so they count what
+browsers did: "Hire page opened" the journey loaded once per visit, "Booking calendar opened" the
+meeting types listed by the booking step (and by the page as it loads when its server render found
+none: it does not ask again when the render found some). A change to that header, or to the
+requests the page makes, means updating those panels.
+
 ## The Stage variable
 
 Each dashboard has a **Stage** variable whose value is a regular expression on the services'

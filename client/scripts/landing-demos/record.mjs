@@ -153,7 +153,7 @@ const journey = async () => {
 	await f.tap(page.getByRole('button', { name: 'Continue with this job' }));
 	await settle();
 	await f.hold(500);
-	await f.scroll(await f.topOf(heading('Match the perfect job'), 20), 700);
+	await f.scroll(await f.topOf(heading('Get the job scored'), 20), 700);
 	await f.hold(1500);
 	await f.scroll(await f.topOf(page.locator('[id$="-score"]'), 14), 800);
 	await f.hold(3400);

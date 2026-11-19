@@ -366,19 +366,19 @@ describe("the owner's journey (GET, PUT /workflow)", () => {
       on: 'body',
       property: 'steps.0',
       message:
-        '“Match the perfect job” works on what recruiters did in “Select or create a job”: add that step before it.'
+        '“Get the job scored” works on what recruiters did in “Select or create a job”: add that step before it.'
     });
     expect(await refused(note(), jobMatch(), job(), meeting())).toEqual({
       type: 'validation',
       on: 'body',
       property: 'steps.1',
       message:
-        '“Match the perfect job” works on what recruiters did in “Select or create a job”: move it below that step.'
+        '“Get the job scored” works on what recruiters did in “Select or create a job”: move it below that step.'
     });
     // Once per journey, like the job it scores
     expect(await refused(job(), jobMatch(), jobMatch(50, false, 'again'), meeting())).toMatchObject({
       property: 'steps.2',
-      message: '“Match the perfect job” can be used only once.'
+      message: '“Get the job scored” can be used only once.'
     });
     await setJourney(owner, job(), note(), jobMatch(), meeting());
   });

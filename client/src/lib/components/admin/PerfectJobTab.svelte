@@ -3,7 +3,7 @@
 The owner's perfect job (GET, PUT /perfect-job): what they look for in a job, criterion by
 criterion, each read from what a recruiter fills in for a job description and each with how much
 it matters (1 to 5). A recruiter's job is scored against it out of 100 in the hiring journey
-(the step "Match the perfect job", which sets the minimum). The criteria are checked on every
+(the step "Get the job scored", which sets the minimum). The criteria are checked on every
 change with the rules the API enforces (portfolio-common's parsePerfectJob): what is wrong is
 said at the setting it is about, and nothing can be saved until it is fixed. Recruiters never
 see the criteria.

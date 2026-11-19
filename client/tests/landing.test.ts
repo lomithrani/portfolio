@@ -1,8 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { LEGAL_VERSION, legalMessages } from 'portfolio-common';
 import {
+	API_URL,
 	E2E_CANDIDATE_ID as CANDIDATE_ID,
 	JWT_SECRET,
+	apiAs,
 	gotoHydrated,
 	ownerSession,
 	signIn
@@ -220,7 +222,7 @@ test.describe('landing page, signed out', () => {
 			'your page asks recruiters for the job before the meeting'
 		);
 		await expect(promise('The pay first, if you ask')).toContainText(
-			'it is scored with its top at most 1.5 times its bottom'
+			'it is scored as if its top were at most 1.5 times its bottom'
 		);
 		// The minimum is shown to recruiters: the promise says so
 		await expect(promise('The pay you ask for stays private')).toContainText(
@@ -255,7 +257,7 @@ test.describe('landing page, signed out', () => {
 		await expect(answer('Who can see my portfolio?')).toContainText(
 			'Your email address is not shown on it, but someone who books a meeting with you sees it in the invitation.'
 		);
-		await expect(answer('What do recruiters see of what I am looking for?')).toContainText(
+		await expect(answer('What do recruiters see of what I ask for?')).toContainText(
 			'A recruiter who tries several jobs could still guess part of it from the scores.'
 		);
 		await expect(answer('Can I delete my account?')).toContainText(
@@ -675,7 +677,7 @@ test.describe('landing page, portfolio owner', () => {
 		// The card's subtitle says what is left, and the step promises no more than the code does
 		await expect(card(page).getByText('Set your terms, then share your link.')).toBeVisible();
 		await expect(currentStep(page)).toContainText(
-			'Recruiters never see the figures you set: only whether their job matches, when your steps score it.'
+			'Recruiters never see what you ask for: only how their job does against your criteria, and the minimum you set, when your steps score it.'
 		);
 
 		const link = 'http://localhost:4173/e2e-owner';
@@ -803,5 +805,106 @@ test.describe('landing page, portfolio owner', () => {
 		await expect(page).toHaveURL(/\/e2e-owner\/experiences$/);
 		await expect(page.getByText('Résumé import is not available right now')).toBeVisible();
 		await expect(page.getByRole('dialog', { name: 'Import from résumé' })).toHaveCount(0);
+	});
+});
+
+// The whole chain with the real API, nothing answered in the browser but Google's sign-in script:
+// what the owner saves in the admin's tabs (the gate journey from "Get started", the perfect job's
+// essentials) is what GET /me/readiness reads, and what moves the landing card to "Your link is
+// ready". On 'e2e-ready' (seed:e2e), this test's own owner: it sets back what it changes at its
+// start (a journey that leads to no meeting, a perfect job without criteria, one experience). The
+// e2e API has no Google Calendar (no GOOGLE_CLIENT_SECRET): the calendar item is not counted, and
+// no travel time service is asked (no COMMUTE_TIMES: the cities say where the office is).
+test.describe('landing page, a portfolio set up for real', () => {
+	test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e owner');
+
+	const DOMAIN = 'e2e-ready';
+
+	test('saving the gate and the essentials makes the link ready, as the API reads it', async ({
+		page
+	}) => {
+		const session = await ownerSession(DOMAIN);
+		const api = await apiAs(session);
+		const put = async (path: string, data: object) => {
+			const response = await api.put(`${API_URL}${path}`, { data });
+			expect(response.ok(), await response.text()).toBe(true);
+		};
+		await put('/workflow', { steps: [] });
+		await put('/perfect-job', { criteria: {} });
+		const portfolio = await (await api.get(`${API_URL}/domain/${DOMAIN}`)).json();
+		if (portfolio.experiences.length === 0) {
+			const created = await api.post(`${API_URL}/experiences`, {
+				data: {
+					title: 'Staff engineer',
+					type: 'professional',
+					summary: 'Created by an end-to-end test.',
+					company: { name: 'E2E Corp' },
+					start: '2022-01-01T00:00:00.000Z',
+					end: '2024-01-01T00:00:00.000Z',
+					projects: []
+				}
+			});
+			expect(created.ok(), await created.text()).toBe(true);
+		}
+
+		await stubGoogle(page);
+		await signIn(page, session);
+		await gotoHydrated(page, '/');
+		await expect(currentStep(page)).toContainText('Set your terms');
+		await expect(currentStep(page)).toContainText('0 of 2 set');
+
+		// "Get started": the gate in one click, in place of steps that lead to no meeting
+		await card(page).getByRole('link', { name: 'Set my terms' }).click();
+		const checklist = page.getByRole('list', { name: 'Checklist' });
+		const item = (id: string) => checklist.locator(`[data-item="${id}"]`);
+		await expect(item('journey')).toHaveAttribute('data-state', 'toDo');
+		await item('journey')
+			.locator('[data-template="gate"]')
+			.getByRole('button', { name: 'Use these steps' })
+			.click();
+		await page
+			.getByRole('alertdialog', { name: 'Replace your steps?' })
+			.getByRole('button', { name: 'Replace my steps' })
+			.click();
+		await expect(item('journey')).toHaveAttribute('data-state', 'done');
+
+		// The perfect job's essentials, filled in and saved
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+		await page.getByRole('button', { name: 'Start with the essentials' }).click();
+		const criterion = (name: string) => page.getByRole('group', { name, exact: true });
+		await criterion('Pay').getByLabel('Per year').fill('60 000');
+		await criterion('Work mode').getByRole('checkbox', { name: 'Full remote' }).check();
+		const cities = criterion('Location').getByLabel('Cities or postal codes');
+		await cities.fill('Lyon');
+		await cities.press('Enter');
+		await criterion('Contract').getByRole('checkbox', { name: 'CDI (permanent)' }).check();
+		await page.getByRole('button', { name: 'Save perfect job' }).click();
+		await expect(page.getByText('Perfect job saved')).toBeVisible();
+		await page.getByRole('tab', { name: /^Get started/ }).click();
+		await expect(item('perfectJob')).toHaveAttribute('data-state', 'done');
+
+		// What the API reads now: the gate, the essentials, nothing left to count
+		const readiness = await (await api.get(`${API_URL}/me/readiness`)).json();
+		expect(readiness).toMatchObject({
+			domain: DOMAIN,
+			perfectJob: { essentials: { pay: true, workMode: true, place: true, contractTypes: true } },
+			journey: { saved: true, gate: true, meeting: true, blocked: false },
+			calendar: { configured: false }
+		});
+
+		// Back on the landing page: the link is ready
+		await gotoHydrated(page, '/');
+		await expect(card(page).getByRole('heading', { name: 'Your link is ready' })).toBeVisible();
+		await expect(currentStep(page)).toHaveCount(0);
+		const ready = card(page).locator('[data-ready]');
+		await expect(ready.getByRole('button', { name: 'Copy your link' })).toBeVisible();
+		await expect(ready.getByRole('textbox', { name: 'Your link' })).toHaveValue(
+			`http://localhost:4173/${DOMAIN}`
+		);
+		// And the experiences page no longer asks to get ready
+		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		await expect(page.getByRole('heading', { name: 'Experiences' })).toBeVisible();
+		await expect(page.locator('[data-setup-progress]')).toHaveCount(0);
+		await api.dispose();
 	});
 });

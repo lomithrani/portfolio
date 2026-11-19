@@ -1,6 +1,7 @@
 import { ratedCriteria, stepManifest } from 'portfolio-common';
 import { env } from '../env';
 import { AppointmentSchedule, Domain } from '../models/database';
+import { bookableScheduleFilter } from './appointmentSchedules';
 import { commuteAvailability } from './commute';
 import { getCalendarConnection } from './googleCalendar';
 import { perfectJobOf } from './perfectJobs';
@@ -84,21 +85,11 @@ const isBlocked = (types: readonly string[]) => {
 };
 
 /**
- * How many meeting types of `userId` offer slots: turned on, with weekly hours or a day of their
- * own with hours (from yesterday on, in UTC: a day that is still today somewhere). What a slot
- * also needs (the notice, the calendar's busy times) changes by the hour: not counted
+ * How many meeting types of `userId` offer slots (bookableScheduleFilter): the ones the page for
+ * recruiters lists
  */
-const bookableSchedules = (userId: string) => {
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  return AppointmentSchedule.countDocuments({
-    user: userId,
-    enabled: true,
-    $or: [
-      { 'availability.0': { $exists: true } },
-      { dateOverrides: { $elemMatch: { available: true, date: { $gte: yesterday }, 'windows.0': { $exists: true } } } }
-    ]
-  });
-};
+const bookableSchedules = (userId: string) =>
+  AppointmentSchedule.countDocuments(bookableScheduleFilter(userId));
 
 /** Where the account `userId` stands in setting up its portfolio: see CandidateReadiness */
 export async function candidateReadiness(userId: string): Promise<CandidateReadiness> {

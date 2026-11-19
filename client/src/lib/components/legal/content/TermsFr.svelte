@@ -244,7 +244,7 @@ modifications, droit applicable.
 	d'embauche, n'est pas l'employeur et n'est pas partie au contrat de travail qui peut en découler.
 	Le site n'évalue pas les candidats, et ne les classe ni ne les filtre. La seule note qu'il calcule
 	est celle d'une offre d'emploi, au regard des critères qu'un candidat a fixés pour le poste qu'il
-	recherche, lorsque le candidat ajoute l'étape « Correspondre au poste idéal » à son parcours de
+	recherche, lorsque le candidat ajoute l'étape « Faire noter l'offre » à son parcours de
 	recrutement : selon des règles fixes, et non par un modèle d'IA, avec le minimum choisi par le
 	candidat (voir la
 	<LegalDocLink doc="privacy" {lang} hash="ai">politique de confidentialité</LegalDocLink>).

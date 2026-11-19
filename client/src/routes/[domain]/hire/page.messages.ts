@@ -36,6 +36,21 @@ export const m = defineMessages({
 		en: 'This is your page for recruiters, as they see it. Its steps never stop you. <admin>Change the steps</admin>',
 		fr: 'Voici votre page recruteurs, telle que les recruteurs la voient. Ses étapes ne vous arrêtent jamais. <admin>Modifier les étapes</admin>'
 	},
+	/**
+	 * The owner's preview, while their calendar offers no meeting type to book (`closed`): why
+	 * their page says they take no meeting requests online, and where to change it. `steps`: there
+	 * are steps before the meeting, which wait too (read-only for recruiters until then)
+	 */
+	calendarClosed: {
+		alone: {
+			en: 'Recruiters cannot book until your calendar is open. <calendar>Open my calendar settings</calendar>',
+			fr: "Les recruteurs ne peuvent pas réserver tant que votre agenda n'est pas ouvert. <calendar>Ouvrir mes réglages d'agenda</calendar>"
+		},
+		steps: {
+			en: 'Recruiters cannot go through your steps nor book until your calendar is open. <calendar>Open my calendar settings</calendar>',
+			fr: "Les recruteurs ne peuvent ni suivre vos étapes ni réserver tant que votre agenda n'est pas ouvert. <calendar>Ouvrir mes réglages d'agenda</calendar>"
+		}
+	},
 	/** The owner's preview: their Share tab (reply and LinkedIn texts), under "Copy your link" */
 	moreWays: { en: 'More ways to share', fr: 'Plus de façons de partager' },
 	journey: { en: 'Hiring journey', fr: 'Parcours de recrutement' },

@@ -8,14 +8,16 @@ export const workflowMessages = defineMessages({
 	/**
 	 * The note of the gate template: it asks for the job with its pay range first, says the job is
 	 * scored against the owner's criteria (neutral: never what they look for), and that a meeting
-	 * can be booked once it matches.
+	 * can be booked once it matches (not "right away": the page for recruiters may not take
+	 * bookings yet, and then says so). Its title is the step's heading on the page for recruiters:
+	 * "Before we talk", not an instruction the step (read and confirm) does not carry out.
 	 * Within NOTE_STEP_LIMITS (client/src/services/tests/workflow.test.ts)
 	 */
 	gateNote: {
-		title: { en: 'Share the job first', fr: "Présentez d'abord le poste" },
+		title: { en: 'Before we talk', fr: "Avant d'échanger" },
 		text: {
-			en: 'Thank you for your interest. Before we talk, please share the job on this page: pick one of your job descriptions or write a new one, with its pay range.\n\nThe job is then scored against my criteria. If it is a match, you can book a meeting in my calendar right away. This saves us both a call about a job that would not fit.',
-			fr: "Merci de votre intérêt. Avant d'échanger, présentez le poste sur cette page : choisissez l'une de vos offres d'emploi ou rédigez-en une nouvelle, avec sa fourchette de rémunération.\n\nL'offre est ensuite notée selon mes critères. Si elle correspond, vous pouvez réserver tout de suite un rendez-vous dans mon agenda. Cela nous évite à tous les deux un appel pour un poste qui ne conviendrait pas."
+			en: 'Thank you for your interest. Please share the job on this page first: pick one of your job descriptions or write a new one, with its pay range.\n\nThe job is then scored against my criteria. If it is a match, you can then book a meeting in my calendar. This saves us both a call about a job that would not fit.',
+			fr: "Merci de votre intérêt. Présentez d'abord le poste sur cette page : choisissez l'une de vos offres d'emploi ou rédigez-en une nouvelle, avec sa fourchette de rémunération.\n\nL'offre est ensuite notée selon mes critères. Si elle correspond, vous pourrez alors réserver un rendez-vous dans mon agenda. Cela nous évite à tous les deux un appel pour un poste qui ne conviendrait pas."
 		}
 	},
 	tooManySteps: {

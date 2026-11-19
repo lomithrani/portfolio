@@ -284,14 +284,14 @@ test.describe('the admin page', () => {
 		// The gate journey, its note changed first, and an empty perfect job is said
 		const gate = item('journey').locator('[data-template="gate"]');
 		await expect(gate.getByRole('list', { name: 'Its steps' }).getByRole('listitem')).toHaveText([
-			'Read a note: Share the job first',
+			'Read a note: Before we talk',
 			'Select or create a job',
-			'Match the perfect job',
+			'Get the job scored',
 			'Book a meeting'
 		]);
 		await expect(gate).toContainText('Your perfect job has no criterion yet');
 		await gate.getByText('Change the note first').click();
-		await gate.getByLabel('Title').fill('Before we talk');
+		await gate.getByLabel('Title').fill('About the role');
 
 		// A change left in the journey editor is lost too: asked first
 		await page.getByRole('tab', { name: 'Hiring journey' }).click();
@@ -300,7 +300,7 @@ test.describe('the admin page', () => {
 		await gate.getByRole('button', { name: 'Use these steps' }).click();
 		const dialog = page.getByRole('alertdialog', { name: 'Replace your steps?' });
 		await expect(dialog).toContainText(
-			'Recruiters read a note (“Before we talk”), select or create a job, match the perfect job, then book a meeting.'
+			'Recruiters read a note (“About the role”), select or create a job, get the job scored, then book a meeting.'
 		);
 		await expect(dialog).toContainText(
 			'The changes you have not saved in the Hiring journey tab are lost too.'
@@ -312,7 +312,7 @@ test.describe('the admin page', () => {
 		// The button pressed is gone: the focus waits on the item's heading
 		await expect(item('journey').getByRole('heading', { name: /^Your steps/ })).toBeFocused();
 		await expect(item('journey')).toContainText(
-			'Recruiters read a note, select or create a job, match the perfect job, then book a meeting.'
+			'Recruiters read a note, select or create a job, get the job scored, then book a meeting.'
 		);
 
 		const saved = await ownerApi.get(`${API_URL}/workflow`);
@@ -323,7 +323,7 @@ test.describe('the admin page', () => {
 			'job-match:job-match',
 			'meeting:meeting'
 		]);
-		expect(steps[0].config.title).toBe('Before we talk');
+		expect(steps[0].config.title).toBe('About the role');
 		expect(steps[2].config).toEqual({ minScore: 70, showDetails: true });
 
 		// The editor starts again from what was saved, and the item leads to it
@@ -483,7 +483,7 @@ test.describe('the admin page', () => {
 		// the page is not signed out
 		const gate = journey.locator('[data-template="gate"]');
 		await gate.getByText('Change the note first').click();
-		await gate.getByLabel('Title').fill('Before we talk');
+		await gate.getByLabel('Title').fill('About the role');
 		const refused = await stubApi(page, 'PUT', '/workflow', (_, index) =>
 			index === 0 ? { status: 401, text: 'Unauthorized' } : undefined
 		);
@@ -493,7 +493,7 @@ test.describe('the admin page', () => {
 		);
 		expect(refused).toHaveLength(1);
 		await expect(replace).toHaveCount(0);
-		await expect(gate.getByLabel('Title')).toHaveValue('Before we talk');
+		await expect(gate.getByLabel('Title')).toHaveValue('About the role');
 		await expect(checklist).toBeVisible();
 
 		const storedTypes = async () =>
@@ -515,7 +515,7 @@ test.describe('the admin page', () => {
 		await journey.getByRole('button', { name: 'Use these steps' }).click();
 		await expect.poll(storedTypes).toEqual(journeyTemplate('gate').map(({ type }) => type));
 		const gateSaved = await (await ownerApi.get(`${API_URL}/workflow`)).json();
-		expect(gateSaved.steps[0].config.title).toBe('Before we talk');
+		expect(gateSaved.steps[0].config.title).toBe('About the role');
 		await expect(replace).toHaveCount(0);
 		expect(dialogs).toEqual([]);
 	});
@@ -601,6 +601,18 @@ test.describe('the hiring journey', () => {
 		await expect(step(page, 'Step 2: Book a meeting')).toContainText(
 			'Online booking is not available right now.'
 		);
+		// No meeting type here: the note says why recruiters cannot go through the page, and where
+		// to change it; the link copied is the portfolio's, as it says
+		const ownerNote = page.locator('[data-owner-note]');
+		await expect(ownerNote).toContainText(
+			'Recruiters cannot go through your steps nor book until your calendar is open.'
+		);
+		await expect(
+			ownerNote.getByRole('link', { name: 'Open my calendar settings' })
+		).toHaveAttribute('href', `/${DOMAIN}/admin?tab=appointments`);
+		await expect(ownerNote).toContainText(
+			'It opens your portfolio. From there, “Propose a role” leads recruiters to your page for recruiters.'
+		);
 
 		// Its note leads back to the steps, in the admin's Hiring journey tab
 		const change = page
@@ -681,13 +693,23 @@ test.describe('the hiring journey', () => {
 		await blockGoogle(visitor);
 		await signIn(visitor, recruiter);
 		await gotoHydrated(visitor, `/${DOMAIN}/hire`);
-		// No Google Calendar here: the page says no meeting is taken online, its steps stay
+		// No Google Calendar here: the page says no meeting is taken online, and its steps stay
+		// read-only until one can be booked (a recruiter never writes a job for nothing)
 		await expect(
-			visitor.getByText(`${DOMAIN} does not take meeting requests online right now.`)
+			visitor.getByText(
+				`${DOMAIN} does not take meeting requests online right now: the steps open once they do.`
+			)
 		).toBeVisible();
 		const noteStep = step(visitor, 'Step 1: Before you book');
 		const jobStep = step(visitor, 'Step 2: Select or create a job');
 		const meetingStep = step(visitor, 'Step 3: Book a meeting');
+		await expect(noteStep).toBeVisible();
+		await expect(journeySteps(visitor).getByRole('button')).toHaveCount(0);
+		await expect(noteStep.locator('strong')).toHaveCount(0);
+
+		// With a meeting type to book, the steps open
+		await stubMeetingType(visitor);
+		await gotoHydrated(visitor, `/${DOMAIN}/hire`);
 		await expect(jobStep).toContainText('Complete the step above first.');
 		await expect(meetingStep).toContainText('Complete the steps above first.');
 
@@ -705,7 +727,7 @@ test.describe('the hiring journey', () => {
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
 		await expect(toasts(visitor).getByText('Job picked')).toBeVisible();
 		await expect(visitor.getByRole('heading', { name: 'Step 3: Book a meeting' })).toBeFocused();
-		await expect(meetingStep).toContainText('Online booking is not available right now.');
+		await expect(meetingStep).toContainText('No date is open for booking in the next 30 days.');
 
 		// Once confirmed, the note stays readable
 		await noteStep.getByRole('button', { name: 'Open Before you book' }).click();
@@ -1002,6 +1024,7 @@ test.describe('the hiring journey', () => {
 		const open = await createJob(recruiterApi, { title: `Staff engineer ${tag}`, status: 'open' });
 		await createJob(recruiterApi, { title: `Data engineer ${tag}`, status: 'draft' });
 
+		await stubMeetingType(page);
 		await signIn(page, recruiter);
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
 		const jobStep = step(page, 'Step 1: Select or create a job');
@@ -1025,8 +1048,8 @@ test.describe('the hiring journey', () => {
 		await expect(toasts(page).getByText('Job picked')).toBeVisible();
 		await expect(jobStep).toContainText(`Staff engineer ${tag} · E2E Corp`);
 		await expect(meetingStep).toContainText('Pick a time slot that suits you.');
-		// No calendar is connected to the e2e portfolio
-		await expect(meetingStep).toContainText('Online booking is not available right now.');
+		// Its one meeting type (answered in the browser) has no free date
+		await expect(meetingStep).toContainText('No date is open for booking in the next 30 days.');
 
 		const journey = await recruiterApi.get(`${API_URL}/workflow/domains/${DOMAIN}`);
 		expect(await journey.json()).toMatchObject({
@@ -1065,6 +1088,7 @@ test.describe('the hiring journey', () => {
 			}
 		}));
 		await stubApi(page, 'GET', '/recruiter/jobs', () => ({ json: { jobs: [] } }));
+		await stubMeetingType(page);
 
 		await signIn(page, candidate);
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
@@ -1115,6 +1139,7 @@ test.describe('the hiring journey', () => {
 			accepted = true;
 			return { json: { user: { ...user, termsVersion: LEGAL_VERSION } } };
 		});
+		await stubMeetingType(page);
 
 		await signIn(page, recruiter);
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
@@ -1138,6 +1163,7 @@ test.describe('the hiring journey', () => {
 		page
 	}) => {
 		await setJourney('job', 'meeting');
+		await stubMeetingType(page);
 
 		// Signed out: the step asks to sign in first
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
@@ -1192,7 +1218,7 @@ test.describe('the hiring journey', () => {
 		await radio(`Staff engineer ${tag}`).check();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
 		await expect(jobStep).toContainText(`Staff engineer ${tag} · E2E Corp`);
-		await expect(meetingStep).toContainText('Online booking is not available right now.');
+		await expect(meetingStep).toContainText('No date is open for booking in the next 30 days.');
 		await expect(radio(`Platform lead ${tag}`)).toHaveCount(0);
 		await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/hire$`));
 
@@ -1207,7 +1233,7 @@ test.describe('the hiring journey', () => {
 		await radio(`Platform lead ${tag}`).check();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
 		await expect(jobStep).toContainText(`Platform lead ${tag} · E2E Corp`);
-		await expect(meetingStep).toContainText('Online booking is not available right now.');
+		await expect(meetingStep).toContainText('No date is open for booking in the next 30 days.');
 	});
 
 	test('a recruiter imports the job from a PDF in the journey and comes back to pick it', async ({
@@ -1250,6 +1276,7 @@ test.describe('the hiring journey', () => {
 			});
 		});
 
+		await stubMeetingType(page);
 		await signIn(page, recruiter);
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
 		const jobStep = step(page, 'Step 1: Select or create a job');
@@ -1374,8 +1401,8 @@ test.describe('the hiring journey', () => {
 		// The tab leads to the journey, where the step that uses the score is added and set
 		await page.getByRole('button', { name: 'hiring journey' }).click();
 		await expect(editorSteps(page).first()).toBeVisible();
-		await addStep(page, 'Match the perfect job').click();
-		const match = editorStep(page, 'Step 2: Match the perfect job');
+		await addStep(page, 'Get the job scored').click();
+		const match = editorStep(page, 'Step 2: Get the job scored');
 		await expect(match).toContainText('Scored on the 3 criteria of your perfect job');
 		const minimum = match.getByLabel('Minimum score');
 		await expect(minimum).toHaveValue('70');
@@ -1386,16 +1413,14 @@ test.describe('the hiring journey', () => {
 		await match.getByRole('checkbox', { name: /^Show recruiters/ }).check();
 		// Moved above the job it scores, it has nothing to score
 		await match.getByRole('button', { name: /^Move up/ }).click();
-		await expect(editorStep(page, 'Step 1: Match the perfect job')).toContainText(
+		await expect(editorStep(page, 'Step 1: Get the job scored')).toContainText(
 			'works on what recruiters did in “Select or create a job”: move it below that step.'
 		);
-		await editorStep(page, 'Match the perfect job')
+		await editorStep(page, 'Get the job scored')
 			.getByRole('button', { name: /^Move down/ })
 			.click();
 		await expect(
-			page.getByText(
-				'Recruiters select or create a job, match the perfect job, then book a meeting.'
-			)
+			page.getByText('Recruiters select or create a job, get the job scored, then book a meeting.')
 		).toBeVisible();
 		await page.getByRole('button', { name: 'Save journey' }).click();
 		await expect(toasts(page).getByText('Hiring journey saved')).toBeVisible();
@@ -1686,10 +1711,11 @@ test.describe('the hiring journey', () => {
 			requirements: { seniority: 'senior' }
 		});
 
+		await stubMeetingType(page);
 		await signIn(page, recruiter);
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
 		const jobStep = step(page, 'Step 1: Select or create a job');
-		const matchStep = step(page, 'Step 2: Match the perfect job');
+		const matchStep = step(page, 'Step 2: Get the job scored');
 		const meetingStep = step(page, 'Step 3: Book a meeting');
 		await expect(matchStep).toContainText('Complete the step above first.');
 
@@ -1700,7 +1726,7 @@ test.describe('the hiring journey', () => {
 			`On site engineer ${tag} scores 30 out of 100: at least 60 is needed.`
 		);
 		await expect(
-			page.getByRole('heading', { name: 'Step 2: Match the perfect job (not passed)' })
+			page.getByRole('heading', { name: 'Step 2: Get the job scored (not passed)' })
 		).toBeFocused();
 		const details = matchStep.getByRole('listitem');
 		await expect(details).toHaveText([
@@ -1810,7 +1836,7 @@ test.describe('the hiring journey', () => {
 				`Select or create a job\\s*Pick one of your open job descriptions, or write a new one, which takes longer: ${DOMAIN} sees it in the meeting invitation\\.`
 			),
 			new RegExp(
-				`Match the perfect job\\s*Your job is scored out of 100 against ${DOMAIN}'s criteria: you see your score, never what they ask for\\. At least 70 opens the next step\\.`
+				`Get the job scored\\s*Your job is scored out of 100 against ${DOMAIN}'s criteria: you see your score, never what they ask for\\. At least 70 opens the next step\\.`
 			),
 			/Book a meeting\s*Pick a time slot, then give your name and email address\./
 		]);
@@ -1825,7 +1851,7 @@ test.describe('the hiring journey', () => {
 		// Described with its steps once the page knows the meeting can be booked
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
 			'content',
-			`Propose a role to ${DOMAIN} on their page for recruiters: read a note, select or create a job, match the perfect job, then book a meeting, in about 8 minutes.`
+			`On ${DOMAIN}'s page for recruiters: read a note, select or create a job, get the job scored, then book a meeting, in about 8 minutes.`
 		);
 
 		// At 390 px the card stays within the screen, and the page does not scroll sideways. It comes
@@ -1857,6 +1883,7 @@ test.describe('the hiring journey', () => {
 			if (request.method() !== 'GET') return route.fallback();
 			return route.fulfill({ status: 503, body: 'Unavailable', headers: cors(request) });
 		});
+		await stubMeetingType(page);
 		await signIn(page, recruiter);
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
 
@@ -1911,13 +1938,20 @@ test.describe('the hiring journey', () => {
 		// and neither "Before you start" nor the description promises it (what they say when it can
 		// be booked: the test above, and BeforeYouStart.test.ts for the server's render)
 		await expect(
-			page.getByText(`${DOMAIN} does not take meeting requests online right now.`)
+			page.getByText(
+				`${DOMAIN} does not take meeting requests online right now: the steps open once they do.`
+			)
 		).toBeVisible();
 		await expect(page.getByRole('region', { name: 'Before you start' })).toHaveCount(0);
 		await expect(page.getByText(MEETING_PROMISE)).toHaveCount(0);
-		// The steps, as anyone signed out stands in them: the note to read first, the rest locked
+		// The steps, as anyone signed out stands in them, read-only: the note to read first (not
+		// unfolded: nothing can be booked after it), the rest locked. With a meeting type to book,
+		// the served page unfolds the first step and says what the steps take: hirePageRender.test.ts
 		await expect(journeySteps(page).getByRole('listitem')).toHaveCount(4);
-		await expect(step(page, 'Step 1: Before you book').locator('strong')).toHaveText('remote');
+		await expect(step(page, 'Step 1: Before you book')).toContainText(
+			'Read the note, then confirm it.'
+		);
+		await expect(step(page, 'Step 1: Before you book').locator('strong')).toHaveCount(0);
 		await expect(step(page, 'Step 2: Select or create a job (locked)')).toContainText(
 			'Complete the step above first.'
 		);
@@ -1933,7 +1967,7 @@ test.describe('the hiring journey', () => {
 		);
 		await expect(page.getByText(/Loading/)).toHaveCount(0);
 		// Described for a shared link too, without the steps or a duration
-		const description = `Propose a role to ${DOMAIN} on their page for recruiters. They do not take meeting requests online right now.`;
+		const description = `${DOMAIN}'s page for recruiters. They do not take meeting requests online right now.`;
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', description);
 		await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
 			'content',
@@ -1944,7 +1978,9 @@ test.describe('the hiring journey', () => {
 
 		await page.goto(`/${DOMAIN}/hire?lang=fr`);
 		await expect(
-			page.getByText(`${DOMAIN} ne prend pas de demandes de rendez-vous en ligne pour le moment.`)
+			page.getByText(
+				`${DOMAIN} ne prend pas de demandes de rendez-vous en ligne pour le moment : les étapes s'ouvriront dès que ce sera le cas.`
+			)
 		).toBeVisible();
 		await expect(page.getByRole('region', { name: 'Avant de commencer' })).toHaveCount(0);
 		await expect(page.getByText(MEETING_PROMISE)).toHaveCount(0);
@@ -1953,12 +1989,12 @@ test.describe('the hiring journey', () => {
 		);
 		await expect(page.locator('meta[property="og:description"]')).toHaveAttribute(
 			'content',
-			`Proposez un poste à ${DOMAIN} sur sa page recruteurs. ${DOMAIN} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
+			`La page recruteurs de ${DOMAIN}. ${DOMAIN} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
 		);
 
-		// Every step type that can come first renders on the server, open, its loading states
-		// holding their place without words (docs/WORKFLOW_STEPS.md). Back in English: the French
-		// link saved the language
+		// Every step type that can come first renders on the server, its loading states holding
+		// their place without words (docs/WORKFLOW_STEPS.md; unfolded once a meeting can be booked:
+		// hirePageRender.test.ts renders each so). Back in English: the French link saved the language
 		const settings: Record<string, { title?: string; text?: string }> = {
 			note: { title: 'Before you book', text: 'Remote only.' }
 		};
@@ -1990,7 +2026,7 @@ test.describe('the hiring journey', () => {
 		await expect(page.getByText(MEETING_PROMISE)).toHaveCount(0);
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
 			'content',
-			`Propose a role to ${DOMAIN} on their page for recruiters. They do not take meeting requests online right now.`
+			`${DOMAIN}'s page for recruiters. They do not take meeting requests online right now.`
 		);
 		await context.close();
 	});

@@ -31,6 +31,7 @@
 	import { clientStep, type ClientStep, type SubmitResult } from '#components/hire/steps/index.ts';
 	import BeforeYouStart from '#components/hire/BeforeYouStart.svelte';
 	import CopyLink from '#components/share/CopyLink.svelte';
+	import { m as copyMessages } from '#components/share/CopyLink.messages.ts';
 	import OpenGraph from '#components/OpenGraph.svelte';
 	import { m as datesMessages } from '#services/bookingDates.messages.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
@@ -47,7 +48,9 @@
 	// with "Before you start": what the steps ask, what to have at hand, how long they take. The
 	// browser then loads it again with the session (the visitor's own progress), and loads it
 	// alone when the server could not. A journey that leads to a meeting nobody can book (the
-	// owner's calendar has no meeting type: `bookable`) promises nothing of it.
+	// owner's calendar has no meeting type: `bookable`) promises nothing of it, and its steps stay
+	// read-only for visitors until it can be booked: a recruiter never writes a job, or passes the
+	// score, for a meeting that cannot follow (the owner's preview says why, and where to change it).
 
 	let { data }: { data: PageData } = $props();
 
@@ -100,7 +103,8 @@
 	// browser's (the page asks at once, the booking each time it lists them). null: not known
 	let bookable = $state<boolean | null>(untrack(() => data.bookable));
 	// The journey leads to a meeting nobody can book now: nothing promises it (the intro says the
-	// owner takes no meeting requests online, the description names no step, no "Before you start")
+	// owner takes no meeting requests online, the description names no step, no "Before you start"),
+	// and a visitor cannot go through the steps before it
 	let closed = $derived(bookable === false && goal?.booking === true);
 	// The page's description: what the journey asks, and about how long it takes
 	let description = $derived(
@@ -229,7 +233,12 @@
 		}
 	}
 
-	/** Whether the owner's calendar offers a meeting type to book, asked again in the browser */
+	/**
+	 * Whether the owner's calendar offers a meeting type to book, asked in the browser when the
+	 * server could not say (a navigation in the browser, a failed request) or found none (one may
+	 * have opened since). Not when it found one: the booking step lists them again when it shows,
+	 * and the API's traces count that request as the booking calendar opened (docs/grafana)
+	 */
 	async function loadBookable() {
 		try {
 			const { data: found, error } = await portfolioTextApi.appointments
@@ -245,7 +254,7 @@
 	onMount(() => {
 		hydrated = true;
 		void loadJourney();
-		void loadBookable();
+		if (data.bookable !== true) void loadBookable();
 	});
 
 	// Then again whenever the account changes once the session is known: a sign-in (from a step,
@@ -364,7 +373,22 @@
 						>{/snippet}
 				</Rich>
 			</p>
-			<CopyLink link={portfolioLink(page.url.origin, data.domainName)} tone="tonal" />
+			{#if closed}
+				<p data-calendar-closed>
+					<Rich text={goal && goal.before > 0 ? m.calendarClosed.steps : m.calendarClosed.alone}>
+						{#snippet calendar(text)}<a
+								class="underline underline-offset-2"
+								href={resolve('/[domain]/admin?tab=appointments', { domain: data.domainName })}
+								>{text}</a
+							>{/snippet}
+					</Rich>
+				</p>
+			{/if}
+			<CopyLink
+				link={portfolioLink(page.url.origin, data.domainName)}
+				caption={copyMessages.opens}
+				tone="tonal"
+			/>
 			<a
 				class="btn btn-sm preset-tonal"
 				href={resolve('/[domain]/admin?tab=share', { domain: data.domainName })}
@@ -380,7 +404,7 @@
 	<section class="space-y-2">
 		<h1 class="h2">{m.title(ownerName)}</h1>
 		{#if journey}
-			<p class="opacity-75">{journeyIntro(ownerName, closed ? undefined : goal)}</p>
+			<p class="opacity-75">{journeyIntro(ownerName, goal, { closed })}</p>
 		{/if}
 	</section>
 
@@ -426,14 +450,15 @@
 				{@const state = states[index]}
 				{@const entry = clientStep(step.type)}
 				{@const name = stepName(step, entry?.title?.(step))}
-				{@const live = !provisional && isLive(journey.own === true, step, state)}
+				{@const live =
+					!provisional && !(closed && !journey.own) && isLive(journey.own === true, step, state)}
 				{@const unfolded = expanded === index && live}
 				<li
 					class={[
 						'card border p-4 sm:p-6 space-y-4',
 						unfolded ? 'border-primary-500/60' : 'border-surface-200-800'
 					]}
-					aria-current={!journey.own && (state === 'open' || state === 'failed')
+					aria-current={!journey.own && !closed && (state === 'open' || state === 'failed')
 						? 'step'
 						: undefined}
 				>

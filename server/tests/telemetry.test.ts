@@ -114,6 +114,17 @@ describe('exported spans', () => {
     ]);
   });
 
+  it("keep the header that marks the web server's render of a page, which the dashboards leave out", async () => {
+    // client/src/routes/[domain]/hire/+page.server.ts sends it; docs/grafana counts browsers only
+    await request('/isLogged', { headers: { 'x-portfolio-render': 'server' } });
+    await request('/isLogged');
+    const marks = (await exportedSpans())
+      .filter((span) => span.attributes['http.request.method'] !== undefined)
+      .map((span) => span.attributes['http.request.header.x-portfolio-render'] ?? 'none')
+      .sort();
+    expect(marks).toEqual(['none', 'server']);
+  });
+
   it('lose bodies, cookies and credentials before the batch queue: queued spans never hold them', async () => {
     useTestGoogleKeys();
     // What each span holds when the batch processor queues it (until the next export)

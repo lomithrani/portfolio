@@ -248,13 +248,17 @@ export const isBareJourney = (journey: Journey): boolean =>
 
 /**
  * What the Hire page says under its title. `goal`: the step the journey leads to, when it leads
- * somewhere: how many steps come before it, and what its type says alone and after them
+ * somewhere: how many steps come before it, and what its type says alone and after them.
+ * `closed`: that step cannot be done now (a meeting nobody can book): the owner takes no meeting
+ * requests online, and the steps before it wait until they do
  */
 export const journeyIntro = (
 	ownerName: string,
-	goal: { before: number; alone: string; after: string } | undefined
+	goal: { before: number; alone: string; after: string } | undefined,
+	{ closed = false }: { closed?: boolean } = {}
 ): string => {
-	if (!goal) return m.intro.noGoal(ownerName);
+	if (closed && goal && goal.before > 0) return m.intro.closedSteps(ownerName);
+	if (!goal || closed) return m.intro.noGoal(ownerName);
 	if (goal.before === 0) return goal.alone;
 	return m.intro.stepsFirst(ownerName, goal.before, goal.after);
 };

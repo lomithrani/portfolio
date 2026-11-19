@@ -52,22 +52,23 @@ export const m = defineMessages({
 	// --- The visitor's journey ---
 	/**
 	 * The Hire page's description (journeyDescription): its meta description and a shared link's.
-	 * `phrases`: the labels of the steps, lowercased, in order (one at least); through plural():
-	 * `minutes`, about how long they take
+	 * A preview shows it under the page's title ("Propose a role to Jane"), so it starts with what
+	 * the title does not say. `phrases`: the labels of the steps, lowercased, in order (one at
+	 * least); through plural(): `minutes`, about how long they take
 	 */
 	description: {
 		steps: {
 			one: {
 				en: (ownerName: string, phrases: readonly string[]) =>
-					`Propose a role to ${ownerName} on their page for recruiters: ${inOrder(phrases, 'then')}, in about a minute.`,
+					`On ${ownerName}'s page for recruiters: ${inOrder(phrases, 'then')}, in about a minute.`,
 				fr: (ownerName: string, phrases: readonly string[]) =>
-					`Proposez un poste à ${ownerName} sur sa page recruteurs : ${inOrder(phrases, 'puis')}, en une minute environ.`
+					`Sur la page recruteurs de ${ownerName} : ${inOrder(phrases, 'puis')}, en une minute environ.`
 			},
 			other: {
 				en: (ownerName: string, phrases: readonly string[], minutes: number) =>
-					`Propose a role to ${ownerName} on their page for recruiters: ${inOrder(phrases, 'then')}, in about ${minutes} minutes.`,
+					`On ${ownerName}'s page for recruiters: ${inOrder(phrases, 'then')}, in about ${minutes} minutes.`,
 				fr: (ownerName: string, phrases: readonly string[], minutes: number) =>
-					`Proposez un poste à ${ownerName} sur sa page recruteurs : ${inOrder(phrases, 'puis')}, en ${minutes} minutes environ.`
+					`Sur la page recruteurs de ${ownerName} : ${inOrder(phrases, 'puis')}, en ${minutes} minutes environ.`
 			}
 		},
 		/**
@@ -76,16 +77,15 @@ export const m = defineMessages({
 		 */
 		none: {
 			en: (ownerName: string) =>
-				`Propose a role to ${ownerName} on their page for recruiters. They do not take meeting requests online right now.`,
+				`${ownerName}'s page for recruiters. They do not take meeting requests online right now.`,
 			fr: (ownerName: string) =>
-				`Proposez un poste à ${ownerName} sur sa page recruteurs. ${ownerName} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
+				`La page recruteurs de ${ownerName}. ${ownerName} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
 		},
 		/** The journey is not known yet (it is loaded in the browser) */
 		unknown: {
 			en: (ownerName: string) =>
-				`Propose a role to ${ownerName}: their page for recruiters, with the steps they ask you to follow.`,
-			fr: (ownerName: string) =>
-				`Proposez un poste à ${ownerName} : sa page recruteurs, avec les étapes à suivre.`
+				`${ownerName}'s page for recruiters, with the steps they ask you to follow.`,
+			fr: (ownerName: string) => `La page recruteurs de ${ownerName}, avec les étapes à suivre.`
 		}
 	},
 	intro: {
@@ -93,6 +93,16 @@ export const m = defineMessages({
 			en: (ownerName: string) => `${ownerName} does not take meeting requests online right now.`,
 			fr: (ownerName: string) =>
 				`${ownerName} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
+		},
+		/**
+		 * The journey leads to a meeting nobody can book now (no meeting type in the owner's
+		 * calendar), after steps of its own: they stay read-only until then
+		 */
+		closedSteps: {
+			en: (ownerName: string) =>
+				`${ownerName} does not take meeting requests online right now: the steps open once they do.`,
+			fr: (ownerName: string) =>
+				`${ownerName} ne prend pas de demandes de rendez-vous en ligne pour le moment : les étapes s'ouvriront dès que ce sera le cas.`
 		},
 		/** `before`: how many steps come first (one at least); `after`: what the goal's type says then */
 		stepsFirst: {

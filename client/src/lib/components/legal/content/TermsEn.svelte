@@ -220,7 +220,7 @@ meetings, moderation (DSA arts 14, 16, 17), termination, liability, changes, law
 	decisions included, is not the employer, and is not a party to the employment contract that may
 	follow. The site does not assess candidates, and does not rank or filter them. The only score it
 	computes is that of a job description, against the criteria a candidate set for the job they are
-	looking for, when the candidate adds the step "Match the perfect job" to their hiring journey: by
+	looking for, when the candidate adds the step "Get the job scored" to their hiring journey: by
 	fixed rules, not by an AI model, and with the minimum the candidate chose (see the
 	<LegalDocLink doc="privacy" {lang} hash="ai">privacy policy</LegalDocLink>).
 </p>

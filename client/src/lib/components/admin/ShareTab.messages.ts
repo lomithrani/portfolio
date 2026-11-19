@@ -10,10 +10,6 @@ export const m = defineMessages({
 	},
 	link: {
 		title: { en: 'Your link', fr: 'Votre lien' },
-		caption: {
-			en: 'It opens your portfolio. From there, “Propose a role” leads recruiters to your page for recruiters.',
-			fr: 'Il ouvre votre portfolio. De là, « Proposer un poste » mène les recruteurs à votre page recruteurs.'
-		},
 		see: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' }
 	},
 	/** The language of the reply and of the LinkedIn text: the recruiter's, whatever the page's */

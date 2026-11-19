@@ -291,7 +291,7 @@ test.describe('a portfolio', () => {
 		expect(experiences.og('og:title')).toEqual([name]);
 		expect(experiences.og('og:description')).toEqual([tagline]);
 		// The page's own title and description name it the same way
-		expect(experiences.title).toEqual([`${name} | Resume`]);
+		expect(experiences.title).toEqual([`${name} | Experiences`]);
 		expect(experiences.meta('description')).toEqual([
 			`${name}: professional experiences, personal and educational projects and courses.`
 		]);
@@ -301,6 +301,8 @@ test.describe('a portfolio', () => {
 		expect(hire.title).toEqual([`Proposer un poste à ${name}`]);
 		expect(hire.og('og:description')).toEqual(hire.meta('description'));
 		expect(hire.og('og:description')[0]).toContain(name);
+		// A preview shows the description under the title: it does not say the title again
+		expect(hire.og('og:description')[0]).not.toContain('Proposer un poste');
 
 		// What the owner wrote never reaches the HTML as markup
 		for (const { html } of [experiences, hire]) expect(html).not.toContain('<Lyon>');

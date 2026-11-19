@@ -196,7 +196,7 @@ test('the account menu leads to the Share tab, which writes the reply and the Li
 		tab.getByText('It asks them to share the role on your page for recruiters')
 	).toBeVisible();
 	await expect(reply(page)).toHaveValue(
-		/could you share the role on my page for recruiters, with its pay range\? It is scored against what I am looking for/
+		/could you share the role on my page for recruiters, with its pay range\? It is scored against my criteria/
 	);
 	await expect(reply(page)).toHaveValue(new RegExp(`\\n\\n${PAGE}\\n\\n`));
 	await expect(reply(page)).not.toHaveValue(/65|matter to me/);
@@ -448,7 +448,7 @@ test('"Get started" leads to the Share tab from its link item', async ({ page })
 	await gotoHydrated(page, `/${DOMAIN}/admin?tab=start`);
 	await page
 		.getByRole('tabpanel', { name: /^Get started/ })
-		.getByRole('button', { name: 'Reply and LinkedIn texts' })
+		.getByRole('button', { name: 'More ways to share' })
 		.click();
 	const share = page.getByRole('tab', { name: 'Share' });
 	await expect(share).toHaveAttribute('aria-selected', 'true');
@@ -535,12 +535,12 @@ test('the page for recruiters is named in the HTML the server sends, in both lan
 		{
 			path: `/${DOMAIN}/hire`,
 			title: `Propose a role to ${DOMAIN}`,
-			description: `Propose a role to ${DOMAIN} on their page for recruiters. They do not take meeting requests online right now.`
+			description: `${DOMAIN}'s page for recruiters. They do not take meeting requests online right now.`
 		},
 		{
 			path: `/${DOMAIN}/hire?lang=fr`,
 			title: `Proposer un poste à ${DOMAIN}`,
-			description: `Proposez un poste à ${DOMAIN} sur sa page recruteurs. ${DOMAIN} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
+			description: `La page recruteurs de ${DOMAIN}. ${DOMAIN} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
 		}
 	]) {
 		const response = await request.get(path);
@@ -571,6 +571,16 @@ test('the page for recruiters gives its owner their link to copy', async ({ page
 	// The seeded journey is the meeting alone: the owner's note shows above it too
 	const note = page.locator('[data-owner-note]');
 	await expect(note).toContainText('This is your page for recruiters, as they see it.');
+	// The link copied is the portfolio's, and the note says so
+	await expect(note).toContainText(
+		'It opens your portfolio. From there, “Propose a role” leads recruiters to your page for recruiters.'
+	);
+	// No calendar here: the note says why the page takes no booking, and where to change it
+	await expect(note).toContainText('Recruiters cannot book until your calendar is open.');
+	await expect(note.getByRole('link', { name: 'Open my calendar settings' })).toHaveAttribute(
+		'href',
+		`/${DOMAIN}/admin?tab=appointments`
+	);
 	await note.getByRole('button', { name: 'Copy your link' }).click();
 	expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(LINK);
 	await expect(note.getByRole('link', { name: 'More ways to share' })).toHaveAttribute(

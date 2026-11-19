@@ -89,8 +89,8 @@ export const m = defineMessages({
 		match: {
 			title: { en: 'A match before the meeting', fr: 'Une correspondance avant le rendez-vous' },
 			text: {
-				en: "Share your job on a candidate's page for recruiters and, when their journey scores it, see how it does against what they want. When it passes, book a meeting in their calendar: what they asked for was checked before the call.",
-				fr: "Partagez votre offre sur la page recruteurs d'un candidat et, lorsque son parcours la note, voyez son résultat au regard de ce qu'il recherche. Si elle passe, réservez un rendez-vous dans son agenda : ce qu'il demande a été vérifié avant l'appel."
+				en: "Share your job on a candidate's page for recruiters and, when their journey scores it, see how it does against their criteria. When it passes, book a meeting in their calendar: what they asked for was checked before the call.",
+				fr: "Partagez votre offre sur la page recruteurs d'un candidat et, lorsque son parcours la note, voyez son résultat selon ses critères. Si elle passe, réservez un rendez-vous dans son agenda : ce qu'il demande a été vérifié avant l'appel."
 			}
 		},
 		/** Backed by: GET /appointments/booked (server/services/bookedMeetings.ts), UpcomingMeetings.svelte */

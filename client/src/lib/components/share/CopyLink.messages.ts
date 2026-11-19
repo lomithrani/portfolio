@@ -11,6 +11,14 @@ export const m = defineMessages({
 		en: (link: string) => `Link copied: ${link}`,
 		fr: (link: string) => `Lien copié : ${link}`
 	},
+	/**
+	 * A caption: what the portfolio's link opens (the Share tab, the owner's preview of their page
+	 * for recruiters, where "your link" could be read as that page's address)
+	 */
+	opens: {
+		en: 'It opens your portfolio. From there, “Propose a role” leads recruiters to your page for recruiters.',
+		fr: 'Il ouvre votre portfolio. De là, « Proposer un poste » mène les recruteurs à votre page recruteurs.'
+	},
 	/** The browser refused to copy: the link is selected in its field */
 	copyYourself: {
 		en: 'Your browser did not let the page copy it: the link is selected, copy it yourself.',

@@ -459,7 +459,7 @@ nobody books before the calendar is open, and the gate journey while it is not t
 		{/if}
 		<!-- Nobody books before the calendar is open (on a site that takes calendars at all) -->
 		{#if leadsToMeeting && calendar?.counted && !calendar.done}
-			{m.journey.calendarFirst}
+			{saved && !meetingAlone ? m.journey.calendarFirstSteps : m.journey.calendarFirst}
 		{/if}
 		{#if leadsToMeeting && !gate}
 			{!saved

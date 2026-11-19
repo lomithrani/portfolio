@@ -50,8 +50,8 @@ export const m = defineMessages({
 		 * server/plugins/perfectJob.ts (the perfect job is read by its owner only)
 		 */
 		toDo: {
-			en: 'Rate the pay first, then what else matters to you. Recruiters never see the figures you set: only whether their job matches, when your steps score it.',
-			fr: "Notez d'abord la rémunération, puis ce qui compte aussi pour vous. Les recruteurs ne voient jamais les chiffres que vous fixez : seulement si leur offre correspond, lorsque vos étapes la notent."
+			en: 'Rate the pay first, then what else matters to you. Recruiters never see what you ask for: only how their job does against your criteria, and the minimum you set, when your steps score it.',
+			fr: "Notez d'abord la rémunération, puis ce qui compte aussi pour vous. Les recruteurs ne voient jamais ce que vous demandez : seulement le résultat de leur offre face à vos critères, et le minimum que vous fixez, lorsque vos étapes la notent."
 		},
 		done: {
 			en: (count: number) =>
@@ -101,6 +101,14 @@ export const m = defineMessages({
 			fr: 'Les recruteurs pourront réserver une fois votre agenda ouvert.'
 		},
 		/**
+		 * `calendarFirst`, for steps before the meeting: until the calendar is open, the page for
+		 * recruiters shows them read-only (routes/[domain]/hire/+page.svelte, `closed`)
+		 */
+		calendarFirstSteps: {
+			en: 'Recruiters can go through your steps and book once your calendar is open.',
+			fr: 'Les recruteurs pourront suivre vos étapes et réserver une fois votre agenda ouvert.'
+		},
+		/**
 		 * A step before the meeting is not available anymore (a journey saved by an older version):
 		 * it can never be passed
 		 */
@@ -119,7 +127,7 @@ export const m = defineMessages({
 				en: (minScore: number) =>
 					`Recruiters read your note, share one of their job descriptions, and see it scored against what you want, criterion by criterion. They book a meeting only once it scores at least ${minScore} out of 100.`,
 				fr: (minScore: number) =>
-					`Les recruteurs lisent votre note, présentent l'une de leurs offres d'emploi et voient son résultat au regard de ce que vous voulez, critère par critère. Ils ne réservent un rendez-vous qu'une fois une note d'au moins ${minScore} sur 100 obtenue.`
+					`Les recruteurs lisent votre note, présentent l'une de leurs offres d'emploi et voient son résultat au regard de ce que vous voulez, critère par critère. Ils ne peuvent réserver un rendez-vous que si l'offre obtient au moins ${minScore} sur 100.`
 			},
 			/** Before the steps of the gate journey, for screen readers */
 			steps: { en: 'Its steps', fr: 'Ses étapes' },
@@ -185,12 +193,12 @@ export const m = defineMessages({
 			fr: "Google a refusé l'accès à votre agenda : connectez-le de nouveau, pour que les recruteurs puissent réserver."
 		},
 		connect: {
-			en: 'Connect Google Calendar and create an appointment schedule (its length and your hours), so recruiters can book a slot.',
-			fr: 'Connectez Google Agenda et créez un agenda de rendez-vous (sa durée et vos horaires), pour que les recruteurs puissent réserver un créneau.'
+			en: 'Connect Google Calendar, then create an appointment schedule in the Appointments tab (its length and your hours), so recruiters can book a slot.',
+			fr: "Connectez Google Agenda, puis créez un agenda de rendez-vous dans l'onglet Rendez-vous (sa durée et vos horaires), pour que les recruteurs puissent réserver un créneau."
 		},
 		schedule: {
-			en: 'Connected. Create an appointment schedule (its length and your hours), or turn one on and give it your hours, so recruiters can book a slot.',
-			fr: 'Connecté. Créez un agenda de rendez-vous (sa durée et vos horaires), ou activez-en un et donnez-lui vos horaires, pour que les recruteurs puissent réserver un créneau.'
+			en: 'Connected. In the Appointments tab, create an appointment schedule (its length and your hours), or turn one on and give it your hours, so recruiters can book a slot.',
+			fr: "Connecté. Dans l'onglet Rendez-vous, créez un agenda de rendez-vous (sa durée et vos horaires), ou activez-en un et donnez-lui vos horaires, pour que les recruteurs puissent réserver un créneau."
 		},
 		done: {
 			en: (count: number) =>
@@ -215,7 +223,7 @@ export const m = defineMessages({
 			fr: "Envoyez-le aux recruteurs qui vous écrivent, ou ajoutez-le à vos profils : il ouvre votre portfolio, d'où les recruteurs rejoignent votre page recruteurs."
 		},
 		see: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' },
-		/** The Share tab: a reply to recruiters, a LinkedIn text */
-		more: { en: 'Reply and LinkedIn texts', fr: 'Textes de réponse et LinkedIn' }
+		/** The Share tab: a reply to recruiters, a LinkedIn text (as the page for recruiters calls it) */
+		more: { en: 'More ways to share', fr: 'Plus de façons de partager' }
 	}
 });

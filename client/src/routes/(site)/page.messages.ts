@@ -100,8 +100,8 @@ export const m = defineMessages({
 			note: {
 				title: { en: 'They read your note', fr: 'Ils lisent votre note' },
 				text: {
-					en: 'What you are looking for and your conditions, confirmed before going further.',
-					fr: "Ce que vous cherchez et vos conditions, à confirmer avant d'aller plus loin."
+					en: 'Your conditions, in your words, confirmed before going further.',
+					fr: "Vos conditions, avec vos mots, à confirmer avant d'aller plus loin."
 				}
 			},
 			/**
@@ -126,7 +126,7 @@ export const m = defineMessages({
 				title: { en: 'The job gets a score', fr: "L'offre est notée" },
 				text: {
 					en: 'Out of 100, against what you rated: pay, remote days, commute, skills and more, with your deal-breakers. Under your minimum, it stops there.',
-					fr: "Sur 100, selon ce que vous avez noté : rémunération, télétravail, trajet, compétences et plus encore, avec vos critères éliminatoires. Sous votre minimum, cela s'arrête là."
+					fr: "Sur 100, selon les critères que vous avez fixés : rémunération, télétravail, trajet, compétences et plus encore, avec vos critères éliminatoires. Sous votre minimum, cela s'arrête là."
 				}
 			},
 			/**
@@ -190,7 +190,7 @@ export const m = defineMessages({
 		 * (StartTab.svelte); validateJobPosting of common/models/jobPosting.ts (every job description
 		 * states `pay.min` and `pay.max`); the score's cap (scorePerfectJob of
 		 * common/models/perfectJob.ts reads the top through highestPayMax: at most
-		 * JOB_LIMITS.pay.maxRangeRatio times the bottom, `ratio` here). "Scored with": a posting
+		 * JOB_LIMITS.pay.maxRangeRatio times the bottom, `ratio` here). "Scored as if": a posting
 		 * opened before the cap may state a wider range (requireOpenablePay of
 		 * server/services/jobPostings.ts refuses only a first opening); the job step's line in the
 		 * meeting invitation (`describe` of server/services/workflowSteps/job.ts, opportunityPath).
@@ -203,9 +203,9 @@ export const m = defineMessages({
 			},
 			text: {
 				en: (ratio: number) =>
-					`In one click, your page asks recruiters for the job before the meeting, and the meeting invitation links it. Every job description on Portfolio states its pay range, and it is scored with its top at most ${ratio.toLocaleString('en-GB')} times its bottom.`,
+					`In one click, your page asks recruiters for the job before the meeting, and the meeting invitation links to it. Every job description on Portfolio states its pay range, and a range too wide cannot hide a low bottom: it is scored as if its top were at most ${ratio.toLocaleString('en-GB')} times its bottom.`,
 				fr: (ratio: number) =>
-					`En un clic, votre page demande l'offre aux recruteurs avant le rendez-vous, et l'invitation au rendez-vous y mène. Chaque offre sur Portfolio indique sa fourchette de rémunération, et celle-ci est notée avec un haut d'au plus ${ratio.toLocaleString('fr-FR')} fois le bas.`
+					`En un clic, votre page demande l'offre aux recruteurs avant le rendez-vous, et l'invitation au rendez-vous renvoie vers elle. Chaque offre sur Portfolio indique sa fourchette de rémunération, et une fourchette trop large ne cache pas un bas trop faible : elle est notée comme si son haut valait au plus ${ratio.toLocaleString('fr-FR')} fois son bas.`
 			}
 		},
 		/**
@@ -298,7 +298,7 @@ export const m = defineMessages({
 			}
 		},
 		pay: {
-			title: { en: 'The pay under your minimum', fr: 'La rémunération sous votre minimum' },
+			title: { en: 'Pay below what you ask', fr: 'Une rémunération sous vos attentes' },
 			text: {
 				en: 'Say what you expect to earn and how much it matters. A job that falls short scores lower, down to zero when it is a deal-breaker.',
 				fr: "Indiquez la rémunération attendue et son importance. Une offre en dessous perd des points, jusqu'à zéro si c'est un critère éliminatoire."
@@ -335,8 +335,9 @@ export const m = defineMessages({
 			}
 		},
 		/**
-		 * Backed by: ViewSwitch.svelte and Timeline.svelte (client/src/lib/components/), the view kept
-		 * in the address (`?view=timeline`) of routes/[domain]/experiences/+page.svelte
+		 * Backed by: client/src/routes/[domain]/experiences/ViewSwitch.svelte and
+		 * client/src/lib/components/experience-timeline/Timeline.svelte, the view kept in the address
+		 * (`?view=timeline`) of routes/[domain]/experiences/+page.svelte
 		 */
 		views: {
 			title: { en: 'A list or a timeline', fr: 'Une liste ou une frise' },
@@ -348,7 +349,8 @@ export const m = defineMessages({
 		/**
 		 * Backed by: ProjectPreview.svelte (client/src/lib/components/experience-list/) and
 		 * skillMonths of client/src/services/projectPreview.ts (the projects using a skill, and the
-		 * months they add up to), the filters of the experiences page (Filters.svelte)
+		 * months they add up to), the filters of the experiences page
+		 * (client/src/routes/[domain]/experiences/Filters.svelte)
 		 */
 		skills: {
 			title: {
@@ -488,8 +490,8 @@ export const m = defineMessages({
 		},
 		recruiters: {
 			question: {
-				en: 'What do recruiters see of what I am looking for?',
-				fr: 'Que voient les recruteurs de ce que je recherche ?'
+				en: 'What do recruiters see of what I ask for?',
+				fr: 'Que voient les recruteurs de ce que je demande ?'
 			},
 			/**
 			 * Backed by: the job match step's view (server/services/workflowSteps/jobMatch.ts: the
@@ -498,7 +500,7 @@ export const m = defineMessages({
 			 */
 			score: {
 				en: 'When your steps score their job: its score and the minimum you set. If you allow it, they also see how the job does on each criterion (it matches, partly, or not) and which of your deal-breakers it misses, never what you asked for or how much the other criteria matter to you. A recruiter who tries several jobs could still guess part of it from the scores.',
-				fr: "Lorsque vos étapes notent leur offre : son résultat et le minimum que vous avez fixé. Si vous l'autorisez, ils voient aussi le résultat de l'offre sur chaque critère (elle correspond, en partie, ou non) et ceux de vos critères éliminatoires qu'elle ne remplit pas, jamais ce que vous avez demandé ni l'importance que vous accordez aux autres critères. Un recruteur qui essaie plusieurs offres pourrait toutefois en deviner une partie à partir des notes."
+				fr: "Lorsque vos étapes notent leur offre : son résultat et le minimum que vous avez fixé. Si vous l'autorisez, ils voient aussi le résultat de l'offre sur chaque critère (elle correspond, en partie, ou non) et ceux de vos critères éliminatoires qu'elle ne remplit pas, jamais ce que vous avez demandé ni l'importance que vous accordez aux autres critères. Un recruteur qui essaie plusieurs offres pourrait toutefois en deviner une partie à partir des résultats."
 			},
 			/**
 			 * Backed by: server/services/commute.ts, geoplateforme.ts and transit.ts (the owner's
@@ -594,7 +596,7 @@ export const m = defineMessages({
 	 * in its own admin tab
 	 */
 	cta: {
-		title: { en: 'Set your terms once', fr: 'Fixez vos conditions une fois' },
+		title: { en: 'Set your terms once', fr: 'Fixez vos conditions en une fois' },
 		text: {
 			en: 'Import your résumé, say what you want, choose your steps. Recruiters do the rest, and you can change everything later.',
 			fr: 'Importez votre CV, dites ce que vous voulez, choisissez vos étapes. Les recruteurs font le reste, et vous pourrez tout modifier ensuite.'

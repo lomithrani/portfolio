@@ -1,6 +1,6 @@
 // The perfect job of a portfolio's owner (a candidate): what they look for in a job, criterion by
 // criterion, each with how much it matters to them. A recruiter's job posting is scored against it
-// out of 100 (scorePerfectJob), which the "Match the perfect job" step of the hiring journey uses
+// out of 100 (scorePerfectJob), which the "Get the job scored" step of the hiring journey uses
 // (workflowSteps/jobMatch.ts). The rules here are shared by the API (PUT /perfect-job, the step)
 // and the owner's editor (the admin tab "Perfect job").
 //

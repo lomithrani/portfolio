@@ -70,6 +70,8 @@ describe('[domain]/hire page load', () => {
 		const [options] = mockGet.mock.calls[0];
 		expect(options.fetch.credentials).toBeUndefined();
 		expect(options.fetch.signal).toBeInstanceOf(AbortSignal);
+		// Marked, so the API's traces tell this render from a browser's visit (docs/grafana)
+		expect(options.headers).toEqual({ 'x-portfolio-render': 'server' });
 
 		await runLoad('a?x');
 		expect(mockDomains).toHaveBeenLastCalledWith({ domainName: 'a%3Fx' });
@@ -97,6 +99,7 @@ describe('[domain]/hire page load', () => {
 		const [options] = mockSchedules.mock.calls[0];
 		expect(options.fetch.credentials).toBeUndefined();
 		expect(options.fetch.signal).toBe(mockGet.mock.calls[0][0].fetch.signal);
+		expect(options.headers).toEqual({ 'x-portfolio-render': 'server' });
 
 		// Not known: the page asks again in the browser
 		mockSchedules.mockResolvedValueOnce({ data: null, error: { status: 503, value: 'Down' } });

@@ -665,6 +665,39 @@ describe('public booking', () => {
     expect((await call('GET', `/appointments/domains/${t.id('nope')}/schedules`)).status).toBe(404);
   });
 
+  it('lists only the schedules that offer slots, as the readiness checklist counts them', async () => {
+    // Turned on without hours (as a new one starts), or with a day of its own already past: no
+    // slot, so the page for recruiters neither lists them nor promises a meeting
+    const window = [{ startTime: '09:00', endTime: '10:00' }];
+    await AppointmentSchedule.create({ ...scheduleBody({ title: 'No hours', availability: [] }), user: owner.userId });
+    await AppointmentSchedule.create({
+      ...scheduleBody({
+        title: 'Past day',
+        availability: [],
+        dateOverrides: [{ date: dateIn(-3), available: true, windows: window }]
+      }),
+      user: owner.userId
+    });
+    const dated = await AppointmentSchedule.create({
+      ...scheduleBody({
+        title: 'Next week',
+        availability: [],
+        dateOverrides: [{ date: dateIn(7), available: true, windows: window }]
+      }),
+      user: owner.userId
+    });
+
+    const listed = (await call('GET', `/appointments/domains/${t.id('domain')}/schedules`)).json<{ id: string }[]>();
+    expect(listed.map(({ id }) => id).sort()).toEqual([scheduleId, dated._id.toString()].sort());
+    const readiness = (await call('GET', '/me/readiness', { cookie: owner.cookie })).json();
+    expect(readiness.calendar.enabledSchedules).toBe(listed.length);
+
+    // None with hours: nothing listed, nothing counted
+    await AppointmentSchedule.updateMany({ user: owner.userId }, { $set: { availability: [], dateOverrides: [] } });
+    expect((await call('GET', `/appointments/domains/${t.id('domain')}/schedules`)).json()).toEqual([]);
+    expect((await call('GET', '/me/readiness', { cookie: owner.cookie })).json().calendar.enabledSchedules).toBe(0);
+  });
+
   it('offers the free slots of a day', async () => {
     google.state.busy = [{ start: at('10:00'), end: at('10:30') }];
 

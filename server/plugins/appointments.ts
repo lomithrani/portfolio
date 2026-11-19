@@ -54,6 +54,7 @@ import {
   releaseEventBooking,
   reserveSlot
 } from '../services/appointmentBookings'
+import { bookableScheduleFilter } from '../services/appointmentSchedules'
 import { listBookedMeetings } from '../services/bookedMeetings'
 import { clientAddress } from '../services/clientAddress'
 import { logger } from '../services/logger'
@@ -335,7 +336,8 @@ const appointmentsPublic = new Elysia()
     // Nor when the owner's hiring journey has no meeting step
     if (!(await journeySteps(ownerId)).some((step) => step.type === MEETING_STEP)) return []
 
-    const schedules = await AppointmentSchedule.find({ user: ownerId, enabled: true })
+    // Only those that offer slots (hours of their own): what the readiness checklist counts
+    const schedules = await AppointmentSchedule.find(bookableScheduleFilter(ownerId))
     return schedules.map(publicScheduleFields)
   })
   .get(

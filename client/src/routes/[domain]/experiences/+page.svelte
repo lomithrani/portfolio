@@ -542,7 +542,7 @@
 						href={resolve('/[domain]/hire', { domain: data.domain.name })}
 						class="btn preset-tonal-primary min-h-11"
 					>
-						{m.emptyVisitor.contact}
+						{m.proposeRole}
 					</a>
 				</section>
 			{/if}
