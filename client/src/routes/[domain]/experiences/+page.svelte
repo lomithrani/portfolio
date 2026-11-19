@@ -9,6 +9,7 @@
 	import { ArrowRight, Briefcase, DocumentArrowUp, Plus, RocketLaunch } from 'svelte-heros-v2';
 	import Experience from '#components/Experience.svelte';
 	import ExperienceEditor from '#components/experience-editor/ExperienceEditor.svelte';
+	import OpenGraph from '#components/OpenGraph.svelte';
 	import ProjectPreview from '#components/experience-list/ProjectPreview.svelte';
 	import Timeline from '#components/experience-timeline/Timeline.svelte';
 	import ResumeImport from '#components/resume-import/ResumeImport.svelte';
@@ -19,6 +20,7 @@
 	import { isDomainAdmin } from '#services/authentication.ts';
 	import type { FormData } from '#services/experienceForm.ts';
 	import { importStorageKey, type ImportStatus } from '#services/resumeImport.ts';
+	import { portfolioPreview } from '#services/linkPreview.ts';
 	import { loadReadiness, setupProgress, type Readiness } from '#services/candidateSetup.ts';
 	import {
 		activeFilters,
@@ -150,6 +152,7 @@
 				.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 				.join(' ')
 	);
+	let preview = $derived(portfolioPreview(data.domain, m.description(ownerName)));
 
 	// One editor for the page: Add, every card's Edit and the résumé import's Edit open it
 	let editorOpen = $state(false);
@@ -425,6 +428,9 @@
 	<title>{m.title(ownerName)}</title>
 	<meta name="description" content={m.description(ownerName)} />
 </svelte:head>
+<!-- A shared link's preview: the name the portfolio is headed with and its tagline (or the
+     description above), over the generic picture of a portfolio -->
+<OpenGraph {...preview} image="portfolio" />
 
 <!-- The page's floating corner: the view switch, and next to it what this visitor is most likely
 	here for: "Propose a role" for a visitor, "Add experience" for the owner on a small screen once the

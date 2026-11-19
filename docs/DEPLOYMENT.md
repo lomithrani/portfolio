@@ -242,8 +242,11 @@ deployed site.
 
 The landing page's share tags (`canonical`, `og:url`, the `hreflang` links of its English and
 French versions, `og:image` = `/og-image.png`, or `/og-image-fr.png` in French) are built from
-that same derived origin: after the first deploy, check they read `https://<your domain>/...`
-(`curl -s https://example.com/ | grep -o '<meta property="og:url"[^>]*>'`).
+that same derived origin, and so are the preview tags of a portfolio's experiences page and page
+for recruiters (`og:url`, `og:image` = `/og-portfolio.png` and `/og-hire.png`, `-fr.png` in
+French): after the first deploy, check they read `https://<your domain>/...`
+(`curl -s https://example.com/ | grep -o '<meta property="og:url"[^>]*>'`, and
+[Search engines](#search-engines) for the portfolio's).
 
 ### Legal pages
 
@@ -1062,7 +1065,11 @@ LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'
 curl -s -o /dev/null -w '%{http_code}\n' -A "$LINKEDIN" \
   https://example.com/louis.gentil/experiences                                   # 200, not a challenge (403 or 503)
 curl -s -A "$LINKEDIN" https://example.com/louis.gentil/experiences \
-  | grep -o '<meta property="og:[^>]*>\|<title>[^<]*</title>'                     # og:url, og:locale and the page's title
+  | grep -o '<meta property="og:[^>]*>\|<meta name="twitter:[^>]*>'             # og:title (the portfolio's title), og:description (its tagline), og:image .../og-portfolio.png, og:url, og:locale en_GB, twitter:card
+curl -s -A "$LINKEDIN" 'https://example.com/louis.gentil/hire?lang=fr' \
+  | grep -o '<meta property="og:[^>]*>'                                          # og:title « Proposer un poste à … », og:image .../og-hire-fr.png, og:url ...?lang=fr, og:locale fr_FR
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' -A "$LINKEDIN" \
+  https://example.com/og-hire-fr.png                                             # 200 image/png
 ```
 
 In the robots.txt output, every group that names `User-agent: *` has only `Allow: /` or an empty
@@ -1070,8 +1077,11 @@ In the robots.txt output, every group that names `User-agent: *` has only `Allow
 ClaudeBot...). The page fetched as LinkedInBot must be the portfolio itself, with its preview tags,
 not a challenge page that also answers 200.
 
-LinkedIn's [Post Inspector](https://www.linkedin.com/post-inspector/) on a portfolio's address
-then shows its preview.
+LinkedIn's [Post Inspector](https://www.linkedin.com/post-inspector/) on a portfolio's addresses
+then shows their previews: `/<name>/experiences` and `/<name>/hire`, each in English and with
+`?lang=fr`, with their title, description and picture. LinkedIn keeps a link's preview for about a
+week: inspecting the address fetches it again, after a change of the pictures or of a
+portfolio's title.
 
 **Pages listed before.** A `noindex` counts from the next time a search engine reads the page,
 which can take weeks. Verify the domain in

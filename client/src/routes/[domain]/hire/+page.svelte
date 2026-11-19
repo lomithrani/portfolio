@@ -25,8 +25,10 @@
 		type StepState
 	} from '#services/workflow.ts';
 	import { portfolioLink } from '#services/candidateSetup.ts';
+	import { portfolioName } from '#services/linkPreview.ts';
 	import { clientStep, type ClientStep, type SubmitResult } from '#components/hire/steps/index.ts';
 	import CopyLink from '#components/share/CopyLink.svelte';
+	import OpenGraph from '#components/OpenGraph.svelte';
 	import { m as bookingMessages } from '#components/hire/MeetingBooking.messages.ts';
 	import { m as datesMessages } from '#services/bookingDates.messages.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
@@ -42,7 +44,8 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let ownerName = $derived(data.domain.headerTitle || data.domainName);
+	// The name the portfolio is headed with: its title, or its address name
+	let ownerName = $derived(portfolioName(data.domain));
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 
@@ -218,6 +221,9 @@
 	<title>{m.title(ownerName)}</title>
 	<meta name="description" content={m.description(ownerName)} />
 </svelte:head>
+<!-- A shared link's preview: the page's title and description, over the generic picture of a
+     page for recruiters (it names no step: the journey is loaded in the browser) -->
+<OpenGraph title={m.title(ownerName)} description={m.description(ownerName)} image="hire" />
 
 {#snippet visitor(entry: ClientStep, step: JourneyStep, shown: Journey)}
 	<entry.Visitor

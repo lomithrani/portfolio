@@ -16,6 +16,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import PortfolioHead from '#components/PortfolioHead.svelte';
+	import { portfolioName } from '#services/linkPreview.ts';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
@@ -29,7 +30,8 @@
 		if ($sessionCheckedStore) untrack(recordShown);
 	});
 
-	let headerTitle = $derived(data.domain.headerTitle?.trim() ?? '');
+	// A portfolio whose owner set no title is headed by its address name ('jane.doe')
+	let headerTitle = $derived(portfolioName(data.domain));
 
 	$effect(() => {
 		if (!browser) return;
@@ -37,16 +39,13 @@
 	});
 </script>
 
-<!-- Not listed by search engines, but previewed when shared -->
+<!-- Not listed by search engines. Its pages a visitor is sent to (the experiences page, the page
+     for recruiters) write the preview a shared link gets (OpenGraph.svelte) -->
 <PortfolioHead />
 
 <div class="h-full flex flex-col">
 	<!-- Header renders the page's <header> (AppBar) -->
-	<!-- A portfolio whose owner set no title is headed by its address name ('jane.doe') -->
-	<Header
-		headerTitle={headerTitle || data.domain.name}
-		headerSubtitle={data.domain.headerSubtitle}
-	/>
+	<Header {headerTitle} headerSubtitle={data.domain.headerSubtitle} />
 	<div class="relative flex-1 overflow-hidden">
 		<aside>
 			<LeftBar domain={data.domain} />
