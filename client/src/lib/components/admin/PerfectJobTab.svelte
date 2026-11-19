@@ -114,8 +114,13 @@ see the criteria.
 		form = essentialsForm(travelTimes, $state.snapshot(form));
 		essentialsAnnouncement = travelTimes.enabled ? m.essentials.on.commute : m.essentials.on.cities;
 		await tick();
-		// The button went: the focus goes to the first of them in the page (the work mode's switch)
-		root?.querySelector<HTMLElement>('[data-criterion="workMode"] input')?.focus();
+		// The button went: the focus goes to the first of them in the page (the work mode's switch),
+		// with the heading of its group in sight above it (the admin page keeps what it scrolls to
+		// clear of its sticky tabs)
+		document.getElementById(`${uid}-group-place`)?.scrollIntoView({ block: 'start' });
+		root
+			?.querySelector<HTMLElement>('[data-criterion="workMode"] input')
+			?.focus({ preventScroll: true });
 	}
 	const at = (field: string) => problemAt(problems, field) ?? '';
 

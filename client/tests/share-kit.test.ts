@@ -200,6 +200,13 @@ test('the account menu leads to the Share tab, which writes the reply and the Li
 	);
 	await expect(reply(page)).toHaveValue(new RegExp(`\\n\\n${PAGE}\\n\\n`));
 	await expect(reply(page)).not.toHaveValue(/65|matter to me/);
+	// It ends with its closing: the owner signs it, the text carries no name nor anything to fill in
+	await expect(reply(page)).toHaveValue(/\n\nBest regards,$/);
+	await expect(reply(page)).toHaveAccessibleDescription(
+		'Add your name at the end before you send it.'
+	);
+	// The LinkedIn text leads to the page for recruiters: nothing to explain
+	await expect(tab.locator('[data-linkedin-reason]')).toHaveCount(0);
 	const facts = tab.locator('[data-share-facts]');
 	for (const fact of ['The pay I ask for', 'Remote days a week', 'Where', 'Contracts']) {
 		await expect(facts.getByRole('checkbox', { name: fact, exact: true })).not.toBeChecked();
@@ -298,6 +305,10 @@ test('while nobody can book, the texts give the portfolio, and lead to the calen
 		)
 	).toBeVisible();
 	await expectPortfolioOnly(page);
+	// The LinkedIn text, read on its own, says why too
+	await expect(tab.locator('[data-linkedin-reason]')).toHaveText(
+		'Until your calendar is open, this text gives only your portfolio: recruiters could not book on your page for recruiters yet.'
+	);
 	expect(await leadsShown(tab)).toEqual(['Open my calendar settings']);
 	await tab.getByRole('button', { name: 'Open my calendar settings' }).click();
 	await expect(page.getByRole('tab', { name: 'Appointments' })).toHaveAttribute(
@@ -319,6 +330,9 @@ test('on a site without Google Calendar, the texts give the portfolio, with noth
 	await expect(tab.locator('[data-reply-hint]')).toHaveText(
 		/^Online booking is not available on this site for now: /
 	);
+	await expect(tab.locator('[data-linkedin-reason]')).toHaveText(
+		'Online booking is not available on this site for now, so this text gives only your portfolio.'
+	);
 	await expectPortfolioOnly(page);
 	expect(await leadsShown(tab)).toEqual([]);
 });
@@ -335,6 +349,9 @@ test('a step nobody can get past: the texts give the portfolio, and lead to the 
 	// Never that the page asks for no job: it does, recruiters only cannot get through it
 	await expect(tab.getByText('does not ask for the job', { exact: false })).toHaveCount(0);
 	await expectPortfolioOnly(page);
+	await expect(tab.locator('[data-linkedin-reason]')).toHaveText(
+		'Until you remove the step recruiters cannot get past, this text gives only your portfolio.'
+	);
 	expect(await leadsShown(tab)).toEqual(['Change my steps']);
 	await tab.getByRole('button', { name: 'Change my steps' }).click();
 	const journeyTab = page.getByRole('tab', { name: 'Hiring journey' });
@@ -387,12 +404,17 @@ test('while what the steps ask cannot be read, the texts promise nothing of the 
 		'It asks them to send you the job description, with its pay range, and gives your portfolio.'
 	);
 	await expectPortfolioOnly(page);
+	const linkedInReason = tab.locator('[data-linkedin-reason]');
+	await expect(linkedInReason).toHaveText(
+		'What your steps ask of recruiters could not be read, so this text gives only your portfolio.'
+	);
 	expect(await leadsShown(tab)).toEqual([]);
 
 	// Read again: what the steps ask
 	await notice.getByRole('button', { name: 'Try again' }).click();
 	await expect(notice).toHaveCount(0);
 	await expect(reply(page)).toHaveValue(new RegExp(`\\n\\n${PAGE}\\n\\n`));
+	await expect(linkedInReason).toHaveCount(0);
 
 	// Shown again, the tab is read again: failing, the texts no longer trust what was read before
 	// (the steps may have changed in the Hiring journey tab meanwhile)
@@ -501,6 +523,18 @@ test('on a phone, the Share tab and the owner’s note fit the screen, in French
 		await expect(control).toBeInViewport();
 		await withinScreen(control);
 	}
+	// The pay and its period side by side: one height, one top, their labels ending on one line
+	const [amount, per, amountLabel, perLabel] = await Promise.all(
+		[
+			tab.getByRole('textbox', { name: 'Montant brut, en euros' }),
+			tab.getByRole('combobox', { name: 'Par', exact: true }),
+			tab.getByText('Montant brut, en euros', { exact: true }),
+			tab.getByText('Par', { exact: true })
+		].map(async (part) => (await part.boundingBox())!)
+	);
+	expect(per.y).toBeCloseTo(amount.y, 0);
+	expect(per.height).toBeCloseTo(amount.height, 0);
+	expect(perLabel.y + perLabel.height).toBeCloseTo(amountLabel.y + amountLabel.height, 0);
 
 	await gotoHydrated(page, `/${DOMAIN}/hire?lang=fr`);
 	const note = page.locator('[data-owner-note]');

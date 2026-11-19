@@ -5,8 +5,8 @@ import { defineMessages } from 'portfolio-common';
 export const m = defineMessages({
 	title: { en: 'Share your link', fr: 'Partager votre lien' },
 	intro: {
-		en: 'Your portfolio is a career page you keep, like a professional profile: put your link where recruiters find you, and answer the ones who write to you from here. Nothing on this tab is saved or sent: you copy what you want.',
-		fr: "Votre portfolio est une page de carrière que vous gardez, comme un profil professionnel : mettez votre lien là où les recruteurs vous trouvent, et répondez d'ici à ceux qui vous écrivent. Rien n'est enregistré ni envoyé depuis cet onglet : vous copiez ce que vous voulez."
+		en: 'Your portfolio is a career page you keep, like a professional profile: put your link where recruiters find you and, from here, answer the ones who write to you. Nothing on this tab is saved or sent: you copy what you want.',
+		fr: "Votre portfolio est une page de carrière que vous gardez, comme un profil professionnel : mettez votre lien là où les recruteurs vous trouvent et, d'ici, répondez à ceux qui vous écrivent. Rien n'est enregistré ni envoyé depuis cet onglet : vous copiez ce que vous voulez."
 	},
 	link: {
 		title: { en: 'Your link', fr: 'Votre lien' },
@@ -100,7 +100,15 @@ export const m = defineMessages({
 			en: (language: string) => `Your reply, in ${language}`,
 			fr: (language: string) => `Votre réponse, en ${language}`
 		},
-		copy: { en: 'Copy the reply', fr: 'Copier la réponse' }
+		copy: { en: 'Copy the reply', fr: 'Copier la réponse' },
+		/**
+		 * Under the reply, which ends with its closing ("Best regards,"): the owner signs it where
+		 * they send it (the text carries no name, nor a placeholder to fill in)
+		 */
+		sign: {
+			en: 'Add your name at the end before you send it.',
+			fr: "Ajoutez votre nom à la fin avant de l'envoyer."
+		}
 	},
 	facts: {
 		legend: {
@@ -143,6 +151,34 @@ export const m = defineMessages({
 		hint: {
 			en: 'Paste it in the About section of your profile, and add your link to its contact info as a website.',
 			fr: 'Collez-le dans la section Infos de votre profil, et ajoutez votre lien à ses coordonnées comme site web.'
+		},
+		/**
+		 * Why the text gives only the portfolio, as the reply's hint says it of the reply: the page for
+		 * recruiters is left out while recruiters could not book there or get through it, or while
+		 * what the steps ask could not be read
+		 */
+		portfolioOnly: {
+			calendarClosed: {
+				en: 'Until your calendar is open, this text gives only your portfolio: recruiters could not book on your page for recruiters yet.',
+				fr: "Tant que votre agenda n'est pas ouvert, ce texte ne donne que votre portfolio : les recruteurs ne pourraient pas encore réserver sur votre page recruteurs."
+			},
+			bookingUnavailable: {
+				en: 'Online booking is not available on this site for now, so this text gives only your portfolio.',
+				fr: "La réservation en ligne n'est pas disponible sur ce site pour le moment : ce texte ne donne donc que votre portfolio."
+			},
+			blocked: {
+				en: 'Until you remove the step recruiters cannot get past, this text gives only your portfolio.',
+				fr: "Tant que vous n'avez pas retiré l'étape que les recruteurs ne peuvent pas franchir, ce texte ne donne que votre portfolio."
+			},
+			unread: {
+				en: 'What your steps ask of recruiters could not be read, so this text gives only your portfolio.',
+				fr: "Ce que vos étapes demandent aux recruteurs n'a pas pu être lu : ce texte ne donne donc que votre portfolio."
+			},
+			/** Steps that lead to no meeting (none at all) */
+			noMeeting: {
+				en: 'Your steps lead to no meeting, so this text gives only your portfolio.',
+				fr: 'Vos étapes ne mènent à aucun rendez-vous : ce texte ne donne donc que votre portfolio.'
+			}
 		},
 		label: {
 			en: (language: string) => `Your LinkedIn text, in ${language}`,

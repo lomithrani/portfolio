@@ -233,6 +233,8 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 		);
 
 	const linkButton = 'btn btn-sm preset-tonal';
+	/** The gate's choices: as tall as a button on one line, a label on two lines stays legible */
+	const choiceButton = 'max-w-full whitespace-normal py-1.5 text-center leading-5';
 </script>
 
 <div class="space-y-6">
@@ -508,10 +510,11 @@ nobody books before the calendar is open, and the gate journey while it is not t
 			{#if noteProblem && !editingNote}
 				<p class="text-sm text-error-700-300">{noteProblem.message}</p>
 			{/if}
+			<!-- A label wraps rather than overflow the card on a narrow phone (in French) -->
 			<div class="flex flex-wrap gap-2">
 				<button
 					type="button"
-					class="btn preset-filled-primary-700-300"
+					class="btn {choiceButton} preset-filled-primary-700-300"
 					aria-disabled={saving !== null || noteProblem ? 'true' : undefined}
 					onclick={() => choose('gate')}
 				>
@@ -520,7 +523,7 @@ nobody books before the calendar is open, and the gate journey while it is not t
 				{#if !saved}
 					<button
 						type="button"
-						class="btn preset-tonal"
+						class="btn {choiceButton} preset-tonal"
 						aria-disabled={saving !== null ? 'true' : undefined}
 						onclick={() => choose('open')}
 					>

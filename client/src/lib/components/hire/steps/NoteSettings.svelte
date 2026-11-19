@@ -44,7 +44,7 @@ the editor passes what it says is wrong, shown under the field it is about.
 		<label class="label-text" for="{idPrefix}-text">{m.note.settings.text}</label>
 		<textarea
 			id="{idPrefix}-text"
-			class="textarea"
+			class="textarea resize-y leading-relaxed"
 			rows="5"
 			maxlength={NOTE_STEP_LIMITS.text}
 			placeholder={m.note.settings.textPlaceholder}

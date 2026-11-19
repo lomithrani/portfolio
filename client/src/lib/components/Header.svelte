@@ -104,8 +104,11 @@
 		</AppBar.Headline>
 		<AppBar.Trail class="items-center">
 			{#if !$sessionCheckedStore}
-				<!-- The session is being checked: neither sign-in nor account yet (no flash of either) -->
-				<span class="block size-10 animate-pulse rounded-full bg-surface-200-800" aria-hidden="true"
+				<!-- The session is being checked: neither sign-in nor account yet (no flash of either).
+				     Never on a page without scripts, which never checks it -->
+				<span
+					class="block size-10 animate-pulse rounded-full bg-surface-200-800 noscript:hidden"
+					aria-hidden="true"
 				></span>
 			{:else if user}
 				<AccountMenu {user} onClaimPortfolio={() => openChooser('claim')} />

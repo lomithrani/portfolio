@@ -3,7 +3,8 @@
 The link of a portfolio with a button that copies it (the admin's "Get started" tab, the landing
 page's onboarding card). The link stays in a read-only field: when the browser refuses to copy it
 (no permission, no clipboard), the field is selected for the person to copy it themselves. What
-happened is read out (a polite live region), and the button says it for a while.
+happened is read out (a polite live region), and the button says it for a while. A link wider
+than its field shows its end, the portfolio's name, rather than the start every link shares.
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
@@ -14,7 +15,8 @@ happened is read out (a polite live region), and the button says it for a while.
 	let {
 		link,
 		caption = '',
-		tone = 'primary'
+		tone = 'primary',
+		stacked = false
 	}: {
 		/** The full address copied ("https://site/jane.doe") */
 		link: string;
@@ -22,6 +24,8 @@ happened is read out (a polite live region), and the button says it for a while.
 		caption?: string;
 		/** The button: `tonal` next to the main action of a step */
 		tone?: 'primary' | 'tonal';
+		/** The button under the field, which takes the whole width: in a narrow column */
+		stacked?: boolean;
 	} = $props();
 
 	const uid = $props.id();
@@ -32,6 +36,20 @@ happened is read out (a polite live region), and the button says it for a while.
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
 	$effect(() => () => clearTimeout(timer));
+
+	/** The end of the link in sight (its name), unless the field is in use */
+	const showEnd = () => {
+		if (field && document.activeElement !== field) field.scrollLeft = field.scrollWidth;
+	};
+	$effect(() => {
+		void link;
+		if (!field) return;
+		showEnd();
+		// Again when the field's width changes (a window resized, the page's layout settling)
+		const observer = new ResizeObserver(showEnd);
+		observer.observe(field);
+		return () => observer.disconnect();
+	});
 
 	async function copy() {
 		refused = false;
@@ -56,16 +74,17 @@ happened is read out (a polite live region), and the button says it for a while.
 </script>
 
 <div class="space-y-2">
-	<div class="flex flex-wrap items-stretch gap-2">
+	<div class={['flex gap-2', stacked ? 'flex-col items-start' : 'flex-wrap items-stretch']}>
 		<input
 			bind:this={field}
-			class="input min-h-11 min-w-0 flex-1 basis-56 font-medium"
+			class={['input min-h-11 min-w-0 font-medium', stacked ? 'w-full' : 'flex-1 basis-56']}
 			type="text"
 			readonly
 			value={link}
 			aria-label={m.label}
 			aria-describedby={caption || refused ? `${uid}-caption` : undefined}
 			onfocus={(event) => event.currentTarget.select()}
+			onblur={showEnd}
 		/>
 		<button
 			type="button"

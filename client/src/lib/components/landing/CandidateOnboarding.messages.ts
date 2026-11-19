@@ -188,12 +188,7 @@ export const m = defineMessages({
 			en: (done: number, total: number) => `${done} of ${total} set`,
 			fr: (done: number, total: number) => `${done} sur ${total} ${plural(done, 'réglé', 'réglés')}`
 		},
-		done: { en: 'Your terms are set.', fr: 'Vos conditions sont fixées.' },
-		/** Under the link and its "Copy your link" */
-		copyCaption: {
-			en: 'Send it to the recruiters who write to you.',
-			fr: 'Envoyez-le aux recruteurs qui vous écrivent.'
-		}
+		done: { en: 'Your terms are set.', fr: 'Vos conditions sont fixées.' }
 	},
 	/** Past the last step */
 	ready: {

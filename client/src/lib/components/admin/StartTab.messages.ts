@@ -2,9 +2,10 @@ import { defineMessages, plural } from 'portfolio-common';
 
 export const m = defineMessages({
 	title: { en: 'Get started', fr: 'Pour commencer' },
+	/** Shown whatever is done, every item included: it never says that something is left */
 	intro: {
 		en: 'What to set before you share your link. Each item can wait, in any order: your link works from now on.',
-		fr: "Ce qu'il reste à régler avant de partager votre lien. Chaque point peut attendre, dans l'ordre que vous voulez : votre lien fonctionne dès maintenant."
+		fr: "Ce qu'il faut régler avant de partager votre lien. Chaque point peut attendre, dans l'ordre que vous voulez : votre lien fonctionne dès maintenant."
 	},
 	loading: { en: 'Loading your checklist…', fr: 'Chargement de votre liste…' },
 	/** The checklist, for screen readers */
@@ -83,7 +84,7 @@ export const m = defineMessages({
 		/** After `toDo`, above the gate journey and "Keep the meeting alone" */
 		choose: {
 			en: 'Ask for the job first, or keep the meeting alone.',
-			fr: "Demandez d'abord l'offre, ou gardez seulement le rendez-vous."
+			fr: "Demandez d'abord l'offre, ou gardez le rendez-vous seul."
 		},
 		/** A journey the owner saved: the meeting alone */
 		meetingAlone: {
@@ -144,7 +145,8 @@ export const m = defineMessages({
 			use: { en: 'Use these steps', fr: 'Utiliser ces étapes' },
 			using: { en: 'Saving your steps…', fr: 'Enregistrement de vos étapes…' }
 		},
-		keepMeeting: { en: 'Keep the meeting alone', fr: 'Garder seulement le rendez-vous' },
+		/** A button beside "Use these steps", in a narrow card on phones: keep it short */
+		keepMeeting: { en: 'Keep the meeting alone', fr: 'Garder le rendez-vous seul' },
 		/** The journey leads to a meeting without asking for a job first */
 		noGate: {
 			en: 'No job is asked for first. To ask for it:',

@@ -61,6 +61,29 @@ const text = (html: string) =>
 		.replace(/\s+/g, ' ')
 		.trim();
 
+/**
+ * Some HTML without the elements a page without scripts hides (`noscript:hidden`), their content
+ * included
+ */
+const withoutHiddenNoScript = (html: string): string => {
+	const open = /<([a-z]+)\b[^>]*\bclass="[^"]*\bnoscript:hidden\b[^"]*"[^>]*>/.exec(html);
+	if (!open) return html;
+	// The element's end: its own closing tag, past those of the same name it holds
+	const name = open[1];
+	const tags = new RegExp(`<(/?)${name}\\b[^>]*>`, 'g');
+	tags.lastIndex = open.index + open[0].length;
+	let depth = 1;
+	let end = html.length;
+	for (let tag = tags.exec(html); tag; tag = tags.exec(html)) {
+		depth += tag[1] ? -1 : 1;
+		if (depth === 0) {
+			end = tag.index + tag[0].length;
+			break;
+		}
+	}
+	return withoutHiddenNoScript(html.slice(0, open.index) + html.slice(end));
+};
+
 /** The content of a meta tag of the head, by its name or property */
 const meta = (head: string, key: string) =>
 	text(new RegExp(`<meta (?:name|property)="${key}" content="([^"]*)"`).exec(head)?.[1] ?? '');
@@ -131,6 +154,26 @@ describe('the page for recruiters, served with a meeting type to book', () => {
 			expect(page, type).toContain(`Step 1: ${name}`);
 			expect(page, type).toContain('Step 2: Book a meeting (locked)');
 			expect(page, type).not.toMatch(/Loading|Checking/);
+		}
+	});
+
+	it('hides its loading placeholders where scripts do not run, which never replace them', () => {
+		// The steps that can come first unfolded (the note and job steps wait for the session), the
+		// booking alone (its meeting types load in the browser), the journey the server could not read
+		const pages = [
+			served(true, 'en', {
+				steps: [step('note', { title: 'Hi', text: 'Read me' }), step('meeting')]
+			}),
+			served(true, 'en', { steps: [step('job'), step('meeting')] }),
+			served(null, 'en', { steps: [step('meeting')] }),
+			served(null, 'en', null as never)
+		];
+		const placeholder = /<[^>]*\bclass="[^"]*\b(?:placeholder|animate-pulse)\b[^"]*"[^>]*>/;
+		for (const { body } of pages) {
+			expect(body).toMatch(placeholder);
+			// Without what a page without scripts hides (`noscript:hidden`, a media query on
+			// `scripting: none`), no placeholder is left
+			expect(withoutHiddenNoScript(body)).not.toMatch(placeholder);
 		}
 	});
 });

@@ -3,7 +3,8 @@
 A text to copy, with its button (the Share tab's reply and LinkedIn text): the text stays in a
 read-only field, so that when the browser refuses to copy it (no permission, no clipboard) the
 field is selected for the person to copy it themselves. What happened is read out (a polite live
-region), and the button says it for a while. Like CopyLink, for a text of several lines.
+region), and the button says it for a while. Like CopyLink, for a text of several lines. A hint
+(what to do with the text once copied) goes under the field, which it describes.
 -->
 <script lang="ts">
 	import { tick } from 'svelte';
@@ -15,6 +16,7 @@ region), and the button says it for a while. Like CopyLink, for a text of severa
 		text,
 		label,
 		copyLabel,
+		hint,
 		rows = 8
 	}: {
 		/** What is copied */
@@ -23,6 +25,8 @@ region), and the button says it for a while. Like CopyLink, for a text of severa
 		label: string;
 		/** The button ("Copy the reply") */
 		copyLabel: string;
+		/** Under the field, which it describes ("Add your name at the end before you send it.") */
+		hint?: string;
 		/** The fewest lines the field shows */
 		rows?: number;
 	} = $props();
@@ -41,6 +45,10 @@ region), and the button says it for a while. Like CopyLink, for a text of severa
 	let copied = $state(false);
 	let refused = $state(false);
 	let announcement = $state('');
+	/** The hint, and the refusal once it shows */
+	let describedBy = $derived(
+		[hint && `${uid}-hint`, refused && `${uid}-refused`].filter(Boolean).join(' ') || undefined
+	);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 
 	$effect(() => () => clearTimeout(timer));
@@ -82,8 +90,11 @@ region), and the button says it for a while. Like CopyLink, for a text of severa
 		readonly
 		value={text}
 		aria-label={label}
-		aria-describedby={refused ? `${uid}-refused` : undefined}
+		aria-describedby={describedBy}
 		onfocus={(event) => event.currentTarget.select()}></textarea>
+	{#if hint}
+		<p id="{uid}-hint" class="text-sm text-surface-700-300" data-copy-hint>{hint}</p>
+	{/if}
 	<button
 		type="button"
 		class="btn min-h-11 preset-filled-primary-700-300 max-sm:w-full"

@@ -101,7 +101,7 @@ describe("the client's step types", () => {
 		expect(
 			clientStep('job')?.effort.asks({ id: 'job', type: 'job', status: 'pending' }, 'Louis')
 		).toBe(
-			'Pick one of your open job descriptions, or write a new one, which takes longer: Louis sees it in the meeting invitation.'
+			'Pick one of your open job descriptions, or write a new one (that takes longer). Louis sees it in the meeting invitation.'
 		);
 		expect(
 			clientStep('note')?.effort.asks(

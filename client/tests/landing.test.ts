@@ -153,11 +153,14 @@ test.describe('landing page, signed out', () => {
 				.getByRole('region', { name: 'How it works' })
 				.getByRole('heading', { level: 3, name: 'Step 4: Set your terms', exact: true })
 		).toBeVisible();
-		// The share picture's title is the headline in one line
+		// The share picture's title is the headline in one line; the header says something else
+		// right above it
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 			'content',
-			'Your career, on your terms. The pay first, the call after.'
+			'Your career, on your terms. The pay first. The call after.'
 		);
+		await expect(page.getByRole('banner')).toContainText('The career page you keep');
+		await expect(page.getByRole('banner')).not.toContainText('The pay first');
 		await expect(page.getByRole('link', { name: 'See an example' })).toHaveAttribute(
 			'href',
 			'/louis.gentil/experiences'
@@ -177,11 +180,11 @@ test.describe('landing page, signed out', () => {
 		await expect(page).toHaveTitle('Your career, on your terms | Portfolio');
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 			'content',
-			'Your career, on your terms. The pay first, the call after.'
+			'Your career, on your terms. The pay first. The call after.'
 		);
 		await expect(page.locator('meta[property="og:image:alt"]')).toHaveAttribute(
 			'content',
-			'Your career, on your terms. The pay first. The call after. The steps of a hiring journey: note, job, match 86 out of 100, book a meeting. You never pay. The pay first, if you ask. Your steps, your order.'
+			'Your career, on your terms. The pay first. The call after. The steps of a hiring journey: note, job, scored 86 out of 100, book a meeting. You never pay. The pay range first, if you ask. Your steps, your order.'
 		);
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute(
 			'content',
@@ -218,10 +221,10 @@ test.describe('landing page, signed out', () => {
 			page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: title }) });
 		// Never an unconditional "recruiters show the pay first", and the range cap as scored (a
 		// posting opened before the cap may state a wider range)
-		await expect(promise('The pay first, if you ask')).toContainText(
+		await expect(promise('The pay range first, if you ask')).toContainText(
 			'your page asks recruiters for the job before the meeting'
 		);
-		await expect(promise('The pay first, if you ask')).toContainText(
+		await expect(promise('The pay range first, if you ask')).toContainText(
 			'it is scored as if its top were at most 1.5 times its bottom'
 		);
 		// The minimum is shown to recruiters: the promise says so
@@ -681,7 +684,25 @@ test.describe('landing page, portfolio owner', () => {
 		);
 
 		const link = 'http://localhost:4173/e2e-owner';
-		await expect(currentStep(page).getByRole('textbox', { name: 'Your link' })).toHaveValue(link);
+		const field = currentStep(page).getByRole('textbox', { name: 'Your link' });
+		await expect(field).toHaveValue(link);
+		// The field is above its button: the whole address shows in the card's column, and on a
+		// phone, where it may not, its end (the portfolio's name) does
+		const shows = (end: boolean) =>
+			field.evaluate(
+				(input: HTMLInputElement, end) =>
+					end
+						? input.scrollLeft + input.clientWidth >= input.scrollWidth - 1
+						: input.scrollWidth <= input.clientWidth,
+				end
+			);
+		expect(await shows(false)).toBe(true);
+		await expect(currentStep(page)).toContainText(
+			'It opens your portfolio. From there, “Propose a role” leads recruiters to your page for recruiters.'
+		);
+		await page.setViewportSize({ width: 390, height: 844 });
+		await expect.poll(() => shows(true)).toBe(true);
+		await page.setViewportSize({ width: 1280, height: 720 });
 		await currentStep(page).getByRole('button', { name: 'Copy your link' }).click();
 		await expect(currentStep(page).getByRole('button', { name: 'Link copied' })).toBeVisible();
 		await expect(
@@ -706,6 +727,13 @@ test.describe('landing page, portfolio owner', () => {
 		await expect(card(page).getByRole('textbox', { name: 'Your link' })).toHaveValue(
 			'http://localhost:4173/e2e-owner'
 		);
+		// Under the link, what it opens: the subtitle already says to send it
+		await expect(
+			card(page).getByText(
+				'It opens your portfolio. From there, “Propose a role” leads recruiters to your page for recruiters.'
+			)
+		).toBeVisible();
+		await expect(card(page)).not.toContainText('Send it to the recruiters who write to you.');
 		await expect(card(page).getByRole('link', { name: 'Review my settings' })).toHaveAttribute(
 			'href',
 			'/e2e-owner/admin?tab=start'

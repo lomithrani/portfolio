@@ -414,7 +414,8 @@
 		<noscript>
 			<p class="card preset-tonal-warning mb-8 p-4 text-sm">{m.noScript}</p>
 		</noscript>
-		<div class="space-y-3" role="status">
+		<!-- Hidden when scripts do not run: nothing would load the journey, the line above says why -->
+		<div class="space-y-3 noscript:hidden" role="status">
 			<span class="sr-only">{m.loading}</span>
 			<div
 				class="placeholder h-40 w-full animate-pulse motion-reduce:animate-none"

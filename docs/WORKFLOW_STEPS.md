@@ -353,7 +353,8 @@ either. Four things the page does for every step:
   answers, a visitor the kept session names gets no control on the steps (the server's are anyone
   signed out's). So the `Visitor` of a step that can be the first one must render on the server:
   no `window`, `document` or storage outside event handlers and effects, and its loading states
-  hold their place without words (a placeholder, its status for screen readers only), as
+  hold their place without words (a placeholder, its status for screen readers only, hidden
+  where scripts do not run with `noscript:hidden`: nothing would replace it), as
   `MeetingBooking.svelte` does for the meeting types. `client/src/services/tests/hirePageRender.test.ts`
   renders, with a meeting type to book, a journey starting with each type that can come first (a
   `requirement` type without `needs`), unfolded; `client/tests/hire-journey.test.ts` loads them

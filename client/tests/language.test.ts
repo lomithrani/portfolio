@@ -54,8 +54,9 @@ test.describe('a visitor whose browser prefers French', () => {
 		).toContainText('Jamais à vos frais : les candidats ne paient pas.');
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 			'content',
-			"Votre carrière, à vos conditions. La rémunération d'abord, l'appel ensuite."
+			"Votre carrière, à vos conditions. La rémunération d'abord. L'appel ensuite."
 		);
+		await expect(page.getByRole('banner')).toContainText('La page de carrière que vous gardez');
 
 		// Search engines find each language at its own address
 		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/\?lang=fr$/);
@@ -87,7 +88,7 @@ test.describe('a visitor whose browser prefers French', () => {
 		await expect(page).toHaveTitle('Votre carrière, à vos conditions | Portfolio');
 		await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 			'content',
-			"Votre carrière, à vos conditions. La rémunération d'abord, l'appel ensuite."
+			"Votre carrière, à vos conditions. La rémunération d'abord. L'appel ensuite."
 		);
 		await expect(page.locator('meta[property="og:image:alt"]')).toHaveAttribute(
 			'content',

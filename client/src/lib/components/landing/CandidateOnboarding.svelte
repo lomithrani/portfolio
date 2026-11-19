@@ -50,6 +50,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	} from 'portfolio-common';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import CopyLink from '#components/share/CopyLink.svelte';
+	import { m as copyMessages } from '#components/share/CopyLink.messages.ts';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { portfolioApi } from '#services';
@@ -711,7 +712,8 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				>
 					{m.ready.title}
 				</h3>
-				<CopyLink {link} caption={m.terms.copyCaption} />
+				<!-- The field above its button: the whole address shows in the card's column -->
+				<CopyLink {link} caption={copyMessages.opens} stacked />
 				<a
 					href={resolve('/[domain]/admin?tab=start', { domain: ownedDomain ?? '' })}
 					class="btn btn-sm -ms-2 px-2 hover:preset-tonal"
@@ -884,7 +886,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 
 {#snippet termsStep()}
 	<div class="space-y-4">
-		<p class="text-sm">{m.terms.intro}</p>
+		<p class="text-sm text-pretty">{m.terms.intro}</p>
 		<div class="flex flex-wrap items-center gap-3">
 			<a
 				href={resolve('/[domain]/admin?tab=start', { domain: ownedDomain ?? '' })}
@@ -899,6 +901,6 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				</span>
 			{/if}
 		</div>
-		<CopyLink {link} caption={m.terms.copyCaption} tone="tonal" />
+		<CopyLink {link} caption={copyMessages.opens} tone="tonal" stacked />
 	</div>
 {/snippet}

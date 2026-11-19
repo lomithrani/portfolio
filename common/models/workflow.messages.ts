@@ -16,8 +16,8 @@ export const workflowMessages = defineMessages({
 	gateNote: {
 		title: { en: 'Before we talk', fr: "Avant d'échanger" },
 		text: {
-			en: 'Thank you for your interest. Please share the job on this page first: pick one of your job descriptions or write a new one, with its pay range.\n\nThe job is then scored against my criteria. If it is a match, you can then book a meeting in my calendar. This saves us both a call about a job that would not fit.',
-			fr: "Merci de votre intérêt. Présentez d'abord le poste sur cette page : choisissez l'une de vos offres d'emploi ou rédigez-en une nouvelle, avec sa fourchette de rémunération.\n\nL'offre est ensuite notée selon mes critères. Si elle correspond, vous pourrez alors réserver un rendez-vous dans mon agenda. Cela nous évite à tous les deux un appel pour un poste qui ne conviendrait pas."
+			en: 'Thank you for your interest. Please share the job on this page first: pick one of your job descriptions or write a new one, with its pay range.\n\nThe job is then scored against my criteria. If it is a match, you can book a meeting in my calendar. This saves us both a call about a job that would not fit.',
+			fr: "Merci de votre intérêt. Présentez d'abord le poste sur cette page : choisissez l'une de vos offres d'emploi ou rédigez-en une nouvelle, avec sa fourchette de rémunération.\n\nL'offre est ensuite notée selon mes critères. Si elle correspond, vous pourrez réserver un rendez-vous dans mon agenda. Cela nous évite à tous les deux un appel pour un poste qui ne conviendrait pas."
 		}
 	},
 	tooManySteps: {

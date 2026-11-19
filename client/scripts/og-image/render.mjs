@@ -21,7 +21,7 @@ import { chromium } from '@playwright/test';
 import { withLocale } from 'portfolio-common';
 import { richParts } from '../../src/lib/i18n/rich.ts';
 import { m } from '../../src/routes/(site)/page.messages.ts';
-import { landingImageSide } from '../../src/routes/(site)/shareImage.ts';
+import { landingImageSide, landingImageSteps } from '../../src/routes/(site)/shareImage.ts';
 import { PREVIEW_IMAGES } from '../../src/services/linkPreview.ts';
 import { m as preview } from '../../src/services/linkPreview.messages.ts';
 import { m as skillPreview } from '../../src/services/projectPreview.messages.ts';
@@ -36,19 +36,22 @@ const escape = (text) =>
 const check = `<span class="check"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M5 10.5l3.2 3.2L15 7" fill="none" stroke="#052e16" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
 const arrow = `<span class="arrow">→</span>`;
 
-/** A message's `<nowrap>` passages kept on one line, as the page shows them; the rest escaped */
-const nowrapHtml = (text) =>
+/** A message's `<phrase>` passages kept on one line, as the page shows them; the rest escaped */
+const phraseHtml = (text) =>
 	richParts(text)
 		.map(({ tag, text }) =>
-			tag === 'nowrap' ? `<b class="nowrap">${escape(text)}</b>` : escape(text)
+			tag === 'phrase' ? `<b class="nowrap">${escape(text)}</b>` : escape(text)
 		)
 		.join('');
 
 /**
- * The page every image is drawn on: the brand, a headline with its accent (`accentHtml` when it
- * holds markup, else `accent`, escaped), then `row`
+ * The page every image is drawn on: the brand, a headline with its accent (`headlineHtml` and
+ * `accentHtml` when they hold markup, else `headline` and `accent`, escaped), then `row`
  */
-const page = (locale, { headline, accent, accentHtml, size, row, style = '' }) => `<!doctype html>
+const page = (
+	locale,
+	{ headline, headlineHtml, accent, accentHtml, size, row, style = '' }
+) => `<!doctype html>
 <html lang="${locale}">
 <meta charset="utf-8" />
 <style>
@@ -83,7 +86,7 @@ const page = (locale, { headline, accent, accentHtml, size, row, style = '' }) =
 </style>
 <body>
 	<div class="brand">${logo}Portfolio</div>
-	<h1>${escape(headline)}<span>${accentHtml ?? escape(accent)}</span></h1>
+	<h1>${headlineHtml ?? escape(headline)}<span>${accentHtml ?? escape(accent)}</span></h1>
 	<div class="row">${row}</div>
 </body>
 </html>`;
@@ -95,35 +98,29 @@ const side = (lines) =>
 const TEMPLATES = {
 	landing: {
 		files: { en: 'og-image.png', fr: 'og-image-fr.png' },
-		/** What the image says besides the headline */
-		text: {
-			en: {
-				steps: ['Note', 'Job', 'Match'],
-				last: 'Book a meeting',
-				size: { headline: 60, journey: 19, side: 21, gap: 14 }
-			},
-			fr: {
-				// The glossary's words (docs/I18N.md), longer than the English: smaller, to fit the row
-				steps: ['Note', 'Offre', 'Correspondance'],
-				last: 'Rendez-vous',
-				size: { headline: 48, journey: 16, side: 17, sideWidth: 280, gap: 10 }
-			}
+		/** The sizes of the texts: the French ones are longer, smaller to fit the row */
+		size: {
+			en: { headline: 60, journey: 19, side: 21, gap: 14 },
+			fr: { headline: 48, journey: 18, side: 19, sideWidth: 300, gap: 12 }
 		},
+		/** Under the headline: the steps of a hiring journey, as the alternative text names them */
+		steps: landingImageSteps,
 		/** Beside the journey: three of the page's promises, as it words them (and their alt text) */
 		side: landingImageSide,
 		html(locale) {
-			const t = this.text[locale];
-			const steps = t.steps
+			const names = this.steps();
+			const steps = names
+				.slice(0, 3)
 				.map(
 					(step, index) =>
 						`<span class="step">${check}${escape(step)}${index === 2 ? ' <b>86/100</b>' : ''}</span>${arrow}`
 				)
 				.join('');
 			return page(locale, {
-				headline: m.hero.headline,
-				accentHtml: nowrapHtml(m.hero.headlineAccent),
-				size: t.size,
-				row: `<div class="journey">${steps}<span class="last"><i>4</i>${escape(t.last)}</span></div>${side(this.side())}`,
+				headlineHtml: phraseHtml(m.hero.headline),
+				accentHtml: phraseHtml(m.hero.headlineAccent),
+				size: this.size[locale],
+				row: `<div class="journey">${steps}<span class="last"><i>4</i>${escape(names[3])}</span></div>${side(this.side())}`,
 				style: `
 	.step b { color: #86efac; font-weight: 700; }
 	.last { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px 10px 10px; border-radius: 999px; background: #1d4ed8; }

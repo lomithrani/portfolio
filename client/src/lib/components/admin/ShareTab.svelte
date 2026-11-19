@@ -9,8 +9,10 @@ they can book there (the calendar open, no step that can never be passed). While
 could not be read, or read again, the texts promise nothing of that page, whatever was read
 before. What the owner asks for (their pay, remote days, places, contracts) goes in the reply only
 once they tick it: then it is filled in from their perfect job (GET /perfect-job, asked when a
-fact is ticked, again once the tab was shown again), and stays theirs to change. Nothing here is
-saved or sent anywhere: the owner copies what they want.
+fact is ticked, again once the tab was shown again), and stays theirs to change. The reply ends
+with its closing: the tab asks the owner to add their name (the text carries none). Each text
+that gives only the portfolio says why in its own section. Nothing here is saved or sent
+anywhere: the owner copies what they want.
 -->
 <script lang="ts">
 	import { page } from '$app/state';
@@ -130,6 +132,25 @@ saved or sent anywhere: the owner copies what they want.
 
 	let reply = $derived(replyText(locale, { portfolio, journey, facts }));
 	let linkedIn = $derived(linkedInText(locale, { portfolio, journey }));
+	/**
+	 * Why the LinkedIn text gives only the portfolio, said in its own section as the reply's hint
+	 * says it of the reply (null while the steps are being read: nothing to say yet)
+	 */
+	let linkedInReason = $derived(
+		failure
+			? m.linkedIn.portfolioOnly.unread
+			: !journeyKnown
+				? null
+				: journey.blocked
+					? m.linkedIn.portfolioOnly.blocked
+					: journey.calendarClosed
+						? readiness?.calendar.configured
+							? m.linkedIn.portfolioOnly.calendarClosed
+							: m.linkedIn.portfolioOnly.bookingUnavailable
+						: !journey.job && !journey.meeting
+							? m.linkedIn.portfolioOnly.noMeeting
+							: null
+	);
 
 	// --- The perfect job, read once a fact is ticked -------------------------------------------
 	let perfectJobStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -307,9 +328,11 @@ saved or sent anywhere: the owner copies what they want.
 						{#if ticked[fact]}
 							<div class="space-y-2 ps-6">
 								{#if fact === 'pay'}
-									<div class="flex flex-wrap items-end gap-2">
-										<div class="min-w-0 flex-1 basis-40 space-y-1">
-											<label class="label-text text-sm" for="{uid}-pay-amount"
+									<!-- One grid for both fields, each label over its field (subgrid rows): the
+									     labels end on one line, the select is as tall as the input -->
+									<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1">
+										<div class="row-span-2 grid grid-rows-subgrid">
+											<label class="label-text self-end text-sm" for="{uid}-pay-amount"
 												>{m.facts.amount}</label
 											>
 											<input
@@ -323,9 +346,12 @@ saved or sent anywhere: the owner copies what they want.
 												bind:value={payAmount}
 											/>
 										</div>
-										<div class="space-y-1">
-											<label class="label-text text-sm" for="{uid}-pay-per">{m.facts.per}</label>
-											<select class="select" id="{uid}-pay-per" bind:value={payPer}>
+										<div class="row-span-2 grid grid-rows-subgrid">
+											<label class="label-text self-end text-sm" for="{uid}-pay-per"
+												>{m.facts.per}</label
+											>
+											<!-- Padded at the start like the input: its text does not touch the edge -->
+											<select class="select ps-2 pe-2" id="{uid}-pay-per" bind:value={payPer}>
 												<option value="year">{m.facts.perYear}</option>
 												<option value="day">{m.facts.perDay}</option>
 											</select>
@@ -389,12 +415,21 @@ saved or sent anywhere: the owner copies what they want.
 			</p>
 		</fieldset>
 
-		<CopyText text={reply} label={m.reply.label(language)} copyLabel={m.reply.copy} rows={6} />
+		<CopyText
+			text={reply}
+			label={m.reply.label(language)}
+			copyLabel={m.reply.copy}
+			hint={m.reply.sign}
+			rows={6}
+		/>
 	</section>
 
 	<section class="space-y-3" aria-labelledby="{uid}-linkedin">
 		<h3 class="h4" id="{uid}-linkedin">{m.linkedIn.title}</h3>
 		<p class="text-sm text-surface-700-300">{m.linkedIn.hint}</p>
+		{#if linkedInReason}
+			<p class="text-sm text-surface-700-300" data-linkedin-reason>{linkedInReason}</p>
+		{/if}
 		<CopyText
 			text={linkedIn}
 			label={m.linkedIn.label(language)}

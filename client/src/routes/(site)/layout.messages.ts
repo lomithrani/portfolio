@@ -4,13 +4,13 @@ import { defineMessages } from 'portfolio-common';
 export const m = defineMessages({
 	home: {
 		/**
-		 * The landing page's headline in one line (page.messages.ts `hero`, where its
-		 * `headlineAccent` says what backs it): the header's subtitle there, and the title of its
-		 * link previews (og:title)
+		 * The header's subtitle on the landing page: what a portfolio is (a career tool kept whether
+		 * one is looking or not, like the Share tab's intro), never the hero's headline, which comes
+		 * right under it (the link previews' og:title is that headline: +page.svelte)
 		 */
 		subtitle: {
-			en: 'Your career, on your terms. The pay first, the call after.',
-			fr: "Votre carrière, à vos conditions. La rémunération d'abord, l'appel ensuite."
+			en: 'The career page you keep',
+			fr: 'La page de carrière que vous gardez'
 		}
 	},
 	legal: {

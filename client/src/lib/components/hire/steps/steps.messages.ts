@@ -45,9 +45,9 @@ export const m = defineMessages({
 		 */
 		asks: {
 			en: (ownerName: string) =>
-				`Pick one of your open job descriptions, or write a new one, which takes longer: ${ownerName} sees it in the meeting invitation.`,
+				`Pick one of your open job descriptions, or write a new one (that takes longer). ${ownerName} sees it in the meeting invitation.`,
 			fr: (ownerName: string) =>
-				`Choisissez l'une de vos offres d'emploi ouvertes, ou rédigez-en une nouvelle, ce qui prend plus de temps : ${ownerName} la voit dans l'invitation au rendez-vous.`
+				`Choisissez l'une de vos offres d'emploi ouvertes, ou rédigez-en une nouvelle (cela prend plus de temps). ${ownerName} la voit dans l'invitation au rendez-vous.`
 		},
 		jobsFailed: {
 			en: 'Could not load your job descriptions.',

@@ -23,10 +23,10 @@
 	import CandidateOnboarding from '#components/landing/CandidateOnboarding.svelte';
 	import DemoVideo from '#components/landing/DemoVideo.svelte';
 	import Rich from '#lib/i18n/Rich.svelte';
+	import { plainText, richParts } from '#lib/i18n/rich.ts';
 	import { localeAlternate, ogLocale } from '#lib/i18n/urls.ts';
 	import { isSessionValid } from '#services/authentication.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
-	import { m as layout } from './layout.messages.ts';
 	import { m } from './page.messages.ts';
 
 	// The landing page (/), for talent: a career tool they keep, whose link can make recruiters show
@@ -48,6 +48,20 @@
 	/** The share image carries the hero's headline: one per language (scripts/og-image/) */
 	let ogImage = $derived(
 		new URL(locale === 'fr' ? '/og-image-fr.png' : '/og-image.png', page.url.origin).href
+	);
+
+	/** The title of the link previews: the hero's headline, in one line */
+	const shareTitle = `${plainText(m.hero.headline)} ${plainText(m.hero.headlineAccent)}`;
+
+	/**
+	 * How many characters the longest phrase of the headline has: each is kept on one line, so the
+	 * headline is sized for the longest to fit its column (the hero's style below), which a long
+	 * French sentence needs where the English ones do not
+	 */
+	const longestPhrase = Math.max(
+		...[m.hero.headline, m.hero.headlineAccent]
+			.flatMap(richParts)
+			.map((part) => (part.tag ? part.text.length : 0))
 	);
 
 	let ownedDomain = $derived(
@@ -106,6 +120,10 @@
 
 	const linkClass =
 		'font-medium text-primary-700-300 underline underline-offset-2 hover:decoration-2';
+
+	/** The headline's coloured sentences */
+	const accentClass =
+		'bg-gradient-to-br from-primary-600 to-tertiary-500 bg-clip-text text-transparent box-decoration-clone dark:from-primary-300 dark:to-tertiary-300';
 </script>
 
 <svelte:head>
@@ -117,7 +135,7 @@
 	{/each}
 	<link rel="alternate" hreflang="x-default" href={localeAlternate(page.url, 'en')} />
 	<meta property="og:type" content="website" />
-	<meta property="og:title" content={layout.home.subtitle} />
+	<meta property="og:title" content={shareTitle} />
 	<meta property="og:description" content={m.meta.description} />
 	<meta property="og:url" content={canonical} />
 	<meta property="og:locale" content={ogLocale(locale)} />
@@ -140,19 +158,28 @@
 	<div class="mx-auto w-full max-w-6xl px-4 pt-8 pb-16 md:px-6 md:pt-14 lg:pt-16">
 		<!-- Hero: what it is, and the card that creates one -->
 		<div class="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,32rem)] lg:gap-12">
-			<section class="space-y-6 lg:pt-6" aria-labelledby="hero-title">
+			<!-- A container: the headline's size follows the width of this column -->
+			<section class="@container space-y-6 lg:pt-6" aria-labelledby="hero-title">
 				<p class="badge preset-tonal-primary text-xs font-semibold tracking-wide uppercase">
 					{m.hero.badge}
 				</p>
+				<!-- Each sentence is a phrase, which starts a line when it does not fit after the one before:
+				     the headline breaks between its sentences, and the accent's are never cut -->
 				<h2
 					id="hero-title"
-					class="text-4xl leading-tight font-bold tracking-tight text-balance md:text-5xl lg:text-[3.4rem]"
+					class="hero-title leading-tight font-bold tracking-tight text-balance [--hero-size:var(--text-4xl)] md:[--hero-size:var(--text-5xl)] lg:[--hero-size:3.4rem]"
+					style:--longest-phrase={longestPhrase}
 				>
-					{m.hero.headline}
-					<span
-						class="bg-gradient-to-br from-primary-600 to-tertiary-500 bg-clip-text text-transparent box-decoration-clone dark:from-primary-300 dark:to-tertiary-300"
+					<span class="inline-block"
+						><Rich text={m.hero.headline}
+							>{#snippet phrase(text: string)}<span class="inline-block">{text}</span
+								>{/snippet}</Rich
+						></span
+					>
+					<span class={accentClass}
 						><Rich text={m.hero.headlineAccent}
-							>{#snippet nowrap(text: string)}<span class="whitespace-nowrap">{text}</span
+							>{#snippet phrase(text: string)}<span class={['inline-block', accentClass]}
+									>{text}</span
 								>{/snippet}</Rich
 						></span
 					>
@@ -237,7 +264,7 @@
 				<h2 id="promises-title" class="text-2xl font-bold text-balance md:text-3xl">
 					{m.promises.title}
 				</h2>
-				<p class="text-surface-700-300">{m.promises.intro}</p>
+				<p class="text-balance text-surface-700-300">{m.promises.intro}</p>
 			</div>
 			<ul class="grid gap-4 md:grid-cols-2 lg:grid-cols-12">
 				{#each promises as promise, index (promise.title)}
@@ -261,7 +288,7 @@
 
 		<!-- The calls they no longer take: what the perfect job's criteria stop, in three cases -->
 		<section class="mt-20 space-y-6 md:mt-28" aria-labelledby="spared-title">
-			<h2 id="spared-title" class="text-center text-xl font-bold md:text-2xl">
+			<h2 id="spared-title" class="text-center text-xl font-bold text-balance md:text-2xl">
 				{m.spared.title}
 			</h2>
 			<ul class="grid gap-4 md:grid-cols-3">
@@ -321,8 +348,8 @@
 		<!-- How it works: the card's four steps -->
 		<section class="mt-20 space-y-8 md:mt-28" aria-labelledby="how-title">
 			<div class="mx-auto max-w-2xl space-y-3 text-center">
-				<h2 id="how-title" class="text-2xl font-bold md:text-3xl">{m.how.title}</h2>
-				<p class="text-surface-700-300">{m.how.intro}</p>
+				<h2 id="how-title" class="text-2xl font-bold text-balance md:text-3xl">{m.how.title}</h2>
+				<p class="text-balance text-surface-700-300">{m.how.intro}</p>
 			</div>
 			<ol class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 				{#each howItWorks as step, index (step.title)}
@@ -343,7 +370,9 @@
 
 		<!-- Questions -->
 		<section class="mx-auto mt-20 max-w-3xl space-y-8 md:mt-28" aria-labelledby="faq-title">
-			<h2 id="faq-title" class="text-center text-2xl font-bold md:text-3xl">{m.faq.title}</h2>
+			<h2 id="faq-title" class="text-center text-2xl font-bold text-balance md:text-3xl">
+				{m.faq.title}
+			</h2>
 			<div class="space-y-3">
 				{@render question(m.faq.pay.question, neverPay)}
 				{@render question(m.faq.looking.question, notLooking)}
@@ -364,8 +393,8 @@
 				class="card mt-20 space-y-4 bg-gradient-to-br from-primary-500/15 via-surface-50-950 to-tertiary-500/15 p-8 text-center md:mt-28 md:p-12 preset-outlined-surface-200-800"
 				aria-labelledby="cta-title"
 			>
-				<h2 id="cta-title" class="text-2xl font-bold md:text-3xl">{m.cta.title}</h2>
-				<p class="mx-auto max-w-lg text-surface-700-300">{m.cta.text}</p>
+				<h2 id="cta-title" class="text-2xl font-bold text-balance md:text-3xl">{m.cta.title}</h2>
+				<p class="mx-auto max-w-lg text-balance text-surface-700-300">{m.cta.text}</p>
 				<a
 					href="#create"
 					class="btn preset-filled-primary-700-300 min-h-12 px-6 text-base"
@@ -452,3 +481,14 @@
 {#snippet whichData()}
 	<p><Rich text={m.faq.data.answer} {privacy} /></p>
 {/snippet}
+
+<style>
+	/* The headline: its breakpoint's size (--hero-size), smaller where its longest phrase would not
+	   fit the column on one line (0.52em a character: Inter's bold takes 0.49em, the system fonts
+	   of macOS, Windows and Android less). The first line is for a browser without container
+	   units */
+	.hero-title {
+		font-size: var(--hero-size);
+		font-size: min(var(--hero-size), calc(100cqi / (var(--longest-phrase) * 0.52)));
+	}
+</style>

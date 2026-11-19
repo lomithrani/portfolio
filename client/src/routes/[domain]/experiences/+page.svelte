@@ -675,7 +675,11 @@
 			data-setup-progress
 		>
 			<RocketLaunch size="16" class="shrink-0" aria-hidden="true" />
-			<span>{m.setup(setup.done, setup.total)}</span>
+			<span
+				><Rich text={m.setup(setup.done, setup.total)}
+					>{#snippet count(text)}<span class="whitespace-nowrap">{text}</span>{/snippet}</Rich
+				></span
+			>
 			<ArrowRight size="16" class="shrink-0" aria-hidden="true" />
 		</a>
 	{/if}

@@ -231,6 +231,15 @@ test.describe('the admin page', () => {
 		}
 		await expect(switchOf('Commute')).not.toBeChecked();
 		await expect(switchOf('Work mode')).toBeFocused();
+		// Its group's heading came into sight with it, under the sticky row of tabs, not behind it
+		const place = page.getByRole('heading', { name: 'The place', level: 3 });
+		const tabRow = page.locator('[data-admin-tabs]');
+		await expect
+			.poll(async () => {
+				const [heading, tabs] = [await place.boundingBox(), await tabRow.boundingBox()];
+				return !!heading && !!tabs && heading.y >= tabs.y + tabs.height;
+			})
+			.toBe(true);
 		// The pay is a deal-breaker
 		await expect(
 			criterion(page, 'Pay').getByRole('checkbox', { name: 'Deal-breaker' })
@@ -518,6 +527,54 @@ test.describe('the admin page', () => {
 		expect(gateSaved.steps[0].config.title).toBe('About the role');
 		await expect(replace).toHaveCount(0);
 		expect(dialogs).toEqual([]);
+	});
+
+	test('the row of tabs fits a desktop page in French; on a phone it follows the tab shown', async ({
+		page
+	}) => {
+		// Nothing rated: "Get started" has its badge, which widens the row
+		await setPerfectJob({});
+		await signIn(page, owner);
+		await page.setViewportSize({ width: 1024, height: 800 });
+		await gotoHydrated(page, `/${DOMAIN}/admin?lang=fr&tab=start`);
+		await expect(page.locator('[data-start-progress]')).toBeVisible();
+		const row = page.getByRole('tablist');
+		expect(await row.evaluate((list) => list.scrollWidth <= list.clientWidth)).toBe(true);
+		await expect(page.locator('[data-tabs-more]')).toHaveCount(0);
+		// On the page's own background: no band of another colour under the tabs
+		expect(
+			await page
+				.locator('[data-admin-tabs]')
+				.evaluate(
+					(strip) =>
+						getComputedStyle(strip).backgroundColor ===
+						getComputedStyle(document.documentElement).backgroundColor
+				)
+		).toBe(true);
+
+		// On a phone the row scrolls: each edge with tabs beyond it fades, and the tab shown is in
+		// the row's sight, also once the badge is there
+		await page.setViewportSize({ width: 390, height: 844 });
+		const edges = page.locator('[data-tabs-more]');
+		const inSight = async () => {
+			const [tab, list] = [await selectedTab(page).boundingBox(), await row.boundingBox()];
+			return !!tab && !!list && tab.x >= list.x && tab.x + tab.width <= list.x + list.width + 1;
+		};
+		await expect(edges).toHaveCount(1);
+		await expect(edges).toHaveAttribute('data-tabs-more', 'after');
+		// The last tab: the row's end
+		await page.getByRole('tab', { name: 'Partager' }).click();
+		await expect.poll(inSight).toBe(true);
+		await expect(edges).toHaveCount(1);
+		await expect(edges).toHaveAttribute('data-tabs-more', 'before');
+		// The first tab again, then one in the middle of the row: tabs beyond both edges
+		await page.getByRole('tab', { name: /^Pour commencer/ }).click();
+		await expect.poll(inSight).toBe(true);
+		await expect(edges).toHaveCount(1);
+		await expect(edges).toHaveAttribute('data-tabs-more', 'after');
+		await page.getByRole('tab', { name: 'Poste idéal' }).click();
+		await expect.poll(inSight).toBe(true);
+		await expect(edges).toHaveCount(2);
 	});
 });
 
@@ -1833,7 +1890,7 @@ test.describe('the hiring journey', () => {
 				`Before you book.*\\s*Read ${DOMAIN}'s note, then confirm that you have read it\\.`
 			),
 			new RegExp(
-				`Select or create a job\\s*Pick one of your open job descriptions, or write a new one, which takes longer: ${DOMAIN} sees it in the meeting invitation\\.`
+				`Select or create a job\\s*Pick one of your open job descriptions, or write a new one \\(that takes longer\\)\\. ${DOMAIN} sees it in the meeting invitation\\.`
 			),
 			new RegExp(
 				`Get the job scored\\s*Your job is scored out of 100 against ${DOMAIN}'s criteria: you see your score, never what they ask for\\. At least 70 opens the next step\\.`
@@ -1966,6 +2023,10 @@ test.describe('the hiring journey', () => {
 			noScript('Turn on JavaScript in your browser to go through the steps\\.')
 		);
 		await expect(page.getByText(/Loading/)).toHaveCount(0);
+		// Nothing holds the place of what only scripts would show (the header's account included)
+		const placeholders = page.locator('.animate-pulse');
+		expect(await placeholders.count()).toBeGreaterThan(0);
+		for (const placeholder of await placeholders.all()) await expect(placeholder).toBeHidden();
 		// Described for a shared link too, without the steps or a duration
 		const description = `${DOMAIN}'s page for recruiters. They do not take meeting requests online right now.`;
 		await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', description);

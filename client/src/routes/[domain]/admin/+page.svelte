@@ -144,23 +144,64 @@
 
 	let progress = $derived(readiness ? setupProgress(readiness) : null);
 
-	/** Tabs are out of sight on the right of their row: its edge fades, to say so */
-	let moreTabs = $state(false);
+	// --- The row of tabs ---------------------------------------------------------------------
+	// On a phone the tabs do not all fit: their row scrolls (the page does not), each edge with
+	// tabs out of sight beyond it fades, and the row follows the tab shown
+	/** Tabs are out of sight before (left) or after (right) the row's visible part */
+	let moreBefore = $state(false);
+	let moreAfter = $state(false);
+	/** How far from an edge the tab shown is kept: clear of that edge's fade (2.5rem) */
+	const EDGE = 40;
+	/** A tab: Skeleton's button, with less room at its sides */
+	const trigger = 'px-2';
+
+	const tabRow = () => tabList?.querySelector<HTMLElement>('[role="tablist"]') ?? null;
 
 	function measureTabs() {
-		const list = tabList?.querySelector('[role="tablist"]');
-		moreTabs = !!list && list.scrollLeft + list.clientWidth < list.scrollWidth - 1;
+		const list = tabRow();
+		moreBefore = !!list && list.scrollLeft > 1;
+		moreAfter = !!list && list.scrollLeft + list.clientWidth < list.scrollWidth - 1;
 	}
 
-	// On a phone the tabs do not all fit: their row scrolls, and follows the tab shown
-	$effect(() => {
-		const selected = tabList?.querySelector(`[role="tab"][data-value="${tab}"]`);
-		selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+	/** Scrolls the row (never the page) to bring the selected tab in sight, clear of the fades */
+	function revealTab(behavior: ScrollBehavior) {
+		const list = tabRow();
+		const selected = list?.querySelector<HTMLElement>(`[role="tab"][data-value="${tab}"]`);
+		if (!list || !selected) return;
+		const row = list.getBoundingClientRect();
+		const box = selected.getBoundingClientRect();
+		let left = list.scrollLeft;
+		if (box.left < row.left + EDGE) left += box.left - row.left - EDGE;
+		else if (box.right > row.right - EDGE) left += box.right - row.right + EDGE;
+		const end = list.scrollWidth - list.clientWidth;
+		left = Math.max(0, Math.min(end, Math.round(left)));
+		if (left !== list.scrollLeft) list.scrollTo({ left, behavior });
 		measureTabs();
-	});
-</script>
+	}
 
-<svelte:window onresize={measureTabs} />
+	const smoothly = (): ScrollBehavior =>
+		matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth';
+
+	// The tab shown changed: the row follows it
+	$effect(() => {
+		void tab;
+		if (tabList) untrack(() => revealTab(smoothly()));
+	});
+
+	// The row or a tab changed size (the window, the "Get started" badge, a font that loaded):
+	// the tabs moved, the tab shown is brought back in sight
+	$effect(() => {
+		const list = tabList && tabRow();
+		if (!list) return;
+		const observer = new ResizeObserver(() => revealTab('instant'));
+		observer.observe(list);
+		for (const tabButton of list.querySelectorAll('[role="tab"]')) observer.observe(tabButton);
+		return () => observer.disconnect();
+	});
+
+	/** The sticky row's height: what a tab scrolls into view stops under it (`.tab-panels`) */
+	let tabsHeight = $state(0);
+</script>
 
 <svelte:head>
 	<title>{m.title}</title>
@@ -170,36 +211,41 @@
 {#if isAdmin && tab}
 	<div class="max-w-4xl mx-auto">
 		<Tabs value={tab} onValueChange={(details) => show(adminTab(details.value) ?? 'start')}>
+			<!-- On the page's own background, without the margin Skeleton puts under a tab list: no
+			     band of another colour under the tabs. The tabs are compact enough for the six of
+			     them, the badge included, to fit the page's width in French from 1024 px -->
 			<div
-				class="sticky top-0 z-10 bg-surface-50-950"
+				class="tabs-row sticky top-0 z-10"
+				data-admin-tabs
 				bind:this={tabList}
+				bind:offsetHeight={tabsHeight}
 				onscrollcapture={measureTabs}
 			>
-				<Tabs.List class="overflow-x-auto overflow-y-hidden whitespace-nowrap">
-					<Tabs.Trigger value="start">
+				<Tabs.List class="mb-0 gap-0.5 overflow-x-auto overflow-y-hidden whitespace-nowrap">
+					<Tabs.Trigger value="start" class={trigger}>
 						{m.tabs.start}
 						{#if progress && !progress.complete}
-							<span class="badge preset-tonal-primary ms-1.5 text-xs" data-start-progress>
+							<span class="badge preset-tonal-primary ms-1 text-xs" data-start-progress>
 								<span aria-hidden="true">{m.progressBadge(progress.done, progress.total)}</span>
 								<span class="sr-only">{m.progressLabel(progress.done, progress.total)}</span>
 							</span>
 						{/if}
 					</Tabs.Trigger>
-					<Tabs.Trigger value="appearance">{m.tabs.appearance}</Tabs.Trigger>
-					<Tabs.Trigger value="workflows">{m.tabs.workflows}</Tabs.Trigger>
-					<Tabs.Trigger value="perfect-job">{m.tabs.perfectJob}</Tabs.Trigger>
-					<Tabs.Trigger value="appointments">{m.tabs.appointments}</Tabs.Trigger>
-					<Tabs.Trigger value="share">{m.tabs.share}</Tabs.Trigger>
+					<Tabs.Trigger value="appearance" class={trigger}>{m.tabs.appearance}</Tabs.Trigger>
+					<Tabs.Trigger value="workflows" class={trigger}>{m.tabs.workflows}</Tabs.Trigger>
+					<Tabs.Trigger value="perfect-job" class={trigger}>{m.tabs.perfectJob}</Tabs.Trigger>
+					<Tabs.Trigger value="appointments" class={trigger}>{m.tabs.appointments}</Tabs.Trigger>
+					<Tabs.Trigger value="share" class={trigger}>{m.tabs.share}</Tabs.Trigger>
 					<Tabs.Indicator />
 				</Tabs.List>
-				{#if moreTabs}
-					<div
-						class="pointer-events-none absolute inset-y-0 right-0 w-12 bg-linear-to-l from-surface-50 to-transparent dark:from-surface-950"
-						aria-hidden="true"
-					></div>
+				{#if moreBefore}
+					<div class="tabs-more start" data-tabs-more="before" aria-hidden="true"></div>
+				{/if}
+				{#if moreAfter}
+					<div class="tabs-more end" data-tabs-more="after" aria-hidden="true"></div>
 				{/if}
 			</div>
-			<div class="px-4 py-6 sm:p-8">
+			<div class="tab-panels px-4 py-6 sm:p-8" style:--tabs-clearance="{tabsHeight + 16}px">
 				<Tabs.Content value="start">
 					<StartTab
 						domainName={data.domainName}
@@ -255,3 +301,35 @@
 		</a>
 	</div>
 {/if}
+
+<style>
+	/* What a tab scrolls into view (a field focused, a heading) stops under the sticky row of tabs,
+		not behind it. A margin on what is scrolled to, not a padding on the page's scroller: the
+		row itself, sticky, would then be scrolled to as if it were under that padding, and the page
+		would jump to its top when a tab is pressed */
+	.tab-panels :global(*) {
+		scroll-margin-top: var(--tabs-clearance);
+	}
+
+	/* The page's own background (the html element's, in Skeleton's globals) */
+	.tabs-row {
+		--tabs-background: light-dark(var(--color-root-bg-light), var(--color-root-bg-dark));
+		background-color: var(--tabs-background);
+	}
+
+	/* The edge of the row beyond which tabs are out of sight fades into that background */
+	.tabs-more {
+		position: absolute;
+		inset-block: 0;
+		width: 2.5rem;
+		pointer-events: none;
+	}
+	.tabs-more.start {
+		left: 0;
+		background: linear-gradient(to right, var(--tabs-background), transparent);
+	}
+	.tabs-more.end {
+		right: 0;
+		background: linear-gradient(to left, var(--tabs-background), transparent);
+	}
+</style>

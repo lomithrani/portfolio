@@ -464,8 +464,8 @@ hiring journey; requests carry the session, which the API checks against the ste
 		</section>
 	{:else if schedulesLoading}
 		<!-- The meeting types load in the browser: the page's first paint (rendered on the server)
-		     holds their place without words -->
-		<div class="space-y-3" role="status">
+		     holds their place without words, unless scripts do not run (nothing would load them) -->
+		<div class="space-y-3 noscript:hidden" role="status">
 			<span class="sr-only">{m.loading}</span>
 			<div
 				class="placeholder h-24 w-full animate-pulse motion-reduce:animate-none"

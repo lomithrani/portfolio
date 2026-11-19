@@ -21,12 +21,14 @@ export const m = defineMessages({
 	heading: { en: 'Experiences', fr: 'Expériences' },
 	/**
 	 * The owner's link to the admin's "Get started" while its checklist is not complete, with how
-	 * far it is
+	 * far it is. The passage marked `count` stays on one line: a phone breaks the line before it,
+	 * never inside it
 	 */
 	setup: {
-		en: (done: number, total: number) => `Get ready to share your link (${done} of ${total})`,
+		en: (done: number, total: number) =>
+			`Get ready to share your link <count>(${done} of ${total})</count>`,
 		fr: (done: number, total: number) =>
-			`Préparez-vous à partager votre lien (${done} sur ${total})`
+			`Préparez-vous à partager votre lien <count>(${done} sur ${total})</count>`
 	},
 	/**
 	 * The owner's "Add experience" button. In the floating corner it is short to fit the row: the

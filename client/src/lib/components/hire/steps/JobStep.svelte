@@ -303,8 +303,9 @@ description instead.
 </script>
 
 {#if !$sessionCheckedStore}
+	<!-- Until the session is known; never on a page without scripts, which never checks it -->
 	<div
-		class="placeholder h-6 w-56 animate-pulse motion-reduce:animate-none"
+		class="placeholder h-6 w-56 animate-pulse motion-reduce:animate-none noscript:hidden"
 		aria-hidden="true"
 	></div>
 {:else if !user}

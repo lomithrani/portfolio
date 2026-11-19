@@ -41,7 +41,7 @@ describe('BeforeYouStart', () => {
 			"Before you book Read Louis's note, then confirm that you have read it."
 		);
 		expect(card).toContain(
-			'Select or create a job Pick one of your open job descriptions, or write a new one, which takes longer: Louis sees it in the meeting invitation.'
+			'Select or create a job Pick one of your open job descriptions, or write a new one (that takes longer). Louis sees it in the meeting invitation.'
 		);
 		expect(card).toContain('At least 70 opens the next step.');
 		expect(card).toContain('How long About 8 minutes');
