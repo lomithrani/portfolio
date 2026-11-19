@@ -673,7 +673,7 @@
 			data-setup-progress
 		>
 			<RocketLaunch size="16" class="shrink-0" aria-hidden="true" />
-			<span>{m.setup.title} {m.setup.progress(setup.done, setup.total)}</span>
+			<span>{m.setup(setup.done, setup.total)}</span>
 			<ArrowRight size="16" class="shrink-0" aria-hidden="true" />
 		</a>
 	{/if}

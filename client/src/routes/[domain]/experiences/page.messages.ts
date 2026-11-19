@@ -20,12 +20,11 @@ export const m = defineMessages({
 	/** The owner's heading above their buttons */
 	heading: { en: 'Experiences', fr: 'Expériences' },
 	/** The owner's link to the admin's "Get started" while its checklist is not complete */
+	/** The owner's link to the admin's "Get started", with how far its checklist is */
 	setup: {
-		title: { en: 'Get ready to share your link', fr: 'Préparez-vous à partager votre lien' },
-		progress: {
-			en: (done: number, total: number) => `(${done} of ${total})`,
-			fr: (done: number, total: number) => `(${done} sur ${total})`
-		}
+		en: (done: number, total: number) => `Get ready to share your link (${done} of ${total})`,
+		fr: (done: number, total: number) =>
+			`Préparez-vous à partager votre lien (${done} sur ${total})`
 	},
 	/**
 	 * The owner's "Add experience" button. In the floating corner it is short to fit the row: the

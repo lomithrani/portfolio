@@ -6,9 +6,14 @@ export const m = defineMessages({
 		online: { en: 'Your portfolio is online', fr: 'Votre portfolio est en ligne' }
 	},
 	subtitle: {
+		/**
+		 * Backed by: the Terms of use (#service: candidates never pay, article L5321-3 of the Labour
+		 * Code; client/src/lib/components/legal/content/TermsEn.svelte, TermsFr.svelte), and no
+		 * route of the API charges anyone
+		 */
 		create: {
-			en: 'Four steps, a few minutes, free.',
-			fr: 'Quatre étapes, quelques minutes, gratuit.'
+			en: 'Four steps, a few minutes. You never pay.',
+			fr: 'Quatre étapes, quelques minutes. Vous ne payez jamais.'
 		},
 		online: {
 			en: 'Fill it with your experiences, then share its address.',
@@ -26,11 +31,16 @@ export const m = defineMessages({
 		/** The badge of an address the account owns */
 		yours: { en: 'Yours', fr: 'À vous' },
 		label: { en: 'Choose your address', fr: 'Choisissez votre adresse' },
+		/**
+		 * Backed by: client/src/lib/robots.ts and client/src/hooks.server.ts (every page under
+		 * [domain] answers `x-robots-tag: noindex`), PortfolioHead.svelte (its robots meta): asked,
+		 * never "cannot be found"
+		 */
 		hint: {
 			en: (example: string) =>
-				`Lowercase letters, digits, dots and hyphens. Your name works well: ${example}.`,
+				`Lowercase letters, digits, dots and hyphens. Your name works (${example}), or any name you like: search engines are asked not to list your portfolio.`,
 			fr: (example: string) =>
-				`Lettres minuscules, chiffres, points et tirets. Votre nom convient très bien : ${example}.`
+				`Lettres minuscules, chiffres, points et tirets. Votre nom convient (${example}), ou tout autre nom : les moteurs de recherche sont priés de ne pas référencer votre portfolio.`
 		},
 		/** The availability of the address typed, next to the field's label */
 		pill: {
@@ -156,6 +166,11 @@ export const m = defineMessages({
 			en: 'Say what you want, choose your steps and open your calendar.',
 			fr: 'Dites ce que vous voulez, choisissez vos étapes et ouvrez votre agenda.'
 		},
+		/**
+		 * Backed by: server/services/workflowSteps/jobMatch.ts (a visitor's view: their score, the
+		 * step's minimum and, with showDetails, each criterion's name and outcome, never what is
+		 * asked), server/plugins/perfectJob.ts (the perfect job is read by its owner only)
+		 */
 		intro: {
 			en: 'Say what you want in a job, choose the steps recruiters go through, and open your calendar. Recruiters never see what you ask: only how their job scores against it.',
 			fr: "Dites ce que vous voulez d'un poste, choisissez les étapes que suivent les recruteurs et ouvrez votre agenda. Les recruteurs ne voient jamais ce que vous demandez : seulement la note de leur offre."

@@ -1282,10 +1282,29 @@ test.describe('the owner’s setup', () => {
 		await expect(setup).toHaveAttribute('href', `/${DOMAIN}/admin?tab=start`);
 		const before = await progress();
 
-		// One experience counts, as soon as it is there
-		await createExperience({ title: `Setup ${tag}` });
-		await gotoHydrated(page, `/${DOMAIN}/experiences`);
-		expect(await progress()).toEqual({ done: before.done + 1, total: before.total });
+		// One experience counts as soon as the owner adds it on the page, without a reload: the
+		// page counts its own experiences
+		await page.getByRole('button', { name: /^Add (your first )?experience$/ }).click();
+		const dialog = page.getByRole('dialog', { name: 'New experience' });
+		await dialog.getByRole('textbox', { name: 'Title', exact: true }).fill(`Setup ${tag}`);
+		await dialog.getByLabel('Company or school').fill('Acme');
+		await dialog.getByLabel('Start month').first().selectOption('03');
+		await dialog.getByLabel('Start year').first().selectOption('2022');
+		await dialog.getByLabel('I currently work here').check();
+		await dialog.getByRole('button', { name: 'Add experience', exact: true }).click();
+		await expect(page.getByText('Experience added')).toBeVisible();
+		await expect(dialog).toBeHidden();
+		await expect(setup).toContainText(`(${before.done + 1} of ${before.total})`);
+
+		// On a phone the link fits the page, under the heading
+		const viewport = page.viewportSize();
+		await page.setViewportSize({ width: 390, height: 844 });
+		const box = await setup.boundingBox();
+		expect(box && box.x >= 0 && box.x + box.width <= 390, JSON.stringify(box)).toBe(true);
+		expect(
+			await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+		).toBe(true);
+		if (viewport) await page.setViewportSize(viewport);
 
 		// It leads to the checklist, which opens on its own tab
 		await setup.click();

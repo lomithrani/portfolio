@@ -69,9 +69,23 @@ cannot be saved until it is fixed.
 	);
 	let changed = $derived(!sameSteps(steps, saved));
 
+	/**
+	 * Whether the owner saved a journey (GET /workflow's `saved`; false: the default one, never
+	 * saved); undefined until it was read
+	 */
+	let journeySaved = $state<boolean | undefined>(undefined);
+
 	/** Whether the journey holds changes not saved yet (the "Get started" tab asks before replacing it) */
 	export function hasChanges(): boolean {
 		return changed;
+	}
+
+	/**
+	 * Whether the owner saved a journey, as this tab read it (undefined while it is not known): the
+	 * "Get started" tab asks before replacing one, whatever its own checklist (perhaps older) says
+	 */
+	export function hasSavedJourney(): boolean | undefined {
+		return journeySaved;
 	}
 
 	// Unsaved steps hold text the owner wrote (a note): leaving the page asks first. A reload or
@@ -121,6 +135,7 @@ cannot be saved until it is fixed.
 			}
 			saved = data.steps;
 			steps = saved;
+			journeySaved = data.saved;
 			refused = null;
 			status = 'ready';
 		} catch {
@@ -189,6 +204,7 @@ cannot be saved until it is fixed.
 			}
 			saved = data.steps;
 			steps = saved;
+			journeySaved = true;
 			toaster.success({
 				title: m.saved,
 				description: journeySummary(saved, ownTitle)

@@ -55,16 +55,19 @@ region), and the button says it for a while. Like CopyLink, for a text of severa
 	async function copy() {
 		refused = false;
 		clearTimeout(timer);
+		// Emptied first: copying again is read out again
+		announcement = '';
 		if (!(await copyText(text))) {
 			copied = false;
 			refused = true;
+			// The field is described by the message once it shows, and the message is read out too
+			await tick();
+			announcement = m.copyYourself;
 			field?.focus();
 			field?.select();
 			return;
 		}
 		copied = true;
-		// Emptied first: copying again is read out again
-		announcement = '';
 		await tick();
 		announcement = m.copiedAnnouncement(label);
 		timer = setTimeout(() => (copied = false), 2500);

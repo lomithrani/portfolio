@@ -10,22 +10,33 @@ can wait, and none blocks the others or the link.
 The steps can be set here in one click: the gate journey of portfolio-common (journeyTemplate:
 a note, a job, its match against the perfect job, then the meeting), whose note can be changed
 first, or the meeting alone. It is saved with PUT /workflow, after asking when it replaces a
-journey the owner saved or one they are changing in the Hiring journey tab. The page owns the
-readiness and reloads it (and the journey editor) once the steps are saved.
+journey the owner saved (as the Hiring journey tab read it: this checklist may be older) or one
+they are changing there. The page owns the readiness and reloads it (and the journey editor) once
+the steps are saved; the focus then goes to the item's heading (the buttons pressed go away). A
+checklist that could not be read again stays, said to be out of date, with "Try again".
 -->
 <script lang="ts">
+	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { ArrowRight, Check, Eye, ExclamationTriangle } from 'svelte-heros-v2';
+	import {
+		ArrowRight,
+		Check,
+		DocumentArrowUp,
+		Eye,
+		ExclamationTriangle,
+		InformationCircle
+	} from 'svelte-heros-v2';
 	import {
 		DEFAULT_JOB_MATCH_MIN_SCORE,
+		intlLocale,
 		journeyTemplate,
 		parseWorkflow,
 		stepManifest,
 		type JourneyTemplate,
 		type WorkflowStep
 	} from 'portfolio-common';
-	import { portfolioTextApi } from '#services';
+	import { portfolioApi, portfolioTextApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
 	import {
 		missingEssentials,
@@ -37,11 +48,13 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 		type SetupItem
 	} from '#services/candidateSetup.ts';
 	import { failureText, networkError } from '#services/recruiter.ts';
+	import { quotaText, type ImportStatus } from '#services/resumeImport.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { journeySummary, noteContent, savedWorkflowProblem } from '#services/workflow.ts';
 	import { clientStep } from '#components/hire/steps/index.ts';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
 	import CopyLink from '#components/share/CopyLink.svelte';
+	import Rich from '#lib/i18n/Rich.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { m } from './StartTab.messages.ts';
 
@@ -53,6 +66,7 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 		reload,
 		openTab,
 		journeyChanged,
+		journeySaved,
 		onJourneySaved
 	}: {
 		domainName: string;
@@ -67,8 +81,16 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 		openTab: (tab: AdminTab) => void;
 		/** Whether the Hiring journey tab holds changes not saved yet */
 		journeyChanged: () => boolean;
-		/** The steps were saved from here: the page reads the readiness and the journey again */
-		onJourneySaved: () => void;
+		/**
+		 * Whether a journey was saved, as the Hiring journey tab read it (GET /workflow); undefined
+		 * while it does not know
+		 */
+		journeySaved: () => boolean | undefined;
+		/**
+		 * The steps were saved from here: the page reads the readiness and the journey again (done
+		 * once the promise settles)
+		 */
+		onJourneySaved: () => Promise<void>;
 	} = $props();
 
 	const uid = $props.id();
@@ -77,6 +99,22 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 	let items = $derived(readiness ? setupItems(readiness) : []);
 	let progress = $derived(readiness ? setupProgress(readiness) : null);
 	let link = $derived(portfolioLink(page.url.origin, domainName));
+
+	// --- The résumé import (GET /experiences/import), offered while there is no experience ----
+	let importStatus = $state.raw<ImportStatus | null>(null);
+	let importAvailable = $derived(!!importStatus?.enabled && importStatus.remaining > 0);
+	onMount(() => {
+		let cancelled = false;
+		portfolioApi.experiences.import
+			.get(withCredentials)
+			.then(({ data }) => {
+				if (!cancelled) importStatus = data ?? null;
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	// --- The gate journey ------------------------------------------------------------------
 	/** The gate's note as the owner changes it: the template's, in the owner's language */
@@ -97,14 +135,27 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 	let confirming = $state<JourneyTemplate | null>(null);
 	let saving = $state<JourneyTemplate | null>(null);
 	let saveError = $state('');
+	/** The steps item's heading, where the focus goes once they are saved */
+	let journeyHeading: HTMLElement | undefined = $state();
+	/** The dialog closes on a save: the focus goes to that heading, not to the button pressed */
+	let focusJourney = false;
 
 	const templateSteps = (name: JourneyTemplate) =>
 		name === 'gate' ? gateSteps : journeyTemplate('open');
 
+	/**
+	 * Whether saving a template replaces steps the owner chose: a journey saved, as the editor read
+	 * it or as the checklist says (the checklist may be older, the editor may not have read it yet:
+	 * either is enough, and not knowing asks too), or changes left in the editor
+	 */
+	const replacesChosenSteps = () =>
+		journeySaved() !== false || !!readiness?.journey.saved || journeyChanged();
+
 	function choose(name: JourneyTemplate) {
 		if (saving || (name === 'gate' && noteProblem)) return;
 		saveError = '';
-		if (readiness?.journey.saved || journeyChanged()) {
+		focusJourney = false;
+		if (replacesChosenSteps()) {
 			confirming = name;
 			return;
 		}
@@ -132,13 +183,20 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 						: failureText(error?.value, m.journey.saveFailed));
 				return;
 			}
+			const asked = confirming !== null;
+			focusJourney = true;
 			confirming = null;
 			editingNote = false;
 			toaster.success({
 				title: m.journey.saved,
 				description: journeySummary(data.steps, ownTitle)
 			});
-			onJourneySaved();
+			// The buttons pressed go once the checklist is read again: the focus waits on the heading
+			if (!asked) {
+				await tick();
+				journeyHeading?.focus();
+			}
+			await onJourneySaved();
 		} catch {
 			saveError = networkError();
 		} finally {
@@ -161,10 +219,18 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 	const calendarText = (readiness: Readiness, done: boolean) => {
 		const { calendar } = readiness;
 		if (!calendar.configured) return m.calendar.unavailable;
+		// Open, but the steps never lead recruiters to the meeting
+		if (done && !readiness.journey.meeting) return m.calendar.noMeeting(calendar.enabledSchedules);
 		if (done) return m.calendar.done(calendar.enabledSchedules);
 		if (calendar.reconnect) return m.calendar.reconnect;
 		return calendar.connected ? m.calendar.schedule : m.calendar.connect;
 	};
+
+	/** The essentials not rated yet, as one list ("the work mode, where you work and the contract") */
+	const essentialsList = (readiness: Readiness) =>
+		new Intl.ListFormat(intlLocale(), { type: 'conjunction' }).format(
+			missingEssentials(readiness).map((essential) => m.perfectJob.essentials[essential])
+		);
 
 	const linkButton = 'btn btn-sm preset-tonal';
 </script>
@@ -183,6 +249,19 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 	{:else if !readiness}
 		<p class="text-sm opacity-50" role="status">{m.loading}</p>
 	{:else}
+		{#if loadError}
+			<!-- Read again, it could not be: what shows is what was set before -->
+			<div
+				class="card preset-tonal-warning flex flex-wrap items-center gap-3 p-3 sm:p-4"
+				role="status"
+				data-readiness-stale
+			>
+				<p class="min-w-0 flex-1 basis-60 text-sm">{loadError}</p>
+				<button type="button" class="btn btn-sm preset-tonal" onclick={reload}>
+					{common.retry}
+				</button>
+			</div>
+		{/if}
 		{#if progress}
 			<div class="space-y-1.5" data-progress>
 				<p class="text-sm font-semibold">{m.progress(progress.done, progress.total)}</p>
@@ -219,16 +298,26 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 						{/if}
 					</span>
 					<div class="min-w-0 flex-1 space-y-3">
-						<h3 class="font-semibold">
-							{TITLES[item.id]}
-							<span class="sr-only">({STATE_TEXT[state]})</span>
-						</h3>
+						{#if item.id === 'journey'}
+							<h3 class="font-semibold outline-none" tabindex="-1" bind:this={journeyHeading}>
+								{TITLES[item.id]}
+								<span class="sr-only">({STATE_TEXT[state]})</span>
+							</h3>
+						{:else}
+							<h3 class="font-semibold">
+								{TITLES[item.id]}
+								<span class="sr-only">({STATE_TEXT[state]})</span>
+							</h3>
+						{/if}
 						{#if item.id === 'resume'}
-							{@render resume(item.done)}
+							{@render resume(readiness, item.done)}
 						{:else if item.id === 'perfectJob'}
 							{@render perfectJob(readiness, item.done)}
 						{:else if item.id === 'journey'}
-							{@render journey(readiness)}
+							{@render journey(
+								readiness,
+								items.find((other) => other.id === 'calendar')
+							)}
 						{:else}
 							<p class="text-sm text-surface-700-300">{calendarText(readiness, item.done)}</p>
 							{#if item.counted}
@@ -290,16 +379,45 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 		confirming = null;
 		saveError = '';
 	}}
+	finalFocusEl={() => (focusJourney ? (journeyHeading ?? null) : null)}
 />
 
-{#snippet resume(done: boolean)}
+{#snippet resume(readiness: Readiness, done: boolean)}
 	<p class="text-sm text-surface-700-300">
-		{done ? m.resume.done(readiness?.experiences ?? 0) : m.resume.toDo}
+		{done ? m.resume.done(readiness.experiences) : m.resume.toDo}
 	</p>
-	<a class={linkButton} href={resolve('/[domain]/experiences', { domain: domainName })}>
-		{m.resume.open}
-		<ArrowRight size="16" aria-hidden="true" />
-	</a>
+	<!-- Nothing on the portfolio yet: the résumé import (the experiences page opens it) -->
+	{#if readiness.experiences === 0 && importAvailable && importStatus}
+		<p class="flex items-start gap-2 text-xs text-surface-700-300">
+			<InformationCircle size="16" class="shrink-0" aria-hidden="true" />
+			<span>
+				<Rich text={m.resume.importNotice}>
+					{#snippet privacy(text)}<a class="link-text" href={resolve('/(site)/legal/privacy')}
+							>{text}</a
+						>{/snippet}
+				</Rich>
+			</span>
+		</p>
+		<div class="flex flex-wrap items-center gap-2">
+			<a
+				class="btn btn-sm preset-filled-primary-700-300"
+				href={resolve('/[domain]/experiences?import=1', { domain: domainName })}
+			>
+				<DocumentArrowUp size="16" aria-hidden="true" />
+				{m.resume.upload}
+			</a>
+			<a class={linkButton} href={resolve('/[domain]/experiences', { domain: domainName })}>
+				{m.resume.open}
+				<ArrowRight size="16" aria-hidden="true" />
+			</a>
+			<span class="text-xs text-surface-700-300">{quotaText(importStatus)}</span>
+		</div>
+	{:else}
+		<a class={linkButton} href={resolve('/[domain]/experiences', { domain: domainName })}>
+			{m.resume.open}
+			<ArrowRight size="16" aria-hidden="true" />
+		</a>
+	{/if}
 {/snippet}
 
 {#snippet perfectJob(readiness: Readiness, done: boolean)}
@@ -309,7 +427,7 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 	</p>
 	{#if done && missing.length > 0}
 		<p class="text-sm text-surface-700-300">
-			{m.perfectJob.suggest(missing.map((essential) => m.perfectJob.essentials[essential]))}
+			{m.perfectJob.suggest(essentialsList(readiness))}
 		</p>
 	{/if}
 	<button type="button" class={linkButton} onclick={() => openTab('perfect-job')}>
@@ -318,20 +436,41 @@ readiness and reloads it (and the journey editor) once the steps are saved.
 	</button>
 {/snippet}
 
-{#snippet journey(readiness: Readiness)}
+<!--
+The steps: what they ask before the meeting when they lead to one (the default journey too), that
+nobody books before the calendar is open, and the gate journey while it is not theirs
+-->
+{#snippet journey(readiness: Readiness, calendar: SetupItem | undefined)}
 	{@const { saved, blocked, meeting, gate, types } = readiness.journey}
-	{#if !saved}
-		<p class="text-sm text-surface-700-300">{m.journey.toDo}</p>
-	{:else if blocked}
-		<p class="text-sm text-surface-700-300">{m.journey.blocked}</p>
-	{:else if !meeting}
-		<p class="text-sm text-surface-700-300">{m.journey.noMeeting}</p>
-	{:else}
-		<p class="text-sm text-surface-700-300">
+	{@const leadsToMeeting = !saved || (!blocked && meeting)}
+	{@const meetingAlone = types.length === 1 && types[0] === 'meeting'}
+	{@const jobFirst = types.includes('job') && types.indexOf('job') < types.indexOf('meeting')}
+	<p class="text-sm text-surface-700-300">
+		{#if !saved}
+			{m.journey.toDo}
+		{:else if blocked}
+			{m.journey.blocked}
+		{:else if !meeting}
+			{m.journey.noMeeting}
+		{:else if meetingAlone}
+			{m.journey.meetingAlone}
+		{:else}
 			{journeySummary(types.map((type) => ({ type })))}
-			{#if !gate}{m.journey.noGate}{/if}
-		</p>
-	{/if}
+		{/if}
+		<!-- Nobody books before the calendar is open (on a site that takes calendars at all) -->
+		{#if leadsToMeeting && calendar?.counted && !calendar.done}
+			{m.journey.calendarFirst}
+		{/if}
+		{#if leadsToMeeting && !gate}
+			{!saved
+				? m.journey.choose
+				: meetingAlone
+					? m.journey.askFirst
+					: jobFirst
+						? m.journey.notScored
+						: m.journey.noGate}
+		{/if}
+	</p>
 
 	{#if !gate}
 		<div class="card preset-tonal space-y-3 p-3 sm:p-4" data-template="gate">

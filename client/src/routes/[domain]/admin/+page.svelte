@@ -47,17 +47,26 @@
 	let readinessError = $state('');
 	let readinessRequest: AbortController | undefined;
 
-	async function refreshReadiness() {
+	/**
+	 * Reads the checklist (again). An expired session signs the page out only on the first read,
+	 * before any tab can hold what the owner typed: later (the tab shown again, the steps saved),
+	 * signing out would unmount every tab, and what is not saved in them would be lost without a
+	 * word (no navigation, so their guards never ask). The checklist read before then stays, said
+	 * to be out of date, with "Try again"
+	 */
+	async function refreshReadiness(): Promise<void> {
 		readinessRequest?.abort();
 		const request = new AbortController();
 		readinessRequest = request;
-		if (!readiness) readinessStatus = 'loading';
+		const first = !readiness;
+		if (first) readinessStatus = 'loading';
 		const result = await loadReadiness(request.signal);
 		if (request.signal.aborted) return;
 		if (result.ok) {
 			readiness = result.readiness;
 			readinessStatus = 'ready';
-		} else {
+			readinessError = '';
+		} else if (first) {
 			if (result.reason === 'session-expired') clearAuthentication();
 			readinessError =
 				result.reason === 'session-expired'
@@ -65,8 +74,10 @@
 					: result.reason === 'network'
 						? networkError()
 						: m.readinessFailed;
-			// A checklist read before stays: it is only not up to date
-			readinessStatus = readiness ? 'ready' : 'error';
+			readinessStatus = 'error';
+		} else {
+			// The checklist read before stays: it is only not up to date
+			readinessError = m.readinessStale[result.reason];
 		}
 		if (tab === null) tab = defaultAdminTab(readiness);
 	}
@@ -125,9 +136,9 @@
 	/** Changed when "Get started" saved the steps: the editor starts again from them */
 	let journeyRevision = $state(0);
 
-	function journeySaved() {
+	function journeySaved(): Promise<void> {
 		journeyRevision++;
-		void refreshReadiness();
+		return refreshReadiness();
 	}
 
 	let progress = $derived(readiness ? setupProgress(readiness) : null);
@@ -197,6 +208,7 @@
 						reload={refreshReadiness}
 						{openTab}
 						journeyChanged={() => workflowsTab?.hasChanges() ?? false}
+						journeySaved={() => workflowsTab?.hasSavedJourney()}
 						onJourneySaved={journeySaved}
 					/>
 				</Tabs.Content>

@@ -218,7 +218,8 @@ export const linkText = (link: string): string => link.replace(/^[a-z][a-z0-9+.-
  */
 export const copyText = async (
 	text: string,
-	clipboard: Pick<Clipboard, 'writeText'> | undefined = globalThis.navigator?.clipboard
+	/** The browser's when none is given; null: none */
+	clipboard: Pick<Clipboard, 'writeText'> | null | undefined = globalThis.navigator?.clipboard
 ): Promise<boolean> => {
 	try {
 		if (!clipboard?.writeText) return false;

@@ -32,11 +32,22 @@ export const m = defineMessages({
 			fr: (count: number) =>
 				`${count} ${plural(count, 'expérience', 'expériences')} sur votre portfolio.`
 		},
-		open: { en: 'Open my experiences', fr: 'Ouvrir mes expériences' }
+		open: { en: 'Open my experiences', fr: 'Ouvrir mes expériences' },
+		/** While the portfolio has no experience and the résumé import is offered */
+		upload: { en: 'Upload my résumé (PDF)', fr: 'Importer mon CV (PDF)' },
+		importNotice: {
+			en: 'To be read, your PDF is sent to Anthropic, in the United States, which does not use it to train its models. Details in the <privacy>privacy policy</privacy>.',
+			fr: "Pour être lu, votre PDF est envoyé à Anthropic, aux États-Unis, qui ne l'utilise pas pour entraîner ses modèles. Détails dans la <privacy>politique de confidentialité</privacy>."
+		}
 	},
 
 	perfectJob: {
 		title: { en: 'What you want', fr: 'Ce que vous voulez' },
+		/**
+		 * Backed by: server/services/workflowSteps/jobMatch.ts (a visitor's view: their score, the
+		 * step's minimum and, with showDetails, each criterion's name and outcome, never what is
+		 * asked), server/plugins/perfectJob.ts (the perfect job is read by its owner only)
+		 */
 		toDo: {
 			en: 'Rate the pay first, then what else matters to you. Recruiters never see what you ask: only how their job scores against it.',
 			fr: "Notez d'abord la rémunération, puis ce qui compte aussi pour vous. Les recruteurs ne voient jamais ce que vous demandez : seulement la note de leur offre."
@@ -47,10 +58,10 @@ export const m = defineMessages({
 			fr: (count: number) =>
 				`La rémunération est notée, avec ${count} ${plural(count, 'critère', 'critères')} en tout.`
 		},
-		/** `essentials`: the essentials not rated yet, lowercased */
+		/** `essentials`: the essentials not rated yet, lowercased, as one list (Intl.ListFormat) */
 		suggest: {
-			en: (essentials: readonly string[]) => `You could also rate: ${essentials.join(', ')}.`,
-			fr: (essentials: readonly string[]) => `Vous pouvez aussi noter : ${essentials.join(', ')}.`
+			en: (essentials: string) => `You could also rate ${essentials}.`,
+			fr: (essentials: string) => `Vous pouvez aussi noter ${essentials}.`
 		},
 		essentials: {
 			pay: { en: 'the pay', fr: 'la rémunération' },
@@ -65,8 +76,28 @@ export const m = defineMessages({
 		title: { en: 'Your steps', fr: 'Vos étapes' },
 		/** The journey is the default one: a meeting alone, never chosen */
 		toDo: {
-			en: 'Today anyone books a meeting from your page for recruiters. Ask for the job first, or keep the meeting alone.',
-			fr: "Aujourd'hui, n'importe qui réserve un rendez-vous depuis votre page recruteurs. Demandez d'abord le poste, ou gardez seulement le rendez-vous."
+			en: 'You have not chosen your steps yet: today your page for recruiters asks nothing before the meeting.',
+			fr: "Vous n'avez pas encore choisi vos étapes : aujourd'hui, votre page recruteurs ne demande rien avant le rendez-vous."
+		},
+		/** After `toDo`, above the gate journey and "Keep the meeting alone" */
+		choose: {
+			en: 'Ask for the job first, or keep the meeting alone.',
+			fr: "Demandez d'abord le poste, ou gardez seulement le rendez-vous."
+		},
+		/** A journey the owner saved: the meeting alone */
+		meetingAlone: {
+			en: 'Your page for recruiters asks nothing before the meeting.',
+			fr: 'Votre page recruteurs ne demande rien avant le rendez-vous.'
+		},
+		/** After `meetingAlone`, above the gate journey */
+		askFirst: { en: 'To ask for the job first:', fr: "Pour demander d'abord le poste :" },
+		/**
+		 * The steps lead to a meeting, but the calendar item is not done: no slot can be booked yet
+		 * (said only on a site that takes Google Calendar connections)
+		 */
+		calendarFirst: {
+			en: 'Recruiters can book once your calendar is open.',
+			fr: 'Les recruteurs pourront réserver une fois votre agenda ouvert.'
 		},
 		/**
 		 * A step before the meeting is not available anymore (a journey saved by an older version):
@@ -109,6 +140,11 @@ export const m = defineMessages({
 		noGate: {
 			en: 'No job is asked for first. To ask for it:',
 			fr: "Aucune offre n'est demandée avant. Pour la demander d'abord :"
+		},
+		/** A job is asked for before the meeting, but no job match scores it before the meeting */
+		notScored: {
+			en: 'A job is asked for, but it is not scored against what you want before the meeting. To score it first:',
+			fr: "Une offre est demandée, mais elle n'est pas notée au regard de ce que vous voulez avant le rendez-vous. Pour la noter d'abord :"
 		},
 		open: { en: 'Change my steps', fr: 'Modifier mes étapes' },
 		/** Asked before replacing a journey the owner saved, or one they are changing */
@@ -160,6 +196,13 @@ export const m = defineMessages({
 				`Recruiters can book: ${count} ${plural(count, 'appointment schedule', 'appointment schedules')} turned on.`,
 			fr: (count: number) =>
 				`Les recruteurs peuvent réserver : ${count} ${plural(count, 'agenda de rendez-vous activé', 'agendas de rendez-vous activés')}.`
+		},
+		/** The calendar is open, but the steps never lead recruiters to the meeting */
+		noMeeting: {
+			en: (count: number) =>
+				`${count} ${plural(count, 'appointment schedule', 'appointment schedules')} turned on, but your steps never lead recruiters to a meeting: they cannot book one.`,
+			fr: (count: number) =>
+				`${count} ${plural(count, 'agenda de rendez-vous activé', 'agendas de rendez-vous activés')}, mais vos étapes ne mènent jamais les recruteurs à un rendez-vous : ils ne peuvent pas en réserver.`
 		},
 		open: { en: 'Open my calendar settings', fr: "Ouvrir mes réglages d'agenda" }
 	},

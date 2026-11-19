@@ -207,6 +207,14 @@ export const m = defineMessages({
 				en: 'Import your PDF résumé and review the drafts, or write your experiences yourself.',
 				fr: 'Importez votre CV en PDF et relisez les brouillons, ou rédigez vos expériences vous-même.'
 			}
+		},
+		/** Backed by: the admin's "Get started" tab (client/src/lib/components/admin/StartTab.svelte) */
+		terms: {
+			title: { en: 'Set your terms', fr: 'Fixez vos conditions' },
+			text: {
+				en: 'Say what you want in a job, choose the steps recruiters go through and open your calendar, then copy your link.',
+				fr: "Dites ce que vous voulez d'un poste, choisissez les étapes que suivent les recruteurs et ouvrez votre agenda, puis copiez votre lien."
+			}
 		}
 	},
 	faq: {

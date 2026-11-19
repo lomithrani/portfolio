@@ -16,7 +16,12 @@ import {
 import { stubAddressSearch } from './support/addresses';
 import { TERMS_REQUIRED, stubApi } from './support/api';
 import { createJob, deleteJobs } from './support/jobs';
-import { LEGAL_VERSION, PERFECT_JOB_CRITERIA } from 'portfolio-common';
+import {
+	DEFAULT_WORKFLOW_STEPS,
+	LEGAL_VERSION,
+	PERFECT_JOB_CRITERIA,
+	journeyTemplate
+} from 'portfolio-common';
 
 // The hiring journey of 'e2e-journey' (seeded by `bun run --cwd server seed:e2e`, changed by this
 // file alone): its owner adds, sets and orders the steps in the admin tab, and the e2e recruiter
@@ -215,8 +220,11 @@ test.describe('the admin page', () => {
 		// A journey saved (the meeting alone) is one the owner chose
 		await expect(item('journey')).toHaveAttribute('data-state', 'done');
 		await expect(item('journey')).toContainText(
-			'Recruiters can book a meeting right away. No job is asked for first.'
+			'Your page for recruiters asks nothing before the meeting. To ask for the job first:'
 		);
+		// Nobody can book on this site (no Google Calendar): the item does not say they can
+		await expect(item('calendar')).toHaveAttribute('data-state', 'unavailable');
+		await expect(item('journey')).not.toContainText('can book');
 		await expect(item('share').getByRole('textbox', { name: 'Your link' })).toHaveValue(
 			`http://localhost:4173/${DOMAIN}`
 		);
@@ -249,6 +257,8 @@ test.describe('the admin page', () => {
 		await expect(toasts(page).getByText('Steps saved')).toBeVisible();
 		await expect(dialog).toHaveCount(0);
 		await expect(gate).toHaveCount(0);
+		// The button pressed is gone: the focus waits on the item's heading
+		await expect(item('journey').getByRole('heading', { name: /^Your steps/ })).toBeFocused();
 		await expect(item('journey')).toContainText(
 			'Recruiters read a note, select or create a job, match the perfect job, then book a meeting.'
 		);
@@ -270,6 +280,168 @@ test.describe('the admin page', () => {
 		await expect(page.getByRole('tab', { name: 'Hiring journey' })).toBeFocused();
 		await expect(editorSteps(page)).toHaveCount(4);
 		await expect(page.getByRole('button', { name: 'Save journey' })).toBeDisabled();
+	});
+
+	test('"Get started" is read again each time it is shown, with its count on the tab', async ({
+		page
+	}) => {
+		await setPerfectJob({});
+		await setJourney('meeting');
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin`);
+		const checklist = page.getByRole('list', { name: 'Checklist' });
+		await expect(checklist.locator('[data-item="perfectJob"]')).toHaveAttribute(
+			'data-state',
+			'toDo'
+		);
+		const badge = page.getByRole('tab', { name: /^Get started/ }).locator('[data-start-progress]');
+		const count = async () => {
+			const shown = await badge.locator('[aria-hidden="true"]').innerText();
+			const [, done, total] = /^(\d+)\/(\d+)$/.exec(shown.trim()) ?? [];
+			return { done: Number(done), total: Number(total) };
+		};
+		const before = await count();
+		await expect(badge.locator('.sr-only')).toHaveText(`${before.done} of ${before.total} done`);
+
+		// The pay rated elsewhere (another tab, another device): shown again, the tab says so
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+		await setPerfectJob({ pay: { importance: 5, dealBreaker: true, perYear: 60000 } });
+		await page.getByRole('tab', { name: /^Get started/ }).click();
+		await expect(checklist.locator('[data-item="perfectJob"]')).toHaveAttribute(
+			'data-state',
+			'done'
+		);
+		await expect(badge.locator('.sr-only')).toHaveText(
+			`${before.done + 1} of ${before.total} done`
+		);
+		expect(await count()).toEqual({ done: before.done + 1, total: before.total });
+
+		// On a phone the row of tabs scrolls: the tab shown, and its count, are in sight
+		await page.setViewportSize({ width: 390, height: 844 });
+		const selected = page.getByRole('tab', { selected: true });
+		await expect(selected).toHaveText(/^Get started/);
+		const box = await selected.boundingBox();
+		expect(box && box.x >= 0 && box.x + box.width <= 390, JSON.stringify(box)).toBe(true);
+		expect(
+			await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+		).toBe(true);
+	});
+
+	test('an expired session when "Get started" is read again keeps what the other tabs hold', async ({
+		page
+	}) => {
+		await setPerfectJob({});
+		await setJourney('meeting');
+		// The first read lets the page open; the ones after it find the session expired
+		let reads = 0;
+		let expired = true;
+		await stubApi(page, 'GET', '/me/readiness', () =>
+			reads++ === 0 || !expired ? undefined : { status: 401, text: 'Unauthorized' }
+		);
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin`);
+		await expect(selectedTab(page)).toHaveText(/^Get started/);
+		const checklist = page.getByRole('list', { name: 'Checklist' });
+		await expect(checklist).toBeVisible();
+
+		// Steps and a criterion changed, not saved
+		await page.getByRole('tab', { name: 'Hiring journey' }).click();
+		await expect(editorSteps(page)).toHaveCount(1);
+		await addStep(page, 'Read a note').click();
+		await expect(editorSteps(page)).toHaveCount(2);
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+		const pay = page.locator('[data-criterion="pay"]');
+		await pay.locator('[data-part="control"]').click();
+		await expect(pay.locator('[data-importance]')).toBeVisible();
+
+		await page.getByRole('tab', { name: /^Get started/ }).click();
+		const stale = page.locator('[data-readiness-stale]');
+		await expect(stale).toContainText(
+			'Your session expired, so this checklist could not be updated. Sign in again in another tab, then try again.'
+		);
+		// Still signed in, the checklist read before still shown, every tab still there
+		await expect(checklist).toBeVisible();
+		await expect(page.getByText('Only the admin of this domain')).toHaveCount(0);
+		await page.getByRole('tab', { name: 'Hiring journey' }).click();
+		await expect(editorSteps(page)).toHaveCount(2);
+		await page.getByRole('tab', { name: 'Perfect job' }).click();
+		await expect(pay.locator('[data-importance]')).toBeVisible();
+
+		// Signed in again (elsewhere): "Try again" reads it
+		await page.getByRole('tab', { name: /^Get started/ }).click();
+		await expect(stale).toBeVisible();
+		expired = false;
+		await stale.getByRole('button', { name: 'Try again' }).click();
+		await expect(stale).toHaveCount(0);
+		await expect(checklist).toBeVisible();
+	});
+
+	test('a journey never saved is set from "Get started" without being asked', async ({ page }) => {
+		await setPerfectJob({});
+		await setJourney('meeting');
+		// As for a portfolio whose owner never saved a journey (the e2e one has: it is answered)
+		await stubApi(page, 'GET', '/me/readiness', () => ({
+			json: {
+				domain: DOMAIN,
+				experiences: 0,
+				perfectJob: {
+					criteria: 0,
+					essentials: { pay: false, workMode: false, place: false, contractTypes: false }
+				},
+				journey: { saved: false, types: ['meeting'], blocked: false, gate: false, meeting: true },
+				calendar: { configured: true, connected: false, reconnect: false, enabledSchedules: 0 }
+			}
+		}));
+		await stubApi(page, 'GET', '/workflow', () => ({
+			json: { steps: DEFAULT_WORKFLOW_STEPS, saved: false }
+		}));
+		// The résumé import is offered (this API has no Claude key: answered here, never called)
+		await stubApi(page, 'GET', '/experiences/import', () => ({
+			json: { enabled: true, limit: 3, remaining: 2, resetsAt: null }
+		}));
+		const dialogs: string[] = [];
+		page.on('dialog', (dialog) => dialogs.push(dialog.message()));
+		await signIn(page, owner);
+		await gotoHydrated(page, `/${DOMAIN}/admin?tab=start`);
+		const checklist = page.getByRole('list', { name: 'Checklist' });
+		const journey = checklist.locator('[data-item="journey"]');
+		await expect(journey).toHaveAttribute('data-state', 'toDo');
+		// No experience yet: the résumé import is one click away, with where the PDF goes
+		const resume = checklist.locator('[data-item="resume"]');
+		await expect(resume.getByRole('link', { name: 'Upload my résumé (PDF)' })).toHaveAttribute(
+			'href',
+			`/${DOMAIN}/experiences?import=1`
+		);
+		await expect(resume).toContainText('your PDF is sent to Anthropic, in the United States');
+		// The calendar is not open yet: nobody books
+		await expect(journey).toContainText(
+			'You have not chosen your steps yet: today your page for recruiters asks nothing before the meeting. Recruiters can book once your calendar is open. Ask for the job first, or keep the meeting alone.'
+		);
+		// The editor has read the journey too: it knows none was saved
+		await page.getByRole('tab', { name: 'Hiring journey' }).click();
+		await expect(editorSteps(page)).toHaveCount(1);
+		await page.getByRole('tab', { name: /^Get started/ }).click();
+
+		const replace = page.getByRole('alertdialog', { name: 'Replace your steps?' });
+		const storedTypes = async () =>
+			((await (await ownerApi.get(`${API_URL}/workflow`)).json()).steps as { type: string }[]).map(
+				({ type }) => type
+			);
+		// Saved as the meeting alone, the steps a new portfolio has (what is stored before differs)
+		await setJourney('job', 'meeting');
+		await journey.getByRole('button', { name: 'Keep the meeting alone' }).click();
+		await expect(toasts(page).getByText('Steps saved').first()).toBeVisible();
+		await expect(replace).toHaveCount(0);
+		await expect(journey.getByRole('heading', { name: /^Your steps/ })).toBeFocused();
+		await expect.poll(storedTypes).toEqual(DEFAULT_WORKFLOW_STEPS.map(({ type }) => type));
+		const kept = await (await ownerApi.get(`${API_URL}/workflow`)).json();
+		expect(kept.steps).toEqual(DEFAULT_WORKFLOW_STEPS);
+
+		// Still never saved, as answered here: the gate is saved without asking either
+		await journey.getByRole('button', { name: 'Use these steps' }).click();
+		await expect.poll(storedTypes).toEqual(journeyTemplate('gate').map(({ type }) => type));
+		await expect(replace).toHaveCount(0);
+		expect(dialogs).toEqual([]);
 	});
 });
 
@@ -352,6 +524,22 @@ test.describe('the hiring journey', () => {
 		);
 		await expect(step(page, 'Step 2: Book a meeting')).toContainText(
 			'Online booking is not available right now.'
+		);
+
+		// Its note leads back to the steps, in the admin's Hiring journey tab
+		const change = page
+			.locator('[data-owner-note]')
+			.getByRole('link', { name: 'Change the steps' });
+		await expect(change).toHaveAttribute('href', `/${DOMAIN}/admin?tab=workflows`);
+		await change.click();
+		await expect(page.getByRole('tab', { name: 'Hiring journey', selected: true })).toBeVisible();
+		await expect(editorSteps(page)).toHaveCount(2);
+		// A job asked for, but not scored before the meeting: "Get started" says so
+		await page.getByRole('tab', { name: /^Get started/ }).click();
+		await expect(
+			page.getByRole('list', { name: 'Checklist' }).locator('[data-item="journey"]')
+		).toContainText(
+			'Recruiters select or create a job, then book a meeting. A job is asked for, but it is not scored against what you want before the meeting. To score it first:'
 		);
 	});
 

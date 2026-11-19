@@ -242,7 +242,7 @@
 				<Rich text={m.own}>
 					{#snippet admin(text)}<a
 							class="underline underline-offset-2"
-							href={resolve('/[domain]/admin', { domain: data.domainName })}>{text}</a
+							href={resolve('/[domain]/admin?tab=workflows', { domain: data.domainName })}>{text}</a
 						>{/snippet}
 				</Rich>
 			</p>

@@ -36,16 +36,19 @@ happened is read out (a polite live region), and the button says it for a while.
 	async function copy() {
 		refused = false;
 		clearTimeout(timer);
+		// Emptied first: copying again is read out again
+		announcement = '';
 		if (!(await copyText(link))) {
 			copied = false;
 			refused = true;
+			// The field is described by the message once it shows, and the message is read out too
+			await tick();
+			announcement = m.copyYourself;
 			field?.focus();
 			field?.select();
 			return;
 		}
 		copied = true;
-		// Emptied first: copying again is read out again
-		announcement = '';
 		await tick();
 		announcement = m.copiedAnnouncement(linkText(link));
 		timer = setTimeout(() => (copied = false), 2500);

@@ -28,7 +28,7 @@
 	// things, each with a short recording of the app (DemoVideo): a job matchmaker on their side
 	// (the calls they no longer take, then the hiring journey and the perfect job that stop
 	// them) and a portfolio they make their own. Then the card that creates one
-	// (CandidateOnboarding)'s three steps and the questions. Rendered on the server, signed out,
+	// (CandidateOnboarding), its four steps and the questions. Rendered on the server, signed out,
 	// in the visitor's language (English or French, each with its address for search engines);
 	// the signed-in state only shows in the browser once the session is checked.
 
@@ -86,7 +86,7 @@
 		{ icon: Funnel, ...m.yours.skills }
 	];
 
-	const howItWorks = [m.how.signIn, m.how.claim, m.how.resume];
+	const howItWorks = [m.how.signIn, m.how.claim, m.how.resume, m.how.terms];
 
 	const linkClass =
 		'font-medium text-primary-700-300 underline underline-offset-2 hover:decoration-2';
@@ -285,13 +285,13 @@
 			</div>
 		</section>
 
-		<!-- How it works: the card's three steps -->
+		<!-- How it works: the card's four steps -->
 		<section class="mt-20 space-y-8 md:mt-28" aria-labelledby="how-title">
 			<div class="mx-auto max-w-2xl space-y-3 text-center">
 				<h2 id="how-title" class="text-2xl font-bold md:text-3xl">{m.how.title}</h2>
 				<p class="text-surface-700-300">{m.how.intro}</p>
 			</div>
-			<ol class="grid gap-4 md:grid-cols-3">
+			<ol class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 				{#each howItWorks as step, index (step.title)}
 					<li class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-3 p-5">
 						<span

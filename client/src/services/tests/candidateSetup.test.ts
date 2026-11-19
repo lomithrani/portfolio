@@ -1,10 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// vi.mock factories are hoisted: they cannot reference outer variables (but vi.hoisted ones)
+const { mockReadinessGet } = vi.hoisted(() => ({ mockReadinessGet: vi.fn() }));
+
+vi.mock('#services', () => ({
+	portfolioTextApi: { me: { readiness: { get: mockReadinessGet } } }
+}));
+
 import {
 	ADMIN_TABS,
 	adminTab,
 	copyText,
 	defaultAdminTab,
 	linkText,
+	loadReadiness,
 	missingEssentials,
 	portfolioLink,
 	readReadiness,
@@ -224,6 +233,75 @@ describe('the link', () => {
 			throw new DOMException('Not allowed', 'NotAllowedError');
 		});
 		expect(await copyText('x', { writeText: refused })).toBe(false);
-		expect(await copyText('x', undefined)).toBe(false);
+		// No clipboard (an insecure page), or one without writeText
+		expect(await copyText('x', null)).toBe(false);
+		expect(await copyText('x', {} as Pick<Clipboard, 'writeText'>)).toBe(false);
+	});
+
+	it('is copied with the browser’s clipboard when none is given', async () => {
+		const writeText = vi.fn(async () => {});
+		vi.stubGlobal('navigator', { clipboard: { writeText } });
+		try {
+			expect(await copyText('https://portfolio.example/jane.doe')).toBe(true);
+			expect(writeText).toHaveBeenCalledWith('https://portfolio.example/jane.doe');
+			vi.stubGlobal('navigator', {});
+			expect(await copyText('x')).toBe(false);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
+describe('loadReadiness', () => {
+	beforeEach(() => mockReadinessGet.mockReset());
+
+	it('reads the readiness for the signed-in account, with its cookie', async () => {
+		mockReadinessGet.mockResolvedValue({ data: READY, error: null });
+		const signal = new AbortController().signal;
+		expect(await loadReadiness(signal)).toEqual({ ok: true, readiness: READY });
+		expect(mockReadinessGet).toHaveBeenCalledWith({
+			fetch: { credentials: 'include', signal }
+		});
+	});
+
+	it('reports an expired session, and leaves signing out to the caller', async () => {
+		mockReadinessGet.mockResolvedValue({
+			data: null,
+			error: { status: 401, value: 'Unauthorized' }
+		});
+		expect(await loadReadiness()).toEqual({ ok: false, reason: 'session-expired' });
+	});
+
+	it('tells a request that got no answer from an answer that is an error', async () => {
+		// Eden Treaty turns a fetch that failed into a 503 whose value is the fetch error
+		mockReadinessGet.mockResolvedValue({
+			data: null,
+			error: { status: 503, value: new TypeError('Failed to fetch') }
+		});
+		expect(await loadReadiness()).toEqual({ ok: false, reason: 'network' });
+		mockReadinessGet.mockRejectedValue(new TypeError('Failed to fetch'));
+		expect(await loadReadiness()).toEqual({ ok: false, reason: 'network' });
+
+		mockReadinessGet.mockResolvedValue({
+			data: null,
+			error: { status: 500, value: 'Internal error' }
+		});
+		expect(await loadReadiness()).toEqual({ ok: false, reason: 'error' });
+		mockReadinessGet.mockResolvedValue({
+			data: null,
+			error: { status: 503, value: 'Service Unavailable' }
+		});
+		expect(await loadReadiness()).toEqual({ ok: false, reason: 'error' });
+	});
+
+	it('takes an answer that is not a readiness as an error', async () => {
+		for (const data of [null, 'ready', [READY], 42]) {
+			mockReadinessGet.mockResolvedValue({ data, error: null });
+			expect(await loadReadiness(), JSON.stringify(data)).toEqual({ ok: false, reason: 'error' });
+		}
+		// A readiness with fields missing reads as nothing set (readReadiness)
+		mockReadinessGet.mockResolvedValue({ data: { domain: 'jane.doe' }, error: null });
+		const result = await loadReadiness();
+		expect(result.ok && result.readiness.experiences).toBe(0);
 	});
 });

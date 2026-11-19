@@ -608,6 +608,77 @@ test.describe('landing page, portfolio owner', () => {
 		await expect(card(page).getByRole('link', { name: 'Upload my résumé (PDF)' })).toBeVisible();
 	});
 
+	test('an expired session there does not sign the landing page out', async ({ page }) => {
+		await stubGoogle(page);
+		await signIn(page, await ownerSession('e2e-owner'));
+		await stubImportStatus(page, { enabled: true, remaining: 2 });
+		const reads = await stubApi(page, 'GET', '/me/readiness', () => ({
+			status: 401,
+			text: 'Unauthorized'
+		}));
+
+		await gotoHydrated(page, '/');
+		await expect(currentStep(page)).toContainText('Add your résumé');
+		expect(reads.length).toBeGreaterThan(0);
+		// Still the owner's card: no sign-in step, the import offered
+		await expect(card(page).getByRole('link', { name: 'Upload my résumé (PDF)' })).toBeVisible();
+		await expect(
+			card(page).getByRole('heading', { name: 'Your portfolio is online' })
+		).toBeVisible();
+		await expect(card(page).getByRole('checkbox')).toHaveCount(0);
+		await expect(card(page).getByRole('button', { name: 'Sign in with Google' })).toHaveCount(0);
+	});
+
+	test('a browser that refuses to copy leaves the link selected, and says so', async ({ page }) => {
+		await page.addInitScript(() => {
+			Object.defineProperty(navigator, 'clipboard', {
+				configurable: true,
+				value: {
+					writeText: () => Promise.reject(new DOMException('Not allowed', 'NotAllowedError'))
+				}
+			});
+		});
+		await stubGoogle(page);
+		await signIn(page, await ownerSession('e2e-owner'));
+		await stubImportStatus(page, { enabled: true, remaining: 2 });
+		const started = newReadiness('e2e-owner');
+		started.experiences = 1;
+		await stubReadiness(page, () => started);
+
+		await gotoHydrated(page, '/');
+		await expect(currentStep(page)).toContainText('Set your terms');
+		const field = currentStep(page).getByRole('textbox', { name: 'Your link' });
+		const link = 'http://localhost:4173/e2e-owner';
+		await currentStep(page).getByRole('button', { name: 'Copy your link' }).click();
+
+		const refused =
+			'Your browser did not let the page copy it: the link is selected, copy it yourself.';
+		await expect(currentStep(page).locator('p:not(.sr-only)', { hasText: refused })).toBeVisible();
+		await expect(field).toBeFocused();
+		await expect(field).toHaveAccessibleDescription(refused);
+		expect(
+			await field.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd])
+		).toEqual([0, link.length]);
+		// Read out too (the live region), and the button does not say it was copied
+		await expect(
+			currentStep(page).locator('[aria-live="polite"]', { hasText: refused })
+		).toBeAttached();
+		await expect(currentStep(page).getByRole('button', { name: 'Link copied' })).toHaveCount(0);
+
+		// On a phone the field and its button fit the card
+		await page.setViewportSize({ width: 390, height: 844 });
+		for (const control of [
+			field,
+			currentStep(page).getByRole('button', { name: 'Copy your link' })
+		]) {
+			const box = await control.boundingBox();
+			expect(box && box.x >= 0 && box.x + box.width <= 390, JSON.stringify(box)).toBe(true);
+		}
+		expect(
+			await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+		).toBe(true);
+	});
+
 	test('`?import=1` without the import available only leaves the URL', async ({ page }) => {
 		await stubGoogle(page);
 		await signIn(page, await ownerSession('e2e-owner'));
