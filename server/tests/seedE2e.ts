@@ -55,7 +55,7 @@ import {
   Workflow
 } from "../models/database";
 import type { JobPosting as StoredJobPosting } from "../models/database/jobPosting";
-import { reviewedVersion } from "../services/jobMatching";
+import { reviewedVersion } from "../services/jobVersion";
 import { recordConsent } from "../services/legal";
 import { redactConnectionString } from "../services/redact";
 

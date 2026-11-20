@@ -1,10 +1,8 @@
-import { createHash } from 'node:crypto';
 import type { Types } from 'mongoose';
 import {
   MATCHING_JOB_STATUSES,
   MATCHING_LIMITS,
   OPEN_JOB_STATUS,
-  canonicalJobSnapshot,
   endedMatchExpiry,
   jobSnapshotsDiffer,
   keepsMatching,
@@ -19,6 +17,7 @@ import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../e
 import { MATCHING_NEEDS_OPEN_JOB } from '../protocol';
 import { warmOffice } from './commute';
 import { JOB_NOT_FOUND, storedJobSnapshot, toJobPostingDto, toJobSnapshot } from './jobPostings';
+import { reviewedVersion, versionNow } from './jobVersion';
 import type { JobPostingDto } from './jobPostings';
 
 // The job side of matching (Path 2, behind MATCHING): a recruiter's switch,
@@ -102,19 +101,7 @@ export const LIVE_IN_MATCHING = {
 
 // ── The version a review is of ──────────────────────────────
 
-/** The version of a stored posting as a share or a snapshot of it now keeps it, to compare */
-const versionNow = (posting: StoredJobPosting): JobSnapshot => {
-  const snapshot = toJobSnapshot(posting);
-  return storedJobSnapshot(snapshot) ?? snapshot;
-};
-
-/**
- * The version of a posting a review is of: a hash of it as candidates read it (its JobSnapshot,
- * normalised, the keys in order), the same for the same content. A review holds for that version
- * only: changed since, the job is pending again
- */
-export const reviewedVersion = (job: StoredJobPosting): string =>
-  createHash('sha256').update(canonicalJobSnapshot(versionNow(job))).digest('base64url');
+export { reviewedVersion } from './jobVersion';
 
 /**
  * The review of a job entering matching now: the decision it had while the posting is still the
