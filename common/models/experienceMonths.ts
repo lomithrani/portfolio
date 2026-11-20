@@ -276,13 +276,20 @@ export type SkillUse = {
 	months: number;
 	/** How many projects use it, dated or not: the page's "Used in 3 projects" */
 	projects: number;
+	/**
+	 * How many of those projects can be placed (their experience has dates): with none, its months
+	 * cannot be counted (the page shows no time); with some and no month, it is not used yet (each
+	 * of them is planned later)
+	 */
+	placed: number;
 };
 
 /**
  * Every skill of these experiences' projects, technical or soft, by key (see normalizeSkill), with
  * how much it was used: what skillMonths(experiences, (project) => projectUsesSkill(project, key),
- * now) counts for each key, and how many projects use it, in one pass (each experience's period
- * worked out once, each project placed once), for the API, which ranks a candidate's skills
+ * now) counts for each key, how many projects use it and how many of those can be placed, in one
+ * pass (each experience's period worked out once, each project placed once), for the API, which
+ * ranks a candidate's skills
  */
 export function skillUsesByKey<P extends Dated & SkilledProject>(
 	experiences: readonly (Dated & { projects?: readonly P[] | null })[],
@@ -316,7 +323,7 @@ export function skillUsesByKey<P extends Dated & SkilledProject>(
 	return new Map(
 		[...used].map(([key, { spans, projects }]) => [
 			key,
-			{ months: countMonths(spans, until), projects }
+			{ months: countMonths(spans, until), projects, placed: spans.length }
 		])
 	);
 }

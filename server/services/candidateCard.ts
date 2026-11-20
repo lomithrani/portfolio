@@ -17,7 +17,7 @@ import {
   sortExperiences,
   MATCHING_LIMITS
 } from 'portfolio-common';
-import type { PerfectJobCriterion } from 'portfolio-common';
+import type { PerfectJob as PerfectJobCriteria, PerfectJobCriterion } from 'portfolio-common';
 import { env } from '../env';
 import { DiscoveryProfile, Domain, User } from '../models/database';
 import { perfectJobOf } from './perfectJobs';
@@ -27,21 +27,28 @@ import type { JobMatchCriterionView, JobMatchOutcome } from './workflowSteps/job
 // The anonymous card of a candidate (Path 2, matching, behind MATCHING): what
 // a recruiter reads of them before both sides are interested, and what the
 // candidate previews (GET /discovery/card). Built here, on the server, only
-// from what may be shown, as the discovery consent words it
+// from what may be shown, as the discovery consent words it, field by field
 // (legalMessages.discoveryConsent): the headline the candidate wrote, their
-// professional role titles with the months spent in each, their months of
-// professional experience in all, their skills with the months they used
-// each. Never their name, their portfolio's title or address, their email, a
-// company, a place, a project's name or summary, a date, an id, their
-// perfect job, a score or a travel time: none of it is even loaded, but the
-// names the card's texts are checked against.
+// professional role titles with the months spent in each and whether each is
+// held now, their months of professional experience in all, their skills with
+// the months they used each. Never their name, their portfolio's title or
+// address, their email, a company, a place, a project's name or summary, a
+// date, an id, their perfect job, a score or a travel time: none of it is
+// even loaded, but the names the card's texts are checked against (in memory
+// only: never logged, never kept, never in an answer).
+//
+// A recruiter reads anonymousCard (the feeds, 2.7): the card alone. The
+// candidate's preview (candidateCardPreview) adds what the card leaves out of
+// what they set, which names what says who they are (a skill named after an
+// employer, the ids of their experiences): it never reaches a recruiter.
 //
 // The months are counted as the candidate's experiences page counts them
 // (portfolio-common's experienceMonths.ts): a skill's months are the
 // skillMonths of the projects using it. An experience the candidate hides
 // from the card counts for nothing on it: not its role, not its months, not
-// its projects' skills. A text that says who the candidate is (their name,
-// their portfolio, a company or a place of their experiences, a link, an
+// its projects' skills. A text that says who the candidate is (their name, as
+// their account or their email address writes it, their portfolio, a company
+// or a place of their experiences, a place of their perfect job, a link, an
 // email address or a phone number: cardTextIdentifies) is left out: a role
 // with such a title, a skill with such a name, a headline that came to name
 // them since it was saved; the preview tells the candidate which, to change.
@@ -67,9 +74,12 @@ export interface CandidateCardSkill {
   name: string;
   /**
    * The months it was used: the calendar months of the projects using it,
-   * each counted once, up to the current month (portfolio-common skillMonths)
+   * each counted once, up to the current month (portfolio-common skillMonths);
+   * null when none of them can be placed (their experiences have no dates), as
+   * the experiences page then shows no time. A skill only planned (every
+   * project using it starts later) is none of the card's
    */
-  months: number;
+  months: number | null;
 }
 
 /** What a recruiter reads of a candidate before both sides are interested */
@@ -87,11 +97,19 @@ export interface CandidateCard {
    */
   roles: CandidateCardRole[];
   /**
-   * The technical skills, the most used first (by months, then by projects),
-   * MATCHING_LIMITS.skills at most
+   * The technical skills, the most used first (by months, those without a
+   * time after, then by projects), MATCHING_LIMITS.skills at most
    */
   skills: CandidateCardSkill[];
 }
+
+/** The fields of a card, in order: what the discovery consent names, no more */
+export const CANDIDATE_CARD_FIELDS = [
+  'headline',
+  'experienceMonths',
+  'roles',
+  'skills'
+] as const satisfies readonly (keyof CandidateCard)[];
 
 /**
  * Why a professional experience is not a role of the card: hidden by the
@@ -110,8 +128,8 @@ export interface CardWithheld {
   skills: string[];
 }
 
-/** A candidate's card, and what it leaves out of what they set */
-export interface BuiltCard {
+/** A candidate's card, and what it leaves out of what they set: for the candidate alone */
+interface BuiltCard {
   card: CandidateCard;
   withheld: CardWithheld;
 }
@@ -179,7 +197,7 @@ export interface CardExperience {
 }
 
 /** What the card of a candidate is built from (loadCard) */
-export interface CardSource {
+interface CardSource {
   /** The headline they saved */
   headline: string | null;
   /** The ids of the experiences they hide from the card */
@@ -192,7 +210,11 @@ export interface CardSource {
 
 /** What says who a candidate is, which their card's texts are checked against */
 export interface CandidateIdentity {
-  /** cardIdentityNames: their name, their portfolio's title and address name, their companies and places */
+  /**
+   * cardIdentityNames: their name (their account's, their email address's),
+   * their portfolio's title and address name, their companies, the places of
+   * their experiences and of their perfect job
+   */
   names: string[];
   /** The hosts of the site's pages, where their portfolio is (`<host>/` in a text is a link to it) */
   hosts: string[];
@@ -218,48 +240,83 @@ export const identifiesCandidate = (text: string, identity: CandidateIdentity): 
   return identity.hosts.some((host) => lower.includes(`${host}/`));
 };
 
+/**
+ * The town of the place the candidate travels from (their perfect job's
+ * commute), never its street: the town after the postal code of the place
+ * the API found (`1 Rue de la Paix 75002 Paris`), or the place itself when it
+ * is a town; else the last part of the address as typed (`…, Villeurbanne`)
+ * without its postal code. Only to check the card's texts against
+ */
+const commuteTown = (commute: PerfectJobCriteria['commute']): string | undefined => {
+  if (!commute) return undefined;
+  for (const address of [commute.place?.label, commute.from]) {
+    if (!address) continue;
+    const afterCode = /\b\d{5}\s+([^\d,]+)$/u.exec(address.trim())?.[1]?.trim();
+    if (afterCode) return afterCode;
+    const last = address.split(',').at(-1)?.replace(/\b\d{4,5}\b/g, '').trim();
+    if (last && !/\d/.test(last)) return last;
+  }
+  return undefined;
+};
+
+/** What the card's texts are checked against, of the account `user` */
+type IdentityUser = { name?: string | null; surname?: string | null; email?: string | null } | null;
+
 const identityOf = (
-  user: { name?: string | null; surname?: string | null } | null,
+  user: IdentityUser,
   domain: { name?: string | null; headerTitle?: string | null } | null,
-  experiences: readonly Pick<CardExperience, 'company' | 'location'>[]
+  experiences: readonly Pick<CardExperience, 'company' | 'location'>[],
+  perfectJob: PerfectJobCriteria
 ): CandidateIdentity => ({
   names: cardIdentityNames({
-    person: [user?.name, user?.surname].filter(Boolean).join(' '),
+    name: user?.name,
+    surname: user?.surname,
+    email: user?.email,
     portfolio: [domain?.headerTitle, domain?.name],
     companies: experiences.map((experience) => experience.company?.name),
-    places: experiences.map((experience) => experience.location)
+    places: [
+      ...experiences.map((experience) => experience.location),
+      ...(perfectJob.cities?.places ?? []),
+      commuteTown(perfectJob.commute)
+    ]
   }),
   hosts: siteHosts()
 });
 
-const userName = (userId: string) =>
-  User.findById(userId, { name: 1, surname: 1 }).lean<{ name?: string; surname?: string }>();
+const identityUser = (userId: string) =>
+  User.findById(userId, { name: 1, surname: 1, email: 1 }).lean<{ name?: string; surname?: string; email?: string }>();
 
 /**
- * What says who the account `userId` is (its name, its portfolio's title and
- * address name, the companies and places of its experiences), which its card's
- * texts are checked against: PUT /discovery refuses a headline that names it
+ * What says who the account `userId` is (its name, its email address's local
+ * part, its portfolio's title and address name, the companies and places of
+ * its experiences, the places of its perfect job), which its card's texts are
+ * checked against: PUT /discovery refuses a headline that names it
  */
 export async function candidateIdentity(userId: string): Promise<CandidateIdentity> {
-  const [user, domain] = await Promise.all([
-    userName(userId),
+  const [user, domain, perfectJob] = await Promise.all([
+    identityUser(userId),
     Domain.findOne({ admin: userId }, { name: 1, headerTitle: 1, experiences: 1 })
       .populate<{ experiences: Pick<CardExperience, 'company' | 'location'>[] }>({
         path: 'experiences',
         select: { 'company.name': 1, location: 1 }
       })
-      .lean()
+      .lean(),
+    perfectJobOf(userId)
   ]);
-  return identityOf(user, domain, domain?.experiences ?? []);
+  return identityOf(user, domain, domain?.experiences ?? [], perfectJob);
 }
 
-/** What the card of the account `userId` is built from: its profile's card settings, its portfolio, its name */
-async function loadCard(userId: string): Promise<CardSource> {
-  const [profile, user, domain] = await Promise.all([
+/**
+ * What the card of the account `userId` is built from: its profile's card
+ * settings, its portfolio, what says who it is (with its perfect job, given
+ * back for the preview's outcomes)
+ */
+async function loadCard(userId: string): Promise<{ source: CardSource; perfectJob: PerfectJobCriteria }> {
+  const [profile, user, domain, perfectJob] = await Promise.all([
     DiscoveryProfile.findOne({ user: userId }, { card: 1 }).lean<{
       card?: { headline?: string | null; hiddenExperiences?: Types.ObjectId[] | null } | null;
     }>(),
-    userName(userId),
+    identityUser(userId),
     Domain.findOne({ admin: userId }, { name: 1, headerTitle: 1, experiences: 1 })
       .populate<{ experiences: CardExperience[] }>({
         path: 'experiences',
@@ -281,14 +338,18 @@ async function loadCard(userId: string): Promise<CardSource> {
           { path: 'projects.softSkills.skill', select: { displayName: 1 } }
         ]
       })
-      .lean()
+      .lean(),
+    perfectJobOf(userId)
   ]);
   const experiences = domain?.experiences ?? [];
   return {
-    headline: profile?.card?.headline ?? null,
-    hidden: new Set((profile?.card?.hiddenExperiences ?? []).map(String)),
-    experiences,
-    identity: identityOf(user, domain, experiences)
+    source: {
+      headline: profile?.card?.headline ?? null,
+      hidden: new Set((profile?.card?.hiddenExperiences ?? []).map(String)),
+      experiences,
+      identity: identityOf(user, domain, experiences, perfectJob)
+    },
+    perfectJob
   };
 }
 
@@ -310,7 +371,7 @@ const shownHeadline = (headline: string | null, identity: CandidateIdentity): st
  * The anonymous card of the candidate whose card is built from `source`, and
  * what it leaves out of what they set: pure, `now` the current month
  */
-export function buildCandidateCard(source: CardSource, now = new Date()): BuiltCard {
+function buildCandidateCard(source: CardSource, now = new Date()): BuiltCard {
   const { identity } = source;
   const nowMonth = monthIndex(now);
   const isHidden = (experience: CardExperience) => source.hidden.has(String(experience._id));
@@ -369,8 +430,17 @@ export function buildCandidateCard(source: CardSource, now = new Date()): BuiltC
   }
   const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
   const ranked = [...technical]
-    .map(([key, name]) => ({ key, name, months: uses.get(key)?.months ?? 0, projects: uses.get(key)?.projects ?? 0 }))
-    .sort((a, b) => b.months - a.months || b.projects - a.projects || byKey(a.key, b.key));
+    .flatMap(([key, name]) => {
+      const use = uses.get(key);
+      if (!use) return [];
+      // No month, though a project using it can be placed: every one of them
+      // starts later (a role not started yet, a project planned), not used yet
+      if (use.months === 0 && use.placed > 0 && use.placed === use.projects) return [];
+      // Used, but where nothing can be placed: no time, as the page shows it
+      const months = use.months === 0 ? null : use.months;
+      return [{ key, name, months, projects: use.projects }];
+    })
+    .sort((a, b) => (b.months ?? -1) - (a.months ?? -1) || b.projects - a.projects || byKey(a.key, b.key));
   const skills: CandidateCardSkill[] = [];
   const withheldSkills: string[] = [];
   // Two spellings the card writes alike (one with a sign that cannot be seen) are one skill: the most used
@@ -393,23 +463,25 @@ export function buildCandidateCard(source: CardSource, now = new Date()): BuiltC
   };
 }
 
-/** The anonymous card of the account `userId`, and what it leaves out (buildCandidateCard) */
-export async function candidateCard(userId: string, now = new Date()): Promise<BuiltCard> {
-  return buildCandidateCard(await loadCard(userId), now);
+/**
+ * The anonymous card of the account `userId`, as a recruiter reads it, and
+ * nothing else (never what it leaves out: that names what says who they are).
+ * What the feeds (2.7) show; reads only
+ */
+export async function anonymousCard(userId: string, now = new Date()): Promise<CandidateCard> {
+  const { source } = await loadCard(userId);
+  return buildCandidateCard(source, now).card;
 }
 
 /**
  * What the candidate `userId` previews of their anonymous card (GET
  * /discovery/card): the card as recruiters read it, the criteria whose
- * outcome a recruiter reads beside it for their job, and what it leaves out.
- * Reads only, on or off
+ * outcome a recruiter reads beside it for their job, and what it leaves out
+ * (for the candidate alone). Reads only, on or off
  */
 export async function candidateCardPreview(userId: string, now = new Date()): Promise<CandidateCardPreview> {
-  const [built, journey, perfectJob] = await Promise.all([
-    candidateCard(userId, now),
-    ownerJourney(userId),
-    perfectJobOf(userId)
-  ]);
+  const [{ source, perfectJob }, journey] = await Promise.all([loadCard(userId), ownerJourney(userId)]);
+  const built = buildCandidateCard(source, now);
   const jobMatch = journey.steps.find((step) => step.type === 'job-match');
   const showDetails = (jobMatch?.config as { showDetails?: unknown } | undefined)?.showDetails === true;
   return {

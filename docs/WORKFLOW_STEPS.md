@@ -452,6 +452,14 @@ and never what the owner asks for or how much a criterion weighs. A recruiter ca
 about the criteria by trying postings: this is inherent to a gate, and the reason the details
 are the owner's choice.
 
+The same `showDetails` also decides what matching (Path 2, CLAUDE.md "Matching") shows of a
+job's outcomes beside the owner's anonymous card: with it, the outcome of each criterion but the
+commute and the places (portfolio-common's `cardOutcomeCriteria`), without it none, so that one
+setting decides what recruiters learn of a job's outcomes on both paths.
+`server/services/candidateCard.ts` (`candidateCardPreview`, and the feeds after it) reads it from
+the journey's `job-match` step: renaming or reshaping the step's config means changing it there
+too.
+
 One criterion, the commute, needs something neither the posting nor the criteria hold: a travel
 time. The step asks `commuteContext` (`server/services/commute.ts`) for it before scoring, which
 answers from a cache or from outside services, once per posting. When it is not known (travel

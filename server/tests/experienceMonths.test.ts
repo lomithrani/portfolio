@@ -263,16 +263,18 @@ describe('skillUsesByKey', () => {
   it('counts a month once, and a project once however many times it names the skill', () => {
     const uses = skillUsesByKey(portfolio, NOW)
     // Jan 2020 to Feb 2021, and the project without dates counts for nothing
-    expect(uses.get('go')).toEqual({ months: 14, projects: 4 })
+    expect(uses.get('go')).toEqual({ months: 14, projects: 4, placed: 3 })
     // A technical skill of one project and a soft skill of another
-    expect(uses.get('kafka')).toEqual({ months: 14, projects: 2 })
+    expect(uses.get('kafka')).toEqual({ months: 14, projects: 2, placed: 2 })
     // Jan to Dec 2022 for the project without dates of its job, Sep 2025 to Nov 2026 for the other
-    expect(uses.get('rust')).toEqual({ months: 36 + 15, projects: 2 })
-    // Planned: used by a project, no month yet
-    expect(uses.get('elixir')).toEqual({ months: 0, projects: 1 })
+    expect(uses.get('rust')).toEqual({ months: 36 + 15, projects: 2, placed: 2 })
+    // Planned: used by a project that can be placed, no month yet
+    expect(uses.get('elixir')).toEqual({ months: 0, projects: 1, placed: 1 })
+    // Used only where nothing can be placed: its months cannot be counted
+    expect(uses.get('zig')).toEqual({ months: 0, projects: 1, placed: 0 })
     expect(skillUsesByKey([], NOW).size).toBe(0)
     const twice = [job('2020-01', '2020-03', [project('API', '2020-01', '2020-03', ['Go', 'go'], ['GO'])])]
-    expect(skillUsesByKey(twice, NOW).get('go')).toEqual({ months: 3, projects: 1 })
+    expect(skillUsesByKey(twice, NOW).get('go')).toEqual({ months: 3, projects: 1, placed: 1 })
   })
 })
 

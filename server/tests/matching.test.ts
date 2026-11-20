@@ -82,7 +82,12 @@ const DISCOVERY_CONSENT_WORDINGS: Record<string, string> = {
   'discovery-18-v1':
     'I confirm that I am at least 18 years old. I want Portfolio to show me the open jobs that meet my criteria, and to propose my anonymous card to their recruiters. My card shows the headline I write, my role titles and the time spent in each, and my skills and how long I used each. If my page for recruiters shows them how their job does on each of my criteria, my card shows it too, except for my commute and where I want to work. A recruiter sees my name and my portfolio only once we are both interested. I can turn this off at any time.',
   'discovery-18-v1-fr':
-    "Je confirme avoir au moins 18 ans. Je souhaite que Portfolio me montre les offres ouvertes qui répondent à mes critères et propose ma fiche anonyme à leurs recruteurs. Ma fiche montre l'accroche que j'écris, mes intitulés de poste et le temps passé à chacun, ainsi que mes compétences et leur durée d'utilisation. Si ma page recruteurs leur montre le résultat de leur offre sur chacun de mes critères, ma fiche le montre aussi, sauf pour mon trajet et le lieu où je veux travailler. Un recruteur ne voit mon nom et mon portfolio qu'en cas d'intérêt réciproque. Je peux désactiver cela à tout moment."
+    "Je confirme avoir au moins 18 ans. Je souhaite que Portfolio me montre les offres ouvertes qui répondent à mes critères et propose ma fiche anonyme à leurs recruteurs. Ma fiche montre l'accroche que j'écris, mes intitulés de poste et le temps passé à chacun, ainsi que mes compétences et leur durée d'utilisation. Si ma page recruteurs leur montre le résultat de leur offre sur chacun de mes critères, ma fiche le montre aussi, sauf pour mon trajet et le lieu où je veux travailler. Un recruteur ne voit mon nom et mon portfolio qu'en cas d'intérêt réciproque. Je peux désactiver cela à tout moment.",
+  // Every field of the card: v1 named neither the total time of professional experience nor whether a role is held now
+  'discovery-18-v2':
+    'I confirm that I am at least 18 years old. I want Portfolio to show me the open jobs that meet my criteria, and to propose my anonymous card to their recruiters. My card shows the headline I write, my role titles with the time spent in each and whether I still hold it, my total time of professional experience, and my skills with how long I used each. If my page for recruiters shows them how their job does on each of my criteria, my card shows it too, except for my commute and where I want to work. A recruiter sees my name and my portfolio only once we are both interested. I can turn this off at any time.',
+  'discovery-18-v2-fr':
+    "Je confirme avoir au moins 18 ans. Je souhaite que Portfolio me montre les offres ouvertes qui répondent à mes critères et propose ma fiche anonyme à leurs recruteurs. Ma fiche montre l'accroche que j'écris, mes intitulés de poste avec le temps passé à chacun et si je l'occupe encore, ma durée totale d'expérience professionnelle, ainsi que mes compétences et leur durée d'utilisation. Si ma page recruteurs leur montre le résultat de leur offre sur chacun de mes critères, ma fiche le montre aussi, sauf pour mon trajet et le lieu où je veux travailler. Un recruteur ne voit mon nom et mon portfolio qu'en cas d'intérêt réciproque. Je peux désactiver cela à tout moment."
 };
 
 describe('discoveryRequirements', () => {
@@ -192,6 +197,31 @@ describe('the discovery consent', () => {
     }
   });
 
+  it('names every field of the anonymous card, in both languages', () => {
+    // The card (services/candidateCard.ts, CANDIDATE_CARD_FIELDS, which tests/discovery.test.ts pins) is
+    // { headline, experienceMonths, roles: { title, months, current }, skills: { name, months } }
+    const en = withLocale('en', () => legalMessages.discoveryConsent);
+    for (const field of [
+      'the headline I write',
+      'my total time of professional experience',
+      'my role titles with the time spent in each',
+      'whether I still hold it',
+      'my skills with how long I used each'
+    ]) {
+      expect(en).toContain(field);
+    }
+    const fr = withLocale('fr', () => legalMessages.discoveryConsent);
+    for (const field of [
+      "l'accroche que j'écris",
+      "ma durée totale d'expérience professionnelle",
+      'mes intitulés de poste avec le temps passé à chacun',
+      "si je l'occupe encore",
+      "mes compétences et leur durée d'utilisation"
+    ]) {
+      expect(fr).toContain(field);
+    }
+  });
+
   it('accepts the confirmation of the terms in force, and keeps only its two fields', () => {
     expect(parseDiscoveryConsent({ ...currentDiscoveryConsent(), extra: 'kept?' })).toEqual({
       ok: true,
@@ -293,6 +323,16 @@ describe('parseDiscoveryCard', () => {
     'linkedin.com/in/jane-doe',
     'Backend, github.com/jane',
     'portfolio.gentil.tech/jane-doe',
+    'Designer, behance.net/zoe',
+    'jane.net/cv',
+    'Talks at slideshare.net/jane',
+    'Backend, see zoe.net/about',
+    // A host alone, under a domain people take for their own pages
+    'Backend engineer, zoemarchetti.dev',
+    'jane-doe.com',
+    'Lead dev, zoe.marchetti.fr.',
+    // Only a technology standing alone is no host: an email address on such a domain stays one
+    'jane@asp.net',
     // A phone number
     'Call 06 12 34 56 78',
     'Backend +33 6 12 34 56 78',
@@ -311,6 +351,9 @@ describe('parseDiscoveryCard', () => {
     'Node.js/React developer',
     'Next.js/TypeScript',
     'ASP.NET/Azure developer',
+    'asp.net/vb.net and ADO.NET',
+    'ML.NET, Akka.NET and C#/.NET',
+    'Socket.IO and Express.js',
     'CI/CD, 2015-2024',
     'Java 8, 11, 17 and 21',
     '10 years, 3 teams of 12'
@@ -386,15 +429,21 @@ describe('cardIdentityNames', () => {
   it('names the candidate, their portfolio, their companies (also without a legal form) and their places (also each part)', () => {
     expect(
       cardIdentityNames({
-        person: 'Zoé Marchetti',
+        name: 'Zoé',
+        surname: 'Marchetti',
         portfolio: ['Léa Quillfeather', 'zoe.m', null],
         companies: ['Globex S.A.S.', 'Initrode', 'Siemens AG', undefined],
         places: ['Lyon, France', 'Paris (hybrid)']
       })
     ).toEqual([
       'Zoé Marchetti',
+      'Marchetti Zoé',
       'Léa Quillfeather',
+      'Quillfeather Léa',
       'zoe.m',
+      'zoe m',
+      'm zoe',
+      'Marchetti',
       'Globex S.A.S.',
       'globex',
       'Initrode',
@@ -408,10 +457,72 @@ describe('cardIdentityNames', () => {
     ]);
   });
 
+  it('names the candidate by their surname alone, and in both orders', () => {
+    const names = cardIdentityNames({ name: 'Jean-Pierre', surname: 'De La Fontaine' });
+    expect(names).toEqual([
+      'Jean-Pierre De La Fontaine',
+      'De La Fontaine Jean-Pierre',
+      // The words of a surname of three letters or more
+      'Fontaine'
+    ]);
+  });
+
+  it('reads the name of an account without one in its email address: the local part, its words, both orders', () => {
+    expect(cardIdentityNames({ email: 'zoe.marchetti92+jobs@gmail.com' })).toEqual([
+      'zoe.marchetti92',
+      'zoe marchetti',
+      'marchetti zoe',
+      'zoe',
+      'marchetti'
+    ]);
+    // An address name in both orders, never a word of it alone (an address may be data-engineer)
+    expect(cardIdentityNames({ portfolio: ['data-engineer'] })).toEqual(['data-engineer', 'data engineer', 'engineer data']);
+  });
+
+  it('takes no word of an email address that stands for nobody, and nothing of one that is only such words', () => {
+    expect(cardIdentityNames({ email: 'contact@zoe-marchetti.fr' })).toEqual([]);
+    expect(cardIdentityNames({ email: 'info.pro@acme.fr' })).toEqual([]);
+    expect(cardIdentityNames({ email: 'data.zoe@acme.fr' })).toEqual(['data.zoe', 'data zoe', 'zoe data', 'zoe']);
+  });
+
+  it('finds a company without its long legal form or the words companies add (Corporation, Group, Labs)', () => {
+    expect(
+      cardIdentityNames({
+        companies: ['Globex Corporation', 'BNP Paribas Group', 'Umbrella Labs', 'Hooli Holding Inc', 'Acme & Co', 'Data Group']
+      })
+    ).toEqual([
+      'Globex Corporation',
+      'globex',
+      'BNP Paribas Group',
+      'bnp paribas',
+      'Umbrella Labs',
+      'umbrella',
+      'Hooli Holding Inc',
+      'hooli',
+      'Acme & Co',
+      'acme',
+      // What is left is a word that stands for nobody: the name stays whole, `Data engineer` names no company
+      'Data Group'
+    ]);
+    expect(cardTextIdentifies('Senior data engineer', cardIdentityNames({ companies: ['Data Group'] }))).toBe(false);
+    expect(cardTextIdentifies('Engineer, Data Group', cardIdentityNames({ companies: ['Data Group'] }))).toBe(true);
+  });
+
+  it('keeps names of two signs only as acronyms in capitals, of a company or a part of a place', () => {
+    expect(
+      cardIdentityNames({
+        companies: ['EY', 'Ey', 'AT&T'],
+        places: ['Toronto, ON', 'Berlin, DE', 'Bengaluru, in', '75', 'London, UK']
+      })
+    ).toEqual(['AT&T', 'Toronto, ON', 'Toronto', 'Berlin, DE', 'Berlin', 'Bengaluru, in', 'Bengaluru', 'London, UK', 'London', 'EY', 'ON', 'DE', 'UK']);
+    // A two-letter portfolio name or given name is a word, not a way to find someone
+    expect(cardIdentityNames({ name: 'Li', portfolio: ['jd'] })).toEqual([]);
+  });
+
   it('leaves out the words that stand for no company or place, blanks, single letters and repeats', () => {
     expect(
       cardIdentityNames({
-        person: ' ',
+        name: ' ',
         companies: ['Freelance', 'Self-employed', 'Indépendant', 'X', 'Initrode', 'INITRODE'],
         places: ['Remote', 'Full remote', 'Télétravail']
       })
@@ -421,21 +532,31 @@ describe('cardIdentityNames', () => {
 
 describe('cardTextIdentifies', () => {
   const names = cardIdentityNames({
-    person: 'Zoé Marchetti',
+    name: 'Zoé',
+    surname: 'Marchetti',
+    email: 'zoe.marchetti@example.com',
     portfolio: ['Léa Quillfeather'],
-    companies: ['Globex SAS', 'EY'],
-    places: ['Lyon, France']
+    companies: ['Globex Corporation', 'EY', 'AT&T'],
+    places: ['Lyon, France', 'Toronto, ON', 'Berlin, DE', 'Bengaluru, IN']
   });
 
   it.each([
     'Lead developer at Globex',
-    'GLOBEX SAS backend',
+    'GLOBEX CORPORATION backend',
     'Tech lead (Lyon)',
     'Head of sales, France',
     'Senior consultant EY',
+    'Network engineer, AT&T',
     'Engineer for Zoé Marchetti',
+    'MARCHETTI Zoé, backend engineer',
+    'Lead dev - Marchetti',
+    'Founder, Marchetti Conseil',
     'lea quillfeather',
+    'Quillfeather Léa',
     'Backend, see linkedin.com/in/zoe',
+    'Designer, behance.net/zoe',
+    'jane.net/cv',
+    'zoemarchetti.dev',
     'zoe@example.com',
     'Call 06 12 34 56 78'
   ])('finds who the candidate is in %p', (text) => {
@@ -448,7 +569,15 @@ describe('cardTextIdentifies', () => {
     'Globexian platform',
     'Freelance remote developer',
     'ASP.NET/Azure developer',
-    'Node.js/React'
+    'Node.js/React',
+    'Socket.IO and ML.NET',
+    // Two-letter places and companies are acronyms: a word written in small letters names nothing
+    'Focused on payments',
+    'Chef de projet',
+    'Ingénieur de données',
+    'Engineer in test',
+    'Lead developer at scale',
+    'Consultant ey'
   ])('finds nobody in %p', (text) => {
     expect(cardTextIdentifies(text, names)).toBe(false);
   });

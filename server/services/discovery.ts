@@ -245,8 +245,9 @@ export async function withdrawDiscovery(userId: string, now = new Date()): Promi
  * Saves what the anonymous card of the account `userId` shows (PUT
  * /discovery), on or off: 422 on `card...` for settings that break a rule
  * (portfolio-common's parseDiscoveryCard), then on `card.headline` for a
- * headline that says who the account is: its name, its portfolio's title or
- * address name, a company or a place of its experiences, a page of the site
+ * headline that says who the account is: its name (its account's, its email
+ * address's), its portfolio's title or address name, a company or a place of
+ * its experiences, a place of its perfect job, a page of the site
  * (identifiesCandidate, the rule the card keeps its texts to). Only the
  * experiences of its own portfolio are kept hidden. Changing it is activity.
  */

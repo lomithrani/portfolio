@@ -233,17 +233,38 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
 // Ways to reach or find the candidate, which the card is read before both sides are interested
-// in: a link (a scheme, `www.`, or a host followed by a path, `linkedin.com/in/jane`, but not a
-// technology such as `Node.js/React` or `ASP.NET/Azure`: .js, .ts and .net there are no domains),
-// an email address, and a phone number (9 digits or more, one separator at most between two of
-// them). Tested on the text as the card keeps it, folded by NFKC (`jane＠acme.fr` is
-// `jane@acme.fr`)
+// in: a link (a scheme, `www.`, a host followed by a path, `linkedin.com/in/jane` or
+// `behance.net/jane`, or a host alone under a domain people take for their own pages,
+// `janedoe.dev`), an email address, and a phone number (9 digits or more, one separator at most
+// between two of them). Tested on the text as the card keeps it, folded by NFKC (`jane＠acme.fr` is
+// `jane@acme.fr`), once the technologies written like a host are read as words
+// (TECHNOLOGY_HOSTS): `Node.js/React`, `ASP.NET/Azure` or `Socket.IO` name no site
 const HEADLINE_CONTACTS = [
 	/[a-z][a-z0-9+.-]*:\/\/|www\./i,
-	/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?!(?:js|ts|net)\/)[a-z]{2,24}\/\S/i,
+	// .js and .ts are no domains: Node.js/React
+	/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?!(?:js|ts)\/)[a-z]{2,24}\/\S/i,
+	/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|net|org|io|dev|me|app|co|fr|eu|uk)\b(?!\.[a-z0-9])/i,
 	/[^\s@]+@[^\s@]+\.[^\s@]{2,}/,
 	/(?:\+?\d[\s.()-]?){9,}/
 ];
+
+/**
+ * Technologies written like a host, which name no site: a .NET library written as Microsoft
+ * writes it (`ASP.NET`, `ML.NET`, `Akka.NET`), ASP.NET, ADO.NET and VB.NET in any case, and
+ * Socket.IO. Only these, so that `behance.net/jane` and `jane.io` stay links, and only standing
+ * alone (`jane@asp.net` is an email address)
+ */
+const TECHNOLOGY_HOSTS = [
+	/(?<![@.\p{L}\p{N}_-])[\p{L}\p{N}]+\.NET\b/gu,
+	/(?<![@.\p{L}\p{N}_-])(?:asp|ado|vb)\.net\b/giu,
+	/(?<![@.\p{L}\p{N}_-])socket\.io\b/giu
+];
+
+/** Whether `text` (cleaned) has a link, an email address or a phone number (HEADLINE_CONTACTS) */
+const hasContact = (text: string): boolean => {
+	const read = TECHNOLOGY_HOSTS.reduce((words, technology) => words.replace(technology, ' '), text);
+	return HEADLINE_CONTACTS.some((pattern) => pattern.test(read));
+};
 
 /**
  * A headline as it is kept: folded by NFKC (what looks like a letter or a sign is that letter or
@@ -267,19 +288,18 @@ const MIN_NAME_LENGTH = 3;
 /**
  * Whether `headline` names one of `names` (the candidate's name, the title of their portfolio, its
  * address name), whole, whatever its case, accents or spacing: `Jane Doe` in `jane doe, backend`,
- * `dev` not in `developer`. Names shorter than `minLength` (MIN_NAME_LENGTH unless said) are left
- * out. The API refuses such a headline (422 on `card.headline`): the card is anonymous until both
- * sides are interested (cardTextIdentifies, which also looks for companies and places)
+ * `dev` not in `developer`. Names shorter than MIN_NAME_LENGTH are left out. The API refuses such a
+ * headline (422 on `card.headline`): the card is anonymous until both sides are interested
+ * (cardTextIdentifies, which also looks for companies, places and acronyms)
  */
 export const headlineNames = (
 	headline: string,
-	names: readonly (string | null | undefined)[],
-	minLength = MIN_NAME_LENGTH
+	names: readonly (string | null | undefined)[]
 ): boolean => {
 	const text = folded(headline);
 	return names.some((name) => {
 		const key = typeof name === 'string' ? folded(name) : '';
-		if (key.length < minLength) return false;
+		if (key.length < MIN_NAME_LENGTH) return false;
 		return new RegExp(`(?:^|${NOT_WORD})${escapeRegExp(key)}(?:$|${NOT_WORD})`, 'u').test(text);
 	});
 };
@@ -289,7 +309,7 @@ export const headlineNames = (
  * the headline cleaned (cleanHeadline; empty is none), at most DISCOVERY_LIMITS.headline
  * characters, without a link, an email address or a phone number (the API also refuses one that
  * says who the candidate is, their name, their portfolio, a company or a place of their
- * experiences: cardTextIdentifies); the hidden experiences a list of ids,
+ * experiences or of their perfect job: cardTextIdentifies); the hidden experiences a list of ids,
  * without duplicates, at most DISCOVERY_LIMITS.hiddenExperiences (the API keeps those of the
  * candidate's own portfolio)
  */
@@ -309,7 +329,7 @@ export const parseDiscoveryCard = (input: unknown): DiscoveryCardResult => {
 				message: m.card.headlineTooLong(DISCOVERY_LIMITS.headline)
 			};
 		}
-		if (HEADLINE_CONTACTS.some((pattern) => pattern.test(cleaned))) {
+		if (hasContact(cleaned)) {
 			return { ok: false, property: 'card.headline', message: m.card.headlineContact };
 		}
 		headline = cleaned || null;
@@ -355,13 +375,20 @@ export const cardOutcomeCriteria = (
 
 /** What says who a candidate is, which their anonymous card never shows (cardIdentityNames) */
 export interface CardIdentity {
-	/** Their name, as their account has it */
-	person?: string | null;
+	/** Their given name, as their account has it (a Google sign-in keeps none: few accounts have one) */
+	name?: string | null;
+	/** Their surname, as their account has it */
+	surname?: string | null;
+	/** The email address of their account: its local part is most often their name (`zoe.marchetti`) */
+	email?: string | null;
 	/** The title of their portfolio, and its address name */
 	portfolio?: readonly (string | null | undefined)[];
 	/** The companies of their experiences */
 	companies?: readonly (string | null | undefined)[];
-	/** The places of their experiences, as they typed them (`Lyon, France`) */
+	/**
+	 * The places of their experiences, as they typed them (`Lyon, France`), and those of their
+	 * perfect job (the towns they want to work in, the town they travel from)
+	 */
 	places?: readonly (string | null | undefined)[];
 }
 
@@ -396,7 +423,68 @@ const GENERIC_NAMES: ReadonlySet<string> = new Set(
 	].map(folded)
 );
 
-/** Legal forms in a company's name, left out to find the name itself: Acme SAS is Acme */
+/**
+ * Words that, alone, stand for nobody: never taken alone as a word of the candidate's name read in
+ * their email address (`contact@`, `data.jane@`), nor as what is left of a company's name without
+ * its legal form (`Data Group`), so that `Data engineer` stays on such a candidate's card
+ */
+const PLAIN_WORDS: ReadonlySet<string> = new Set(
+	[
+		'contact',
+		'info',
+		'infos',
+		'hello',
+		'bonjour',
+		'mail',
+		'email',
+		'courriel',
+		'pro',
+		'perso',
+		'personal',
+		'work',
+		'job',
+		'jobs',
+		'emploi',
+		'career',
+		'careers',
+		'carrière',
+		'admin',
+		'office',
+		'team',
+		'dev',
+		'developer',
+		'data',
+		'tech',
+		'design',
+		'web',
+		'code',
+		'hire',
+		'recrutement',
+		'resume',
+		'candidature',
+		'the',
+		'and',
+		'official',
+		'software',
+		'digital',
+		'cloud',
+		'consulting',
+		'conseil',
+		'solutions',
+		'systems',
+		'services',
+		'global',
+		'international',
+		'partners',
+		'studio',
+		'agency'
+	].map(folded)
+);
+
+/**
+ * Legal forms and the words companies add to their name, left out to find the name itself: Acme
+ * SAS, Acme Corporation and Acme Group are Acme
+ */
 const LEGAL_FORMS: ReadonlySet<string> = new Set([
 	'sa',
 	'sas',
@@ -407,28 +495,73 @@ const LEGAL_FORMS: ReadonlySet<string> = new Set([
 	'snc',
 	'scop',
 	'inc',
+	'incorporated',
 	'ltd',
+	'limited',
 	'llc',
 	'llp',
 	'plc',
 	'corp',
+	'corporation',
+	'co',
+	'company',
+	'cie',
 	'gmbh',
 	'ag',
 	'bv',
 	'nv',
 	'spa',
 	'srl',
-	'sl'
+	'sl',
+	'group',
+	'groupe',
+	'holding',
+	'labs',
+	'technology',
+	'technologies'
 ]);
 
-/** A company's name, and the same without its legal form when it has one (Acme for Acme S.A.S.) */
+/** The words of a name written as one token (`zoe.marchetti92`, `zoe-marchetti`): its runs of letters */
+const nameWords = (value: string): string[] =>
+	value
+		.normalize('NFC')
+		.split(/[^\p{L}\p{M}]+/u)
+		.filter(Boolean);
+
+/**
+ * A person's name as the phrases that write it: as written, its words spaced (`zoe marchetti` for
+ * `zoe.marchetti`) and its last word first (`Marchetti Zoé`, as French résumés write a surname)
+ */
+const nameOrders = (value: string): string[] => {
+	const words = nameWords(value);
+	if (words.length < 2) return [value];
+	const last = words[words.length - 1];
+	return [value, words.join(' '), [last, ...words.slice(0, -1)].join(' ')];
+};
+
+/**
+ * The names an email address stands for: its local part (without a `+tag`) in the orders of
+ * nameOrders, and each of its words (`marchetti` of `zoe.marchetti92`), but those that stand for
+ * nobody (PLAIN_WORDS); nothing when all of them do (`contact@`)
+ */
+const emailNames = (email: string): string[] => {
+	const local = email.split('@')[0].split('+')[0].trim();
+	const words = nameWords(local).filter((word) => !PLAIN_WORDS.has(folded(word)));
+	return words.length === 0 ? [] : [...nameOrders(local), ...words];
+};
+
+/**
+ * A company's name, and the same without its legal form when it has one (Acme for Acme S.A.S.),
+ * unless what is left is a word that stands for nobody (Data Group stays whole)
+ */
 const companyNames = (name: string): string[] => {
 	const words = folded(name)
 		.split(/[^\p{L}\p{N}]+/u)
 		.filter(Boolean);
 	// Single letters too: S.A.S. is s, a, s
 	const kept = words.filter((word) => word.length > 1 && !LEGAL_FORMS.has(word));
-	return kept.length > 0 && kept.length < words.length ? [name, kept.join(' ')] : [name];
+	if (kept.length === 0 || kept.length === words.length) return [name];
+	return kept.length === 1 && PLAIN_WORDS.has(kept[0]) ? [name] : [name, kept.join(' ')];
 };
 
 /** A place as typed, and each of its parts (Lyon and France for `Lyon, France`) */
@@ -437,35 +570,69 @@ const placeNames = (place: string): string[] => [
 	...place.split(/[,;/()|·•]|\s[-–—]\s/).map((part) => part.trim())
 ];
 
-/** Names of two letters can name a company or a place (EY, HP, UK), never one of one */
-const CARD_NAME_MIN_LENGTH = 2;
+/**
+ * An acronym of two signs, written in capitals (EY, HP, UK, 3M): a company or a part of a place
+ * that short names it only so written, which is how a text must write it to name it (`Engineer,
+ * EY`), never a word (`Chef de projet` does not name Berlin, DE)
+ */
+const isAcronym = (name: string): boolean => {
+	const written = name.normalize('NFKC').trim();
+	return /^[\p{Lu}\p{N}]{2}$/u.test(written) && /\p{Lu}/u.test(written);
+};
+
+/** Whether `text` (cleaned) has the acronym `acronym`, whole, as written (in capitals) */
+const namesAcronym = (text: string, acronym: string): boolean =>
+	new RegExp(
+		`(?:^|${NOT_WORD})${escapeRegExp(acronym.normalize('NFKC').trim())}(?:$|${NOT_WORD})`,
+		'u'
+	).test(text);
 
 /**
- * The names an anonymous card never shows, of the candidate `identity`: their name, the title and
- * address name of their portfolio, the companies of their experiences (also without their legal
- * form: Acme for Acme SAS) and their places (also each part: Lyon and France for `Lyon, France`),
- * the words that stand for no company or place left out (Freelance, Remote): what
- * cardTextIdentifies looks for
+ * The names an anonymous card never shows, of the candidate `identity`, of MIN_NAME_LENGTH signs or
+ * more: their name (given name and surname in both orders, and the surname alone), their email
+ * address's local part (in both orders, and each word of it: the account's name is most often only
+ * there), the title and address name of their portfolio (in both orders: `louis.gentil` is `gentil
+ * louis`; never a word alone, an address may be `data-engineer`), the companies of their
+ * experiences (also without their legal form: Acme for Acme SAS or Acme Corporation) and their
+ * places and those of their perfect job (also each part: Lyon and France for `Lyon, France`), the
+ * words that stand for no company or place left out (Freelance, Remote); and the acronyms of two
+ * capitals among their companies and the parts of their places (EY, UK), which name them only so
+ * written: what cardTextIdentifies looks for
  */
 export const cardIdentityNames = ({
-	person,
+	name,
+	surname,
+	email,
 	portfolio = [],
 	companies = [],
 	places = []
 }: CardIdentity): string[] => {
 	const text = (value: string | null | undefined): value is string =>
 		typeof value === 'string' && value.trim() !== '';
+	// Given name then surname, and the surname first (`MARCHETTI Zoé`), as they are: a surname may
+	// have several words (`De La Fontaine`)
+	const person =
+		text(name) && text(surname) ? [`${name} ${surname}`, `${surname} ${name}`] : [name, surname];
+	const companyList = companies.filter(text);
+	const placeList = places.filter(text).flatMap(placeNames);
 	const names = [
-		...[person, ...portfolio].filter(text),
-		...companies.filter(text).flatMap(companyNames),
-		...places.filter(text).flatMap(placeNames)
+		...person.filter(text),
+		...portfolio.filter(text).flatMap(nameOrders),
+		...(text(surname) ? nameWords(surname) : []),
+		...(text(email) ? emailNames(email) : []),
+		...companyList.flatMap(companyNames),
+		...placeList
 	];
 	const keep = new Map<string, string>();
-	for (const name of names) {
-		const key = folded(name);
-		if (key.length >= CARD_NAME_MIN_LENGTH && !GENERIC_NAMES.has(key) && !keep.has(key)) {
-			keep.set(key, name);
+	for (const value of names) {
+		const key = folded(value);
+		if (key.length >= MIN_NAME_LENGTH && !GENERIC_NAMES.has(key) && !keep.has(key)) {
+			keep.set(key, value);
 		}
+	}
+	for (const acronym of [...companyList, ...placeList].filter(isAcronym)) {
+		const written = acronym.normalize('NFKC').trim();
+		if (!keep.has(written)) keep.set(written, written);
 	}
 	return [...keep.values()];
 };
@@ -473,15 +640,17 @@ export const cardIdentityNames = ({
 /**
  * Whether `text`, which an anonymous card would show (its headline, a role title, a skill), says who
  * the candidate is or how to reach them: a link, an email address or a phone number, or one of
- * `names` (cardIdentityNames), whole, whatever its case, accents or spacing (headlineNames, from two
- * letters: EY, HP). The API leaves such a text out of the card, and refuses such a headline (422 on
- * `card.headline`): the card is anonymous until both sides are interested
+ * `names` (cardIdentityNames), whole, whatever its case, accents or spacing (headlineNames), an
+ * acronym of two capitals only as written (EY in `Senior consultant EY`, not `ey`). The API leaves
+ * such a text out of the card, and refuses such a headline (422 on `card.headline`): the card is
+ * anonymous until both sides are interested
  */
 export const cardTextIdentifies = (text: string, names: readonly string[]): boolean => {
 	const cleaned = cleanHeadline(text);
 	return (
-		HEADLINE_CONTACTS.some((pattern) => pattern.test(cleaned)) ||
-		headlineNames(cleaned, names, CARD_NAME_MIN_LENGTH)
+		hasContact(cleaned) ||
+		headlineNames(cleaned, names) ||
+		names.some((name) => isAcronym(name) && namesAcronym(cleaned, name))
 	);
 };
 

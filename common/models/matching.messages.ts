@@ -67,13 +67,14 @@ export const matchingMessages = defineMessages({
 			fr: 'Retirez les liens, adresses e-mail et numéros de téléphone de votre accroche : les recruteurs la lisent avant de savoir qui vous êtes.'
 		},
 		/**
-		 * The headline says who the candidate is: their name, their portfolio's title or address, a
-		 * company or a place of their experiences (cardTextIdentifies, or the address of the site
-		 * followed by a path): the card stays anonymous until both sides are interested
+		 * The headline says who the candidate is: their name (also as their email address writes
+		 * it), their portfolio's title or address, a company or a place of their experiences, a place
+		 * of their perfect job (cardTextIdentifies, or the address of the site followed by a path):
+		 * the card stays anonymous until both sides are interested
 		 */
 		headlineIdentity: {
-			en: 'Leave your name, the title and address of your portfolio, and the companies and places of your experiences out of your headline: recruiters read it before they know who you are.',
-			fr: "Retirez de votre accroche votre nom, le titre et l'adresse de votre portfolio, ainsi que les entreprises et les lieux de vos expériences : les recruteurs la lisent avant de savoir qui vous êtes."
+			en: 'Leave your name, the title and address of your portfolio, the companies and places of your experiences and the places of your perfect job out of your headline: recruiters read it before they know who you are.',
+			fr: "Retirez de votre accroche votre nom, le titre et l'adresse de votre portfolio, les entreprises et les lieux de vos expériences ainsi que les lieux de votre poste idéal : les recruteurs la lisent avant de savoir qui vous êtes."
 		},
 		hiddenExperiences: {
 			en: 'The experiences to hide could not be read.',
