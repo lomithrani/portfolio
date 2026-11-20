@@ -36,6 +36,23 @@ const portfolioHeadSource = Object.values(
 		eager: true
 	})
 )[0];
+// The preview tags of a portfolio's pages, and every page and layout under /[domain], as text
+const openGraphSource = Object.values(
+	import.meta.glob<string>('/src/lib/components/OpenGraph.svelte', {
+		query: '?raw',
+		import: 'default',
+		eager: true
+	})
+)[0];
+const portfolioSources = Object.fromEntries(
+	Object.entries(
+		import.meta.glob<string>('/src/routes/**/+{page,layout}*.svelte', {
+			query: '?raw',
+			import: 'default',
+			eager: true
+		})
+	).filter(([file]) => file.startsWith('/src/routes/[domain]/'))
+);
 
 // The pages search engines may list, with their canonical links: the landing page, the legal
 // pages and the recruiter landing. A new page is either added here or under one of
@@ -82,6 +99,28 @@ describe('pages search engines are asked not to list', () => {
 		);
 		expect(appLayout).toMatch(/let noindex = \$derived\(isNoindexRoute\(page\.route\.id\)\);/);
 		expect(accountPageSource).toMatch(/^\t<meta name="robots" content=\{NOINDEX\} \/>$/m);
+	});
+
+	test("a portfolio's preview tags are written once, by the page a visitor is sent to", () => {
+		// PortfolioHead writes the robots meta alone: OpenGraph.svelte writes every og:* and
+		// twitter:* tag, og:url once. client/tests/robots.test.ts checks the rendered pages
+		expect(portfolioHeadSource).not.toMatch(/(property|name)="(og|twitter):|<link /);
+		expect(openGraphSource.match(/property="og:url"/g)).toHaveLength(1);
+		// It names no address for search engines to list
+		expect(openGraphSource).not.toMatch(/<link /);
+		const mounting = Object.entries(portfolioSources)
+			.filter(([, source]) => /<OpenGraph\b/.test(source))
+			.map(([file]) => file)
+			.sort();
+		expect(mounting).toEqual([
+			'/src/routes/[domain]/experiences/+page.svelte',
+			'/src/routes/[domain]/hire/+page.svelte'
+		]);
+		for (const [file, source] of Object.entries(portfolioSources))
+			expect({ file, tags: source.match(/(property|name)="(og|twitter):[^"]*"/g) }).toEqual({
+				file,
+				tags: null
+			});
 	});
 
 	test("every page of a portfolio keeps the portfolio's layout and its robots meta", () => {

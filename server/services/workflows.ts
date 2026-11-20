@@ -61,8 +61,21 @@ const isStepId = (stepId: string) => WORKFLOW_LIMITS.stepId.test(stepId);
 /** What a step's type does; undefined for a type this version does not have (in either registry) */
 const stepBehaviour = (type: string): ServerStep | undefined => (stepManifest(type) ? serverStep(type) : undefined);
 
+/**
+ * Whether this version has the step type `type`, in both registries: a stored step of a type it
+ * does not have can never succeed, and the journey stops there (candidateReadiness says so)
+ */
+export const knownStepType = (type: string): boolean => stepBehaviour(type) !== undefined;
+
 const settings = (value: unknown): object =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {};
+
+/** The owner's journey, and whether they saved one */
+export interface OwnerJourney {
+  steps: WorkflowStep[];
+  /** false: the owner never saved a journey, and has DEFAULT_WORKFLOW_STEPS */
+  saved: boolean;
+}
 
 /**
  * The owner's steps, in order; DEFAULT_WORKFLOW_STEPS until they choose. A
@@ -70,17 +83,23 @@ const settings = (value: unknown): object =>
  * kept: it can never succeed, so the journey stops there instead of skipping
  * what its owner asked for
  */
-export async function journeySteps(ownerId: Id): Promise<WorkflowStep[]> {
+export async function ownerJourney(ownerId: Id): Promise<OwnerJourney> {
   const workflow = await Workflow.findOne({ user: ownerId }, { steps: 1 }).lean();
-  if (!workflow) return DEFAULT_WORKFLOW_STEPS.map((step) => ({ ...step, config: { ...step.config } }));
-  return (workflow.steps ?? []).map((step, index) => {
+  if (!workflow) {
+    return { steps: DEFAULT_WORKFLOW_STEPS.map((step) => ({ ...step, config: { ...step.config } })), saved: false };
+  }
+  const steps = (workflow.steps ?? []).map((step, index) => {
     const id = typeof step?.id === 'string' && isStepId(step.id) ? step.id : undefined;
     // Not a step as PUT /workflow stores them (written by hand, or by an older version): kept
     // under an id and a type nothing has, so it blocks the journey like a step of a removed type
     if (!id || typeof step.type !== 'string') return { id: `invalid-${index}`, type: '', config: {} };
     return { id, type: step.type, config: settings(step.config) };
   });
+  return { steps, saved: true };
 }
+
+/** The owner's steps (ownerJourney) */
+export const journeySteps = async (ownerId: Id): Promise<WorkflowStep[]> => (await ownerJourney(ownerId)).steps;
 
 
 /**

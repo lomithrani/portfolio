@@ -77,7 +77,7 @@ describe('status', () => {
 	it('says what a new status means', () => {
 		expect(statusChangedText('open')).toEqual({
 			title: 'Status changed to Open',
-			description: "Hiring: you can pick it on a candidate's Hire page."
+			description: "Hiring: you can pick it on a candidate's page for recruiters."
 		});
 		expect(statusChangedText('draft').description).toBe('Only you can see it.');
 	});

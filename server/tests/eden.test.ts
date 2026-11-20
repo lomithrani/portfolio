@@ -176,6 +176,7 @@ describe('typed Eden client against the running server', () => {
     expect(api.domain({ name: DOMAIN_NAME }).availability.get).toBeFunction()
     expect(api.me.get).toBeFunction()
     expect(api.me.consent.put).toBeFunction()
+    expect(api.me.readiness.get).toBeFunction()
     expect(api.me.delete).toBeFunction()
     expect(api.experiences.post).toBeFunction()
     expect(api.experiences({ id: 'x' }).put).toBeFunction()

@@ -1,12 +1,12 @@
 <!--
 @component
-/recruiter for a visitor who is not signed in: what the recruiter space is for (finding people
-by what a portfolio shows of each skill: the projects it was used in and for how long), and the
-sign-in that opens it: the age and terms checkbox (AgeTermsConsent, with what the terms ask of
-recruiters) comes first, then "Sign in with Google", which signs in straight into the recruiter
-space (POST /login with the mode 'recruiter' and the confirmation, recorded from the source
-'recruiter': the space is created the first time, and needs the terms in force). `onSignedIn` runs
-once the session is stored.
+/recruiter for a visitor who is not signed in: what the recruiter space is for (judging a candidate
+who shared their portfolio by what it shows of each skill: the projects it was used in and for how
+long; there is no search of portfolios), and the sign-in that opens it: the age and terms checkbox
+(AgeTermsConsent, with what the terms ask of recruiters) comes first, then "Sign in with Google",
+which signs in straight into the recruiter space (POST /login with the mode 'recruiter' and the
+confirmation, recorded from the source 'recruiter': the space is created the first time, and needs
+the terms in force). `onSignedIn` runs once the session is stored.
 
 Google's script is loaded, and its button rendered, only once the box is ticked (as on the landing
 page): before that nothing is asked from accounts.google.com. Google Identity Services routes every

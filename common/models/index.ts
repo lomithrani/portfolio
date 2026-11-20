@@ -89,6 +89,8 @@ export {
 	WORKFLOW_STEP_STATUSES,
 	WORKFLOW_LIMITS,
 	DEFAULT_WORKFLOW_STEPS,
+	JOURNEY_TEMPLATES,
+	journeyTemplate,
 	stepManifest,
 	stepManifests,
 	newWorkflowStep,
@@ -103,7 +105,9 @@ export type {
 	WorkflowStepInput,
 	WorkflowStep,
 	WorkflowProblem,
-	WorkflowResult
+	WorkflowResult,
+	JourneyTemplate,
+	JourneyTemplateOptions
 } from './workflow';
 export { workflowMessages } from './workflow.messages';
 export {

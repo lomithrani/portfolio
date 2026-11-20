@@ -21,8 +21,8 @@ export const m = defineMessages({
 	saved: { en: 'Hiring journey saved', fr: 'Parcours de recrutement enregistré' },
 	title: { en: 'Hiring journey', fr: 'Parcours de recrutement' },
 	intro: {
-		en: 'Choose the steps recruiters go through on your Hire page, in order. Each step opens once the ones before it are done.',
-		fr: "Choisissez les étapes que les recruteurs suivent sur votre page Recruter, dans l'ordre. Chaque étape s'ouvre une fois les précédentes terminées."
+		en: 'Choose the steps recruiters go through on your page for recruiters, in order. Each step opens once the ones before it are done.',
+		fr: "Choisissez les étapes que les recruteurs suivent sur votre page recruteurs, dans l'ordre. Chaque étape s'ouvre une fois les précédentes terminées."
 	},
 	loading: {
 		en: 'Loading your hiring journey...',
@@ -81,5 +81,5 @@ export const m = defineMessages({
 	saving: { en: 'Saving...', fr: 'Enregistrement…' },
 	save: { en: 'Save journey', fr: 'Enregistrer le parcours' },
 	undo: { en: 'Undo changes', fr: 'Annuler les modifications' },
-	seeHirePage: { en: 'See your Hire page', fr: 'Voir votre page Recruter' }
+	seeHirePage: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' }
 });

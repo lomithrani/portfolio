@@ -16,9 +16,7 @@ export const m = defineMessages({
 		language: { en: 'Language', fr: 'Langue' },
 		lastUpdated: { en: 'Last updated:', fr: 'Dernière mise à jour :' },
 		contents: { en: 'Contents', fr: 'Sommaire' },
-		others: { en: 'Other legal documents', fr: 'Autres documents légaux' },
-		/** og:locale */
-		locale: { en: 'en_GB', fr: 'fr_FR' }
+		others: { en: 'Other legal documents', fr: 'Autres documents légaux' }
 	},
 	consent: {
 		notice: {

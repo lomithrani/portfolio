@@ -31,7 +31,12 @@ export const workflowStepMessages = defineMessages({
 		}
 	},
 	jobMatch: {
-		label: { en: 'Match the perfect job', fr: 'Correspondre au poste idéal' },
+		/**
+		 * What recruiters read too (the step's heading on the page for recruiters, "Before you start",
+		 * the page's description in a link preview): neutral, never "the perfect job", which would
+		 * say the owner is looking for one. The owner-only description names the perfect job
+		 */
+		label: { en: 'Get the job scored', fr: "Faire noter l'offre" },
 		description: {
 			en: 'The job the recruiter picked is scored out of 100 against your perfect job (the Perfect job tab). Under the minimum you set, they cannot go further.',
 			fr: "L'offre choisie par le recruteur est notée sur 100 par rapport à votre poste idéal (onglet Poste idéal). En dessous de la note minimale que vous fixez, il ne peut pas aller plus loin."
@@ -46,8 +51,8 @@ export const workflowStepMessages = defineMessages({
 	meeting: {
 		label: { en: 'Book a meeting', fr: 'Réserver un rendez-vous' },
 		description: {
-			en: 'Recruiters book a slot in your calendar, with the meeting types of the Appointments tab.',
-			fr: "Les recruteurs réservent un créneau dans votre agenda, parmi les types de rendez-vous de l'onglet Rendez-vous."
+			en: 'Recruiters book a slot in your calendar, with the appointment schedules of the Appointments tab.',
+			fr: "Les recruteurs réservent un créneau dans votre agenda, parmi les agendas de rendez-vous de l'onglet Rendez-vous."
 		}
 	}
 });

@@ -26,6 +26,8 @@ export const m = defineMessages({
 	recruiterSpace: { en: 'Recruiter space', fr: 'Espace recruteur' },
 	yourJobs: { en: 'Your job descriptions', fr: "Vos offres d'emploi" },
 	postJobs: { en: 'Write job descriptions', fr: "Rédiger des offres d'emploi" },
+	/** For a portfolio owner: the admin's Share tab */
+	shareLink: { en: 'Share your link', fr: 'Partager votre lien' },
 	sendFeedback: { en: 'Send feedback', fr: 'Donner votre avis' },
 	logOut: { en: 'Log out', fr: 'Se déconnecter' }
 });

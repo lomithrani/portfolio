@@ -242,8 +242,11 @@ deployed site.
 
 The landing page's share tags (`canonical`, `og:url`, the `hreflang` links of its English and
 French versions, `og:image` = `/og-image.png`, or `/og-image-fr.png` in French) are built from
-that same derived origin: after the first deploy, check they read `https://<your domain>/...`
-(`curl -s https://example.com/ | grep -o '<meta property="og:url"[^>]*>'`).
+that same derived origin, and so are the preview tags of a portfolio's experiences page and page
+for recruiters (`og:url`, `og:image` = `/og-portfolio.png` and `/og-hire.png`, `-fr.png` in
+French): after the first deploy, check they read `https://<your domain>/...`
+(`curl -s https://example.com/ | grep -o '<meta property="og:url"[^>]*>'`, and
+[Search engines](#search-engines) for the portfolio's).
 
 ### Legal pages
 
@@ -683,15 +686,12 @@ until `COMMUTE_TIMES=true`**: `GET /perfect-job` then answers `commute: { enable
 admin tab does not let the criterion be switched on, and a commute already saved does not count
 in a job's score.
 
-The landing page, its share images and the signed-out recruiter page present the commute as one of
-the criteria a job is scored against (`client/src/routes/(site)/page.messages.ts`: the
-description (`meta.description`), the hero's lead (`hero.lead`), the first "Calls you can stop
-taking" card (`match.spared.commute`), the "The job gets a score" step (`match.steps.score`), the
-journey demo's label and caption (`match.demo`) and its recording
-`client/static/landing/demo-journey.*`, and the FAQ answer about the commute address
-(`faq.recruiters.address`); `client/scripts/og-image/render.mjs` and the share images it made,
-`client/static/og-image.png` and `og-image-fr.png`; `RecruiterLanding.messages.ts`). Run the
-production API with `COMMUTE_TIMES=true`, or take those mentions out.
+The landing page presents the commute as one of the criteria a job is scored against
+(`client/src/routes/(site)/page.messages.ts`: the first "Calls you can stop taking" card
+(`spared.commute`), the "The job gets a score" step (`link.steps.score`), the journey demo's label
+and caption (`link.demo`) and its recording `client/static/landing/demo-journey.*`, and the FAQ
+answer about the commute address (`faq.recruiters.address`). Run the production API with
+`COMMUTE_TIMES=true`, or take those mentions out.
 
 | Service | Used for | Key | What it receives |
 | --- | --- | --- | --- |
@@ -1006,8 +1006,20 @@ mongosh "<MONGO_URL of the stage>" --quiet --eval '
   ).toArray()'
 ```
 
-An empty array (`[]`) means nothing to do. Otherwise, rename the domain (`db.domains.updateOne`
-with a free name) and tell its owner before deploying that stage.
+The files of `client/static` answer at the site's root too (`/og-hire.png`, `/logo.svg`...), so
+no name ending with a picture, icon or video extension can be claimed either (`.png`, `.jpg`,
+`.svg`, `.webp`, `.ico`, `.webm`, `.mp4`...: `FILE_EXTENSION_PATTERN` of the same file). Before
+deploying the version that refuses them, check once that no portfolio has one: its pages would
+still load, but the site would take its name for an invalid one (a recruiter writing a job from
+its page for recruiters would not be sent back there):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  db.domains.find({ name: /\.(png|jpe?g|gif|svg|webp|avif|ico|webm|mp4)$/ }, { name: 1, admin: 1 }).toArray()'
+```
+
+An empty array (`[]`) from each query means nothing to do. Otherwise, rename the domain
+(`db.domains.updateOne` with a free name) and tell its owner before deploying that stage.
 
 ## Search engines
 
@@ -1061,8 +1073,17 @@ curl -s https://example.com/robots.txt | grep -iE '^(user-agent|allow|disallow)'
 LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'
 curl -s -o /dev/null -w '%{http_code}\n' -A "$LINKEDIN" \
   https://example.com/louis.gentil/experiences                                   # 200, not a challenge (403 or 503)
+curl -sL -A "$LINKEDIN" https://example.com/louis.gentil \
+  | grep -o '<meta property="og:\(url\|image\|locale\)"[^>]*>'                   # the link people copy: og:url .../louis.gentil/experiences, og:image .../og-portfolio.png, og:locale en_GB
+curl -sL -A "$LINKEDIN" 'https://example.com/louis.gentil?lang=fr' \
+  | grep -o '<meta property="og:\(url\|image\|locale\)"[^>]*>'                   # og:url .../experiences?lang=fr, og:image .../og-portfolio-fr.png, og:locale fr_FR
 curl -s -A "$LINKEDIN" https://example.com/louis.gentil/experiences \
-  | grep -o '<meta property="og:[^>]*>\|<title>[^<]*</title>'                     # og:url, og:locale and the page's title
+  | grep -o '<meta property="og:[^>]*>\|<meta name="twitter:[^>]*>'             # og:title (the portfolio's title), og:description (its tagline), og:image .../og-portfolio.png, og:url, og:locale en_GB, twitter:card, twitter:image:alt
+curl -s -A "$LINKEDIN" 'https://example.com/louis.gentil/hire?lang=fr' \
+  | grep -o '<meta property="og:[^>]*>'                                          # og:title « Proposer un poste à … », og:description « Sur la page recruteurs de … : réserver un rendez-vous, en 2 minutes environ » (the journey's steps; « La page recruteurs de …. … ne prend pas de demandes de rendez-vous en ligne pour le moment » while the calendar offers no meeting type with hours), og:image .../og-hire-fr.png, og:url ...?lang=fr, og:locale fr_FR
+curl -s https://example.com/louis.gentil/hire | grep -o 'Before you start\|About [0-9]* minutes\|does not take meeting requests online'   # the page rendered on the server, from the journey: "Before you start" where a meeting can be booked, else that none is taken online
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' -A "$LINKEDIN" \
+  https://example.com/og-hire-fr.png                                             # 200 image/png
 ```
 
 In the robots.txt output, every group that names `User-agent: *` has only `Allow: /` or an empty
@@ -1070,8 +1091,22 @@ In the robots.txt output, every group that names `User-agent: *` has only `Allow
 ClaudeBot...). The page fetched as LinkedInBot must be the portfolio itself, with its preview tags,
 not a challenge page that also answers 200.
 
-LinkedIn's [Post Inspector](https://www.linkedin.com/post-inspector/) on a portfolio's address
-then shows its preview.
+LinkedIn's [Post Inspector](https://www.linkedin.com/post-inspector/) on a portfolio's addresses
+then shows their previews: `/<name>` first (the link its owner copies, sent on to its
+experiences), then `/<name>/experiences` and `/<name>/hire`, each in English and with `?lang=fr`,
+with their title, description and picture. LinkedIn keeps a link's preview for about a
+week: inspecting the address fetches it again, after a change of the pictures or of a
+portfolio's title.
+
+**After a release that changes the landing page's preview or demos** (its title, description,
+`og-image.png`, `og-image-fr.png`, or the recordings `client/static/landing/demo-*.webm`, `.mp4`
+and `.jpg`, which keep their addresses when they change), inspect `https://<your domain>/` and
+`https://<your domain>/?lang=fr` in the Post Inspector, so links already shared show the new
+title and picture. If Cloudflare keeps static files in its cache (it does by default for these
+extensions), purge those addresses (**Caching**, **Configuration**, **Custom Purge**:
+`/og-image.png`, `/og-image-fr.png`, `/landing/demo-journey.webm`, `.mp4`, `.jpg`, and
+`demo-style.*` when they changed), then check what is served:
+`curl -sI https://<your domain>/og-image.png | grep -i '^\(last-modified\|etag\|cf-cache-status\)'`.
 
 **Pages listed before.** A `noindex` counts from the next time a search engine reads the page,
 which can take weeks. Verify the domain in
@@ -1109,7 +1144,7 @@ that search engines are asked not to list a portfolio, never that it cannot be f
    curl -i https://api.example.com/health      # 200 OK
    curl -i https://example.com/healthz         # 200 ok
    curl -s -o /dev/null -w '%{http_code}\n' https://example.com/   # 200 (the landing page, no redirect)
-   curl -s https://example.com/ | grep -o '<title>[^<]*</title>'    # <title>Your portfolio screens jobs for you | Portfolio</title>
+   curl -s https://example.com/ | grep -o '<title>[^<]*</title>'    # <title>Your career, on your terms | Portfolio</title>
    curl -s https://example.com/legal | grep -c 'Publisher details are not configured yet'   # 0 once LEGAL_* are set
    curl -s https://api.example.com/domain/louis.gentil/availability   # {"name":"louis.gentil","available":false,"reason":"taken"}
    curl -si -H 'Origin: https://example.com' https://api.example.com/domain/louis.gentil \

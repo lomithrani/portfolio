@@ -16,7 +16,8 @@
 // the list is the path today; branches (where to go when a step succeeded or failed) will be
 // transitions between step ids, added to this shape.
 import { workflowMessages as m } from './workflow.messages';
-import { WORKFLOW_STEP_MANIFESTS } from './workflowSteps';
+import { DEFAULT_JOB_MATCH_MIN_SCORE, WORKFLOW_STEP_MANIFESTS } from './workflowSteps';
+import type { JobMatchStepConfig, NoteStepConfig } from './workflowSteps';
 
 /**
  * requirement: something the visitor does (pick a job, read a note), which gives nothing by
@@ -94,6 +95,49 @@ export const WORKFLOW_LIMITS = {
 export const DEFAULT_WORKFLOW_STEPS: readonly WorkflowStep[] = [
 	{ id: 'meeting', type: 'meeting', config: {} }
 ];
+
+/**
+ * Journeys an owner can start from in one click, instead of adding the steps one by one:
+ * gate: recruiters read a note, share a job (with its pay range, as every job description states
+ * it), which is scored against the owner's perfect job, and book a meeting only when it matches;
+ * open: anyone books a meeting, the journey of an owner who never chose one
+ */
+export const JOURNEY_TEMPLATES = ['gate', 'open'] as const;
+export type JourneyTemplate = (typeof JOURNEY_TEMPLATES)[number];
+
+/** What the owner changes in a template before saving it: the note's title and text */
+export interface JourneyTemplateOptions {
+	noteTitle?: string;
+	noteText?: string;
+}
+
+/**
+ * The steps of the template `name`, new each time, as PUT /workflow takes them. The gate's note
+ * is the one of workflowMessages.gateNote, read now (in the language in use: the owner's, when
+ * their editor builds it), unless `noteTitle` or `noteText` replace it; its job match asks for
+ * DEFAULT_JOB_MATCH_MIN_SCORE and shows recruiters the outcome of each criterion. Its ids are
+ * those newWorkflowStep gives the first step of each type, so a journey saved from it keeps the
+ * progress kept under them (the meeting's)
+ */
+export function journeyTemplate(
+	name: JourneyTemplate,
+	{ noteTitle, noteText }: JourneyTemplateOptions = {}
+): WorkflowStep[] {
+	if (name === 'open') {
+		return DEFAULT_WORKFLOW_STEPS.map((step) => ({ ...step, config: { ...step.config } }));
+	}
+	const note: NoteStepConfig = {
+		title: noteTitle ?? m.gateNote.title,
+		text: noteText ?? m.gateNote.text
+	};
+	const match: JobMatchStepConfig = { minScore: DEFAULT_JOB_MATCH_MIN_SCORE, showDetails: true };
+	return [
+		{ id: 'note', type: 'note', config: note },
+		{ id: 'job', type: 'job', config: {} },
+		{ id: 'job-match', type: 'job-match', config: match },
+		{ id: 'meeting', type: 'meeting', config: {} }
+	];
+}
 
 /** The manifest of a step type; undefined for a type this version does not have */
 export const stepManifest = (type: string): WorkflowStepManifest<object> | undefined =>

@@ -3,6 +3,7 @@ import { userLogged } from './userLogged';
 import { clearAuthCookie } from './auth';
 import { acceptTermsRequest, consentRequest, deleteAccountRequest, userMode } from '../models/elysia';
 import { deleteAccount } from '../services/accountDeletion';
+import { candidateReadiness } from '../services/candidateReadiness';
 import { recordConsent } from '../services/legal';
 import { accountDto, findAccount, setActiveMode } from '../services/users';
 
@@ -16,6 +17,19 @@ export const account = new Elysia()
       summary: 'The signed-in account: its active mode, recruiter space and domain'
     }
   })
+  // What the account still has to set up before it shares its portfolio's
+  // link (services/candidateReadiness.ts): its own documents only, what they
+  // have and never what they hold
+  .get('/me/readiness', async ({ userId }) => {
+    // 401 first when the account no longer exists
+    await findAccount(userId);
+    return candidateReadiness(userId);
+  },
+    {
+      detail: {
+        summary: 'What the signed-in account still has to set up before sharing its link: portfolio, experiences, perfect job, journey, calendar'
+      }
+    })
   // Opening the recruiter space (the first 'recruiter') needs the terms in
   // force: an account that has not accepted them sends the age and terms
   // confirmation ticked where it opens the space, recorded from the source

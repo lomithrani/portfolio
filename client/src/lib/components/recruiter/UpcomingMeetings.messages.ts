@@ -5,8 +5,8 @@ import { defineMessages } from 'portfolio-common';
 export const m = defineMessages({
 	title: { en: 'Upcoming meetings', fr: 'Prochains rendez-vous' },
 	empty: {
-		en: "No upcoming meetings. Book one on a candidate's Hire page while signed in and it shows here.",
-		fr: "Aucun rendez-vous à venir. Réservez-en un sur la page Recruter d'un candidat en étant connecté : il s'affichera ici."
+		en: "No upcoming meetings. Book one on a candidate's page for recruiters while signed in and it shows here.",
+		fr: "Aucun rendez-vous à venir. Réservez-en un sur la page recruteurs d'un candidat en étant connecté : il s'affichera ici."
 	},
 	loadFailed: {
 		en: 'Your upcoming meetings could not be loaded.',

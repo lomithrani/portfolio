@@ -84,8 +84,8 @@ modifications, droit applicable.
 	{SITE_NAME} permet aux candidats de publier un portfolio de leurs expériences et projets à leur propre
 	adresse, avec une frise chronologique et des filtres par compétence, et de définir un parcours de recrutement
 	que les recruteurs suivent avant de réserver un rendez-vous avec eux. Les recruteurs rédigent des offres
-	d'emploi et en présentent une à un candidat en la choisissant sur la page Recruter de ce candidat, où
-	son parcours peut la noter au regard du poste qu'il recherche. Le site ne publie pas d'offres d'emploi.
+	d'emploi et en présentent une à un candidat en la choisissant sur la page recruteurs de ce candidat,
+	où son parcours peut la noter au regard du poste qu'il recherche. Le site ne publie pas d'offres d'emploi.
 </p>
 <p>
 	<strong>Les candidats ne paient jamais</strong> le service : la loi française interdit d'exiger
@@ -244,7 +244,7 @@ modifications, droit applicable.
 	d'embauche, n'est pas l'employeur et n'est pas partie au contrat de travail qui peut en découler.
 	Le site n'évalue pas les candidats, et ne les classe ni ne les filtre. La seule note qu'il calcule
 	est celle d'une offre d'emploi, au regard des critères qu'un candidat a fixés pour le poste qu'il
-	recherche, lorsque le candidat ajoute l'étape « Correspondre au poste idéal » à son parcours de
+	recherche, lorsque le candidat ajoute l'étape « Faire noter l'offre » à son parcours de
 	recrutement : selon des règles fixes, et non par un modèle d'IA, avec le minimum choisi par le
 	candidat (voir la
 	<LegalDocLink doc="privacy" {lang} hash="ai">politique de confidentialité</LegalDocLink>).

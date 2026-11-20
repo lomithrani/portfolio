@@ -225,8 +225,10 @@ await call(JANE, 'PUT', '/workflow', {
 			id: 'note',
 			type: 'note',
 			config: {
-				title: 'Before you start',
-				text: 'I am open to **staff or lead frontend** roles around Lyon.\n\nShare the job first: you will see at once how it matches what I am looking for.'
+				// Not the page's own "Before you start" card above the steps, and in the neutral words
+				// of the page around it (the job is scored against the owner's criteria)
+				title: 'My conditions',
+				text: 'I am open to **staff or lead frontend** roles around Lyon.\n\nShare the job first: you will see at once how it matches my criteria.'
 			}
 		},
 		{ id: 'job', type: 'job', config: {} },

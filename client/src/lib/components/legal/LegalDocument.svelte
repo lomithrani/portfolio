@@ -11,7 +11,7 @@ has more than three sections, the text (children) and links to the other documen
 	import type { Snippet } from 'svelte';
 	import LegalDocLink from './LegalDocLink.svelte';
 	import { LEGAL_VERSION, LOCALES, LOCALE_NAMES } from 'portfolio-common';
-	import { localeAlternate, localeHref } from '#lib/i18n/urls.ts';
+	import { localeAlternate, localeHref, ogLocale } from '#lib/i18n/urls.ts';
 	import { m } from './legal.messages.ts';
 	import {
 		LEGAL_DOCUMENTS,
@@ -54,7 +54,7 @@ has more than three sections, the text (children) and links to the other documen
 	<meta property="og:title" content={meta.title[lang]} />
 	<meta property="og:description" content={meta.description[lang]} />
 	<meta property="og:url" content={absoluteIn(lang)} />
-	<meta property="og:locale" content={t.locale} />
+	<meta property="og:locale" content={ogLocale(lang)} />
 </svelte:head>
 
 <article

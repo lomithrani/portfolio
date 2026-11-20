@@ -26,15 +26,42 @@ export const m = defineMessages({
 	},
 	loading: { en: 'Loading your perfect job...', fr: 'Chargement de votre poste idéal…' },
 
+	/** Offered while no criterion is rated: the essentials switched on in one click */
+	essentials: {
+		title: { en: 'Not sure where to start?', fr: 'Par où commencer ?' },
+		text: {
+			commute: {
+				en: 'The pay (a deal-breaker), the work mode, your commute and the contract: what most calls end on. You fill them in, then save.',
+				fr: "La rémunération (critère éliminatoire), le mode de travail, votre trajet et le contrat : ce sur quoi la plupart des appels s'arrêtent. Vous les complétez, puis enregistrez."
+			},
+			cities: {
+				en: 'The pay (a deal-breaker), the work mode, the location and the contract: what most calls end on. You fill them in, then save.',
+				fr: "La rémunération (critère éliminatoire), le mode de travail, le lieu et le contrat : ce sur quoi la plupart des appels s'arrêtent. Vous les complétez, puis enregistrez."
+			}
+		},
+		start: { en: 'Start with the essentials', fr: "Commencer par l'essentiel" },
+		/** Read out once they are on */
+		on: {
+			commute: {
+				en: 'The pay, the work mode, the commute and the contract are on: fill them in, then save.',
+				fr: 'La rémunération, le mode de travail, le trajet et le contrat sont activés : complétez-les, puis enregistrez.'
+			},
+			cities: {
+				en: 'The pay, the work mode, the location and the contract are on: fill them in, then save.',
+				fr: 'La rémunération, le mode de travail, le lieu et le contrat sont activés : complétez-les, puis enregistrez.'
+			}
+		}
+	},
+
 	// --- How a job is scored ---
 	scoring: {
 		title: { en: 'How a job is scored', fr: 'Comment une offre est notée' },
 		importance: {
-			en: 'Each criterion you switch on counts for its importance, from 1 to 5. The score is what the job matches out of the total, on 100.',
-			fr: "Chaque critère activé compte selon son importance, de 1 à 5. La note est la part du total à laquelle l'offre correspond, sur 100."
+			en: 'Each criterion you switch on adds its importance, from 1 to 5, to a total. The score, out of 100, is the share of that total the job matches.',
+			fr: "Chaque critère activé ajoute son importance, de 1 à 5, à un total. La note, sur 100, est la part de ce total à laquelle l'offre correspond."
 		},
 		partly: {
-			en: 'Some criteria can match partly: a pay a little under yours, fewer remote days.',
+			en: 'Some criteria can match partly: pay a little under yours, fewer remote days.',
 			fr: 'Certains critères peuvent correspondre en partie : une rémunération un peu inférieure à la vôtre, moins de jours de télétravail.'
 		},
 		notStated: {

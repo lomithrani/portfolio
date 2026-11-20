@@ -15,7 +15,7 @@ import {
 	withLocale
 } from 'portfolio-common';
 import { plainText, richParts } from './rich.ts';
-import { localeAlternate, localeHref } from './urls.ts';
+import { localeAlternate, localeHref, ogLocale } from './urls.ts';
 
 describe('the language of a request', () => {
 	test('a language is read from its code, whatever its case or region', () => {
@@ -149,6 +149,11 @@ describe('language links', () => {
 		const url = new URL('https://example.test/legal/privacy?lang=fr&x=1');
 		expect(localeAlternate(url, 'en')).toBe('https://example.test/legal/privacy');
 		expect(localeAlternate(url, 'fr')).toBe('https://example.test/legal/privacy?lang=fr');
+	});
+
+	test('og:locale names the language and its region', () => {
+		expect(ogLocale('en')).toBe('en_GB');
+		expect(ogLocale('fr')).toBe('fr_FR');
 	});
 });
 

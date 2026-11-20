@@ -1,5 +1,11 @@
 import { defineMessages } from 'portfolio-common';
 
+/** The steps' phrases in a sentence: "a, b, then c", `then` being the language's word before the last */
+const inOrder = (phrases: readonly string[], then: string): string =>
+	phrases.length === 1
+		? phrases[0]
+		: `${phrases.slice(0, -1).join(', ')}, ${then} ${phrases.at(-1)}`;
+
 // The texts of workflow.ts: the owner's journey editor, the Hire page and its steps.
 export const m = defineMessages({
 	// --- The owner's editor ---
@@ -21,8 +27,8 @@ export const m = defineMessages({
 	unknownStepName: { en: 'Unavailable step', fr: 'Étape indisponible' },
 	summary: {
 		empty: {
-			en: 'Your Hire page offers nothing: recruiters are asked to reach out directly.',
-			fr: 'Votre page Recruter ne propose rien : les recruteurs sont invités à prendre contact directement.'
+			en: 'Your page for recruiters offers nothing: recruiters are asked to reach out directly.',
+			fr: 'Votre page recruteurs ne propose rien : les recruteurs sont invités à prendre contact directement.'
 		},
 		/** A step named with its own title: the type's label, lowercased, then the title */
 		titled: {
@@ -44,11 +50,59 @@ export const m = defineMessages({
 	},
 
 	// --- The visitor's journey ---
+	/**
+	 * The Hire page's description (journeyDescription): its meta description and a shared link's.
+	 * A preview shows it under the page's title ("Propose a role to Jane"), so it starts with what
+	 * the title does not say. `phrases`: the labels of the steps, lowercased, in order (one at
+	 * least); through plural(): `minutes`, about how long they take
+	 */
+	description: {
+		steps: {
+			one: {
+				en: (ownerName: string, phrases: readonly string[]) =>
+					`On ${ownerName}'s page for recruiters: ${inOrder(phrases, 'then')}, in about a minute.`,
+				fr: (ownerName: string, phrases: readonly string[]) =>
+					`Sur la page recruteurs de ${ownerName} : ${inOrder(phrases, 'puis')}, en une minute environ.`
+			},
+			other: {
+				en: (ownerName: string, phrases: readonly string[], minutes: number) =>
+					`On ${ownerName}'s page for recruiters: ${inOrder(phrases, 'then')}, in about ${minutes} minutes.`,
+				fr: (ownerName: string, phrases: readonly string[], minutes: number) =>
+					`Sur la page recruteurs de ${ownerName} : ${inOrder(phrases, 'puis')}, en ${minutes} minutes environ.`
+			}
+		},
+		/**
+		 * A journey without steps, or one that leads to a meeting nobody can book now (the owner's
+		 * calendar has no meeting type): no step is named, no duration said
+		 */
+		none: {
+			en: (ownerName: string) =>
+				`${ownerName}'s page for recruiters. They do not take meeting requests online right now.`,
+			fr: (ownerName: string) =>
+				`La page recruteurs de ${ownerName}. ${ownerName} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
+		},
+		/** The journey is not known yet (it is loaded in the browser) */
+		unknown: {
+			en: (ownerName: string) =>
+				`${ownerName}'s page for recruiters, with the steps they ask you to follow.`,
+			fr: (ownerName: string) => `La page recruteurs de ${ownerName}, avec les étapes à suivre.`
+		}
+	},
 	intro: {
 		noGoal: {
 			en: (ownerName: string) => `${ownerName} does not take meeting requests online right now.`,
 			fr: (ownerName: string) =>
 				`${ownerName} ne prend pas de demandes de rendez-vous en ligne pour le moment.`
+		},
+		/**
+		 * The journey leads to a meeting nobody can book now (no meeting type in the owner's
+		 * calendar), after steps of its own: they stay read-only until then
+		 */
+		closedSteps: {
+			en: (ownerName: string) =>
+				`${ownerName} does not take meeting requests online right now: the steps open once they do.`,
+			fr: (ownerName: string) =>
+				`${ownerName} ne prend pas de demandes de rendez-vous en ligne pour le moment : les étapes s'ouvriront dès que ce sera le cas.`
 		},
 		/** `before`: how many steps come first (one at least); `after`: what the goal's type says then */
 		stepsFirst: {

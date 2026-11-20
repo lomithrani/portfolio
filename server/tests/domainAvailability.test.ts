@@ -105,7 +105,7 @@ describe('GET /domain/:name/availability', () => {
     }
   );
 
-  it.each(['-bad', 'bad-', 'jane..doe', 'wp-login.php', 'config.json', 'a b', 'é', 'x'.repeat(64)])(
+  it.each(['-bad', 'bad-', 'jane..doe', 'wp-login.php', 'config.json', 'og-hire.png', 'a b', 'é', 'x'.repeat(64)])(
     'says %s is not a valid name, without a lookup',
     async (name) => {
       const exists = spyOn(Domain, 'exists');

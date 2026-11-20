@@ -1,9 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
+	DEFAULT_JOB_MATCH_MIN_SCORE,
 	DEFAULT_WORKFLOW_STEPS,
+	JOURNEY_TEMPLATES,
+	LOCALES,
+	NOTE_STEP_LIMITS,
 	WORKFLOW_LIMITS,
+	journeyTemplate,
 	parseWorkflow,
 	stepManifest,
+	withLocale,
+	type NoteStepConfig,
 	type WorkflowStep,
 	type WorkflowStepStatus
 } from 'portfolio-common';
@@ -12,6 +19,7 @@ import {
 	activeStepIndex,
 	addStep,
 	addStepProblem,
+	anonymousJourney,
 	asksForAnotherJob,
 	goalStepIndex,
 	initialJobChoice,
@@ -24,6 +32,8 @@ import {
 	jobMatchOutcomeText,
 	jobMatchSettings,
 	jobStepNote,
+	journeyDescription,
+	journeyEffort,
 	journeyIntro,
 	journeyReturnDomain,
 	journeySummary,
@@ -79,6 +89,60 @@ describe('the step types (portfolio-common)', () => {
 	it('starts every portfolio with booking only', () => {
 		expect(DEFAULT_WORKFLOW_STEPS).toEqual([{ id: 'meeting', type: 'meeting', config: {} }]);
 		expect(parseWorkflow(DEFAULT_WORKFLOW_STEPS)).toMatchObject({ ok: true });
+	});
+
+	it('builds each journey template as a journey the API accepts, in English and in French', () => {
+		for (const locale of LOCALES) {
+			withLocale(locale, () => {
+				for (const name of JOURNEY_TEMPLATES) {
+					const steps = journeyTemplate(name);
+					// Already as parseWorkflow stores it: nothing is trimmed or dropped on save
+					expect(parseWorkflow(steps)).toEqual({ ok: true, steps });
+				}
+				const [note] = journeyTemplate('gate');
+				const { title, text } = note.config as NoteStepConfig;
+				expect(title.length).toBeLessThanOrEqual(NOTE_STEP_LIMITS.title);
+				expect(text.length).toBeLessThanOrEqual(NOTE_STEP_LIMITS.text);
+			});
+		}
+	});
+
+	it('makes the gate a note, a job, its match and a meeting, and the open journey the default one', () => {
+		const gate = journeyTemplate('gate');
+		expect(gate.map(({ id, type }) => [id, type])).toEqual([
+			['note', 'note'],
+			['job', 'job'],
+			['job-match', 'job-match'],
+			['meeting', 'meeting']
+		]);
+		expect(gate[2].config).toEqual({
+			minScore: DEFAULT_JOB_MATCH_MIN_SCORE,
+			showDetails: true
+		});
+		// The ids the editor gives the first step of each type
+		expect(ids(editorSteps('note', 'job', 'job-match', 'meeting'))).toEqual(ids(gate));
+		expect(journeyTemplate('open')).toEqual(DEFAULT_WORKFLOW_STEPS);
+		// A new journey each time: changing one changes neither the next nor the default
+		(journeyTemplate('open')[0].config as Record<string, unknown>).changed = true;
+		expect(journeyTemplate('open')).toEqual(DEFAULT_WORKFLOW_STEPS);
+		expect(DEFAULT_WORKFLOW_STEPS[0].config).toEqual({});
+	});
+
+	it("writes the gate's note in the language in use when it is built, unless it is given", () => {
+		const noteOf = (steps: WorkflowStep[]) => steps[0].config as NoteStepConfig;
+		const english = noteOf(journeyTemplate('gate'));
+		const french = withLocale('fr', () => noteOf(journeyTemplate('gate')));
+		expect(english.title).toBe('Before we talk');
+		expect(english.text).toContain('with its pay range');
+		expect(french.title).toBe("Avant d'échanger");
+		expect(french.text).toContain('fourchette de rémunération');
+		expect(
+			noteOf(journeyTemplate('gate', { noteTitle: 'My terms', noteText: 'Remote only.' }))
+		).toEqual({ title: 'My terms', text: 'Remote only.' });
+		expect(noteOf(journeyTemplate('gate', { noteTitle: 'My terms' }))).toEqual({
+			title: 'My terms',
+			text: english.text
+		});
 	});
 
 	it('accepts an empty journey, and requirements before a step they open', () => {
@@ -211,7 +275,7 @@ describe("the owner's editor", () => {
 			'Recruiters can book a meeting right away.'
 		);
 		expect(journeySummary([])).toBe(
-			'Your Hire page offers nothing: recruiters are asked to reach out directly.'
+			'Your page for recruiters offers nothing: recruiters are asked to reach out directly.'
 		);
 		const steps = withStepConfig(editorSteps('note', 'note', 'job', 'meeting'), 'note', NOTE);
 		expect(journeySummary(steps, title)).toBe(
@@ -324,6 +388,102 @@ describe("the visitor's journey", () => {
 		);
 		expect(journeyIntro('Louis', undefined)).toBe(
 			'Louis does not take meeting requests online right now.'
+		);
+		// A meeting nobody can book: no slot promised, and the steps before it wait
+		expect(journeyIntro('Louis', { before: 0, ...texts }, { closed: true })).toBe(
+			'Louis does not take meeting requests online right now.'
+		);
+		expect(journeyIntro('Louis', { before: 2, ...texts }, { closed: true })).toBe(
+			'Louis does not take meeting requests online right now: the steps open once they do.'
+		);
+		expect(
+			withLocale('fr', () => journeyIntro('Louis', { before: 2, ...texts }, { closed: true }))
+		).toBe(
+			"Louis ne prend pas de demandes de rendez-vous en ligne pour le moment\u00a0: les étapes s'ouvriront dès que ce sera le cas."
+		);
+	});
+
+	it("keeps of the server's journey what anyone signed out gets", () => {
+		const answer = {
+			steps: [
+				{ id: 'note', type: 'note', status: 'pending', config: NOTE },
+				{ id: 'job', type: 'job', status: 'pending', view: { job: JOB } },
+				{ id: 'meeting', type: 'meeting', status: 'succeeded' }
+			],
+			own: true
+		};
+		// A view and `own` are a signed-in caller's: never kept, nor written into the page
+		expect(anonymousJourney(answer)).toEqual({
+			steps: [
+				{ id: 'note', type: 'note', status: 'pending', config: NOTE },
+				{ id: 'job', type: 'job', status: 'pending' },
+				{ id: 'meeting', type: 'meeting', status: 'succeeded' }
+			]
+		});
+		expect(anonymousJourney({ steps: [] })).toEqual({ steps: [] });
+		// Anything else is no journey: the browser loads it
+		for (const junk of [
+			null,
+			undefined,
+			'Domain not found',
+			{},
+			{ steps: 'note' },
+			{ steps: [{ id: 'note', type: 'note', status: 'skipped' }] },
+			{ steps: [{ id: 1, type: 'note', status: 'pending' }] },
+			{ steps: [null] }
+		]) {
+			expect(anonymousJourney(junk)).toBeNull();
+		}
+	});
+
+	it('adds up what the steps take, each need said once', () => {
+		expect(
+			journeyEffort([
+				{ minutes: 1, needs: ['account'] },
+				{ minutes: 5, needs: ['account', 'job'] },
+				{ minutes: 0 },
+				undefined,
+				{ minutes: 2 }
+			])
+		).toEqual({ minutes: 8, needs: ['account', 'job'] });
+		// One minute at least
+		expect(journeyEffort([{ minutes: 0 }])).toEqual({ minutes: 1, needs: [] });
+		expect(journeyEffort([])).toEqual({ minutes: 1, needs: [] });
+	});
+
+	it('describes the page with what its journey asks', () => {
+		const gate = [{ type: 'note' }, { type: 'job' }, { type: 'job-match' }, { type: 'meeting' }];
+		expect(journeyDescription('Louis', gate, 8)).toBe(
+			"On Louis's page for recruiters: read a note, select or create a job, get the job scored, then book a meeting, in about 8 minutes."
+		);
+		expect(journeyDescription('Louis', DEFAULT_WORKFLOW_STEPS, 2)).toBe(
+			"On Louis's page for recruiters: book a meeting, in about 2 minutes."
+		);
+		expect(journeyDescription('Louis', [{ type: 'meeting' }], 1)).toBe(
+			"On Louis's page for recruiters: book a meeting, in about a minute."
+		);
+		expect(withLocale('fr', () => journeyDescription('Louis', gate, 8))).toBe(
+			"Sur la page recruteurs de Louis\u00a0: lire une note, choisir ou créer une offre, faire noter l'offre, puis réserver un rendez-vous, en 8 minutes environ."
+		);
+		expect(journeyDescription('Louis', [], 1)).toBe(
+			"Louis's page for recruiters. They do not take meeting requests online right now."
+		);
+		// A meeting nobody can book (the owner's calendar has no meeting type): neither the steps nor
+		// a duration are promised, whatever comes before the meeting
+		for (const steps of [gate, DEFAULT_WORKFLOW_STEPS]) {
+			expect(journeyDescription('Louis', steps, 8, { closed: true })).toBe(
+				"Louis's page for recruiters. They do not take meeting requests online right now."
+			);
+		}
+		expect(withLocale('fr', () => journeyDescription('Louis', gate, 8, { closed: true }))).toBe(
+			'La page recruteurs de Louis. Louis ne prend pas de demandes de rendez-vous en ligne pour le moment.'
+		);
+		expect(withLocale('fr', () => journeyDescription('Louis', [{ type: 'meeting' }], 1))).toBe(
+			'Sur la page recruteurs de Louis\u00a0: réserver un rendez-vous, en une minute environ.'
+		);
+		// The journey is not known (the browser loads it): no step is named
+		expect(journeyDescription('Louis', undefined, 1)).toBe(
+			"Louis's page for recruiters, with the steps they ask you to follow."
 		);
 	});
 
@@ -486,7 +646,7 @@ describe('the job match step', () => {
 			ok: false,
 			problem: {
 				message:
-					'“Match the perfect job” works on what recruiters did in “Select or create a job”: move it below that step.',
+					'“Get the job scored” works on what recruiters did in “Select or create a job”: move it below that step.',
 				stepId: 'job-match'
 			}
 		});
@@ -499,7 +659,7 @@ describe('the job match step', () => {
 			problem: { stepId: 'job-match', field: 'minScore' }
 		});
 		expect(journeySummary(steps)).toBe(
-			'Recruiters select or create a job, match the perfect job, then book a meeting.'
+			'Recruiters select or create a job, get the job scored, then book a meeting.'
 		);
 	});
 

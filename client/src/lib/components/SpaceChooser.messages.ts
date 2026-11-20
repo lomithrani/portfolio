@@ -29,8 +29,8 @@ export const m = defineMessages({
 	recruiter: {
 		title: { en: 'Recruiter', fr: 'Recruteur' },
 		description: {
-			en: "Write job descriptions and bring them to candidates' Hire pages.",
-			fr: "Rédigez des offres d'emploi et présentez-les sur la page Recruter des candidats."
+			en: "Write job descriptions and bring them to candidates' pages for recruiters.",
+			fr: "Rédigez des offres d'emploi et présentez-les sur la page recruteurs des candidats."
 		}
 	},
 	lastUsed: { en: 'Last used', fr: 'Dernier utilisé' },
