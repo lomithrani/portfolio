@@ -4,7 +4,7 @@ import { JobPosting } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
 import { userLogged } from './userLogged';
 import { ConflictError, ResourceNotFoundError } from '../errors';
-import { jobPostingEditRequest, jobPostingRequest, jobStatusRequest, objectIdParams } from '../models/elysia';
+import { jobPostingCreateRequest, jobPostingEditRequest, jobStatusRequest, objectIdParams } from '../models/elysia';
 import { requireRecruiterSpace } from '../services/recruiters';
 import {
   JOB_NOT_FOUND,
@@ -14,10 +14,21 @@ import {
   publishedAtFor,
   requireOpenablePay,
   requireUnchangedTerms,
-  toJobPostingDto,
   validJobPosting
 } from '../services/jobPostings';
-import type { JobPostingDto } from '../services/jobPostings';
+import {
+  afterJobDeleted,
+  afterJobEdited,
+  afterJobStatusChange,
+  afterMatchingOff,
+  entersMatchingAtCreation,
+  leavesMatchingOnEdit,
+  newJobMatching,
+  requireMatchingKept,
+  settleCreatedInMatching,
+  toRecruiterJobDto
+} from '../services/jobMatching';
+import type { RecruiterJobPostingDto } from '../services/jobMatching';
 import { dropVisitorProgress } from '../services/workflows';
 import { pickedJobId } from '../services/workflowSteps/job';
 import { JOB_CHANGED } from '../protocol';
@@ -31,6 +42,10 @@ import { JOB_CHANGED } from '../protocol';
 // posting's terms (what the perfect job scores) are locked: an edit that
 // changes them answers 409 (services/jobPostings.ts, requireUnchangedTerms).
 // Deleting a posting deletes the versions of it shared on journeys too.
+// Matching (Path 2): a posting can be created in it (POST /jobs's `matching`),
+// and what a status change, an edit or a deletion does to its matches is
+// services/jobMatching.ts's, whatever the MATCHING flag (the switch itself,
+// PUT /jobs/:id/matching, is plugins/matches.ts's: 404 while it is off).
 
 /**
  * save() of a posting that matched nothing: deleted meanwhile (e.g. in another tab), a 404 like
@@ -50,34 +65,47 @@ const saveJobPosting = async (job: Awaited<ReturnType<typeof findOwnJobPosting>>
   }
 };
 
+/** A saved posting as it is now, once what its change did to matching changed it (else as saved) */
+const currentPosting = async (saved: StoredJobPosting, changed: boolean) =>
+  (changed && (await JobPosting.findById(saved._id).lean<StoredJobPosting>())) || saved;
+
 export const jobs = new Elysia()
   .use(userLogged)
   // After the session and request checks: what needs a recruiter space (and the terms in force)
   .onBeforeHandle(async ({ userId }) => {
     await requireRecruiterSpace(userId);
   })
-  .get('/recruiter/jobs', async ({ userId }): Promise<{ jobs: JobPostingDto[] }> => {
+  .get('/recruiter/jobs', async ({ userId }): Promise<{ jobs: RecruiterJobPostingDto[] }> => {
     const jobs = await JobPosting.find({ recruiter: userId })
       .sort({ updatedAt: -1, _id: -1 })
       .lean<StoredJobPosting[]>();
-    return { jobs: jobs.map(toJobPostingDto) };
+    return { jobs: jobs.map(toRecruiterJobDto) };
   }, {
     detail: { summary: "The recruiter's job postings, most recently updated first" }
   })
-  .get('/recruiter/jobs/:id', async ({ userId, params: { id } }): Promise<JobPostingDto> => {
+  .get('/recruiter/jobs/:id', async ({ userId, params: { id } }): Promise<RecruiterJobPostingDto> => {
     const job = await findOwnJobPosting(userId, id);
-    return toJobPostingDto(job.toObject<StoredJobPosting>());
+    return toRecruiterJobDto(job.toObject<StoredJobPosting>());
   }, {
     params: objectIdParams,
     detail: { summary: 'One of the recruiter\'s job postings' }
   })
-  .post('/jobs', async ({ userId, body }): Promise<JobPostingDto> => {
-    return toJobPostingDto(await createJobPosting(userId, validJobPosting(body)));
+  .post('/jobs', async ({ userId, body }): Promise<RecruiterJobPostingDto> => {
+    const { matching, ...posting } = body;
+    const fields = validJobPosting(posting);
+    // Checked before anything is written: only an open posting that names its company, within the
+    // jobs a recruiter can have in matching (ignored while MATCHING is off)
+    const inMatching = await entersMatchingAtCreation(userId, fields, matching);
+    const job = await createJobPosting(userId, fields, inMatching ? newJobMatching() : undefined);
+    if (inMatching) await settleCreatedInMatching(userId, job);
+    return toRecruiterJobDto(job);
   }, {
-    body: jobPostingRequest,
-    detail: { summary: 'Add a job posting' }
+    body: jobPostingCreateRequest,
+    detail: {
+      summary: 'Add a job posting, proposed to candidates through matching when `matching` is true (an open posting that names its company)'
+    }
   })
-  .put('/jobs/:id', async ({ userId, params: { id }, body }): Promise<JobPostingDto> => {
+  .put('/jobs/:id', async ({ userId, params: { id }, body }): Promise<RecruiterJobPostingDto> => {
     const { updatedAt, ...posting } = body;
     const fields = validJobPosting(posting);
     const job = await findOwnJobPosting(userId, id);
@@ -93,13 +121,22 @@ export const jobs = new Elysia()
     // Opened before: its terms stay as they are (409). Never opened: saved only while it still
     // is not (null also matches a missing field), so an edit without `updatedAt` cannot change
     // the terms of a posting opened meanwhile (PUT /jobs/:id/status): save() matches nothing, 409
-    requireUnchangedTerms(job.toObject<StoredJobPosting>(), fields);
+    const before = job.toObject<StoredJobPosting>();
+    requireUnchangedTerms(before, fields);
+    // In matching and staying in it: it keeps its company and its description (422)
+    requireMatchingKept(before, fields);
     if (!job.publishedAt) job.$where = { ...job.$where, publishedAt: null };
-    // Every field replaced: the optional ones left out are unset
+    // Every field replaced: the optional ones left out are unset (matching is not one of them)
     job.set(jobPostingFields(fields));
     job.publishedAt = publishedAtFor(fields.status, job.publishedAt);
-    const saved = await saveJobPosting(job);
-    return toJobPostingDto(saved.toObject<StoredJobPosting>());
+    // While MATCHING is off, an edit that leaves matching nothing to propose takes it out instead
+    const leavesMatching = leavesMatchingOnEdit(before, fields);
+    if (leavesMatching) job.set('matching.enabledAt', undefined);
+    const saved = (await saveJobPosting(job)).toObject<StoredJobPosting>();
+    if (leavesMatching) await afterMatchingOff(saved._id);
+    const closed = await afterJobStatusChange(saved._id, fields.status);
+    const sentBack = await afterJobEdited(before, saved);
+    return toRecruiterJobDto(await currentPosting(saved, closed || sentBack));
   }, {
     params: objectIdParams,
     body: jobPostingEditRequest,
@@ -107,19 +144,20 @@ export const jobs = new Elysia()
       summary: 'Edit a job posting (409 when it changed since `updatedAt`, or when it changes the terms of a posting opened before)'
     }
   })
-  .put('/jobs/:id/status', async ({ userId, params: { id }, body: { status } }): Promise<JobPostingDto> => {
+  .put('/jobs/:id/status', async ({ userId, params: { id }, body: { status } }): Promise<RecruiterJobPostingDto> => {
     const job = await findOwnJobPosting(userId, id);
     // Opened for the first time: a range saved wider than the cap is narrowed first (422)
     requireOpenablePay(job, status);
     job.status = status;
     job.publishedAt = publishedAtFor(status, job.publishedAt);
-    const saved = await saveJobPosting(job);
-    return toJobPostingDto(saved.toObject<StoredJobPosting>());
+    const saved = (await saveJobPosting(job)).toObject<StoredJobPosting>();
+    // Filled, closed or back to draft: out of matching, its decisions dropped, its mutual interests ended
+    return toRecruiterJobDto(await currentPosting(saved, await afterJobStatusChange(saved._id, status)));
   }, {
     params: objectIdParams,
     body: jobStatusRequest,
     detail: {
-      summary: 'Change the status of a job posting (422 on `pay.max` when it opens one whose pay range is wider than the cap)'
+      summary: 'Change the status of a job posting (422 on `pay.max` when it opens one whose pay range is wider than the cap); filled, closed or back to draft, it leaves matching'
     }
   })
   .delete('/jobs/:id', async ({ userId, params: { id } }) => {
@@ -129,6 +167,8 @@ export const jobs = new Elysia()
     // one, which nothing reads once the posting is gone): the step is to do again, as it was
     const jobId = job._id.toString();
     await dropVisitorProgress(userId, (data) => pickedJobId(data) === jobId);
+    // Its matches too: decisions, mutual interests and what each side saw
+    await afterJobDeleted(job._id);
     return { id };
   }, {
     params: objectIdParams,

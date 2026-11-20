@@ -13,7 +13,7 @@ import {
 } from 'portfolio-common';
 import type { DiscoveryConsentInput, DiscoveryRequirement, DiscoveryState } from 'portfolio-common';
 import { env } from '../env';
-import { DiscoveryProfile, Domain } from '../models/database';
+import { DiscoveryProfile, Domain, Match } from '../models/database';
 import { FieldValidationError, TooManyRequestsError } from '../errors';
 import { candidateIdentity, identifiesCandidate } from './candidateCard';
 import { candidateReadiness } from './candidateReadiness';
@@ -208,11 +208,14 @@ export async function grantDiscovery(userId: string, input: unknown, now = new D
 export const discoveryWithdrawal = {
   /**
    * Drops the decisions about the candidate `candidateId` that no mutual
-   * interest came of: theirs on jobs, and recruiters' on them. The mutual
-   * interests stay: each is an agreement the candidate ends on its own. None
-   * exists yet: the decisions of matching fill this in
+   * interest came of (their matches without one: models/database/match.ts):
+   * theirs on jobs, and recruiters' on them. The mutual interests stay: each
+   * is an agreement the candidate ends on its own
    */
-  dropPendingDecisions: async (_candidateId: string): Promise<void> => {}
+  dropPendingDecisions: async (candidateId: string): Promise<void> => {
+    if (!Types.ObjectId.isValid(candidateId)) return;
+    await Match.deleteMany({ candidate: candidateId, matchedAt: { $exists: false } });
+  }
 };
 
 /**

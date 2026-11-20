@@ -1,7 +1,8 @@
-// The rules of discovery (Path 2) in portfolio-common, shared by the API and
+// The rules of matching (Path 2) in portfolio-common, shared by the API and
 // the client: what a candidate must have set up (discoveryRequirements, read
 // from their readiness), the consent (18 or over), its lapse, the state, the
-// settings of the anonymous card. Pure functions: no database
+// settings of the anonymous card; what a job needs to be in matching, its
+// review, and how long matches are kept. Pure functions: no database
 import { describe, expect, it } from 'bun:test';
 import {
   AGE_CONFIRMATION_KEYS,
@@ -13,11 +14,15 @@ import {
   DISCOVERY_MIN_CRITERIA,
   DISCOVERY_REQUIREMENTS,
   LEGAL_VERSION,
+  MATCHING_JOB_STATUSES,
+  MATCHING_LIMITS,
+  MATCH_RETENTION,
   MINIMUM_AGE,
   MINIMUM_DISCOVERY_AGE,
   PERFECT_JOB_CRITERIA,
   cardIdentityNames,
   cardOutcomeCriteria,
+  canonicalJobSnapshot,
   cardTextIdentifies,
   cleanHeadline,
   currentDiscoveryConsent,
@@ -31,10 +36,16 @@ import {
   discoveryRequirements,
   discoveryState,
   emailDomainOf,
+  endedMatchExpiry,
   headlineNames,
+  jobLiveInMatching,
+  keepsMatching,
+  matchDecisionExpiry,
+  matchingJobProblem,
   legalMessages,
   parseDiscoveryCard,
   parseDiscoveryConsent,
+  parseReviewReason,
   withLocale
 } from 'portfolio-common';
 import type { CandidateReadiness, DiscoveryRequirement } from 'portfolio-common';
@@ -459,4 +470,78 @@ describe('emailDomainOf', () => {
       expect(emailDomainOf(email)).toBeNull();
     }
   );
+});
+
+describe('jobs in matching', () => {
+  it('stay in matching while open or on hold, and leave it filled, closed or back to draft', () => {
+    expect(MATCHING_JOB_STATUSES).toEqual(['open', 'on_hold']);
+    expect(['draft', 'open', 'on_hold', 'filled', 'closed'].filter((status) => keepsMatching(status as never))).toEqual([
+      'open',
+      'on_hold'
+    ]);
+  });
+
+  it('name their company and have a description, the company first', () => {
+    expect(matchingJobProblem({ company: 'Acme', description: 'Build it.' })).toBeNull();
+    expect(matchingJobProblem({ company: '  ', description: '' })).toMatchObject({ field: 'company' });
+    expect(matchingJobProblem({ description: 'Build it.' })).toEqual({
+      field: 'company',
+      message: 'Name the company: candidates decide whether they are interested before they know who you are.'
+    });
+    expect(matchingJobProblem({ company: 'Acme', description: ' \n ' })).toMatchObject({ field: 'description' });
+    expect(withLocale('fr', () => matchingJobProblem({ company: null })?.message)).toBe(
+      "Indiquez l'entreprise\u00a0: les candidats disent s'ils sont intéressés avant de savoir qui vous êtes."
+    );
+  });
+
+  it('are proposed to candidates only open, in matching and approved', () => {
+    const job = (status: string, review?: string, enabledAt: Date | null = new Date()) =>
+      ({ status, matching: { enabledAt, review: review ? { status: review } : null } }) as never;
+    expect(jobLiveInMatching(job('open', 'approved'))).toBe(true);
+    expect(jobLiveInMatching(job('on_hold', 'approved'))).toBe(false);
+    expect(jobLiveInMatching(job('open', 'pending'))).toBe(false);
+    expect(jobLiveInMatching(job('open', 'rejected'))).toBe(false);
+    expect(jobLiveInMatching(job('open'))).toBe(false);
+    expect(jobLiveInMatching(job('open', 'approved', null))).toBe(false);
+    expect(jobLiveInMatching({ status: 'open' } as never)).toBe(false);
+  });
+});
+
+describe('parseReviewReason', () => {
+  it('asks a reason to reject a job, cleaned, on one line, and none to approve one', () => {
+    expect(parseReviewReason('approve', 'Fine')).toEqual({ ok: true, reason: null });
+    expect(parseReviewReason('reject', '  Say who\u200b the client is.\n\n Then ask again. ')).toEqual({
+      ok: true,
+      reason: 'Say who the client is. Then ask again.'
+    });
+    for (const reason of [undefined, '', ' \u200b\u202e ', 42]) {
+      expect(parseReviewReason('reject', reason)).toEqual({
+        ok: false,
+        message: 'Say why the job is not accepted: its recruiter reads it.'
+      });
+    }
+    expect(parseReviewReason('reject', 'x'.repeat(MATCHING_LIMITS.reviewReason))).toMatchObject({ ok: true });
+    expect(parseReviewReason('reject', 'x'.repeat(MATCHING_LIMITS.reviewReason + 1))).toEqual({
+      ok: false,
+      message: `The reason can be ${MATCHING_LIMITS.reviewReason} characters at most.`
+    });
+  });
+});
+
+describe('canonicalJobSnapshot', () => {
+  it('writes the same content as the same text, whatever the order of its keys', () => {
+    const a = { title: 'Engineer', pay: { min: 1, max: 2, currency: 'EUR', period: 'year' } };
+    const b = { pay: { period: 'year', currency: 'EUR', max: 2, min: 1 }, title: 'Engineer' };
+    expect(canonicalJobSnapshot(a as never)).toBe(canonicalJobSnapshot(b as never));
+    expect(canonicalJobSnapshot(a as never)).not.toBe(canonicalJobSnapshot({ ...a, title: 'Engineers' } as never));
+  });
+});
+
+describe('MATCH_RETENTION', () => {
+  it('keeps a decision six months at most, and a mutual interest three months once it ended', () => {
+    expect(MATCH_RETENTION).toEqual({ decisionMonths: 6, endedMatchMonths: 3 });
+    expect(matchDecisionExpiry(new Date('2026-01-15T10:00:00Z'))).toEqual(new Date('2026-07-15T10:00:00Z'));
+    expect(matchDecisionExpiry('2026-11-20T00:00:00.000Z')).toEqual(new Date('2027-05-20T00:00:00Z'));
+    expect(endedMatchExpiry(new Date('2026-11-30T08:00:00Z'))).toEqual(new Date('2027-03-02T08:00:00Z'));
+  });
 });

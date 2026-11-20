@@ -14,6 +14,7 @@ import {
   Domain,
   Experience,
   JobPosting,
+  Match,
   RateLimitCounter,
   Skill,
   User,
@@ -55,6 +56,8 @@ let t: ReturnType<typeof testNames>;
 const createdCounters = new Set<string>();
 /** Documents a test wrote to the legacy `jobapplications` collection (removed after it) */
 const createdApplications = new Set<Types.ObjectId>();
+/** Matches a test stored (removed after it, whoever they name) */
+const createdMatches = new Set<Types.ObjectId>();
 let app: ReturnType<typeof createApp>;
 let connected = false;
 
@@ -90,6 +93,8 @@ afterEach(async () => {
   await AppointmentSchedule.deleteMany({ user: { $in: userIds } });
   await AppointmentBooking.deleteMany({ user: { $in: userIds } });
   await DiscoveryProfile.deleteMany({ user: { $in: userIds } });
+  await Match.deleteMany({ _id: { $in: [...createdMatches] } });
+  createdMatches.clear();
   await mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).deleteMany({ name: named });
   await legacyApplications().deleteMany({ _id: { $in: [...createdApplications] } });
   createdApplications.clear();
@@ -162,6 +167,31 @@ const legacyApplication = async (fields: {
   });
   createdApplications.add(insertedId);
   return insertedId;
+};
+
+/**
+ * A match of matching (Path 2), stored directly (its routes have tests of their own): the
+ * candidate's interest in a job, or a mutual interest when `matched`
+ */
+const storeMatch = async (
+  fields: { job: Types.ObjectId; recruiter: Types.ObjectId | string; candidate: Types.ObjectId | string },
+  matched = false
+) => {
+  const at = new Date();
+  const match = await Match.create({
+    ...fields,
+    candidateDecision: { value: 'interested', at },
+    ...(matched
+      ? {
+          recruiterDecision: { value: 'interested', at },
+          matchedAt: at,
+          revealedAt: at,
+          snapshot: { posting: { title: t.id('snapshot') }, score: 90, minScore: 70, criteria: [] }
+        }
+      : {})
+  });
+  createdMatches.add(match._id);
+  return match._id;
 };
 
 const schedule = (user: string) => ({ user, title: 'Intro call', timezone: 'Europe/Paris' });
@@ -272,7 +302,8 @@ const remaining = async (userId: string, domainName: string, experienceId: strin
   appointmentSchedules: await AppointmentSchedule.countDocuments({ user: userId }),
   appointmentBookings: await AppointmentBooking.countDocuments({ user: userId }),
   bookedMeetings: await AppointmentBooking.countDocuments({ visitor: userId }),
-  discoveryProfiles: await DiscoveryProfile.countDocuments({ user: userId })
+  discoveryProfiles: await DiscoveryProfile.countDocuments({ user: userId }),
+  matches: await Match.countDocuments({ $or: [{ candidate: userId }, { recruiter: userId }] })
 });
 
 const nothing = {
@@ -287,7 +318,8 @@ const nothing = {
   appointmentSchedules: 0,
   appointmentBookings: 0,
   bookedMeetings: 0,
-  discoveryProfiles: 0
+  discoveryProfiles: 0,
+  matches: 0
 };
 
 /** Routes global fetch to a fake of Google's revocation endpoint; anything else fails the test */
@@ -350,6 +382,13 @@ describe('DELETE /me', () => {
       candidate: new Types.ObjectId(),
       domain: candidate.domainId
     });
+    // Matching (Path 2): its interest in the other's job (as candidate), a mutual interest of the
+    // other in its job (as recruiter), a stranger's interest in its job, stored under another
+    // recruiter id; and the other's own, which a stranger shows interest in
+    const asCandidate = await storeMatch({ job: other.posting._id, recruiter: other.userId, candidate: candidate.userId });
+    const asRecruiter = await storeMatch({ job: candidate.posting._id, recruiter: candidate.userId, candidate: other.userId }, true);
+    const ofItsJob = await storeMatch({ job: candidate.posting._id, recruiter: new Types.ObjectId(), candidate: new Types.ObjectId() });
+    const othersOwn = await storeMatch({ job: other.posting._id, recruiter: other.userId, candidate: new Types.ObjectId() }, true);
     const otherBefore = await remaining(other.userId, other.domainName, other.experienceId);
     expect(await remaining(candidate.userId, candidate.domainName, candidate.experienceId)).toEqual({
       user: 1,
@@ -363,7 +402,8 @@ describe('DELETE /me', () => {
       appointmentSchedules: 1,
       appointmentBookings: 1,
       bookedMeetings: 1,
-      discoveryProfiles: 1
+      discoveryProfiles: 1,
+      matches: 2
     });
 
     const result = await deleteMe(candidate.cookie);
@@ -374,8 +414,11 @@ describe('DELETE /me', () => {
     // The other account keeps everything of its own, minus what pointed at the deleted one
     expect(await remaining(other.userId, other.domainName, other.experienceId)).toEqual({
       ...otherBefore,
-      workflowInstances: 0
+      workflowInstances: 0,
+      matches: 1
     });
+    expect(await Match.countDocuments({ _id: { $in: [asCandidate, asRecruiter, ofItsJob] } })).toBe(0);
+    expect(await Match.exists({ _id: othersOwn })).not.toBeNull();
     expect(await JobPosting.exists({ _id: other.posting._id })).not.toBeNull();
     expect(await AppointmentSchedule.exists({ _id: other.schedule._id })).not.toBeNull();
     expect(await AppointmentBooking.findById(visited._id).lean()).toMatchObject({ eventId: 'evt2000' });
@@ -613,6 +656,7 @@ describe('deleteAccount', () => {
       jobPostings: 1,
       legacyJobApplications: 1,
       discoveryProfiles: 1,
+      matches: 0,
       googleCalendar: 'none'
     });
     expect(await remaining(account.userId, account.domainName, account.experienceId)).toEqual(nothing);

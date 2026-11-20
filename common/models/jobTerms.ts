@@ -90,6 +90,13 @@ const canonicalJson = (value: unknown): string =>
 	);
 
 /**
+ * A version of a posting (normalised, without its status: a JobSnapshot) as one text, the same for
+ * the same content whatever the order of its keys: what jobSnapshotsDiffer compares, and what the
+ * API hashes to know which version a review of a job in matching was of
+ */
+export const canonicalJobSnapshot = (snapshot: JobSnapshot): string => canonicalJson(snapshot);
+
+/**
  * Whether two versions of a posting (normalised, without their status: a JobSnapshot) differ at
  * all, in anything a candidate reads of them. The job step tells a recruiter that a posting changed
  * since they shared it with this (a posting shared was opened, so its terms are locked: in practice

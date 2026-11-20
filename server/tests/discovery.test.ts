@@ -1198,9 +1198,17 @@ describe('cardOutcomes', () => {
   });
 });
 
-describe('what discovery is built on', () => {
+describe('what matching is built on', () => {
   it('asks no model anything: no Claude SDK, no PDF extraction', () => {
-    for (const file of ['../services/discovery.ts', '../services/candidateCard.ts', '../plugins/matches.ts']) {
+    const files = [
+      '../services/discovery.ts',
+      '../services/candidateCard.ts',
+      '../services/jobMatching.ts',
+      '../services/matchingReviews.ts',
+      '../models/database/match.ts',
+      '../plugins/matches.ts'
+    ];
+    for (const file of files) {
       const source = readFileSync(new URL(file, import.meta.url), 'utf8');
       expect(source).not.toContain('@anthropic-ai/sdk');
       expect(source).not.toContain('claudePdfExtraction');

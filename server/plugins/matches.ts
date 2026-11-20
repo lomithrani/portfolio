@@ -1,17 +1,30 @@
 import Elysia, { NotFoundError } from 'elysia';
 import { env } from '../env';
 import { userLogged } from './userLogged';
-import { discoveryCardRequest, discoveryConsentRequest } from '../models/elysia';
+import {
+  discoveryCardRequest,
+  discoveryConsentRequest,
+  jobMatchingRequest,
+  matchingReviewRequest,
+  objectIdParams
+} from '../models/elysia';
 import { candidateCardPreview } from '../services/candidateCard';
 import type { CandidateCardPreview } from '../services/candidateCard';
 import { discoveryStatus, grantDiscovery, saveDiscoveryCard, withdrawDiscovery } from '../services/discovery';
 import type { DiscoveryDto } from '../services/discovery';
+import { setJobMatching, toRecruiterJobDto } from '../services/jobMatching';
+import type { RecruiterJobPostingDto } from '../services/jobMatching';
+import { pendingReviews, requireMatchingReviewer, reviewJob } from '../services/matchingReviews';
+import type { ReviewedJobDto } from '../services/matchingReviews';
+import { requireRecruiterSpace } from '../services/recruiters';
 
 // Path 2, matching on open jobs (CLAUDE.md, Matching): off unless MATCHING=true.
-// For now, discovery (services/discovery.ts): a candidate asks to be proposed
+// For now: discovery (services/discovery.ts): a candidate asks to be proposed
 // to recruiters, as an anonymous card (services/candidateCard.ts), previews
-// it, and can stop at once. Every route is the signed-in account's own: it
-// takes no account or portfolio to read.
+// it, and can stop at once; the recruiter's switch, which proposes a job to
+// candidates (services/jobMatching.ts); and the review of each job put into
+// matching, by the operator's reviewers (services/matchingReviews.ts). Every
+// route is the signed-in account's own: none takes another account to read.
 
 const discovery = new Elysia()
   .use(userLogged)
@@ -38,6 +51,39 @@ const discovery = new Elysia()
     detail: { summary: 'Stop being proposed to recruiters, at once' }
   });
 
+// A recruiter's switch: their own postings only (404 for another's), with a
+// recruiter space and the terms in force, like every recruiter route
+const jobMatching = new Elysia()
+  .use(userLogged)
+  .onBeforeHandle(async ({ userId }) => {
+    await requireRecruiterSpace(userId);
+  })
+  .put('/jobs/:id/matching', async ({ userId, params: { id }, body: { enabled } }): Promise<RecruiterJobPostingDto> =>
+    toRecruiterJobDto(await setJobMatching(userId, id, enabled)), {
+    params: objectIdParams,
+    body: jobMatchingRequest,
+    detail: {
+      summary: 'Propose an open job description to the candidates whose criteria it meets, once a reviewer approved it, or stop (409 unless open; 422 on `company` or `description`; 409 over the jobs a recruiter can have in matching)'
+    }
+  });
+
+// The reviewers' (MATCHING_REVIEWERS): 403 for anyone else
+const reviews = new Elysia()
+  .use(userLogged)
+  .onBeforeHandle(async ({ userId }) => {
+    await requireMatchingReviewer(userId);
+  })
+  .get('/matching/reviews', (): Promise<{ jobs: ReviewedJobDto[] }> => pendingReviews(), {
+    detail: { summary: 'The jobs put into matching that wait for a review, the oldest request first (reviewers only)' }
+  })
+  .put('/matching/reviews/:id', ({ params: { id }, body }): Promise<ReviewedJobDto> => reviewJob(id, body), {
+    params: objectIdParams,
+    body: matchingReviewRequest,
+    detail: {
+      summary: 'Approve a job put into matching, or reject it with a reason its recruiter reads, as the version read (409 once it changed; reviewers only)'
+    }
+  });
+
 export const matches = new Elysia()
   // A backstop: createApp registers none of these routes while MATCHING is
   // off (matchingRoutes), so they answer the 404 of a route that does not
@@ -47,7 +93,9 @@ export const matches = new Elysia()
   .onTransform(() => {
     if (!env.matchingEnabled) throw new NotFoundError();
   })
-  .use(discovery);
+  .use(discovery)
+  .use(jobMatching)
+  .use(reviews);
 
 /**
  * The matching routes as createApp mounts them, the flag read when the app is

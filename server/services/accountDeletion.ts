@@ -6,6 +6,7 @@ import {
   Domain,
   Experience,
   JobPosting,
+  Match,
   PerfectJob,
   User,
   Workflow,
@@ -45,6 +46,9 @@ import { logger } from './logger';
 //   meeting stays booked in its owner's calendar, and its slot held
 // - DiscoveryProfile.user (Path 2: whether the account is proposed to
 //   recruiters, its anonymous card's settings, its consents and withdrawals)
+// - Match.candidate and Match.recruiter (Path 2: the decisions and mutual
+//   interests of the account on either side, with what each side saw), and the
+//   matches of its job postings
 // - the User itself, Google Calendar tokens and acceptances included
 
 /** What was removed, by collection (the log line and the tests read it) */
@@ -65,6 +69,8 @@ export interface AccountDeletionSummary {
   bookedMeetings: number;
   /** Its discovery (Path 2): the consents it gave and withdrew go with it */
   discoveryProfiles: number;
+  /** Its matches (Path 2), as candidate, as recruiter, and of its job postings */
+  matches: number;
   /** What Google answered when asked to revoke the Google Calendar grant ('none': no grant stored) */
   googleCalendar: Awaited<ReturnType<typeof revokeGoogleCalendarAccess>>;
 }
@@ -112,7 +118,8 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     appointmentBookings,
     appointmentSchedules,
     bookedMeetings,
-    discoveryProfiles
+    discoveryProfiles,
+    matches
   ] = await Promise.all([
     Experience.deleteMany({ _id: { $in: experienceIds } }),
     WorkflowInstance.deleteMany({ $or: [{ owner: id }, { visitor: id }] }),
@@ -127,9 +134,10 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     AppointmentBooking.deleteMany({ user: id }),
     AppointmentSchedule.deleteMany({ user: id }),
     AppointmentBooking.updateMany({ visitor: id }, { $unset: { visitor: 1 } }),
-    DiscoveryProfile.deleteMany({ user: id })
+    DiscoveryProfile.deleteMany({ user: id }),
+    Match.deleteMany({ $or: [{ candidate: id }, { recruiter: id }, { job: { $in: jobIds } }] })
   ]);
-  // The postings after their applications, then the domains after their
+  // The postings after their applications and matches, then the domains after their
   // experiences: an interrupted deletion leaves nothing pointing at what is gone
   const jobPostings = await JobPosting.deleteMany({ recruiter: id });
   const removedDomains = await Domain.deleteMany({ _id: { $in: domainIds } });
@@ -150,6 +158,7 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     appointmentBookings: appointmentBookings.deletedCount,
     bookedMeetings: bookedMeetings.modifiedCount,
     discoveryProfiles: discoveryProfiles.deletedCount,
+    matches: matches.deletedCount,
     googleCalendar
   };
   // The user id only: no email, no domain name, no token

@@ -187,6 +187,7 @@ local development.
 | `COMMUTE_CONTACT`              | with `COMMUTE_TRANSIT=transitous` | An email address or a web page, sent as the User-Agent of the requests to Transitous |
 | `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off; matching's warm-ups use half of it at most |
 | `MATCHING`                     | no       | `true` on staging only, for now: turns matching (Path 2) on (see [Matching](#matching)); leave unset in production until its legal texts ship |
+| `MATCHING_REVIEWERS`           | no       | The emails of the accounts that review each job put into matching before it reaches a candidate, separated by commas (never logged); without one, no job is ever proposed (see [Matching](#matching)) |
 | `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions and feedback are filed in, `owner/name`; leave unset (`lomithrani/portfolio`) |
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
 | `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
@@ -682,11 +683,29 @@ this one has, see [Résumé import](#résumé-import), but the budget does not c
 ## Matching
 
 Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=true`**: its routes
-(`GET`/`PUT /discovery`, `GET /discovery/card`, `POST`/`DELETE /discovery/consent` for now) are not registered, so they
-answer 404 as routes that do not exist whatever the request (`/swagger` does not list them),
-nothing of it is read or written, and the metric `discoverable_candidates` is 0. The flag is read
-when the API starts: a change takes effect at its next deploy. The startup line `Running at ...`
-says `"matching":"on"` or why it is off.
+(`GET`/`PUT /discovery`, `GET /discovery/card`, `POST`/`DELETE /discovery/consent`,
+`PUT /jobs/:id/matching`, `GET /matching/reviews` and `PUT /matching/reviews/:id` for now) are not
+registered, so they answer 404 as routes that do not exist whatever the request (`/swagger` does
+not list them), `POST /jobs` ignores its `matching`, nothing of it is read or written, and the
+metrics `discoverable_candidates`, `matching_job_postings`, `matching_job_reviews` and
+`active_matches` are 0. What a job's changes do to its matches (closed, deleted, edited) runs
+whatever the flag: it only ends, drops or deletes. The flag is read when the API starts: a change
+takes effect at its next deploy. The startup line `Running at ...` says `"matching":"on (1 job
+reviewer)"` (how many reviewers, never who) or why it is off.
+
+**Reviewers.** Every job a recruiter puts into matching is read by hand before it reaches any
+candidate: it starts pending, and only a reviewer's approval proposes it (a rejection carries a
+reason the recruiter reads). The reviewers are the accounts whose email is in
+`MATCHING_REVIEWERS` (comma-separated, compared without case; never logged: a wrong entry stops the
+API naming its place in the list, not its value). Without one, the API warns at startup
+(`MATCHING=true without MATCHING_REVIEWERS`) and no job is ever proposed. A reviewer reads the jobs
+waiting with `GET /matching/reviews` (the oldest first: the posting and the domain of its
+recruiter's email, nothing of any candidate) and decides with `PUT /matching/reviews/:id`
+`{ decision: 'approve' | 'reject', reason?, version }`, on the version read (an edit since: 409).
+No screen does it yet: until the review screen ships, a reviewer calls the API signed in (the
+`auth` cookie of their session). The `matching_job_reviews` metric counts the jobs waiting: nothing
+else tells the reviewers (no email is sent). An approved job its recruiter edits (its description,
+or another field no criterion reads: its terms are locked) waits for a review again.
 
 - **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
   calls its routes yet: they are for the screens that come next, and for the tests.
@@ -697,7 +716,15 @@ says `"matching":"on"` or why it is off.
   [Travel times](#travel-times), "Matching").
 
 The first opt-in creates the `discoveryprofiles` collection (one document per account that turned
-discovery on or off or set its anonymous card): no migration. Turning `MATCHING` off again proposes
+discovery on or off or set its anonymous card), the first decision the `matches` collection (one
+per job and candidate, removed by MongoDB once its `expiresAt` is past: a decision no mutual
+interest came of 6 months after it at most, a mutual interest 3 months after it ended,
+`MATCH_RETENTION` of `common/models/matching.ts`, which the privacy policy will state), and a job
+put into matching gets a `matching` field: no migration. Mongoose adds the new indexes at startup
+(`status_1_matching.enabledAt_1_publishedAt_-1` and the partial one on the reviews waiting on
+`jobpostings`, the unique one and the TTL on `matches`); the index it replaces,
+`status_1_publishedAt_-1`, stays until it is dropped by hand, harmless meanwhile:
+`db.jobpostings.dropIndex('status_1_publishedAt_-1')`. Turning `MATCHING` off again proposes
 nobody to anyone, and keeps those documents as they are: candidates find their choice again when
 it is turned back on (paused until they sign in, if that was over 180 days before), and account
 deletion removes them whatever the flag.

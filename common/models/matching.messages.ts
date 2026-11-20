@@ -85,5 +85,50 @@ export const matchingMessages = defineMessages({
 			fr: (max: number) =>
 				`Vous pouvez masquer ${max} ${plural(max, 'expérience', 'expériences')} au plus.`
 		}
+	},
+	/**
+	 * A recruiter's job refused in matching (PUT /jobs/:id/matching, POST /jobs with `matching`,
+	 * PUT /jobs/:id of a job in it): what it lacks (matchingJobProblem), how many jobs can be in it
+	 */
+	job: {
+		/** 422 on `company`: candidates decide before they know who the recruiter is */
+		companyRequired: {
+			en: 'Name the company: candidates decide whether they are interested before they know who you are.',
+			fr: "Indiquez l'entreprise : les candidats disent s'ils sont intéressés avant de savoir qui vous êtes."
+		},
+		/** 422 on `description` */
+		descriptionRequired: {
+			en: 'Describe the job: candidates read it before they say whether they are interested.',
+			fr: "Décrivez le poste : les candidats lisent l'offre avant de dire s'ils sont intéressés."
+		},
+		/** 422 on `matching`: a job created as a draft (or on hold) with matching asked for */
+		openOnly: {
+			en: 'Only an open job can be proposed to candidates: create it open, or propose it once it is.',
+			fr: "Seule une offre ouverte peut être proposée aux candidats : créez-la ouverte, ou proposez-la une fois qu'elle l'est."
+		},
+		/** 422 on `company`: an edit of a job in matching that takes its company out */
+		companyKept: {
+			en: 'This job is proposed to candidates, so it names its company: stop proposing it before you remove the company.',
+			fr: "Cette offre est proposée aux candidats, elle indique donc son entreprise : arrêtez de la proposer avant de retirer l'entreprise."
+		},
+		/** 409: `max` is MATCHING_LIMITS.matchingJobsPerRecruiter */
+		tooMany: {
+			en: (max: number) =>
+				`You can propose ${max} ${plural(max, 'job', 'jobs')} to candidates at once: stop proposing one to propose another.`,
+			fr: (max: number) =>
+				`Vous pouvez proposer ${max} ${plural(max, 'offre', 'offres')} aux candidats à la fois : arrêtez d'en proposer une pour en proposer une autre.`
+		}
+	},
+	/** A reviewer's decision refused (PUT /matching/reviews/:jobId, 422 on `reason`) */
+	review: {
+		reasonRequired: {
+			en: 'Say why the job is not accepted: its recruiter reads it.',
+			fr: "Dites pourquoi l'offre n'est pas acceptée : son recruteur le lira."
+		},
+		/** `max`: MATCHING_LIMITS.reviewReason */
+		reasonTooLong: {
+			en: (max: number) => `The reason can be ${max} characters at most.`,
+			fr: (max: number) => `La raison peut faire ${max} caractères au plus.`
+		}
 	}
 });

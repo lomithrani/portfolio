@@ -102,7 +102,8 @@ export {
 	locksJobTerms,
 	changedLockedFields,
 	scoredFieldsDiffer,
-	jobSnapshotsDiffer
+	jobSnapshotsDiffer,
+	canonicalJobSnapshot
 } from './jobTerms';
 export {
 	USER_MODES,
@@ -273,6 +274,18 @@ export {
 	cardOutcomeCriteria,
 	cardIdentityNames,
 	cardTextIdentifies,
+	MATCHING_JOB_STATUSES,
+	keepsMatching,
+	matchingJobProblem,
+	MATCHING_REVIEW_STATUSES,
+	MATCHING_REVIEW_DECISIONS,
+	jobLiveInMatching,
+	parseReviewReason,
+	MATCH_DECISIONS,
+	MATCH_END_REASONS,
+	MATCH_RETENTION,
+	matchDecisionExpiry,
+	endedMatchExpiry,
 	emailDomainOf
 } from './matching';
 export type {
@@ -282,7 +295,12 @@ export type {
 	DiscoveryCardSettings,
 	DiscoveryCardField,
 	DiscoveryCardResult,
-	CardIdentity
+	CardIdentity,
+	MatchingJobField,
+	MatchingReviewStatus,
+	MatchingReviewDecision,
+	MatchDecision,
+	MatchEndReason
 } from './matching';
 export { matchingMessages } from './matching.messages';
 export { ROBOTS_NOINDEX } from './robots';

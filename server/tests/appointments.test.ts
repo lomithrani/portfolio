@@ -2024,6 +2024,7 @@ describe('no Google token in any API response', () => {
     const jobBody = {
       title: 'Backend engineer',
       description: 'Build the billing service',
+      company: 'Sweep Corp',
       status: 'open',
       location: { country: 'FR', city: 'Lyon', workMode: 'on_site' },
       contract: { type: 'cdi' },
@@ -2038,6 +2039,19 @@ describe('no Google token in any API response', () => {
     expect((await call('PUT', `/jobs/${jobId}/status`, { ...auth, body: { status: 'open' } })).status).toBe(200);
     expect((await call('GET', '/recruiter/jobs', auth)).status).toBe(200);
     expect((await call('GET', `/recruiter/jobs/${jobId}`, auth)).status).toBe(200);
+    // Matching (tests/matches.test.ts covers it): proposed to candidates, reviewed by the account
+    // made a reviewer for the sweep, then out of matching
+    const savedReviewers = env.matchingReviewers;
+    env.matchingReviewers = new Set([t.email('sweep')]);
+    try {
+      expect((await call('PUT', `/jobs/${jobId}/matching`, { ...auth, body: { enabled: true } })).status).toBe(200);
+      const pending = (await call('GET', '/matching/reviews', auth)).json().jobs.find((entry: any) => entry.job._id === jobId);
+      const review = { decision: 'approve', version: pending.version };
+      expect((await call('PUT', `/matching/reviews/${jobId}`, { ...auth, body: review })).status).toBe(200);
+      expect((await call('PUT', `/jobs/${jobId}/matching`, { ...auth, body: { enabled: false } })).status).toBe(200);
+    } finally {
+      env.matchingReviewers = savedReviewers;
+    }
     // The job step of the owner's hiring journey (tests/workflows.test.ts covers it)
     expect((await call('PUT', '/workflow', { cookie: owner.cookie, body: workflowRequestBody })).status).toBe(200);
     expect(

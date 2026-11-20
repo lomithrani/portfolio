@@ -139,6 +139,26 @@ describe('parseEnv', () => {
     expect(problemsOf({ ...base, MATCHING: 'on' })).toEqual(['MATCHING must be true or false (got "on")']);
   });
 
+  it('reads the reviewers of matching from MATCHING_REVIEWERS, lower case, and never repeats them', () => {
+    expect(parseEnv(base).matchingReviewers).toEqual(new Set());
+    expect(
+      parseEnv({ ...base, MATCHING_REVIEWERS: ' Founder@Example.com , ops@example.fr,founder@example.com ' }).matchingReviewers
+    ).toEqual(new Set(['founder@example.com', 'ops@example.fr']));
+    const problems = problemsOf({ ...base, MATCHING_REVIEWERS: 'founder@example.com, not-an-address, , x@y' });
+    expect(problems).toEqual([
+      'MATCHING_REVIEWERS must be email addresses separated by commas (entry 2 is not one)',
+      'MATCHING_REVIEWERS must be email addresses separated by commas (entry 3 is not one)',
+      'MATCHING_REVIEWERS must be email addresses separated by commas (entry 4 is not one)'
+    ]);
+    expect(problems.join(' ')).not.toContain('not-an-address');
+    // Matching on without a reviewer: no job is ever proposed, which the startup says
+    expect(parseEnv({ ...base, MATCHING: 'true' }).warnings).toEqual([
+      'MATCHING=true without MATCHING_REVIEWERS: no job description can be approved for candidates'
+    ]);
+    expect(parseEnv({ ...base, MATCHING: 'true', MATCHING_REVIEWERS: 'founder@example.com' }).warnings).toEqual([]);
+    expect(parseEnv({ ...base, MATCHING_REVIEWERS: 'founder@example.com' }).warnings).toEqual([]);
+  });
+
   describe('travel times', () => {
     it('are off unless COMMUTE_TIMES=true, with a daily cap on what is asked', () => {
       expect(parseEnv(base)).toMatchObject({
@@ -184,11 +204,12 @@ describe('parseEnv', () => {
       // Matching never asks Transitous (its usage policy): said at startup, where it is on
       const contacted = { ...transit, COMMUTE_CONTACT: 'ops@example.com' };
       expect(parseEnv(contacted).warnings).toEqual([]);
-      expect(parseEnv({ ...contacted, MATCHING: 'true' }).warnings).toEqual([
+      const matching = { MATCHING: 'true', MATCHING_REVIEWERS: 'founder@example.com' };
+      expect(parseEnv({ ...contacted, ...matching }).warnings).toEqual([
         'MATCHING=true with COMMUTE_TRANSIT=transitous: matching computes travel times without public transport'
       ]);
       const here = { COMMUTE_TRANSIT: 'here', HERE_API_KEY: 'hEre-Key_0123456789abcdefghijklmnopqrstuvw' };
-      expect(parseEnv({ ...contacted, ...here, MATCHING: 'true' }).warnings).toEqual([]);
+      expect(parseEnv({ ...contacted, ...here, ...matching }).warnings).toEqual([]);
     });
 
     it('takes public transport from HERE only with the key of a HERE app, which it never repeats', () => {

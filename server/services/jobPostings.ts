@@ -248,16 +248,23 @@ const tooManyJobs = () => m.tooManyJobs(JOB_LIMITS.jobsPerRecruiter);
  * refusal, nothing written) and again after the insert: creations that
  * arrive at once and together go over the limit take theirs back, so it
  * holds whatever the number of parallel requests (at the boundary they may
- * all be refused; a retry then gets the place)
+ * all be refused; a retry then gets the place). In matching with `matching`
+ * when given (POST /jobs's `matching`, checked and built by
+ * services/jobMatching.ts: newJobMatching)
  */
-export async function createJobPosting(recruiterId: string, fields: JobPostingInput) {
+export async function createJobPosting(
+  recruiterId: string,
+  fields: JobPostingInput,
+  matching?: { enabledAt: Date; review: { status: 'pending'; requestedAt: Date } }
+) {
   if ((await JobPosting.countDocuments({ recruiter: recruiterId })) >= JOB_LIMITS.jobsPerRecruiter) {
     throw new ConflictError(tooManyJobs);
   }
   const job = await JobPosting.create({
     ...jobPostingFields(fields),
     recruiter: recruiterId,
-    publishedAt: publishedAtFor(fields.status, undefined)
+    publishedAt: publishedAtFor(fields.status, undefined),
+    ...(matching ? { matching } : {})
   });
   if ((await JobPosting.countDocuments({ recruiter: recruiterId })) > JOB_LIMITS.jobsPerRecruiter) {
     await JobPosting.deleteOne({ _id: job._id });

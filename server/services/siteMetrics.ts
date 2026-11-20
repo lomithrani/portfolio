@@ -13,10 +13,12 @@ import {
   Domain,
   Experience,
   JobPosting,
+  Match,
   User,
   WorkflowInstance
 } from '../models/database'
 import { env } from '../env'
+import { LIVE_IN_MATCHING } from './jobMatching'
 import { logger } from './logger'
 
 /** What `portfolio.records` counts: the values of its `kind` attribute */
@@ -29,7 +31,10 @@ export const SITE_RECORD_KINDS = [
   'open_job_postings',
   'journeys_started',
   'upcoming_bookings',
-  'discoverable_candidates'
+  'discoverable_candidates',
+  'matching_job_postings',
+  'matching_job_reviews',
+  'active_matches'
 ] as const
 
 export type SiteRecordKind = (typeof SITE_RECORD_KINDS)[number]
@@ -52,6 +57,9 @@ const discoverableCandidates = async (now = new Date()) =>
       })
     : 0
 
+/** `count()`, or 0 while MATCHING is off: nothing of matching is read then */
+const whileMatching = (count: () => Promise<number>) => (env.matchingEnabled ? count() : Promise.resolve(0))
+
 /** One count per kind. Whole collections are counted from their metadata, the others with a filter */
 export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
   const [
@@ -63,7 +71,10 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     openJobPostings,
     journeysStarted,
     upcomingBookings,
-    discoverable
+    discoverable,
+    matchingJobPostings,
+    matchingJobReviews,
+    activeMatches
   ] = await Promise.all([
     Domain.estimatedDocumentCount(),
     User.estimatedDocumentCount(),
@@ -75,7 +86,15 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     WorkflowInstance.estimatedDocumentCount(),
     // MongoDB removes a booking once its slot is over
     AppointmentBooking.estimatedDocumentCount(),
-    discoverableCandidates()
+    discoverableCandidates(),
+    // Proposed to candidates: open, in matching and approved by a reviewer
+    whileMatching(() => JobPosting.countDocuments(LIVE_IN_MATCHING)),
+    // In matching, waiting for a reviewer (nothing tells the reviewers but this and their list)
+    whileMatching(() =>
+      JobPosting.countDocuments({ 'matching.enabledAt': { $exists: true }, 'matching.review.status': 'pending' })
+    ),
+    // Mutual interests that go on
+    whileMatching(() => Match.countDocuments({ matchedAt: { $exists: true }, endedAt: { $exists: false } }))
   ])
   return {
     portfolios,
@@ -86,7 +105,10 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     open_job_postings: openJobPostings,
     journeys_started: journeysStarted,
     upcoming_bookings: upcomingBookings,
-    discoverable_candidates: discoverable
+    discoverable_candidates: discoverable,
+    matching_job_postings: matchingJobPostings,
+    matching_job_reviews: matchingJobReviews,
+    active_matches: activeMatches
   }
 }
 

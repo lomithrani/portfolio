@@ -55,8 +55,10 @@ logger.info(`Running at ${formatListenUrl(host, app.server!.port ?? env.PORT, !!
   stepSuggestions: describeStepSuggestions(env),
   feedback: describeFeedback(env),
   travelTimes: describeCommute(),
-  // Path 2 (CLAUDE.md, Matching): off, its routes answer 404
-  matching: env.matchingEnabled ? 'on' : 'off (MATCHING is not true)'
+  // Path 2 (CLAUDE.md, Matching): off, its routes answer 404. How many reviewers, never who
+  matching: env.matchingEnabled
+    ? `on (${env.matchingReviewers.size} job ${env.matchingReviewers.size === 1 ? 'reviewer' : 'reviewers'})`
+    : 'off (MATCHING is not true)'
 });
 
 // The number of portfolios, accounts... as a metric (read at each export, only while metrics are on)

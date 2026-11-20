@@ -115,6 +115,12 @@ export interface ServerEnv {
    * 404 as routes that do not exist, and nothing about it is read or written
    */
   matchingEnabled: boolean;
+  /**
+   * The accounts (their emails, lower case) that review each job put into
+   * matching before it reaches a candidate (services/matchingReviews.ts),
+   * from MATCHING_REVIEWERS. Empty: no job is ever approved. Never logged
+   */
+  matchingReviewers: ReadonlySet<string>;
   /** Serve OpenAPI docs (always outside production, opt-in with API_DOCS=true) */
   apiDocsEnabled: boolean;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
@@ -272,6 +278,9 @@ const DEFAULT_RESUME_IMPORT_DAILY_LIMIT = 30;
 /** Where the steps owners suggest are filed, unless GITHUB_ISSUES_REPO says otherwise */
 const DEFAULT_GITHUB_ISSUES_REPO = 'lomithrani/portfolio';
 // The name is not `.` or `..`: the URL it is put in would then name another path
+/** An email address, roughly: what MATCHING_REVIEWERS lists (compared with an account's email) */
+const EMAIL = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
+
 const GITHUB_REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 const DEFAULT_RESUME_IMPORT_ATTEMPTS_PER_DAY = 10;
 const DEFAULT_JOB_IMPORT_DAILY_LIMIT = 30;
@@ -447,6 +456,19 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
   if (matching !== undefined && matching !== 'true' && matching !== 'false') {
     problems.push(`MATCHING must be true or false (got ${JSON.stringify(matching)})`);
   }
+  // Emails, never echoed: the problem names the entry by its place in the list
+  const matchingReviewers = new Set<string>();
+  const reviewers = optional(source.MATCHING_REVIEWERS);
+  if (reviewers !== undefined) {
+    reviewers.split(',').forEach((entry, index) => {
+      const email = entry.trim().toLowerCase();
+      if (EMAIL.test(email)) matchingReviewers.add(email);
+      else problems.push(`MATCHING_REVIEWERS must be email addresses separated by commas (entry ${index + 1} is not one)`);
+    });
+  }
+  if (matching === 'true' && reviewers === undefined) {
+    warnings.push('MATCHING=true without MATCHING_REVIEWERS: no job description can be approved for candidates');
+  }
   // Transitous' usage policy is for non-commercial projects: matching never asks it (services/commute.ts)
   if (matching === 'true' && commuteTimes === 'true' && commuteTransit === 'transitous') {
     warnings.push('MATCHING=true with COMMUTE_TRANSIT=transitous: matching computes travel times without public transport');
@@ -510,6 +532,7 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     COMMUTE_CONTACT,
     COMMUTE_DAILY_LIMIT,
     matchingEnabled: matching === 'true',
+    matchingReviewers,
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',

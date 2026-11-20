@@ -10,6 +10,8 @@
 // consent, the state it is in, the settings of the anonymous card, and the limits.
 
 import { cleanIssueText } from './issueText';
+import { OPEN_JOB_STATUS } from './jobPosting';
+import type { JobStatus } from './jobPosting';
 import { matchingMessages as m } from './matching.messages';
 import type { PerfectJobCriterion } from './perfectJob';
 import type { CandidateReadiness } from './readiness';
@@ -52,7 +54,11 @@ export const MATCHING_LIMITS = {
 	/** Professional roles an anonymous card lists, at most */
 	roles: 8,
 	/** Skills an anonymous card lists, at most */
-	skills: 15
+	skills: 15,
+	/** The reason a reviewer gives a recruiter for not accepting a job, in characters */
+	reviewReason: 300,
+	/** Jobs one read of the reviewers' list gives, the oldest request first */
+	reviewsPerRead: 100
 } as const;
 
 // --- Requirements ----------------------------------------------------------------------
@@ -141,22 +147,23 @@ export const discoveryRequirementMessage = (requirement: DiscoveryRequirement): 
 
 // --- State -----------------------------------------------------------------------------
 
-/** When a discovery consent given at `grantedAt` lapses: DISCOVERY_CONSENT_MONTHS later */
-export const discoveryConsentExpiry = (grantedAt: Date | string): Date => {
-	const expiry = new Date(grantedAt);
-	expiry.setUTCMonth(expiry.getUTCMonth() + DISCOVERY_CONSENT_MONTHS);
-	return expiry;
+/** `at` moved by `months` calendar months, in UTC (a day past the month's end runs into the next) */
+const addUtcMonths = (at: Date | string, months: number): Date => {
+	const moved = new Date(at);
+	moved.setUTCMonth(moved.getUTCMonth() + months);
+	return moved;
 };
+
+/** When a discovery consent given at `grantedAt` lapses: DISCOVERY_CONSENT_MONTHS later */
+export const discoveryConsentExpiry = (grantedAt: Date | string): Date =>
+	addUtcMonths(grantedAt, DISCOVERY_CONSENT_MONTHS);
 
 /**
  * The latest grant that has lapsed at `now` (DISCOVERY_CONSENT_MONTHS before it): a consent given
  * after it is in force. What a database query of the candidates in force compares with
  */
-export const discoveryConsentCutoff = (now = new Date()): Date => {
-	const cutoff = new Date(now);
-	cutoff.setUTCMonth(cutoff.getUTCMonth() - DISCOVERY_CONSENT_MONTHS);
-	return cutoff;
-};
+export const discoveryConsentCutoff = (now = new Date()): Date =>
+	addUtcMonths(now, -DISCOVERY_CONSENT_MONTHS);
 
 /**
  * The latest grant that can be confirmed again at `now`: one that lapses within
@@ -478,15 +485,137 @@ export const cardTextIdentifies = (text: string, names: readonly string[]): bool
 	);
 };
 
+// --- Jobs in matching --------------------------------------------------------------------
+
+/**
+ * The statuses a job in matching keeps it in: open (proposed to the candidates whose criteria it
+ * meets) and on hold (in matching, proposed to nobody until it is open again). Turned on only for
+ * an open job; filled, closed or back to draft, a job leaves matching (its recruiter turns it on
+ * again once it is open)
+ */
+export const MATCHING_JOB_STATUSES: readonly JobStatus[] = [OPEN_JOB_STATUS, 'on_hold'];
+
+/** Whether a job with this status stays in matching once it is in it (MATCHING_JOB_STATUSES) */
+export const keepsMatching = (status: JobStatus): boolean => MATCHING_JOB_STATUSES.includes(status);
+
+/** A posting's field a job in matching cannot do without, as the API names it in a 422 */
+export type MatchingJobField = 'company' | 'description';
+
+/**
+ * What a job's posting lacks to be proposed through matching, the first of it, or null: the
+ * company it hires for (candidates decide whether they are interested before they know who the
+ * recruiter is: the company is what tells them who hires) and a description (what they read
+ * before they decide). Its status is the API's to check: only an open job enters matching
+ */
+export const matchingJobProblem = (job: {
+	company?: string | null;
+	description?: string | null;
+}): { field: MatchingJobField; message: string } | null => {
+	if (!job.company?.trim()) return { field: 'company', message: m.job.companyRequired };
+	if (!job.description?.trim()) return { field: 'description', message: m.job.descriptionRequired };
+	return null;
+};
+
+// --- The review of a job in matching -------------------------------------------------------
+
+/**
+ * Where a job in matching stands with the reviewers (MATCHING_REVIEWERS, the operator's), who read
+ * every job by hand before it reaches a candidate: `pending` (sent for review: proposed to nobody
+ * yet), `approved` (proposed to the candidates whose criteria it meets) or `rejected` (with a
+ * reason its recruiter reads). A review holds for the version of the posting it was of: a job
+ * changed since (its description, or another field no criterion reads: its terms are locked) is
+ * pending again, and so is one put back into matching changed since
+ */
+export const MATCHING_REVIEW_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export type MatchingReviewStatus = (typeof MATCHING_REVIEW_STATUSES)[number];
+
+/** What a reviewer decides of a job pending review */
+export const MATCHING_REVIEW_DECISIONS = ['approve', 'reject'] as const;
+export type MatchingReviewDecision = (typeof MATCHING_REVIEW_DECISIONS)[number];
+
+/**
+ * Whether a job is proposed to candidates now: open, in matching, and approved by a reviewer. The
+ * one rule the feeds, the decisions and the counts follow (on hold, pending or rejected: nobody)
+ */
+export const jobLiveInMatching = (job: {
+	status: JobStatus;
+	matching?: { enabledAt?: Date | string | null; review?: { status?: string | null } | null } | null;
+}): boolean =>
+	job.status === OPEN_JOB_STATUS &&
+	!!job.matching?.enabledAt &&
+	job.matching.review?.status === 'approved';
+
+/**
+ * The reason a reviewer gave (untrusted text, read by the recruiter as it was written), as it is
+ * kept, or the rule it breaks: cleaned (nothing invisible: cleanIssueText), on one line, trimmed;
+ * required to reject a job, at most MATCHING_LIMITS.reviewReason characters, and left out of an
+ * approval
+ */
+export const parseReviewReason = (
+	decision: MatchingReviewDecision,
+	reason: unknown
+): { ok: true; reason: string | null } | { ok: false; message: string } => {
+	if (decision === 'approve') return { ok: true, reason: null };
+	const cleaned =
+		typeof reason === 'string' ? cleanIssueText(reason).replace(/\s+/g, ' ').trim() : '';
+	if (!cleaned) return { ok: false, message: m.review.reasonRequired };
+	if (cleaned.length > MATCHING_LIMITS.reviewReason) {
+		return { ok: false, message: m.review.reasonTooLong(MATCHING_LIMITS.reviewReason) };
+	}
+	return { ok: true, reason: cleaned };
+};
+
+// --- Matches ---------------------------------------------------------------------------------
+
+/**
+ * What one side says of the other: a candidate of a job proposed to them, a recruiter of a
+ * candidate's anonymous card for their job. Both `interested` is a mutual interest, the only way a
+ * portfolio is revealed; either `pass` ends it there
+ */
+export const MATCH_DECISIONS = ['interested', 'pass'] as const;
+export type MatchDecision = (typeof MATCH_DECISIONS)[number];
+
+/**
+ * Why a mutual interest ended: the candidate or the recruiter ended it, or its job left matching
+ * for good (filled, closed or back to draft). A job deleted takes its mutual interests with it
+ */
+export const MATCH_END_REASONS = ['candidate', 'recruiter', 'job_closed'] as const;
+export type MatchEndReason = (typeof MATCH_END_REASONS)[number];
+
+/**
+ * How long matching keeps what it records, the one place these numbers live: the TTL of each
+ * match implements them (its `expiresAt`), the privacy policy states them.
+ * - A decision no mutual interest came of (an interest the other side has not answered, a pass):
+ *   at most `decisionMonths` after it was made, and less when its job closes, is deleted or leaves
+ *   matching (an interest), or when the candidate withdraws (theirs, and recruiters' on them).
+ * - A mutual interest, with what each side saw of the other then (its snapshot): while it lasts,
+ *   then `endedMatchMonths` after it ended.
+ * Discovery's own: its consent lapses after DISCOVERY_CONSENT_MONTHS, and a candidate is paused
+ * after DISCOVERY_INACTIVITY_DAYS days without signing in.
+ */
+export const MATCH_RETENTION = {
+	decisionMonths: 6,
+	endedMatchMonths: 3
+} as const;
+
+/** When a decision made at `decidedAt` goes, at the latest: MATCH_RETENTION.decisionMonths later */
+export const matchDecisionExpiry = (decidedAt: Date | string): Date =>
+	addUtcMonths(decidedAt, MATCH_RETENTION.decisionMonths);
+
+/** When a mutual interest that ended at `endedAt` goes: MATCH_RETENTION.endedMatchMonths later */
+export const endedMatchExpiry = (endedAt: Date | string): Date =>
+	addUtcMonths(endedAt, MATCH_RETENTION.endedMatchMonths);
+
 // --- Helpers ---------------------------------------------------------------------------
 
 const HOSTNAME =
 	/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
 
 /**
- * The domain of an email address, lower case (`Jane@Acme.FR` → `acme.fr`): what a candidate is
- * shown of who is behind a job before they say they are interested. Null when `email` is not an
- * address with a domain name
+ * The domain of an email address, lower case (`Jane@Acme.FR` → `acme.fr`): what a reviewer of
+ * matching reads of who is behind a job (GET /matching/reviews). Never a candidate: nothing of the
+ * recruiter reaches one before both sides are interested (the founder's decision). Null when
+ * `email` is not an address with a domain name
  */
 export const emailDomainOf = (email: unknown): string | null => {
 	if (typeof email !== 'string') return null;

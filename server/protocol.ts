@@ -24,3 +24,17 @@ export const JOB_CHANGED = 'This job posting was changed since you opened it'
 
 /** 409 of an edit that changes the terms (the fields the perfect job scores) of a posting opened before: `JOB_TERMS_LOCKED` of client/src/lib/components/job-editor/JobEditor.svelte, which then offers to reload it or to duplicate it */
 export const JOB_TERMS_LOCKED = 'The terms of an opened job posting cannot be changed'
+
+/**
+ * 409 of PUT /jobs/:id/matching turning matching on for a job that is not open (put on hold,
+ * filled or back to draft meanwhile). No screen calls the route yet: the recruiter's matching
+ * panel will match it, and say it in its own words
+ */
+export const MATCHING_NEEDS_OPEN_JOB = 'Only an open job description can be proposed to candidates'
+
+/**
+ * 403 of the reviewers' routes of matching (GET /matching/reviews, PUT /matching/reviews/:id) for
+ * an account that is not one of MATCHING_REVIEWERS. No screen calls them yet: the review screen
+ * will match it. The 409 of a review of a version that is no longer the posting's is JOB_CHANGED
+ */
+export const NOT_A_MATCHING_REVIEWER = 'Only the reviewers of matching can do this'

@@ -21,11 +21,41 @@
 // and the signed-in steps of landing.test.ts; the tests that would change it (accepting the terms,
 // claiming, opening a recruiter space or recording a space: PUT /me/mode, deleting the account)
 // answer those requests in the browser, so it stays that way.
+// Matching (Path 2), for the test files of its screens to come: two candidates proposed to
+// recruiters, 'e2e-match' (client/tests/matching-candidate.test.ts, which turns its discovery off
+// and on) and 'e2e-match-card' (client/tests/matching-recruiter.test.ts, whose anonymous card the
+// e2e recruiter reads), each with everything discovery asks for, set back on every run: the terms in
+// force, a perfect job of three criteria with the pay, the gate journey, a Google Calendar grant
+// (a placeholder: nothing ever asks Google with it) and a meeting type with hours, a discovery
+// consent in force, an experience; and a job of the e2e recruiter in matching, approved, which
+// both candidates' criteria pass (E2E_MATCHING_JOB_TITLE: no test tag matches it, so the files that
+// remove their tagged postings leave it). They are proposed only by an API run with MATCHING=true,
+// and with GOOGLE_CLIENT_SECRET set (any value: Calendar counts as configured; nothing asks Google
+// unless a page books or lists slots, which the tests answer in the browser).
 // Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose, { Types } from "mongoose";
-import { currentConsent } from "portfolio-common";
-import { Domain, RateLimitCounter, User, Workflow } from "../models/database";
+import {
+  DISCOVERY_CONSENT_KEYS,
+  ExperienceType,
+  LEGAL_VERSION,
+  currentConsent,
+  journeyTemplate,
+  parsePerfectJob
+} from "portfolio-common";
+import {
+  AppointmentSchedule,
+  DiscoveryProfile,
+  Domain,
+  Experience,
+  JobPosting,
+  PerfectJob,
+  RateLimitCounter,
+  User,
+  Workflow
+} from "../models/database";
+import type { JobPosting as StoredJobPosting } from "../models/database/jobPosting";
+import { reviewedVersion } from "../services/jobMatching";
 import { recordConsent } from "../services/legal";
 import { redactConnectionString } from "../services/redact";
 
@@ -129,6 +159,116 @@ await User.findOneAndUpdate(
   { upsert: true }
 );
 
+// ── Matching (Path 2) ──────────────────────────────────────
+
+/** The title of the e2e recruiter's job in matching, which no test file's tag matches */
+const E2E_MATCHING_JOB_TITLE = 'Staff Platform Engineer (e2e matching)';
+const E2E_MATCHING_JOB_ID = new Types.ObjectId('65e2e0000000000000000101');
+
+// What the two candidates rate: the pay (a deal-breaker), the work mode and the contract, which the
+// job below passes (55 k€ asked of 60-75 k€, hybrid, a CDI)
+const { criteria: matchCriteria, problems } = parsePerfectJob({
+  pay: { importance: 5, dealBreaker: true, perYear: 55_000 },
+  workMode: { importance: 4, modes: ['hybrid', 'on_site'] },
+  contractTypes: { importance: 3, types: ['cdi'] }
+});
+if (problems.length > 0) throw new Error(`The e2e perfect job breaks a rule: ${JSON.stringify(problems)}`);
+
+const matchCandidates = [
+  { email: 'e2e.match@example.com', name: 'Mia', surname: 'Match', domain: 'e2e-match', role: 'Backend engineer' },
+  { email: 'e2e.matchcard@example.com', name: 'Cleo', surname: 'Card', domain: 'e2e-match-card', role: 'Platform engineer' }
+];
+
+const now = new Date();
+for (const candidate of matchCandidates) {
+  const user = await User.findOneAndUpdate(
+    { email: candidate.email },
+    {
+      $setOnInsert: { name: candidate.name, surname: candidate.surname },
+      // A grant as the API stores it once connected: a placeholder nothing ever sends to Google
+      $set: { 'googleCalendar.refreshToken': 'e2e-placeholder', 'googleCalendar.connectedAt': now },
+      $unset: { 'googleCalendar.revokedAt': 1 }
+    },
+    { upsert: true, returnDocument: 'after' }
+  );
+  await recordConsent(user._id, currentConsent(), 'account');
+  const domain = await Domain.findOneAndUpdate(
+    { name: candidate.domain },
+    { $setOnInsert: { admin: user._id, experiences: [] } },
+    { upsert: true, returnDocument: 'after' }
+  );
+  // One role on the card, when a test left none
+  if (domain.experiences.length === 0) {
+    const experience = await Experience.create({
+      type: ExperienceType.Professional,
+      title: candidate.role,
+      summary: 'Seeded for the end-to-end tests of matching.',
+      start: new Date(Date.UTC(now.getUTCFullYear() - 4, 0, 1)),
+      projects: []
+    });
+    await Domain.updateOne({ _id: domain._id }, { $push: { experiences: experience._id } });
+  }
+  await PerfectJob.findOneAndUpdate({ user: user._id }, { $set: { criteria: matchCriteria } }, { upsert: true });
+  await Workflow.findOneAndUpdate({ user: user._id }, { $set: { steps: journeyTemplate('gate') } }, { upsert: true });
+  await AppointmentSchedule.findOneAndUpdate(
+    { user: user._id, title: 'E2E intro call' },
+    {
+      $set: {
+        timezone: 'Europe/Paris',
+        enabled: true,
+        availability: [1, 2, 3, 4, 5].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '17:00' }))
+      }
+    },
+    { upsert: true }
+  );
+  // A consent in force, given now (it never lapses between runs), and active
+  await DiscoveryProfile.findOneAndUpdate(
+    { user: user._id },
+    {
+      $set: {
+        enabledAt: now,
+        lastActiveAt: now,
+        consents: [{ action: 'granted', at: now, termsVersion: LEGAL_VERSION, wordingKey: DISCOVERY_CONSENT_KEYS.en }]
+      },
+      $unset: { withdrawnAt: 1, card: 1 }
+    },
+    { upsert: true }
+  );
+}
+
+// The e2e recruiter's job in matching, approved as it is (set on every run, as the API stores it)
+await JobPosting.findOneAndUpdate(
+  { _id: E2E_MATCHING_JOB_ID },
+  {
+    $set: {
+      recruiter: recruiter._id,
+      title: E2E_MATCHING_JOB_TITLE,
+      description: '## The job\n\nRun the platform the product teams build on. Seeded for the end-to-end tests of matching.',
+      company: 'E2E Matching Corp',
+      status: 'open',
+      location: { country: 'FR', city: 'Paris', postalCode: '75011', workMode: 'hybrid', remoteDaysPerWeek: 2 },
+      contract: { type: 'cdi' },
+      workingTime: { arrangement: 'weekly_hours', hoursPerWeek: 35 },
+      pay: { min: 60_000, max: 75_000, currency: 'EUR', period: 'year' }
+    },
+    $setOnInsert: { publishedAt: now }
+  },
+  { upsert: true }
+);
+const matchingJob = (await JobPosting.findById(E2E_MATCHING_JOB_ID).lean<StoredJobPosting>())!;
+await JobPosting.updateOne(
+  { _id: E2E_MATCHING_JOB_ID },
+  {
+    $set: {
+      matching: {
+        enabledAt: now,
+        review: { status: 'approved', requestedAt: now, reviewedAt: now, version: reviewedVersion(matchingJob) }
+      }
+    }
+  },
+  { timestamps: false }
+);
+
 // The jobs shared on a journey that scores them are counted, per owner and recruiter and per UTC
 // day (JOB_SHARES_PER_DAY of services/workflowSteps/job.ts, keyed 'job-share:<hash>'): every run
 // starts from none, so the e2e recruiter's picks never depend on the runs before it on the same day
@@ -136,7 +276,8 @@ await User.findOneAndUpdate(
 await RateLimitCounter.deleteMany({ _id: /^job-share:/ });
 
 console.log(
-  `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate`
+  `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate, ` +
+    `and for matching: ${matchCandidates.map((candidate) => candidate.domain).join(', ')} and the job "${E2E_MATCHING_JOB_TITLE}"`
 );
 await mongoose.disconnect();
 process.exit(0);
