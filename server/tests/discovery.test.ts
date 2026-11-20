@@ -54,7 +54,9 @@ import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
 const testNames = () => {
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  // A letter between the time and the random part: never a run of 9 digits, which the card reads
+  // as a phone number and leaves out (skills and titles are named with the suffix)
+  const suffix = `${Date.now().toString(36)}x${Math.random().toString(36).slice(2, 8)}`;
   const id = (name: string) => `disc-${name}-${suffix}`;
   return { suffix, id, email: (name: string) => `${id(name)}@example.com` };
 };
