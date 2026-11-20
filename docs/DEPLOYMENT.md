@@ -186,6 +186,7 @@ local development.
 | `HERE_API_KEY`                 | with `COMMUTE_TRANSIT=here` | API key of an app of your HERE platform account; sealed. Billed per journey asked beyond the free monthly allowance |
 | `COMMUTE_CONTACT`              | with `COMMUTE_TRANSIT=transitous` | An email address or a web page, sent as the User-Agent of the requests to Transitous |
 | `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off |
+| `MATCHING`                     | no       | `true` on staging only, for now: turns matching (Path 2) on (see [Matching](#matching)); leave unset in production until its legal texts ship |
 | `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions and feedback are filed in, `owner/name`; leave unset (`lomithrani/portfolio`) |
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
 | `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
@@ -677,6 +678,25 @@ never followed, and the token never appears in a response or a log line. Claude 
 12 s for both its requests, so the answer comes well before the 30 s Bun lets a connection stay
 silent (Elysia's `idleTimeout`; Bun does not apply it while it handles a request with a body, as
 this one has, see [Résumé import](#résumé-import), but the budget does not count on that).
+
+## Matching
+
+Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=true`**: its routes
+(`GET`/`PUT /discovery`, `POST`/`DELETE /discovery/consent` for now) answer 404 as routes that do
+not exist, nothing of it is read or written, and the metric `discoverable_candidates` is 0. The
+startup line `Running at ...` says `"matching":"on"` or why it is off.
+
+- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
+  calls its routes yet: they are for the screens that come next, and for the tests.
+- **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
+  and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
+  assessment is signed: a candidate's consent must point to published texts.
+
+The first opt-in creates the `discoveryprofiles` collection (one document per candidate who turned
+discovery on or set their anonymous card): no migration. Turning `MATCHING` off again proposes
+nobody to anyone, and keeps those documents as they are: candidates find their choice again when
+it is turned back on (paused until they sign in, if that was over 180 days before), and account
+deletion removes them whatever the flag.
 
 ## Travel times
 

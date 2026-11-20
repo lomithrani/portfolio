@@ -26,3 +26,4 @@ export { perfectJobRequest } from "./perfectJobRequest.models";
 export { consentRequest, acceptTermsRequest, deleteAccountRequest, loginConsentSource } from "./legalRequest.models";
 export { addressSearchRequest, officePlaceRequest } from "./addressRequest.models";
 export { feedbackRequest } from "./feedbackRequest.models";
+export { discoveryConsentRequest, discoveryCardRequest } from "./matchRequest.models";

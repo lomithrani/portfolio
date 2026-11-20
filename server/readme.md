@@ -33,6 +33,7 @@ with a message listing every problem.
 | `RESUME_IMPORT_MONTHLY_LIMIT` | no | `3` | Résumé imports per user per 30-day window; `0` turns the feature off |
 | `RESUME_IMPORT_DAILY_LIMIT` | no | `30` | Résumé imports per UTC day across all users; `0` turns the feature off |
 | `RESUME_IMPORT_ATTEMPTS_PER_DAY` | no | `10` | Résumé import attempts per user per UTC day, failed ones included and never given back; `0` turns the feature off |
+| `MATCHING` | no | | `true` turns matching (Path 2: discovery, `plugins/matches.ts`) on; off, its routes answer 404 |
 | `API_DOCS` | no | | `true` serves the OpenAPI docs (`/swagger`) in production; always on otherwise |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | | Enables OpenTelemetry (traces, metrics, logs); fully off when unset |
 | `OTEL_EXPORTER_OTLP_HEADERS` | no | | e.g. the Grafana Cloud authorization header |

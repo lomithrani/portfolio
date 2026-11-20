@@ -10,6 +10,7 @@ import { createApp } from '../app';
 import {
   AppointmentBooking,
   AppointmentSchedule,
+  DiscoveryProfile,
   Domain,
   Experience,
   JobPosting,
@@ -88,6 +89,7 @@ afterEach(async () => {
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: userIds } }, { visitor: { $in: userIds } }] });
   await AppointmentSchedule.deleteMany({ user: { $in: userIds } });
   await AppointmentBooking.deleteMany({ user: { $in: userIds } });
+  await DiscoveryProfile.deleteMany({ user: { $in: userIds } });
   await mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).deleteMany({ name: named });
   await legacyApplications().deleteMany({ _id: { $in: [...createdApplications] } });
   createdApplications.clear();
@@ -181,7 +183,8 @@ const booking = (user: string, scheduleId: Types.ObjectId, hoursAhead: number) =
  * An account with data in every collection that references a user: a domain
  * with an experience (through the API), a hiring journey, progress of a
  * visitor in it, a job posting with an application of the removed job board
- * (from a stranger), a schedule with a booking
+ * (from a stranger), a schedule with a booking, and its discovery (turned on,
+ * then off: both consents recorded)
  */
 const accountWithData = async (name: string) => {
   const user = await login(name);
@@ -232,6 +235,16 @@ const accountWithData = async (name: string) => {
   });
   const scheduleDoc = await AppointmentSchedule.create(schedule(user.userId));
   await AppointmentBooking.create(booking(user.userId, scheduleDoc._id, 48 + Math.floor(Math.random() * 1000)));
+  // Stored directly (the discovery routes are covered by tests/discovery.test.ts)
+  await DiscoveryProfile.create({
+    user: user.userId,
+    lastActiveAt: new Date(),
+    card: { headline: t.id(`${name}-headline`), hiddenExperiences: [experience.json()._id] },
+    consents: [
+      { action: 'granted', at: new Date(), termsVersion: CONSENT.termsVersion, wordingKey: 'discovery-18-v1' },
+      { action: 'withdrawn', at: new Date() }
+    ]
+  });
   const domainId = (await Domain.findOne({ name: domainName }, { _id: 1 }).lean())!._id;
   return {
     ...user,
@@ -258,7 +271,8 @@ const remaining = async (userId: string, domainName: string, experienceId: strin
   jobPostings: await JobPosting.countDocuments({ recruiter: userId }),
   appointmentSchedules: await AppointmentSchedule.countDocuments({ user: userId }),
   appointmentBookings: await AppointmentBooking.countDocuments({ user: userId }),
-  bookedMeetings: await AppointmentBooking.countDocuments({ visitor: userId })
+  bookedMeetings: await AppointmentBooking.countDocuments({ visitor: userId }),
+  discoveryProfiles: await DiscoveryProfile.countDocuments({ user: userId })
 });
 
 const nothing = {
@@ -272,7 +286,8 @@ const nothing = {
   jobPostings: 0,
   appointmentSchedules: 0,
   appointmentBookings: 0,
-  bookedMeetings: 0
+  bookedMeetings: 0,
+  discoveryProfiles: 0
 };
 
 /** Routes global fetch to a fake of Google's revocation endpoint; anything else fails the test */
@@ -347,7 +362,8 @@ describe('DELETE /me', () => {
       jobPostings: 1,
       appointmentSchedules: 1,
       appointmentBookings: 1,
-      bookedMeetings: 1
+      bookedMeetings: 1,
+      discoveryProfiles: 1
     });
 
     const result = await deleteMe(candidate.cookie);
@@ -596,6 +612,7 @@ describe('deleteAccount', () => {
       legacyWorkflows: 1,
       jobPostings: 1,
       legacyJobApplications: 1,
+      discoveryProfiles: 1,
       googleCalendar: 'none'
     });
     expect(await remaining(account.userId, account.domainName, account.experienceId)).toEqual(nothing);

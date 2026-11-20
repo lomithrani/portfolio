@@ -55,8 +55,12 @@ export interface JobMatchView {
   transit?: TransitProvider;
 }
 
-/** The minimum as stored, when it still is one; else the highest (the journey fails closed) */
-const minScoreOf = (config: Partial<JobMatchStepConfig>): number => {
+/**
+ * The minimum of a job match step's settings as stored, when it still is one; else the highest
+ * (the journey fails closed). The bar every job is held to on that journey, and in discovery
+ * (services/discovery.ts)
+ */
+export const jobMatchMinScore = (config: Partial<JobMatchStepConfig>): number => {
   const { min, max } = JOB_MATCH_STEP_LIMITS.minScore;
   const value = config?.minScore;
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : max;
@@ -92,7 +96,7 @@ const scored = async ({ ownerId, visitorId, config, earlier }: JobMatchContext):
   const transit = shown?.some(({ criterion }) => criterion === 'commute') ? commuteAvailability().transit : undefined;
   return {
     score,
-    minScore: minScoreOf(config),
+    minScore: jobMatchMinScore(config),
     job: { _id: shared._id, title: job.title },
     ...(shown ? { criteria: shown } : {}),
     ...(transit ? { transit } : {})
@@ -111,7 +115,7 @@ export const jobMatchStep: ServerStep<JobMatchStepConfig, undefined, JobMatchVie
     return { status: view.score >= view.minScore ? 'succeeded' : 'failed', view };
   },
   // The minimum is told to recruiters before they pick a job; whether details are shown is not
-  visitorConfig: (config) => ({ minScore: minScoreOf(config) }),
+  visitorConfig: (config) => ({ minScore: jobMatchMinScore(config) }),
   describe: async (ctx) => {
     const view = await scored(ctx);
     return view ? [m.jobMatch.invitation(view.score)] : [];

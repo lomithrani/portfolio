@@ -2,6 +2,7 @@ import mongoose, { Types } from 'mongoose';
 import {
   AppointmentBooking,
   AppointmentSchedule,
+  DiscoveryProfile,
   Domain,
   Experience,
   JobPosting,
@@ -42,6 +43,8 @@ import { logger } from './logger';
 // - AppointmentSchedule.user and AppointmentBooking.user; AppointmentBooking.visitor
 //   (the meetings the account booked on other portfolios) is unset: the
 //   meeting stays booked in its owner's calendar, and its slot held
+// - DiscoveryProfile.user (Path 2: whether the account is proposed to
+//   recruiters, its anonymous card's settings, its consents and withdrawals)
 // - the User itself, Google Calendar tokens and acceptances included
 
 /** What was removed, by collection (the log line and the tests read it) */
@@ -60,6 +63,8 @@ export interface AccountDeletionSummary {
   appointmentBookings: number;
   /** Bookings the account made on other portfolios, no longer tied to it */
   bookedMeetings: number;
+  /** Its discovery (Path 2): the consents it gave and withdrew go with it */
+  discoveryProfiles: number;
   /** What Google answered when asked to revoke the Google Calendar grant ('none': no grant stored) */
   googleCalendar: Awaited<ReturnType<typeof revokeGoogleCalendarAccess>>;
 }
@@ -106,7 +111,8 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     legacyJobApplications,
     appointmentBookings,
     appointmentSchedules,
-    bookedMeetings
+    bookedMeetings,
+    discoveryProfiles
   ] = await Promise.all([
     Experience.deleteMany({ _id: { $in: experienceIds } }),
     WorkflowInstance.deleteMany({ $or: [{ owner: id }, { visitor: id }] }),
@@ -120,7 +126,8 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     }),
     AppointmentBooking.deleteMany({ user: id }),
     AppointmentSchedule.deleteMany({ user: id }),
-    AppointmentBooking.updateMany({ visitor: id }, { $unset: { visitor: 1 } })
+    AppointmentBooking.updateMany({ visitor: id }, { $unset: { visitor: 1 } }),
+    DiscoveryProfile.deleteMany({ user: id })
   ]);
   // The postings after their applications, then the domains after their
   // experiences: an interrupted deletion leaves nothing pointing at what is gone
@@ -142,6 +149,7 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     appointmentSchedules: appointmentSchedules.deletedCount,
     appointmentBookings: appointmentBookings.deletedCount,
     bookedMeetings: bookedMeetings.modifiedCount,
+    discoveryProfiles: discoveryProfiles.deletedCount,
     googleCalendar
   };
   // The user id only: no email, no domain name, no token

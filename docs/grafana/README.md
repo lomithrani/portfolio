@@ -16,7 +16,7 @@ The overview's "Portfolios loaded" table links each portfolio to its own dashboa
 
 | Data                                                                                         | From                                                             | Kept as            |
 | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------ |
-| `portfolio_records{kind}`: the number of portfolios, accounts, recruiters, experiences, job postings, open job postings, journeys started, upcoming meetings | `server/services/siteMetrics.ts`, read from MongoDB at most every 5 minutes | Metric (Prometheus) |
+| `portfolio_records{kind}`: the number of portfolios, accounts, recruiters, experiences, job postings, open job postings, journeys started, upcoming meetings, candidates visible to recruiters (`discoverable_candidates`: matching, zero while `MATCHING` is off) | `server/services/siteMetrics.ts`, read from MongoDB at most every 5 minutes | Metric (Prometheus) |
 | `http_server_requests_total{method, route, status}` and `http_server_request_duration_milliseconds` | `server/app.ts`, every request the API answers                   | Metric (Prometheus) |
 | Warnings, errors and the `memory` line                                                        | `server/services/logger.ts`                                      | Logs (Loki)        |
 | Page renders (`sveltekit.handle.root`, by route) and API requests (by route and path)         | The traces of the web service and the API                        | Traces (Tempo)     |

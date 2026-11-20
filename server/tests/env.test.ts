@@ -131,6 +131,14 @@ describe('parseEnv', () => {
     expect(problems[0]).not.toContain('abc');
   });
 
+  it('keeps matching (Path 2) off unless MATCHING=true', () => {
+    expect(parseEnv(base).matchingEnabled).toBe(false);
+    expect(parseEnv({ ...base, MATCHING: ' true ' }).matchingEnabled).toBe(true);
+    expect(parseEnv({ ...base, MATCHING: 'false' }).matchingEnabled).toBe(false);
+    expect(parseEnv({ ...base, MATCHING: '' }).matchingEnabled).toBe(false);
+    expect(problemsOf({ ...base, MATCHING: 'on' })).toEqual(['MATCHING must be true or false (got "on")']);
+  });
+
   describe('travel times', () => {
     it('are off unless COMMUTE_TIMES=true, with a daily cap on what is asked', () => {
       expect(parseEnv(base)).toMatchObject({

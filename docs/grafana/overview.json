@@ -400,7 +400,7 @@
 		{
 			"type": "timeseries",
 			"title": "Portfolios, accounts and recruiters",
-			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.\n\nVisible to recruiters: the candidates who turned discovery on (matching, Path 2), their consent in force and active in the last 180 days. Zero while `MATCHING` is off.",
 			"datasource": {
 				"type": "prometheus",
 				"uid": "grafanacloud-prom"
@@ -420,6 +420,11 @@
 					"refId": "C",
 					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"recruiters\"})",
 					"legendFormat": "Recruiters"
+				},
+				{
+					"refId": "D",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"discoverable_candidates\"})",
+					"legendFormat": "Visible to recruiters"
 				}
 			],
 			"fieldConfig": {

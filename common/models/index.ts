@@ -229,8 +229,49 @@ export {
 	isCurrentTermsVersion,
 	parseConsent,
 	consentProblem,
-	currentConsent
+	currentConsent,
+	MINIMUM_DISCOVERY_AGE,
+	DISCOVERY_CONSENT_KEYS,
+	discoveryConsentKey,
+	parseDiscoveryConsent,
+	currentDiscoveryConsent
 } from './legal';
-export type { ConsentInput, ConsentSource, ConsentProblemProperty, ConsentResult } from './legal';
+export type {
+	ConsentInput,
+	ConsentSource,
+	ConsentProblemProperty,
+	ConsentResult,
+	DiscoveryConsentInput,
+	DiscoveryConsentProblemProperty,
+	DiscoveryConsentResult
+} from './legal';
 export { legalMessages } from './legal.messages';
+export type { CandidateReadiness } from './readiness';
+export {
+	DISCOVERY_MIN_CRITERIA,
+	DISCOVERY_INACTIVITY_DAYS,
+	DISCOVERY_CONSENT_MONTHS,
+	DISCOVERY_LIMITS,
+	MATCHING_LIMITS,
+	DISCOVERY_REQUIREMENTS,
+	DISCOVERY_STATES,
+	discoveryInactive,
+	discoveryRequirements,
+	discoveryRequirementMessage,
+	discoveryConsentExpiry,
+	discoveryConsentCutoff,
+	discoveryState,
+	cleanHeadline,
+	parseDiscoveryCard,
+	emailDomainOf
+} from './matching';
+export type {
+	DiscoveryRequirement,
+	DiscoveryFacts,
+	DiscoveryState,
+	DiscoveryCardSettings,
+	DiscoveryCardField,
+	DiscoveryCardResult
+} from './matching';
+export { matchingMessages } from './matching.messages';
 export { ROBOTS_NOINDEX } from './robots';

@@ -6,14 +6,17 @@
 import mongoose from 'mongoose'
 import { metrics } from '@opentelemetry/api'
 import type { Meter } from '@opentelemetry/api'
+import { DISCOVERY_INACTIVITY_DAYS, discoveryConsentCutoff } from 'portfolio-common'
 import {
   AppointmentBooking,
+  DiscoveryProfile,
   Domain,
   Experience,
   JobPosting,
   User,
   WorkflowInstance
 } from '../models/database'
+import { env } from '../env'
 import { logger } from './logger'
 
 /** What `portfolio.records` counts: the values of its `kind` attribute */
@@ -25,7 +28,8 @@ export const SITE_RECORD_KINDS = [
   'job_postings',
   'open_job_postings',
   'journeys_started',
-  'upcoming_bookings'
+  'upcoming_bookings',
+  'discoverable_candidates'
 ] as const
 
 export type SiteRecordKind = (typeof SITE_RECORD_KINDS)[number]
@@ -33,6 +37,20 @@ export type SiteRecordCounts = Record<SiteRecordKind, number>
 
 /** The counts are read again from MongoDB at most this often */
 export const SITE_RECORDS_MAX_AGE_MS = 5 * 60_000
+
+/**
+ * Candidates proposed to recruiters (Path 2): discovery on, its consent in
+ * force and the candidate active (one paused for a setting they removed
+ * since still counts: telling would read every account's readiness). None
+ * while MATCHING is off: nobody is proposed to anyone
+ */
+const discoverableCandidates = async (now = new Date()) =>
+  env.matchingEnabled
+    ? DiscoveryProfile.countDocuments({
+        enabledAt: { $gt: discoveryConsentCutoff(now) },
+        lastActiveAt: { $gte: new Date(now.getTime() - DISCOVERY_INACTIVITY_DAYS * 24 * 60 * 60_000) }
+      })
+    : 0
 
 /** One count per kind. Whole collections are counted from their metadata, the others with a filter */
 export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
@@ -44,7 +62,8 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     jobPostings,
     openJobPostings,
     journeysStarted,
-    upcomingBookings
+    upcomingBookings,
+    discoverable
   ] = await Promise.all([
     Domain.estimatedDocumentCount(),
     User.estimatedDocumentCount(),
@@ -55,7 +74,8 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     // A visitor's progress in an owner's hiring journey, created by their first submit
     WorkflowInstance.estimatedDocumentCount(),
     // MongoDB removes a booking once its slot is over
-    AppointmentBooking.estimatedDocumentCount()
+    AppointmentBooking.estimatedDocumentCount(),
+    discoverableCandidates()
   ])
   return {
     portfolios,
@@ -65,7 +85,8 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     job_postings: jobPostings,
     open_job_postings: openJobPostings,
     journeys_started: journeysStarted,
-    upcoming_bookings: upcomingBookings
+    upcoming_bookings: upcomingBookings,
+    discoverable_candidates: discoverable
   }
 }
 

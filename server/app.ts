@@ -17,7 +17,8 @@ import {
   opportunities,
   perfectJob,
   addresses,
-  feedback
+  feedback,
+  matches
 } from './plugins'
 import { errors, MissingAuthCookieError, PayloadTooLargeError, UnsupportedMediaTypeError } from './errors'
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
@@ -211,6 +212,8 @@ export const createApp = () =>
     .use(perfectJob)
     .use(addresses)
     .use(feedback)
+    // Path 2 (CLAUDE.md, Matching): its routes answer 404 while MATCHING is off
+    .use(matches)
     .use(appointments)
     .use(opportunities)
     // Before jobs: its static /jobs/import routes, then the /jobs/:id ones

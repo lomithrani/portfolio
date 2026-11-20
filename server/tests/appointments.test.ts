@@ -8,12 +8,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import type { Mock } from 'bun:test';
 import mongoose from 'mongoose';
-import { MAX_AVAILABLE_DATES_RANGE, addDays, bookingHorizon } from 'portfolio-common';
+import { MAX_AVAILABLE_DATES_RANGE, addDays, bookingHorizon, currentDiscoveryConsent, journeyTemplate } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import {
   AppointmentBooking,
   AppointmentSchedule,
+  DiscoveryProfile,
   Domain,
   Experience,
   JobPosting,
@@ -38,6 +39,7 @@ import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
 import { jobImportAttemptsKey, jobImportCounters } from '../services/jobImport';
 import { stepSuggestionAttemptsKey, stepSuggestionCounters, stepSuggestionOwnerKey } from '../services/stepSuggestions';
+import { discoveryGrantsKey } from '../services/discovery';
 import { feedbackAccountKey, feedbackAttemptsKey, feedbackCounters } from '../services/feedback';
 import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
@@ -394,6 +396,7 @@ const removeTestData = async (suffix: string) => {
   await PerfectJob.deleteMany({ user: { $in: userIds } });
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: userIds } }, { visitor: { $in: userIds } }] });
   await JobPosting.deleteMany({ recruiter: { $in: userIds } });
+  await DiscoveryProfile.deleteMany({ user: { $in: userIds } });
   await Skill.deleteMany({ displayName: named });
   await User.deleteMany({ _id: { $in: userIds } });
 };
@@ -2049,6 +2052,32 @@ describe('no Google token in any API response', () => {
     expect((await call('GET', '/appointments/schedules', auth)).status).toBe(200);
     // What the account still has to set up, its calendar included (tests/candidateReadiness.test.ts covers it)
     expect((await call('GET', '/me/readiness', auth)).json().calendar).toMatchObject({ connected: true });
+
+    // Discovery, with matching on (tests/discovery.test.ts covers it): the
+    // account set up as it asks (the criteria, the gate, the calendar and
+    // meeting type above), then back to a meeting alone for the booking below
+    const matching = env.matchingEnabled;
+    env.matchingEnabled = true;
+    rateLimitKeys.add(discoveryGrantsKey(sweep.userId));
+    try {
+      const criteria = {
+        pay: { importance: 5, perYear: 60_000 },
+        workMode: { importance: 4, modes: ['remote'] },
+        contractTypes: { importance: 3, types: ['cdi'] }
+      };
+      expect((await call('PUT', '/perfect-job', { ...auth, body: { criteria } })).status).toBe(200);
+      expect((await call('PUT', '/workflow', { ...auth, body: { steps: journeyTemplate('gate') } })).status).toBe(200);
+      expect((await call('GET', '/discovery', auth)).status).toBe(200);
+      expect((await call('PUT', '/discovery', { ...auth, body: { card: { headline: 'Sweep engineer' } } })).status).toBe(200);
+      const consent = { consent: currentDiscoveryConsent() };
+      expect((await call('POST', '/discovery/consent', { ...auth, body: consent })).json().state).toBe('on');
+      expect((await call('DELETE', '/discovery/consent', auth)).status).toBe(200);
+      expect(
+        (await call('PUT', '/workflow', { ...auth, body: { steps: [{ id: 'meeting', type: 'meeting', config: {} }] } })).status
+      ).toBe(200);
+    } finally {
+      env.matchingEnabled = matching;
+    }
 
     google.state.busy = [];
     expect((await call('GET', `/appointments/domains/${sweepDomain}/schedules`)).status).toBe(200);

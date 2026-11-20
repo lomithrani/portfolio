@@ -108,6 +108,12 @@ export interface ServerEnv {
   COMMUTE_CONTACT?: string;
   /** Requests to the geocoding and route services per UTC day, for the whole site (0 turns travel times off) */
   COMMUTE_DAILY_LIMIT: number;
+  /**
+   * MATCHING=true: Path 2, matching on open jobs (plugins/matches.ts:
+   * discovery, the opt-in of candidates). Off without it: its routes answer
+   * 404 as routes that do not exist, and nothing about it is read or written
+   */
+  matchingEnabled: boolean;
   /** Serve OpenAPI docs (always outside production, opt-in with API_DOCS=true) */
   apiDocsEnabled: boolean;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
@@ -436,6 +442,11 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     warnings.push('COMMUTE_TRANSIT is set without COMMUTE_TIMES=true: travel times stay off');
   }
 
+  const matching = optional(source.MATCHING);
+  if (matching !== undefined && matching !== 'true' && matching !== 'false') {
+    problems.push(`MATCHING must be true or false (got ${JSON.stringify(matching)})`);
+  }
+
   const GITHUB_ISSUES_TOKEN = optional(source.GITHUB_ISSUES_TOKEN);
   if (GITHUB_ISSUES_TOKEN && /[\s"']/.test(GITHUB_ISSUES_TOKEN)) {
     problems.push('GITHUB_ISSUES_TOKEN must be the bare GitHub token (no quotes or spaces)');
@@ -493,6 +504,7 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     HERE_API_KEY,
     COMMUTE_CONTACT,
     COMMUTE_DAILY_LIMIT,
+    matchingEnabled: matching === 'true',
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',

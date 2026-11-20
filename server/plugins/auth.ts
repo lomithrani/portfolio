@@ -4,6 +4,7 @@ import { jwt } from '@elysiajs/jwt'
 import { User } from '../models/database';
 import { consentRequest, loginConsentSource, userMode } from '../models/elysia';
 import { env } from '../env';
+import { touchDiscovery } from '../services/discovery';
 import { google } from '../services/google';
 import { assertValidConsent, recordConsent } from '../services/legal';
 import { accountDto, findAccount, findOrCreateGoogleUser, setActiveMode } from '../services/users';
@@ -67,6 +68,10 @@ export const googleAuth = new Elysia()
         : recorded
           ? await findAccount(found.id)
           : found;
+
+      // A sign-in keeps a candidate proposed to recruiters (Path 2, while
+      // MATCHING is on): discovery pauses after months without one
+      await touchDiscovery(user.id);
 
       const date = new Date();
       date.setDate(date.getDate() + SESSION_DAYS);
