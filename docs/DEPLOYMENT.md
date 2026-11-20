@@ -690,7 +690,9 @@ startup line `Running at ...` says `"matching":"on"` or why it is off.
   calls its routes yet: they are for the screens that come next, and for the tests.
 - **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
   and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
-  assessment is signed: a candidate's consent must point to published texts.
+  assessment is signed: a candidate's consent must point to published texts. Public transport
+  times then come from HERE or from nowhere, never from Transitous (see
+  [Travel times](#travel-times), "Matching").
 
 The first opt-in creates the `discoveryprofiles` collection (one document per candidate who turned
 discovery on or set their anonymous card): no migration. Turning `MATCHING` off again proposes
@@ -759,6 +761,35 @@ lower it to stay within the free allowance whatever happens, e.g. `160`); over i
 service does not answer, the commute is left out of the scores (recruiters see "Could not be
 computed right now: not counted") instead of blocking anyone. The API logs `Travel times: no
 answer` at warn level with the kind of request and the reason, never the address.
+
+**Matching.** Matching on open jobs (Path 2, see [Matching](#matching), off until `MATCHING=true`)
+scores the jobs open to it against the candidates who opted in: many pairs in one read, where a
+journey's job match step scores one, and a pair never asked can take some 20 seconds (a place
+looked up, then its ways), in a request Bun cuts after 30 seconds without data. So its reads never
+ask a service: they read only the travel times kept (`cachedCommuteContext` of
+`server/services/commute.ts`), and what a pair still needs is asked in the background
+(`warmCommute`; `warmOffice` looks a job's office up when matching is turned on for it, so that
+each candidate then needs only the ways). Warm-ups run one at a time, with a pause of 400 ms after
+each that asked something (the Géoplateforme takes 5 route requests a second from one address,
+and a pair asks up to two at once), at most 100 waiting: beyond, a warm-up is dropped (a later read
+asks for it again) and the API logs `Travel times: warm-up dropped`. Each request a warm-up sends
+counts against two caps: 100 a day for the account whose read wanted it (`discovery-commute`
+counters, keyed by a hash of the account, so that one account cannot use up the site's day), and
+`COMMUTE_DAILY_LIMIT`, which the job match steps of journeys share: a busy day of matching can
+leave Hire pages without travel times until midnight UTC (their commute is then left out of the
+score, as over the limit today). A pair costs up to three requests (car, on foot, public
+transport), an office one or two the first time: size `COMMUTE_DAILY_LIMIT` for the new pairs a
+day brings (each is then kept 30 days), and with HERE, for its monthly allowance. The failure
+memo applies too: a service that did not answer is left alone for 10 minutes by warm-ups as by
+journeys.
+
+Matching never asks Transitous, nor reads what it answered a journey: its usage policy is for
+open-source, non-commercial projects, which a site that matches candidates with recruiters'
+jobs may not stay. With `COMMUTE_TRANSIT=transitous`, matching computes the commute by the other
+modes a candidate accepts (a candidate who accepts public transport alone has no commute
+computed there: it does not count), and the API warns at startup when `MATCHING=true` is set
+with it. Before matching is turned on in production, choose HERE (`COMMUTE_TRANSIT=here` with
+its key, priced above) or no public transport (`COMMUTE_TRANSIT` unset).
 
 **Address search.** The two forms that take an address (the commute of the perfect job, the
 office of a job posting) search it as it is typed: `POST /addresses/search` answers with the

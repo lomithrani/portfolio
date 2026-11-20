@@ -181,6 +181,14 @@ describe('parseEnv', () => {
       const withoutSwitch = parseEnv({ ...base, COMMUTE_TRANSIT: 'transitous', COMMUTE_CONTACT: 'ops@example.com' });
       expect(withoutSwitch.commuteTimesEnabled).toBe(false);
       expect(withoutSwitch.warnings).toEqual(['COMMUTE_TRANSIT is set without COMMUTE_TIMES=true: travel times stay off']);
+      // Matching never asks Transitous (its usage policy): said at startup, where it is on
+      const contacted = { ...transit, COMMUTE_CONTACT: 'ops@example.com' };
+      expect(parseEnv(contacted).warnings).toEqual([]);
+      expect(parseEnv({ ...contacted, MATCHING: 'true' }).warnings).toEqual([
+        'MATCHING=true with COMMUTE_TRANSIT=transitous: matching computes travel times without public transport'
+      ]);
+      const here = { COMMUTE_TRANSIT: 'here', HERE_API_KEY: 'hEre-Key_0123456789abcdefghijklmnopqrstuvw' };
+      expect(parseEnv({ ...contacted, ...here, MATCHING: 'true' }).warnings).toEqual([]);
     });
 
     it('takes public transport from HERE only with the key of a HERE app, which it never repeats', () => {

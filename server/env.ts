@@ -92,7 +92,8 @@ export interface ServerEnv {
    * COMMUTE_TRANSIT=here, the HERE Public Transit API (a commercial service
    * with a free monthly allowance; needs HERE_API_KEY), or
    * COMMUTE_TRANSIT=transitous, api.transitous.org (its usage policy:
-   * open-source, non-commercial projects, light use; needs COMMUTE_CONTACT)
+   * open-source, non-commercial projects, light use; needs COMMUTE_CONTACT),
+   * which matching never asks (services/commute.ts)
    */
   COMMUTE_TRANSIT?: 'here' | 'transitous';
   /**
@@ -445,6 +446,10 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
   const matching = optional(source.MATCHING);
   if (matching !== undefined && matching !== 'true' && matching !== 'false') {
     problems.push(`MATCHING must be true or false (got ${JSON.stringify(matching)})`);
+  }
+  // Transitous' usage policy is for non-commercial projects: matching never asks it (services/commute.ts)
+  if (matching === 'true' && commuteTimes === 'true' && commuteTransit === 'transitous') {
+    warnings.push('MATCHING=true with COMMUTE_TRANSIT=transitous: matching computes travel times without public transport');
   }
 
   const GITHUB_ISSUES_TOKEN = optional(source.GITHUB_ISSUES_TOKEN);

@@ -1,7 +1,8 @@
 // Travel times for the commute criterion of the perfect job
-// (services/commute.ts, PUT /perfect-job, the job match step) against a real
-// MongoDB (MONGO_URL, local or from TEST_MONGO_URL) and fake geocoding, route
-// and public transport services: nothing leaves the machine. Each test
+// (services/commute.ts, PUT /perfect-job, the job match step, and the reads of
+// matching: from the cache only, and warm-ups in the background) against a
+// real MongoDB (MONGO_URL, local or from TEST_MONGO_URL) and fake geocoding,
+// route and public transport services: nothing leaves the machine. Each test
 // creates its own users and postings, named with a suffix unique to that
 // test, and removes them after: tests pass in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
@@ -18,7 +19,19 @@ import {
   Workflow,
   WorkflowInstance
 } from '../models/database';
+import {
+  cachedCommuteContext,
+  commuteAvailability,
+  commuteContext,
+  commuteModes,
+  commuteWarmUps,
+  DISCOVERY_COMMUTE_CALLS,
+  discoveryCommuteKey,
+  warmCommute,
+  warmOffice
+} from '../services/commute';
 import { logger } from '../services/logger';
+import { peekRateLimit, takeRateLimit } from '../services/rateLimit';
 import { commuteArrival } from '../services/transitous';
 import { jobSharesKey } from '../services/workflowSteps/job';
 import { authCookie, openRecruiterSpace } from './helpers';
@@ -52,6 +65,10 @@ interface Services {
   geocoding: 'up' | 'down';
   /** `unknown`: only towns are found (a query for a street gets a guess) */
   streets: 'known' | 'unknown';
+  /** How long each answer takes, in milliseconds */
+  delayMs: number;
+  /** The most requests that were on their way at once */
+  mostAtOnce: number;
 }
 
 let services: Services;
@@ -64,9 +81,12 @@ const installFakeServices = () => {
     foot: { duration: 60, distance: 5000 },
     transit: [1800, 1500],
     geocoding: 'up',
-    streets: 'known'
+    streets: 'known',
+    delayMs: 0,
+    mostAtOnce: 0
   };
-  spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
+  let atOnce = 0;
+  const answer = async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input instanceof Request ? input.url : input));
     const record = (service: Services['requests'][number]['service']) =>
       services.requests.push({ service, url, headers: new Headers(init?.headers), redirect: init?.redirect });
@@ -122,6 +142,15 @@ const installFakeServices = () => {
       return Response.json({ itineraries: services.transit.map((duration) => ({ duration })), direct: [] });
     }
     throw new Error(`Unexpected request to ${url.origin}`);
+  };
+  spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
+    services.mostAtOnce = Math.max(services.mostAtOnce, ++atOnce);
+    try {
+      if (services.delayMs > 0) await Bun.sleep(services.delayMs);
+      return await answer(input, init);
+    } finally {
+      atOnce--;
+    }
   }) as typeof fetch);
 };
 
@@ -226,7 +255,8 @@ const outcome = (step: MatchStep) =>
 
 const clearCommuteData = async () => {
   await CommuteCache.deleteMany({});
-  await RateLimitCounter.deleteMany({ _id: { $regex: '^commute-calls:' } });
+  // The site's requests of the day, and what the reads of each account had asked in the background
+  await RateLimitCounter.deleteMany({ _id: { $regex: '^(commute-calls|discovery-commute):' } });
 };
 
 const saved = {
@@ -234,7 +264,8 @@ const saved = {
   transit: env.COMMUTE_TRANSIT,
   contact: env.COMMUTE_CONTACT,
   hereKey: env.HERE_API_KEY,
-  limit: env.COMMUTE_DAILY_LIMIT
+  limit: env.COMMUTE_DAILY_LIMIT,
+  warmUps: { ...commuteWarmUps }
 };
 
 beforeAll(async () => {
@@ -256,6 +287,8 @@ beforeEach(async () => {
   env.COMMUTE_CONTACT = undefined;
   env.HERE_API_KEY = undefined;
   env.COMMUTE_DAILY_LIMIT = 500;
+  // No pause between warm-ups: the tests wait for each
+  commuteWarmUps.pauseMs = 0;
   installFakeServices();
   if (connected) await clearCommuteData();
 });
@@ -267,6 +300,7 @@ afterEach(async () => {
   env.COMMUTE_CONTACT = saved.contact;
   env.HERE_API_KEY = saved.hereKey;
   env.COMMUTE_DAILY_LIMIT = saved.limit;
+  Object.assign(commuteWarmUps, saved.warmUps);
   if (!connected) return;
   await clearCommuteData();
   const users = (await User.find({ email: new RegExp(`-${t.suffix}@`) }, '_id').lean()).map((user) => user._id);
@@ -744,5 +778,267 @@ describe('the commute in the score of a job', () => {
       expect(text).not.toContain('place');
       expect(text).not.toContain('maxMinutesPerWeek');
     }
+  });
+});
+
+describe('the travel times of matching: read from the cache, asked in the background', () => {
+  /** An owner's commute, their address found (as PUT /perfect-job stores it) */
+  const criterionWith = (fields: Record<string, unknown> = {}) =>
+    ({ ...commute(), place: HOME, ...fields }) as Parameters<typeof commuteContext>[0];
+  /** A posting's office: on site at the office, unless `fields` say otherwise */
+  const officeAt = (fields: Record<string, unknown> = {}) =>
+    ({
+      country: 'FR',
+      city: 'Lyon',
+      postalCode: '69003',
+      address: `9 rue du Bureau ${t.suffix}`,
+      workMode: 'on_site',
+      ...fields
+    }) as Parameters<typeof commuteContext>[1];
+  const account = () => new mongoose.Types.ObjectId().toString();
+  const counted = async (accountId: string) => (await peekRateLimit(discoveryCommuteKey(accountId), DISCOVERY_COMMUTE_CALLS)).count;
+  const siteCalls = () => RateLimitCounter.countDocuments({ _id: { $regex: '^commute-calls:' } });
+  const logged = () => {
+    const lines: string[] = [];
+    for (const level of ['debug', 'info', 'warn', 'error'] as const) {
+      spyOn(logger, level).mockImplementation((text, attributes) => {
+        lines.push(`${text} ${JSON.stringify(attributes ?? {})}`);
+      });
+    }
+    return lines;
+  };
+  /** Nothing of the owner's address in what was kept or logged */
+  const keepsNothingOfTheOwner = async (lines: string[]) => {
+    const told = [JSON.stringify(await CommuteCache.find({}).lean()), ...lines].join('\n');
+    for (const secret of [HOME.label, String(HOME.lat), String(HOME.lon), 'rue du Test']) expect(told).not.toContain(secret);
+  };
+
+  it('reads only what is kept: no outside call, nothing counted or written', async () => {
+    const criterion = criterionWith();
+    const office = officeAt();
+    expect(await cachedCommuteContext(criterion, office, 'matching')).toEqual({});
+    expect(asked()).toBe(0);
+    expect(await CommuteCache.countDocuments({})).toBe(0);
+    expect(await siteCalls()).toBe(0);
+    // Not known yet, and to be computed: a warm-up can find it
+    expect(commuteModes(criterion, office, 'matching')).toEqual(['car']);
+
+    // Once a journey's job match step asked (and waited)
+    expect(await commuteContext(criterion, office)).toEqual({ commute: { minutes: 20 } });
+    const first = asked();
+    expect(first).toBe(2);
+    expect(await cachedCommuteContext(criterion, office, 'matching')).toEqual({ commute: { minutes: 20 } });
+    expect(asked()).toBe(first);
+
+    // An office known not to be found is known too
+    const lost = officeAt({ address: undefined, postalCode: undefined, city: 'Somewhere nice' });
+    expect(await commuteContext(criterion, lost)).toEqual({ commute: { located: false } });
+    const looked = asked();
+    expect(await cachedCommuteContext(criterion, lost, 'matching')).toEqual({ commute: { located: false } });
+    // A service that did not answer a few minutes ago: not known, and not asked
+    services.places.loin = { label: 'Far away', lat: 45.9, lon: 4.9 };
+    services.car = 'down';
+    const far = officeAt({ address: `2 rue du Loin ${t.suffix}` });
+    expect(await commuteContext(criterion, far)).toEqual({});
+    const failed = asked();
+    expect(failed).toBe(looked + 2);
+    expect(await cachedCommuteContext(criterion, far, 'matching')).toEqual({});
+    expect(asked()).toBe(failed);
+  });
+
+  it('says which pairs are not computed at all: those are never waiting for a warm-up', async () => {
+    const criterion = criterionWith({ modes: ['car', 'walk'] });
+    expect(commuteModes(criterion, officeAt(), 'matching')).toEqual(['car', 'walk']);
+    // Fully remote: nowhere to go
+    expect(commuteModes(criterion, officeAt({ workMode: 'remote' }), 'matching')).toEqual([]);
+    // The owner's address not found yet, or no commute asked for
+    expect(commuteModes(criterionWith({ place: undefined }), officeAt(), 'matching')).toEqual([]);
+    expect(commuteModes(undefined, officeAt(), 'matching')).toEqual([]);
+    // A mode the site does not offer
+    expect(commuteModes(criterionWith({ modes: ['transit'] }), officeAt(), 'matching')).toEqual([]);
+    env.commuteTimesEnabled = false;
+    expect(commuteModes(criterion, officeAt(), 'matching')).toEqual([]);
+    expect(await cachedCommuteContext(criterion, officeAt(), 'matching')).toEqual({});
+    await warmCommute(criterion, officeAt(), account());
+    await warmOffice(officeAt(), account());
+    expect(asked()).toBe(0);
+  });
+
+  it('asks only what mayAsk lets out, for the office and for each way', async () => {
+    const criterion = criterionWith({ modes: ['car', 'bike'] });
+    let questions = 0;
+    // The office, and nothing more
+    expect(await commuteContext(criterion, officeAt(), { mayAsk: async () => ++questions <= 1 })).toEqual({});
+    expect({ geocode: asked('geocode'), route: asked('route'), questions }).toEqual({ geocode: 1, route: 0, questions: 3 });
+    // The office is kept: only the ways are put to mayAsk
+    questions = 0;
+    expect(await commuteContext(criterion, officeAt(), { mayAsk: async () => (++questions, true) })).toEqual({
+      commute: { minutes: 20 }
+    });
+    expect({ geocode: asked('geocode'), route: asked('route'), questions }).toEqual({ geocode: 1, route: 2, questions: 2 });
+    // All kept: mayAsk is not called
+    questions = 0;
+    expect(await commuteContext(criterion, officeAt(), { mayAsk: async () => (++questions, false) })).toEqual({
+      commute: { minutes: 20 }
+    });
+    expect(questions).toBe(0);
+  });
+
+  it('asks in the background what a pair needs, counted against the account whose read wanted it', async () => {
+    const lines = logged();
+    const candidate = account();
+    const criterion = criterionWith({ modes: ['car', 'bike'] });
+    await warmCommute(criterion, officeAt(), candidate);
+    // The office's place, the way by car, the way on foot (the bike's distance)
+    expect({ geocode: asked('geocode'), route: asked('route') }).toEqual({ geocode: 1, route: 2 });
+    expect(await counted(candidate)).toBe(3);
+    expect(await siteCalls()).toBe(1);
+    expect(await cachedCommuteContext(criterion, officeAt(), 'matching')).toEqual({ commute: { minutes: 20 } });
+
+    // Warmed again: what is kept is read, never asked again, nor counted
+    await warmCommute(criterion, officeAt(), candidate);
+    expect(asked()).toBe(3);
+    expect(await counted(candidate)).toBe(3);
+    // The counter is keyed by a hash of the account
+    expect(discoveryCommuteKey(candidate)).not.toContain(candidate);
+    expect(lines).toEqual([]);
+    await keepsNothingOfTheOwner(lines);
+  });
+
+  it("stops at the account's allowance for the day, without a word in the logs", async () => {
+    const lines = logged();
+    const spent = account();
+    await Promise.all(
+      Array.from({ length: DISCOVERY_COMMUTE_CALLS.limit }, () => takeRateLimit(discoveryCommuteKey(spent), DISCOVERY_COMMUTE_CALLS))
+    );
+    const criterion = criterionWith();
+    await warmCommute(criterion, officeAt(), spent);
+    await warmOffice(officeAt(), spent);
+    expect(asked()).toBe(0);
+    expect(await CommuteCache.countDocuments({})).toBe(0);
+    expect(await siteCalls()).toBe(0);
+    expect(lines).toEqual([]);
+
+    // Another account's allowance is its own
+    await warmCommute(criterion, officeAt(), account());
+    expect(asked()).toBe(2);
+    expect(await cachedCommuteContext(criterion, officeAt(), 'matching')).toEqual({ commute: { minutes: 20 } });
+  });
+
+  it("keeps within the site's daily limit, and leaves a service that did not answer alone for a few minutes", async () => {
+    const candidate = account();
+    const criterion = criterionWith();
+    env.COMMUTE_DAILY_LIMIT = 1;
+    await warmCommute(criterion, officeAt(), candidate);
+    // The office's place; the way would have been the second request of the day
+    expect({ geocode: asked('geocode'), route: asked('route') }).toEqual({ geocode: 1, route: 0 });
+    expect(await cachedCommuteContext(criterion, officeAt(), 'matching')).toEqual({});
+
+    // The next day, a service that does not answer: asked once, then left alone
+    await RateLimitCounter.deleteMany({ _id: { $regex: '^commute-calls:' } });
+    env.COMMUTE_DAILY_LIMIT = 500;
+    services.car = 'down';
+    await warmCommute(criterion, officeAt(), candidate);
+    await warmCommute(criterion, officeAt(), candidate);
+    expect(asked('route')).toBe(1);
+    expect(await cachedCommuteContext(criterion, officeAt(), 'matching')).toEqual({});
+  });
+
+  it('never asks Transitous, nor reads what it answered a journey', async () => {
+    env.COMMUTE_TRANSIT = 'transitous';
+    env.COMMUTE_CONTACT = 'https://portfolio.example/contact';
+    const candidate = account();
+    // Public transport (25 minutes) or on foot (60)
+    const criterion = criterionWith({ modes: ['transit', 'walk'], maxMinutesPerWeek: 600 });
+    expect(commuteAvailability('matching')).toEqual({ enabled: true, modes: ['bike', 'car', 'walk'] });
+    expect(commuteModes(criterion, officeAt(), 'matching')).toEqual(['walk']);
+    await warmCommute(criterion, officeAt(), candidate);
+    expect({ transit: asked('transit'), route: asked('route') }).toEqual({ transit: 0, route: 1 });
+    expect(await cachedCommuteContext(criterion, officeAt(), 'matching')).toEqual({ commute: { minutes: 60 } });
+
+    // A journey's job match step asks it: matching still does not read its answer
+    expect(await commuteContext(criterion, officeAt())).toEqual({ commute: { minutes: 25 } });
+    expect(asked('transit')).toBe(1);
+    expect(await cachedCommuteContext(criterion, officeAt(), 'matching')).toEqual({ commute: { minutes: 60 } });
+    // Public transport alone: not computed for matching (the commute does not count there)
+    const transitOnly = criterionWith({ modes: ['transit'] });
+    expect(commuteModes(transitOnly, officeAt())).toEqual(['transit']);
+    expect(commuteModes(transitOnly, officeAt(), 'matching')).toEqual([]);
+    const before = asked();
+    await warmCommute(transitOnly, officeAt({ address: `5 rue du Bureau ${t.suffix}` }), candidate);
+    expect(asked()).toBe(before);
+
+    // HERE's terms allow it: matching asks it
+    env.COMMUTE_TRANSIT = 'here';
+    env.HERE_API_KEY = HERE_KEY;
+    expect(commuteAvailability('matching')).toEqual({ enabled: true, modes: ['transit', 'bike', 'car', 'walk'], transit: 'here' });
+    await warmCommute(criterion, officeAt(), candidate);
+    expect(services.requests.filter((request) => request.service === 'transit').map(({ url }) => url.hostname)).toEqual([
+      'api.transitous.org',
+      'transit.router.hereapi.com'
+    ]);
+    expect(await cachedCommuteContext(criterion, officeAt(), 'matching')).toEqual({ commute: { minutes: 25 } });
+  });
+
+  it("looks a job's office up once in the background: each candidate then needs only the ways", async () => {
+    const recruiter = account();
+    await warmOffice(officeAt(), recruiter);
+    expect({ geocode: asked('geocode'), route: asked('route') }).toEqual({ geocode: 1, route: 0 });
+    expect(await counted(recruiter)).toBe(1);
+    await warmOffice(officeAt(), recruiter);
+    expect(asked()).toBe(1);
+
+    const candidate = account();
+    await warmCommute(criterionWith(), officeAt(), candidate);
+    expect({ geocode: asked('geocode'), route: asked('route') }).toEqual({ geocode: 1, route: 1 });
+    expect(await counted(candidate)).toBe(1);
+    // A fully remote job has no office to look for
+    await warmOffice(officeAt({ workMode: 'remote', address: `7 rue du Bureau ${t.suffix}` }), recruiter);
+    expect(asked()).toBe(2);
+  });
+
+  it('takes warm-ups one at a time, in order, and drops those beyond the queue', async () => {
+    services.delayMs = 5;
+    services.places.loin = { label: 'Far away', lat: 45.9, lon: 4.9 };
+    services.places.bout = { label: 'The end of the world', lat: 46.5, lon: 5.5 };
+    const candidate = account();
+    const criterion = criterionWith({ modes: ['car', 'walk'] });
+    const offices = ['9 rue du Bureau', '2 rue du Loin', '3 rue du Bout'].map((street) => officeAt({ address: `${street} ${t.suffix}` }));
+    await Promise.all(offices.map((office) => warmCommute(criterion, office, candidate)));
+    // Each pair: its office, then its two ways at once; never two pairs at once
+    expect(services.requests.map(({ service }) => service)).toEqual(['geocode', 'route', 'route', 'geocode', 'route', 'route', 'geocode', 'route', 'route']);
+    expect(services.mostAtOnce).toBe(2);
+    expect(
+      services.requests.filter(({ service }) => service === 'geocode').map(({ url }) => url.searchParams.get('q')?.split(' ').slice(0, 4).join(' '))
+    ).toEqual(['9 rue du Bureau', '2 rue du Loin', '3 rue du Bout']);
+
+    // Beyond the queue: dropped (a later read asks for it again), and said
+    const lines = logged();
+    commuteWarmUps.queue = 1;
+    await clearCommuteData();
+    const before = asked();
+    await Promise.all(offices.map((office) => warmCommute(criterion, office, candidate)));
+    expect(asked() - before).toBe(3);
+    expect(lines).toEqual([
+      'Travel times: warm-up dropped {"reason":"queue full"}',
+      'Travel times: warm-up dropped {"reason":"queue full"}'
+    ]);
+  });
+
+  it('never fails its caller, logs nothing of the owner, and goes on with the next warm-up', async () => {
+    const lines = logged();
+    const candidate = account();
+    const criterion = criterionWith();
+    const lookup = spyOn(CommuteCache, 'findById').mockImplementation(() => {
+      throw new Error(`Lost connection while reading ${HOME.label}`);
+    });
+    await warmCommute(criterion, officeAt(), candidate);
+    expect(lines).toEqual(['Travel times: warm-up failed {"reason":"Error"}']);
+    expect(asked()).toBe(0);
+
+    lookup.mockRestore();
+    await warmCommute(criterion, officeAt(), candidate);
+    expect(await cachedCommuteContext(criterion, officeAt(), 'matching')).toEqual({ commute: { minutes: 20 } });
+    await keepsNothingOfTheOwner(lines);
   });
 });
