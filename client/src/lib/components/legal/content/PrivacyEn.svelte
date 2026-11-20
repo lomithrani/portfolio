@@ -172,7 +172,11 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	A portfolio owner can ask visitors to go through steps before booking a meeting (read a note,
 	choose one of their job descriptions, then book). For a signed-in visitor, we store the progress
 	in each journey: which steps are done and when, the job description chosen, and when a meeting was
-	booked.
+	booked. The job description chosen is kept as it was when the recruiter shared it: that version is
+	what the portfolio owner reads and, when their journey scores job descriptions, what is scored. A
+	later edit of the job description changes neither until the recruiter shares it again in that
+	journey. It is kept with the progress (see
+	<a class="link-text" href="#retention">how long we keep it</a>).
 </p>
 <p>
 	To book a meeting you enter your <strong>name</strong>, your <strong>email address</strong> and, if
@@ -182,13 +186,13 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	each of you sees the other's address in it. The invitation also contains the details of the earlier
 	steps (for example the title, company and link of the job description you chose). That link opens a
 	private page of this site: only the recruiter and the portfolio owners on whose journey the recruiter
-	chose that job description can open it, signed in, each owner only while it is the job description the
-	recruiter last chose in their journey and it is not a draft; anyone else the invitation reaches reads
-	that it is not shared with them. We keep only a reservation of the time slot (the time, the calendar,
-	the event identifier, its Google Meet link and a hash of your email address keyed with a secret) and,
-	when you book signed in, your account, so that the meeting is listed under your upcoming meetings in
-	your recruiter space with its link to join. It is deleted automatically when the slot ends or the meeting
-	is cancelled.
+	chose that job description can open it, signed in (each owner reads there the version shared in their
+	journey), each owner only while it is the job description the recruiter last chose in their journey
+	and it is not a draft; anyone else the invitation reaches reads that it is not shared with them. We
+	keep only a reservation of the time slot (the time, the calendar, the event identifier, its Google Meet
+	link and a hash of your email address keyed with a secret) and, when you book signed in, your account,
+	so that the meeting is listed under your upcoming meetings in your recruiter space with its link to
+	join. It is deleted automatically when the slot ends or the meeting is cancelled.
 </p>
 
 <h4 id="data-perfect-job">Your perfect job (private)</h4>
@@ -377,8 +381,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 		<strong>Portfolio owners</strong>: the name, email address and note of a visitor who books a
 		meeting, with the details of the journey steps before it (such as the title and company of the
 		job description a recruiter picked), in their Google Calendar invitation; and the job
-		description a recruiter picked in their journey, on its private page (see
-		<a class="link-text" href="#data-journey">hiring journey</a>).
+		description a recruiter picked in their journey, as the recruiter shared it, on its private page
+		(see <a class="link-text" href="#data-journey">hiring journey</a>).
 	</li>
 	<li>
 		<strong>Visitors who book a meeting</strong>: the email address of the portfolio owner's
@@ -497,7 +501,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				</td>
 			</tr>
 			<tr>
-				<td>Your progress in other portfolios' journeys</td>
+				<td>
+					Your progress in other portfolios' journeys, with the version of the job description you
+					shared there
+				</td>
 				<td>
 					Until you delete your account, or the owner removes the step or deletes their account
 				</td>

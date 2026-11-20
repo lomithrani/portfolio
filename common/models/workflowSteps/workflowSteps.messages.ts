@@ -26,8 +26,8 @@ export const workflowStepMessages = defineMessages({
 	job: {
 		label: { en: 'Select or create a job', fr: 'Choisir ou créer une offre' },
 		description: {
-			en: 'Recruiters pick one of their open job descriptions, or write a new one, before going further. You find it in the meeting invitation.',
-			fr: "Les recruteurs choisissent l'une de leurs offres d'emploi ouvertes, ou en rédigent une nouvelle, avant d'aller plus loin. Vous la retrouvez dans l'invitation au rendez-vous."
+			en: 'Recruiters pick one of their open job descriptions, or write a new one, before going further. You read the version they shared, linked in the meeting invitation.',
+			fr: "Les recruteurs choisissent l'une de leurs offres d'emploi ouvertes, ou en rédigent une nouvelle, avant d'aller plus loin. Vous lisez la version qu'ils ont partagée, dont le lien figure dans l'invitation au rendez-vous."
 		}
 	},
 	jobMatch: {

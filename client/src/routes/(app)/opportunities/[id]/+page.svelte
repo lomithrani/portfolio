@@ -26,8 +26,9 @@
 
 	// A job description shared with the signed-in account (GET /opportunities/jobs/:id): the page
 	// the meeting invitation of a hiring journey links (the API's job step). Its readers are the
-	// portfolio owners on whose journey the recruiter picked it; its recruiter, who opens the same
-	// link, is sent on to their page of it in the recruiter space. Anyone else reads that it is not
+	// portfolio owners on whose journey the recruiter picked it, who read the version the recruiter
+	// shared there (dated with when they shared it); its recruiter, who opens the same link, is sent
+	// on to their page of it in the recruiter space. Anyone else reads that it is not
 	// shared with them (the API answers them as for an unknown id). Private: rendered in the
 	// browser only (opportunities/+layout.ts) and not listed by search engines (#lib/robots.ts).
 
@@ -117,6 +118,11 @@
 	let job = $derived(
 		loadState.kind === 'loaded' && loadState.userId === user?._id ? loadState.shared.job : null
 	);
+	// The version shared on the owner's journey: when the recruiter shared it (unset: the posting
+	// as it is now, a pick from before versions were kept)
+	let sharedAt = $derived(
+		job && loadState.kind === 'loaded' ? loadState.shared.sharedAt : undefined
+	);
 	let waiting = $derived(
 		!$sessionCheckedStore ||
 			loadState.kind === 'loading' ||
@@ -144,9 +150,15 @@
 							</span>
 						{/if}
 						<span>
-							<Rich text={m.updated(formatDay(job.updatedAt))}>
-								{#snippet time(day)}<time datetime={isoDate(job.updatedAt)}>{day}</time>{/snippet}
-							</Rich>
+							{#if sharedAt}
+								<Rich text={m.shared(formatDay(sharedAt))}>
+									{#snippet time(day)}<time datetime={isoDate(sharedAt)}>{day}</time>{/snippet}
+								</Rich>
+							{:else}
+								<Rich text={m.updated(formatDay(job.updatedAt))}>
+									{#snippet time(day)}<time datetime={isoDate(job.updatedAt)}>{day}</time>{/snippet}
+								</Rich>
+							{/if}
 						</span>
 					</p>
 				{/snippet}

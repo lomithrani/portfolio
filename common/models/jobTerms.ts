@@ -5,7 +5,7 @@
 // opening a posting is confirmed first).
 import { highestPayMax } from './jobPosting';
 import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from './perfectJob';
-import type { JobFieldPath, JobPostingInput, JobStatus } from './jobPosting';
+import type { JobFieldPath, JobSnapshot, JobStatus } from './jobPosting';
 
 /**
  * The fields of a posting locked once it is opened: every field a criterion of the perfect job
@@ -34,7 +34,7 @@ export const locksJobTerms = (status: JobStatus, job?: Published | null): boolea
 	status !== 'draft' && !jobTermsLocked(job);
 
 /** The value of a field (its dotted path) in a posting; undefined when it is not set */
-const fieldValue = (job: JobPostingInput, path: JobFieldPath): unknown =>
+const fieldValue = (job: JobSnapshot, path: JobFieldPath): unknown =>
 	path
 		.split('.')
 		.reduce<unknown>(
@@ -50,7 +50,7 @@ const fieldValue = (job: JobPostingInput, path: JobFieldPath): unknown =>
  * its terms take (validateJobPosting refuses anything wider): nothing a candidate's match reads
  * changes.
  */
-const lockedValue = (job: JobPostingInput, path: JobFieldPath): unknown => {
+const lockedValue = (job: JobSnapshot, path: JobFieldPath): unknown => {
 	if (path === 'pay.max') {
 		const { min, max } = job.pay;
 		return Number.isFinite(min) && Number.isFinite(max) ? Math.min(max, highestPayMax(min)) : max;
@@ -63,11 +63,18 @@ const lockedValue = (job: JobPostingInput, path: JobFieldPath): unknown => {
  * (normalizeJobPosting), in the order of the posting: what an edit of an opened posting may not
  * change. An edit sends the whole posting: locked fields it leaves as they are pass.
  */
-export const changedLockedFields = (
-	stored: JobPostingInput,
-	next: JobPostingInput
-): JobFieldPath[] =>
+export const changedLockedFields = (stored: JobSnapshot, next: JobSnapshot): JobFieldPath[] =>
 	LOCKED_JOB_FIELDS.filter(
 		(path) =>
 			JSON.stringify(lockedValue(stored, path)) !== JSON.stringify(lockedValue(next, path))
 	);
+
+/**
+ * Whether two versions of a posting (normalised) differ in a field a criterion of the perfect job
+ * reads (LOCKED_JOB_FIELDS, compared as changedLockedFields compares them): a score computed on one
+ * may not be the score of the other. The job step tells a recruiter that a posting changed since
+ * they shared it with this or a change of its description; a posting shared was opened, so its
+ * terms are locked, and in practice it is its description that changes.
+ */
+export const scoredFieldsDiffer = (a: JobSnapshot, b: JobSnapshot): boolean =>
+	changedLockedFields(a, b).length > 0;

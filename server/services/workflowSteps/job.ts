@@ -1,36 +1,61 @@
 import { Types } from 'mongoose';
-import { OPEN_JOB_STATUS, opportunityPath } from 'portfolio-common';
-import type { JobStatus } from 'portfolio-common';
+import { JOB_STEP_LIMITS, OPEN_JOB_STATUS, opportunityPath, scoredFieldsDiffer } from 'portfolio-common';
+import type { JobSnapshot, JobStatus } from 'portfolio-common';
 import { JobPosting } from '../../models/database';
-import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../../errors';
-import { JOB_NOT_FOUND, toJobPostingDto } from '../jobPostings';
-import type { JobPostingDto } from '../jobPostings';
+import type { JobPosting as StoredJobPosting } from '../../models/database/jobPosting';
+import { ConflictError, FieldValidationError, ResourceNotFoundError, TooManyRequestsError } from '../../errors';
+import { JOB_NOT_FOUND, storedJobSnapshot, toJobSnapshot } from '../jobPostings';
 import { userAcceptedCurrentTerms } from '../legal';
+import { rateLimitKey, takeRateLimit } from '../rateLimit';
+import type { RateLimit } from '../rateLimit';
 import { requireRecruiterSpace } from '../recruiters';
 import type { ServerStep, StepContext } from './types';
-import { inputFields } from './types';
+import { inputFields, storedDate } from './types';
 import { m } from './steps.messages';
 
-// Job step: the visitor (a recruiter) picks one of their own open job
-// postings, again if they wish (the latest pick counts). The step holds
-// while that posting is theirs and open, and while they have accepted the
-// terms in force: closed or deleted since, they pick another one; after a
-// change of the terms, they accept them again (the step's list asks for
-// them, like every recruiter route) before the journey goes on.
+// Job step: the visitor (a recruiter) shares one of their own open job
+// postings, again if they wish (the latest share counts). The step keeps the
+// version shared (a JobSnapshot): what the owner reads on the job's private
+// page (services/jobAccess.ts), what the job match after it scores and what
+// the meeting invitation names. Editing the posting changes none of them
+// until the recruiter shares it again; the step tells them when it changed
+// since in what the owner reads of it (its description, or a field a criterion
+// reads, which is locked once the posting is opened). The step holds while
+// that posting is theirs and open, and while they have accepted the terms in
+// force: closed or deleted since, they pick another one; after a change of
+// the terms, they accept them again (the step's list asks for them, like every
+// recruiter route) before the journey goes on. A pick stored before versions
+// were kept (no `posting`), or one this version would not save, holds nothing:
+// the recruiter shares the job again.
 
 export interface JobStepData {
-  /** The id of the posting picked */
+  /** The id of the posting shared */
   job: string;
+  /** When it was shared */
   selectedAt: Date;
+  /** The posting's `updatedAt` when it was shared: the version's date */
+  version: Date;
+  /** The version shared */
+  posting: JobSnapshot;
 }
 
-/** The job posting a visitor picked, as their journey shows it to them */
+/** The job posting a visitor shared, as their journey shows it to them */
 export interface JourneyJobDto {
   _id: string;
+  /** The version shared's (the posting's own when no version is kept) */
   title: string;
-  /** The hiring company, when the posting names it */
+  /** The hiring company, when the version shared names it */
   company?: string;
+  /** The posting's, now */
   status: JobStatus;
+  /** When the version the step keeps was shared; unset when it keeps none (to share again) */
+  sharedAt?: Date;
+  /**
+   * The posting changed since in what the owner reads of it (its description, or a field the job
+   * match scores): the owner still reads, and the job match still scores, the version shared,
+   * until the recruiter shares the new one
+   */
+  outdated?: true;
 }
 
 export interface JobStepView {
@@ -40,6 +65,23 @@ export interface JobStepView {
 // Not a message: the client tells this 409 from its text (/open job/ in pickJobFailure of
 // client/src/services/workflow.ts) and says it in its own words: it stays in English (protocol.ts)
 export const JOB_NOT_OPEN = 'Only an open job description can be picked';
+
+/**
+ * Shares one recruiter can make on one owner's job step per UTC day while a job match scores them
+ * (portfolio-common's JOB_STEP_LIMITS): each one is a score, and trying many versions of a job
+ * would tell the recruiter more of the owner's criteria than a score is meant to
+ */
+export const JOB_SHARES_PER_DAY: RateLimit = {
+  limit: JOB_STEP_LIMITS.scoredSharesPerDay,
+  windowMs: 24 * 60 * 60_000
+};
+
+/** The counter of `visitorId`'s shares on `ownerId`'s journey (keyed by a hash: rateLimitKey) */
+export const jobSharesKey = (ownerId: string, visitorId: string) => rateLimitKey('job-share', `${ownerId}:${visitorId}`);
+
+// The step type that scores the job shared here (server/services/workflowSteps/jobMatch.ts, which
+// imports this file: named, not imported)
+const SCORING_STEP = 'job-match';
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 const jobId = (value: unknown) => (typeof value === 'string' && OBJECT_ID.test(value) ? value : undefined);
@@ -52,70 +94,129 @@ const jobId = (value: unknown) => (typeof value === 'string' && OBJECT_ID.test(v
 export const pickedJobId = (data: unknown): string | undefined =>
   jobId((data as Partial<JobStepData> | null | undefined)?.job);
 
-type JobContext = StepContext<Record<string, never>, JobStepData>;
+/** A share as a job step stored it, when it is a whole one (this version's: a valid version kept) */
+interface StoredShare {
+  job: string;
+  sharedAt: Date;
+  version: Date;
+  posting: JobSnapshot;
+}
 
-/** The posting the visitor picked, while it is still theirs */
-const pickedJob = async ({ visitorId, data }: JobContext): Promise<JourneyJobDto | undefined> => {
-  const id = pickedJobId(data);
-  if (!id || !Types.ObjectId.isValid(visitorId)) return undefined;
-  const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }, { title: 1, company: 1, status: 1 }).lean();
-  if (!job) return undefined;
-  return {
-    _id: job._id.toString(),
-    title: job.title,
-    ...(job.company ? { company: job.company } : {}),
-    status: job.status as JobStatus
-  };
+/**
+ * The share a job step's stored `data` holds: the posting's id, when it was shared and the version
+ * shared, checked again (storedJobSnapshot); undefined for a pick stored before versions were
+ * kept, or anything this version would not have stored
+ */
+export const storedShare = (data: unknown): StoredShare | undefined => {
+  const job = pickedJobId(data);
+  const { selectedAt, version, posting } = (data ?? {}) as Partial<Record<keyof JobStepData, unknown>>;
+  const sharedAt = storedDate(selectedAt);
+  const versionDate = storedDate(version);
+  const snapshot = storedJobSnapshot(posting);
+  return job && sharedAt && versionDate && snapshot ? { job, sharedAt, version: versionDate, posting: snapshot } : undefined;
 };
 
 /**
- * The whole posting a visitor picked on a job step, from what that step
- * stored (`data`), while it is still theirs and they have accepted the terms
- * in force (as the job step holds a pick): for a later step that works on it
- * (the job match, which scores nothing for a recruiter who has not accepted
- * them again)
+ * Whether the posting changed since the version shared in what the owner reads of it and the job
+ * match scores: a field a criterion reads (portfolio-common's scoredFieldsDiffer) or its
+ * description. Its other fields (the company, the benefits...) can be shared again too, without
+ * the step asking for it
  */
-export const pickedPosting = async (visitorId: string, data: unknown): Promise<JobPostingDto | undefined> => {
+const changedSince = (shared: JobSnapshot, now: JobSnapshot) =>
+  scoredFieldsDiffer(shared, now) || shared.description !== now.description;
+
+type JobContext = StepContext<Record<string, never>, JobStepData>;
+
+/** The posting the visitor picked, while it is still theirs, with the share the step keeps of it */
+const pickedJob = async ({ visitorId, data }: JobContext) => {
   const id = pickedJobId(data);
   if (!id || !Types.ObjectId.isValid(visitorId)) return undefined;
+  const posting = await JobPosting.findOne({ _id: id, recruiter: visitorId }).lean<StoredJobPosting>();
+  if (!posting) return undefined;
+  const share = storedShare(data);
+  // What the owner reads: the version shared, else the posting as it is
+  const { title, company } = share?.posting ?? posting;
+  const job: JourneyJobDto = {
+    _id: posting._id.toString(),
+    title,
+    ...(company ? { company } : {}),
+    status: posting.status as JobStatus,
+    ...(share ? { sharedAt: share.sharedAt } : {}),
+    ...(share && changedSince(share.posting, toJobSnapshot(posting)) ? { outdated: true as const } : {})
+  };
+  return { job, share };
+};
+
+/** The version a visitor shared on a job step, for a later step that works on it */
+export interface SharedJob {
+  /** The posting's id */
+  _id: string;
+  sharedAt: Date;
+  posting: JobSnapshot;
+}
+
+/**
+ * The version a visitor shared on a job step, from what that step stored (`data`), while the
+ * posting is still theirs and they have accepted the terms in force (as the job step holds a
+ * share): for a later step that works on it (the job match, which scores nothing for a recruiter
+ * who has not accepted them again). Undefined without a valid version kept: the step is to do again
+ */
+export const pickedSnapshot = async (visitorId: string, data: unknown): Promise<SharedJob | undefined> => {
+  const share = storedShare(data);
+  if (!share || !Types.ObjectId.isValid(visitorId)) return undefined;
   if (!(await userAcceptedCurrentTerms(visitorId))) return undefined;
-  const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }).lean();
-  return job ? toJobPostingDto(job) : undefined;
+  if (!(await JobPosting.exists({ _id: share.job, recruiter: visitorId }))) return undefined;
+  return { _id: share.job, sharedAt: share.sharedAt, posting: share.posting };
 };
 
 export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView> = {
   type: 'job',
   evaluate: async (ctx) => {
-    const job = await pickedJob(ctx);
-    const holds = job?.status === OPEN_JOB_STATUS && (await userAcceptedCurrentTerms(ctx.visitorId));
+    const picked = await pickedJob(ctx);
+    const holds =
+      !!picked?.share && picked.job.status === OPEN_JOB_STATUS && (await userAcceptedCurrentTerms(ctx.visitorId));
     return {
       status: holds ? 'succeeded' : 'pending',
-      ...(job ? { view: { job } } : {})
+      ...(picked ? { view: { job: picked.job } } : {})
     };
   },
   /**
    * Needs a recruiter space (403) with the terms in force (422 on `consent`:
    * services/recruiters.ts) and a posting of theirs (404 otherwise, like any
-   * unknown id) that is open (409)
+   * unknown id) that is open (409) and passes today's rules (422 on
+   * `input.jobId` for one saved under older ones). On a journey that scores it
+   * (a job match after this step), at most JOB_SHARES_PER_DAY shares (429
+   * beyond). Stores the version shared
    */
-  submit: async ({ visitorId, input }) => {
+  submit: async ({ ownerId, visitorId, input, later }) => {
     const id = jobId(inputFields(input)?.jobId);
     if (!id) throw new FieldValidationError('input.jobId', () => m.job.pickOne);
     await requireRecruiterSpace(visitorId);
-    const job = await JobPosting.findOne({ _id: id, recruiter: visitorId }, { status: 1 }).lean();
-    if (!job) throw new ResourceNotFoundError(JOB_NOT_FOUND);
-    if (job.status !== OPEN_JOB_STATUS) throw new ConflictError(JOB_NOT_OPEN);
-    return { job: job._id.toString(), selectedAt: new Date() };
+    const posting = await JobPosting.findOne({ _id: id, recruiter: visitorId }).lean<StoredJobPosting>();
+    if (!posting) throw new ResourceNotFoundError(JOB_NOT_FOUND);
+    if (posting.status !== OPEN_JOB_STATUS) throw new ConflictError(JOB_NOT_OPEN);
+    // Read back as the step reads it (a posting saved under older rules may not pass them): a
+    // version the step would not hold is refused now, rather than stored and never holding
+    const snapshot = storedJobSnapshot(toJobSnapshot(posting));
+    if (!snapshot) throw new FieldValidationError('input.jobId', () => m.job.cannotShare);
+    if (later.some((step) => step.type === SCORING_STEP)) {
+      const { retryAfterSeconds } = await takeRateLimit(jobSharesKey(ownerId, visitorId), JOB_SHARES_PER_DAY);
+      if (retryAfterSeconds !== null) {
+        throw new TooManyRequestsError(() => m.job.tooManyShares(JOB_SHARES_PER_DAY.limit), retryAfterSeconds);
+      }
+    }
+    const selectedAt = new Date();
+    // (A posting has its dates: written by hand without them, the share is dated instead)
+    return { job: posting._id.toString(), selectedAt, version: storedDate(posting.updatedAt) ?? selectedAt, posting: snapshot };
   },
-  // What the meeting is about, and the job's private page (web client's /opportunities/:id):
-  // the owner reads it there signed in, its recruiter is sent on to their own page of it; anyone
-  // else the invitation reaches reads that it is not shared with them (services/jobAccess.ts)
+  // What the meeting is about (the version shared), and the job's private page (web client's
+  // /opportunities/:id): the owner reads that version there signed in, its recruiter is sent on to
+  // their own page of it; anyone else the invitation reaches reads that it is not shared with them
+  // (services/jobAccess.ts)
   describe: async ({ webOrigin, ...ctx }) => {
-    const job = await pickedJob(ctx);
-    if (!job) return [];
-    return [
-      m.job.invitation(job.title, job.company),
-      ...(webOrigin ? [`${webOrigin}${opportunityPath(job._id)}`] : [])
-    ];
+    const picked = await pickedJob(ctx);
+    if (!picked?.share) return [];
+    const { title, company } = picked.share.posting;
+    return [m.job.invitation(title, company), ...(webOrigin ? [`${webOrigin}${opportunityPath(picked.job._id)}`] : [])];
   }
 };

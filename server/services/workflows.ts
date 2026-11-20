@@ -202,15 +202,19 @@ async function loadJourney(owner: Id, visitorId: string | undefined): Promise<Jo
   return { ownerId, steps, own, ...(visitor ? { visitor } : {}), progress };
 }
 
-const stepContext = (journey: Journey, visitor: string, step: WorkflowStep): StepContext<object, unknown> => ({
-  ownerId: journey.ownerId,
-  visitorId: visitor,
-  config: step.config,
-  data: journey.progress.get(step.id),
-  earlier: journey.steps
-    .slice(0, Math.max(0, journey.steps.indexOf(step)))
-    .map(({ id, type }) => ({ id, type, data: journey.progress.get(id) }))
-});
+const stepContext = (journey: Journey, visitor: string, step: WorkflowStep): StepContext<object, unknown> => {
+  const index = journey.steps.indexOf(step);
+  return {
+    ownerId: journey.ownerId,
+    visitorId: visitor,
+    config: step.config,
+    data: journey.progress.get(step.id),
+    earlier: journey.steps
+      .slice(0, Math.max(0, index))
+      .map(({ id, type }) => ({ id, type, data: journey.progress.get(id) })),
+    later: index === -1 ? [] : journey.steps.slice(index + 1).map(({ id, type }) => ({ id, type }))
+  };
+};
 
 interface StepStanding {
   status: WorkflowStepStatus;

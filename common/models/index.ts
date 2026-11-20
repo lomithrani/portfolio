@@ -83,14 +83,16 @@ export type {
 	NumberRange,
 	JobPostingInput,
 	JobPostingProblem,
-	JobFieldPath
+	JobFieldPath,
+	JobSnapshot
 } from './jobPosting';
 export { jobPostingMessages } from './jobPosting.messages';
 export {
 	LOCKED_JOB_FIELDS,
 	jobTermsLocked,
 	locksJobTerms,
-	changedLockedFields
+	changedLockedFields,
+	scoredFieldsDiffer
 } from './jobTerms';
 export {
 	USER_MODES,
@@ -127,6 +129,7 @@ export type {
 export { workflowMessages } from './workflow.messages';
 export {
 	NOTE_STEP_LIMITS,
+	JOB_STEP_LIMITS,
 	JOB_MATCH_STEP_LIMITS,
 	DEFAULT_JOB_MATCH_MIN_SCORE
 } from './workflowSteps';

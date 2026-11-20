@@ -15,7 +15,7 @@ import {
 } from './support/owner';
 import { stubAddressSearch } from './support/addresses';
 import { TERMS_REQUIRED, stubApi } from './support/api';
-import { createJob, deleteJobs } from './support/jobs';
+import { createJob, deleteJobs, jobPosting } from './support/jobs';
 import {
 	DEFAULT_WORKFLOW_STEPS,
 	LEGAL_VERSION,
@@ -1201,6 +1201,79 @@ test.describe('the hiring journey', () => {
 		await expect(
 			jobStep.getByRole('radio', { name: new RegExp(`Staff engineer ${tag}`) })
 		).toBeChecked();
+	});
+
+	test('a job edited since it was shared: the owner reads the version shared until the recruiter shares the new one', async ({
+		page,
+		browser
+	}) => {
+		await setJourney('job', 'meeting');
+		const title = `Staff engineer ${tag}`;
+		const job = await createJob(recruiterApi, {
+			title,
+			status: 'open',
+			description: '## The job\n\nThe version shared first.'
+		});
+		await submitStep('job', { jobId: job._id });
+		// Edited since: its description (opened, its terms are locked)
+		const edited = await recruiterApi.put(`${API_URL}/jobs/${job._id}`, {
+			data: jobPosting({ title, status: 'open', description: '## The job\n\nThe new version.' })
+		});
+		expect(edited.ok(), await edited.text()).toBe(true);
+
+		// The owner, in a browser of their own, reads the version shared on their journey
+		const context = await browser.newContext();
+		const ownerPage = await context.newPage();
+		await blockGoogle(ownerPage);
+		await signIn(ownerPage, owner);
+		await gotoHydrated(ownerPage, `/opportunities/${job._id}`);
+		await expect(ownerPage.getByText('The version shared first.')).toBeVisible();
+		await expect(ownerPage.getByText('The new version.')).toHaveCount(0);
+		await expect(ownerPage.getByText(/^Shared with you \d{1,2} \w+ \d{4}$/)).toBeVisible();
+
+		// The recruiter: the step says the job changed since it was shared
+		await stubMeetingType(page);
+		await signIn(page, recruiter);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		const jobStep = step(page, 'Step 1: Select or create a job');
+		await expect(jobStep).toContainText(`${title} · E2E Corp: changed since you shared it.`);
+		await jobStep.getByRole('button', { name: 'Change' }).click();
+		await expect(jobStep).toContainText(
+			new RegExp(
+				`You shared ${title} · E2E Corp on \\d{1,2} \\w+ \\d{4}: ${DOMAIN} reads that version\\.`
+			)
+		);
+		await expect(jobStep).toContainText(
+			`Its description changed since: ${DOMAIN} still reads, and the steps after this one still use, the version you shared.`
+		);
+
+		// A refusal (a journey that scores the jobs shared, as many as a day allows: answered in the
+		// browser) is said at the step, and shares nothing
+		await stubApi(page, 'POST', `/workflow/domains/${DOMAIN}/steps/job`, (_request, index) =>
+			index === 0
+				? {
+						status: 429,
+						text: 'A job can be shared at most 5 times a day on this page, where it is scored: try again tomorrow',
+						headers: { 'retry-after': '3600' }
+					}
+				: undefined
+		);
+		const share = jobStep.getByRole('button', { name: 'Share the new version' });
+		await share.click();
+		await expect(jobStep.getByRole('alert')).toHaveText(
+			'Each job shared here is scored, so you can share at most 5 a day on this page. Try again tomorrow.'
+		);
+
+		await share.click();
+		await expect(toasts(page).getByText('New version shared')).toBeVisible();
+		await expect(jobStep).toContainText(`${title} · E2E Corp`);
+		await expect(jobStep).not.toContainText('changed since');
+
+		// Shared again: the owner reads the new version
+		await ownerPage.reload();
+		await expect(ownerPage.getByText('The new version.')).toBeVisible();
+		await expect(ownerPage.getByText('The version shared first.')).toHaveCount(0);
+		await context.close();
 	});
 
 	test('an account without a recruiter space ticks the age and terms box to create it from the job step', async ({

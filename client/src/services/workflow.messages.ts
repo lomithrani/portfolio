@@ -155,6 +155,22 @@ export const m = defineMessages({
 			en: 'Pick the job you are hiring for, or write it.',
 			fr: "Choisissez l'offre pour laquelle vous recrutez, ou rédigez-la."
 		},
+		/** `job`: "Senior Engineer · Acme", the version shared; the posting changed since */
+		outdated: {
+			en: (job: string) => `${job}: changed since you shared it.`,
+			fr: (job: string) => `${job} : modifiée depuis que vous l'avez partagée.`
+		},
+		/** A job picked before the version shared was kept: picked again, it is shared */
+		shareAgain: {
+			en: (title: string) => `Pick ${title} again to share it and go on.`,
+			fr: (title: string) => `Choisissez à nouveau ${title} pour la partager et continuer.`
+		},
+		/** Shared and open, but the recruiter has not accepted the terms of use in force */
+		acceptTerms: {
+			en: (title: string) => `Accept the terms of use in force to go on with ${title}.`,
+			fr: (title: string) =>
+				`Acceptez les conditions d'utilisation en vigueur pour continuer avec ${title}.`
+		},
 		pick: {
 			signedOut: {
 				en: 'Your session expired. Sign in again to pick a job.',
@@ -179,6 +195,13 @@ export const m = defineMessages({
 			journeyChanged: {
 				en: 'This hiring journey changed: it no longer asks for a job here.',
 				fr: "Ce parcours de recrutement a changé : il ne demande plus d'offre ici."
+			},
+			/** 429: the journey scores each job shared, at most `limit` a day per recruiter */
+			tooMany: {
+				en: (limit: number) =>
+					`Each job shared here is scored, so you can share at most ${limit} a day on this page. Try again tomorrow.`,
+				fr: (limit: number) =>
+					`Chaque offre partagée ici est notée : vous pouvez en partager au plus ${limit} par jour sur cette page. Réessayez demain.`
 			},
 			failed: {
 				en: 'Could not pick this job. Try again in a moment.',

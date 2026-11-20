@@ -7,7 +7,19 @@ export const m = defineMessages({
       en: 'Pick one of your job descriptions',
       fr: "Choisissez l'une de vos offres d'emploi"
     },
-    /** Invitation line: the job picked, with the hiring company when the posting names it */
+    /** 422: a posting saved under older rules that today's refuse: shared as it is, it would not hold */
+    cannotShare: {
+      en: 'This job description cannot be shared as it is: open it in your recruiter space, where its editor says what to change, then pick it again',
+      fr: "Cette offre ne peut pas être partagée telle quelle : ouvrez-la dans votre espace recruteur, où son éditeur indique ce qu'il faut modifier, puis choisissez-la à nouveau"
+    },
+    /** 429: the recruiter shared a job on this journey, which scores it, as often as a day allows */
+    tooManyShares: {
+      en: (limit: number) =>
+        `A job can be shared at most ${limit} times a day on this page, where it is scored: try again tomorrow`,
+      fr: (limit: number) =>
+        `Une offre peut être partagée au plus ${limit} fois par jour sur cette page, où elle est notée : réessayez demain`
+    },
+    /** Invitation line: the job shared, with the hiring company when the version shared names it */
     invitation: {
       en: (title: string, company?: string) => `Job: ${company ? `${title} — ${company}` : title}`,
       fr: (title: string, company?: string) => `Offre : ${company ? `${title} — ${company}` : title}`

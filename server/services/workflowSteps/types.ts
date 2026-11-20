@@ -31,6 +31,12 @@ export interface StepContext<Config, Data> {
    * picked in the job step)
    */
   earlier: readonly EarlierStep[];
+  /**
+   * The steps after this one, in order: their ids and types only (what they stored is theirs). For
+   * a type whose submission matters to a step after it (the job step caps the shares a job match
+   * after it scores)
+   */
+  later: readonly { id: string; type: string }[];
 }
 
 export interface ServerStep<Config extends object = object, Data = unknown, View = unknown> {

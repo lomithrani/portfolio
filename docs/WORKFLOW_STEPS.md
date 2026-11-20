@@ -111,7 +111,7 @@ These four words come back in every part of a step. Keep them apart.
 | | What it is | Who writes it | Where it lives | Who can read it |
 | --- | --- | --- | --- | --- |
 | `config` | The settings of one step. | The owner, through `PUT /workflow`. Only what the manifest's `parseConfig` returns is stored. | `Workflow.steps[].config` | The owner gets all of it (`GET /workflow`). Everyone else gets only what the server step's `visitorConfig` returns, and nothing when the type has no `visitorConfig`. |
-| `data` | What the step stored for one visitor (when they confirmed, which job they picked). | The server step: the return value of `submit`, or `recordStepData` for a step with routes of its own. | `WorkflowInstance.steps.<stepId>.data` | No route returns it. The step reads it back in `evaluate`, `submit` and `describe`. |
+| `data` | What the step stored for one visitor (when they confirmed, which job they picked and the version of it they shared). | The server step: the return value of `submit`, or `recordStepData` for a step with routes of its own. | `WorkflowInstance.steps.<stepId>.data` | No route returns it. The step reads it back in `evaluate`, `submit` and `describe`. |
 | `view` | What the visitor's page is told about their own progress on the step. | The server step's `evaluate`, computed at each read. | Not stored. | The signed-in visitor it is about, and nobody else. |
 | `input` | What the visitor's browser sent on a submit. | The visitor. | Not stored. | The server step's `submit`, which must check it. |
 
@@ -124,10 +124,10 @@ Two consequences that are easy to miss:
 - **The owner does not see a visitor's `data`.** The only thing that reaches the owner is what the
   step's `describe` puts in the meeting invitation, and what that invitation links: for the job
   step, the job's private page (`GET /opportunities/jobs/:id`, `server/services/jobAccess.ts`),
-  which reads the job step's pick (`pickedJobId`) to let the owner read the posting picked on
-  their journey. Nobody else reads it there but its recruiter and the other owners on whose
-  journey that recruiter picked the same posting (a recruiter can pick one posting on several
-  journeys).
+  which reads the job step's pick (`pickedJobId`, `storedShare`) to let the owner read the version
+  of the posting shared on their journey. Nobody else reads it there but its recruiter and the
+  other owners on whose journey that recruiter picked the same posting (a recruiter can pick one
+  posting on several journeys).
 
 ## Adding a step: the note step, file by file
 
@@ -205,8 +205,10 @@ The editor shows the message at that field, which is why `field` must be the key
 A server step is a `ServerStep<Config, Data, View>` (declared in
 `server/services/workflowSteps/types.ts`). Every function receives a context: `ownerId`,
 `visitorId`, the step's `config`, `data`, what this step stored for this visitor (`undefined`
-when nothing yet), and `earlier`, the steps before this one in the journey (`{ id, type, data }`
-each), for a type whose manifest has `needs`.
+when nothing yet), `earlier`, the steps before this one in the journey (`{ id, type, data }`
+each), for a type whose manifest has `needs`, and `later`, the steps after it (`{ id, type }` each:
+what they stored is theirs), for a type whose submission matters to a step after it (the job step
+caps the shares a job match after it scores).
 
 | Function | Required | What it does |
 | --- | --- | --- |
@@ -248,14 +250,31 @@ called for every step each time a signed-in visitor loads the journey, and for t
 step each time that step is used (each submit, each availability request of the booking calendar),
 so keep it cheap: no query for the note, two indexed queries for the job. It is never called for the
 owner or for an anonymous caller, who are `pending` on every step. A step may read more than its
-own data: the job step loads the posting again and is `succeeded` only while that posting still
-belongs to the visitor and is open, and while the visitor has accepted the terms in force (like
-every recruiter route), so a posting closed since, or a change of the terms, sends the visitor back
-to the step.
+own data: the job step loads the posting again and is `succeeded` only while it keeps a version
+of that posting (below), the posting still belongs to the visitor and is open, and the visitor has
+accepted the terms in force (like every recruiter route), so a posting closed since, or a change of
+the terms, sends the visitor back to the step.
 
 **`view`** is the part of `evaluate`'s answer the visitor's page receives. The note has none. The
-job step returns `{ job: { _id, title, company?, status } }`, the posting the visitor picked, so
-the page can show it. Put there only what this visitor may know.
+job step returns `{ job: { _id, title, company?, status, sharedAt?, outdated? } }`: the posting the
+visitor shared (its title and company as shared, its status now), when they shared that version,
+and whether the posting changed since in what the owner reads of it, so the page can show it and
+offer to share the new version. Put there only what this visitor may know.
+
+**A step can keep what the visitor submitted as it was then.** The job step stores the version of
+the posting shared (`{ job, selectedAt, version, posting }`: `posting` is a `JobSnapshot` of
+portfolio-common, the posting without its status, built by `toJobSnapshot` of
+`server/services/jobPostings.ts`, normalised, its pay range brought down to the top it is scored
+with), not a reference to the posting alone: what the owner reads on the job's private page, what
+the job match scores and what the meeting invitation names is that version, and an edit of the
+posting reaches them only once the recruiter shares it again. Read back, the version is checked
+again (`storedJobSnapshot`: the request schema, then `normalizeJobPosting` and
+`validateJobPosting`), and a pick without a valid one (stored before versions were kept, or written
+by hand) holds nothing: the step is `pending` and the recruiter shares the job again. A posting saved
+under older rules that the check would refuse is refused at the submit (422 on `input.jobId`) rather
+than stored and never holding. `outdated` is set when the posting now differs from the version in a
+field a criterion reads (`scoredFieldsDiffer` of portfolio-common) or in its description; a shared
+posting was opened, so its terms are locked and it is in practice its description that changed.
 
 **`submit`** is reached through `POST /workflow/domains/:domainName/steps/:stepId` with a JSON body
 `{ input }`. Before it is called, the engine (`submitStep`) has checked that the portfolio exists
@@ -267,7 +286,12 @@ field: the message is read from `server/services/workflowSteps/steps.messages.ts
 is answered, so the visitor gets it in their language (`docs/I18N.md`, rule 8). Other
 refusals use the error classes of `server/errors.ts` (the job step answers 404 for a posting that
 is not the visitor's and 409 for one that is not open). A visitor can submit again: the latest
-`data` replaces the previous one.
+`data` replaces the previous one. A type can cap how often: the job step counts the shares of a
+visitor on a journey that scores them (a job match after it, read from `ctx.later`, the steps after
+this one: their ids and types), at most `JOB_STEP_LIMITS.scoredSharesPerDay` (5) per owner and
+recruiter per UTC day (`takeRateLimit` with `rateLimitKey`, 429 with `Retry-After` beyond), since
+each share is a score and many versions would tell the recruiter more of the owner's criteria than
+a score is meant to. A refusal before the share (an id, a posting that is not open) counts nothing.
 
 **`data`** is stored as returned, in a `Mixed` field. It comes back as it was written, possibly by
 an older version of the step: read it defensively. `storedDate(value)` (in `types.ts`) returns a
@@ -281,11 +305,13 @@ that each field is a string instead of returning `config` as it is.
 **`describe`** is asked only for steps that succeeded and come before the meeting step, when the
 visitor books. Its lines go into the calendar event's description, between the "Booked via
 portfolio by ..." line and the visitor's notes, so both the owner and the visitor read them. The
-job step returns `Job: <title> — <company>` and, when the request came from an allowed web origin,
+job step returns `Job: <title> — <company>` (of the version shared) and, when the request came from
+an allowed web origin,
 a link to the job's private page on that origin (`opportunityPath(id)` of portfolio-common,
 `/opportunities/<id>`: the page and the link share it, so they cannot drift apart). Only its
 recruiter and the portfolio owners on whose journey the recruiter picked it can open it, signed in
-(each owner while it is the recruiter's current pick on their journey and not a draft: a
+(each owner reads the version shared on their journey, while it is the recruiter's current pick
+there and not a draft: a
 recruiter can pick one posting on several journeys); anyone else reads that it is not shared with
 them. The old `/jobs/<id>` of invitations sent before answers 308 to it. The note describes
 nothing.
@@ -383,24 +409,26 @@ either. Four things the page does for every step:
 
 ## A step that can fail: the job match
 
-The `job-match` step ("Get the job scored") scores the job the visitor picked on the job step
-against the owner's **perfect job**, and returns `failed` under the minimum score the owner set
-in the step's settings. It is the example of three things no other step does.
+The `job-match` step ("Get the job scored") scores the version of the job the visitor shared on
+the job step against the owner's **perfect job**, and returns `failed` under the minimum score the
+owner set in the step's settings. It is the example of three things no other step does.
 
 **It works on another step's data.** Its manifest has `needs: ['job']`, so `parseWorkflow`
 refuses a journey where no job step comes before it. Its `evaluate` finds the nearest job step in
-`ctx.earlier` and reads the job picked with a helper the job step exports (`pickedPosting` in
+`ctx.earlier` and reads the version shared with a helper the job step exports (`pickedSnapshot` in
 `server/services/workflowSteps/job.ts`): a step never reads another step's `data` by itself, it
-goes through the helpers of the type that wrote it. `pickedPosting` checks again that the
-posting is the visitor's.
+goes through the helpers of the type that wrote it. `pickedSnapshot` checks the version again, and
+that the posting is still the visitor's and that they accepted the terms in force; without a valid
+version it returns nothing, and the step scores nothing.
 
 **It stores nothing and takes no submission.** The score is computed at each read, from the
-posting and the owner's criteria as they are now (`scorePerfectJob` in
+version shared and the owner's criteria as it is now (`scorePerfectJob` in
 `common/models/perfectJob.ts`, which is pure and tested in
-`server/tests/perfectJobScore.test.ts`). The recruiter picking another posting, or the owner
-changing their criteria or the minimum, change the status at the next read. A posting picked was
-opened, so the fields the score reads are locked (`LOCKED_JOB_FIELDS`): editing it cannot change
-its score, and the step offers to duplicate it instead
+`server/tests/perfectJobScore.test.ts`). The recruiter sharing another posting (or a new version of
+the same one), or the owner changing their criteria or the minimum, change the status at the next
+read; an edit of the posting does not until it is shared again. A posting picked was opened, so
+the fields the score reads are locked (`LOCKED_JOB_FIELDS`): editing it cannot change its score,
+and the step offers to duplicate it instead
 (`/recruiter/jobs/new?duplicate=<id>&journey=<domain>`: a new draft that, once created, comes back
 to the Hire page with `?job=<id>`, to be opened and picked).
 
@@ -460,7 +488,9 @@ other routes follows the same pattern, with two functions of `server/services/wo
 5. **Read `config` and `data` defensively.** Both come back from the database as an older version
    of the step may have written them.
 6. **Check that what a visitor names is theirs.** The job step looks the posting up by id *and*
-   recruiter, and answers 404 for someone else's posting, like for an unknown id.
+   recruiter, and answers 404 for someone else's posting, like for an unknown id. What it keeps of
+   it is the version shared, read back with `storedJobSnapshot`: the posting edited since does not
+   change what the owner reads until the recruiter shares it again.
 7. **A step id is a storage key.** Ids match `WORKFLOW_LIMITS.stepId` (lowercase letters, digits and
    hyphens: no dot, no dollar). The route schemas and `parseWorkflow` both check it, and
    `progressPath` checks it again before building a field path. Do not build such a path any other

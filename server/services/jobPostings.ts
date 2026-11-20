@@ -1,6 +1,9 @@
+import { Value } from '@sinclair/typebox/value';
 import {
   JOB_LIMITS,
+  OPEN_JOB_STATUS,
   changedLockedFields,
+  highestPayMax,
   jobTermsLocked,
   locksJobTerms,
   normalizeJobPosting,
@@ -12,6 +15,7 @@ import type {
   EducationLevel,
   JobCountry,
   JobPostingInput,
+  JobSnapshot,
   JobStatus,
   PayCurrency,
   PayPeriod,
@@ -22,6 +26,7 @@ import type {
 } from 'portfolio-common';
 import { JobPosting } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
+import { jobPostingRequest } from '../models/elysia/jobPostingRequest.models';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../errors';
 import { m } from './jobPostings.messages';
 import { JOB_TERMS_LOCKED } from '../protocol';
@@ -128,6 +133,41 @@ export function toJobPostingDto(job: StoredJobPosting): JobPostingDto {
     updatedAt: job.updatedAt,
     publishedAt: job.publishedAt
   });
+}
+
+// ── Versions shared ─────────────────────────────────────────
+
+/** A posting's fields without its status (a JobSnapshot) */
+const withoutStatus = ({ status: _status, ...snapshot }: JobPostingInput): JobSnapshot => snapshot;
+
+/**
+ * The version of a stored posting a recruiter shares (the job step of a hiring journey): its fields
+ * normalised, without its id, status or dates, its pay range brought down to the top it is scored
+ * with (at most JOB_LIMITS.pay.maxRangeRatio times its bottom, as the editor of an opened posting
+ * shows a range saved wider before the cap). Never who posted it, like the DTO
+ */
+export function toJobSnapshot(stored: StoredJobPosting): JobSnapshot {
+  const { _id, createdAt, updatedAt, publishedAt, ...fields } = toJobPostingDto(stored);
+  const snapshot = withoutStatus(normalizeJobPosting(fields));
+  const { min, max } = snapshot.pay;
+  return Number.isFinite(min) && Number.isFinite(max)
+    ? { ...snapshot, pay: { ...snapshot.pay, max: Math.min(max, highestPayMax(min)) } }
+    : snapshot;
+}
+
+/**
+ * A version shared as it was stored (a job step's `data`, written by this or an older version of
+ * the API), when it still is a posting this version would save: the request schema's types and
+ * lengths, then normalised and checked by portfolio-common's rules like a posting a recruiter
+ * saves (as an open one). Undefined for anything else, so what reads it fails closed: a step
+ * without a valid version is to do again
+ */
+export function storedJobSnapshot(value: unknown): JobSnapshot | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const posting = { ...(value as Record<string, unknown>), status: OPEN_JOB_STATUS };
+  if (!Value.Check(jobPostingRequest, posting)) return undefined;
+  const normalized = normalizeJobPosting(posting as JobPostingInput);
+  return validateJobPosting(normalized).length === 0 ? withoutStatus(normalized) : undefined;
 }
 
 // ── Postings ────────────────────────────────────────────────

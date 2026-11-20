@@ -179,7 +179,12 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Le propriétaire d'un portfolio peut demander aux visiteurs de suivre des étapes avant de réserver
 	un rendez-vous (lire une note, choisir l'une de leurs offres d'emploi, puis réserver). Pour un
 	visiteur connecté, nous enregistrons sa progression dans chaque parcours : les étapes terminées et
-	leur date, l'offre choisie, et la date de réservation d'un rendez-vous.
+	leur date, l'offre choisie, et la date de réservation d'un rendez-vous. L'offre choisie est
+	conservée telle qu'elle était quand le recruteur l'a partagée : c'est cette version que lit le
+	propriétaire du portfolio et, si son parcours note les offres, celle qui est notée. Une
+	modification ultérieure de l'offre ne change ni l'une ni l'autre tant que le recruteur ne l'a pas
+	partagée à nouveau dans ce parcours. Elle est conservée avec la progression (voir
+	<a class="link-text" href="#retention">durées de conservation</a>).
 </p>
 <p>
 	Pour réserver un rendez-vous, vous indiquez votre <strong>nom</strong>, votre
@@ -190,14 +195,14 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	l'adresse de l'autre dans l'invitation. L'invitation contient aussi les éléments des étapes précédentes
 	(par exemple l'intitulé, l'entreprise et le lien de l'offre choisie). Ce lien ouvre une page privée
 	de ce site : seuls le recruteur et les propriétaires de portfolio dans le parcours desquels le recruteur
-	a choisi cette offre peuvent l'ouvrir, une fois connectés, chaque propriétaire seulement tant qu'il
-	s'agit de la dernière offre choisie par le recruteur dans son parcours et qu'elle n'est pas un brouillon
-	; toute autre personne à qui l'invitation parvient lit qu'elle n'est pas partagée avec elle. Nous ne
-	gardons qu'une réservation du créneau (l'horaire, l'agenda, l'identifiant de l'événement, son lien Google
-	Meet et une empreinte de votre adresse e-mail calculée avec une clé secrète) et, si vous réservez en
-	étant connecté, votre compte, pour que le rendez-vous figure parmi vos prochains rendez-vous dans votre
-	espace recruteur, avec son lien pour le rejoindre. Elle est supprimée automatiquement à la fin du créneau
-	ou à l'annulation du rendez-vous.
+	a choisi cette offre peuvent l'ouvrir, une fois connectés (chaque propriétaire y lit la version partagée
+	dans son parcours), chaque propriétaire seulement tant qu'il s'agit de la dernière offre choisie par
+	le recruteur dans son parcours et qu'elle n'est pas un brouillon ; toute autre personne à qui l'invitation
+	parvient lit qu'elle n'est pas partagée avec elle. Nous ne gardons qu'une réservation du créneau (l'horaire,
+	l'agenda, l'identifiant de l'événement, son lien Google Meet et une empreinte de votre adresse e-mail
+	calculée avec une clé secrète) et, si vous réservez en étant connecté, votre compte, pour que le rendez-vous
+	figure parmi vos prochains rendez-vous dans votre espace recruteur, avec son lien pour le rejoindre.
+	Elle est supprimée automatiquement à la fin du créneau ou à l'annulation du rendez-vous.
 </p>
 
 <h4 id="data-perfect-job">Votre poste idéal (privé)</h4>
@@ -403,8 +408,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 		<strong>Les propriétaires de portfolio</strong> : le nom, l'adresse e-mail et la note d'un
 		visiteur qui réserve un rendez-vous, avec les éléments des étapes précédentes du parcours (comme
 		l'intitulé et l'entreprise de l'offre choisie par un recruteur), dans l'invitation de leur
-		agenda Google ; et l'offre qu'un recruteur a choisie dans leur parcours, sur sa page privée
-		(voir
+		agenda Google ; et l'offre qu'un recruteur a choisie dans leur parcours, telle qu'il l'a
+		partagée, sur sa page privée (voir
 		<a class="link-text" href="#data-journey">parcours de recrutement</a>).
 	</li>
 	<li>
@@ -530,7 +535,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				</td>
 			</tr>
 			<tr>
-				<td>Votre progression dans les parcours d'autres portfolios</td>
+				<td>
+					Votre progression dans les parcours d'autres portfolios, avec la version de l'offre que
+					vous y avez partagée
+				</td>
 				<td>
 					Jusqu'à la suppression de votre compte, ou jusqu'à ce que le propriétaire retire l'étape
 					ou supprime son compte

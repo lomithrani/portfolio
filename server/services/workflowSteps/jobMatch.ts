@@ -3,18 +3,20 @@ import type { CriterionScore, JobMatchStepConfig, PerfectJobCriterion } from 'po
 import { commuteAvailability, commuteContext } from '../commute';
 import type { TransitProvider } from '../transit';
 import { perfectJobOf } from '../perfectJobs';
-import { pickedPosting } from './job';
+import { pickedSnapshot } from './job';
 import type { ServerStep, StepContext } from './types';
 import { m } from './steps.messages';
 
-// Job match step: the job the visitor picked on the job step before it is
-// scored out of 100 against the owner's perfect job (portfolio-common's
-// scorePerfectJob), and the steps after it open from the minimum the owner
-// set. Nothing to submit and nothing stored: the score is computed at each
-// read, from the posting and the perfect job as they are now. Picking another
-// posting, or the owner changing their criteria or the minimum, changes it;
-// the fields it reads are locked once the posting is opened
-// (LOCKED_JOB_FIELDS), so a new version of them is a duplicate, picked again.
+// Job match step: the version of the job the visitor shared on the job step
+// before it is scored out of 100 against the owner's perfect job
+// (portfolio-common's scorePerfectJob), and the steps after it open from the
+// minimum the owner set. Nothing to submit and nothing stored: the score is
+// computed at each read, from the version shared and the perfect job as it is
+// now. Sharing another posting (or the new version of the same one), or the
+// owner changing their criteria or the minimum, changes it; an edit of the
+// posting does not until it is shared again, and the fields it reads are
+// locked once the posting is opened (LOCKED_JOB_FIELDS), so a new version of
+// them is a duplicate, picked again.
 //
 // The perfect job is private. A visitor gets their score and the minimum;
 // with the owner's `showDetails`, also the name of each criterion and how
@@ -41,7 +43,7 @@ export interface JobMatchView {
   score: number;
   /** The minimum the owner asks for */
   minScore: number;
-  /** The job scored (the one picked on the job step) */
+  /** The job scored (the version shared on the job step: its title) */
   job: { _id: string; title: string };
   /** Only when the owner shows them */
   criteria?: JobMatchCriterionView[];
@@ -72,11 +74,15 @@ const criterionView = ({ criterion, match, stated, dealBreaker, unavailable }: C
 
 type JobMatchContext = StepContext<JobMatchStepConfig, undefined>;
 
-/** The visitor's job (the nearest job step before this one) scored against the owner's perfect job */
+/**
+ * The version of the visitor's job shared on the nearest job step before this one, scored against
+ * the owner's perfect job
+ */
 const scored = async ({ ownerId, visitorId, config, earlier }: JobMatchContext): Promise<JobMatchView | undefined> => {
   const picked = earlier.findLast((step) => step.type === 'job');
-  const job = picked && (await pickedPosting(visitorId, picked.data));
-  if (!job) return undefined;
+  const shared = picked && (await pickedSnapshot(visitorId, picked.data));
+  if (!shared) return undefined;
+  const job = shared.posting;
   const perfectJob = await perfectJobOf(ownerId);
   // The one criterion a posting and the criteria do not settle alone: a travel time, asked for once and kept
   const context = await commuteContext(perfectJob.commute, job.location);
@@ -87,7 +93,7 @@ const scored = async ({ ownerId, visitorId, config, earlier }: JobMatchContext):
   return {
     score,
     minScore: minScoreOf(config),
-    job: { _id: job._id, title: job.title },
+    job: { _id: shared._id, title: job.title },
     ...(shown ? { criteria: shown } : {}),
     ...(transit ? { transit } : {})
   };
@@ -95,9 +101,10 @@ const scored = async ({ ownerId, visitorId, config, earlier }: JobMatchContext):
 
 export const jobMatchStep: ServerStep<JobMatchStepConfig, undefined, JobMatchView> = {
   type: 'job-match',
-  // No job to score (none picked, it is not theirs anymore, or they have not accepted the terms
-  // in force): the job step before it is not done either, so this one is locked, with nothing
-  // computed (no score, no travel time). Under the minimum, the journey stops here
+  // No job to score (none shared, or no version kept of the one picked, it is not theirs anymore,
+  // or they have not accepted the terms in force): the job step before it is not done either, so
+  // this one is locked, with nothing computed (no score, no travel time). Under the minimum, the
+  // journey stops here
   evaluate: async (ctx) => {
     const view = await scored(ctx);
     if (!view) return { status: 'pending' };

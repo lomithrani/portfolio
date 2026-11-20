@@ -13,6 +13,14 @@ export const m = defineMessages({
 		en: (day: string) => `Updated <time>${day}</time>`,
 		fr: (day: string) => `Mise à jour le <time>${day}</time>`
 	},
+	/**
+	 * In place of "Updated" for the version a recruiter shared on the owner's journey (`day`: when
+	 * they shared it): a later edit of the job description reaches the owner once shared again
+	 */
+	shared: {
+		en: (day: string) => `Shared with you <time>${day}</time>`,
+		fr: (day: string) => `Partagée avec vous le <time>${day}</time>`
+	},
 	/** After the description: who else can open the page */
 	private: {
 		en: "This page is private: only this job description's recruiter and the portfolio owners on whose hiring journey it was picked can open it.",

@@ -2,6 +2,7 @@ import {
 	DEFAULT_JOB_MATCH_MIN_SCORE,
 	JOB_MATCH_STEP_LIMITS,
 	JOB_STATUS_LABELS,
+	JOB_STEP_LIMITS,
 	OPEN_JOB_STATUS,
 	PERFECT_JOB_CRITERIA,
 	WORKFLOW_LIMITS,
@@ -325,6 +326,10 @@ export const stepNote = (
 
 const bodyText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
+/** The message of a 422 the API answered (`{ type: 'validation', property, message }`) */
+const validationMessage = (value: unknown): string =>
+	value && typeof value === 'object' && 'message' in value ? bodyText(value.message) : '';
+
 /**
  * What a failed submit of a step (POST .../steps/:stepId) means, whatever the step.
  * `signed-out`: the session ended; `locked`: a step before it is not done (anymore); `changed`:
@@ -342,9 +347,7 @@ export interface StepFailure<Kind extends string = never> {
  */
 export const submitFailure = (status: number | undefined, value: unknown): StepFailure => {
 	if (isNetworkFailure(value)) return { message: networkError(), kind: 'error' };
-	const text =
-		bodyText(value) ||
-		(value && typeof value === 'object' && 'message' in value ? bodyText(value.message) : '');
+	const text = bodyText(value) || validationMessage(value);
 	const asTold: StepFailure = { message: text || m.submit.failed, kind: 'error' };
 	switch (status) {
 		case 401:
@@ -374,32 +377,57 @@ export const submitFailure = (status: number | undefined, value: unknown): StepF
 
 // --- Job step ----------------------------------------------------------------------------
 
-/** The job a visitor picked, as the job step's `view` has it */
+/** The job a visitor shared, as the job step's `view` has it */
 export interface JourneyJob {
 	_id: string;
+	/** The version shared's (the posting's own when the step keeps no version of it) */
 	title: string;
 	company?: string;
+	/** The posting's, now */
 	status: JobStatus;
+	/**
+	 * When the version the step keeps was shared (an ISO date: the journey's routes go through
+	 * portfolioTextApi); unset when the step keeps none, a pick from before versions were kept,
+	 * which is shared again to go on
+	 */
+	sharedAt?: string;
+	/**
+	 * The posting changed since in what the owner reads of it (its description, or a field the job
+	 * match scores): the owner still reads, and the job match still scores, the version shared
+	 */
+	outdated?: true;
 }
 
-/** The job picked, from a job step's `view`; undefined when there is none (or it is not one) */
+/** The job shared, from a job step's `view`; undefined when there is none (or it is not one) */
 export const pickedJob = (view: unknown): JourneyJob | undefined => {
 	const job = (view as { job?: Partial<Record<keyof JourneyJob, unknown>> } | null | undefined)
 		?.job;
 	if (!job || typeof job !== 'object') return undefined;
-	const { _id, title, company, status } = job;
+	const { _id, title, company, status, sharedAt, outdated } = job;
 	if (typeof _id !== 'string' || typeof title !== 'string') return undefined;
 	if (typeof status !== 'string' || !Object.hasOwn(JOB_STATUS_LABELS, status)) return undefined;
+	const shared = typeof sharedAt === 'string' && !Number.isNaN(Date.parse(sharedAt));
 	return {
 		_id,
 		title,
 		...(typeof company === 'string' && company ? { company } : {}),
-		status: status as JobStatus
+		status: status as JobStatus,
+		...(shared ? { sharedAt } : {}),
+		...(shared && outdated === true ? { outdated: true as const } : {})
 	};
 };
 
 /** Only an open posting can be picked (the API's rule) */
 export const isPickable = (job: { status: JobStatus }): boolean => job.status === OPEN_JOB_STATUS;
+
+/**
+ * The job shared whose new version the recruiter can share (the posting is open and changed since
+ * in what the owner reads of it); undefined otherwise
+ */
+export const outdatedShare = (view: unknown): JourneyJob | undefined => {
+	const job = pickedJob(view);
+	return job?.outdated && isPickable(job) ? job : undefined;
+};
 
 /** Open postings first, each group in the order the API listed them (most recently updated) */
 export const sortJobChoices = <T extends { status: JobStatus }>(jobs: readonly T[]): T[] => [
@@ -427,18 +455,25 @@ export const initialJobChoice = (
 export const jobLine = (job: { title: string; company?: string }): string =>
 	job.company ? `${job.title} · ${job.company}` : job.title;
 
-/** The line under the job step's name: what it asks, or the job picked */
+/**
+ * The line under the job step's name: what it asks, or the job shared (and whether it changed
+ * since). A job picked that does not hold: not open anymore, picked before versions were kept (to
+ * share again), or open and shared but the recruiter has not accepted the terms in force
+ */
 export const jobStepNote = (view: unknown, state: 'open' | 'done'): string => {
 	const job = pickedJob(view);
-	if (state === 'done' && job) return jobLine(job);
-	if (job) return m.job.notOpen(job.title, JOB_STATUS_LABELS[job.status]);
-	return m.job.ask;
+	if (state === 'done' && job) return job.outdated ? m.job.outdated(jobLine(job)) : jobLine(job);
+	if (!job) return m.job.ask;
+	if (!isPickable(job)) return m.job.notOpen(job.title, JOB_STATUS_LABELS[job.status]);
+	return job.sharedAt ? m.job.acceptTerms(job.title) : m.job.shareAgain(job.title);
 };
 
 /**
- * What a failed pick means. `reload-jobs`: the recruiter's jobs are not what the step shows
- * (it loads them again); `terms`: the recruiter has not accepted the terms in force (a 422 on
- * `consent`: the step asks for them, TermsAcceptance)
+ * What a failed pick (or share of a new version) means. `reload-jobs`: the recruiter's jobs are
+ * not what the step shows (it loads them again); `terms`: the recruiter has not accepted the terms
+ * in force (a 422 on `consent`: the step asks for them, TermsAcceptance). A 429: the journey
+ * scores the jobs shared, and this recruiter shared as many as a day allows
+ * (JOB_STEP_LIMITS.scoredSharesPerDay)
  */
 export const pickJobFailure = (
 	status: number | undefined,
@@ -448,9 +483,11 @@ export const pickJobFailure = (
 	const text = bodyText(value);
 	switch (status) {
 		case 422:
+			// Else what is wrong with the job (a job saved under older rules): the API says it in the
+			// visitor's language
 			return isConsentProblem(status, value)
 				? { message: m.job.pick.terms, kind: 'terms' }
-				: { message: m.job.pick.failed, kind: 'error' };
+				: { message: validationMessage(value) || m.job.pick.failed, kind: 'error' };
 		case 401:
 			return { message: m.job.pick.signedOut, kind: 'signed-out' };
 		case 403:
@@ -465,6 +502,8 @@ export const pickJobFailure = (
 			return /open job/i.test(text)
 				? { message: m.job.pick.notOpen, kind: 'reload-jobs' }
 				: { message: m.job.pick.journeyChanged, kind: 'changed' };
+		case 429:
+			return { message: m.job.pick.tooMany(JOB_STEP_LIMITS.scoredSharesPerDay), kind: 'error' };
 		default:
 			return { message: m.job.pick.failed, kind: 'error' };
 	}

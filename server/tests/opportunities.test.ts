@@ -187,10 +187,53 @@ describe('GET /opportunities/jobs/:id', () => {
       location: { country: 'FR', city: 'Lyon', workMode: 'hybrid', remoteDaysPerWeek: 2 },
       pay: { min: 50000, max: 60000, currency: 'EUR', period: 'year' }
     });
-    expect(Object.keys(answer.json()).sort()).toEqual(['access', 'job']);
+    // The version the recruiter shared, and when
+    expect(Object.keys(answer.json()).sort()).toEqual(['access', 'job', 'sharedAt']);
     expect(job).not.toHaveProperty('recruiter');
     expect(answer.text).not.toContain(recruiter.id);
     expect(answer.text).not.toContain(recruiter.email);
+  });
+
+  it('serves the owner the version the recruiter shared, until they share the posting again', async () => {
+    const { owner, recruiter, jobId } = await pickedJob();
+    const shared = await read(jobId, owner);
+    const { sharedAt, job: before } = shared.json();
+    expect(new Date(sharedAt).getTime()).not.toBeNaN();
+
+    // Edited since (its description, and a pay written here directly: once opened, the API locks it)
+    await JobPosting.updateOne(
+      { _id: jobId },
+      { description: 'Build *other* things.', pay: { min: 70000, max: 80000, currency: 'EUR', period: 'year' } }
+    );
+    const kept = (await read(jobId, owner)).json();
+    expect(kept).toEqual({ access: 'journey', job: before, sharedAt });
+    expect(kept.job).toMatchObject({ description: 'Build **things**.', pay: { min: 50000, max: 60000 } });
+    // Its recruiter reads the posting as it is
+    expect((await read(jobId, recruiter)).json().job).toMatchObject({ description: 'Build *other* things.' });
+    // The status is the posting's, now
+    await JobPosting.updateOne({ _id: jobId }, { status: 'on_hold' });
+    expect((await read(jobId, owner)).json().job).toMatchObject({ status: 'on_hold', description: 'Build **things**.' });
+
+    // Shared again (open again first): the owner reads the new version
+    await JobPosting.updateOne({ _id: jobId }, { status: 'open' });
+    await pick(owner, recruiter, jobId);
+    const again = (await read(jobId, owner)).json();
+    expect(again.job).toMatchObject({ description: 'Build *other* things.', pay: { min: 70000, max: 80000 } });
+    expect(new Date(again.sharedAt).getTime()).toBeGreaterThanOrEqual(new Date(sharedAt).getTime());
+  });
+
+  it('serves a pick stored before versions were kept as the posting is now, without a date shared', async () => {
+    const { owner, recruiter, jobId } = await pickedJob();
+    // What the job step stored before it kept the version shared
+    await WorkflowInstance.updateOne(
+      { owner: owner.id, visitor: recruiter.id },
+      { $set: { 'steps.job': { data: { job: jobId, selectedAt: new Date() }, updatedAt: new Date() } } }
+    );
+    await JobPosting.updateOne({ _id: jobId }, { description: 'Edited since.' });
+    const answer = (await read(jobId, owner)).json();
+    expect(answer.access).toBe('journey');
+    expect(answer).not.toHaveProperty('sharedAt');
+    expect(answer.job).toMatchObject({ _id: jobId, description: 'Edited since.' });
   });
 
   it('lets every owner on whose journey the recruiter picked the same posting read it', async () => {

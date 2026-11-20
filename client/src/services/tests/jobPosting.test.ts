@@ -6,6 +6,7 @@ import {
 	changedLockedFields,
 	jobTermsLocked,
 	locksJobTerms,
+	scoredFieldsDiffer,
 	withLocale
 } from 'portfolio-common';
 import {
@@ -411,6 +412,13 @@ describe('the terms of an opened posting', () => {
 			'location.remoteDaysPerWeek'
 		]);
 		expect(changedLockedFields(stored, edit({ travel: '' }))).toEqual(['travel']);
+
+		// A version shared on a hiring journey against the posting now: whether what the job match
+		// scores differs (the status is not part of a version)
+		expect(scoredFieldsDiffer(stored, edit({ description: 'Other.', status: 'closed' }))).toBe(
+			false
+		);
+		expect(scoredFieldsDiffer(stored, edit({ payMin: '46000' }))).toBe(true);
 	});
 
 	it('take the top of a range saved wider than the cap down to the top it was scored with only', () => {

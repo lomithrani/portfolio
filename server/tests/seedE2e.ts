@@ -25,7 +25,7 @@
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose, { Types } from "mongoose";
 import { currentConsent } from "portfolio-common";
-import { Domain, User, Workflow } from "../models/database";
+import { Domain, RateLimitCounter, User, Workflow } from "../models/database";
 import { recordConsent } from "../services/legal";
 import { redactConnectionString } from "../services/redact";
 
@@ -128,6 +128,12 @@ await User.findOneAndUpdate(
   },
   { upsert: true }
 );
+
+// The jobs shared on a journey that scores them are counted, per owner and recruiter and per UTC
+// day (JOB_SHARES_PER_DAY of services/workflowSteps/job.ts, keyed 'job-share:<hash>'): every run
+// starts from none, so the e2e recruiter's picks never depend on the runs before it on the same day
+// (client/tests/hire-journey.test.ts shares jobs on the scored journey of 'e2e-journey')
+await RateLimitCounter.deleteMany({ _id: /^job-share:/ });
 
 console.log(
   `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate`
