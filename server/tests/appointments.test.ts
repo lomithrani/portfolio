@@ -40,6 +40,7 @@ import { rateLimitKey } from '../services/rateLimit';
 import { jobImportAttemptsKey, jobImportCounters } from '../services/jobImport';
 import { stepSuggestionAttemptsKey, stepSuggestionCounters, stepSuggestionOwnerKey } from '../services/stepSuggestions';
 import { discoveryGrantsKey } from '../services/discovery';
+import { matchingFeedKey } from '../services/matchFeeds';
 import { feedbackAccountKey, feedbackAttemptsKey, feedbackCounters } from '../services/feedback';
 import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
@@ -2048,6 +2049,9 @@ describe('no Google token in any API response', () => {
       const pending = (await call('GET', '/matching/reviews', auth)).json().jobs.find((entry: any) => entry.job._id === jobId);
       const review = { decision: 'approve', version: pending.version };
       expect((await call('PUT', `/matching/reviews/${jobId}`, { ...auth, body: review })).status).toBe(200);
+      // Proposed to candidates: its feed (tests/matchFeeds.test.ts covers it)
+      rateLimitKeys.add(matchingFeedKey(sweep.userId));
+      expect((await call('GET', `/recruiter/jobs/${jobId}/candidates`, auth)).status).toBe(200);
       expect((await call('PUT', `/jobs/${jobId}/matching`, { ...auth, body: { enabled: false } })).status).toBe(200);
     } finally {
       env.matchingReviewers = savedReviewers;
@@ -2089,6 +2093,8 @@ describe('no Google token in any API response', () => {
     expect((await call('GET', '/discovery/card', auth)).json().card.headline).toBe('Backend engineer, payments');
     const consent = { consent: currentDiscoveryConsent() };
     expect((await call('POST', '/discovery/consent', { ...auth, body: consent })).json().state).toBe('on');
+    // The jobs proposed to the account (tests/matchFeeds.test.ts covers it)
+    expect((await call('GET', '/opportunities', auth)).status).toBe(200);
     expect((await call('DELETE', '/discovery/consent', auth)).status).toBe(200);
     expect(
       (await call('PUT', '/workflow', { ...auth, body: { steps: [{ id: 'meeting', type: 'meeting', config: {} }] } })).status

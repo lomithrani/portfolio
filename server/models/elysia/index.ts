@@ -31,5 +31,6 @@ export {
   discoveryConsentRequest,
   discoveryCardRequest,
   jobMatchingRequest,
-  matchingReviewRequest
+  matchingReviewRequest,
+  opportunitiesQuery
 } from "./matchRequest.models";

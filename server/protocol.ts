@@ -38,3 +38,18 @@ export const MATCHING_NEEDS_OPEN_JOB = 'Only an open job description can be prop
  * will match it. The 409 of a review of a version that is no longer the posting's is JOB_CHANGED
  */
 export const NOT_A_MATCHING_REVIEWER = 'Only the reviewers of matching can do this'
+
+/**
+ * 403 of GET /opportunities (the jobs proposed to a candidate) for an account that is not proposed
+ * to recruiters now: discovery off, paused (a requirement missing) or lapsed. No screen calls the
+ * route yet: the candidate's screen will match it, then read GET /discovery to say why
+ */
+export const NOT_PROPOSED_TO_RECRUITERS = 'You are not proposed to recruiters now'
+
+/**
+ * 409 of GET /recruiter/jobs/:id/candidates (the candidates proposed for a recruiter's job) for a
+ * job of theirs that is not proposed to candidates now: not open, out of matching, or not approved
+ * by a reviewer. No screen calls the route yet: the recruiter's screen will match it, and say why
+ * from the job's `matching`
+ */
+export const JOB_NOT_PROPOSED = 'This job description is not proposed to candidates now'

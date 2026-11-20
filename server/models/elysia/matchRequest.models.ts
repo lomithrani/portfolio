@@ -35,3 +35,12 @@ export const matchingReviewRequest = t.Object({
   reason: t.Optional(t.String({ maxLength: MATCHING_LIMITS.reviewReason * 4 })),
   version: t.String({ minLength: 1, maxLength: 128 })
 });
+
+// GET /opportunities: where the page starts, a previous page's `next` (the
+// publication time of the last job read, its milliseconds in base 36, then
+// its id: services/matchFeeds.ts)
+export const FEED_CURSOR_PATTERN = "^[0-9a-z]{1,11}\\.[0-9a-f]{24}$";
+
+export const opportunitiesQuery = t.Object({
+  after: t.Optional(t.String({ maxLength: 40, pattern: FEED_CURSOR_PATTERN }))
+});

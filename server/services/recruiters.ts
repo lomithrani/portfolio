@@ -2,7 +2,7 @@ import { DEFAULT_RECRUITER_PLAN, RECRUITER_PLANS } from 'portfolio-common';
 import type { RecruiterPlan } from 'portfolio-common';
 import { User } from '../models/database';
 import { FieldValidationError, RecruiterSpaceRequiredError } from '../errors';
-import { restorePlanImports } from './accountQuotas';
+import { restorePlanImports } from './planImports';
 import { userAcceptedCurrentTerms } from './legal';
 import { m } from './legal.messages';
 
@@ -53,7 +53,7 @@ export async function requireRecruiterSpace(userId: string): Promise<RecruiterSp
  * Creates the account's recruiter space on the free plan, unless it has one
  * (atomic: two concurrent calls create it once, and an existing space keeps
  * its plan and its imports used). A new space starts from the job imports a
- * deleted account of the same Google identity used (services/accountQuotas.ts).
+ * deleted account of the same Google identity used (services/planImports.ts).
  * Returns false when the account is gone.
  */
 export async function enableRecruiterSpace(userId: string): Promise<boolean> {

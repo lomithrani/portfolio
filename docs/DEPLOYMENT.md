@@ -684,8 +684,8 @@ this one has, see [Résumé import](#résumé-import), but the budget does not c
 
 Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=true`**: its routes
 (`GET`/`PUT /discovery`, `GET /discovery/card`, `POST`/`DELETE /discovery/consent`,
-`PUT /jobs/:id/matching`, `GET /matching/reviews` and `PUT /matching/reviews/:id` for now) are not
-registered, so they answer 404 as routes that do not exist whatever the request (`/swagger` does
+`PUT /jobs/:id/matching`, `GET /matching/reviews`, `PUT /matching/reviews/:id`, and the feeds
+`GET /opportunities` and `GET /recruiter/jobs/:id/candidates` for now) are not registered, so they answer 404 as routes that do not exist whatever the request (`/swagger` does
 not list them), `POST /jobs` ignores its `matching`, nothing of it is read or written, and the
 metrics `discoverable_candidates`, `matching_job_postings`, `matching_job_reviews` and
 `active_matches` are 0. What a job's changes do to its matches (closed, deleted, edited) runs
@@ -709,6 +709,17 @@ or another field no criterion reads: its terms are locked) waits for a review ag
 
 - **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
   calls its routes yet: they are for the screens that come next, and for the tests.
+
+**Feeds.** The jobs proposed to a candidate and the anonymous cards of the candidates proposed for
+a recruiter's job are computed when they are read, from what is stored: no background job, no
+collection of their own. Each read is counted, both feeds together, against **120 reads per
+account per hour** (`MATCHING_FEED_READS` of `server/services/matchFeeds.ts`; 429 with
+`Retry-After`, counters `matching-feed:<hash>`), and asks no outside service: travel times come from
+the cache, the missing ones are asked in the background within matching's share of
+`COMMUTE_DAILY_LIMIT` (see [Travel times](#travel-times)). A recruiter's cards stand for their
+candidates by tokens sealed with a key derived from `JWT_SECRET` (AES-256-GCM, bound to the
+recruiter and the job, a week at most): changing `JWT_SECRET` makes the cards already shown
+unreadable, and recruiters read their feed again.
 - **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
   and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
   assessment is signed: a candidate's consent must point to published texts. Public transport

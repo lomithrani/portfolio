@@ -37,7 +37,7 @@ import type { JobMatchCriterionView, JobMatchOutcome } from './workflowSteps/job
 // even loaded, but the names the card's texts are checked against (in memory
 // only: never logged, never kept, never in an answer).
 //
-// A recruiter reads anonymousCard (the feeds, 2.7): the card alone. The
+// A recruiter reads anonymousCard (the feeds, services/matchFeeds.ts): the card alone. The
 // candidate's preview (candidateCardPreview) adds what the card leaves out of
 // what they set, which names what says who they are (a skill named after an
 // employer, the ids of their experiences): it never reaches a recruiter.
@@ -466,7 +466,7 @@ function buildCandidateCard(source: CardSource, now = new Date()): BuiltCard {
 /**
  * The anonymous card of the account `userId`, as a recruiter reads it, and
  * nothing else (never what it leaves out: that names what says who they are).
- * What the feeds (2.7) show; reads only
+ * What the feeds show (services/matchFeeds.ts); reads only
  */
 export async function anonymousCard(userId: string, now = new Date()): Promise<CandidateCard> {
   const { source } = await loadCard(userId);

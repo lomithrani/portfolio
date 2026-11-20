@@ -76,6 +76,14 @@ const criterionView = ({ criterion, match, stated, dealBreaker, unavailable }: C
   };
 };
 
+/**
+ * How a job does on each criterion, as the job match step tells it (one view per criterion that
+ * counts, in order): what the feeds of matching show too (services/matchFeeds.ts), the candidate's
+ * all of them, a recruiter's only what the candidate's card may show (cardOutcomes)
+ */
+export const jobMatchCriteria = (criteria: readonly CriterionScore[]): JobMatchCriterionView[] =>
+  criteria.map(criterionView);
+
 type JobMatchContext = StepContext<JobMatchStepConfig, undefined>;
 
 /**

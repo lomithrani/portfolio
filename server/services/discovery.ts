@@ -98,6 +98,23 @@ const missingRequirements = async (
   return discoveryRequirements(readiness, { termsAccepted, lastActiveAt, now });
 };
 
+/**
+ * Whether the account `userId` is proposed to recruiters now (the state `on`): its consent in
+ * force, and nothing it misses (its readiness, the terms in force, its activity). Its
+ * `profile` when the caller read it already (the feeds: services/matchFeeds.ts). Reads only
+ */
+export async function isProposed(
+  userId: string,
+  now = new Date(),
+  profile?: Pick<StoredProfile, 'enabledAt' | 'lastActiveAt'> | null
+): Promise<boolean> {
+  const stored = profile === undefined ? await storedProfile(userId) : profile;
+  const enabledAt = stored?.enabledAt;
+  if (!enabledAt || discoveryState(enabledAt, [], now) !== 'on') return false;
+  const missing = await missingRequirements(userId, stored?.lastActiveAt, now);
+  return missing.length === 0;
+}
+
 /** Where the account `userId` stands in discovery: see DiscoveryDto. Reads only, stores nothing */
 export async function discoveryStatus(userId: string, now = new Date()): Promise<DiscoveryDto> {
   const profile = await storedProfile(userId);

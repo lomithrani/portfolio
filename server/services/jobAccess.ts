@@ -1,9 +1,11 @@
 import { Types } from 'mongoose';
+import { env } from '../env';
 import { JobPosting, WorkflowInstance } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
 import { ResourceNotFoundError } from '../errors';
 import { JOB_NOT_FOUND, toJobPostingDto } from './jobPostings';
 import type { JobPostingDto } from './jobPostings';
+import { proposedJobPosting } from './matchFeeds';
 import { journeySteps } from './workflows';
 import { jobStep, legacyPick, pickedJobId, storedShare } from './workflowSteps/job';
 import type { StoredShare } from './workflowSteps/job';
@@ -20,12 +22,16 @@ import type { StoredShare } from './workflowSteps/job';
 //   once shared again), with the posting's status and dates; a pick stored before versions were
 //   kept (legacyPick: the job's id and when, nothing else) shows the posting as it is now, which
 //   invitations sent before link, and a version that no longer checks out shows nothing (the
-//   404 below), as the job step holds nothing with it.
+//   404 below), as the job step holds nothing with it;
+// - 'feed' (matching, Path 2, while MATCHING is on): a candidate to whom the job is proposed now,
+//   as their feed shows it (services/matchFeeds.ts: live in matching, meeting their criteria and
+//   their minimum, its recruiter not having passed them), whatever they answered of it. They
+//   read the posting as it is now, as their feed scores it.
 // Anyone else, like an unknown id, gets the 404 of a posting that does not exist, never a 403:
 // an id says nothing about the postings behind it. What is returned never names the recruiter.
 
 /** Why the caller may read the posting */
-export type JobAccess = 'recruiter' | 'journey';
+export type JobAccess = 'recruiter' | 'journey' | 'feed';
 
 /** GET /opportunities/jobs/:id: the posting and why the caller reads it */
 export interface SharedJobPostingDto {
@@ -82,7 +88,11 @@ export async function readableJobPosting(userId: string, jobId: string): Promise
   if (String(job.recruiter) === userId) return { job: toJobPostingDto(job), access: 'recruiter' };
   if (job.status === 'draft') throw notFound();
   const pick = await pickOnJourney(userId, job.recruiter, String(job._id));
-  if (!pick) throw notFound();
+  if (!pick) {
+    const proposed = env.matchingEnabled ? await proposedJobPosting(userId, job) : null;
+    if (proposed) return { job: proposed, access: 'feed' };
+    throw notFound();
+  }
   const posting = toJobPostingDto(job);
   const { share } = pick;
   if (!share) return { job: posting, access: 'journey' };

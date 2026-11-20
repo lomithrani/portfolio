@@ -6,7 +6,8 @@ import {
   discoveryConsentRequest,
   jobMatchingRequest,
   matchingReviewRequest,
-  objectIdParams
+  objectIdParams,
+  opportunitiesQuery
 } from '../models/elysia';
 import { candidateCardPreview } from '../services/candidateCard';
 import type { CandidateCardPreview } from '../services/candidateCard';
@@ -14,6 +15,8 @@ import { discoveryStatus, grantDiscovery, saveDiscoveryCard, withdrawDiscovery }
 import type { DiscoveryDto } from '../services/discovery';
 import { setJobMatching, toRecruiterJobDto } from '../services/jobMatching';
 import type { RecruiterJobPostingDto } from '../services/jobMatching';
+import { candidateFeed, recruiterFeed } from '../services/matchFeeds';
+import type { CandidateFeedDto, RecruiterFeedDto } from '../services/matchFeeds';
 import { pendingReviews, requireMatchingReviewer, reviewJob } from '../services/matchingReviews';
 import type { ReviewedJobDto } from '../services/matchingReviews';
 import { requireRecruiterSpace } from '../services/recruiters';
@@ -22,9 +25,13 @@ import { requireRecruiterSpace } from '../services/recruiters';
 // For now: discovery (services/discovery.ts): a candidate asks to be proposed
 // to recruiters, as an anonymous card (services/candidateCard.ts), previews
 // it, and can stop at once; the recruiter's switch, which proposes a job to
-// candidates (services/jobMatching.ts); and the review of each job put into
-// matching, by the operator's reviewers (services/matchingReviews.ts). Every
+// candidates (services/jobMatching.ts); the review of each job put into
+// matching, by the operator's reviewers (services/matchingReviews.ts); and the
+// feeds (services/matchFeeds.ts): the jobs proposed to a candidate, the
+// anonymous cards of the candidates proposed for a recruiter's job. Every
 // route is the signed-in account's own: none takes another account to read.
+// Their answers hold date-like texts (a contract's start date): the client
+// reads them without Eden's date parsing (portfolioTextApi).
 
 const discovery = new Elysia()
   .use(userLogged)
@@ -49,10 +56,18 @@ const discovery = new Elysia()
   // Withdrawal: at once, whatever is missing, and recorded
   .delete('/discovery/consent', ({ userId }): Promise<DiscoveryDto> => withdrawDiscovery(userId), {
     detail: { summary: 'Stop being proposed to recruiters, at once' }
+  })
+  // The candidate's feed: the open jobs proposed to them, the most recently published first
+  .get('/opportunities', ({ userId, query: { after } }): Promise<CandidateFeedDto> => candidateFeed(userId, after), {
+    query: opportunitiesQuery,
+    detail: {
+      summary:
+        'The open jobs proposed to you, scored against your criteria, the most recently published first (403 unless you are proposed to recruiters; 429 over the reads of an hour)'
+    }
   });
 
-// A recruiter's switch: their own postings only (404 for another's), with a
-// recruiter space and the terms in force, like every recruiter route
+// A recruiter's switch and feed: their own postings only (404 for another's),
+// with a recruiter space and the terms in force, like every recruiter route
 const jobMatching = new Elysia()
   .use(userLogged)
   .onBeforeHandle(async ({ userId }) => {
@@ -64,6 +79,14 @@ const jobMatching = new Elysia()
     body: jobMatchingRequest,
     detail: {
       summary: 'Propose an open job description to the candidates whose criteria it meets, once a reviewer approved it, or stop (409 unless open; 422 on `company` or `description`; 409 over the jobs a recruiter can have in matching)'
+    }
+  })
+  // The recruiter's feed for a job: anonymous cards, in a neutral order, never a count
+  .get('/recruiter/jobs/:id/candidates', ({ userId, params: { id } }): Promise<RecruiterFeedDto> => recruiterFeed(userId, id), {
+    params: objectIdParams,
+    detail: {
+      summary:
+        'The anonymous cards of the candidates proposed for your job, those interested in it first, a few at a time, and whether there are more (409 unless it is proposed to candidates; 429 over the reads of an hour)'
     }
   });
 
