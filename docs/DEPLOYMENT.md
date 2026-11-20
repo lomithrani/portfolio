@@ -185,7 +185,7 @@ local development.
 | `COMMUTE_TRANSIT`              | for public transport | `here` or `transitous`: the service asked for public transport times (see [Travel times](#travel-times)) |
 | `HERE_API_KEY`                 | with `COMMUTE_TRANSIT=here` | API key of an app of your HERE platform account; sealed. Billed per journey asked beyond the free monthly allowance |
 | `COMMUTE_CONTACT`              | with `COMMUTE_TRANSIT=transitous` | An email address or a web page, sent as the User-Agent of the requests to Transitous |
-| `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off |
+| `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off; matching's warm-ups use half of it at most |
 | `MATCHING`                     | no       | `true` on staging only, for now: turns matching (Path 2) on (see [Matching](#matching)); leave unset in production until its legal texts ship |
 | `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions and feedback are filed in, `owner/name`; leave unset (`lomithrani/portfolio`) |
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
@@ -769,29 +769,43 @@ scores the jobs open to it against the candidates who opted in: many pairs in on
 journey's job match step scores one, and a pair never asked can take some 20 seconds (a place
 looked up, then its ways), in a request Bun cuts after 30 seconds without data. So its reads never
 ask a service: they read only the travel times kept (`cachedCommuteContext` of
-`server/services/commute.ts`), and what a pair still needs is asked in the background
-(`warmCommute`; `warmOffice` looks a job's office up when matching is turned on for it, so that
-each candidate then needs only the ways). Warm-ups run one at a time, with a pause of 400 ms after
-each that asked something (the Géoplateforme takes 5 route requests a second from one address,
-and a pair asks up to two at once), at most 100 waiting: beyond, a warm-up is dropped (a later read
-asks for it again) and the API logs `Travel times: warm-up dropped`. Each request a warm-up sends
-counts against two caps: 100 a day for the account whose read wanted it (`discovery-commute`
-counters, keyed by a hash of the account, so that one account cannot use up the site's day), and
-`COMMUTE_DAILY_LIMIT`, which the job match steps of journeys share: a busy day of matching can
-leave Hire pages without travel times until midnight UTC (their commute is then left out of the
-score, as over the limit today). A pair costs up to three requests (car, on foot, public
-transport), an office one or two the first time: size `COMMUTE_DAILY_LIMIT` for the new pairs a
-day brings (each is then kept 30 days), and with HERE, for its monthly allowance. The failure
-memo applies too: a service that did not answer is left alone for 10 minutes by warm-ups as by
-journeys.
+`server/services/commute.ts`, which also says whether what is missing can still be found), and
+what a pair still needs is asked in the background (`warmCommute`; `warmOffice` looks a job's
+office up when matching is turned on for it, so that each candidate then needs only the ways). A
+warm-up reads the candidate's address when it runs, not when it was asked for, and asks nothing
+once they withdrew their consent to matching, let it lapse or deleted their account. Warm-ups run
+one at a time, with a pause of 400 ms after each that asked something (the Géoplateforme takes 5
+route requests a second from one address, and a pair asks up to two at once). A pair already
+waiting takes no second place; at most 100 wait, 20 of them for one account: beyond, a warm-up is
+dropped (a later read asks for it again) and the API logs `Travel times: warm-up dropped` with the
+reason (`queue full` or `account share`) and how many were dropped, one line a minute at most. A
+warm-up that fails (the database did not answer) logs `Travel times: warm-up failed` with the
+error's name only, and the next warm-up goes on.
+
+Each request a warm-up sends counts against three caps: 100 a day for the account whose read
+wanted it (`discovery-commute` counters, keyed by a hash of the account, so that one account
+cannot use up matching's day), half of `COMMUTE_DAILY_LIMIT` for all warm-ups together
+(`MATCHING_COMMUTE_SHARE`, the `discovery-commute-site` counter), and `COMMUTE_DAILY_LIMIT`
+itself. The other half is kept for the job match steps of journeys: however busy matching is, a
+page for recruiters keeps its travel times, and a candidate's commute deal-breaker keeps counting
+there, until journeys alone reach the limit. Once matching's half is used, warm-ups wait for the
+next UTC day, and matching shows the commutes it has not kept as unknown (a recruiter's feed holds
+back a candidate whose deal-breaker commute is unknown). A pair costs up to three requests (car,
+on foot, public transport), an office one or two the first time: size `COMMUTE_DAILY_LIMIT` for
+twice the new pairs a day brings (each is then kept 30 days), and with HERE, for its monthly
+allowance. The failure memo applies too: a service that did not answer is left alone for 10
+minutes by warm-ups as by journeys.
 
 Matching never asks Transitous, nor reads what it answered a journey: its usage policy is for
 open-source, non-commercial projects, which a site that matches candidates with recruiters'
 jobs may not stay. With `COMMUTE_TRANSIT=transitous`, matching computes the commute by the other
-modes a candidate accepts (a candidate who accepts public transport alone has no commute
-computed there: it does not count), and the API warns at startup when `MATCHING=true` is set
-with it. Before matching is turned on in production, choose HERE (`COMMUTE_TRANSIT=here` with
-its key, priced above) or no public transport (`COMMUTE_TRANSIT` unset).
+modes a candidate accepts, whose time is then the most the way can take: it is used only when the
+commute matches with it. Otherwise (and for a candidate who accepts public transport alone)
+matching cannot tell, and treats that commute as unknown, never as not counted, so a candidate
+with a commute deal-breaker is held back from recruiters' feeds for those jobs instead of being
+proposed for jobs anywhere. The API warns at startup when `MATCHING=true` is set with it. Before
+matching is turned on in production, choose HERE (`COMMUTE_TRANSIT=here` with its key, priced
+above) or no public transport (`COMMUTE_TRANSIT` unset).
 
 **Address search.** The two forms that take an address (the commute of the perfect job, the
 office of a job posting) search it as it is typed: `POST /addresses/search` answers with the

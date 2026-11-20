@@ -166,6 +166,7 @@ export {
 	criterionJobFields,
 	officeAddress,
 	officeDaysPerWeek,
+	commuteMinutesPerWeek,
 	parsePerfectJob,
 	storedPerfectJob,
 	ratedCriteria,
