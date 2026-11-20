@@ -2,6 +2,7 @@ import { JOB_MATCH_STEP_LIMITS, scorePerfectJob } from 'portfolio-common';
 import type { CriterionScore, JobMatchStepConfig, PerfectJobCriterion } from 'portfolio-common';
 import { commuteAvailability, commuteContext } from '../commute';
 import type { TransitProvider } from '../transit';
+import type { MutualInterest } from '../mutualInterests';
 import { perfectJobOf } from '../perfectJobs';
 import { pickedSnapshot } from './job';
 import type { ServerStep, StepContext } from './types';
@@ -21,6 +22,15 @@ import { m } from './steps.messages';
 // The perfect job is private. A visitor gets their score and the minimum;
 // with the owner's `showDetails`, also the name of each criterion and how
 // their job does on it, never what the owner asks for or how much it matters.
+//
+// A job that comes from matching (Path 2: the owner and the recruiter are both
+// interested in it, which the job step before holds) is not scored again: the
+// step is frozen at the score the owner said yes to, the mutual interest's
+// (succeeded, whatever the owner's criteria or minimum became since: their
+// interest is their yes to that job), and says so (`matched`, `frozenAt`).
+// services/matches.ts records the freeze in the visitor's progress
+// (freezeJobMatch, `via: 'mutual_match'`); it holds from the mutual interest
+// itself while it lasts (a journey edited since keeps it), never after.
 
 /** How a job does on a criterion, as the visitor is told */
 /** `unknown`: the criterion could not be computed, and does not count in the score */
@@ -53,7 +63,39 @@ export interface JobMatchView {
    * it says nothing of how they travel
    */
   transit?: TransitProvider;
+  /**
+   * The job is the one the owner and the recruiter are both interested in (matching): its score is
+   * the one it had then, frozen, and the step succeeds whatever changed since
+   */
+  matched?: true;
+  /** When it was frozen: when they both became interested */
+  frozenAt?: Date;
 }
+
+/** How a job match was frozen: by a mutual interest of matching (the only way today) */
+export const JOB_MATCH_FROZEN_VIA = 'mutual_match';
+
+/** What a job match stores when a mutual interest freezes it (services/matches.ts) */
+export interface FrozenJobMatchData {
+  via: typeof JOB_MATCH_FROZEN_VIA;
+  /** The mutual interest's id */
+  match: string;
+  /** Its job's id (so that deleting the posting drops it with the job step's: plugins/jobs.ts) */
+  job: string;
+  frozenAt: Date;
+}
+
+/**
+ * What the job match after a job step stores for the recruiter of a mutual interest: the record
+ * that it is frozen at the score of the mutual interest. The step reads the freeze from the mutual
+ * interest itself (StepContext.mutualInterest), which holds the score
+ */
+export const freezeJobMatch = (interest: MutualInterest): FrozenJobMatchData => ({
+  via: JOB_MATCH_FROZEN_VIA,
+  match: interest._id,
+  job: interest.job,
+  frozenAt: interest.matchedAt
+});
 
 /**
  * The minimum of a job match step's settings as stored, when it still is one; else the highest
@@ -84,7 +126,29 @@ const criterionView = ({ criterion, match, stated, dealBreaker, unavailable }: C
 export const jobMatchCriteria = (criteria: readonly CriterionScore[]): JobMatchCriterionView[] =>
   criteria.map(criterionView);
 
-type JobMatchContext = StepContext<JobMatchStepConfig, undefined>;
+type JobMatchContext = StepContext<JobMatchStepConfig, FrozenJobMatchData | undefined>;
+
+/**
+ * The view of a job match frozen by the mutual interest `interest`: its score, minimum and outcomes
+ * then (the outcomes only while the owner shows them, as for a job scored), with a job step before
+ * it (which holds that job). Undefined without one, or for a version that no longer checks out
+ */
+const frozen = ({ config, earlier }: JobMatchContext, interest: MutualInterest): JobMatchView | undefined => {
+  if (!interest.posting || !earlier.some((step) => step.type === 'job')) return undefined;
+  const shown = config?.showDetails === true ? interest.criteria : undefined;
+  const transit = shown?.some(({ criterion, outcome }) => criterion === 'commute' && outcome !== 'unknown')
+    ? interest.transit
+    : undefined;
+  return {
+    score: interest.score,
+    minScore: interest.minScore,
+    job: { _id: interest.job, title: interest.posting.title },
+    ...(shown ? { criteria: shown } : {}),
+    ...(transit ? { transit } : {}),
+    matched: true,
+    frozenAt: interest.matchedAt
+  };
+};
 
 /**
  * The version of the visitor's job shared on the nearest job step before this one, scored against
@@ -111,13 +175,17 @@ const scored = async ({ ownerId, visitorId, config, earlier }: JobMatchContext):
   };
 };
 
-export const jobMatchStep: ServerStep<JobMatchStepConfig, undefined, JobMatchView> = {
+export const jobMatchStep: ServerStep<JobMatchStepConfig, FrozenJobMatchData | undefined, JobMatchView> = {
   type: 'job-match',
   // No job to score (none shared, or no version kept of the one picked, it is not theirs anymore,
   // or they have not accepted the terms in force): the job step before it is not done either, so
   // this one is locked, with nothing computed (no score, no travel time). Under the minimum, the
-  // journey stops here
+  // journey stops here. The job of a mutual interest is not scored again: frozen, it succeeds
   evaluate: async (ctx) => {
+    if (ctx.mutualInterest) {
+      const view = frozen(ctx, ctx.mutualInterest);
+      return view ? { status: 'succeeded', view } : { status: 'pending' };
+    }
     const view = await scored(ctx);
     if (!view) return { status: 'pending' };
     return { status: view.score >= view.minScore ? 'succeeded' : 'failed', view };
@@ -125,7 +193,7 @@ export const jobMatchStep: ServerStep<JobMatchStepConfig, undefined, JobMatchVie
   // The minimum is told to recruiters before they pick a job; whether details are shown is not
   visitorConfig: (config) => ({ minScore: jobMatchMinScore(config) }),
   describe: async (ctx) => {
-    const view = await scored(ctx);
+    const view = ctx.mutualInterest ? frozen(ctx, ctx.mutualInterest) : await scored(ctx);
     return view ? [m.jobMatch.invitation(view.score)] : [];
   }
 };

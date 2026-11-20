@@ -1,5 +1,5 @@
 import { t } from "elysia";
-import { MATCHING_LIMITS, MATCHING_REVIEW_DECISIONS } from "portfolio-common";
+import { MATCHING_LIMITS, MATCHING_REVIEW_DECISIONS, MATCH_DECISIONS, MATCH_SIDES } from "portfolio-common";
 
 // Matching (Path 2, plugins/matches.ts). Discovery's are Unknown, not object
 // schemas: Elysia would turn a string or an array into an object before
@@ -43,4 +43,36 @@ export const FEED_CURSOR_PATTERN = "^[0-9a-z]{1,11}\\.[0-9a-f]{24}$";
 
 export const opportunitiesQuery = t.Object({
   after: t.Optional(t.String({ maxLength: 40, pattern: FEED_CURSOR_PATTERN }))
+});
+
+// The decisions of matching (services/matches.ts). No default for the enums:
+// t.UnionEnum defaults to its first value, which Elysia fills in for a
+// missing field (a decision without one would be an interest)
+const decision = t.UnionEnum(MATCH_DECISIONS, { default: undefined });
+
+// A card's token (services/matchTokens.ts: base64url, about 66 characters),
+// in the body of the request, never its path (paths reach traces)
+const cardToken = t.String({ minLength: 1, maxLength: 256 });
+
+// PUT /opportunities/jobs/:id/decision: what the candidate says of a job
+// proposed to them
+export const candidateDecisionRequest = t.Object({
+  decision
+});
+
+// PUT /recruiter/jobs/:id/candidates/decision: what the recruiter says of the
+// candidate a card's token stands for, for their job
+export const recruiterDecisionRequest = t.Object({
+  token: cardToken,
+  decision
+});
+
+// DELETE /recruiter/jobs/:id/candidates/decision: the recruiter undoes theirs
+export const recruiterUndoRequest = t.Object({
+  token: cardToken
+});
+
+// GET /matches: the side of the mutual interests to list
+export const matchesQuery = t.Object({
+  side: t.UnionEnum(MATCH_SIDES, { default: undefined })
 });

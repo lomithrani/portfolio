@@ -58,7 +58,14 @@ export const MATCHING_LIMITS = {
 	/** The reason a reviewer gives a recruiter for not accepting a job, in characters */
 	reviewReason: 300,
 	/** Jobs one read of the reviewers' list gives, the oldest request first */
-	reviewsPerRead: 100
+	reviewsPerRead: 100,
+	/** Mutual interests one read of a side's list gives, the latest first */
+	matchesPerRead: 50,
+	/**
+	 * Decisions an account takes (or undoes) per UTC day, as a candidate and as a recruiter
+	 * together: what a person answers, not a script trying versions of an answer
+	 */
+	decisionsPerDay: 300
 } as const;
 
 // --- Requirements ----------------------------------------------------------------------
@@ -746,6 +753,14 @@ export const parseReviewReason = (
  */
 export const MATCH_DECISIONS = ['interested', 'pass'] as const;
 export type MatchDecision = (typeof MATCH_DECISIONS)[number];
+
+/**
+ * The two sides of a match: the candidate (a job proposed to them) and the recruiter (the
+ * candidate's anonymous card proposed for their job). An account is one side of a match, never
+ * both: a recruiter's own jobs are never proposed to them
+ */
+export const MATCH_SIDES = ['candidate', 'recruiter'] as const;
+export type MatchSide = (typeof MATCH_SIDES)[number];
 
 /**
  * Why a mutual interest ended: the candidate or the recruiter ended it, or its job left matching

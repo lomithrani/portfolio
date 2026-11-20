@@ -2,12 +2,16 @@ import Elysia, { NotFoundError } from 'elysia';
 import { env } from '../env';
 import { userLogged } from './userLogged';
 import {
+  candidateDecisionRequest,
   discoveryCardRequest,
   discoveryConsentRequest,
   jobMatchingRequest,
+  matchesQuery,
   matchingReviewRequest,
   objectIdParams,
-  opportunitiesQuery
+  opportunitiesQuery,
+  recruiterDecisionRequest,
+  recruiterUndoRequest
 } from '../models/elysia';
 import { candidateCardPreview } from '../services/candidateCard';
 import type { CandidateCardPreview } from '../services/candidateCard';
@@ -15,6 +19,18 @@ import { discoveryStatus, grantDiscovery, saveDiscoveryCard, withdrawDiscovery }
 import type { DiscoveryDto } from '../services/discovery';
 import { setJobMatching, toRecruiterJobDto } from '../services/jobMatching';
 import type { RecruiterJobPostingDto } from '../services/jobMatching';
+import {
+  decideAsCandidate,
+  decideAsRecruiter,
+  endMatch,
+  listMatches,
+  markMatchSeen,
+  matchNotifications,
+  readMatch,
+  undoAsCandidate,
+  undoAsRecruiter
+} from '../services/matches';
+import type { CandidateDecisionDto, MatchDto, MatchNotificationsDto, RecruiterDecisionDto } from '../services/matches';
 import { candidateFeed, recruiterFeed } from '../services/matchFeeds';
 import type { CandidateFeedDto, RecruiterFeedDto } from '../services/matchFeeds';
 import { pendingReviews, requireMatchingReviewer, reviewJob } from '../services/matchingReviews';
@@ -26,10 +42,12 @@ import { requireRecruiterSpace } from '../services/recruiters';
 // to recruiters, as an anonymous card (services/candidateCard.ts), previews
 // it, and can stop at once; the recruiter's switch, which proposes a job to
 // candidates (services/jobMatching.ts); the review of each job put into
-// matching, by the operator's reviewers (services/matchingReviews.ts); and the
+// matching, by the operator's reviewers (services/matchingReviews.ts); the
 // feeds (services/matchFeeds.ts): the jobs proposed to a candidate, the
-// anonymous cards of the candidates proposed for a recruiter's job. Every
-// route is the signed-in account's own: none takes another account to read.
+// anonymous cards of the candidates proposed for a recruiter's job; and the
+// decisions of each side on them, the mutual interest they make and where it
+// leads (services/matches.ts). Every route is the signed-in account's own:
+// none takes another account to read.
 // Their answers hold date-like texts (a contract's start date): the client
 // reads them without Eden's date parsing (portfolioTextApi).
 
@@ -64,7 +82,28 @@ const discovery = new Elysia()
       summary:
         'The open jobs proposed to you, scored against your criteria, the most recently published first (403 unless you are proposed to recruiters; 429 over the reads of an hour)'
     }
-  });
+  })
+  // What the candidate says of a job proposed to them, and the undo of it
+  .put(
+    '/opportunities/jobs/:id/decision',
+    ({ userId, params: { id }, body: { decision } }): Promise<CandidateDecisionDto> => decideAsCandidate(userId, id, decision),
+    {
+      params: objectIdParams,
+      body: candidateDecisionRequest,
+      detail: {
+        summary:
+          "Say whether a job proposed to you interests you: with its recruiter's interest in you, you are both interested and your portfolio is revealed to them (403 unless you are proposed to recruiters; 404 for a job not proposed to you; 409 once you are both interested; 429 over the decisions of a day)"
+      }
+    }
+  )
+  .delete(
+    '/opportunities/jobs/:id/decision',
+    ({ userId, params: { id } }): Promise<CandidateDecisionDto> => undoAsCandidate(userId, id),
+    {
+      params: objectIdParams,
+      detail: { summary: 'Undo what you said of a job, until you and its recruiter are both interested (404 without a decision; 409 after)' }
+    }
+  );
 
 // A recruiter's switch and feed: their own postings only (404 for another's),
 // with a recruiter space and the terms in force, like every recruiter route
@@ -88,6 +127,62 @@ const jobMatching = new Elysia()
       summary:
         'The anonymous cards of the candidates proposed for your job, those interested in it first, a few at a time, and whether there are more (409 unless it is proposed to candidates; 429 over the reads of an hour)'
     }
+  })
+  // What the recruiter says of a card, for their job: the card's token in the body, never the path
+  .put(
+    '/recruiter/jobs/:id/candidates/decision',
+    ({ userId, params: { id }, body: { token, decision } }): Promise<RecruiterDecisionDto> =>
+      decideAsRecruiter(userId, id, token, decision),
+    {
+      params: objectIdParams,
+      body: recruiterDecisionRequest,
+      detail: {
+        summary:
+          "Say whether the candidate of an anonymous card interests you for your job: with their interest in it, you are both interested and their portfolio is revealed to you (409 unless the job is proposed to candidates, for a card's token that is not one or a candidate no longer proposed, and once you are both interested; 429 over the decisions of a day)"
+      }
+    }
+  )
+  .delete(
+    '/recruiter/jobs/:id/candidates/decision',
+    ({ userId, params: { id }, body: { token } }): Promise<RecruiterDecisionDto> => undoAsRecruiter(userId, id, token),
+    {
+      params: objectIdParams,
+      body: recruiterUndoRequest,
+      detail: {
+        summary: "Undo what you said of a card's candidate, until you are both interested (404 without a decision; 409 after)"
+      }
+    }
+  );
+
+// The mutual interests of the signed-in account, as a candidate or as a recruiter (as a recruiter:
+// with a recruiter space and the terms in force, checked by the service), and what they have not
+// seen yet
+const mutualInterests = new Elysia()
+  .use(userLogged)
+  .get('/matches', ({ userId, query: { side } }): Promise<{ matches: MatchDto[] }> => listMatches(userId, side), {
+    query: matchesQuery,
+    detail: {
+      summary:
+        'Your mutual interests as a candidate or as a recruiter, the latest first: the job, and as a recruiter the portfolio revealed'
+    }
+  })
+  .get('/matches/:id', ({ userId, params: { id } }): Promise<MatchDto> => readMatch(userId, id), {
+    params: objectIdParams,
+    detail: { summary: 'One of your mutual interests (404 for one you are not a side of)' }
+  })
+  .put('/matches/:id/seen', ({ userId, params: { id } }): Promise<MatchDto> => markMatchSeen(userId, id), {
+    params: objectIdParams,
+    detail: { summary: 'Mark one of your mutual interests as seen: it no longer counts in your notifications' }
+  })
+  .post('/matches/:id/end', ({ userId, params: { id } }): Promise<MatchDto> => endMatch(userId, id), {
+    params: objectIdParams,
+    detail: {
+      summary:
+        "End one of your mutual interests: it no longer leads into the candidate's hiring journey (kept a few months, then deleted)"
+    }
+  })
+  .get('/me/notifications', ({ userId }): Promise<MatchNotificationsDto> => matchNotifications(userId), {
+    detail: { summary: 'How many of your mutual interests going on you have not seen yet, as a candidate and as a recruiter' }
   });
 
 // The reviewers' (MATCHING_REVIEWERS): 403 for anyone else
@@ -118,6 +213,7 @@ export const matches = new Elysia()
   })
   .use(discovery)
   .use(jobMatching)
+  .use(mutualInterests)
   .use(reviews);
 
 /**

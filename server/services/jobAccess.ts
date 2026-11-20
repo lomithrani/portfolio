@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import type { MatchDecision, MatchEndReason } from 'portfolio-common';
 import { env } from '../env';
 import { JobPosting, WorkflowInstance } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
@@ -6,8 +7,9 @@ import { ResourceNotFoundError } from '../errors';
 import { JOB_NOT_FOUND, toJobPostingDto } from './jobPostings';
 import type { JobPostingDto } from './jobPostings';
 import { proposedJobPosting } from './matchFeeds';
+import { candidateDecisionOn, mutualInterestOn } from './mutualInterests';
 import { journeySteps } from './workflows';
-import { jobStep, legacyPick, pickedJobId, storedShare } from './workflowSteps/job';
+import { jobStep, legacyPick, matchOfShare, pickedJobId, storedShare } from './workflowSteps/job';
 import type { StoredShare } from './workflowSteps/job';
 
 // Who may read a job posting outside the recruiter space: the page the meeting invitation of a
@@ -23,26 +25,41 @@ import type { StoredShare } from './workflowSteps/job';
 //   kept (legacyPick: the job's id and when, nothing else) shows the posting as it is now, which
 //   invitations sent before link, and a version that no longer checks out shows nothing (the
 //   404 below), as the job step holds nothing with it;
+// - 'match' (matching, Path 2, while MATCHING is on): the candidate of a mutual interest on the
+//   job, going on or ended (until it expires: services/mutualInterests.ts), whatever the job's
+//   status (its draft is not what they read). They read the version they said yes to, with the
+//   posting's status and dates, and when the posting was edited since (`match.changedAt`);
 // - 'feed' (matching, Path 2, while MATCHING is on): a candidate to whom the job is proposed now,
 //   as their feed shows it (services/matchFeeds.ts: live in matching, meeting their criteria and
-//   their minimum, its recruiter not having passed them), whatever they answered of it. They
-//   read the posting as it is now, as their feed scores it.
+//   their minimum, its recruiter not having passed them), whatever they answered of it (their
+//   `decision`). They read the posting as it is now, as their feed scores it.
 // Anyone else, like an unknown id, gets the 404 of a posting that does not exist, never a 403:
 // an id says nothing about the postings behind it. What is returned never names the recruiter.
 
 /** Why the caller may read the posting */
-export type JobAccess = 'recruiter' | 'journey' | 'feed';
+export type JobAccess = 'recruiter' | 'journey' | 'match' | 'feed';
 
 /** GET /opportunities/jobs/:id: the posting and why the caller reads it */
 export interface SharedJobPostingDto {
   /**
-   * For `access: 'journey'`, the version the recruiter shared (its `updatedAt`: the version's
-   * date), with the posting's id, status and other dates
+   * For `access: 'journey'`, the version the recruiter shared, for `access: 'match'` the version
+   * the candidate said yes to (its `updatedAt`: the version's date), with the posting's id, status
+   * and other dates
    */
   job: JobPostingDto;
   access: JobAccess;
   /** `access: 'journey'`: when the recruiter shared the version `job` is (unset: the posting now) */
   sharedAt?: Date;
+  /** `access: 'match'`: the mutual interest, with when the posting was edited since and when it ended */
+  match?: {
+    _id: string;
+    matchedAt: Date;
+    changedAt: Date | null;
+    endedAt: Date | null;
+    endReason: MatchEndReason | null;
+  };
+  /** `access: 'feed'`: what the candidate said of the job, while they are not both interested */
+  decision?: MatchDecision;
 }
 
 const isObjectId = (value: string) => Types.ObjectId.isValid(value) && /^[0-9a-fA-F]{24}$/.test(value);
@@ -68,7 +85,8 @@ async function pickOnJourney(
   const steps = await journeySteps(ownerId);
   const picks = steps.flatMap((step) => {
     const data: unknown = step.type === jobStep.type ? progress.get(step.id)?.data : undefined;
-    return pickedJobId(data) === jobId ? [{ data }] : [];
+    // What a mutual interest stored is read through it ('match'), never as a pick
+    return pickedJobId(data) === jobId && !matchOfShare(data) ? [{ data }] : [];
   });
   // The pick that keeps a version, when one does
   const share = picks.map(({ data }) => storedShare(data)).find((kept) => kept !== undefined);
@@ -86,11 +104,29 @@ export async function readableJobPosting(userId: string, jobId: string): Promise
   const job = await JobPosting.findById(jobId).lean<StoredJobPosting>();
   if (!job) throw notFound();
   if (String(job.recruiter) === userId) return { job: toJobPostingDto(job), access: 'recruiter' };
+  const interest = await mutualInterestOn(String(job._id), userId);
+  if (interest?.posting) {
+    const { _id, status, createdAt, publishedAt } = toJobPostingDto(job);
+    return {
+      job: { ...interest.posting, _id, status, createdAt, updatedAt: interest.version, ...(publishedAt ? { publishedAt } : {}) },
+      access: 'match',
+      match: {
+        _id: interest._id,
+        matchedAt: interest.matchedAt,
+        changedAt: interest.changedAt ?? null,
+        endedAt: interest.endedAt ?? null,
+        endReason: interest.endReason ?? null
+      }
+    };
+  }
   if (job.status === 'draft') throw notFound();
   const pick = await pickOnJourney(userId, job.recruiter, String(job._id));
   if (!pick) {
     const proposed = env.matchingEnabled ? await proposedJobPosting(userId, job) : null;
-    if (proposed) return { job: proposed, access: 'feed' };
+    if (proposed) {
+      const decision = await candidateDecisionOn(String(job._id), userId);
+      return { job: proposed, access: 'feed', ...(decision ? { decision } : {}) };
+    }
     throw notFound();
   }
   const posting = toJobPostingDto(job);

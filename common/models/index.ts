@@ -282,6 +282,7 @@ export {
 	jobLiveInMatching,
 	parseReviewReason,
 	MATCH_DECISIONS,
+	MATCH_SIDES,
 	MATCH_END_REASONS,
 	MATCH_RETENTION,
 	matchDecisionExpiry,
@@ -300,6 +301,7 @@ export type {
 	MatchingReviewStatus,
 	MatchingReviewDecision,
 	MatchDecision,
+	MatchSide,
 	MatchEndReason
 } from './matching';
 export { matchingMessages } from './matching.messages';

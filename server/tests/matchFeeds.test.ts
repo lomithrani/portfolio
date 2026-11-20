@@ -270,7 +270,7 @@ const storeJob = async (
   return String(job._id);
 };
 
-/** A decision of each side on `jobId`, stored directly (decisions have no route yet) */
+/** A decision of each side on `jobId`, stored directly (tests/matches.test.ts covers the decisions' routes) */
 const storeDecision = (
   jobId: string,
   recruiter: TestUser,
@@ -1028,6 +1028,8 @@ describe('what matching is built on', () => {
       '../services/candidateCard.ts',
       '../services/jobMatching.ts',
       '../services/matchingReviews.ts',
+      '../services/matches.ts',
+      '../services/mutualInterests.ts',
       '../models/database/match.ts',
       '../plugins/matches.ts'
     ].map((file) => resolve(here, file));

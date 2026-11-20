@@ -684,13 +684,18 @@ this one has, see [Résumé import](#résumé-import), but the budget does not c
 
 Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=true`**: its routes
 (`GET`/`PUT /discovery`, `GET /discovery/card`, `POST`/`DELETE /discovery/consent`,
-`PUT /jobs/:id/matching`, `GET /matching/reviews`, `PUT /matching/reviews/:id`, and the feeds
-`GET /opportunities` and `GET /recruiter/jobs/:id/candidates` for now) are not registered, so they answer 404 as routes that do not exist whatever the request (`/swagger` does
-not list them), `POST /jobs` ignores its `matching`, no matching route answers and nothing is
-proposed, and the metrics `discoverable_candidates`, `matching_job_postings`,
-`matching_job_reviews` and `active_matches` are 0. What a job's changes do to its matches (closed,
-deleted, edited) runs whatever the flag: it only ends, drops or deletes matches, or sends an edited
-job back for review. The flag is read when the API starts: a change
+`PUT /jobs/:id/matching`, `GET /matching/reviews`, `PUT /matching/reviews/:id`, the feeds
+`GET /opportunities` and `GET /recruiter/jobs/:id/candidates`, the decisions
+`PUT`/`DELETE /opportunities/jobs/:id/decision` and `PUT`/`DELETE /recruiter/jobs/:id/candidates/decision`,
+and the mutual interests `GET /matches`, `GET /matches/:id`, `PUT /matches/:id/seen`,
+`POST /matches/:id/end` and `GET /me/notifications`) are not registered, so they answer 404 as
+routes that do not exist whatever the request (`/swagger` does not list them), `POST /jobs` ignores
+its `matching`, no matching route answers and nothing is proposed, the hiring journeys read no
+mutual interest (what one stored in a journey holds nothing: its recruiter shares a job as anyone
+does), and the metrics `discoverable_candidates`, `matching_job_postings`, `matching_job_reviews`
+and `active_matches` are 0. What a job's changes do to its matches (closed, deleted, edited) runs
+whatever the flag: it only ends, drops or deletes matches, or sends an edited job back for review.
+The flag is read when the API starts: a change
 takes effect at its next deploy. The startup line `Running at ...` says `"matching":"on (1 job
 reviewer)"` (how many reviewers, never who) or why it is off.
 
@@ -726,6 +731,19 @@ the cache, the missing ones are asked in the background within matching's share 
 candidates by tokens sealed with a key derived from `JWT_SECRET` (AES-256-GCM, bound to the
 recruiter and the job, a week at most): changing `JWT_SECRET` makes the cards already shown
 unreadable, and recruiters read their feed again.
+
+**Decisions and mutual interests.** A candidate says whether a job proposed to them interests
+them, a recruiter whether a card's candidate does (the card's token in the body); either undoes
+theirs until both are interested. Each decision or undo is counted against **300 per account per
+UTC day**, both sides together (`MATCHING_DECISIONS` of `server/services/matches.ts`, from
+`MATCHING_LIMITS.decisionsPerDay`; 429 with `Retry-After`, counters `matching-decision:<hash>`), and
+asks no outside service (travel times from the cache, as the feeds read them). Both interested is a
+mutual interest: one per job and candidate, made by one conditioned write, whatever the order or
+the moment of the two decisions; it reveals the candidate's portfolio address to the recruiter and
+leads into the candidate's own hiring journey (its job step holds the job, its job match is frozen
+at the score then, its notes are still the recruiter's to confirm before the meeting opens). Either
+side ends it (`POST /matches/:id/end`). No email is sent: each side sees how many mutual interests
+it has not seen yet (`GET /me/notifications`), for the account menu's badge of the screens to come.
 - **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
   and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
   assessment is signed: a candidate's consent must point to published texts. Public transport

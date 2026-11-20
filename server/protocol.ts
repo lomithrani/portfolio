@@ -53,3 +53,41 @@ export const NOT_PROPOSED_TO_RECRUITERS = 'You are not proposed to recruiters no
  * from the job's `matching`
  */
 export const JOB_NOT_PROPOSED = 'This job description is not proposed to candidates now'
+
+/**
+ * 409 of a decision of matching (PUT or DELETE /opportunities/jobs/:id/decision, PUT or DELETE
+ * /recruiter/jobs/:id/candidates/decision) on a job and a candidate who are both interested
+ * already, or were (a mutual interest is never undone by a decision: either side ends it). No
+ * screen calls them yet: the decks will match it, and show the mutual interest
+ */
+export const MUTUAL_INTEREST_EXISTS = 'You are both interested already'
+
+/**
+ * 409 of a recruiter's decision on a candidate's card (PUT /recruiter/jobs/:id/candidates/decision)
+ * whose token does not stand for a candidate for that recruiter and job (too old, or not one), or
+ * whose candidate is not proposed for the job now (withdrew, paused, criteria changed, passed it).
+ * No screen calls it yet: the recruiter's deck will match it, drop the card and read the feed again
+ */
+export const CANDIDATE_UNAVAILABLE = 'This candidate is not proposed for this job now'
+
+/**
+ * 404 of an undo of a decision (DELETE /opportunities/jobs/:id/decision, DELETE
+ * /recruiter/jobs/:id/candidates/decision) when the caller has no decision on that job and
+ * candidate. No screen calls them yet: the decks will match it
+ */
+export const DECISION_NOT_FOUND = 'There is no decision to undo'
+
+/**
+ * 404 of the routes of one mutual interest (GET /matches/:id, POST /matches/:id/end, PUT
+ * /matches/:id/seen) for one the caller is not a side of, or that does not exist. No screen calls
+ * them yet: the lists of mutual interests will match it
+ */
+export const MATCH_NOT_FOUND = 'Match not found'
+
+/**
+ * 409 of the job step's submit (POST /workflow/domains/:domainName/steps/:stepId) by a recruiter
+ * whose mutual interest with the owner (matching) fills that step with its job: they cannot share
+ * another while it lasts. No screen sends it yet: the page for recruiters will hide the job step's
+ * choice for that recruiter (2.13), and match it
+ */
+export const JOB_OF_MUTUAL_INTEREST = 'This step holds the job you are both interested in'

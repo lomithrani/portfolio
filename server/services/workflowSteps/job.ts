@@ -4,8 +4,10 @@ import type { JobSnapshot, JobStatus } from 'portfolio-common';
 import { JobPosting } from '../../models/database';
 import type { JobPosting as StoredJobPosting } from '../../models/database/jobPosting';
 import { ConflictError, FieldValidationError, ResourceNotFoundError, TooManyRequestsError } from '../../errors';
+import { JOB_OF_MUTUAL_INTEREST } from '../../protocol';
 import { JOB_NOT_FOUND, storedJobSnapshot, toJobSnapshot } from '../jobPostings';
 import { userAcceptedCurrentTerms } from '../legal';
+import type { MutualInterest } from '../mutualInterests';
 import { rateLimitKey, takeRateLimit } from '../rateLimit';
 import type { RateLimit } from '../rateLimit';
 import { requireRecruiterSpace } from '../recruiters';
@@ -29,6 +31,16 @@ import { m } from './steps.messages';
 // like every recruiter route) before the journey goes on. A pick stored before
 // versions were kept (no `posting`), or one this version would not save, holds
 // nothing: the recruiter shares the job again.
+//
+// A job can also come from matching (Path 2): when the owner and the recruiter
+// are both interested in one of the recruiter's jobs, the step holds that job,
+// the version the owner said yes to (services/matches.ts stores it here, with
+// the mutual interest's id, `match`), and the recruiter cannot share another
+// while the mutual interest lasts (409). It holds from the mutual interest
+// itself (ctx.mutualInterest), whatever is stored, so a journey edited since
+// (its job step removed and added again: a new id, nothing stored) still
+// holds it; once the mutual interest ends, or while MATCHING is off, what it
+// stored holds nothing and the recruiter shares a job as anyone does.
 
 export interface JobStepData {
   /** The id of the posting shared */
@@ -39,6 +51,11 @@ export interface JobStepData {
   version: Date;
   /** The version shared */
   posting: JobSnapshot;
+  /**
+   * The mutual interest of matching that filled the step (its id): the job the owner and the
+   * recruiter are both interested in. Unset for a job the recruiter shared
+   */
+  match?: string;
 }
 
 /** The job posting a visitor shared, as their journey shows it to them */
@@ -62,6 +79,11 @@ export interface JourneyJobDto {
 
 export interface JobStepView {
   job: JourneyJobDto;
+  /**
+   * The job is the one the owner and the recruiter are both interested in (matching): the step
+   * holds it while the mutual interest lasts, and the recruiter cannot share another
+   */
+  matched?: true;
 }
 
 // Not a message: the client tells this 409 from its text (/open job/ in pickJobFailure of
@@ -117,6 +139,28 @@ export const storedShare = (data: unknown): StoredShare | undefined => {
   const snapshot = storedJobSnapshot(posting);
   return job && sharedAt && versionDate && snapshot ? { job, sharedAt, version: versionDate, posting: snapshot } : undefined;
 };
+
+/** The mutual interest a job step's stored `data` was filled by (its id), when it was one */
+export const matchOfShare = (data: unknown): string | undefined => {
+  const match = (data as Partial<JobStepData> | null | undefined)?.match;
+  return typeof match === 'string' && OBJECT_ID.test(match) ? match : undefined;
+};
+
+/**
+ * What the job step stores for the recruiter of a mutual interest in the owner's journey
+ * (services/matches.ts): the version the owner said yes to, shared when they both became
+ * interested, with the mutual interest's id. Undefined for a version that no longer checks out
+ */
+export const mutualInterestShare = (interest: MutualInterest): JobStepData | undefined =>
+  interest.posting
+    ? {
+        job: interest.job,
+        selectedAt: interest.matchedAt,
+        version: interest.version,
+        posting: interest.posting,
+        match: interest._id
+      }
+    : undefined;
 
 /**
  * A pick stored before the step kept the version shared: the posting's id and when, without a
@@ -177,15 +221,44 @@ export interface SharedJob {
  */
 export const pickedSnapshot = async (visitorId: string, data: unknown): Promise<SharedJob | undefined> => {
   const share = storedShare(data);
-  if (!share || !Types.ObjectId.isValid(visitorId)) return undefined;
+  // What a mutual interest stored holds only while it leads here, and is then read from it
+  if (!share || matchOfShare(data) || !Types.ObjectId.isValid(visitorId)) return undefined;
   if (!(await userAcceptedCurrentTerms(visitorId))) return undefined;
   if (!(await JobPosting.exists({ _id: share.job, recruiter: visitorId }))) return undefined;
   return { _id: share.job, sharedAt: share.sharedAt, posting: share.posting };
 };
 
+/**
+ * The job of the mutual interest `interest` as the step shows it, and whether it holds: the version
+ * the owner said yes to (read back), the posting still the recruiter's and open, and the recruiter
+ * having accepted the terms in force, as for a job shared
+ */
+const matchedJob = async (interest: MutualInterest, visitorId: string) => {
+  const posting = await JobPosting.findOne({ _id: interest.job, recruiter: visitorId }, { status: 1 }).lean<
+    Pick<StoredJobPosting, '_id' | 'status'>
+  >();
+  if (!posting || !interest.posting) return undefined;
+  const { title, company } = interest.posting;
+  const job: JourneyJobDto = {
+    _id: interest.job,
+    title,
+    ...(company ? { company } : {}),
+    status: posting.status as JobStatus,
+    sharedAt: interest.matchedAt
+  };
+  return { job, holds: job.status === OPEN_JOB_STATUS && (await userAcceptedCurrentTerms(visitorId)) };
+};
+
 export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView> = {
   type: 'job',
   evaluate: async (ctx) => {
+    if (ctx.mutualInterest) {
+      const matched = await matchedJob(ctx.mutualInterest, ctx.visitorId);
+      if (!matched) return { status: 'pending' };
+      return { status: matched.holds ? 'succeeded' : 'pending', view: { job: matched.job, matched: true } };
+    }
+    // Stored by a mutual interest that no longer leads here (ended, or MATCHING off): holds nothing
+    if (matchOfShare(ctx.data)) return { status: 'pending' };
     const picked = await pickedJob(ctx);
     const holds =
       !!picked?.share && picked.job.status === OPEN_JOB_STATUS && (await userAcceptedCurrentTerms(ctx.visitorId));
@@ -196,17 +269,21 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
   },
   /**
    * Needs a recruiter space (403) with the terms in force (422 on `consent`:
-   * services/recruiters.ts) and a posting of theirs (404 otherwise, like any
-   * unknown id) that is open (409) and passes today's rules (422 on
+   * services/recruiters.ts), no mutual interest with the owner leading here
+   * (409 JOB_OF_MUTUAL_INTEREST: its job holds the step while it lasts), and a
+   * posting of theirs (404 otherwise, like any unknown id) that is open (409)
+   * and passes today's rules (422 on
    * `input.jobId` for one saved under older ones). On a journey that scores it
    * (a job match after this step), at most JOB_SHARES_PER_DAY shares (429
    * beyond). Stores the version shared; the version kept, shared again
    * unchanged, is nothing new: kept as it is (its date too), not counted
    */
-  submit: async ({ ownerId, visitorId, input, later, data }) => {
+  submit: async ({ ownerId, visitorId, input, later, data, mutualInterest }) => {
     const id = jobId(inputFields(input)?.jobId);
     if (!id) throw new FieldValidationError('input.jobId', () => m.job.pickOne);
     await requireRecruiterSpace(visitorId);
+    // The job they are both interested in holds the step while their mutual interest lasts
+    if (mutualInterest) throw new ConflictError(JOB_OF_MUTUAL_INTEREST);
     const posting = await JobPosting.findOne({ _id: id, recruiter: visitorId }).lean<StoredJobPosting>();
     if (!posting) throw new ResourceNotFoundError(JOB_NOT_FOUND);
     if (posting.status !== OPEN_JOB_STATUS) throw new ConflictError(JOB_NOT_OPEN);
@@ -214,8 +291,9 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
     // version the step would not hold is refused now, rather than stored and never holding
     const snapshot = storedJobSnapshot(toJobSnapshot(posting));
     if (!snapshot) throw new FieldValidationError('input.jobId', () => m.job.cannotShare);
-    // Picked again as it was shared (the step selects the job kept): nothing new to share or score
-    const kept = storedShare(data);
+    // Picked again as it was shared (the step selects the job kept): nothing new to share or score.
+    // Not what a mutual interest stored, which held nothing once it ended: shared now, it is new
+    const kept = matchOfShare(data) ? undefined : storedShare(data);
     if (kept && kept.job === posting._id.toString() && !jobSnapshotsDiffer(kept.posting, snapshot)) {
       return { job: kept.job, selectedAt: kept.sharedAt, version: kept.version, posting: kept.posting };
     }
@@ -233,10 +311,18 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
   // /opportunities/:id): the owner reads that version there signed in, its recruiter is sent on to
   // their own page of it; anyone else the invitation reaches reads that it is not shared with them
   // (services/jobAccess.ts)
+  // A job of a mutual interest says so, between the two
   describe: async ({ webOrigin, ...ctx }) => {
+    const link = (id: string) => (webOrigin ? [`${webOrigin}${opportunityPath(id)}`] : []);
+    const { mutualInterest } = ctx;
+    if (mutualInterest?.posting) {
+      const { title, company } = mutualInterest.posting;
+      return [m.job.invitation(title, company), m.job.mutualInterest, ...link(mutualInterest.job)];
+    }
+    if (mutualInterest || matchOfShare(ctx.data)) return [];
     const picked = await pickedJob(ctx);
     if (!picked?.share) return [];
     const { title, company } = picked.share.posting;
-    return [m.job.invitation(title, company), ...(webOrigin ? [`${webOrigin}${opportunityPath(picked.job._id)}`] : [])];
+    return [m.job.invitation(title, company), ...link(picked.job._id)];
   }
 };

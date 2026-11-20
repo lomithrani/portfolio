@@ -30,6 +30,14 @@ export const m = defineMessages({
     invitation: {
       en: (title: string, company?: string) => `Job: ${company ? `${title} — ${company}` : title}`,
       fr: (title: string, company?: string) => `Offre : ${company ? `${title} — ${company}` : title}`
+    },
+    /**
+     * Invitation line, after the job's: the owner and the recruiter are both interested in it
+     * (matching): how the meeting came about. Never a bare "match", which names the score
+     */
+    mutualInterest: {
+      en: 'Mutual interest on Portfolio',
+      fr: 'Intérêt réciproque sur Portfolio'
     }
   },
   jobMatch: {

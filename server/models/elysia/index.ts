@@ -32,5 +32,9 @@ export {
   discoveryCardRequest,
   jobMatchingRequest,
   matchingReviewRequest,
-  opportunitiesQuery
+  opportunitiesQuery,
+  candidateDecisionRequest,
+  recruiterDecisionRequest,
+  recruiterUndoRequest,
+  matchesQuery
 } from "./matchRequest.models";

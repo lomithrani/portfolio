@@ -16,8 +16,13 @@ import { MATCH_DECISIONS, MATCH_END_REASONS } from 'portfolio-common';
 // or the candidate's criteria become; it lasts until a side or the job ends it
 // (`endedAt`), then expires MATCH_RETENTION.endedMatchMonths later.
 //
-// What happens to it when its job changes (closed, deleted, out of matching,
-// edited) is services/jobMatching.ts's; when its candidate withdraws,
+// The decisions and the mutual interest are services/matches.ts's (one
+// atomic upsert per decision, then a write of `matchedAt` conditioned on both
+// interests, so two interests at once make one mutual interest), and so is
+// what a mutual interest leads to: the candidate's own hiring journey
+// (services/mutualInterests.ts reads it there). What happens to it when its
+// job changes (closed, deleted, out of matching, edited) is
+// services/jobMatching.ts's; when its candidate withdraws,
 // services/discovery.ts's (discoveryWithdrawal). Deleted with the account of
 // either side, and with the jobs of the recruiter (services/accountDeletion.ts).
 // Private: never logged, never returned but to its two sides.
@@ -35,6 +40,8 @@ const decisionSchema = new Schema({
  */
 const snapshotSchema = new Schema({
   posting: { type: Schema.Types.Mixed, required: true },
+  /** The posting's `updatedAt` then: the version's date, as a job step keeps it */
+  version: { type: Date },
   score: { type: Number, required: true },
   minScore: { type: Number, required: true },
   criteria: { type: Schema.Types.Mixed },

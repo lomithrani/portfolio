@@ -57,7 +57,7 @@ stand on me, and what may they submit?
 | Model (`server/models/database/`) | What it holds |
 | --- | --- |
 | `Workflow` (`workflow.ts`, collection `hiringworkflows`, one per owner) | `steps: [{ id, type, config }]`, as `parseWorkflow` returned them. Written by `PUT /workflow` only. |
-| `WorkflowInstance` (`workflowInstance.ts`, one per `(owner, visitor)`) | `steps`: a map from step id to `{ data, updatedAt }`, what each step stored for this visitor. Created by the visitor's first submit. |
+| `WorkflowInstance` (`workflowInstance.ts`, one per `(owner, visitor)`) | `steps`: a map from step id to `{ data, updatedAt }`, what each step stored for this visitor. Created by the visitor's first submit, or by a mutual interest of matching that leads the visitor into the journey (see [A job that comes from matching](#a-job-that-comes-from-matching)). |
 
 Because progress is kept per step id, reordering a journey keeps it. Progress on a step is dropped
 when the owner saves a journey that no longer has that id, or where that id now names another type
@@ -78,7 +78,7 @@ All in `server/plugins/workflows.ts`, the same for every step type:
 | --- | --- | --- |
 | `GET /workflow` | owner (session) | Their steps, with their full settings, and whether they saved a journey (`false`: `DEFAULT_WORKFLOW_STEPS`): `{ steps: [{ id, type, config }], saved }`. |
 | `PUT /workflow` | owner (session) | Replaces their steps. Answers the steps as stored (settings normalised), with `saved: true`. |
-| `GET /workflow/domains/:domainName` | anyone | The journey as the caller stands in it: `{ steps: [{ id, type, status, config?, view? }], own? }`. |
+| `GET /workflow/domains/:domainName` | anyone | The journey as the caller stands in it: `{ steps: [{ id, type, status, config?, view? }], own?, match? }` (`match`: the visitor's mutual interest with the owner, see [A job that comes from matching](#a-job-that-comes-from-matching)). |
 | `POST /workflow/domains/:domainName/steps/:stepId` | visitor (session) | Submits `{ input }` on a step. Answers the journey as the visitor now stands in it. |
 
 The booking routes of `server/plugins/appointments.ts` (`available-dates`, `available-slots`,
@@ -208,7 +208,11 @@ A server step is a `ServerStep<Config, Data, View>` (declared in
 when nothing yet), `earlier`, the steps before this one in the journey (`{ id, type, data }`
 each), for a type whose manifest has `needs`, and `later`, the steps after it (`{ id, type }` each:
 what they stored is theirs), for a type whose submission matters to a step after it (the job step
-caps the shares a job match after it scores).
+caps the shares a job match after it scores). One more, `mutualInterest`, is set only when the
+visitor came through matching (Path 2, CLAUDE.md "Matching"): the mutual interest between the owner
+and this visitor that leads into the journey now (see
+[A job that comes from matching](#a-job-that-comes-from-matching)); a step that has nothing to do
+with matching ignores it.
 
 | Function | Required | What it does |
 | --- | --- | --- |
@@ -256,10 +260,12 @@ accepted the terms in force (like every recruiter route), so a posting closed si
 the terms, sends the visitor back to the step.
 
 **`view`** is the part of `evaluate`'s answer the visitor's page receives. The note has none. The
-job step returns `{ job: { _id, title, company?, status, sharedAt?, outdated? } }`: the posting the
-visitor shared (its title and company as shared, its status now), when they shared that version,
-and whether the posting differs from it now in anything the owner reads of it, so the page can
-show it and offer to share the new version. Put there only what this visitor may know.
+job step returns `{ job: { _id, title, company?, status, sharedAt?, outdated? }, matched? }`: the
+posting the visitor shared (its title and company as shared, its status now), when they shared that
+version, and whether the posting differs from it now in anything the owner reads of it, so the page
+can show it and offer to share the new version (`matched`: the job of a mutual interest, see
+[A job that comes from matching](#a-job-that-comes-from-matching)). Put there only what this
+visitor may know.
 
 **A step can keep what the visitor submitted as it was then.** The job step stores the version of
 the posting shared (`{ job, selectedAt, version, posting }`: `posting` is a `JobSnapshot` of
@@ -324,8 +330,9 @@ there and not a draft: a
 recruiter can pick one posting on several journeys; a pick stored before versions were kept, the
 posting's id and date alone (`legacyPick` of the job step), shows the posting as it is now, and a
 version that no longer checks out shows nothing); anyone else reads that it is not shared with
-them. The old `/jobs/<id>` of invitations sent before answers 308 to it. The note describes
-nothing.
+them. The old `/jobs/<id>` of invitations sent before answers 308 to it. A job that comes from
+matching adds `Mutual interest on Portfolio` (« Intérêt réciproque sur Portfolio ») after the job's
+line. The note describes nothing.
 
 ### 3. The client entry: `client/src/lib/components/hire/steps/`
 
@@ -468,6 +475,55 @@ failing the visitor: an outage of someone else's service must not close a journe
 
 A stored minimum that is not a score (written by hand) reads as 100: the step fails closed.
 An owner without any criterion asks nothing: every job scores 100.
+
+## A job that comes from matching
+
+Matching (Path 2, CLAUDE.md "Matching", behind the API's `MATCHING` flag) is the other way a
+recruiter reaches an owner: the owner, proposed to recruiters as an anonymous card, and a recruiter
+are both interested in one of the recruiter's open jobs (a **mutual interest**, a `Match` of
+`server/models/database/match.ts`, made by `server/services/matches.ts`). It leads into the owner's
+own journey, the one their page for recruiters shows: matching has no journey of its own, and the
+same steps, notes and meeting apply.
+
+**The engine reads it, the steps decide what it means.** `loadJourney` of
+`server/services/workflows.ts` reads, once per journey and only for a signed-in visitor who is not
+the owner, the latest mutual interest between the owner (the candidate) and the visitor (the
+recruiter) that leads somewhere now (`activeMutualInterest` of `server/services/mutualInterests.ts`:
+both interested, the portfolio revealed, not ended; none while `MATCHING` is off), and hands it to
+every step as `ctx.mutualInterest`, with what the candidate said yes to (`posting`, the version of
+the job, read back like a share; `score`, `minScore` and `criteria` then; `matchedAt`; `changedAt`).
+`GET /workflow/domains/:domainName` says it to that visitor as `match`
+(`{ _id, job: { _id, title, company? }, matchedAt, changed? }`); nobody else gets it.
+
+- **The job step holds its job.** While a mutual interest leads there, `evaluate` shows its job (the
+  version said yes to, `sharedAt` the mutual interest's date) with `matched: true`, and succeeds
+  while the posting is the recruiter's and open and they accepted the terms in force, as for a
+  share; it never says `outdated` (the version kept is the one both said yes to). `submit` answers
+  409 `JOB_OF_MUTUAL_INTEREST` (`server/protocol.ts`): the recruiter cannot share another job while
+  it lasts. `describe` adds the line above.
+- **The job match is frozen.** It is not scored again: `evaluate` succeeds with the score, the
+  minimum and the outcomes of the mutual interest (the outcomes only while the owner's
+  `showDetails` is on, as for a job scored), and says `matched: true` and `frozenAt` (when they both
+  became interested), whatever the owner's criteria or minimum became since: their interest is their
+  yes to that job. `describe` says that score.
+- **The notes and the meeting are as for anyone.** A note before or after the job is still the
+  recruiter's to confirm, and the meeting opens once every step before it succeeded.
+
+**What is stored.** When the mutual interest is made, `handOffToJourney` of
+`server/services/matches.ts` records it in the visitor's progress (`seedVisitorProgress` of the
+engine, which creates it when the recruiter had none): the job step's data is the share of the
+version said yes to plus `match` (its id: `mutualInterestShare` of the job step), the job match's
+`{ via: 'mutual_match', match, job, frozenAt }` (`freezeJobMatch` of `jobMatch.ts`). The steps read
+the mutual interest itself, not this record, so a journey the owner edits since (its job step
+removed and added again: a new id, nothing stored under it) still leads there, and a record that
+failed to be written changes nothing. What a mutual interest stored holds nothing once it no longer
+leads there (ended, or `MATCHING` off): the job step is `pending` with no view, the job match scores
+nothing from it (`pickedSnapshot` leaves it out), the job's private page reads it through the mutual
+interest (`access: 'match'`), never as a pick. Ending a mutual interest (`POST /matches/:id/end`)
+removes the record (`dropVisitorProgress`), so the recruiter's job step is to do again, as anyone's;
+deleting the posting removes it with the shares of that job (the job match's record names the job
+for that). A new step type that should behave differently for a job that comes from matching reads
+`ctx.mutualInterest`, never the Match itself.
 
 ## Steps with routes of their own
 

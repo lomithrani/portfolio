@@ -114,7 +114,7 @@ const warmUpsFor = (accountId: string) => {
 // ── What a candidate asks of a job ──────────────────────────
 
 /** A candidate's bar, which every job is held to: their criteria, and their journey's minimum */
-interface CandidateBar {
+export interface CandidateBar {
   perfectJob: PerfectJobCriteria;
   /** The minimum of their journey's job match (the highest without one: fails closed) */
   minScore: number;
@@ -136,7 +136,7 @@ const candidateBar = async (candidateId: string): Promise<CandidateBar> => {
 };
 
 /** A job scored against a candidate's bar, with what the read knew of the commute */
-interface ScoredPair {
+export interface ScoredPair {
   score: PerfectJobScore;
   reading: CommuteReading;
 }
@@ -332,6 +332,55 @@ export async function candidateFeed(userId: string, after?: string, now = new Da
 }
 
 /**
+ * A job and a candidate proposed to each other now, with what it took to tell: the candidate's
+ * bar, the job scored against it (its travel time from the cache), and the version scored. What a
+ * decision of either side records, and a mutual interest keeps (services/matches.ts)
+ */
+export interface ProposedPair {
+  bar: CandidateBar;
+  scored: ScoredPair;
+  /** The version scored (toJobSnapshot of the posting read) */
+  snapshot: JobSnapshot;
+}
+
+/**
+ * The job `job`, live in matching, and the candidate `candidateId` as the candidate's feed sees
+ * them, their own answer aside: never their own job, nor one whose recruiter passed them, and it
+ * meets their bar (the commute left out of the score while not known). Null otherwise. Whether
+ * the candidate is proposed to recruiters is the caller's (isProposed); `exceptPicked` also leaves
+ * out a job its recruiter shared on the candidate's page for recruiters, as their feed does
+ */
+const candidatePair = async (
+  candidateId: string,
+  job: StoredJobPosting,
+  { exceptPicked }: { exceptPicked: boolean }
+): Promise<ProposedPair | null> => {
+  if (String(job.recruiter) === candidateId) return null;
+  if (!(await isLiveInMatching(job))) return null;
+  const [passed, bar, visit] = await Promise.all([
+    Match.exists({ job: job._id, candidate: candidateId, 'recruiterDecision.value': 'pass' }),
+    candidateBar(candidateId),
+    exceptPicked
+      ? WorkflowInstance.findOne({ owner: candidateId, visitor: job.recruiter }, { steps: 1 }).lean<{ steps?: unknown }>()
+      : null
+  ]);
+  if (passed) return null;
+  if (visit && pickedOn(bar.jobSteps, [visit.steps]).has(String(job._id))) return null;
+  const snapshot = toJobSnapshot(job);
+  const scored = await scorePair(bar, snapshot);
+  return passes(scored, bar) ? { bar, scored, snapshot } : null;
+};
+
+/**
+ * Whether the job `job` is proposed to the candidate `candidateId` now, for a decision of theirs
+ * on it (services/matches.ts), whatever they answered of it already: live in matching, not theirs,
+ * its recruiter not having passed them, not shared on their page for recruiters (they are in touch
+ * through it), and meeting their bar. Whether they are proposed to recruiters is the caller's
+ */
+export const jobProposedTo = (candidateId: string, job: StoredJobPosting): Promise<ProposedPair | null> =>
+  candidatePair(candidateId, job, { exceptPicked: true });
+
+/**
  * The posting `job` as a candidate reads it when it is proposed to them now (the private page,
  * services/jobAccess.ts: `access: 'feed'`), whatever they answered of it: the version their feed
  * scores; null when it is not proposed to them (not live in matching, theirs, they are not
@@ -342,16 +391,10 @@ export async function proposedJobPosting(
   job: StoredJobPosting,
   now = new Date()
 ): Promise<JobPostingDto | null> {
-  if (String(job.recruiter) === candidateId) return null;
-  if (!(await isLiveInMatching(job))) return null;
-  const [proposed, passed] = await Promise.all([
-    isProposed(candidateId, now),
-    Match.exists({ job: job._id, candidate: candidateId, 'recruiterDecision.value': 'pass' })
-  ]);
-  if (!proposed || passed) return null;
-  const snapshot = toJobSnapshot(job);
-  const bar = await candidateBar(candidateId);
-  if (!passes(await scorePair(bar, snapshot), bar)) return null;
+  if (!(await isProposed(candidateId, now))) return null;
+  const pair = await candidatePair(candidateId, job, { exceptPicked: false });
+  if (!pair) return null;
+  const { snapshot } = pair;
   return {
     ...snapshot,
     _id: String(job._id),
@@ -396,6 +439,75 @@ const EVALUATED_AT_ONCE = 8;
 
 /** A candidate evaluated for a job: proposed for it, held back for a travel time, or not proposed */
 type Evaluated = { kind: 'out' } | { kind: 'held' } | { kind: 'in'; bar: CandidateBar; scored: ScoredPair };
+
+/** A recruiter's job, as its candidates are evaluated for it */
+interface JobUnderEvaluation {
+  recruiterId: string;
+  /** The job's id */
+  jobKey: string;
+  /** The version candidates are scored against */
+  snapshot: JobSnapshot;
+  /** Whether the recruiter's warm-ups can still ask anything today (warmUpsFor) */
+  canWarm: () => Promise<boolean>;
+}
+
+/**
+ * Whether the candidate `candidate` is proposed for `job` now (the decisions of either side on the
+ * pair aside, which the caller reads): proposed to recruiters (isProposed, with their `profile`
+ * when read already), the job not shared on their page by its recruiter (`visit`: what the
+ * recruiter's visit of their journey stored), and the job meeting their bar. One whose travel time
+ * a warm-up can still find is held back (it is asked in the background, on the recruiter's
+ * allowance), unless the job cannot meet them even with the commute matching; not findable today,
+ * a deal-breaker commute keeps them out, another is left out of the score
+ */
+const evaluateCandidate = async (
+  { recruiterId, jobKey, snapshot, canWarm }: JobUnderEvaluation,
+  candidate: string,
+  { now, visit, profile }: { now: Date; visit: unknown; profile?: Parameters<typeof isProposed>[2] }
+): Promise<Evaluated> => {
+  if (!(await isProposed(candidate, now, profile))) return { kind: 'out' };
+  const bar = await candidateBar(candidate);
+  if (pickedOn(bar.jobSteps, [visit]).has(jobKey)) return { kind: 'out' };
+  const scored = await scorePair(bar, snapshot);
+  if (commuteUnknown(scored)) {
+    // Not met even if the commute matches: nothing to wait for
+    if (!passes(atBest(bar, snapshot), bar)) return { kind: 'out' };
+    if (findable(scored.reading) && (await canWarm())) {
+      // Held back until its travel time is known: the score would not be the one it gets
+      void matchFeedWarmUps.commute({ candidateId: candidate, location: snapshot.location }, recruiterId);
+      return { kind: 'held' };
+    }
+    // Not known today: a deal-breaker cannot be told, another is left out of the score
+    if (bar.perfectJob.commute?.dealBreaker === true) return { kind: 'out' };
+  }
+  if (!passes(scored, bar)) return { kind: 'out' };
+  return { kind: 'in', bar, scored };
+};
+
+/**
+ * Whether the candidate `candidateId` is proposed for the job `job` of `recruiterId` now, for a
+ * decision of the recruiter's on them (services/matches.ts), whatever the recruiter answered
+ * already: as the recruiter's feed proposes them (evaluateCandidate), and not having passed the
+ * job. Held back for a travel time, they are not proposed yet. Whether the job is live is the
+ * caller's
+ */
+export async function candidateProposedFor(
+  recruiterId: string,
+  job: StoredJobPosting,
+  candidateId: string,
+  now = new Date()
+): Promise<ProposedPair | null> {
+  if (candidateId === recruiterId || !Types.ObjectId.isValid(candidateId)) return null;
+  const [passed, visit] = await Promise.all([
+    Match.exists({ job: job._id, candidate: candidateId, 'candidateDecision.value': 'pass' }),
+    WorkflowInstance.findOne({ owner: candidateId, visitor: recruiterId }, { steps: 1 }).lean<{ steps?: unknown }>()
+  ]);
+  if (passed) return null;
+  const snapshot = toJobSnapshot(job);
+  const evaluation = { recruiterId, jobKey: String(job._id), snapshot, canWarm: warmUpsFor(recruiterId) };
+  const result = await evaluateCandidate(evaluation, candidateId, { now, visit: visit?.steps });
+  return result.kind === 'in' ? { bar: result.bar, scored: result.scored, snapshot } : null;
+}
 
 /**
  * GET /recruiter/jobs/:id/candidates: the candidates proposed for the job `jobId` of `recruiterId`
@@ -459,26 +571,9 @@ export async function recruiterFeed(recruiterId: string, jobId: string, now = ne
     })
     .sort((a, b) => Number(b.first) - Number(a.first) || (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
 
-  const canWarm = warmUpsFor(recruiterId);
-  const evaluate = async ({ profile, candidate }: (typeof ordered)[number]): Promise<Evaluated> => {
-    if (!(await isProposed(candidate, now, profile))) return { kind: 'out' };
-    const bar = await candidateBar(candidate);
-    if (pickedOn(bar.jobSteps, [visitOf.get(candidate)]).has(jobKey)) return { kind: 'out' };
-    const scored = await scorePair(bar, snapshot);
-    if (commuteUnknown(scored)) {
-      // Not met even if the commute matches: nothing to wait for
-      if (!passes(atBest(bar, snapshot), bar)) return { kind: 'out' };
-      if (findable(scored.reading) && (await canWarm())) {
-        // Held back until its travel time is known: the score would not be the one it gets
-        void matchFeedWarmUps.commute({ candidateId: candidate, location: snapshot.location }, recruiterId);
-        return { kind: 'held' };
-      }
-      // Not known today: a deal-breaker cannot be told, another is left out of the score
-      if (bar.perfectJob.commute?.dealBreaker === true) return { kind: 'out' };
-    }
-    if (!passes(scored, bar)) return { kind: 'out' };
-    return { kind: 'in', bar, scored };
-  };
+  const evaluation: JobUnderEvaluation = { recruiterId, jobKey, snapshot, canWarm: warmUpsFor(recruiterId) };
+  const evaluate = ({ profile, candidate }: (typeof ordered)[number]): Promise<Evaluated> =>
+    evaluateCandidate(evaluation, candidate, { now, visit: visitOf.get(candidate), profile });
 
   const shown: { candidate: string; bar: CandidateBar; scored: ScoredPair }[] = [];
   const limit = MATCHING_LIMITS.recruiterCardsPerRead;

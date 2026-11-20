@@ -6,8 +6,9 @@ import { env } from '../env';
 // matching, behind MATCHING: services/matchFeeds.ts), which stands for the
 // candidate instead of their account id. A recruiter never gets an id: an id
 // would follow the same person from one job to the next, and from one read to
-// the next. What a decision on a card (2.8) sends back is this token, in the
-// body of the request, never in its path (paths reach traces).
+// the next. What a decision on a card sends back (PUT and DELETE
+// /recruiter/jobs/:id/candidates/decision, services/matches.ts) is this token,
+// in the body of the request, never in its path (paths reach traces).
 //
 // AES-256-GCM, with a key derived from JWT_SECRET (as rateLimit.ts derives the
 // key of its hashes: no setting of its own; a new JWT_SECRET makes every token
