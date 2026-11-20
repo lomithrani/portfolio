@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   AGE_CONFIRMATION_KEYS,
+  CARD_WITHHELD_CRITERIA,
   DISCOVERY_CONSENT_KEYS,
   DISCOVERY_CONSENT_RENEWAL_DAYS,
   DISCOVERY_INACTIVITY_DAYS,
@@ -14,6 +15,10 @@ import {
   LEGAL_VERSION,
   MINIMUM_AGE,
   MINIMUM_DISCOVERY_AGE,
+  PERFECT_JOB_CRITERIA,
+  cardIdentityNames,
+  cardOutcomeCriteria,
+  cardTextIdentifies,
   cleanHeadline,
   currentDiscoveryConsent,
   discoveryConsentCutoff,
@@ -294,6 +299,7 @@ describe('parseDiscoveryCard', () => {
     'Node.js, ASP.NET and Vue.js',
     'Node.js/React developer',
     'Next.js/TypeScript',
+    'ASP.NET/Azure developer',
     'CI/CD, 2015-2024',
     'Java 8, 11, 17 and 21',
     '10 years, 3 teams of 12'
@@ -348,6 +354,92 @@ describe('headlineNames', () => {
     expect(headlineNames('Backend engineer', ['.*'])).toBe(false);
     expect(headlineNames('Backend a.b engineer', ['a.b'])).toBe(true);
     expect(headlineNames('Backend axb engineer', ['a.b'])).toBe(false);
+  });
+});
+
+describe('cardOutcomeCriteria', () => {
+  it("shows no job's outcome unless the journey's job match shows details", () => {
+    expect(cardOutcomeCriteria([...PERFECT_JOB_CRITERIA], false)).toEqual([]);
+  });
+
+  it('never shows the commute or the places, and keeps the order of the criteria rated', () => {
+    expect(CARD_WITHHELD_CRITERIA).toEqual(['commute', 'cities']);
+    expect(cardOutcomeCriteria([...PERFECT_JOB_CRITERIA], true)).toEqual(
+      PERFECT_JOB_CRITERIA.filter((criterion) => criterion !== 'commute' && criterion !== 'cities')
+    );
+    expect(cardOutcomeCriteria(['pay', 'commute', 'workMode', 'cities'], true)).toEqual(['pay', 'workMode']);
+  });
+});
+
+describe('cardIdentityNames', () => {
+  it('names the candidate, their portfolio, their companies (also without a legal form) and their places (also each part)', () => {
+    expect(
+      cardIdentityNames({
+        person: 'Zoé Marchetti',
+        portfolio: ['Léa Quillfeather', 'zoe.m', null],
+        companies: ['Globex S.A.S.', 'Initrode', 'Siemens AG', undefined],
+        places: ['Lyon, France', 'Paris (hybrid)']
+      })
+    ).toEqual([
+      'Zoé Marchetti',
+      'Léa Quillfeather',
+      'zoe.m',
+      'Globex S.A.S.',
+      'globex',
+      'Initrode',
+      'Siemens AG',
+      'siemens',
+      'Lyon, France',
+      'Lyon',
+      'France',
+      'Paris (hybrid)',
+      'Paris'
+    ]);
+  });
+
+  it('leaves out the words that stand for no company or place, blanks, single letters and repeats', () => {
+    expect(
+      cardIdentityNames({
+        person: ' ',
+        companies: ['Freelance', 'Self-employed', 'Indépendant', 'X', 'Initrode', 'INITRODE'],
+        places: ['Remote', 'Full remote', 'Télétravail']
+      })
+    ).toEqual(['Initrode']);
+  });
+});
+
+describe('cardTextIdentifies', () => {
+  const names = cardIdentityNames({
+    person: 'Zoé Marchetti',
+    portfolio: ['Léa Quillfeather'],
+    companies: ['Globex SAS', 'EY'],
+    places: ['Lyon, France']
+  });
+
+  it.each([
+    'Lead developer at Globex',
+    'GLOBEX SAS backend',
+    'Tech lead (Lyon)',
+    'Head of sales, France',
+    'Senior consultant EY',
+    'Engineer for Zoé Marchetti',
+    'lea quillfeather',
+    'Backend, see linkedin.com/in/zoe',
+    'zoe@example.com',
+    'Call 06 12 34 56 78'
+  ])('finds who the candidate is in %p', (text) => {
+    expect(cardTextIdentifies(text, names)).toBe(true);
+  });
+
+  it.each([
+    'Senior backend engineer',
+    'Survey engineer',
+    'Globexian platform',
+    'Freelance remote developer',
+    'ASP.NET/Azure developer',
+    'Node.js/React'
+  ])('finds nobody in %p', (text) => {
+    expect(cardTextIdentifies(text, names)).toBe(false);
   });
 });
 

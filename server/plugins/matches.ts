@@ -2,18 +2,26 @@ import Elysia, { NotFoundError } from 'elysia';
 import { env } from '../env';
 import { userLogged } from './userLogged';
 import { discoveryCardRequest, discoveryConsentRequest } from '../models/elysia';
+import { candidateCardPreview } from '../services/candidateCard';
+import type { CandidateCardPreview } from '../services/candidateCard';
 import { discoveryStatus, grantDiscovery, saveDiscoveryCard, withdrawDiscovery } from '../services/discovery';
 import type { DiscoveryDto } from '../services/discovery';
 
 // Path 2, matching on open jobs (CLAUDE.md, Matching): off unless MATCHING=true.
 // For now, discovery (services/discovery.ts): a candidate asks to be proposed
-// to recruiters, as an anonymous card, and can stop at once. Every route is
-// the signed-in account's own: it takes no account or portfolio to read.
+// to recruiters, as an anonymous card (services/candidateCard.ts), previews
+// it, and can stop at once. Every route is the signed-in account's own: it
+// takes no account or portfolio to read.
 
 const discovery = new Elysia()
   .use(userLogged)
   .get('/discovery', ({ userId }): Promise<DiscoveryDto> => discoveryStatus(userId), {
     detail: { summary: 'Whether you are proposed to recruiters, what you still miss for it, and what your anonymous card shows' }
+  })
+  // The card as recruiters read it, what it leaves out and why, and the
+  // criteria whose outcome a recruiter reads beside it: reads only, on or off
+  .get('/discovery/card', ({ userId }): Promise<CandidateCardPreview> => candidateCardPreview(userId), {
+    detail: { summary: 'Preview your anonymous card as recruiters read it, and what it leaves out of your portfolio' }
   })
   .put('/discovery', ({ userId, body }): Promise<DiscoveryDto> => saveDiscoveryCard(userId, body.card), {
     body: discoveryCardRequest,

@@ -268,6 +268,10 @@ export {
 	cleanHeadline,
 	headlineNames,
 	parseDiscoveryCard,
+	CARD_WITHHELD_CRITERIA,
+	cardOutcomeCriteria,
+	cardIdentityNames,
+	cardTextIdentifies,
 	emailDomainOf
 } from './matching';
 export type {
@@ -276,7 +280,8 @@ export type {
 	DiscoveryState,
 	DiscoveryCardSettings,
 	DiscoveryCardField,
-	DiscoveryCardResult
+	DiscoveryCardResult,
+	CardIdentity
 } from './matching';
 export { matchingMessages } from './matching.messages';
 export { ROBOTS_NOINDEX } from './robots';

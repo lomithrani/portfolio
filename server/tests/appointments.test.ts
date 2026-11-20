@@ -2072,6 +2072,7 @@ describe('no Google token in any API response', () => {
     expect((await call('PUT', '/workflow', { ...auth, body: { steps: journeyTemplate('gate') } })).status).toBe(200);
     expect((await call('GET', '/discovery', auth)).status).toBe(200);
     expect((await call('PUT', '/discovery', { ...auth, body: { card: { headline: 'Backend engineer, payments' } } })).status).toBe(200);
+    expect((await call('GET', '/discovery/card', auth)).json().card.headline).toBe('Backend engineer, payments');
     const consent = { consent: currentDiscoveryConsent() };
     expect((await call('POST', '/discovery/consent', { ...auth, body: consent })).json().state).toBe('on');
     expect((await call('DELETE', '/discovery/consent', auth)).status).toBe(200);

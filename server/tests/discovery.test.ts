@@ -1,10 +1,11 @@
-// Discovery (Path 2, behind MATCHING): GET/PUT /discovery and POST/DELETE
-// /discovery/consent (plugins/matches.ts, services/discovery.ts) against a real
-// MongoDB (MONGO_URL, local or from TEST_MONGO_URL). Each test creates its own
-// accounts, portfolios, perfect jobs, journeys and meeting types, named with a
-// suffix unique to that test, and removes them after: tests pass in any order
-// (--randomize). Google is never asked anything: the calendar a candidate has
-// is a grant stored in the database, as readiness reads it.
+// Discovery (Path 2, behind MATCHING): GET/PUT /discovery, GET /discovery/card
+// and POST/DELETE /discovery/consent (plugins/matches.ts, services/discovery.ts,
+// services/candidateCard.ts) against a real MongoDB (MONGO_URL, local or from
+// TEST_MONGO_URL). Each test creates its own accounts, portfolios, skills,
+// perfect jobs, journeys and meeting types, named with a suffix unique to that
+// test, and removes them after: tests pass in any order (--randomize). Google
+// is never asked anything: the calendar a candidate has is a grant stored in
+// the database, as readiness reads it.
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
 import { readFileSync } from 'node:fs';
@@ -13,12 +14,18 @@ import {
   DISCOVERY_CONSENT_RENEWAL_DAYS,
   DISCOVERY_INACTIVITY_DAYS,
   LEGAL_VERSION,
+  MATCHING_LIMITS,
   currentDiscoveryConsent,
   discoveryConsentCutoff,
   discoveryConsentExpiry,
   ExperienceType,
+  experiencePeriod,
   journeyTemplate,
   matchingMessages,
+  monthCount,
+  professionalMonths,
+  projectUsesSkill,
+  skillMonths,
   withLocale
 } from 'portfolio-common';
 import { env } from '../env';
@@ -30,9 +37,11 @@ import {
   Experience,
   PerfectJob,
   RateLimitCounter,
+  Skill,
   User,
   Workflow
 } from '../models/database';
+import { cardOutcomes } from '../services/candidateCard';
 import {
   DISCOVERY_GRANTS_PER_DAY,
   discoveryGrantsKey,
@@ -197,6 +206,9 @@ afterEach(async () => {
   const named = new RegExp(`-${t.suffix}(@|$)`);
   const users = (await User.find({ email: named }, '_id').lean()).map((user) => user._id);
   await Experience.deleteMany({ title: new RegExp(`-${t.suffix} \\d+$`) });
+  const portfolios = await Domain.find({ admin: { $in: users } }, 'experiences').lean<{ experiences: Types.ObjectId[] }[]>();
+  await Experience.deleteMany({ _id: { $in: portfolios.flatMap((domain) => domain.experiences) } });
+  await Skill.deleteMany({ displayName: new RegExp(`${t.suffix}$`) });
   await AppointmentSchedule.deleteMany({ user: { $in: users } });
   await PerfectJob.deleteMany({ user: { $in: users } });
   await Workflow.deleteMany({ user: { $in: users } });
@@ -210,6 +222,7 @@ afterEach(async () => {
 
 const MATCHING_ROUTES: [string, string, unknown][] = [
   ['GET', '/discovery', undefined],
+  ['GET', '/discovery/card', undefined],
   ['PUT', '/discovery', { card: { headline: 'Backend engineer' } }],
   ['POST', '/discovery/consent', { consent: currentDiscoveryConsent() }],
   ['DELETE', '/discovery/consent', undefined]
@@ -742,10 +755,22 @@ describe('PUT /discovery', () => {
     expect(answer.json().message).toBe('Votre accroche peut faire 80 caractères au plus.');
   });
 
-  it("refuses a headline that names the candidate or their portfolio, and keeps one that does not", async () => {
+  it('refuses a headline that names the candidate, their portfolio, a company or a place, and keeps one that does not', async () => {
     const candidate = await createUser('named', { domain: true });
     await Domain.updateOne({ admin: candidate.id }, { $set: { headerTitle: 'Léa Quillfeather' } });
     await User.updateOne({ _id: candidate.id }, { $set: { name: 'Zoé', surname: 'Marchetti' } });
+    // The companies and places of its experiences, a hidden one's too ("Freelance" is no company)
+    const [hidden, freelance] = await Experience.insertMany([
+      {
+        type: ExperienceType.Professional,
+        title: 'Engineer',
+        company: { name: 'Globex Corporation SAS' },
+        location: 'Lyon, France'
+      },
+      { type: ExperienceType.Professional, title: 'Contractor', company: { name: 'Freelance' }, location: 'Remote' }
+    ]);
+    await Domain.updateOne({ admin: candidate.id }, { $push: { experiences: { $each: [hidden._id, freelance._id] } } });
+    await DiscoveryProfile.create({ user: candidate.id, card: { hiddenExperiences: [hidden._id] } });
     const host = new URL(env.ALLOWED_DOMAINS[0]).host;
     const save = (headline: string, language?: string) =>
       call('PUT', '/discovery', { body: { card: { headline } }, cookie: candidate.cookie, language });
@@ -756,7 +781,10 @@ describe('PUT /discovery', () => {
       `${candidate.domain!.toUpperCase()}, backend`,
       'lea quillfeather, backend engineer',
       'Backend engineer (Zoé Marchetti)',
-      `See ${host}/someone`
+      `See ${host}/someone`,
+      // A company of its experiences, with or without its legal form, and a place
+      'Backend engineer, ex-Globex Corporation',
+      'Backend engineer in lyon'
     ]) {
       const answer = await save(headline);
       expect(answer.status).toBe(422);
@@ -765,12 +793,14 @@ describe('PUT /discovery', () => {
     expect((await save('lea quillfeather', 'fr')).json().message).toBe(
       withLocale('fr', () => matchingMessages.card.headlineIdentity)
     );
-    expect(await DiscoveryProfile.exists({ user: candidate.id })).toBeNull();
+    expect((await profileOf(candidate))?.card?.headline).toBeUndefined();
 
-    // A word of them inside another word is no name: kept
-    const kept = await save('Quillfeathered backend engineer, Node.js/React');
-    expect(kept.status).toBe(200);
-    expect(kept.json().card.headline).toBe('Quillfeathered backend engineer, Node.js/React');
+    // A word of them inside another word is no name, a technology is no link, Freelance and Remote no company or place: kept
+    for (const headline of ['Quillfeathered backend engineer, Node.js/React', 'Freelance remote ASP.NET/Azure developer']) {
+      const kept = await save(headline);
+      expect(kept.status).toBe(200);
+      expect(kept.json().card.headline).toBe(headline);
+    }
   });
 
   it('logs nothing the candidate set: neither a headline nor the experiences hidden', async () => {
@@ -805,9 +835,372 @@ describe('PUT /discovery', () => {
   });
 });
 
+/** A skill of the site's catalogue, named with the test's suffix (removed after) */
+const skillNamed = async (name: string) => {
+  const displayName = `${name} ${t.suffix}`;
+  return (await Skill.create({ displayName, names: [displayName] }))._id;
+};
+
+/** The 1st of a month, as the API stores dates (UTC) */
+const month = (year: number, monthOfYear: number) => new Date(Date.UTC(year, monthOfYear - 1, 1));
+
+/** A portfolio of `experiences` (stored directly) for an account that has none, its ids in order */
+const createPortfolio = async (
+  user: TestUser,
+  experiences: Record<string, unknown>[],
+  header: { headerTitle?: string; headerSubtitle?: string } = {}
+) => {
+  const created = await Experience.insertMany(experiences);
+  const ids = created.map((experience) => String(experience._id));
+  const name = t.id(`portfolio-${user.id.slice(-6)}`);
+  await Domain.create({ name, admin: user.id, experiences: ids, ...header });
+  return { name, ids };
+};
+
+const preview = async (user: TestUser) => {
+  const answer = await call('GET', '/discovery/card', { cookie: user.cookie });
+  expect(answer.status).toBe(200);
+  return answer.json();
+};
+
+/** The experiences of a portfolio as GET /domain/:name gives them (skills populated), but those hidden */
+const shownExperiences = async (name: string, hidden: string[] = []) => {
+  const answer = await call('GET', `/domain/${name}`);
+  return answer.json<{ experiences: { _id: string }[] }>().experiences.filter((experience) => !hidden.includes(experience._id));
+};
+
+describe('GET /discovery/card', () => {
+  it('needs a session', async () => {
+    expect((await call('GET', '/discovery/card')).status).toBe(401);
+  });
+
+  it('shows only what may be shown: no name, portfolio, company, place, project, date or id', async () => {
+    const candidate = await createUser('leak');
+    await User.updateOne({ _id: candidate.id }, { $set: { name: 'Zoé', surname: 'Marchetti' } });
+    const [typescript, kafka, go, rust, spark, leadership] = await Promise.all(
+      ['TypeScript', 'Kafka', 'Go', 'Rust', 'Spark', 'Leadership'].map(skillNamed)
+    );
+    const portfolio = await createPortfolio(
+      candidate,
+      [
+        {
+          type: ExperienceType.Professional,
+          title: 'Senior backend engineer',
+          company: { name: 'Globex Corporation', summary: 'Globex makes widgets' },
+          location: 'Lyon, France',
+          start: month(2021, 3),
+          summary: 'Built the Falcon ledger',
+          projects: [
+            {
+              name: 'Project Falcon',
+              summary: 'Falcon ledger summary',
+              start: month(2021, 3),
+              hardSkills: [{ skill: typescript }, { skill: kafka }],
+              softSkills: [{ skill: leadership }]
+            }
+          ]
+        },
+        {
+          type: ExperienceType.Professional,
+          title: 'Backend developer',
+          company: { name: 'Initrode' },
+          location: 'Nantes',
+          start: month(2018, 1),
+          end: month(2021, 2),
+          projects: [
+            {
+              name: 'Hydra migration',
+              start: month(2019, 6),
+              end: month(2020, 5),
+              hardSkills: [{ skill: go }, { skill: typescript }]
+            }
+          ]
+        },
+        {
+          type: ExperienceType.Professional,
+          title: 'Data engineer',
+          company: { name: 'Umbrella Labs' },
+          location: 'Bordeaux',
+          start: month(2016, 1),
+          end: month(2017, 12),
+          projects: [{ name: 'Umbrella pipeline', hardSkills: [{ skill: spark }, { skill: typescript }] }]
+        },
+        {
+          type: ExperienceType.Personal,
+          title: 'Open-source maintainer',
+          start: month(2019, 1),
+          end: month(2020, 12),
+          projects: [{ name: 'Moonbeam CLI', hardSkills: [{ skill: rust }] }]
+        }
+      ],
+      { headerTitle: 'Léa Quillfeather', headerSubtitle: 'Payments at scale' }
+    );
+    const [, , hidden] = portfolio.ids;
+    const saved = await call('PUT', '/discovery', {
+      body: { card: { headline: 'Payments and event-driven backends', hiddenExperiences: [hidden] } },
+      cookie: candidate.cookie
+    });
+    expect(saved.status).toBe(200);
+
+    const { card, withheld, outcomes } = await preview(candidate);
+    const now = new Date();
+
+    // What a recruiter reads of the candidate, and nothing else
+    expect(Object.keys(card).sort()).toEqual(['experienceMonths', 'headline', 'roles', 'skills']);
+    for (const role of card.roles) expect(Object.keys(role).sort()).toEqual(['current', 'months', 'title']);
+    for (const skill of card.skills) expect(Object.keys(skill).sort()).toEqual(['months', 'name']);
+    const read = JSON.stringify(card).toLowerCase();
+    for (const secret of [
+      portfolio.name,
+      'Quillfeather',
+      'Payments at scale',
+      'Zoé',
+      'Marchetti',
+      t.email('leak'),
+      candidate.id,
+      ...portfolio.ids,
+      'Globex',
+      'widgets',
+      'Initrode',
+      'Umbrella',
+      'Lyon',
+      'France',
+      'Nantes',
+      'Bordeaux',
+      'Falcon',
+      'ledger',
+      'Hydra',
+      'Moonbeam',
+      // The hidden experience's role, and its skill used nowhere else
+      'Data engineer',
+      'Spark'
+    ]) {
+      expect(read).not.toContain(secret.toLowerCase());
+    }
+    expect(read).not.toMatch(/\d{4}-\d{2}/);
+
+    expect(card.headline).toBe('Payments and event-driven backends');
+    // The most recent first, the months spent so far; a personal experience is no role
+    expect(card.roles).toEqual([
+      { title: 'Senior backend engineer', months: monthCount(month(2021, 3), now, now), current: true },
+      { title: 'Backend developer', months: 38, current: false }
+    ]);
+
+    // Counted as the experiences page counts them, on the experiences the card shows
+    const shown = await shownExperiences(portfolio.name, [hidden]);
+    expect(card.experienceMonths).toBe(professionalMonths(shown as never, now));
+    const months = (name: string, experiences = shown) =>
+      skillMonths(experiences as never, (project) => projectUsesSkill(project as never, name), now);
+    // Technical skills only (Leadership is soft), the most used first
+    expect(card.skills.map((skill: { name: string }) => skill.name)).toEqual(
+      ['TypeScript', 'Kafka', 'Rust', 'Go'].map((name) => `${name} ${t.suffix}`)
+    );
+    for (const skill of card.skills) expect(skill.months).toBe(months(skill.name));
+    // The hidden experience's months are not TypeScript's on the card
+    const everything = await shownExperiences(portfolio.name);
+    expect(months(`TypeScript ${t.suffix}`, everything)).toBeGreaterThan(card.skills[0].months);
+
+    expect(withheld).toEqual({ headline: false, roles: [{ experience: hidden, reason: 'hidden' }], skills: [] });
+    expect(outcomes).toEqual([]);
+  });
+
+  it('lists the most recent roles up to the limit, and none that has not started', async () => {
+    const candidate = await createUser('limits');
+    const nextYear = new Date().getUTCFullYear() + 1;
+    const count = MATCHING_LIMITS.roles + 2;
+    const yearly = Array.from({ length: count }, (_, index) => ({
+      type: ExperienceType.Professional,
+      title: `Engineer ${String.fromCharCode(65 + index)}`,
+      start: month(2010 + index, 1),
+      end: month(2010 + index, 12)
+    }));
+    const portfolio = await createPortfolio(candidate, [
+      ...yearly,
+      { type: ExperienceType.Professional, title: 'Upcoming role', start: month(nextYear, 1) }
+    ]);
+
+    const { card, withheld } = await preview(candidate);
+
+    // The latest first: the last ones created, a year each
+    const expected = yearly.slice(-MATCHING_LIMITS.roles).reverse();
+    expect(card.roles).toEqual(expected.map(({ title }) => ({ title, months: 12, current: false })));
+    expect(card.experienceMonths).toBe(12 * count);
+    expect(withheld.roles).toEqual([
+      { experience: portfolio.ids[count], reason: 'upcoming' },
+      { experience: portfolio.ids[1], reason: 'limit' },
+      { experience: portfolio.ids[0], reason: 'limit' }
+    ]);
+  });
+
+  it('counts a role up to the current month, from its projects without dates of its own, and none without dates', async () => {
+    const candidate = await createUser('dates');
+    const now = new Date();
+    const nextYear = now.getUTCFullYear() + 1;
+    await createPortfolio(candidate, [
+      { type: ExperienceType.Professional, title: 'Contract engineer', start: month(2025, 1), end: month(nextYear, 12) },
+      {
+        type: ExperienceType.Professional,
+        title: 'Project engineer',
+        projects: [{ name: 'Only dates', start: month(2015, 1), end: month(2015, 6) }]
+      },
+      { type: ExperienceType.Professional, title: 'Undated engineer' }
+    ]);
+
+    const { card } = await preview(candidate);
+
+    expect(card.roles).toEqual([
+      // Ending later: held now, counted so far
+      { title: 'Contract engineer', months: monthCount(month(2025, 1), now, now), current: true },
+      { title: 'Project engineer', months: 6, current: false },
+      { title: 'Undated engineer', months: null, current: false }
+    ]);
+    expect(card.experienceMonths).toBe(monthCount(month(2025, 1), now, now) + 6);
+  });
+
+  it('leaves out the texts that say who the candidate is, and tells them which', async () => {
+    const candidate = await createUser('identity');
+    await User.updateOne({ _id: candidate.id }, { $set: { name: 'Zoé', surname: 'Marchetti' } });
+    const [typescript, toolkit] = await Promise.all(['TypeScript', 'Globex Toolkit'].map(skillNamed));
+    const project = {
+      name: 'Work',
+      start: month(2020, 1),
+      end: month(2020, 12),
+      hardSkills: [{ skill: typescript }, { skill: toolkit }]
+    };
+    const role = (title: string, extra: Record<string, unknown> = {}) => ({
+      type: ExperienceType.Professional,
+      title,
+      start: month(2020, 1),
+      end: month(2020, 12),
+      ...extra
+    });
+    const portfolio = await createPortfolio(
+      candidate,
+      [
+        // A company named without its legal form, a place by a part of it, a link, a two-letter company, the portfolio's title
+        role('Platform engineer', { company: { name: 'Globex S.A.S.' }, location: 'Lyon, France', projects: [project] }),
+        role('Lead developer at Globex'),
+        role('Tech lead (Lyon)'),
+        role('Engineer, see linkedin.com/in/zoe'),
+        role('Senior consultant EY', { company: { name: 'EY' } }),
+        role('Engineer for Léa Quillfeather'),
+        role('Freelance backend developer', { company: { name: 'Freelance' }, location: 'Remote' })
+      ],
+      { headerTitle: 'Léa Quillfeather' }
+    );
+    const headline = 'Backend engineer for Hooli';
+    const saved = await call('PUT', '/discovery', { body: { card: { headline } }, cookie: candidate.cookie });
+    expect(saved.status).toBe(200);
+    // A company added since the headline was saved
+    const [hooli] = await Experience.insertMany([role('Engineer', { company: { name: 'Hooli' } })]);
+    await Domain.updateOne({ admin: candidate.id }, { $push: { experiences: hooli._id } });
+
+    const { card, withheld } = await preview(candidate);
+
+    expect(card.headline).toBeNull();
+    expect(card.roles.map((shown: { title: string }) => shown.title).sort()).toEqual(
+      ['Engineer', 'Freelance backend developer', 'Platform engineer'].sort()
+    );
+    expect(card.skills).toEqual([{ name: `TypeScript ${t.suffix}`, months: 12 }]);
+    expect(withheld.headline).toBe(true);
+    expect(withheld.roles.map(({ experience }: { experience: string }) => experience).sort()).toEqual(
+      portfolio.ids.slice(1, 6).sort()
+    );
+    expect(withheld.roles.every(({ reason }: { reason: string }) => reason === 'title')).toBe(true);
+    expect(withheld.skills).toEqual([`Globex Toolkit ${t.suffix}`]);
+  });
+
+  it('lists the most used technical skills, up to the limit', async () => {
+    const candidate = await createUser('skills');
+    const count = MATCHING_LIMITS.skills + 2;
+    const ids = await Promise.all(Array.from({ length: count }, (_, index) => skillNamed(`Skill ${index + 1}`)));
+    await createPortfolio(candidate, [
+      {
+        type: ExperienceType.Professional,
+        title: 'Engineer',
+        start: month(2010, 1),
+        end: month(2011, 12),
+        // Skill n used n months
+        projects: ids.map((skill, index) => ({
+          name: `Project ${index}`,
+          start: month(2010, 1),
+          end: month(2010 + Math.floor(index / 12), (index % 12) + 1),
+          hardSkills: [{ skill }]
+        }))
+      }
+    ]);
+
+    const { card } = await preview(candidate);
+
+    expect(card.skills).toEqual(
+      Array.from({ length: MATCHING_LIMITS.skills }, (_, index) => ({
+        name: `Skill ${count - index} ${t.suffix}`,
+        months: count - index
+      }))
+    );
+  });
+
+  it("shows a job's outcomes beside the card only when the journey shows details, never the commute or the places", async () => {
+    const candidate = await createUser('outcomes', { domain: true });
+    await PerfectJob.create({
+      user: candidate.id,
+      criteria: {
+        workMode: { importance: 4, modes: ['remote'] },
+        cities: { importance: 3, places: ['Lyon'] },
+        commute: { importance: 3, from: '1 rue de la Paix, Paris', modes: ['car'], maxMinutesPerWeek: 300 },
+        contractTypes: { importance: 3, types: ['cdi'] },
+        pay: { importance: 5, perYear: 65_000 }
+      }
+    });
+
+    // The default journey has no job match: no outcome
+    expect((await preview(candidate)).outcomes).toEqual([]);
+    // The gate shows them (showDetails), in the order of the criteria
+    await saveJourney(candidate);
+    expect((await preview(candidate)).outcomes).toEqual(['workMode', 'contractTypes', 'pay']);
+    const scoreOnly = journeyTemplate('gate').map((step) =>
+      step.type === 'job-match' ? { ...step, config: { minScore: 70, showDetails: false } } : step
+    );
+    await saveJourney(candidate, scoreOnly);
+    expect((await preview(candidate)).outcomes).toEqual([]);
+  });
+
+  it('gives an account without a portfolio an empty card, and writes nothing', async () => {
+    const user = await createUser('empty');
+    expect(await preview(user)).toEqual({
+      card: { headline: null, experienceMonths: 0, roles: [], skills: [] },
+      outcomes: [],
+      withheld: { headline: false, roles: [], skills: [] }
+    });
+    expect(await DiscoveryProfile.exists({ user: user.id })).toBeNull();
+  });
+});
+
+describe('cardOutcomes', () => {
+  const views = [
+    { criterion: 'titles', outcome: 'partial', notStated: true },
+    { criterion: 'cities', outcome: 'miss' },
+    { criterion: 'commute', outcome: 'unknown' },
+    { criterion: 'contractTypes', outcome: 'miss', dealBreaker: true },
+    { criterion: 'pay', outcome: 'match' }
+  ] as const;
+
+  it('shows the outcomes of a job only when the journey shows details', () => {
+    expect(cardOutcomes(views, false)).toEqual([]);
+  });
+
+  it('never shows the commute or the places, nor which criterion is a deal-breaker', () => {
+    expect(cardOutcomes(views, true)).toEqual([
+      { criterion: 'titles', outcome: 'partial', notStated: true },
+      { criterion: 'contractTypes', outcome: 'miss' },
+      { criterion: 'pay', outcome: 'match' }
+    ]);
+  });
+});
+
 describe('what discovery is built on', () => {
   it('asks no model anything: no Claude SDK, no PDF extraction', () => {
-    for (const file of ['../services/discovery.ts', '../plugins/matches.ts']) {
+    for (const file of ['../services/discovery.ts', '../services/candidateCard.ts', '../plugins/matches.ts']) {
       const source = readFileSync(new URL(file, import.meta.url), 'utf8');
       expect(source).not.toContain('@anthropic-ai/sdk');
       expect(source).not.toContain('claudePdfExtraction');

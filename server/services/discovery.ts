@@ -7,15 +7,15 @@ import {
   discoveryRequirementMessage,
   discoveryRequirements,
   discoveryState,
-  headlineNames,
   matchingMessages,
   parseDiscoveryCard,
   parseDiscoveryConsent
 } from 'portfolio-common';
 import type { DiscoveryConsentInput, DiscoveryRequirement, DiscoveryState } from 'portfolio-common';
 import { env } from '../env';
-import { DiscoveryProfile, Domain, User } from '../models/database';
+import { DiscoveryProfile, Domain } from '../models/database';
 import { FieldValidationError, TooManyRequestsError } from '../errors';
+import { candidateIdentity, identifiesCandidate } from './candidateCard';
 import { candidateReadiness } from './candidateReadiness';
 import { userAcceptedCurrentTerms } from './legal';
 import { logger } from './logger';
@@ -75,50 +75,10 @@ interface StoredProfile {
 const storedProfile = (userId: string) =>
   DiscoveryProfile.findOne({ user: userId }, { enabledAt: 1, lastActiveAt: 1, card: 1 }).lean<StoredProfile>();
 
-interface OwnPortfolio {
-  /** Its address name; null without a portfolio */
-  name: string | null;
-  /** Its title, as its header shows it */
-  title: string | null;
-  /** The ids of its experiences */
-  experiences: Set<string>;
-}
-
-/** The portfolio `userId` owns: what the card may name of it (nothing), and its experiences */
-const ownPortfolio = async (userId: string): Promise<OwnPortfolio> => {
-  const domain = await Domain.findOne({ admin: userId }, { name: 1, headerTitle: 1, experiences: 1 })
-    .lean<{ name?: string; headerTitle?: string | null; experiences?: Types.ObjectId[] }>();
-  return {
-    name: domain?.name ?? null,
-    title: domain?.headerTitle ?? null,
-    experiences: new Set((domain?.experiences ?? []).map(String))
-  };
-};
-
-/** The hosts of the site's web pages (ALLOWED_DOMAINS), lower case: where portfolios are */
-const siteHosts = (): string[] =>
-  env.ALLOWED_DOMAINS.flatMap((origin) => {
-    try {
-      return [new URL(origin).host.toLowerCase()];
-    } catch {
-      return [];
-    }
-  });
-
-/**
- * Whether `headline` says who the account `userId` is, whose portfolio is
- * `portfolio`: its name, the portfolio's title or address name
- * (portfolio-common's headlineNames), or a page of the site (`<host>/`). The
- * card is anonymous until both sides are interested
- */
-const headlineIdentifies = async (userId: string, headline: string, portfolio: OwnPortfolio) => {
-  const user = await User.findById(userId, { name: 1, surname: 1 }).lean<{ name?: string; surname?: string }>();
-  const fullName = [user?.name, user?.surname].filter(Boolean).join(' ');
-  const lower = headline.toLowerCase();
-  return (
-    headlineNames(headline, [fullName, portfolio.title, portfolio.name]) ||
-    siteHosts().some((host) => lower.includes(`${host}/`))
-  );
+/** The ids of the experiences of the portfolio `userId` owns (none without one) */
+const ownExperiences = async (userId: string): Promise<Set<string>> => {
+  const domain = await Domain.findOne({ admin: userId }, { experiences: 1 }).lean<{ experiences?: Types.ObjectId[] }>();
+  return new Set((domain?.experiences ?? []).map(String));
 };
 
 /**
@@ -142,11 +102,11 @@ const missingRequirements = async (
 export async function discoveryStatus(userId: string, now = new Date()): Promise<DiscoveryDto> {
   const profile = await storedProfile(userId);
   const enabledAt = profile?.enabledAt ?? null;
-  const [missing, journey, portfolio] = await Promise.all([
+  const [missing, journey, experiences] = await Promise.all([
     // Activity counts only while discovery is on: turning it on again is activity
     missingRequirements(userId, enabledAt ? profile?.lastActiveAt : undefined, now),
     ownerJourney(userId),
-    ownPortfolio(userId)
+    ownExperiences(userId)
   ]);
   const jobMatch = journey.steps.find((step) => step.type === 'job-match');
   return {
@@ -160,7 +120,7 @@ export async function discoveryStatus(userId: string, now = new Date()): Promise
       // An experience deleted since is no longer hidden: it is gone
       hiddenExperiences: (profile?.card?.hiddenExperiences ?? [])
         .map(String)
-        .filter((id) => portfolio.experiences.has(id))
+        .filter((id) => experiences.has(id))
     }
   };
 }
@@ -282,20 +242,24 @@ export async function withdrawDiscovery(userId: string, now = new Date()): Promi
  * Saves what the anonymous card of the account `userId` shows (PUT
  * /discovery), on or off: 422 on `card...` for settings that break a rule
  * (portfolio-common's parseDiscoveryCard), then on `card.headline` for a
- * headline that names the account or its portfolio (headlineIdentifies). Only
- * the experiences of its own portfolio are kept hidden. Changing it is
- * activity.
+ * headline that says who the account is: its name, its portfolio's title or
+ * address name, a company or a place of its experiences, a page of the site
+ * (identifiesCandidate, the rule the card keeps its texts to). Only the
+ * experiences of its own portfolio are kept hidden. Changing it is activity.
  */
 export async function saveDiscoveryCard(userId: string, input: unknown, now = new Date()): Promise<DiscoveryDto> {
   const result = parseDiscoveryCard(input);
   if (!result.ok) throw new FieldValidationError(result.property, () => refusal(parseDiscoveryCard(input)));
-  const portfolio = await ownPortfolio(userId);
   const { headline } = result.card;
-  if (headline && (await headlineIdentifies(userId, headline, portfolio))) {
+  const [experiences, identity] = await Promise.all([
+    ownExperiences(userId),
+    headline ? candidateIdentity(userId) : undefined
+  ]);
+  if (headline && identity && identifiesCandidate(headline, identity)) {
     throw new FieldValidationError('card.headline', () => matchingMessages.card.headlineIdentity);
   }
   const hidden = result.card.hiddenExperiences
-    .filter((id) => portfolio.experiences.has(id))
+    .filter((id) => experiences.has(id))
     .map((id) => new Types.ObjectId(id));
   await DiscoveryProfile.updateOne(
     { user: userId },

@@ -682,7 +682,7 @@ this one has, see [Résumé import](#résumé-import), but the budget does not c
 ## Matching
 
 Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=true`**: its routes
-(`GET`/`PUT /discovery`, `POST`/`DELETE /discovery/consent` for now) are not registered, so they
+(`GET`/`PUT /discovery`, `GET /discovery/card`, `POST`/`DELETE /discovery/consent` for now) are not registered, so they
 answer 404 as routes that do not exist whatever the request (`/swagger` does not list them),
 nothing of it is read or written, and the metric `discoverable_candidates` is 0. The flag is read
 when the API starts: a change takes effect at its next deploy. The startup line `Running at ...`

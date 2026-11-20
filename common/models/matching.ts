@@ -11,6 +11,7 @@
 
 import { cleanIssueText } from './issueText';
 import { matchingMessages as m } from './matching.messages';
+import type { PerfectJobCriterion } from './perfectJob';
 import type { CandidateReadiness } from './readiness';
 
 /** Criteria a candidate rates, at least, to be proposed to recruiters: the pay among them */
@@ -226,12 +227,13 @@ const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
 // Ways to reach or find the candidate, which the card is read before both sides are interested
 // in: a link (a scheme, `www.`, or a host followed by a path, `linkedin.com/in/jane`, but not a
-// technology such as `Node.js/React`: .js and .ts are no domains), an email address, and a phone
-// number (9 digits or more, one separator at most between two of them). Tested on the headline as
-// it is kept, folded by NFKC (`jane＠acme.fr` is `jane@acme.fr`)
+// technology such as `Node.js/React` or `ASP.NET/Azure`: .js, .ts and .net there are no domains),
+// an email address, and a phone number (9 digits or more, one separator at most between two of
+// them). Tested on the text as the card keeps it, folded by NFKC (`jane＠acme.fr` is
+// `jane@acme.fr`)
 const HEADLINE_CONTACTS = [
 	/[a-z][a-z0-9+.-]*:\/\/|www\./i,
-	/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?!(?:js|ts)\/)[a-z]{2,24}\/\S/i,
+	/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?!(?:js|ts|net)\/)[a-z]{2,24}\/\S/i,
 	/[^\s@]+@[^\s@]+\.[^\s@]{2,}/,
 	/(?:\+?\d[\s.()-]?){9,}/
 ];
@@ -258,17 +260,19 @@ const MIN_NAME_LENGTH = 3;
 /**
  * Whether `headline` names one of `names` (the candidate's name, the title of their portfolio, its
  * address name), whole, whatever its case, accents or spacing: `Jane Doe` in `jane doe, backend`,
- * `dev` not in `developer`. Names shorter than MIN_NAME_LENGTH are left out. The API refuses such a
- * headline (422 on `card.headline`): the card is anonymous until both sides are interested
+ * `dev` not in `developer`. Names shorter than `minLength` (MIN_NAME_LENGTH unless said) are left
+ * out. The API refuses such a headline (422 on `card.headline`): the card is anonymous until both
+ * sides are interested (cardTextIdentifies, which also looks for companies and places)
  */
 export const headlineNames = (
 	headline: string,
-	names: readonly (string | null | undefined)[]
+	names: readonly (string | null | undefined)[],
+	minLength = MIN_NAME_LENGTH
 ): boolean => {
 	const text = folded(headline);
 	return names.some((name) => {
 		const key = typeof name === 'string' ? folded(name) : '';
-		if (key.length < MIN_NAME_LENGTH) return false;
+		if (key.length < minLength) return false;
 		return new RegExp(`(?:^|${NOT_WORD})${escapeRegExp(key)}(?:$|${NOT_WORD})`, 'u').test(text);
 	});
 };
@@ -277,7 +281,8 @@ export const headlineNames = (
  * The card settings a client sent (untrusted), as they are kept, or the first rule they break:
  * the headline cleaned (cleanHeadline; empty is none), at most DISCOVERY_LIMITS.headline
  * characters, without a link, an email address or a phone number (the API also refuses one that
- * names the candidate or their portfolio: headlineNames); the hidden experiences a list of ids,
+ * says who the candidate is, their name, their portfolio, a company or a place of their
+ * experiences: cardTextIdentifies); the hidden experiences a list of ids,
  * without duplicates, at most DISCOVERY_LIMITS.hiddenExperiences (the API keeps those of the
  * candidate's own portfolio)
  */
@@ -316,6 +321,161 @@ export const parseDiscoveryCard = (input: unknown): DiscoveryCardResult => {
 		};
 	}
 	return { ok: true, card: { headline, hiddenExperiences } };
+};
+
+// --- The anonymous card -------------------------------------------------------------------
+
+/**
+ * The criteria whose outcome an anonymous card never shows, whatever the candidate's journey shows
+ * on their page for recruiters: the commute (it tells where they live) and the places they want to
+ * work (no area or location before both sides are interested)
+ */
+export const CARD_WITHHELD_CRITERIA = ['commute', 'cities'] as const;
+
+const withheldCriteria: ReadonlySet<PerfectJobCriterion> = new Set(CARD_WITHHELD_CRITERIA);
+
+/**
+ * The criteria, of those the candidate rates (`rated`, in order), whose outcome for a recruiter's
+ * job their anonymous card shows: none unless the job match of their journey shows details
+ * (`showDetails`), so that one setting decides what recruiters learn of a job's outcomes on both
+ * paths (the candidate's link and matching), and never CARD_WITHHELD_CRITERIA
+ */
+export const cardOutcomeCriteria = (
+	rated: readonly PerfectJobCriterion[],
+	showDetails: boolean
+): PerfectJobCriterion[] =>
+	showDetails ? rated.filter((criterion) => !withheldCriteria.has(criterion)) : [];
+
+/** What says who a candidate is, which their anonymous card never shows (cardIdentityNames) */
+export interface CardIdentity {
+	/** Their name, as their account has it */
+	person?: string | null;
+	/** The title of their portfolio, and its address name */
+	portfolio?: readonly (string | null | undefined)[];
+	/** The companies of their experiences */
+	companies?: readonly (string | null | undefined)[];
+	/** The places of their experiences, as they typed them (`Lyon, France`) */
+	places?: readonly (string | null | undefined)[];
+}
+
+/**
+ * Words that stand for no company and no place, which a card's texts may use whatever the
+ * experiences say: `Freelance backend developer` names no company, even when an experience's
+ * company is `Freelance`; `Remote` is no place
+ */
+const GENERIC_NAMES: ReadonlySet<string> = new Set(
+	[
+		'freelance',
+		'freelancer',
+		'free-lance',
+		'self-employed',
+		'self employed',
+		'independent',
+		'indépendant',
+		'indépendante',
+		'auto-entrepreneur',
+		'micro-entrepreneur',
+		'consultant',
+		'confidential',
+		'confidentiel',
+		'remote',
+		'full remote',
+		'fully remote',
+		'télétravail',
+		'hybrid',
+		'hybride',
+		'worldwide',
+		'anywhere'
+	].map(folded)
+);
+
+/** Legal forms in a company's name, left out to find the name itself: Acme SAS is Acme */
+const LEGAL_FORMS: ReadonlySet<string> = new Set([
+	'sa',
+	'sas',
+	'sasu',
+	'sarl',
+	'eurl',
+	'sci',
+	'snc',
+	'scop',
+	'inc',
+	'ltd',
+	'llc',
+	'llp',
+	'plc',
+	'corp',
+	'gmbh',
+	'ag',
+	'bv',
+	'nv',
+	'spa',
+	'srl',
+	'sl'
+]);
+
+/** A company's name, and the same without its legal form when it has one (Acme for Acme S.A.S.) */
+const companyNames = (name: string): string[] => {
+	const words = folded(name)
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter(Boolean);
+	// Single letters too: S.A.S. is s, a, s
+	const kept = words.filter((word) => word.length > 1 && !LEGAL_FORMS.has(word));
+	return kept.length > 0 && kept.length < words.length ? [name, kept.join(' ')] : [name];
+};
+
+/** A place as typed, and each of its parts (Lyon and France for `Lyon, France`) */
+const placeNames = (place: string): string[] => [
+	place,
+	...place.split(/[,;/()|·•]|\s[-–—]\s/).map((part) => part.trim())
+];
+
+/** Names of two letters can name a company or a place (EY, HP, UK), never one of one */
+const CARD_NAME_MIN_LENGTH = 2;
+
+/**
+ * The names an anonymous card never shows, of the candidate `identity`: their name, the title and
+ * address name of their portfolio, the companies of their experiences (also without their legal
+ * form: Acme for Acme SAS) and their places (also each part: Lyon and France for `Lyon, France`),
+ * the words that stand for no company or place left out (Freelance, Remote): what
+ * cardTextIdentifies looks for
+ */
+export const cardIdentityNames = ({
+	person,
+	portfolio = [],
+	companies = [],
+	places = []
+}: CardIdentity): string[] => {
+	const text = (value: string | null | undefined): value is string =>
+		typeof value === 'string' && value.trim() !== '';
+	const names = [
+		...[person, ...portfolio].filter(text),
+		...companies.filter(text).flatMap(companyNames),
+		...places.filter(text).flatMap(placeNames)
+	];
+	const keep = new Map<string, string>();
+	for (const name of names) {
+		const key = folded(name);
+		if (key.length >= CARD_NAME_MIN_LENGTH && !GENERIC_NAMES.has(key) && !keep.has(key)) {
+			keep.set(key, name);
+		}
+	}
+	return [...keep.values()];
+};
+
+/**
+ * Whether `text`, which an anonymous card would show (its headline, a role title, a skill), says who
+ * the candidate is or how to reach them: a link, an email address or a phone number, or one of
+ * `names` (cardIdentityNames), whole, whatever its case, accents or spacing (headlineNames, from two
+ * letters: EY, HP). The API leaves such a text out of the card, and refuses such a headline (422 on
+ * `card.headline`): the card is anonymous until both sides are interested
+ */
+export const cardTextIdentifies = (text: string, names: readonly string[]): boolean => {
+	const cleaned = cleanHeadline(text);
+	return (
+		HEADLINE_CONTACTS.some((pattern) => pattern.test(cleaned)) ||
+		headlineNames(cleaned, names, CARD_NAME_MIN_LENGTH)
+	);
 };
 
 // --- Helpers ---------------------------------------------------------------------------
