@@ -541,7 +541,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				</td>
 				<td>
 					Jusqu'à la suppression de votre compte, ou jusqu'à ce que le propriétaire retire l'étape
-					ou supprime son compte
+					ou supprime son compte ; la version d'une offre, au plus tard jusqu'à ce que vous
+					supprimiez cette offre
 				</td>
 			</tr>
 			<tr>

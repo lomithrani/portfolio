@@ -4,10 +4,13 @@ import {
 	JOB_FIELD_PATHS,
 	LOCKED_JOB_FIELDS,
 	changedLockedFields,
+	jobSnapshotsDiffer,
 	jobTermsLocked,
 	locksJobTerms,
 	scoredFieldsDiffer,
-	withLocale
+	withLocale,
+	type JobPostingInput,
+	type JobSnapshot
 } from 'portfolio-common';
 import {
 	JOB_FIELD_LABELS,
@@ -419,6 +422,19 @@ describe('the terms of an opened posting', () => {
 			false
 		);
 		expect(scoredFieldsDiffer(stored, edit({ payMin: '46000' }))).toBe(true);
+		// Whether it differs at all (a JobSnapshot has no status): whatever the order of its keys
+		const version = (posting: JobPostingInput): JobSnapshot => {
+			const snapshot: Partial<JobPostingInput> = { ...posting };
+			delete snapshot.status;
+			return snapshot as JobSnapshot;
+		};
+		const reordered = Object.fromEntries(Object.entries(version(stored)).reverse());
+		expect(jobSnapshotsDiffer(version(stored), version(edit({ status: 'closed' })))).toBe(false);
+		expect(jobSnapshotsDiffer(version(stored), reordered as JobSnapshot)).toBe(false);
+		expect(jobSnapshotsDiffer(version(stored), version(edit({ benefits: ['Gym'] })))).toBe(true);
+		expect(jobSnapshotsDiffer(version(stored), version(edit({ description: 'Other.' })))).toBe(
+			true
+		);
 	});
 
 	it('take the top of a range saved wider than the cap down to the top it was scored with only', () => {

@@ -101,7 +101,8 @@ export {
 	jobTermsLocked,
 	locksJobTerms,
 	changedLockedFields,
-	scoredFieldsDiffer
+	scoredFieldsDiffer,
+	jobSnapshotsDiffer
 } from './jobTerms';
 export {
 	USER_MODES,

@@ -910,14 +910,20 @@ describe('submitting a step (POST /workflow/domains/:domainName/steps/:stepId)',
     const sharedAt = (await view()).sharedAt;
     expect(new Date(sharedAt).getTime()).not.toBeNaN();
 
-    // A status change, or a field neither the owner's criteria nor the step reads, is not a change
-    // the step asks to share
+    // A status change is not a change the step asks to share
     await JobPosting.updateOne({ _id: jobId }, { status: 'on_hold' });
-    await JobPosting.updateOne({ _id: jobId }, { status: 'open', benefits: ['Lunch'] });
+    await JobPosting.updateOne({ _id: jobId }, { status: 'open' });
+    expect(await view()).not.toHaveProperty('outdated');
+
+    // Anything else the owner reads of it is, a field no criterion reads included (its benefits),
+    // compared as it is now: back as it was shared, nothing is to share again
+    await JobPosting.updateOne({ _id: jobId }, { benefits: ['Lunch'] });
+    expect(await view()).toEqual({ _id: jobId, title: 'Staff Engineer', company: 'Acme', status: 'open', sharedAt, outdated: true });
+    await JobPosting.updateOne({ _id: jobId }, { $unset: { benefits: '' } });
     expect(await view()).not.toHaveProperty('outdated');
 
     // Its description, or a field the job match reads (written here directly: once opened, the API
-    // locks those), is: the title the owner reads, and the invitation names, stay the version's
+    // locks those): the title the owner reads, and the invitation names, stay the version's
     await JobPosting.updateOne({ _id: jobId }, { description: 'Build other things.' });
     expect(await view()).toEqual({ _id: jobId, title: 'Staff Engineer', company: 'Acme', status: 'open', sharedAt, outdated: true });
     await JobPosting.updateOne({ _id: jobId }, { description: 'Build things.', title: 'Principal Engineer', company: 'Other' });
@@ -986,47 +992,100 @@ describe('submitting a step (POST /workflow/domains/:domainName/steps/:stepId)',
     expect(refused.json()).toMatchObject({
       property: 'input.jobId',
       message:
-        'This job description cannot be shared as it is: open it in your recruiter space, where its editor says what to change, then pick it again'
+        'This job description cannot be shared as it is: correct it in your recruiter space, or duplicate it if what needs correcting is locked, then pick the corrected one here'
     });
     expect(await WorkflowInstance.countDocuments({ owner: owner.id })).toBe(0);
   });
 
-  it(`caps the jobs shared on a journey that scores them at ${JOB_SHARES_PER_DAY.limit} a day per recruiter (429)`, async () => {
+  it(`caps the jobs shared on a journey that scores them at ${JOB_SHARES_PER_DAY.limit} a day per owner and recruiter (429)`, async () => {
     const owner = await createUser('owner', { domain: true });
+    const third = await createUser('third', { domain: true });
     const other = await createUser('other', { domain: true });
     const recruiter = await createUser('recruiter', { recruiter: true });
     const second = await createUser('second', { recruiter: true });
     await setJourney(owner, job(), jobMatch(0), meeting());
+    await setJourney(third, job(), jobMatch(0), meeting());
     await setJourney(other, job(), meeting());
     const jobs = await Promise.all([1, 2, 3].map((n) => createJob(recruiter, { title: `Engineer ${n}` })));
+    const stored = async () =>
+      (await WorkflowInstance.findOne({ owner: owner.id, visitor: recruiter.id }).lean())?.steps?.job.data;
 
-    // New jobs or the same one again, each share is scored: counted
+    // Another job than the one kept, the one shared before it included, is a new score: counted
     for (let n = 0; n < JOB_SHARES_PER_DAY.limit; n++) {
       expect((await submit(owner.domain, 'job', { jobId: jobs[n % jobs.length] }, recruiter)).status).toBe(200);
     }
+    const last = jobs[(JOB_SHARES_PER_DAY.limit - 1) % jobs.length];
+    const kept = await stored();
+    expect(kept.job).toBe(last);
+    // The job kept, picked again unchanged, is nothing new: not counted, kept as it was shared,
+    // also once the day's shares are taken
+    for (let n = 0; n <= JOB_SHARES_PER_DAY.limit; n++) {
+      expect((await submit(owner.domain, 'job', { jobId: last }, recruiter)).status).toBe(200);
+    }
+    expect(await stored()).toEqual(kept);
     const refused = await submit(owner.domain, 'job', { jobId: jobs[2] }, recruiter);
     expect(refused.status).toBe(429);
-    expect(refused.text).toBe('A job can be shared at most 5 times a day on this page, where it is scored: try again tomorrow');
+    expect(refused.text).toBe('You can share at most 5 jobs a day on this page, where each one is scored: try again tomorrow');
     expect(Number(refused.headers.get('retry-after'))).toBeGreaterThan(0);
     // Nothing stored: the last share holds
-    const instance = await WorkflowInstance.findOne({ owner: owner.id, visitor: recruiter.id }).lean();
-    expect(instance?.steps?.job.data.job).toBe(jobs[(JOB_SHARES_PER_DAY.limit - 1) % jobs.length]);
+    expect(await stored()).toEqual(kept);
     expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:succeeded', 'job-match:succeeded', 'meeting:pending']);
 
-    // Per owner and recruiter: another recruiter has a count of their own, which a refusal before
-    // the share (a job that is not open) does not take from
+    // Per owner: the same recruiter shares on another journey that scores them
+    expect((await submit(third.domain, 'job', { jobId: jobs[2] }, recruiter)).status).toBe(200);
+
+    // And per recruiter: another recruiter has a count of their own, which a refusal before the
+    // share (a job that is not open) does not take from
     const closed = await createJob(second, { status: 'closed' });
     for (let n = 0; n < JOB_SHARES_PER_DAY.limit; n++) {
       expect((await submit(owner.domain, 'job', { jobId: closed }, second)).status).toBe(409);
     }
-    const open = await createJob(second);
-    for (let n = 0; n < JOB_SHARES_PER_DAY.limit; n++) {
-      expect((await submit(owner.domain, 'job', { jobId: open }, second)).status).toBe(200);
+    const opens = await Promise.all(
+      Array.from({ length: JOB_SHARES_PER_DAY.limit }, (_, n) => createJob(second, { title: `Lead ${n}` }))
+    );
+    for (const jobId of opens) {
+      expect((await submit(owner.domain, 'job', { jobId }, second)).status).toBe(200);
     }
     // A journey that scores nothing counts nothing
     for (let n = 0; n <= JOB_SHARES_PER_DAY.limit; n++) {
-      expect((await submit(other.domain, 'job', { jobId: jobs[0] }, recruiter)).status).toBe(200);
+      expect((await submit(other.domain, 'job', { jobId: jobs[n % jobs.length] }, recruiter)).status).toBe(200);
     }
+  });
+
+  it('drops the versions of a posting its recruiter deletes, on every journey, and nothing else', async () => {
+    const owner = await createUser('owner', { domain: true });
+    const other = await createUser('other', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    const second = await createUser('second', { recruiter: true });
+    await setJourney(owner, note(), job(), meeting());
+    await setJourney(other, job(), meeting());
+    const gone = await createJob(recruiter, { title: 'Gone Engineer' });
+    const staying = await createJob(recruiter);
+    const theirs = await createJob(second);
+    expect((await submit(owner.domain, 'note', { acknowledged: true }, recruiter)).status).toBe(200);
+    expect((await submit(owner.domain, 'job', { jobId: gone }, recruiter)).status).toBe(200);
+    expect((await submit(other.domain, 'job', { jobId: gone }, recruiter)).status).toBe(200);
+    expect((await submit(owner.domain, 'note', { acknowledged: true }, second)).status).toBe(200);
+    expect((await submit(owner.domain, 'job', { jobId: theirs }, second)).status).toBe(200);
+    const progress = async (journeyOwner: TestUser, visitor: TestUser) =>
+      (await WorkflowInstance.findOne({ owner: journeyOwner.id, visitor: visitor.id }).lean())?.steps ?? {};
+    const secondBefore = await progress(owner, second);
+
+    expect((await call('DELETE', `/jobs/${gone}`, { cookie: recruiter.cookie })).status).toBe(200);
+    // On both journeys the job step's version is gone (the step is to do again), the note's
+    // confirmation stays, and nothing of another recruiter changes
+    expect(Object.keys(await progress(owner, recruiter))).toEqual(['note']);
+    expect(await progress(other, recruiter)).toEqual({});
+    expect(JSON.stringify(await WorkflowInstance.find({ visitor: recruiter.id }).lean())).not.toContain('Gone Engineer');
+    expect(await progress(owner, second)).toEqual(secondBefore);
+    expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['note:succeeded', 'job:pending', 'meeting:pending']);
+    expect((await journeyOf(other.domain, recruiter)).steps[0]).toEqual({ id: 'job', type: 'job', status: 'pending' });
+
+    // Another posting of theirs, shared since, stays when one they did not share is deleted
+    expect((await submit(other.domain, 'job', { jobId: staying }, recruiter)).status).toBe(200);
+    const unshared = await createJob(recruiter, { title: 'Never shared' });
+    expect((await call('DELETE', `/jobs/${unshared}`, { cookie: recruiter.cookie })).status).toBe(200);
+    expect((await progress(other, recruiter)).job?.data.job).toBe(staying);
   });
 
   it("refuses an account without a recruiter space, another recruiter's job, a job that is not open and what is not a job id", async () => {

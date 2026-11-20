@@ -10,9 +10,10 @@ recruiter who has not accepted the terms in force (the API answers 422 on `conse
 picked before stops counting) accepts them here (TermsAcceptance) before picking.
 The pick is submitted to the step (`{ jobId }`); the job picked comes back as the step's view.
 The step keeps the version shared: what the owner reads and the steps after it use. Once shared,
-the step says when, and, when the posting changed since (its description: its terms are locked
-once opened), offers to share the new version (the same submit). On a journey that scores the job,
-the API counts the shares (429 beyond a day's).
+the step says when, and, when the posting changed since (its terms are locked once opened: its
+description, or a field no criterion reads), offers to share the new version (the same submit). On
+a journey that scores the job, the API counts the shares (429 beyond a day's), but the job kept,
+picked again unchanged.
 Not for the portfolio's owner (the API refuses their pick): the page shows them the step's
 description instead.
 -->
@@ -393,10 +394,14 @@ description instead.
 	<form class="space-y-4" onsubmit={pick}>
 		{#if shared?.sharedAt}
 			{@const sharedAt = shared.sharedAt}
+			{@const sharedLine = jobLine(shared)}
 			<div class="space-y-2 rounded-container border border-surface-200-800 p-3 text-sm">
 				<p>
-					<Rich text={m.job.sharedOn(jobLine(shared), formatDay(sharedAt), ownerName)}>
-						{#snippet time(day)}<time datetime={isoDate(sharedAt)}>{day}</time>{/snippet}
+					<Rich text={m.job.sharedOn}>
+						{#snippet job()}{sharedLine}{/snippet}
+						{#snippet time()}<time datetime={isoDate(sharedAt)}>{formatDay(sharedAt)}</time
+							>{/snippet}
+						{#snippet owner()}{ownerName}{/snippet}
 					</Rich>
 				</p>
 				{#if newVersion}

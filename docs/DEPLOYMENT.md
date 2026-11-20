@@ -985,8 +985,10 @@ From the release that brings them, a job description's terms (the fields the per
 (`publishedAt` set, whatever its status since), and the top of a pay range is at most 1.5 times its
 bottom (`JOB_LIMITS.pay.maxRangeRatio`). Nothing is migrated: the postings already opened become
 locked as they are, and one saved wider than 1.5 times its bottom before the cap is scored as if its
-top were that (its editor shows that top, which its next save stores; until then a candidate reading
-it on `/opportunities/:id` still sees the top it was saved with). Such a posting cannot be saved
+top were that (its editor shows that top, which its next save stores; until then its page in the
+recruiter space still shows the top it was saved with, and so does `/opportunities/:id` for a pick
+made before the job step kept the version shared, see below: a version shared carries the capped
+top). Such a posting cannot be saved
 again with its wider top, nor opened from its status if it never was, until it is narrowed. Before
 deploying that release on each stage (staging, then production), count them (counts only: no
 posting, recruiter or pay):
@@ -1006,6 +1008,46 @@ postings, with the `LEGAL_VERSION` notice (see "Tell the accounts before a bump 
 production") or on their own, that each must be narrowed (its editor) or, once opened, duplicated
 into a new job description with the range they mean: an opened one is matched with a top of 1.5
 times its bottom from the deploy.
+
+### Versions of shared jobs (one-off)
+
+From the release that brings them, the job step of a hiring journey keeps the version of the job
+description the recruiter shared (`data.posting` of the step in `workflowinstances`:
+`server/services/workflowSteps/job.ts`), and holds only with one. A pick stored before has none,
+and nothing is migrated (the version shared then is not known): from the deploy, that job step is
+to do again for its recruiter (pending, "Pick <job> again to share it and go on"), the steps after
+it lock, booking included, until they pick the job again, and its owner reads the job description
+as it is now on `/opportunities/:id` (which invitations already sent link) until then. Before
+deploying that release on each stage (staging, then production), count those picks (counts only:
+no recruiter, owner or job):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  const legacy = { $expr: { $gt: [{ $size: { $filter: {
+    input: { $objectToArray: { $ifNull: ["$steps", {}] } },
+    cond: { $and: [
+      { $ne: [{ $type: "$$this.v.data.job" }, "missing"] },
+      { $eq: [{ $type: "$$this.v.data.posting" }, "missing"] }
+    ] }
+  } } }, 0] } };
+  printjson({
+    journeys: db.workflowinstances.countDocuments(legacy),
+    recruiters: db.workflowinstances.distinct("visitor", legacy).length
+  })'
+```
+
+Write the counts in the release's pull request. When `recruiters` is not 0, tell those recruiters
+before production gets the release (`distinct("visitor", legacy)` gives their account ids, whose
+email is in `users`: never in the pull request) that they must pick their job again on each
+candidate's page for recruiters where they had picked it, and that the meeting stays locked until
+they do. Once production counts 0, a later release removes the fallback for those picks
+(`legacyPick` of the job step, read by `server/services/jobAccess.ts`).
+
+A rule of job descriptions made tighter in a later release (a new required field, a shorter
+length, a narrower range) sends the versions kept that break it back to pending in the same way
+(`storedJobSnapshot` of `server/services/jobPostings.ts` checks every version kept with today's
+rules): count them before deploying it with a query of the same shape, its `cond` testing the rule
+on `$$this.v.data.posting`, and tell their recruiters likewise.
 
 ### Reserved portfolio names
 

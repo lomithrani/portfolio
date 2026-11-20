@@ -506,7 +506,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 					shared there
 				</td>
 				<td>
-					Until you delete your account, or the owner removes the step or deletes their account
+					Until you delete your account, or the owner removes the step or deletes their account; the
+					version of a job description, at the latest until you delete that job description
 				</td>
 			</tr>
 			<tr>

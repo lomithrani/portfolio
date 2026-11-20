@@ -160,7 +160,13 @@ export function toJobSnapshot(stored: StoredJobPosting): JobSnapshot {
  * the API), when it still is a posting this version would save: the request schema's types and
  * lengths, then normalised and checked by portfolio-common's rules like a posting a recruiter
  * saves (as an open one). Undefined for anything else, so what reads it fails closed: a step
- * without a valid version is to do again
+ * without a valid version is to do again.
+ *
+ * So a rule made tighter (in jobPostingRequest, normalizeJobPosting or validateJobPosting: a new
+ * required field, a shorter length, a narrower range) sends every version kept that breaks it
+ * back to pending, the steps after it locked, until its recruiter shares the job again: count
+ * those job steps before such a release and say so in its deployment notes (docs/DEPLOYMENT.md,
+ * "Versions of shared jobs"), or rewrite the versions kept
  */
 export function storedJobSnapshot(value: unknown): JobSnapshot | undefined {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;

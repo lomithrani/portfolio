@@ -236,6 +236,27 @@ describe('GET /opportunities/jobs/:id', () => {
     expect(answer.job).toMatchObject({ _id: jobId, description: 'Edited since.' });
   });
 
+  it('serves nothing for a version kept that no longer checks out, never the posting as it is now', async () => {
+    const { owner, recruiter, jobId } = await pickedJob();
+    const { data } = (await WorkflowInstance.findOne({ owner: owner.id, visitor: recruiter.id }).lean())!.steps!.job;
+    await JobPosting.updateOne({ _id: jobId }, { description: 'Edited since.' });
+    const stored = [
+      // A version this API would not store (a later rule, or written by hand)
+      { ...data, posting: { ...data.posting, pay: { ...data.posting.pay, max: 1 } } },
+      { ...data, posting: 'Staff Engineer' },
+      // A version without its date, or a date without its version
+      { job: jobId, selectedAt: new Date(), posting: data.posting },
+      { job: jobId, selectedAt: new Date(), version: new Date() }
+    ];
+    for (const kept of stored) {
+      await WorkflowInstance.updateOne(
+        { owner: owner.id, visitor: recruiter.id },
+        { $set: { 'steps.job': { data: kept, updatedAt: new Date() } } }
+      );
+      expect({ kept, answer: await read(jobId, owner) }).toMatchObject({ kept, answer: notFound });
+    }
+  });
+
   it('lets every owner on whose journey the recruiter picked the same posting read it', async () => {
     const { owner, recruiter, jobId } = await pickedJob();
     const secondOwner = await createUser('second-owner', { domain: true });
@@ -308,6 +329,9 @@ describe('GET /opportunities/jobs/:id', () => {
     expect((await call('DELETE', `/jobs/${jobId}`, { cookie: recruiter.cookie })).status).toBe(200);
     expect(await read(jobId, owner)).toMatchObject(notFound);
     expect(await read(jobId, recruiter)).toMatchObject(notFound);
+    // The version shared went with it
+    const instance = await WorkflowInstance.findOne({ owner: owner.id, visitor: recruiter.id }).lean();
+    expect(instance?.steps ?? {}).not.toHaveProperty('job');
   });
 
   it('answers everyone else as for an id no posting has', async () => {

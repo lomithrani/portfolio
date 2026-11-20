@@ -20,6 +20,7 @@ import {
 } from '../models/database';
 import { logger } from '../services/logger';
 import { commuteArrival } from '../services/transitous';
+import { jobSharesKey } from '../services/workflowSteps/job';
 import { authCookie, openRecruiterSpace } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
@@ -196,17 +197,31 @@ const ownerWith = async (criteria: Record<string, unknown>, minScore = 50) => {
   return owner;
 };
 
-/** The recruiter picks `jobId` on the owner's journey: the job match step as they get it */
+type MatchStep = { status: string; view: { score: number; criteria: { criterion: string; outcome: string; notStated?: true }[] } };
+
+/**
+ * The recruiter shares `jobId` on the owner's journey: the job match step as they get it. Each
+ * share of another job is counted (JOB_SHARES_PER_DAY a day per owner and recruiter): to score the
+ * same job again, read it again (rescored)
+ */
 const matchOf = async (owner: TestUser, recruiter: TestUser, jobId: string) => {
   const picked = await call('POST', `/workflow/domains/${owner.domain}/steps/job`, {
     body: { input: { jobId } },
     cookie: recruiter.cookie
   });
-  expect(picked.status).toBe(200);
-  return picked.json().steps[1] as { status: string; view: { score: number; criteria: { criterion: string; outcome: string; notStated?: true }[] } };
+  // The answer's text in the failure: a 429 says the day's shares are taken
+  expect({ status: picked.status, text: picked.status === 200 ? '' : picked.text }).toEqual({ status: 200, text: '' });
+  return picked.json().steps[1] as MatchStep;
 };
 
-const outcome = (step: Awaited<ReturnType<typeof matchOf>>) =>
+/** The job match step as the recruiter reads it again: the version shared, scored again at each read */
+const rescored = async (owner: TestUser, recruiter: TestUser) => {
+  const journey = await call('GET', `/workflow/domains/${owner.domain}`, { cookie: recruiter.cookie });
+  expect(journey.status).toBe(200);
+  return journey.json().steps[1] as MatchStep;
+};
+
+const outcome = (step: MatchStep) =>
   step.view.criteria.find((entry) => entry.criterion === 'commute');
 
 const clearCommuteData = async () => {
@@ -255,6 +270,10 @@ afterEach(async () => {
   if (!connected) return;
   await clearCommuteData();
   const users = (await User.find({ email: new RegExp(`-${t.suffix}@`) }, '_id').lean()).map((user) => user._id);
+  // The jobs shared counted between them (keyed by a hash of the owner and the recruiter)
+  const ids = users.map(String);
+  const shareKeys = ids.flatMap((ownerId) => ids.map((visitorId) => jobSharesKey(ownerId, visitorId)));
+  if (shareKeys.length) await RateLimitCounter.deleteMany({ _id: new RegExp(`^(${shareKeys.join('|')}):`) });
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: users } }, { visitor: { $in: users } }] });
   await Workflow.deleteMany({ user: { $in: users } });
   await PerfectJob.deleteMany({ user: { $in: users } });
@@ -448,21 +467,21 @@ describe('the commute in the score of a job', () => {
 
     expect((await savePerfectJob(owner, { commute: commute({ modes: ['walk'], maxMinutesPerWeek: 450 }) })).status).toBe(200);
     // 60 minutes: 600 a week, 150 over, of the 225 that make it not match at all
-    expect((await matchOf(owner, recruiter, jobId)).view.score).toBe(33);
+    expect((await rescored(owner, recruiter)).view.score).toBe(33);
 
     expect((await savePerfectJob(owner, { commute: commute({ modes: ['walk', 'bike'], maxMinutesPerWeek: 200 }) })).status).toBe(200);
     // 20 minutes by bike: 200 a week
-    expect((await matchOf(owner, recruiter, jobId)).view.score).toBe(100);
+    expect((await rescored(owner, recruiter)).view.score).toBe(100);
 
     // No road by car: the other mode is the way
     services.car = 'none';
     await clearCommuteData();
     expect((await savePerfectJob(owner, { commute: commute({ modes: ['car', 'bike'], maxMinutesPerWeek: 200 }) })).status).toBe(200);
-    expect((await matchOf(owner, recruiter, jobId)).view.score).toBe(100);
+    expect((await rescored(owner, recruiter)).view.score).toBe(100);
     // No way at all: it does not match
     services.foot = 'none';
     await clearCommuteData();
-    expect(outcome(await matchOf(owner, recruiter, jobId))).toEqual({ criterion: 'commute', outcome: 'miss' });
+    expect(outcome(await rescored(owner, recruiter))).toEqual({ criterion: 'commute', outcome: 'miss' });
   });
 
   it('asks for public transport only when the site has it, and says who asks', async () => {
@@ -481,7 +500,7 @@ describe('the commute in the score of a job', () => {
     env.COMMUTE_TRANSIT = 'transitous';
     env.COMMUTE_CONTACT = 'https://portfolio.example/contact';
     // The shortest journey: 25 minutes, 250 a week
-    const withTransit = await matchOf(owner, recruiter, jobId);
+    const withTransit = await rescored(owner, recruiter);
     expect({ score: withTransit.view.score, commute: outcome(withTransit) }).toEqual({
       score: 100,
       commute: { criterion: 'commute', outcome: 'match' }
@@ -497,7 +516,7 @@ describe('the commute in the score of a job', () => {
     // No journey found, and an hour on foot: walking all the way is the way
     services.transit = [];
     await clearCommuteData();
-    expect(outcome(await matchOf(owner, recruiter, jobId))).toEqual({ criterion: 'commute', outcome: 'miss' });
+    expect(outcome(await rescored(owner, recruiter))).toEqual({ criterion: 'commute', outcome: 'miss' });
   });
 
   it('asks HERE for public transport with the key of the site, which nothing it answers or logs holds', async () => {
@@ -534,12 +553,12 @@ describe('the commute in the score of a job', () => {
     // No journey there, and an hour on foot: walking all the way is the way
     services.transit = [];
     await clearCommuteData();
-    expect(outcome(await matchOf(owner, recruiter, jobId))).toEqual({ criterion: 'commute', outcome: 'miss' });
+    expect(outcome(await rescored(owner, recruiter))).toEqual({ criterion: 'commute', outcome: 'miss' });
 
     // A key HERE refuses: the commute does not count, and the log says the status, not the key
     services.transit = 'down';
     await clearCommuteData();
-    const refused = await matchOf(owner, recruiter, jobId);
+    const refused = await rescored(owner, recruiter);
     expect(outcome(refused)).toEqual({ criterion: 'commute', outcome: 'unknown' });
     expect(lines.filter((line) => line.includes('Travel times: no answer'))).toEqual([
       'Travel times: no answer {"kind":"transit","reason":"GeoServiceError","detail":"transit answered 401"}'
@@ -578,7 +597,7 @@ describe('the commute in the score of a job', () => {
     env.COMMUTE_TRANSIT = 'here';
     env.HERE_API_KEY = HERE_KEY;
     services.transit = [1500];
-    const withHere = await matchOf(owner, recruiter, jobId);
+    const withHere = await rescored(owner, recruiter);
     expect(outcome(withHere)).toEqual({ criterion: 'commute', outcome: 'match' });
     expect((withHere.view as { transit?: string }).transit).toBe('here');
     expect(asked('transit')).toBe(2);
@@ -645,13 +664,13 @@ describe('the commute in the score of a job', () => {
       commute: { criterion: 'commute', outcome: 'unknown' }
     });
     const routes = asked('route');
-    expect((await matchOf(owner, recruiter, jobId)).view.score).toBe(100);
+    expect((await rescored(owner, recruiter)).view.score).toBe(100);
     expect(asked('route')).toBe(routes);
 
     // Answering again, once the failure is forgotten
     services.car = { duration: 90, distance: 100000 };
     await clearCommuteData();
-    expect(await matchOf(owner, recruiter, jobId)).toMatchObject({ status: 'failed', view: { score: 0 } });
+    expect(await rescored(owner, recruiter)).toMatchObject({ status: 'failed', view: { score: 0 } });
   });
 
   it('stops asking once the site asked enough for the day', async () => {

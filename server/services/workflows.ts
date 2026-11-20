@@ -155,6 +155,26 @@ export async function saveJourneySteps(ownerId: string, input: readonly Workflow
   return steps;
 }
 
+/**
+ * Drops what the steps stored for `visitorId`, in every journey they went through, where
+ * `stored(data)` says so: for a step type whose data must not outlive what it names (the job step:
+ * the version of a posting its recruiter deletes, plugins/jobs.ts). An entry is removed only while
+ * it is the one read (same `updatedAt`): a submit made meanwhile stays
+ */
+export async function dropVisitorProgress(visitorId: Id, stored: (data: unknown) => boolean): Promise<void> {
+  const instances = await WorkflowInstance.find({ visitor: visitorId }, { steps: 1 }).lean();
+  for (const instance of instances) {
+    for (const [stepId, entry] of Object.entries(instance.steps ?? {})) {
+      if (!isStepId(stepId) || !stored(entry?.data)) continue;
+      const path = progressPath(stepId);
+      await WorkflowInstance.updateOne(
+        { _id: instance._id, [`${path}.updatedAt`]: entry?.updatedAt ?? null },
+        { $unset: { [path]: '' } }
+      );
+    }
+  }
+}
+
 /** The owner of the portfolio `domainName`; 404 when there is none */
 export async function portfolioOwner(domainName: string): Promise<string> {
   const domain = await Domain.findOne({ name: normalizeDomainName(domainName) }, { admin: 1 }).lean();

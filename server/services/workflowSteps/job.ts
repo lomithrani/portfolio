@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import { JOB_STEP_LIMITS, OPEN_JOB_STATUS, opportunityPath, scoredFieldsDiffer } from 'portfolio-common';
+import { JOB_STEP_LIMITS, OPEN_JOB_STATUS, jobSnapshotsDiffer, opportunityPath } from 'portfolio-common';
 import type { JobSnapshot, JobStatus } from 'portfolio-common';
 import { JobPosting } from '../../models/database';
 import type { JobPosting as StoredJobPosting } from '../../models/database/jobPosting';
@@ -19,14 +19,16 @@ import { m } from './steps.messages';
 // page (services/jobAccess.ts), what the job match after it scores and what
 // the meeting invitation names. Editing the posting changes none of them
 // until the recruiter shares it again; the step tells them when it changed
-// since in what the owner reads of it (its description, or a field a criterion
-// reads, which is locked once the posting is opened). The step holds while
-// that posting is theirs and open, and while they have accepted the terms in
-// force: closed or deleted since, they pick another one; after a change of
-// the terms, they accept them again (the step's list asks for them, like every
-// recruiter route) before the journey goes on. A pick stored before versions
-// were kept (no `posting`), or one this version would not save, holds nothing:
-// the recruiter shares the job again.
+// since (anything the owner reads of it: its terms are locked once the posting
+// is opened, so in practice its description or a field no criterion reads).
+// Sharing it again unchanged is nothing new: not counted, the version kept as
+// it is. The step holds while that posting is theirs and open, and while they
+// have accepted the terms in force: closed or deleted since, they pick another
+// one (a posting deleted takes its versions with it: plugins/jobs.ts); after a
+// change of the terms, they accept them again (the step's list asks for them,
+// like every recruiter route) before the journey goes on. A pick stored before
+// versions were kept (no `posting`), or one this version would not save, holds
+// nothing: the recruiter shares the job again.
 
 export interface JobStepData {
   /** The id of the posting shared */
@@ -51,9 +53,9 @@ export interface JourneyJobDto {
   /** When the version the step keeps was shared; unset when it keeps none (to share again) */
   sharedAt?: Date;
   /**
-   * The posting changed since in what the owner reads of it (its description, or a field the job
-   * match scores): the owner still reads, and the job match still scores, the version shared,
-   * until the recruiter shares the new one
+   * The posting differs from the version shared, in anything the owner reads of it (its status
+   * aside): the owner still reads, and the job match still scores, the version shared, until the
+   * recruiter shares the new one
    */
   outdated?: true;
 }
@@ -95,7 +97,7 @@ export const pickedJobId = (data: unknown): string | undefined =>
   jobId((data as Partial<JobStepData> | null | undefined)?.job);
 
 /** A share as a job step stored it, when it is a whole one (this version's: a valid version kept) */
-interface StoredShare {
+export interface StoredShare {
   job: string;
   sharedAt: Date;
   version: Date;
@@ -105,7 +107,7 @@ interface StoredShare {
 /**
  * The share a job step's stored `data` holds: the posting's id, when it was shared and the version
  * shared, checked again (storedJobSnapshot); undefined for a pick stored before versions were
- * kept, or anything this version would not have stored
+ * kept (legacyPick), or anything this version would not have stored
  */
 export const storedShare = (data: unknown): StoredShare | undefined => {
   const job = pickedJobId(data);
@@ -117,13 +119,25 @@ export const storedShare = (data: unknown): StoredShare | undefined => {
 };
 
 /**
- * Whether the posting changed since the version shared in what the owner reads of it and the job
- * match scores: a field a criterion reads (portfolio-common's scoredFieldsDiffer) or its
- * description. Its other fields (the company, the benefits...) can be shared again too, without
- * the step asking for it
+ * A pick stored before the step kept the version shared: the posting's id and when, without a
+ * `version` or a `posting`. Only the job's private page reads it (services/jobAccess.ts: the
+ * posting as it is now, which invitations sent before link); the step holds nothing with it.
+ * Anything else without a valid version is not one: it fails closed everywhere
  */
-const changedSince = (shared: JobSnapshot, now: JobSnapshot) =>
-  scoredFieldsDiffer(shared, now) || shared.description !== now.description;
+export const legacyPick = (data: unknown): boolean => {
+  if (!pickedJobId(data)) return false;
+  const fields = data as Record<string, unknown>;
+  return !Object.hasOwn(fields, 'version') && !Object.hasOwn(fields, 'posting');
+};
+
+/**
+ * The version of a stored posting as a share of it now would keep it (read back as the step reads
+ * it, when it passes today's rules), to compare with the version kept
+ */
+const versionNow = (posting: StoredJobPosting): JobSnapshot => {
+  const snapshot = toJobSnapshot(posting);
+  return storedJobSnapshot(snapshot) ?? snapshot;
+};
 
 type JobContext = StepContext<Record<string, never>, JobStepData>;
 
@@ -142,7 +156,7 @@ const pickedJob = async ({ visitorId, data }: JobContext) => {
     ...(company ? { company } : {}),
     status: posting.status as JobStatus,
     ...(share ? { sharedAt: share.sharedAt } : {}),
-    ...(share && changedSince(share.posting, toJobSnapshot(posting)) ? { outdated: true as const } : {})
+    ...(share && jobSnapshotsDiffer(share.posting, versionNow(posting)) ? { outdated: true as const } : {})
   };
   return { job, share };
 };
@@ -186,9 +200,10 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
    * unknown id) that is open (409) and passes today's rules (422 on
    * `input.jobId` for one saved under older ones). On a journey that scores it
    * (a job match after this step), at most JOB_SHARES_PER_DAY shares (429
-   * beyond). Stores the version shared
+   * beyond). Stores the version shared; the version kept, shared again
+   * unchanged, is nothing new: kept as it is (its date too), not counted
    */
-  submit: async ({ ownerId, visitorId, input, later }) => {
+  submit: async ({ ownerId, visitorId, input, later, data }) => {
     const id = jobId(inputFields(input)?.jobId);
     if (!id) throw new FieldValidationError('input.jobId', () => m.job.pickOne);
     await requireRecruiterSpace(visitorId);
@@ -199,6 +214,11 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
     // version the step would not hold is refused now, rather than stored and never holding
     const snapshot = storedJobSnapshot(toJobSnapshot(posting));
     if (!snapshot) throw new FieldValidationError('input.jobId', () => m.job.cannotShare);
+    // Picked again as it was shared (the step selects the job kept): nothing new to share or score
+    const kept = storedShare(data);
+    if (kept && kept.job === posting._id.toString() && !jobSnapshotsDiffer(kept.posting, snapshot)) {
+      return { job: kept.job, selectedAt: kept.sharedAt, version: kept.version, posting: kept.posting };
+    }
     if (later.some((step) => step.type === SCORING_STEP)) {
       const { retryAfterSeconds } = await takeRateLimit(jobSharesKey(ownerId, visitorId), JOB_SHARES_PER_DAY);
       if (retryAfterSeconds !== null) {

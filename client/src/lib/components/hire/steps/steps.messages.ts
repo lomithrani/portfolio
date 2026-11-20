@@ -102,24 +102,24 @@ export const m = defineMessages({
 				`${ownerName} lit l'offre telle que vous la partagez maintenant, dont le lien figure dans l'invitation au rendez-vous. Si vous la modifiez ensuite, vous pourrez partager la nouvelle version ici.`
 		},
 		/**
-		 * Above the jobs to pick, once one is shared (`job`: "Senior Engineer · Acme", the version
-		 * shared; `day`: '3 Nov 2026', shown as a <time>)
+		 * Above the jobs to pick, once one is shared. Where the values go, each rendered by its own
+		 * snippet (what a person typed never goes through the tag parser): `<job></job>` "Senior
+		 * Engineer · Acme", the version shared; `<time></time>` '3 Nov 2026'; `<owner></owner>` the
+		 * portfolio's name
 		 */
 		sharedOn: {
-			en: (job: string, day: string, ownerName: string) =>
-				`You shared ${job} on <time>${day}</time>: ${ownerName} reads that version.`,
-			fr: (job: string, day: string, ownerName: string) =>
-				`Vous avez partagé ${job} le <time>${day}</time> : ${ownerName} lit cette version.`
+			en: 'You shared <job></job> on <time></time>: <owner></owner> reads that version.',
+			fr: 'Vous avez partagé <job></job> le <time></time> : <owner></owner> lit cette version.'
 		},
 		/**
-		 * The posting changed since it was shared. A posting shared was opened, so its terms are
-		 * locked: what changes is its description
+		 * The posting differs from the version shared. A posting shared was opened, so its terms are
+		 * locked: what changes is its description, or a field no criterion reads
 		 */
 		changedSince: {
 			en: (ownerName: string) =>
-				`Its description changed since: ${ownerName} still reads, and the steps after this one still use, the version you shared.`,
+				`This job description changed since you shared it: ${ownerName} still reads, and the steps after this one still use, the version shared.`,
 			fr: (ownerName: string) =>
-				`Sa description a changé depuis : ${ownerName} lit toujours, et les étapes suivantes utilisent toujours, la version que vous avez partagée.`
+				`Cette offre a été modifiée depuis que vous l'avez partagée : ${ownerName} lit toujours, et les étapes suivantes utilisent toujours, la version partagée.`
 		},
 		shareNewVersion: { en: 'Share the new version', fr: 'Partager la nouvelle version' },
 		sharing: { en: 'Sharing…', fr: 'Partage…' },

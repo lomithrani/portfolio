@@ -5,7 +5,8 @@ import { ResourceNotFoundError } from '../errors';
 import { JOB_NOT_FOUND, toJobPostingDto } from './jobPostings';
 import type { JobPostingDto } from './jobPostings';
 import { journeySteps } from './workflows';
-import { jobStep, pickedJobId, storedShare } from './workflowSteps/job';
+import { jobStep, legacyPick, pickedJobId, storedShare } from './workflowSteps/job';
+import type { StoredShare } from './workflowSteps/job';
 
 // Who may read a job posting outside the recruiter space: the page the meeting invitation of a
 // hiring journey links (the web client's /opportunities/:id, plugins/opportunities.ts). One rule,
@@ -17,7 +18,9 @@ import { jobStep, pickedJobId, storedShare } from './workflowSteps/job';
 //   ends it), whatever its status but draft (a draft is its recruiter's alone). They read the
 //   version the recruiter shared there (the job step keeps it: an edit of the posting reaches them
 //   once shared again), with the posting's status and dates; a pick stored before versions were
-//   kept shows the posting as it is now.
+//   kept (legacyPick: the job's id and when, nothing else) shows the posting as it is now, which
+//   invitations sent before link, and a version that no longer checks out shows nothing (the
+//   404 below), as the job step holds nothing with it.
 // Anyone else, like an unknown id, gets the 404 of a posting that does not exist, never a 403:
 // an id says nothing about the postings behind it. What is returned never names the recruiter.
 
@@ -39,16 +42,18 @@ export interface SharedJobPostingDto {
 const isObjectId = (value: string) => Types.ObjectId.isValid(value) && /^[0-9a-fA-F]{24}$/.test(value);
 
 /**
- * What the recruiter stored on a job step of `ownerId`'s journey that picks the posting `jobId`
- * (the stored posting's own id, as the job step stores it: lower case, whatever the URL had): the
- * job steps of the journey the owner has now, and what they stored for that recruiter (their
- * progress is kept under each step's id, services/workflows.ts); undefined when none picks it
+ * The pick of the posting `jobId` (the stored posting's own id, as the job step stores it: lower
+ * case, whatever the URL had) by its recruiter on a job step of `ownerId`'s journey: the job steps
+ * of the journey the owner has now, and what they stored for that recruiter (their progress is
+ * kept under each step's id, services/workflows.ts). With the version shared (`share`), or without
+ * one for a pick stored before versions were kept; undefined when none picks it, or none of its
+ * picks is either
  */
 async function pickOnJourney(
   ownerId: string,
   recruiterId: Types.ObjectId,
   jobId: string
-): Promise<{ data: unknown } | undefined> {
+): Promise<{ share?: StoredShare } | undefined> {
   const instance = await WorkflowInstance.findOne({ owner: ownerId, visitor: recruiterId }, { steps: 1 }).lean();
   if (!instance?.steps) return undefined;
   // A Map in the schema, a plain object once read with lean(): looked up as a Map, so a step id is
@@ -60,7 +65,9 @@ async function pickOnJourney(
     return pickedJobId(data) === jobId ? [{ data }] : [];
   });
   // The pick that keeps a version, when one does
-  return picks.find(({ data }) => storedShare(data)) ?? picks[0];
+  const share = picks.map(({ data }) => storedShare(data)).find((kept) => kept !== undefined);
+  if (share) return { share };
+  return picks.some(({ data }) => legacyPick(data)) ? {} : undefined;
 }
 
 /**
@@ -77,7 +84,7 @@ export async function readableJobPosting(userId: string, jobId: string): Promise
   const pick = await pickOnJourney(userId, job.recruiter, String(job._id));
   if (!pick) throw notFound();
   const posting = toJobPostingDto(job);
-  const share = storedShare(pick.data);
+  const { share } = pick;
   if (!share) return { job: posting, access: 'journey' };
   const { _id, status, createdAt, publishedAt } = posting;
   return {

@@ -671,7 +671,7 @@ describe('the job step', () => {
 			})
 		).toEqual({ message: 'This job description cannot be shared as it is', kind: 'error' });
 		// The journey scores the jobs shared: as many as a day allows
-		expect(pickJobFailure(429, 'A job can be shared at most 5 times a day')).toEqual({
+		expect(pickJobFailure(429, 'You can share at most 5 jobs a day on this page')).toEqual({
 			message:
 				'Each job shared here is scored, so you can share at most 5 a day on this page. Try again tomorrow.',
 			kind: 'error'

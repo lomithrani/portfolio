@@ -35,6 +35,10 @@ import {
 // test names its postings with its own tag and removes them afterwards. The e2e candidate (no
 // recruiter space, no acceptance of the terms) opens a recruiter space from the job step, with the
 // requests that would change it answered in the browser, so it stays that way.
+// One test shares jobs, through the API, on the journey with a job match: each such share counts
+// against JOB_STEP_LIMITS.scoredSharesPerDay for the e2e recruiter on 'e2e-journey', two a run.
+// `seed:e2e` clears those counters (CI and the local recipe run it before every run): run it again
+// before a third run on the same UTC day.
 
 test.skip(
 	!JWT_SECRET,
@@ -1208,7 +1212,8 @@ test.describe('the hiring journey', () => {
 		browser
 	}) => {
 		await setJourney('job', 'meeting');
-		const title = `Staff engineer ${tag}`;
+		// Angle brackets typed in a title stay text where a message has passages of its own
+		const title = `Staff <b>engineer</b> ${tag}`;
 		const job = await createJob(recruiterApi, {
 			title,
 			status: 'open',
@@ -1238,13 +1243,16 @@ test.describe('the hiring journey', () => {
 		const jobStep = step(page, 'Step 1: Select or create a job');
 		await expect(jobStep).toContainText(`${title} · E2E Corp: changed since you shared it.`);
 		await jobStep.getByRole('button', { name: 'Change' }).click();
-		await expect(jobStep).toContainText(
+		const sharedOn = jobStep.locator('p', { hasText: /^You shared / });
+		await expect(sharedOn).toHaveText(
 			new RegExp(
-				`You shared ${title} · E2E Corp on \\d{1,2} \\w+ \\d{4}: ${DOMAIN} reads that version\\.`
+				`^You shared Staff <b>engineer</b> ${tag} · E2E Corp on \\d{1,2} \\w+ \\d{4}: ${DOMAIN} reads that version\\.$`
 			)
 		);
+		await expect(sharedOn.locator('time')).toHaveCount(1);
+		await expect(sharedOn.locator('b')).toHaveCount(0);
 		await expect(jobStep).toContainText(
-			`Its description changed since: ${DOMAIN} still reads, and the steps after this one still use, the version you shared.`
+			`This job description changed since you shared it: ${DOMAIN} still reads, and the steps after this one still use, the version shared.`
 		);
 
 		// A refusal (a journey that scores the jobs shared, as many as a day allows: answered in the
@@ -1253,7 +1261,7 @@ test.describe('the hiring journey', () => {
 			index === 0
 				? {
 						status: 429,
-						text: 'A job can be shared at most 5 times a day on this page, where it is scored: try again tomorrow',
+						text: 'You can share at most 5 jobs a day on this page, where each one is scored: try again tomorrow',
 						headers: { 'retry-after': '3600' }
 					}
 				: undefined
@@ -1924,7 +1932,9 @@ test.describe('the hiring journey', () => {
 		const meetingStep = step(page, 'Step 3: Book a meeting');
 		await expect(matchStep).toContainText('Complete the step above first.');
 
-		// A CDI on site, with no seniority stated: only the contract matches (3 of 10)
+		// A CDI on site, with no seniority stated: only the contract matches (3 of 10). Each share on
+		// this journey, which scores it, counts against the recruiter's shares of the day (see the top
+		// of this file: reseed before a third run on a day)
 		await jobStep.getByRole('radio', { name: new RegExp(`On site engineer ${tag}`) }).check();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
 		await expect(matchStep).toContainText(
@@ -1952,7 +1962,8 @@ test.describe('the hiring journey', () => {
 		await expect(meetingStep).toContainText('Complete the steps above first.');
 		await expect(meetingStep.getByRole('button')).toHaveCount(0);
 
-		// Another job of theirs, which matches everything: the meeting step opens
+		// Another job of theirs, which matches everything: the meeting step opens (a second share
+		// counted)
 		await jobStep.getByRole('button', { name: 'Change' }).click();
 		await jobStep.getByRole('radio', { name: new RegExp(`Remote engineer ${tag}`) }).check();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();

@@ -72,9 +72,29 @@ export const changedLockedFields = (stored: JobSnapshot, next: JobSnapshot): Job
 /**
  * Whether two versions of a posting (normalised) differ in a field a criterion of the perfect job
  * reads (LOCKED_JOB_FIELDS, compared as changedLockedFields compares them): a score computed on one
- * may not be the score of the other. The job step tells a recruiter that a posting changed since
- * they shared it with this or a change of its description; a posting shared was opened, so its
- * terms are locked, and in practice it is its description that changes.
+ * may not be the score of the other.
  */
 export const scoredFieldsDiffer = (a: JobSnapshot, b: JobSnapshot): boolean =>
 	changedLockedFields(a, b).length > 0;
+
+/** `value` as JSON, the keys of each object sorted: the same text for the same content */
+const canonicalJson = (value: unknown): string =>
+	JSON.stringify(value, (_key, item: unknown) =>
+		item && typeof item === 'object' && !Array.isArray(item)
+			? Object.fromEntries(
+					Object.entries(item as Record<string, unknown>).sort(([a], [b]) =>
+						a < b ? -1 : a > b ? 1 : 0
+					)
+				)
+			: item
+	);
+
+/**
+ * Whether two versions of a posting (normalised, without their status: a JobSnapshot) differ at
+ * all, in anything a candidate reads of them. The job step tells a recruiter that a posting changed
+ * since they shared it with this (a posting shared was opened, so its terms are locked: in practice
+ * its description, or a field no criterion reads, changed), and shares an unchanged one again as
+ * nothing new.
+ */
+export const jobSnapshotsDiffer = (a: JobSnapshot, b: JobSnapshot): boolean =>
+	canonicalJson(a) !== canonicalJson(b);

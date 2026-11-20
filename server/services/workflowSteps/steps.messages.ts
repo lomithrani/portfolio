@@ -7,17 +7,24 @@ export const m = defineMessages({
       en: 'Pick one of your job descriptions',
       fr: "Choisissez l'une de vos offres d'emploi"
     },
-    /** 422: a posting saved under older rules that today's refuse: shared as it is, it would not hold */
+    /**
+     * 422: a posting saved under older rules that today's refuse: shared as it is, it would not
+     * hold. It was opened (only an open posting is shared), so what breaks a rule may be one of its
+     * terms, locked: then only a copy of it can be corrected
+     */
     cannotShare: {
-      en: 'This job description cannot be shared as it is: open it in your recruiter space, where its editor says what to change, then pick it again',
-      fr: "Cette offre ne peut pas être partagée telle quelle : ouvrez-la dans votre espace recruteur, où son éditeur indique ce qu'il faut modifier, puis choisissez-la à nouveau"
+      en: 'This job description cannot be shared as it is: correct it in your recruiter space, or duplicate it if what needs correcting is locked, then pick the corrected one here',
+      fr: "Cette offre ne peut pas être partagée telle quelle : corrigez-la dans votre espace recruteur, ou dupliquez-la si ce qu'il faut corriger est verrouillé, puis choisissez ici l'offre corrigée"
     },
-    /** 429: the recruiter shared a job on this journey, which scores it, as often as a day allows */
+    /**
+     * 429: the recruiter shared as many jobs on this journey, which scores each one, as a day allows
+     * (counted per owner and recruiter, whatever the job)
+     */
     tooManyShares: {
       en: (limit: number) =>
-        `A job can be shared at most ${limit} times a day on this page, where it is scored: try again tomorrow`,
+        `You can share at most ${limit} jobs a day on this page, where each one is scored: try again tomorrow`,
       fr: (limit: number) =>
-        `Une offre peut être partagée au plus ${limit} fois par jour sur cette page, où elle est notée : réessayez demain`
+        `Vous pouvez partager au plus ${limit} offres par jour sur cette page, où chacune est notée : réessayez demain`
     },
     /** Invitation line: the job shared, with the hiring company when the version shared names it */
     invitation: {

@@ -392,8 +392,8 @@ export interface JourneyJob {
 	 */
 	sharedAt?: string;
 	/**
-	 * The posting changed since in what the owner reads of it (its description, or a field the job
-	 * match scores): the owner still reads, and the job match still scores, the version shared
+	 * The posting differs from the version shared, in anything the owner reads of it (its status
+	 * aside): the owner still reads, and the job match still scores, the version shared
 	 */
 	outdated?: true;
 }
@@ -421,8 +421,8 @@ export const pickedJob = (view: unknown): JourneyJob | undefined => {
 export const isPickable = (job: { status: JobStatus }): boolean => job.status === OPEN_JOB_STATUS;
 
 /**
- * The job shared whose new version the recruiter can share (the posting is open and changed since
- * in what the owner reads of it); undefined otherwise
+ * The job shared whose new version the recruiter can share (the posting is open and differs from
+ * the version shared); undefined otherwise
  */
 export const outdatedShare = (view: unknown): JourneyJob | undefined => {
 	const job = pickedJob(view);

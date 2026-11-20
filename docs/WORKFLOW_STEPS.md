@@ -258,8 +258,8 @@ the terms, sends the visitor back to the step.
 **`view`** is the part of `evaluate`'s answer the visitor's page receives. The note has none. The
 job step returns `{ job: { _id, title, company?, status, sharedAt?, outdated? } }`: the posting the
 visitor shared (its title and company as shared, its status now), when they shared that version,
-and whether the posting changed since in what the owner reads of it, so the page can show it and
-offer to share the new version. Put there only what this visitor may know.
+and whether the posting differs from it now in anything the owner reads of it, so the page can
+show it and offer to share the new version. Put there only what this visitor may know.
 
 **A step can keep what the visitor submitted as it was then.** The job step stores the version of
 the posting shared (`{ job, selectedAt, version, posting }`: `posting` is a `JobSnapshot` of
@@ -270,11 +270,18 @@ the job match scores and what the meeting invitation names is that version, and 
 posting reaches them only once the recruiter shares it again. Read back, the version is checked
 again (`storedJobSnapshot`: the request schema, then `normalizeJobPosting` and
 `validateJobPosting`), and a pick without a valid one (stored before versions were kept, or written
-by hand) holds nothing: the step is `pending` and the recruiter shares the job again. A posting saved
-under older rules that the check would refuse is refused at the submit (422 on `input.jobId`) rather
-than stored and never holding. `outdated` is set when the posting now differs from the version in a
-field a criterion reads (`scoredFieldsDiffer` of portfolio-common) or in its description; a shared
-posting was opened, so its terms are locked and it is in practice its description that changed.
+by hand) holds nothing: the step is `pending` and the recruiter shares the job again. A rule made
+tighter later (in `jobPostingRequest`, `normalizeJobPosting` or `validateJobPosting`) therefore
+sends every version kept that breaks it back to `pending`: count those job steps before such a
+release and say so in its deployment notes (`docs/DEPLOYMENT.md`, "Versions of shared jobs"), or
+rewrite the versions kept. A posting saved under older rules that the check would refuse is refused
+at the submit (422 on `input.jobId`) rather than stored and never holding. `outdated` is set when the
+posting now differs from the version in anything (`jobSnapshotsDiffer` of portfolio-common: the
+whole `JobSnapshot`, so not its status); a shared posting was opened, so its terms are locked and it
+is in practice its description, or a field no criterion reads, that changed. A version must not
+outlive the posting it copies: deleting a posting (`DELETE /jobs/:id`) drops, with
+`dropVisitorProgress` of `server/services/workflows.ts`, what the job step stored of it on every
+journey of its recruiter, and the step is to do again, as it was before versions were kept.
 
 **`submit`** is reached through `POST /workflow/domains/:domainName/steps/:stepId` with a JSON body
 `{ input }`. Before it is called, the engine (`submitStep`) has checked that the portfolio exists
@@ -291,7 +298,9 @@ visitor on a journey that scores them (a job match after it, read from `ctx.late
 this one: their ids and types), at most `JOB_STEP_LIMITS.scoredSharesPerDay` (5) per owner and
 recruiter per UTC day (`takeRateLimit` with `rateLimitKey`, 429 with `Retry-After` beyond), since
 each share is a score and many versions would tell the recruiter more of the owner's criteria than
-a score is meant to. A refusal before the share (an id, a posting that is not open) counts nothing.
+a score is meant to. A refusal before the share (an id, a posting that is not open) counts nothing,
+and neither does the job kept picked again unchanged (the step keeps it as it is, its date too):
+the step selects that job when it opens, so pressing its button again tells nothing new.
 
 **`data`** is stored as returned, in a `Mixed` field. It comes back as it was written, possibly by
 an older version of the step: read it defensively. `storedDate(value)` (in `types.ts`) returns a
@@ -312,7 +321,9 @@ a link to the job's private page on that origin (`opportunityPath(id)` of portfo
 recruiter and the portfolio owners on whose journey the recruiter picked it can open it, signed in
 (each owner reads the version shared on their journey, while it is the recruiter's current pick
 there and not a draft: a
-recruiter can pick one posting on several journeys); anyone else reads that it is not shared with
+recruiter can pick one posting on several journeys; a pick stored before versions were kept, the
+posting's id and date alone (`legacyPick` of the job step), shows the posting as it is now, and a
+version that no longer checks out shows nothing); anyone else reads that it is not shared with
 them. The old `/jobs/<id>` of invitations sent before answers 308 to it. The note describes
 nothing.
 

@@ -18,6 +18,8 @@ import {
   validJobPosting
 } from '../services/jobPostings';
 import type { JobPostingDto } from '../services/jobPostings';
+import { dropVisitorProgress } from '../services/workflows';
+import { pickedJobId } from '../services/workflowSteps/job';
 import { JOB_CHANGED } from '../protocol';
 
 // Job postings of the recruiter space. Every route needs a recruiter space
@@ -28,6 +30,7 @@ import { JOB_CHANGED } from '../protocol';
 // by picking it on a candidate's Hire page (the job step). Once opened, a
 // posting's terms (what the perfect job scores) are locked: an edit that
 // changes them answers 409 (services/jobPostings.ts, requireUnchangedTerms).
+// Deleting a posting deletes the versions of it shared on journeys too.
 
 /**
  * save() of a posting that matched nothing: deleted meanwhile (e.g. in another tab), a 404 like
@@ -122,6 +125,10 @@ export const jobs = new Elysia()
   .delete('/jobs/:id', async ({ userId, params: { id } }) => {
     const job = await JobPosting.findOneAndDelete({ _id: id, recruiter: userId });
     if (!job) throw new ResourceNotFoundError(JOB_NOT_FOUND);
+    // The versions of it the recruiter shared on hiring journeys go with it (the job step keeps
+    // one, which nothing reads once the posting is gone): the step is to do again, as it was
+    const jobId = job._id.toString();
+    await dropVisitorProgress(userId, (data) => pickedJobId(data) === jobId);
     return { id };
   }, {
     params: objectIdParams,
