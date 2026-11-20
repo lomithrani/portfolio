@@ -713,13 +713,20 @@ reason the recruiter reads). The reviewers are the accounts whose email is in
 `MATCHING_REVIEWERS` (comma-separated, compared without case; never logged: a wrong entry stops the
 API naming its place in the list, not its value). Without one, the API warns at startup
 (`MATCHING=true without MATCHING_REVIEWERS`) and no job is ever proposed. A reviewer reads the jobs
-waiting with `GET /matching/reviews` (the oldest first: the posting and the domain of its
-recruiter's email, nothing of any candidate) and decides with `PUT /matching/reviews/:id`
+waiting with `GET /matching/reviews` (the oldest first: the posting, the domain of its
+recruiter's email and a key standing for that recruiter, the same for all their jobs, and their
+other jobs in matching now or in the last 90 days, those that are copies of it, the same company
+and title or the same description, flagged with the terms they differ in; nothing of any
+candidate) and decides with `PUT /matching/reviews/:id`
 `{ decision: 'approve' | 'reject', reason?, version }`, on the version read (an edit since: 409).
+Refuse copies of a job that differ in one term, the pay or the office: each copy's cards would
+tell its recruiter the candidates' floors or areas.
 No screen does it yet: until the review screen ships, a reviewer calls the API signed in (the
 `auth` cookie of their session). The `matching_job_reviews` metric counts the jobs waiting: nothing
 else tells the reviewers (no email is sent). An approved job its recruiter edits (its description,
-or another field no criterion reads: its terms are locked) waits for a review again. A job is
+or another field no criterion reads: its terms are locked) waits for a review again; an edit
+saved while a review was decided (or matching switched) is refused with a 409, and the recruiter's
+editor reloads the posting. A job is
 proposed only while its recruiter has accepted the terms in force: after a `LEGAL_VERSION` bump,
 their approved jobs leave every feed, and `matching_job_postings`, until they accept the new terms
 (nothing to do on the operator's side; the review stays). A posting opened before the pay range cap
@@ -732,15 +739,20 @@ collection of their own. Each read is counted, both feeds together, against **12
 account per hour** (`MATCHING_FEED_READS` of `server/services/matchFeeds.ts`; 429 with
 `Retry-After`, counters `matching-feed:<hash>`), and asks no outside service: travel times come from
 the cache, the missing ones are asked in the background within matching's share of
-`COMMUTE_DAILY_LIMIT` (see [Travel times](#travel-times)). A recruiter's cards stand for their
-candidates by tokens sealed with a key derived from `JWT_SECRET` (AES-256-GCM, bound to the
+`COMMUTE_DAILY_LIMIT` (see [Travel times](#travel-times)). The private page of a job proposed to
+a candidate counts as a read too. A recruiter reads one card at a time, the next once it is
+answered, and whether there are more, never how many (nor whether candidates wait for a travel
+time). A recruiter's cards stand for their candidates by tokens sealed with a key derived from `JWT_SECRET` (AES-256-GCM, bound to the
 recruiter and the job, a week at most): changing `JWT_SECRET` makes the cards already shown
 unreadable, and recruiters read their feed again.
 
 **Decisions and mutual interests.** A candidate says whether a job proposed to them interests
 them, a recruiter whether a card's candidate does (the card's token in the body); either undoes
-theirs until both are interested (the recruiter with the token of the card they decided on, of any
-age, which their screen keeps: their feed never shows a candidate they answered again). A decision
+theirs within 10 minutes, and only their latest decision, until both are interested (the
+recruiter with the token of the card they decided on, which their screen keeps: their feed never
+shows a candidate they answered again). When each side first answered a pair is kept with it, an
+undo included, so that the other side's pass after it never shows. A candidate who withdraws
+cannot turn discovery on again for 7 days (`DISCOVERY_REJOIN_DAYS`; 429 with `Retry-After`). A decision
 holds for the version of the job it was given on: a candidate's interest in a version since edited
 (and reviewed again) is not made into a mutual interest by the recruiter's; the job is proposed to
 them again instead. Each decision or undo is counted against **300 per account per

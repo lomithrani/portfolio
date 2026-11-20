@@ -6,7 +6,7 @@ import type { JobPosting as StoredJobPosting } from '../models/database/jobPosti
 import { ResourceNotFoundError } from '../errors';
 import { JOB_NOT_FOUND, toJobPostingDto } from './jobPostings';
 import type { JobPostingDto } from './jobPostings';
-import { proposedJobPosting } from './matchFeeds';
+import { countFeedRead, proposedJobPosting } from './matchFeeds';
 import type { OpportunityScore } from './matchFeeds';
 import { candidateDecisionOn, mutualInterestOn } from './mutualInterests';
 import type { MutualInterest } from './mutualInterests';
@@ -35,9 +35,11 @@ import type { StoredShare } from './workflowSteps/job';
 //   shares a job as anyone does then, and the invitation of a later meeting names that version;
 // - 'feed' (matching, Path 2, while MATCHING is on): a candidate to whom the job is proposed now,
 //   as their feed shows it (services/matchFeeds.ts: live in matching, meeting their criteria and
-//   their minimum, its recruiter not having passed them before they answered), whatever they
-//   answered of it (their `decision`). They read the posting as it is now, as their feed scores
-//   it, with its score (`jobMatch`) and whether its recruiter is interested in them.
+//   their minimum, its recruiter not having passed them before they first answered), whatever
+//   they answered of it (their `decision`). They read the posting as it is now, as their feed
+//   scores it, with its score (`jobMatch`) and whether its recruiter is interested in them. Each
+//   read that reaches it is counted against the feeds' reads (MATCHING_FEED_READS: 429 over it),
+//   whatever its answer.
 // Anyone else, like an unknown id, gets the 404 of a posting that does not exist, never a 403:
 // an id says nothing about the postings behind it. What is returned never names the recruiter.
 
@@ -137,7 +139,11 @@ export async function readableJobPosting(userId: string, jobId: string): Promise
   if (matched && !pick) return asMatch(matched);
   if (job.status === 'draft') throw notFound();
   if (!pick) {
-    const proposed = env.matchingEnabled ? await proposedJobPosting(userId, job) : null;
+    if (!env.matchingEnabled) throw notFound();
+    // A feed's work for one job (the pair read, scored, decided on): counted with the feeds' reads,
+    // so that the page is not a way to poll many jobs (or one) without their limit
+    await countFeedRead(userId);
+    const proposed = await proposedJobPosting(userId, job);
     if (proposed) {
       const decision = await candidateDecisionOn(String(job._id), userId);
       const { job: posting, jobMatch, interested } = proposed;

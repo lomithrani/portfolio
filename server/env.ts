@@ -111,8 +111,10 @@ export interface ServerEnv {
   COMMUTE_DAILY_LIMIT: number;
   /**
    * MATCHING=true: Path 2, matching on open jobs (plugins/matches.ts:
-   * discovery, the opt-in of candidates). Off without it: its routes answer
-   * 404 as routes that do not exist, and nothing about it is read or written
+   * discovery, reviews, feeds, decisions, mutual interests). Off without it:
+   * its routes are not registered (404), nothing is proposed and journeys
+   * read no mutual interest; what a job's changes do to its matches still
+   * runs (it only ends, drops, deletes or sends back for review)
    */
   matchingEnabled: boolean;
   /**

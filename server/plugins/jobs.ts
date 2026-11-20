@@ -23,6 +23,7 @@ import {
   afterMatchingOff,
   entersMatchingAtCreation,
   leavesMatchingOnEdit,
+  matchingAsLoaded,
   newJobMatching,
   requireMatchingKept,
   reviewSavedWithEdit,
@@ -127,6 +128,9 @@ export const jobs = new Elysia()
     // In matching and staying in it: it keeps its company and its description (422)
     requireMatchingKept(before, fields);
     if (!job.publishedAt) job.$where = { ...job.$where, publishedAt: null };
+    // Saved only while its matching is as loaded (a review decided, or matching switched, meanwhile:
+    // 409), so the review saved with it below holds for the text saved
+    job.$where = { ...job.$where, ...matchingAsLoaded(before) };
     // Every field replaced: the optional ones left out are unset (matching is not one of them)
     job.set(jobPostingFields(fields));
     job.publishedAt = publishedAtFor(fields.status, job.publishedAt);

@@ -50,25 +50,30 @@ import { m } from './matchFeeds.messages';
 // the score the "Get the job scored" step of their journey gives) at least
 // their journey's minimum, no deal-breaker missed; never the candidate's own
 // job, never what the reader answered already (interested or pass), nor what
-// the other side passed before the reader answered (a candidate who passed the
-// job, a recruiter who passed the candidate for it: once the reader answered,
-// the other side's pass changes nothing they read, which would tell them of
-// it), nor a job its recruiter already shared on the candidate's page for
-// recruiters (they are in touch through it). An interest of the other side's
-// leaves a pair proposed, and each feed says so (`interested`): a recruiter
-// reads the candidates interested in their job first.
+// the other side passed before the reader first answered (a candidate who
+// passed the job, a recruiter who passed the candidate for it: once the reader
+// answered, the other side's pass changes nothing they read, which would tell
+// them of it, not even once they undo their answer or the job is put into
+// matching again: when each side first answered is kept, hiddenFrom). The
+// candidate is not proposed a job its recruiter already shared on their page
+// for recruiters (they are in touch through it); the recruiter is proposed
+// that candidate all the same, so that their own pick never tells them which
+// card is the portfolio they visited. An interest of the other side's leaves a
+// pair proposed, and each feed says so (`interested`): a recruiter reads the
+// candidates interested in their job first.
 //
 // Deterministic only: no model, no learning, no ranking by score. A
 // candidate's jobs come the most recently published first, with that date; a
 // recruiter's cards come those interested in the job first, then in an order
 // drawn from a keyed hash of the job and the candidate (hashValue): the same
 // at every read, different for every job, and saying nothing of the score, of
-// when anyone signed up, or of anything else about them. A recruiter reads
-// MATCHING_LIMITS.recruiterCardsPerRead cards at a time and whether there are
-// more, never how many: counts compared across jobs that differ by their pay
-// (their terms are locked, a duplicate is another job) would tell candidates'
-// floors. Each card stands for its candidate by a token bound to the recruiter
-// and the job (matchTokens.ts), never an id.
+// when anyone signed up, or of anything else about them. A recruiter reads one
+// card at a time (MATCHING_LIMITS.recruiterCardsPerRead), the next once it is
+// answered, and whether there are more, never how many: a page that is not
+// full would be a count, and counts compared across jobs that differ by their
+// pay (their terms are locked, a duplicate is another job) would tell
+// candidates' floors. Each card stands for its candidate by a token bound to
+// the recruiter and the job (matchTokens.ts), never an id.
 //
 // Travel times are read from the cache only (cachedCommuteContext): a feed is
 // a GET, which Bun cuts after 30 s without data, and many pairs at once. A
@@ -76,10 +81,11 @@ import { m } from './matchFeeds.messages';
 // (standing): unless the job cannot meet the candidate even with the commute
 // matching (nothing is asked then), what a warm-up can find is asked in the
 // background (warmCommute), within the reader's daily allowance and matching's
-// share of the site's day (`pending`: read again in a moment); meanwhile the
-// candidate reads that job's commute as unknown (and a job that meets their bar
-// only once it is known waits for it), and a recruiter's feed holds the
-// candidate back. When the travel time cannot be found today, or ever for
+// share of the site's day (the candidate's feed says `pending`: read again in a
+// moment; a recruiter's says nothing of it, which would tell of a candidate
+// never shown); meanwhile the candidate reads that job's commute as unknown
+// (and a job that meets their bar only once it is known waits for it), and a
+// recruiter's feed holds the candidate back. When the travel time cannot be found today, or ever for
 // matching (public transport from Transitous, which matching never asks), a
 // commute that is a deal-breaker keeps the pair apart on both sides; another is
 // left out of the score, as the job match step leaves out a travel time it does
@@ -93,8 +99,12 @@ export const MATCHING_FEED_READS: RateLimit = { limit: 120, windowMs: 60 * 60_00
 /** The counter of `userId`'s feed reads (keyed by a hash of it: rateLimitKey) */
 export const matchingFeedKey = (userId: string) => rateLimitKey('matching-feed', userId);
 
-/** Counts one read of a feed by `userId`; 429 over MATCHING_FEED_READS. Never given back */
-const countRead = async (userId: string) => {
+/**
+ * Counts one read of a feed by `userId`, or of the private page of a job that may be proposed to
+ * them (services/jobAccess.ts, which does a feed's work for one job); 429 over MATCHING_FEED_READS.
+ * Never given back
+ */
+export const countFeedRead = async (userId: string) => {
   const { retryAfterSeconds } = await takeRateLimit(matchingFeedKey(userId), MATCHING_FEED_READS);
   if (retryAfterSeconds !== null) {
     throw new TooManyRequestsError(() => m.tooManyReads(MATCHING_FEED_READS.limit), retryAfterSeconds);
@@ -128,7 +138,7 @@ export interface CandidateBar {
   minScore: number;
   /** Their journey's job match shows details: a recruiter reads the outcomes (cardOutcomes) */
   showDetails: boolean;
-  /** The ids of their journey's job steps, where a recruiter's pick is kept */
+  /** The ids of their journey's job steps, where a recruiter's pick is kept (their own feed reads them) */
   jobSteps: string[];
 }
 
@@ -221,14 +231,36 @@ const standing = async (
   return passes(scored, bar) ? 'in' : 'out';
 };
 
-/** What each side decided of a job and a candidate (their Match), when either did */
+/** What each side decided of a job and a candidate (their Match), when either did, and when each first answered */
 interface PairDecisions {
-  candidateDecision?: { value?: string | null } | null;
-  recruiterDecision?: { value?: string | null } | null;
+  candidateDecision?: { value?: string | null; at?: Date | null } | null;
+  recruiterDecision?: { value?: string | null; at?: Date | null } | null;
+  candidateFirstAt?: Date | null;
+  recruiterFirstAt?: Date | null;
 }
 
+/** What the feeds read of a Match */
+const DECISIONS = { candidateDecision: 1, recruiterDecision: 1, candidateFirstAt: 1, recruiterFirstAt: 1 } as const;
+
 const decisionsOn = (jobId: Types.ObjectId, candidateId: string) =>
-  Match.findOne({ job: jobId, candidate: candidateId }, { candidateDecision: 1, recruiterDecision: 1 }).lean<PairDecisions>();
+  Match.findOne({ job: jobId, candidate: candidateId }, DECISIONS).lean<PairDecisions>();
+
+/**
+ * Whether the pair is kept from `reader` because the other side passed it before `reader` first
+ * answered it (or `reader` never did), while `reader` has no answer now: the one place the other
+ * side's pass shows. A pass made after the reader first answered changes nothing they read, their
+ * answer undone or dropped since included (when each side first answered is kept: an undo, or the
+ * job put into matching again, never shows it). A match recorded before first answers were kept
+ * counts the reader's current answer as their first
+ */
+const hiddenFrom = (decisions: PairDecisions | null | undefined, reader: 'candidate' | 'recruiter'): boolean => {
+  if (!decisions) return false;
+  const own = reader === 'candidate' ? decisions.candidateDecision : decisions.recruiterDecision;
+  const other = reader === 'candidate' ? decisions.recruiterDecision : decisions.candidateDecision;
+  if (own || other?.value !== 'pass') return false;
+  const first = reader === 'candidate' ? decisions.candidateFirstAt : decisions.recruiterFirstAt;
+  return !first || !other.at || other.at.getTime() < first.getTime();
+};
 
 /**
  * The jobs a recruiter picked on the job steps of a candidate's journey, from what their visits
@@ -338,14 +370,15 @@ const opportunityJob = (job: StoredJobPosting, snapshot: JobSnapshot): Opportuni
  * published first, MATCHING_LIMITS.candidateFeedPage at a time, from after `after` (a page's
  * `next`). 429 over MATCHING_FEED_READS; 403 NOT_PROPOSED_TO_RECRUITERS unless they are proposed
  * to recruiters now (discovery on, nothing missing). Leaves out what they answered already (an
- * interest or a pass), the jobs whose recruiter passed them, their own jobs, and the jobs a
+ * interest or a pass), the jobs whose recruiter passed them before they first answered (hiddenFrom),
+ * their own jobs, and the jobs a
  * recruiter shared on their page for recruiters. Each job comes with its score, the minimum, how
  * it does on each of their criteria, and whether its recruiter is interested in them; a travel
  * time not kept yet is asked in the background (`pending`), for a job shown and for one that meets
  * their bar only once it is known (standing). Reading it is activity (touchDiscovery)
  */
 export async function candidateFeed(userId: string, after?: string, now = new Date()): Promise<CandidateFeedDto> {
-  await countRead(userId);
+  await countFeedRead(userId);
   if (!(await isProposed(userId, now))) throw new ForbiddenError(NOT_PROPOSED_TO_RECRUITERS);
   await touchDiscovery(userId, now);
 
@@ -355,7 +388,7 @@ export async function candidateFeed(userId: string, after?: string, now = new Da
     // its recruiter passed, a recruiter's interest to say
     Match.find(
       { candidate: userId, $or: [{ candidateDecision: { $exists: true } }, { recruiterDecision: { $exists: true } }] },
-      { job: 1, candidateDecision: 1, recruiterDecision: 1 }
+      { job: 1, ...DECISIONS }
     ).lean<(PairDecisions & { job: Types.ObjectId })[]>(),
     WorkflowInstance.find({ owner: userId }, { steps: 1 }).lean<{ steps?: unknown }[]>()
   ]);
@@ -363,7 +396,7 @@ export async function candidateFeed(userId: string, after?: string, now = new Da
   const wanted = new Set<string>();
   for (const decision of decisions) {
     const jobId = String(decision.job);
-    if (decision.candidateDecision || decision.recruiterDecision?.value === 'pass') left.add(jobId);
+    if (decision.candidateDecision || hiddenFrom(decision, 'candidate')) left.add(jobId);
     else if (decision.recruiterDecision?.value === 'interested') wanted.add(jobId);
   }
   for (const jobId of pickedOn(bar.jobSteps, visits.map((visit) => visit.steps))) left.add(jobId);
@@ -442,8 +475,8 @@ export interface ProposedPair {
 /**
  * The job `job`, live in matching, and the candidate `candidateId` as the candidate's feed sees
  * them, their own answer aside: never their own job, nor one whose recruiter passed them before
- * they answered it (after, the recruiter's pass changes nothing they read: it would tell them of
- * it), and it meets their bar (standing: the commute left out of the score while not known, a
+ * they first answered it (after, the recruiter's pass changes nothing they read, their answer
+ * undone since included: it would tell them of it, hiddenFrom), and it meets their bar (standing: the commute left out of the score while not known, a
  * deal-breaker one that cannot be told today keeping them apart). Null otherwise, with what each
  * side decided of it. Whether the candidate is proposed to recruiters is the caller's
  * (isProposed); `exceptPicked` also leaves out a job its recruiter shared on the candidate's page
@@ -463,7 +496,7 @@ const candidatePair = async (
       ? WorkflowInstance.findOne({ owner: candidateId, visitor: job.recruiter }, { steps: 1 }).lean<{ steps?: unknown }>()
       : null
   ]);
-  if (decisions?.recruiterDecision?.value === 'pass' && !decisions.candidateDecision) return null;
+  if (hiddenFrom(decisions, 'candidate')) return null;
   if (visit && pickedOn(bar.jobSteps, [visit.steps]).has(String(job._id))) return null;
   const snapshot = toJobSnapshot(job);
   if (beyondReach(bar, snapshot)) return null;
@@ -542,14 +575,17 @@ export interface RecruiterCandidateCard {
   interested: boolean;
 }
 
-/** GET /recruiter/jobs/:id/candidates */
+/**
+ * GET /recruiter/jobs/:id/candidates. Never whether candidates are held back for a travel time
+ * being computed: that would tell of candidates never shown (one who meets the job on everything
+ * but the way to its office); the screen reads the feed again once the card shown is answered, or
+ * a while later
+ */
 export interface RecruiterFeedDto {
-  /** MATCHING_LIMITS.recruiterCardsPerRead at most, in the feed's order */
+  /** MATCHING_LIMITS.recruiterCardsPerRead at most (one), in the feed's order */
   cards: RecruiterCandidateCard[];
   /** More candidates after these, once these are answered: never how many */
   more: boolean;
-  /** Candidates are held back while their travel time is being computed: read again in a moment */
-  pending: boolean;
 }
 
 /** How the recruiter's feed reads its candidates: how many it evaluates at once, in its order. Tests change it */
@@ -561,8 +597,6 @@ type Evaluated = { kind: 'out' } | { kind: 'held' } | { kind: 'in'; bar: Candida
 /** A recruiter's job, as its candidates are evaluated for it */
 interface JobUnderEvaluation {
   recruiterId: string;
-  /** The job's id */
-  jobKey: string;
   /** The version candidates are scored against */
   snapshot: JobSnapshot;
   /** Whether the recruiter's warm-ups can still ask anything today (warmUpsFor) */
@@ -571,20 +605,19 @@ interface JobUnderEvaluation {
 
 /**
  * Whether the candidate `candidate`, whose bar is `bar`, is proposed for `job` now (the decisions
- * of either side on the pair aside, which the caller reads): the job not shared on their page by
- * its recruiter (`visit`: what the recruiter's visit of their journey stored), within reach of
- * their bar (in memory: most candidates of a job end there, before anything is read of them),
- * proposed to recruiters (isProposed, with their `profile` when read already), and meeting their
- * bar (standing). One whose travel time a warm-up can find is held back (it is asked in the
- * background, on the recruiter's allowance); not findable today, a deal-breaker commute keeps them
- * out, another is left out of the score
+ * of either side on the pair aside, which the caller reads): within reach of their bar (in memory:
+ * most candidates of a job end there, before anything is read of them), proposed to recruiters
+ * (isProposed, with their `profile` when read already), and meeting their bar (standing). One whose
+ * travel time a warm-up can find is held back (it is asked in the background, on the recruiter's
+ * allowance); not findable today, a deal-breaker commute keeps them out, another is left out of the
+ * score. Whether the recruiter shared the job on their page for recruiters does not matter here: it
+ * would tell the recruiter which card is the portfolio they visited
  */
 const evaluateCandidate = async (
-  { recruiterId, jobKey, snapshot, canWarm }: JobUnderEvaluation,
+  { recruiterId, snapshot, canWarm }: JobUnderEvaluation,
   candidate: string,
-  { now, bar, visit, profile }: { now: Date; bar: CandidateBar; visit: unknown; profile?: Parameters<typeof isProposed>[2] }
+  { now, bar, profile }: { now: Date; bar: CandidateBar; profile?: Parameters<typeof isProposed>[2] }
 ): Promise<Evaluated> => {
-  if (pickedOn(bar.jobSteps, [visit]).has(jobKey)) return { kind: 'out' };
   if (beyondReach(bar, snapshot)) return { kind: 'out' };
   if (!(await isProposed(candidate, now, profile))) return { kind: 'out' };
   const scored = await scorePair(bar, snapshot);
@@ -601,9 +634,9 @@ const evaluateCandidate = async (
  * Whether the candidate `candidateId` is proposed for the job `job` of `recruiterId` now, for a
  * decision of the recruiter's on them (services/matches.ts), whatever the recruiter answered
  * already: as the recruiter's feed proposes them (evaluateCandidate), and not having passed the job
- * before the recruiter answered them (after, the candidate's pass changes nothing the recruiter
- * reads: it would tell them of it). Held back for a travel time, they are not proposed yet. Whether
- * the job is live is the caller's
+ * before the recruiter first answered them (after, the candidate's pass changes nothing the
+ * recruiter reads, their answer undone since included: it would tell them of it, hiddenFrom). Held
+ * back for a travel time, they are not proposed yet. Whether the job is live is the caller's
  */
 export async function candidateProposedFor(
   recruiterId: string,
@@ -612,15 +645,11 @@ export async function candidateProposedFor(
   now = new Date()
 ): Promise<ProposedPair | null> {
   if (candidateId === recruiterId || !Types.ObjectId.isValid(candidateId)) return null;
-  const [decisions, visit, bar] = await Promise.all([
-    decisionsOn(job._id, candidateId),
-    WorkflowInstance.findOne({ owner: candidateId, visitor: recruiterId }, { steps: 1 }).lean<{ steps?: unknown }>(),
-    candidateBar(candidateId)
-  ]);
-  if (decisions?.candidateDecision?.value === 'pass' && !decisions.recruiterDecision) return null;
+  const [decisions, bar] = await Promise.all([decisionsOn(job._id, candidateId), candidateBar(candidateId)]);
+  if (hiddenFrom(decisions, 'recruiter')) return null;
   const snapshot = toJobSnapshot(job);
-  const evaluation = { recruiterId, jobKey: String(job._id), snapshot, canWarm: warmUpsFor(recruiterId) };
-  const result = await evaluateCandidate(evaluation, candidateId, { now, bar, visit: visit?.steps });
+  const evaluation = { recruiterId, snapshot, canWarm: warmUpsFor(recruiterId) };
+  const result = await evaluateCandidate(evaluation, candidateId, { now, bar });
   return result.kind === 'in' ? { bar: result.bar, scored: result.scored, snapshot } : null;
 }
 
@@ -632,15 +661,16 @@ export async function candidateProposedFor(
  * proposed to candidates now (not open, out of matching, or not approved). The recruiter space
  * and the terms in force are the route's (requireRecruiterSpace).
  *
- * Leaves out the recruiter's own account, the candidates they answered for this job, those who
- * passed it, and those on whose page for recruiters they shared it. Every candidate's bar is read
- * at once and held against the job in memory first; only those within its reach are read further
+ * Leaves out the recruiter's own account, the candidates they answered for this job, and those who
+ * passed it before the recruiter first answered them (hiddenFrom). Every candidate's bar is read at
+ * once and held against the job in memory first; only those within its reach are read further
  * (isProposed, the travel time kept), `recruiterFeedTuning.evaluatedAtOnce` at a time, until the
  * cards are found. A candidate whose travel time is not kept yet is held back while a warm-up can
- * find it (`pending`); one whose commute is a deal-breaker that cannot be told today is left out
+ * find it (asked in the background, never said); one whose commute is a deal-breaker that cannot be
+ * told today is left out
  */
 export async function recruiterFeed(recruiterId: string, jobId: string, now = new Date()): Promise<RecruiterFeedDto> {
-  await countRead(recruiterId);
+  await countFeedRead(recruiterId);
   const job = await JobPosting.findOne({ _id: jobId, recruiter: recruiterId }).lean<StoredJobPosting>();
   if (!job) throw new ResourceNotFoundError(JOB_NOT_FOUND);
   if (!(await isLiveInMatching(job))) throw new ConflictError(JOB_NOT_PROPOSED);
@@ -661,17 +691,9 @@ export async function recruiterFeed(recruiterId: string, jobId: string, now = ne
     { user: 1, enabledAt: 1, lastActiveAt: 1 }
   ).lean<{ user: Types.ObjectId; enabledAt?: Date | null; lastActiveAt?: Date | null }[]>();
   const ids = profiles.map((profile) => profile.user);
-  const [decisions, visits] = await Promise.all([
-    Match.find(
-      { job: job._id, candidate: { $in: ids } },
-      { candidate: 1, candidateDecision: 1, recruiterDecision: 1 }
-    ).lean<
-      { candidate: Types.ObjectId; candidateDecision?: { value?: string; version?: string } | null; recruiterDecision?: unknown }[]
-    >(),
-    WorkflowInstance.find({ visitor: recruiterId, owner: { $in: ids } }, { owner: 1, steps: 1 }).lean<
-      { owner: Types.ObjectId; steps?: unknown }[]
-    >()
-  ]);
+  const decisions = await Match.find({ job: job._id, candidate: { $in: ids } }, { candidate: 1, ...DECISIONS }).lean<
+    (PairDecisions & { candidate: Types.ObjectId; candidateDecision?: { value?: string; at?: Date; version?: string } | null })[]
+  >();
   const answered = new Set<string>();
   const interested = new Set<string>();
   // An interest holds for the version of the job it was given on: given on another (the job edited
@@ -679,13 +701,11 @@ export async function recruiterFeed(recruiterId: string, jobId: string, now = ne
   const version = reviewedVersion(job);
   for (const decision of decisions) {
     const candidate = String(decision.candidate);
-    if (decision.recruiterDecision || decision.candidateDecision?.value === 'pass') answered.add(candidate);
+    if (decision.recruiterDecision || hiddenFrom(decision, 'recruiter')) answered.add(candidate);
     else if (decision.candidateDecision?.value === 'interested' && decision.candidateDecision.version === version) {
       interested.add(candidate);
     }
   }
-  const visitOf = new Map(visits.map((visit) => [String(visit.owner), visit.steps]));
-
   // Those interested first, then a keyed hash of the job and the candidate: never the score
   const ordered = profiles
     .filter((profile) => !answered.has(String(profile.user)))
@@ -697,12 +717,12 @@ export async function recruiterFeed(recruiterId: string, jobId: string, now = ne
 
   // Every candidate's bar at once: most are out of the job's reach, which tells in memory
   const bars = await candidateBars(ordered.map(({ profile }) => profile.user));
-  const evaluation: JobUnderEvaluation = { recruiterId, jobKey, snapshot, canWarm: warmUpsFor(recruiterId) };
+  const evaluation: JobUnderEvaluation = { recruiterId, snapshot, canWarm: warmUpsFor(recruiterId) };
   const evaluate = async ({ profile, candidate }: (typeof ordered)[number]): Promise<Evaluated> => {
     const bar = bars.get(candidate);
     if (!bar) return { kind: 'out' };
     try {
-      return await evaluateCandidate(evaluation, candidate, { now, bar, visit: visitOf.get(candidate), profile });
+      return await evaluateCandidate(evaluation, candidate, { now, bar, profile });
     } catch (error) {
       // What one candidate's stored data breaks never fails the feed: that candidate is out (fails
       // closed), and nothing of them is logged
@@ -717,12 +737,10 @@ export async function recruiterFeed(recruiterId: string, jobId: string, now = ne
   const limit = MATCHING_LIMITS.recruiterCardsPerRead;
   const atOnce = Math.max(1, recruiterFeedTuning.evaluatedAtOnce);
   let more = false;
-  let pending = false;
   for (let start = 0; start < ordered.length && !more; start += atOnce) {
     const batch = ordered.slice(start, start + atOnce);
     const results = await Promise.all(batch.map(evaluate));
     for (const [index, result] of results.entries()) {
-      if (result.kind === 'held') pending = true;
       if (result.kind !== 'in') continue;
       if (shown.length === limit) {
         more = true;
@@ -742,5 +760,5 @@ export async function recruiterFeed(recruiterId: string, jobId: string, now = ne
       })
     )
   );
-  return { cards, more, pending };
+  return { cards, more };
 }

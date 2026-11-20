@@ -6,6 +6,7 @@ import type { JobPosting as StoredJobPosting } from '../../models/database/jobPo
 import { ConflictError, FieldValidationError, ResourceNotFoundError, TooManyRequestsError } from '../../errors';
 import { JOB_OF_MUTUAL_INTEREST } from '../../protocol';
 import { JOB_NOT_FOUND, storedJobSnapshot, toJobSnapshot } from '../jobPostings';
+import { versionNow } from '../jobVersion';
 import { userAcceptedCurrentTerms } from '../legal';
 import type { MutualInterest } from '../mutualInterests';
 import { rateLimitKey, takeRateLimit } from '../rateLimit';
@@ -172,15 +173,6 @@ export const legacyPick = (data: unknown): boolean => {
   if (!pickedJobId(data)) return false;
   const fields = data as Record<string, unknown>;
   return !Object.hasOwn(fields, 'version') && !Object.hasOwn(fields, 'posting');
-};
-
-/**
- * The version of a stored posting as a share of it now would keep it (read back as the step reads
- * it, when it passes today's rules), to compare with the version kept
- */
-const versionNow = (posting: StoredJobPosting): JobSnapshot => {
-  const snapshot = toJobSnapshot(posting);
-  return storedJobSnapshot(snapshot) ?? snapshot;
 };
 
 type JobContext = StepContext<Record<string, never>, JobStepData>;

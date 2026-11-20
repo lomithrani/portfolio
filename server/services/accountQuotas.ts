@@ -53,10 +53,6 @@ const carriedQuotas = (): readonly CarriedQuota[] => [
 
 const carriedKey = (name: string, googleId: string) => rateLimitKey(`carried:${name}`, googleId)
 
-// The plan's job imports: their own module (services/planImports.ts), which
-// recruiters.ts loads without loading the features above
-export { CARRIED_PLAN_IMPORTS_MS, carriedPlanImportsKey, restorePlanImports } from './planImports'
-
 /**
  * Before an account is deleted: carries the quotas it used (current windows,
  * and the job imports of its recruiter plan) over to its Google identity.

@@ -11,6 +11,7 @@ import mongoose, { Types } from 'mongoose';
 import {
   DISCOVERY_CONSENT_KEYS,
   DISCOVERY_CONSENT_RENEWAL_DAYS,
+  DISCOVERY_REJOIN_DAYS,
   DISCOVERY_INACTIVITY_DAYS,
   LEGAL_VERSION,
   MATCHING_LIMITS,
@@ -182,6 +183,14 @@ const grant = (user: TestUser, consent: unknown = currentDiscoveryConsent(), lan
   call('POST', '/discovery/consent', { body: { consent }, cookie: user.cookie, language });
 
 const withdraw = (user: TestUser) => call('DELETE', '/discovery/consent', { cookie: user.cookie });
+
+/** The candidate's latest withdrawal moved back past DISCOVERY_REJOIN_DAYS: they may opt in again */
+const pastRejoinDays = async (user: TestUser) => {
+  const past = new Date(Date.now() - (DISCOVERY_REJOIN_DAYS + 1) * DAY);
+  const profile = await DiscoveryProfile.findOne({ user: user.id }).lean();
+  const consents = (profile?.consents ?? []).map((consent) => (consent.action === 'withdrawn' ? { ...consent, at: past } : consent));
+  await DiscoveryProfile.updateOne({ user: user.id }, { $set: { consents } });
+};
 
 const profileOf = (user: TestUser) => DiscoveryProfile.findOne({ user: user.id }).lean();
 
@@ -459,9 +468,11 @@ describe('POST /discovery/consent', () => {
   it(`takes ${DISCOVERY_GRANTS_PER_DAY.limit} consents a day, then answers 429 with when to try again`, async () => {
     const candidate = await readyCandidate('toggle');
     for (let index = 0; index < DISCOVERY_GRANTS_PER_DAY.limit; index += 1) {
-      // On each time: an opt-in asked after a withdrawal wins over it
+      // On each time: an opt-in asked after a withdrawal wins over it (each withdrawal moved back
+      // past DISCOVERY_REJOIN_DAYS, which holds the next opt-in back otherwise: another test)
       expect((await grant(candidate)).json()).toMatchObject({ state: 'on' });
       expect((await withdraw(candidate)).json()).toMatchObject({ state: 'off' });
+      await pastRejoinDays(candidate);
     }
 
     const refused = await grant(candidate);
@@ -472,6 +483,35 @@ describe('POST /discovery/consent', () => {
     expect((await status(candidate)).state).toBe('off');
     // Withdrawing is never limited
     expect((await withdraw(candidate)).status).toBe(200);
+  });
+
+  it(`holds an opt-in back ${DISCOVERY_REJOIN_DAYS} days after a withdrawal (429), never after one of an account that was off`, async () => {
+    const candidate = await readyCandidate('rejoin');
+    expect((await grant(candidate)).status).toBe(200);
+    expect((await withdraw(candidate)).status).toBe(200);
+
+    const refused = await grant(candidate, currentDiscoveryConsent(), 'fr');
+
+    expect(refused.status).toBe(429);
+    const retryAfter = Number(refused.headers.get('retry-after'));
+    expect(retryAfter).toBeGreaterThan((DISCOVERY_REJOIN_DAYS * DAY) / 1000 - 120);
+    expect(retryAfter).toBeLessThanOrEqual((DISCOVERY_REJOIN_DAYS * DAY) / 1000);
+    expect(refused.text).toBe(
+      `Vous pourrez vous rendre de nouveau visible des recruteurs ${DISCOVERY_REJOIN_DAYS} jours après avoir cessé de l'être. Réessayez plus tard.`
+    );
+    expect((await status(candidate)).state).toBe('off');
+    // Refused before the day's opt-ins are counted: the first one alone
+    const counted = await RateLimitCounter.findOne({ _id: new RegExp(`^${discoveryGrantsKey(candidate.id)}:`) }).lean();
+    expect(counted?.count).toBe(1);
+
+    // Past them, it is on again
+    await pastRejoinDays(candidate);
+    expect((await grant(candidate)).json()).toMatchObject({ state: 'on' });
+
+    // A withdrawal of an account that was never on holds nothing back
+    const never = await readyCandidate('rejoin-never');
+    expect((await withdraw(never)).status).toBe(200);
+    expect((await grant(never)).json()).toMatchObject({ state: 'on' });
   });
 
   it('asks for a new consent once the last one lapsed, and records it', async () => {

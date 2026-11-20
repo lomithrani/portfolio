@@ -35,6 +35,14 @@ export const DISCOVERY_CONSENT_MONTHS = 24;
  */
 export const DISCOVERY_CONSENT_RENEWAL_DAYS = 30;
 
+/**
+ * Days after a withdrawal during which the candidate cannot turn discovery on again: a withdrawal
+ * drops every decision about them no mutual interest came of, recruiters' passes included, so
+ * withdrawing then turning it on again at once would put them back before every recruiter who
+ * passed them, and tell them which jobs those were
+ */
+export const DISCOVERY_REJOIN_DAYS = 7;
+
 /** Lengths and counts of what a candidate sets for discovery, which PUT /discovery enforces */
 export const DISCOVERY_LIMITS = {
 	/** The line a candidate writes atop their anonymous card, in characters */
@@ -49,8 +57,13 @@ export const MATCHING_LIMITS = {
 	matchingJobsPerRecruiter: 10,
 	/** Jobs in one page of a candidate's feed */
 	candidateFeedPage: 30,
-	/** Anonymous cards a recruiter gets per read of a job's feed */
-	recruiterCardsPerRead: 5,
+	/**
+	 * Anonymous cards a recruiter gets per read of a job's feed: one, the next once it is answered,
+	 * and whether there are more. A page of several would count the candidates of a job whenever
+	 * it is not full, and counts compared across jobs that differ by one term would tell the
+	 * candidates' floors
+	 */
+	recruiterCardsPerRead: 1,
 	/** Professional roles an anonymous card lists, at most */
 	roles: 8,
 	/** Skills an anonymous card lists, at most */
@@ -65,7 +78,13 @@ export const MATCHING_LIMITS = {
 	 * Decisions an account takes (or undoes) per UTC day, as a candidate and as a recruiter
 	 * together: what a person answers, not a script trying versions of an answer
 	 */
-	decisionsPerDay: 300
+	decisionsPerDay: 300,
+	/**
+	 * Minutes after a decision during which its side can undo it, and only while it is their latest
+	 * decision: an undo puts back a choice just made, never a way to pass every candidate (or job)
+	 * then take it all back
+	 */
+	undoMinutes: 10
 } as const;
 
 // --- Requirements ----------------------------------------------------------------------

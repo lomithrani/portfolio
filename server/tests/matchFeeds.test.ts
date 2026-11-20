@@ -340,6 +340,37 @@ const hashOrder = (jobId: string, candidates: { id: string }[]) =>
     .sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0))
     .map((candidate) => candidate.id);
 
+/**
+ * Every card a recruiter's feed proposes for `jobId`, in its order, read as the feed gives them: one
+ * per read, the next once it is answered. Each card read is passed on the database (no decision is
+ * counted), and those passes are taken back once the feed has no more: what the test stored stays
+ */
+const feedOrder = async (recruiter: TestUser, jobId: string) => {
+  const cards: { candidate: string; interested: boolean; more: boolean }[] = [];
+  for (;;) {
+    const body = (await recruiterFeed(recruiter, jobId)).json();
+    expect(body.cards.length).toBeLessThanOrEqual(MATCHING_LIMITS.recruiterCardsPerRead);
+    const [card] = body.cards;
+    if (!card) {
+      expect(body).toEqual({ cards: [], more: false });
+      break;
+    }
+    const candidate = openMatchToken(card.token, { recruiterId: recruiter.id, jobId })!;
+    cards.push({ candidate, interested: card.interested, more: body.more });
+    await Match.updateOne(
+      { job: jobId, candidate },
+      { $set: { recruiter: recruiter.id, recruiterDecision: { value: 'pass', at: new Date() } } },
+      { upsert: true }
+    );
+  }
+  const read = cards.map(({ candidate }) => candidate);
+  await Match.updateMany({ job: jobId, candidate: { $in: read } }, { $unset: { recruiterDecision: 1 } });
+  await Match.deleteMany({ job: jobId, candidate: { $in: read }, candidateDecision: { $exists: false } });
+  return cards;
+};
+
+const orderOf = async (recruiter: TestUser, jobId: string) => (await feedOrder(recruiter, jobId)).map(({ candidate }) => candidate);
+
 beforeAll(async () => {
   assertDisposableDatabase(env.MONGO_URL);
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
@@ -704,13 +735,13 @@ describe('GET /opportunities', () => {
     });
     const relaxed = await proposedCandidate('relaxed', { rated: criteria({ commute: commuteCriterion({ modes: ['transit'] }) }) });
 
-    // Nothing to ask: nothing pending, on either side
+    // Nothing to ask: nothing pending for the candidate
     expect((await candidateFeed(strict)).json()).toEqual({ jobs: [], more: false, next: null, pending: false });
     expect((await call('GET', `/opportunities/jobs/${jobId}`, { cookie: strict.cookie })).status).toBe(404);
     expect((await call('PUT', `/opportunities/jobs/${jobId}/decision`, { body: { decision: 'interested' }, cookie: strict.cookie })).status).toBe(404);
     const recruiterRead = (await recruiterFeed(recruiter, jobId)).json();
+    expect(recruiterRead).toMatchObject({ more: false });
     expect(candidatesOf(recruiterRead, recruiter, jobId)).toEqual([relaxed.id]);
-    expect(recruiterRead.pending).toBe(false);
     // Not a deal-breaker: left out of the score, on both sides
     const relaxedRead = (await candidateFeed(relaxed)).json();
     expect(relaxedRead.jobs.map((card: any) => card.job._id)).toEqual([jobId]);
@@ -743,6 +774,36 @@ describe('GET /opportunities', () => {
     expect(answer.text).toBe(
       `Vous pouvez consulter ce qui vous est proposé ${MATCHING_FEED_READS.limit} fois par heure. Réessayez plus tard.`
     );
+  });
+
+  it("counts the private page of a job that may be proposed with the feed's reads, never a page shared through a journey", async () => {
+    const recruiter = await createRecruiter();
+    const proposed = await storeJob(recruiter);
+    const picked = await storeJob(recruiter, { overrides: { description: '## The job\n\nPicked on their page.' } });
+    const candidate = await proposedCandidate('candidate');
+    await pickOnJourney(candidate, recruiter, picked);
+    const page = (jobId: string) => call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie });
+    const counted = async () =>
+      (await RateLimitCounter.findOne({ _id: new RegExp(`^${matchingFeedKey(candidate.id)}:`) }).lean())?.count ?? 0;
+
+    // A job proposed to them: counted; an id that is no job, never (nothing to do)
+    expect((await page(proposed)).json()).toMatchObject({ access: 'feed' });
+    expect(await counted()).toBe(1);
+    expect((await page(new Types.ObjectId().toString())).status).toBe(404);
+    expect(await counted()).toBe(1);
+    // A job that exists but is not proposed (a pending review): counted as it did the feed's work
+    const pending = await storeJob(recruiter, { review: 'pending' });
+    expect((await page(pending)).status).toBe(404);
+    expect(await counted()).toBe(2);
+    // The job picked on their page for recruiters: never
+    expect((await page(picked)).json()).toMatchObject({ access: 'journey' });
+    expect(await counted()).toBe(2);
+
+    await Promise.all(
+      Array.from({ length: MATCHING_FEED_READS.limit }, () => takeRateLimit(matchingFeedKey(candidate.id), MATCHING_FEED_READS))
+    );
+    expect((await page(proposed)).status).toBe(429);
+    expect((await page(picked)).status).toBe(200);
   });
 });
 
@@ -810,7 +871,7 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     const self = await proposedCandidate('self');
     expect(await openRecruiterSpace(self.id)).toBe(true);
     const ownJob = await storeJob(self);
-    expect(candidatesOf((await recruiterFeed(self, ownJob)).json(), self, ownJob)).toEqual(hashOrder(ownJob, shown));
+    expect(await orderOf(self, ownJob)).toEqual(hashOrder(ownJob, shown));
     shown.push(self);
 
     // Scores rising along the order the hash draws: 73, 88, 100 and 100. A feed ordered by score
@@ -836,37 +897,37 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     const answer = await recruiterFeed(recruiter, jobId);
 
     expect(answer.status).toBe(200);
-    const body = answer.json();
-    expect(candidatesOf(body, recruiter, jobId)).toEqual(order);
-    expect(body).toMatchObject({ more: false, pending: false });
-    expect(body.cards.every((card: any) => card.interested === false)).toBe(true);
+    expect(candidatesOf(answer.json(), recruiter, jobId)).toEqual(order.slice(0, 1));
+    const read = await feedOrder(recruiter, jobId);
+    expect(read.map(({ candidate }) => candidate)).toEqual(order);
+    expect(read.every((card) => !card.interested)).toBe(true);
 
     // The same at every read; a score changed since changes nothing of it
-    expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual(order);
+    expect(await orderOf(recruiter, jobId)).toEqual(order);
     const first = { criteria: criteria({ perYear: 50_000 }) };
     expect((await call('PUT', '/perfect-job', { body: first, cookie: byId.get(order[0])!.cookie })).status).toBe(200);
-    expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual(order);
+    expect(await orderOf(recruiter, jobId)).toEqual(order);
 
     // Another job of theirs: its own order, from the same candidates
     const second = await storeJob(recruiter);
-    expect(candidatesOf((await recruiterFeed(recruiter, second)).json(), recruiter, second)).toEqual(hashOrder(second, shown));
+    expect(await orderOf(recruiter, second)).toEqual(hashOrder(second, shown));
 
     // A candidate interested in the job comes first, and says so
     const last = order.at(-1)!;
     await storeDecision(jobId, recruiter, { id: last } as TestUser, { candidate: 'interested' });
-    const interested = (await recruiterFeed(recruiter, jobId)).json();
-    expect(candidatesOf(interested, recruiter, jobId)).toEqual([last, ...order.slice(0, -1)]);
-    expect(interested.cards.map((card: any) => card.interested)).toEqual([true, false, false, false]);
+    const interested = await feedOrder(recruiter, jobId);
+    expect(interested.map(({ candidate }) => candidate)).toEqual([last, ...order.slice(0, -1)]);
+    expect(interested.map((card) => card.interested)).toEqual([true, false, false, false]);
     // Interested in another version of it (the job edited since): neither first nor said to be,
     // their recruiter's interest asks them again (tests/matches.test.ts)
     await Match.deleteOne({ job: jobId, candidate: last });
     await storeDecision(jobId, recruiter, { id: last } as TestUser, { candidate: 'interested' }, { version: 'another-version' });
-    const older = (await recruiterFeed(recruiter, jobId)).json();
-    expect(candidatesOf(older, recruiter, jobId)).toEqual(order);
-    expect(older.cards.every((card: any) => card.interested === false)).toBe(true);
+    const older = await feedOrder(recruiter, jobId);
+    expect(older.map(({ candidate }) => candidate)).toEqual(order);
+    expect(older.every((card) => !card.interested)).toBe(true);
   });
 
-  it('leaves out the candidates the recruiter answered, those who passed the job, and those they met through its link', async () => {
+  it('leaves out the candidates the recruiter answered and those who passed the job, never those they met through its link', async () => {
     const recruiter = await createRecruiter();
     const jobId = await storeJob(recruiter);
     const [kept, answered, passed, met] = [
@@ -877,14 +938,23 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     ];
     await storeDecision(jobId, recruiter, answered, { recruiter: 'pass' });
     await storeDecision(jobId, recruiter, passed, { candidate: 'pass' });
+    // Their pick on a candidate's page for recruiters changes nothing of their feed: which card
+    // left it would be the portfolio they visited
     await pickOnJourney(met, recruiter, jobId);
 
-    expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual([kept.id]);
+    expect(await orderOf(recruiter, jobId)).toEqual(hashOrder(jobId, [kept, met]));
+    const token = sealMatchToken(met.id, { recruiterId: recruiter.id, jobId });
+    const decided = await call('PUT', `/recruiter/jobs/${jobId}/candidates/decision`, {
+      body: { token, decision: 'pass' },
+      cookie: recruiter.cookie
+    });
+    expect(decided.status).toBe(200);
+    // The candidate's side knows the job: theirs leaves it out (another test)
 
     // An interest of the recruiter's, unanswered: answered all the same
     await Match.deleteOne({ job: jobId, candidate: answered.id });
     await storeDecision(jobId, recruiter, answered, { recruiter: 'interested' });
-    expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual([kept.id]);
+    expect(await orderOf(recruiter, jobId)).toEqual([kept.id]);
   });
 
   it('tells a recruiter nothing of a pass the candidate made after they answered', async () => {
@@ -902,29 +972,79 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     const again = await decide('pass');
     expect(again.status).toBe(200);
     expect(again.json()).toEqual({ decision: 'pass', match: null });
+
+    // Nor once they undo theirs: the card is back, and theirs to answer again
+    const undo = () => call('DELETE', `/recruiter/jobs/${jobId}/candidates/decision`, { body: { token: card.token }, cookie: recruiter.cookie });
+    expect((await undo()).status).toBe(200);
+    expect(await orderOf(recruiter, jobId)).toEqual([candidateId]);
+    expect((await decide('interested')).status).toBe(200);
+
+    // Nor once the job is taken out of matching and put back (their interest dropped, the
+    // candidate's pass kept): the card comes back as any other
+    const switchMatching = (enabled: boolean) =>
+      call('PUT', `/jobs/${jobId}/matching`, { body: { enabled }, cookie: recruiter.cookie });
+    expect((await switchMatching(false)).status).toBe(200);
+    expect((await switchMatching(true)).json().matching.review.status).toBe('approved');
+    expect((await Match.findOne({ job: jobId, candidate: candidateId }).lean())?.recruiterDecision).toBeUndefined();
+    expect(await orderOf(recruiter, jobId)).toEqual([candidateId]);
+    expect((await decide('interested')).status).toBe(200);
+
+    // A pass made before they ever answered still keeps the pair from them
+    const other = await storeJob(recruiter, { overrides: { description: '## The job\n\nAnother one.' } });
+    await storeDecision(other, recruiter, { id: candidateId } as TestUser, { candidate: 'pass' });
+    expect(await orderOf(recruiter, other)).toEqual([]);
   });
 
-  it('gives a few cards at a time and whether there are more, never how many', async () => {
-    // Two candidates evaluated at once: the cards come from several batches, `more` from the last
+  it('tells a candidate nothing of a pass the recruiter made after they answered, once they undo theirs', async () => {
+    const recruiter = await createRecruiter();
+    const jobId = await storeJob(recruiter);
+    const candidate = await proposedCandidate('candidate');
+    const decide = (decision: string) =>
+      call('PUT', `/opportunities/jobs/${jobId}/decision`, { body: { decision }, cookie: candidate.cookie });
+    expect((await decide('interested')).status).toBe(200);
+
+    // Its recruiter passes them afterwards, then they undo their interest: the job is still theirs
+    // to read, decide on and see in their feed
+    const token = sealMatchToken(candidate.id, { recruiterId: recruiter.id, jobId });
+    const passed = await call('PUT', `/recruiter/jobs/${jobId}/candidates/decision`, { body: { token, decision: 'pass' }, cookie: recruiter.cookie });
+    expect(passed.status).toBe(200);
+    expect((await call('DELETE', `/opportunities/jobs/${jobId}/decision`, { cookie: candidate.cookie })).status).toBe(200);
+    expect((await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie })).json()).toMatchObject({
+      access: 'feed',
+      interested: false
+    });
+    expect((await candidateFeed(candidate)).json().jobs.map((card: any) => card.job._id)).toEqual([jobId]);
+    expect((await decide('pass')).status).toBe(200);
+  });
+
+  it('gives one card at a time and whether there are more, never how many', async () => {
+    // One card a read: a page that is not full would be a count of the job's candidates
+    expect(MATCHING_LIMITS.recruiterCardsPerRead).toBe(1);
+    // Two candidates evaluated at once: the card and `more` come from several batches
     recruiterFeedTuning.evaluatedAtOnce = 2;
     const recruiter = await createRecruiter();
     const jobId = await storeJob(recruiter);
-    const limit = MATCHING_LIMITS.recruiterCardsPerRead;
     const candidates: Candidate[] = [];
-    for (let index = 0; index <= limit; index++) candidates.push(await proposedCandidate(`c${index}`));
+    for (let index = 0; index < 4; index++) candidates.push(await proposedCandidate(`c${index}`));
+    const order = hashOrder(jobId, candidates);
 
     const body = (await recruiterFeed(recruiter, jobId)).json();
 
-    expect(Object.keys(body).sort()).toEqual(['cards', 'more', 'pending']);
+    // Never whether candidates are held back for a travel time either: only the card, and more
+    expect(Object.keys(body).sort()).toEqual(['cards', 'more']);
     expect(body.more).toBe(true);
-    expect(candidatesOf(body, recruiter, jobId)).toEqual(hashOrder(jobId, candidates).slice(0, limit));
+    expect(candidatesOf(body, recruiter, jobId)).toEqual(order.slice(0, 1));
     for (const card of body.cards) expect(Object.keys(card).sort()).toEqual(['card', 'interested', 'outcomes', 'token']);
+    // The same card until it is answered
+    expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual(order.slice(0, 1));
 
-    // Once one is answered, the last comes, and nothing more
-    await storeDecision(jobId, recruiter, { id: hashOrder(jobId, candidates)[0] } as TestUser, { recruiter: 'pass' });
-    const next = (await recruiterFeed(recruiter, jobId)).json();
-    expect(candidatesOf(next, recruiter, jobId)).toEqual(hashOrder(jobId, candidates).slice(1));
-    expect(next.more).toBe(false);
+    // Once each is answered, the next comes, and `more` says only whether another follows it
+    for (const [index, id] of order.slice(0, -1).entries()) {
+      await storeDecision(jobId, recruiter, { id } as TestUser, { recruiter: 'pass' });
+      const next = (await recruiterFeed(recruiter, jobId)).json();
+      expect(candidatesOf(next, recruiter, jobId)).toEqual([order[index + 1]]);
+      expect(next.more).toBe(index + 1 < order.length - 1);
+    }
   });
 
   it('shows the anonymous card alone: no name, address, portfolio, company, place, project, id, score, commute or deal-breaker', async () => {
@@ -1061,7 +1181,8 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     const body = (await recruiterFeed(recruiter, jobId)).json();
 
     expect(fetched).toEqual([]);
-    expect(body).toEqual({ cards: [], more: false, pending: true });
+    // Held back, and never said: that would tell of candidates never shown
+    expect(body).toEqual({ cards: [], more: false });
     expect(warmUps.map(({ pair, accountId }) => [pair.candidateId, accountId]).sort()).toEqual(
       [
         [near.id, recruiter.id],
@@ -1074,7 +1195,7 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     spyOn(matchFeedWarmUps, 'possible').mockImplementation(async () => false);
     const spent = (await recruiterFeed(recruiter, jobId)).json();
     expect(candidatesOf(spent, recruiter, jobId)).toEqual([near.id]);
-    expect(spent.pending).toBe(false);
+    expect(spent.more).toBe(false);
     expect(fetched).toEqual([]);
   });
 
@@ -1095,12 +1216,12 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
       running.push(warmCommute(pair, accountId));
     });
 
-    expect((await recruiterFeed(recruiter, jobId)).json()).toEqual({ cards: [], more: false, pending: true });
+    expect((await recruiterFeed(recruiter, jobId)).json()).toEqual({ cards: [], more: false });
     await Promise.all(running);
 
     const body = (await recruiterFeed(recruiter, jobId)).json();
     expect(candidatesOf(body, recruiter, jobId)).toEqual([near.id]);
-    expect(body.pending).toBe(false);
+    expect(body.more).toBe(false);
     expect(far.id).not.toBe(near.id);
   });
 

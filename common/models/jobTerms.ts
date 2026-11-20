@@ -69,14 +69,6 @@ export const changedLockedFields = (stored: JobSnapshot, next: JobSnapshot): Job
 			JSON.stringify(lockedValue(stored, path)) !== JSON.stringify(lockedValue(next, path))
 	);
 
-/**
- * Whether two versions of a posting (normalised) differ in a field a criterion of the perfect job
- * reads (LOCKED_JOB_FIELDS, compared as changedLockedFields compares them): a score computed on one
- * may not be the score of the other.
- */
-export const scoredFieldsDiffer = (a: JobSnapshot, b: JobSnapshot): boolean =>
-	changedLockedFields(a, b).length > 0;
-
 /** `value` as JSON, the keys of each object sorted: the same text for the same content */
 const canonicalJson = (value: unknown): string =>
 	JSON.stringify(value, (_key, item: unknown) =>

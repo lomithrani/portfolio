@@ -33,7 +33,8 @@ export const discoveryProfileSchema = new Schema({
    */
   enabledAt: { type: Date },
   /**
-   * When the candidate last signed in or changed their discovery: paused
+   * When the candidate last signed in, changed their discovery, read their
+   * feed or decided on a job proposed to them: paused
    * DISCOVERY_INACTIVITY_DAYS later, until they come back
    */
   lastActiveAt: { type: Date },

@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import {
+  DISCOVERY_REJOIN_DAYS,
   discoveryConsentExpiry,
   discoveryConsentKey,
   discoveryConsentRenewable,
@@ -180,11 +181,31 @@ export const assertValidDiscoveryConsent = (input: unknown): DiscoveryConsentInp
 };
 
 /**
+ * In how many seconds the account `userId` may turn discovery on again at `now`: null when it may,
+ * else the rest of DISCOVERY_REJOIN_DAYS after the withdrawal that last turned it off (its consents'
+ * latest entry). A withdrawal drops every decision about the candidate no mutual interest came of,
+ * recruiters' passes included: turning discovery on again at once would put them back before
+ * every recruiter who passed them, and tell them which jobs those were. A withdrawal of an account
+ * that was not on records nothing, and holds nothing back
+ */
+const rejoinRetryAfter = async (userId: string, now: Date): Promise<number | null> => {
+  const profile = await DiscoveryProfile.findOne({ user: userId }, { consents: { $slice: -1 } }).lean<{
+    consents?: { action?: string; at?: Date }[];
+  }>();
+  const [latest] = profile?.consents ?? [];
+  if (latest?.action !== 'withdrawn' || !latest.at) return null;
+  const rejoinAt = latest.at.getTime() + DISCOVERY_REJOIN_DAYS * 24 * 60 * 60_000;
+  return rejoinAt > now.getTime() ? Math.ceil((rejoinAt - now.getTime()) / 1000) : null;
+};
+
+/**
  * Turns discovery on for the account `userId` with the consent `input`
  * (POST /discovery/consent). 422 on `consent...` for a consent that is not
  * one, then on `requirements.<requirement>` for the first requirement it
- * misses (discoveryRequirements), and 429 over DISCOVERY_GRANTS_PER_DAY (an
- * opt-in refused with a 422 uses none of them). Recorded once, atomically: an account
+ * misses (discoveryRequirements), 429 within DISCOVERY_REJOIN_DAYS of the
+ * withdrawal that last turned it off (rejoinRetryAfter), and 429 over
+ * DISCOVERY_GRANTS_PER_DAY (an opt-in refused before uses none of them).
+ * Recorded once, atomically: an account
  * already on, with a consent in force that does not lapse within
  * DISCOVERY_CONSENT_RENEWAL_DAYS, records nothing again (two requests at once
  * append one entry); one that lapses within them, or has lapsed, is given
@@ -204,6 +225,9 @@ export async function grantDiscovery(userId: string, input: unknown, now = new D
     await DiscoveryProfile.updateOne({ user: userId }, { $set: { lastActiveAt: now } });
     return discoveryStatus(userId, now);
   }
+
+  const rejoinIn = await rejoinRetryAfter(userId, now);
+  if (rejoinIn !== null) throw new TooManyRequestsError(() => m.rejoinTooSoon(DISCOVERY_REJOIN_DAYS), rejoinIn);
 
   const { retryAfterSeconds } = await takeRateLimit(discoveryGrantsKey(userId), DISCOVERY_GRANTS_PER_DAY);
   if (retryAfterSeconds !== null) {

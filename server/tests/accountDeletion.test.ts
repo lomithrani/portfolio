@@ -29,7 +29,7 @@ import {
   LEGACY_WORKFLOWS_COLLECTION,
   deleteAccount
 } from '../services/accountDeletion';
-import { CARRIED_PLAN_IMPORTS_MS, carriedPlanImportsKey } from '../services/accountQuotas';
+import { CARRIED_PLAN_IMPORTS_MS, carriedPlanImportsKey } from '../services/planImports';
 import { hashValue, peekRateLimit, rateLimitKey, takeRateLimit } from '../services/rateLimit';
 import { RESUME_IMPORT_MONTHLY_WINDOW_MS, resumeImportAttemptsKey, resumeImportUserKey } from '../services/resumeImport';
 import { jobImportAttemptsKey } from '../services/jobImport';

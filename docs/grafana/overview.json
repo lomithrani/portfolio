@@ -399,8 +399,8 @@
 		},
 		{
 			"type": "timeseries",
-			"title": "Portfolios, accounts, recruiters and candidates visible to recruiters",
-			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.\n\nVisible to recruiters: the candidates who turned discovery on (matching, Path 2), their consent in force and active in the last 180 days. Zero while `MATCHING` is off.",
+			"title": "Portfolios, accounts, recruiters and candidates with discovery on",
+			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.\n\nDiscovery on: the candidates who turned discovery on (matching, Path 2), their consent in force and active in the last 180 days, those paused for a setting removed since included (an upper bound of the candidates proposed to recruiters). Zero while `MATCHING` is off.",
 			"datasource": {
 				"type": "prometheus",
 				"uid": "grafanacloud-prom"
@@ -424,7 +424,7 @@
 				{
 					"refId": "D",
 					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"discoverable_candidates\"})",
-					"legendFormat": "Visible to recruiters"
+					"legendFormat": "Discovery on"
 				}
 			],
 			"fieldConfig": {

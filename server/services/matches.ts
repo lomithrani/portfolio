@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import { MATCHING_LIMITS, endedMatchExpiry, jobSnapshotsDiffer, matchDecisionExpiry } from 'portfolio-common';
+import { MATCHING_LIMITS, endedMatchExpiry, jobSnapshotsDiffer, keepsMatching, matchDecisionExpiry } from 'portfolio-common';
 import type { JobSnapshot, JobStatus, MatchDecision, MatchEndReason, MatchSide } from 'portfolio-common';
 import { Domain, JobPosting, Match } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
@@ -7,6 +7,7 @@ import { FEED_CURSOR_PATTERN } from '../models/elysia/matchRequest.models';
 import { ConflictError, ForbiddenError, ResourceNotFoundError, TooManyRequestsError } from '../errors';
 import {
   CANDIDATE_UNAVAILABLE,
+  DECISION_FINAL,
   DECISION_NOT_FOUND,
   JOB_NOT_PROPOSED,
   MATCH_NOT_FOUND,
@@ -14,8 +15,8 @@ import {
   NOT_PROPOSED_TO_RECRUITERS
 } from '../protocol';
 import { commuteAvailability } from './commute';
-import { isProposed, touchDiscovery, withdrawnFromDiscovery } from './discovery';
-import { dropHandOffs, isLiveInMatching } from './jobMatching';
+import { discoveryWithdrawal, isProposed, touchDiscovery, withdrawnFromDiscovery } from './discovery';
+import { afterMatchingOff, dropHandOffs, isLiveInMatching } from './jobMatching';
 import { JOB_NOT_FOUND, storedJobSnapshot } from './jobPostings';
 import { reviewedVersion, versionNow } from './jobVersion';
 import { logger } from './logger';
@@ -40,7 +41,10 @@ import { m } from './matches.messages';
 // them interests them (PUT /opportunities/jobs/:id/decision), a recruiter
 // whether a candidate's anonymous card does, for their job (PUT
 // /recruiter/jobs/:id/candidates/decision, the card's token standing for the
-// candidate); either can undo theirs (DELETE) until both are interested.
+// candidate); either can undo theirs (DELETE) until both are interested, within
+// MATCHING_LIMITS.undoMinutes and while it is their latest decision. When each
+// side first answered is kept, an undo aside, so that the other side's pass
+// made after it never shows by the pair it hides (services/matchFeeds.ts).
 //
 // A decision is taken on a pair proposed now, by the one rule the feeds
 // follow (services/matchFeeds.ts: the job live in matching, the candidate
@@ -54,7 +58,8 @@ import { m } from './matches.messages';
 // made by one write conditioned on both interests, on the candidate's being on
 // that version, and on none made yet (`matchedAt`), so two interests at once
 // make exactly one, in either order, and a pass or an undo landing between
-// them makes none. A candidate's interest holds for the version they read:
+// them makes none; the pair is read again once it is made, and a withdrawal or
+// the job leaving matching that landed before takes it back. A candidate's interest holds for the version they read:
 // given on another (the job edited, and reviewed again, since), the
 // recruiter's interest asks them again instead of making a mutual interest on
 // a version they never read.
@@ -105,6 +110,7 @@ export const introductionTerms = {
 };
 
 const DECISION_FIELD = { candidate: 'candidateDecision', recruiter: 'recruiterDecision' } as const satisfies Record<MatchSide, string>;
+const FIRST_FIELD = { candidate: 'candidateFirstAt', recruiter: 'recruiterFirstAt' } as const satisfies Record<MatchSide, string>;
 const SEEN_FIELD = { candidate: 'candidateSeenAt', recruiter: 'recruiterSeenAt' } as const satisfies Record<MatchSide, string>;
 
 interface StoredDecision {
@@ -117,6 +123,8 @@ interface StoredDecision {
 interface StoredMatch extends StoredMutualInterest {
   candidateDecision?: StoredDecision | null;
   recruiterDecision?: StoredDecision | null;
+  candidateFirstAt?: Date | null;
+  recruiterFirstAt?: Date | null;
   revealedAt?: Date | null;
   candidateSeenAt?: Date | null;
   recruiterSeenAt?: Date | null;
@@ -131,10 +139,11 @@ const requireNoMutualInterest = async (jobId: Types.ObjectId, candidateId: strin
 
 /**
  * Records the decision `value` of `side` on the job `job` and the candidate `candidateId`, on the
- * version of the posting read (`version`: reviewedVersion): one upsert on their Match (none yet:
- * created), never on a mutual interest (its filter leaves one out, and the unique index refuses a
- * second Match: 409). Kept MATCH_RETENTION.decisionMonths after the earliest decision at most. A
- * Match inserted by the other side at the same moment is retried once
+ * version of the posting read (`version`: reviewedVersion), and when `side` first answered the pair
+ * (`$min`): one upsert on their Match (none yet: created), never on a mutual interest (its filter
+ * leaves one out, and the unique index refuses a second Match: 409). Kept
+ * MATCH_RETENTION.decisionMonths after the earliest decision at most. A Match inserted by the other
+ * side at the same moment is retried once
  */
 const recordDecision = async (
   side: MatchSide,
@@ -146,7 +155,7 @@ const recordDecision = async (
   const filter = { job: job._id, candidate: candidateId, matchedAt: { $exists: false } };
   const update = {
     $set: { [DECISION_FIELD[side]]: { value, at: now, version: reviewedVersion(job) }, recruiter: job.recruiter },
-    $min: { expiresAt: matchDecisionExpiry(now) }
+    $min: { expiresAt: matchDecisionExpiry(now), [FIRST_FIELD[side]]: now }
   };
   for (let attempt = 0; ; attempt++) {
     try {
@@ -165,13 +174,19 @@ const recordDecision = async (
 const bothInterested = (match: StoredMatch) =>
   match.candidateDecision?.value === 'interested' && match.recruiterDecision?.value === 'interested';
 
-/** Removes what is left of a Match without a decision or a mutual interest: nothing is kept of it */
+/**
+ * Removes what is left of a Match without a decision, a first answer or a mutual interest: nothing
+ * is kept of it. One whose side undid an answer stays, with when they first answered (the other
+ * side's pass after it then changes nothing they read), until it expires
+ */
 const deleteIfEmpty = (matchId: Types.ObjectId) =>
   Match.deleteOne({
     _id: matchId,
     matchedAt: { $exists: false },
     candidateDecision: { $exists: false },
-    recruiterDecision: { $exists: false }
+    recruiterDecision: { $exists: false },
+    candidateFirstAt: { $exists: false },
+    recruiterFirstAt: { $exists: false }
   });
 
 /** Why a decision just recorded no longer stands: the job left matching, or the candidate withdrew */
@@ -198,11 +213,75 @@ const proposalAfterWrite = async (
   return withdrawn ? { fresh, unproposed: 'candidate' } : { fresh };
 };
 
-/** Undoes the decision `side` recorded at `now` on `match` (while it is still that one), and what is left empty */
+/**
+ * Undoes the decision `side` recorded at `now` on `match` (while it is still that one), refused
+ * once written: it never stood, so neither does the first answer it was (when it was one), and
+ * what is left empty goes
+ */
 const undoOwnDecision = async (side: MatchSide, match: StoredMatch, now: Date) => {
   const field = DECISION_FIELD[side];
   await Match.updateOne({ _id: match._id, matchedAt: { $exists: false }, [`${field}.at`]: now }, { $unset: { [field]: 1 } });
+  await Match.updateOne({ _id: match._id, [FIRST_FIELD[side]]: now }, { $unset: { [FIRST_FIELD[side]]: 1 } });
   await deleteIfEmpty(match._id);
+};
+
+/** What a side is answered when the pair it decided on is no longer proposed (proposalAfterWrite) */
+const unproposedRefusal = (side: MatchSide, unproposed: Unproposed) => {
+  if (side === 'candidate') {
+    return unproposed === 'candidate' ? new ForbiddenError(NOT_PROPOSED_TO_RECRUITERS) : new ResourceNotFoundError(JOB_NOT_FOUND);
+  }
+  return new ConflictError(unproposed === 'candidate' ? CANDIDATE_UNAVAILABLE : JOB_NOT_PROPOSED);
+};
+
+/** The earliest of the dates given (none: undefined) */
+const earliest = (...dates: (Date | null | undefined)[]): Date | undefined =>
+  dates.reduce<Date | undefined>((first, date) => (date && (!first || date < first) ? date : first), undefined);
+
+/**
+ * Takes back the mutual interest `made` (at `now`, by the decision of `side`) when the pair turns
+ * out not to be proposed any more once it was made (`unproposed`: a withdrawal of the candidate,
+ * or the job leaving matching, that landed between the decision's own check and that write, and
+ * dropped the decisions before the mutual interest was there): it is undone, the decision of `side`
+ * with it, as that decision would have been refused had it come a moment later; then what the
+ * withdrawal or the job's change does to the pair is done again (`fresh`: the job as read again):
+ * dropped for a candidate who withdrew, deleted for a job filled, closed or back to draft, the
+ * interests dropped for a job out of matching. Nothing was handed off yet
+ */
+const takeBackMutualInterest = async (
+  made: StoredMatch,
+  side: MatchSide,
+  now: Date,
+  unproposed: Unproposed,
+  fresh: StoredJobPosting | null
+) => {
+  const other: MatchSide = side === 'candidate' ? 'recruiter' : 'candidate';
+  const firstHere = made[FIRST_FIELD[side]]?.getTime() === now.getTime();
+  const kept = earliest(made[DECISION_FIELD[other]]?.at, made[FIRST_FIELD[other]], firstHere ? undefined : made[FIRST_FIELD[side]]);
+  await Match.updateOne(
+    { _id: made._id, matchedAt: now },
+    {
+      $unset: {
+        matchedAt: 1,
+        revealedAt: 1,
+        snapshot: 1,
+        changedAt: 1,
+        endedAt: 1,
+        endReason: 1,
+        [SEEN_FIELD[side]]: 1,
+        [DECISION_FIELD[side]]: 1,
+        ...(firstHere ? { [FIRST_FIELD[side]]: 1 } : {})
+      },
+      $set: { expiresAt: matchDecisionExpiry(kept ?? now) }
+    }
+  );
+  if (unproposed === 'candidate') {
+    await discoveryWithdrawal.dropPendingDecisions(String(made.candidate));
+  } else if (!fresh || !keepsMatching(fresh.status)) {
+    await Match.deleteOne({ _id: made._id, matchedAt: { $exists: false } });
+  } else if (!fresh.matching?.enabledAt) {
+    await afterMatchingOff(fresh._id);
+  }
+  await deleteIfEmpty(made._id);
 };
 
 /**
@@ -335,6 +414,14 @@ const makeMutualInterest = async (
     { returnDocument: 'after' }
   ).lean<StoredMatch>();
   if (!made) return Match.findById(match._id).lean<StoredMatch>();
+  // Read again once made: a withdrawal, or the job leaving matching, that landed after the
+  // decision's own check (proposalAfterWrite) and dropped the decisions before this write made
+  // them a mutual interest, which it would not drop. Taken back, never revealed nor handed off
+  const recheck = await proposalAfterWrite(job._id, String(made.candidate));
+  if (recheck.unproposed) {
+    await takeBackMutualInterest(made, side, now, recheck.unproposed, recheck.fresh);
+    throw unproposedRefusal(side, recheck.unproposed);
+  }
   // An edit of the posting saved since this decision read it (afterJobEdited ran before the mutual
   // interest existed): marked changed, as that edit would have marked it
   const current = await JobPosting.findById(job._id).lean<StoredJobPosting>();
@@ -347,24 +434,47 @@ const makeMutualInterest = async (
   return Match.findById(made._id).lean<StoredMatch>();
 };
 
+/** How long after a decision its side can undo it (MATCHING_LIMITS.undoMinutes) */
+const UNDO_WINDOW_MS = MATCHING_LIMITS.undoMinutes * 60_000;
+
 /**
- * Removes the decision of `side` on the job `jobId` and the candidate `candidateId` (an undo),
- * never once they are both interested (409); 404 when that side has none. The Match goes once no
- * decision is left
+ * Removes the decision of `side` on the job `jobId` and the candidate `candidateId` (an undo) at
+ * `now`, `account` being who took it (the candidate, or the job's recruiter): never once they are
+ * both interested (409 MUTUAL_INTEREST_EXISTS); 404 when that side has none; 409 DECISION_FINAL for
+ * one taken over MATCHING_LIMITS.undoMinutes ago, or that is no longer that account's latest
+ * decision as that side, another answered since, undone or not (an undo puts back a choice just
+ * made: never every pass of a job, or of a candidate, taken back one by one). When that side first answered the pair stays (the Match with
+ * it), so the other side's pass made after it changes nothing they read
  */
-const undoDecision = async (side: MatchSide, jobId: Types.ObjectId | string, candidateId: string) => {
+const undoDecision = async (side: MatchSide, jobId: Types.ObjectId | string, candidateId: string, account: string, now: Date) => {
   const field = DECISION_FIELD[side];
-  const undone = await Match.findOneAndUpdate(
+  const current = await Match.findOne(
     { job: jobId, candidate: candidateId, matchedAt: { $exists: false }, [field]: { $exists: true } },
-    { $unset: { [field]: 1 } },
-    { returnDocument: 'after' }
+    { [field]: 1 }
   ).lean<StoredMatch>();
-  if (!undone) {
+  const at = current?.[field]?.at;
+  if (!current || !at) {
     if (await Match.exists({ job: jobId, candidate: candidateId, ...MATCHED })) throw new ConflictError(MUTUAL_INTEREST_EXISTS);
     throw new ResourceNotFoundError(DECISION_NOT_FOUND);
   }
-  // Nothing left of it (the other side may have decided meanwhile: then it stays)
-  await deleteIfEmpty(undone._id);
+  // A later answer of that side, kept or undone since (when it was first given stays): an undo
+  // never makes an older decision the latest again
+  const later = await Match.exists({
+    [side]: account,
+    _id: { $ne: current._id },
+    $or: [{ [`${field}.at`]: { $gt: at } }, { [FIRST_FIELD[side]]: { $gt: at } }]
+  });
+  if (now.getTime() - at.getTime() > UNDO_WINDOW_MS || later) throw new ConflictError(DECISION_FINAL);
+  // That decision only: one taken again meanwhile is the latest, undone by its own request
+  const { modifiedCount } = await Match.updateOne(
+    { _id: current._id, matchedAt: { $exists: false }, [`${field}.at`]: at },
+    // When they first answered stays (a match recorded before it was kept: this answer's date)
+    { $unset: { [field]: 1 }, $min: { [FIRST_FIELD[side]]: at } }
+  );
+  if (modifiedCount === 0) {
+    if (await Match.exists({ _id: current._id, ...MATCHED })) throw new ConflictError(MUTUAL_INTEREST_EXISTS);
+    throw new ConflictError(DECISION_FINAL);
+  }
 };
 
 /** PUT and DELETE /opportunities/jobs/:id/decision */
@@ -408,7 +518,7 @@ export async function decideAsCandidate(
   const { fresh, unproposed } = await proposalAfterWrite(job._id, userId);
   if (unproposed) {
     await undoOwnDecision('candidate', match, now);
-    throw unproposed === 'candidate' ? new ForbiddenError(NOT_PROPOSED_TO_RECRUITERS) : new ResourceNotFoundError(JOB_NOT_FOUND);
+    throw unproposedRefusal('candidate', unproposed);
   }
   if (bothInterested(match)) match = await afterBothInterested(match, [job, fresh], pair, 'candidate', now);
   await touchDiscovery(userId, now);
@@ -418,12 +528,13 @@ export async function decideAsCandidate(
 /**
  * The candidate `userId` undoes their decision on the job `jobId` (DELETE
  * /opportunities/jobs/:id/decision): 429 over MATCHING_DECISIONS; 404 DECISION_NOT_FOUND without
- * one; 409 MUTUAL_INTEREST_EXISTS once they are both interested (either side ends a mutual
+ * one; 409 DECISION_FINAL once it is over MATCHING_LIMITS.undoMinutes old or no longer their latest
+ * decision; 409 MUTUAL_INTEREST_EXISTS once they are both interested (either side ends a mutual
  * interest instead). Whether the job is still proposed to them does not matter
  */
-export async function undoAsCandidate(userId: string, jobId: string): Promise<CandidateDecisionDto> {
+export async function undoAsCandidate(userId: string, jobId: string, now = new Date()): Promise<CandidateDecisionDto> {
   await countDecision(userId);
-  await undoDecision('candidate', jobId, userId);
+  await undoDecision('candidate', jobId, userId, userId, now);
   return { decision: null, match: null };
 }
 
@@ -438,8 +549,8 @@ const ownLiveJob = async (recruiterId: string, jobId: string) => {
 /**
  * The candidate a card's token stands for, for this recruiter and job; 409 CANDIDATE_UNAVAILABLE
  * otherwise. A decision reads a token made within MATCH_TOKEN_TTL_MS (a week: the feed is read
- * again after); an undo (`anyAge`) reads one of any age, so a recruiter who kept a card's token
- * undoes their own decision on that candidate whenever they wish, until both are interested
+ * again after); an undo (`anyAge`) reads one of any age (the card decided on may have been read a
+ * week ago), its own limits being the decision's (MATCHING_LIMITS.undoMinutes, the latest only)
  */
 const candidateOfToken = (token: string, recruiterId: string, job: StoredJobPosting, now: Date, anyAge = false) => {
   const scope = { recruiterId, jobId: String(job._id) };
@@ -478,7 +589,7 @@ export async function decideAsRecruiter(
   const { fresh, unproposed } = await proposalAfterWrite(job._id, candidateId);
   if (unproposed) {
     await undoOwnDecision('recruiter', match, now);
-    throw new ConflictError(unproposed === 'candidate' ? CANDIDATE_UNAVAILABLE : JOB_NOT_PROPOSED);
+    throw unproposedRefusal('recruiter', unproposed);
   }
   // The latest version first: the one the recruiter is shown now
   if (bothInterested(match)) match = await afterBothInterested(match, [fresh, job], pair, 'recruiter', now);
@@ -490,10 +601,11 @@ export async function decideAsRecruiter(
  * for their job `jobId` (DELETE /recruiter/jobs/:id/candidates/decision): 429 over
  * MATCHING_DECISIONS; 404 for a job that is not theirs; 409 CANDIDATE_UNAVAILABLE for a token that
  * is not one for it (a token of any age: the card they decided on); 404 DECISION_NOT_FOUND without
- * a decision; 409 MUTUAL_INTEREST_EXISTS once they are both interested. Whether the job is still
- * live, or the candidate still proposed, does not matter. A recruiter's feed never shows a
- * candidate they answered again, and never lists them: the card's token, which their screen keeps
- * from the card, is the only way back to their decision
+ * a decision; 409 DECISION_FINAL once it is over MATCHING_LIMITS.undoMinutes old or no longer their
+ * latest decision as a recruiter; 409 MUTUAL_INTEREST_EXISTS once they are both interested. Whether
+ * the job is still live, or the candidate still proposed, does not matter. A recruiter's feed never
+ * shows a candidate they answered again, and never lists them: the card's token, which their screen
+ * keeps from the card, is the only way back to their decision
  */
 export async function undoAsRecruiter(
   recruiterId: string,
@@ -504,7 +616,7 @@ export async function undoAsRecruiter(
   await countDecision(recruiterId);
   const job = await JobPosting.findOne({ _id: jobId, recruiter: recruiterId }).lean<StoredJobPosting>();
   if (!job) throw new ResourceNotFoundError(JOB_NOT_FOUND);
-  await undoDecision('recruiter', job._id, candidateOfToken(token, recruiterId, job, now, true));
+  await undoDecision('recruiter', job._id, candidateOfToken(token, recruiterId, job, now, true), recruiterId, now);
   return { decision: null, match: null };
 }
 

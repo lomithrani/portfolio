@@ -101,7 +101,6 @@ export {
 	jobTermsLocked,
 	locksJobTerms,
 	changedLockedFields,
-	scoredFieldsDiffer,
 	jobSnapshotsDiffer,
 	canonicalJobSnapshot
 } from './jobTerms';
@@ -255,6 +254,7 @@ export {
 	DISCOVERY_INACTIVITY_DAYS,
 	DISCOVERY_CONSENT_MONTHS,
 	DISCOVERY_CONSENT_RENEWAL_DAYS,
+	DISCOVERY_REJOIN_DAYS,
 	DISCOVERY_LIMITS,
 	MATCHING_LIMITS,
 	DISCOVERY_REQUIREMENTS,

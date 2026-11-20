@@ -44,6 +44,7 @@ import {
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
 import {
   CANDIDATE_UNAVAILABLE,
+  DECISION_FINAL,
   DECISION_NOT_FOUND,
   JOB_CHANGED,
   JOB_NOT_PROPOSED,
@@ -57,6 +58,7 @@ import {
 import { deleteAccount } from '../services/accountDeletion';
 import { discoveryGrantsKey } from '../services/discovery';
 import { isLiveInMatching, jobMatchingWarmUp, liveJobsQuery, reviewedVersion } from '../services/jobMatching';
+import { reviewerRecruiterKey } from '../services/matchingReviews';
 import { JOB_NOT_FOUND, toJobPostingDto, toJobSnapshot } from '../services/jobPostings';
 import { recordConsent } from '../services/legal';
 import { logger } from '../services/logger';
@@ -1017,7 +1019,7 @@ describe('an edit of a job in matching', () => {
     expect((await stored(job._id)).matching?.review?.reason).toBeUndefined();
   });
 
-  it('sends it back for review from what is stored: a decision or a switch made while the edit ran', async () => {
+  it('refuses an edit saved over a decision or a switch made while it ran (409): its text never proposed unreviewed', async () => {
     const recruiter = await createRecruiter();
     const reviewer = await createUser('reviewer');
     const description = (text: string) => sampleJob({ description: `## The job\n\n${text}` });
@@ -1029,7 +1031,8 @@ describe('an edit of a job in matching', () => {
         return save.apply(this, args as never);
       } as never);
 
-    // A reviewer approves the version they read, the edit then saves another
+    // A reviewer approves the version they read, the edit then saves another: refused, the version
+    // approved stays as it was, live; edited again (the editor reloads it), it is pending
     const reviewed = await jobInMatching(recruiter);
     const version = reviewedVersion(await stored(reviewed._id));
     beforeTheSave(async () => {
@@ -1037,10 +1040,16 @@ describe('an edit of a job in matching', () => {
       expect((await call('PUT', `/matching/reviews/${reviewed._id}`, approval)).status).toBe(200);
     });
     const edit = await call('PUT', `/jobs/${reviewed._id}`, { body: description('Edited while it was reviewed.'), cookie: recruiter.cookie });
-    expect(edit.json().matching.review.status).toBe('pending');
+    expect([edit.status, edit.text]).toEqual([409, JOB_CHANGED]);
+    const approved = await stored(reviewed._id);
+    expect(approved.description).not.toContain('Edited while it was reviewed.');
+    expect(reviewedVersion(approved)).toBe(version);
+    expect(jobLiveInMatching(approved as never)).toBe(true);
+    const again = await call('PUT', `/jobs/${reviewed._id}`, { body: description('Edited again.'), cookie: recruiter.cookie });
+    expect(again.json().matching.review.status).toBe('pending');
     expect(jobLiveInMatching((await stored(reviewed._id)) as never)).toBe(false);
 
-    // Approved, off, then turned on again (its approval kept: unchanged) while an edit ran
+    // Approved, off, then turned on again (its approval kept: unchanged) while an edit ran: refused too
     const switched = await jobInMatching(recruiter, sampleJob({ title: 'Switched' }));
     await approve(switched._id);
     await setMatching(recruiter, switched._id, false);
@@ -1053,7 +1062,13 @@ describe('an edit of a job in matching', () => {
       body: sampleJob({ title: 'Switched', description: '## The job\n\nEdited while it was turned on.' }),
       cookie: recruiter.cookie
     });
-    expect(late.json().matching).toMatchObject({ enabledAt: expect.stringMatching(ISO_INSTANT), review: { status: 'pending' } });
+    expect([late.status, late.text]).toEqual([409, JOB_CHANGED]);
+    expect((await stored(switched._id)).description).not.toContain('Edited while it was turned on.');
+    const relayed = await call('PUT', `/jobs/${switched._id}`, {
+      body: sampleJob({ title: 'Switched', description: '## The job\n\nEdited while it was turned on.' }),
+      cookie: recruiter.cookie
+    });
+    expect(relayed.json().matching).toMatchObject({ enabledAt: expect.stringMatching(ISO_INSTANT), review: { status: 'pending' } });
     expect(jobLiveInMatching((await stored(switched._id)) as never)).toBe(false);
   });
 
@@ -1190,11 +1205,22 @@ describe('the review of the jobs in matching', () => {
     // The posting as its recruiter saved it, and nothing more: no candidate, no count of them
     expect(entry).toEqual({
       job: JSON.parse(JSON.stringify(toJobPostingDto(await stored(first._id)))),
-      recruiter: { emailDomain: 'example.com' },
+      recruiter: { emailDomain: 'example.com', key: reviewerRecruiterKey(recruiter.id) },
+      otherJobs: expect.any(Array),
       matchingSince: first.matching.enabledAt,
       review: { status: 'pending', requestedAt: asked[0]!.toISOString(), reviewedAt: null, reason: null },
       version: reviewedVersion(await stored(first._id))
     });
+    // Beside it, its recruiter's other jobs in matching, the latest created first: copies of it (the
+    // same description), and the terms they differ in
+    expect(entry.otherJobs.map((other: any) => [other.title, other.inMatching, other.review, other.nearDuplicate, other.differsIn])).toEqual([
+      ['Off', false, 'pending', true, ['title']],
+      ['Approved', true, 'approved', true, ['title']],
+      ['Second', true, 'pending', true, ['title']]
+    ]);
+    expect(Object.keys(entry.otherJobs[0]).sort()).toEqual(
+      ['_id', 'company', 'contract', 'createdAt', 'differsIn', 'inMatching', 'location', 'nearDuplicate', 'pay', 'review', 'status', 'title'].sort()
+    );
     // Who is behind the job, by the domain of their address only
     for (const leak of [recruiter.id, recruiter.email, 'recruiter-first', 'recruiter-last']) {
       expect(answer.text).not.toContain(leak);
@@ -1217,6 +1243,45 @@ describe('the review of the jobs in matching', () => {
     // Nobody is a reviewer without MATCHING_REVIEWERS
     env.matchingReviewers = new Set();
     expect((await call('GET', '/matching/reviews', { cookie: reviewer.cookie })).status).toBe(403);
+  });
+
+  it("shows a reviewer a recruiter's copies of a job that differ in one term, and tells recruiters apart", async () => {
+    const recruiter = await createRecruiter();
+    const rival = await createRecruiter('rival');
+    const reviewer = await createUser('reviewer');
+    env.matchingReviewers = new Set([reviewer.email.toLowerCase()]);
+    // The same job put into matching three times, its pay or its office changed: a probe of the
+    // candidates' floors and areas; another job of theirs; a job of another recruiter
+    const original = await jobInMatching(recruiter, sampleJob({ title: `Probe ${t.suffix}` }));
+    const lower = await jobInMatching(recruiter, sampleJob({ title: `Probe ${t.suffix}`, pay: { min: 38_000, max: 50_000, currency: 'EUR', period: 'year' } }));
+    const paris = await jobInMatching(
+      recruiter,
+      sampleJob({ title: `probe  ${t.suffix}`, location: { country: 'FR', city: 'Paris', postalCode: '75011', workMode: 'hybrid', remoteDaysPerWeek: 2 } })
+    );
+    const unrelated = await jobInMatching(recruiter, sampleJob({ title: `Data analyst ${t.suffix}`, description: '## The job\n\nRead the data.' }));
+    const rivalJob = await jobInMatching(rival, sampleJob({ title: `Probe ${t.suffix}` }));
+    const ours = [original, lower, paris, unrelated, rivalJob].map((job) => job._id);
+    for (const [index, id] of ours.entries()) {
+      await JobPosting.updateOne({ _id: id }, { $set: { 'matching.review.requestedAt': new Date(10 + index) } }, { timestamps: false });
+    }
+
+    const answer = await call('GET', '/matching/reviews', { cookie: reviewer.cookie });
+
+    expect(answer.status).toBe(200);
+    const byId = new Map<string, any>(answer.json().jobs.map((entry: any) => [entry.job._id, entry]));
+    const entry = byId.get(original._id);
+    const others = new Map<string, any>(entry.otherJobs.map((other: any) => [other._id, other]));
+    expect([...others.keys()].sort()).toEqual([lower._id, paris._id, unrelated._id].sort());
+    expect(others.get(lower._id)).toMatchObject({ nearDuplicate: true, differsIn: ['pay.min', 'pay.max'] });
+    expect(others.get(paris._id)).toMatchObject({ nearDuplicate: true });
+    expect(others.get(paris._id).differsIn).toEqual(expect.arrayContaining(['location.city', 'location.postalCode']));
+    expect(others.get(unrelated._id)).toMatchObject({ nearDuplicate: false, differsIn: [] });
+    // One key for all the jobs of a recruiter, another for another's: never their id
+    expect(byId.get(lower._id).recruiter.key).toBe(entry.recruiter.key);
+    expect(byId.get(rivalJob._id).recruiter.key).not.toBe(entry.recruiter.key);
+    expect(byId.get(rivalJob._id).otherJobs).toEqual([]);
+    expect(answer.text).not.toContain(recruiter.id);
+    expect(answer.text).not.toContain(rival.id);
   });
 
   it('approves the version read, or rejects it with a reason its recruiter reads', async () => {
@@ -1494,12 +1559,14 @@ describe('PUT /opportunities/jobs/:id/decision (the candidate)', () => {
     expect(passed!.expiresAt!.getTime()).toBe(match!.expiresAt!.getTime());
 
     expect((await candidateUndoes(candidate, jobId)).json()).toEqual({ decision: null, match: null });
-    expect(await Match.exists({ job: jobId, candidate: candidate.id })).toBeNull();
     const again = await candidateUndoes(candidate, jobId);
     expect(again.status).toBe(404);
     expect(again.text).toBe(DECISION_NOT_FOUND);
-    match = await Match.findOne({ job: jobId, candidate: candidate.id }).lean();
-    expect(match).toBeNull();
+    // No decision left; when they first answered stays, until the match expires (as it would have)
+    const undone = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+    expect(undone.candidateDecision).toBeUndefined();
+    expect(undone.candidateFirstAt).toEqual(match!.candidateDecision!.at);
+    expect(undone.expiresAt).toEqual(match!.expiresAt);
   });
 
   it('refuses a candidate not proposed to recruiters (403), and a job not proposed to them like one that does not exist (404)', async () => {
@@ -1567,8 +1634,12 @@ describe('PUT /recruiter/jobs/:id/candidates/decision (the recruiter)', () => {
 
     expect((await recruiterDecides(recruiter, jobId, candidate, 'pass')).json()).toEqual({ decision: 'pass', match: null });
     expect((await recruiterUndoes(recruiter, jobId, candidate)).json()).toEqual({ decision: null, match: null });
-    expect(await Match.exists({ job: jobId, candidate: candidate.id })).toBeNull();
+    const undone = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+    expect(undone.recruiterDecision).toBeUndefined();
+    expect(undone.recruiterFirstAt).toBeInstanceOf(Date);
     expect((await recruiterUndoes(recruiter, jobId, candidate)).text).toBe(DECISION_NOT_FOUND);
+    // Undone, the card is theirs to answer again
+    expect((await call('GET', `/recruiter/jobs/${jobId}/candidates`, { cookie: recruiter.cookie })).json().cards).toHaveLength(1);
   });
 
   it('refuses a token made for another recruiter or job, or not one, and a candidate not proposed for the job (409)', async () => {
@@ -1636,7 +1707,8 @@ describe('PUT /recruiter/jobs/:id/candidates/decision (the recruiter)', () => {
       cookie: recruiter.cookie
     });
     expect(undone.json()).toEqual({ decision: null, match: null });
-    expect(await Match.exists({ job: jobId, candidate: candidate.id })).toBeNull();
+    const left = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+    expect([left.candidateDecision, left.recruiterDecision]).toEqual([undefined, undefined]);
 
     // Withdrawn: their decisions went with it, nothing is left to undo
     expect((await setStatus('open')).status).toBe(200);
@@ -1645,6 +1717,37 @@ describe('PUT /recruiter/jobs/:id/candidates/decision (the recruiter)', () => {
     const nothing = await candidateUndoes(candidate, jobId);
     expect(nothing.status).toBe(404);
     expect(nothing.text).toBe(DECISION_NOT_FOUND);
+  });
+});
+
+describe('an undo', () => {
+  it(`puts back a decision only within ${MATCHING_LIMITS.undoMinutes} minutes, and only the latest of its side (409)`, async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const first = await liveJob(recruiter);
+    const second = await liveJob(recruiter, { description: '## The job\n\nAnother one.' });
+
+    // The candidate answers two jobs: only the latest can be undone
+    expect((await candidateDecides(candidate, first, 'interested')).status).toBe(200);
+    expect((await candidateDecides(candidate, second, 'pass')).status).toBe(200);
+    const refused = await candidateUndoes(candidate, first);
+    expect([refused.status, refused.text]).toEqual([409, DECISION_FINAL]);
+    expect((await candidateUndoes(candidate, second)).status).toBe(200);
+    // Undone, the later answer still came after it: never every answer taken back one by one
+    expect((await candidateUndoes(candidate, first)).text).toBe(DECISION_FINAL);
+    expect((await Match.findOne({ job: first, candidate: candidate.id }).lean())?.candidateDecision?.value).toBe('interested');
+
+    // The recruiter: the latest only, and never past the minutes
+    expect((await recruiterDecides(recruiter, first, candidate, 'pass')).status).toBe(200);
+    expect((await recruiterDecides(recruiter, second, candidate, 'pass')).status).toBe(200);
+    expect((await recruiterUndoes(recruiter, first, candidate)).text).toBe(DECISION_FINAL);
+    const old = new Date(Date.now() - (MATCHING_LIMITS.undoMinutes + 1) * 60_000);
+    await Match.updateOne({ job: second, candidate: candidate.id }, { $set: { 'recruiterDecision.at': old, recruiterFirstAt: old } });
+    const late = await recruiterUndoes(recruiter, second, candidate);
+    expect([late.status, late.text]).toEqual([409, DECISION_FINAL]);
+    expect((await Match.findOne({ job: second, candidate: candidate.id }).lean())?.recruiterDecision?.value).toBe('pass');
+    // Their pass on the first job is their latest now: within the minutes, it is undone
+    expect((await recruiterUndoes(recruiter, first, candidate)).status).toBe(200);
   });
 });
 
@@ -1863,6 +1966,39 @@ describe('a mutual interest', () => {
     expect(mutual.recruiterSeenAt).toBeUndefined();
     expect(answers.map((answer) => answer.json().match?._id)).toEqual([String(mutual._id), String(mutual._id)]);
     expect(await WorkflowInstance.countDocuments({ owner: candidate.id, visitor: recruiter.id })).toBe(1);
+  });
+
+  it('is taken back when the candidate withdrew between the check and the write: never a portfolio revealed after it', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+
+    // The withdrawal's first writes land just before the mutual interest's: its drop of the
+    // decisions comes after it, and would leave a mutual interest alone
+    beforeMatchWrite(mutualInterestWrite, () =>
+      DiscoveryProfile.updateOne({ user: candidate.id }, { $max: { withdrawnAt: new Date() }, $unset: { enabledAt: 1 } })
+    );
+    const answer = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+
+    expect([answer.status, answer.text]).toEqual([409, CANDIDATE_UNAVAILABLE]);
+    expect(await Match.exists({ candidate: candidate.id })).toBeNull();
+    expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
+  });
+
+  it('is taken back when its job closed between the check and the write: never one on a closed job', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await recruiterDecides(recruiter, jobId, candidate, 'interested')).status).toBe(200);
+
+    // The status saved just before the mutual interest's write, its sweep of the job's matches not yet
+    beforeMatchWrite(mutualInterestWrite, () => JobPosting.updateOne({ _id: jobId }, { $set: { status: 'closed' } }));
+    const answer = await candidateDecides(candidate, jobId, 'interested');
+
+    expect([answer.status, answer.text]).toEqual([404, JOB_NOT_FOUND]);
+    expect(await Match.exists({ job: jobId })).toBeNull();
+    expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
   });
 
   it('is not made when a pass lands between the last interest and the write that would make it', async () => {

@@ -78,6 +78,13 @@ export const CANDIDATE_UNAVAILABLE = 'This candidate is not proposed for this jo
 export const DECISION_NOT_FOUND = 'There is no decision to undo'
 
 /**
+ * 409 of an undo of a decision (the same routes) taken over MATCHING_LIMITS.undoMinutes ago, or
+ * that is no longer the caller's latest decision (as a candidate, or as a recruiter): an undo puts
+ * back a choice just made. No screen calls them yet: the decks will match it and stop offering Undo
+ */
+export const DECISION_FINAL = 'This decision can no longer be undone'
+
+/**
  * 404 of the routes of one mutual interest (GET /matches/:id, POST /matches/:id/end, PUT
  * /matches/:id/seen) for one the caller is not a side of, or that does not exist. No screen calls
  * them yet: the lists of mutual interests will match it

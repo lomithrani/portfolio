@@ -7,7 +7,6 @@ import {
 	jobSnapshotsDiffer,
 	jobTermsLocked,
 	locksJobTerms,
-	scoredFieldsDiffer,
 	withLocale,
 	type JobPostingInput,
 	type JobSnapshot
@@ -416,13 +415,8 @@ describe('the terms of an opened posting', () => {
 		]);
 		expect(changedLockedFields(stored, edit({ travel: '' }))).toEqual(['travel']);
 
-		// A version shared on a hiring journey against the posting now: whether what the job match
-		// scores differs (the status is not part of a version)
-		expect(scoredFieldsDiffer(stored, edit({ description: 'Other.', status: 'closed' }))).toBe(
-			false
-		);
-		expect(scoredFieldsDiffer(stored, edit({ payMin: '46000' }))).toBe(true);
-		// Whether it differs at all (a JobSnapshot has no status): whatever the order of its keys
+		// A version shared on a hiring journey against the posting now: whether it differs at all (a
+		// JobSnapshot has no status), whatever the order of its keys
 		const version = (posting: JobPostingInput): JobSnapshot => {
 			const snapshot: Partial<JobPostingInput> = { ...posting };
 			delete snapshot.status;

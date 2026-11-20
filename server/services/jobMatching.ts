@@ -458,11 +458,26 @@ const decidedOnAnotherVersion = (edited: StoredJobPosting) => {
 };
 
 /**
+ * The conditions an edit's save adds (PUT /jobs/:id, `job.$where`): the job's matching as the edit
+ * loaded it, its switch and its review (status and version). A reviewer's decision, or matching
+ * turned on or off, landing while the edit ran would otherwise be saved over: an approval of the
+ * version before kept on the new text, live until afterJobEdited sends it back, and for good should
+ * that never run. Changed meanwhile, the save matches nothing: 409 JOB_CHANGED, and the editor
+ * reloads it
+ */
+export const matchingAsLoaded = (loaded: StoredJobPosting): Record<string, unknown> => ({
+  'matching.enabledAt': loaded.matching?.enabledAt ?? null,
+  'matching.review.status': loaded.matching?.review?.status ?? null,
+  'matching.review.version': loaded.matching?.review?.version ?? null
+});
+
+/**
  * What an edit of a job in matching saves of its review with the posting (PUT /jobs/:id: `edited`,
  * the posting about to be saved), as paths of the stored document and their values: approved or
  * rejected on a version the posting no longer is, it is pending again in the same write, so its new
- * text is never proposed unreviewed, not even between the save and afterJobEdited (which sends it
- * back again from what is stored, for a decision taken while the edit ran). Nothing otherwise
+ * text is never proposed unreviewed, not even between the save and afterJobEdited. The save is
+ * conditioned on the matching it read (matchingAsLoaded), so what this decides from holds when it
+ * is written. Nothing otherwise
  */
 export const reviewSavedWithEdit = (edited: StoredJobPosting, now = new Date()): [string, unknown][] =>
   decidedOnAnotherVersion(edited)
