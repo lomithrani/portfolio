@@ -699,6 +699,14 @@ matches, or sends an edited job back for review. The flag is read when the API s
 takes effect at its next deploy. The startup line `Running at ...` says
 `"matching":"on (1 job reviewer)"` (how many reviewers, never who) or why it is off.
 
+- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
+  calls its routes yet: they are for the screens that come next, and for the tests.
+- **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
+  and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
+  assessment is signed: a candidate's consent must point to published texts. Public transport
+  times then come from HERE or from nowhere, never from Transitous (see
+  [Travel times](#travel-times), "Matching").
+
 **Reviewers.** Every job a recruiter puts into matching is read by hand before it reaches any
 candidate: it starts pending, and only a reviewer's approval proposes it (a rejection carries a
 reason the recruiter reads). The reviewers are the accounts whose email is in
@@ -731,7 +739,11 @@ unreadable, and recruiters read their feed again.
 
 **Decisions and mutual interests.** A candidate says whether a job proposed to them interests
 them, a recruiter whether a card's candidate does (the card's token in the body); either undoes
-theirs until both are interested. Each decision or undo is counted against **300 per account per
+theirs until both are interested (the recruiter with the token of the card they decided on, of any
+age, which their screen keeps: their feed never shows a candidate they answered again). A decision
+holds for the version of the job it was given on: a candidate's interest in a version since edited
+(and reviewed again) is not made into a mutual interest by the recruiter's; the job is proposed to
+them again instead. Each decision or undo is counted against **300 per account per
 UTC day**, both sides together (`MATCHING_DECISIONS` of `server/services/matches.ts`, from
 `MATCHING_LIMITS.decisionsPerDay`; 429 with `Retry-After`, counters `matching-decision:<hash>`), and
 asks no outside service (travel times from the cache, as the feeds read them). Both interested is a
@@ -741,14 +753,6 @@ leads into the candidate's own hiring journey (its job step holds the job, its j
 at the score then, its notes are still the recruiter's to confirm before the meeting opens). Either
 side ends it (`POST /matches/:id/end`). No email is sent: each side sees how many mutual interests
 it has not seen yet (`GET /me/notifications`), for the account menu's badge of the screens to come.
-
-- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
-  calls its routes yet: they are for the screens that come next, and for the tests.
-- **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
-  and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
-  assessment is signed: a candidate's consent must point to published texts. Public transport
-  times then come from HERE or from nowhere, never from Transitous (see
-  [Travel times](#travel-times), "Matching").
 
 The first opt-in creates the `discoveryprofiles` collection (one document per account that turned
 discovery on or off or set its anonymous card), the first decision the `matches` collection (one
@@ -1156,7 +1160,14 @@ A rule of job descriptions made tighter in a later release (a new required field
 length, a narrower range) sends the versions kept that break it back to pending in the same way
 (`storedJobSnapshot` of `server/services/jobPostings.ts` checks every version kept with today's
 rules): count them before deploying it with a query of the same shape, its `cond` testing the rule
-on `$$this.v.data.posting`, and tell their recruiters likewise.
+on `$$this.v.data.posting`, and tell their recruiters likewise. Matching keeps versions too, read
+back the same way: count the mutual interests going on whose version breaks the rule (in
+`matches`, `{ matchedAt: { $exists: true }, endedAt: { $exists: false } }` and the rule tested on
+`snapshot.posting`: from the deploy they lead nowhere, their recruiter shares a job on the
+candidate's page as anyone does, and the candidate reads them without the job) and the jobs in
+matching that break it (in `jobpostings`, `{ 'matching.enabledAt': { $exists: true } }` and the
+rule: proposed to nobody from the deploy, until their recruiter duplicates them with what the rule
+asks), and write those counts in the release's pull request too.
 
 ### Reserved portfolio names
 

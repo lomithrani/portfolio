@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import type { MatchDecision, MatchEndReason } from 'portfolio-common';
+import type { JobSnapshot, MatchDecision, MatchEndReason } from 'portfolio-common';
 import { env } from '../env';
 import { JobPosting, WorkflowInstance } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
@@ -9,6 +9,7 @@ import type { JobPostingDto } from './jobPostings';
 import { proposedJobPosting } from './matchFeeds';
 import type { OpportunityScore } from './matchFeeds';
 import { candidateDecisionOn, mutualInterestOn } from './mutualInterests';
+import type { MutualInterest } from './mutualInterests';
 import { journeySteps } from './workflows';
 import { jobStep, legacyPick, matchOfShare, pickedJobId, storedShare } from './workflowSteps/job';
 import type { StoredShare } from './workflowSteps/job';
@@ -29,7 +30,9 @@ import type { StoredShare } from './workflowSteps/job';
 // - 'match' (matching, Path 2, while MATCHING is on): the candidate of a mutual interest on the
 //   job, going on or ended (until it expires: services/mutualInterests.ts), whatever the job's
 //   status (its draft is not what they read). They read the version they said yes to, with the
-//   posting's status and dates, and when the posting was edited since (`match.changedAt`);
+//   posting's status and dates, and when the posting was edited since (`match.changedAt`). Once
+//   it ended, a share of the job on their journey since ('journey') comes first: the recruiter
+//   shares a job as anyone does then, and the invitation of a later meeting names that version;
 // - 'feed' (matching, Path 2, while MATCHING is on): a candidate to whom the job is proposed now,
 //   as their feed shows it (services/matchFeeds.ts: live in matching, meeting their criteria and
 //   their minimum, its recruiter not having passed them before they answered), whatever they
@@ -111,22 +114,28 @@ export async function readableJobPosting(userId: string, jobId: string): Promise
   if (!job) throw notFound();
   if (String(job.recruiter) === userId) return { job: toJobPostingDto(job), access: 'recruiter' };
   const interest = await mutualInterestOn(String(job._id), userId);
-  if (interest?.posting) {
+  const asMatch = (matched: MutualInterest & { posting: JobSnapshot }): SharedJobPostingDto => {
     const { _id, status, createdAt, publishedAt } = toJobPostingDto(job);
     return {
-      job: { ...interest.posting, _id, status, createdAt, updatedAt: interest.version, ...(publishedAt ? { publishedAt } : {}) },
+      job: { ...matched.posting, _id, status, createdAt, updatedAt: matched.version, ...(publishedAt ? { publishedAt } : {}) },
       access: 'match',
       match: {
-        _id: interest._id,
-        matchedAt: interest.matchedAt,
-        changedAt: interest.changedAt ?? null,
-        endedAt: interest.endedAt ?? null,
-        endReason: interest.endReason ?? null
+        _id: matched._id,
+        matchedAt: matched.matchedAt,
+        changedAt: matched.changedAt ?? null,
+        endedAt: matched.endedAt ?? null,
+        endReason: matched.endReason ?? null
       }
     };
-  }
+  };
+  const matched = interest?.posting ? { ...interest, posting: interest.posting } : undefined;
+  // While it lasts, the mutual interest is how they are in touch about the job
+  if (matched && !matched.endedAt) return asMatch(matched);
+  // Ended, a share of the job on the journey since is what the owner reads now (the version the
+  // invitation of a later meeting names); else what they said yes to, until it expires
+  const pick = job.status === 'draft' ? undefined : await pickOnJourney(userId, job.recruiter, String(job._id));
+  if (matched && !pick) return asMatch(matched);
   if (job.status === 'draft') throw notFound();
-  const pick = await pickOnJourney(userId, job.recruiter, String(job._id));
   if (!pick) {
     const proposed = env.matchingEnabled ? await proposedJobPosting(userId, job) : null;
     if (proposed) {

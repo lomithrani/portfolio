@@ -21,6 +21,7 @@ import { activeMutualInterest } from './mutualInterests';
 import type { MutualInterest } from './mutualInterests';
 import { serverStep } from './workflowSteps';
 import type { ServerStep, StepContext } from './workflowSteps';
+import { jobStep, mutualInterestLines } from './workflowSteps/job';
 import { DOMAIN_NOT_FOUND } from '../protocol';
 import { m } from './workflows.messages';
 
@@ -38,7 +39,8 @@ import { m } from './workflows.messages';
 // fills its job step and freezes its job match: seedVisitorProgress). The
 // engine reads that mutual interest once per journey, like the progress, and
 // hands it to the steps (StepContext.mutualInterest), which decide what it
-// means for each of them.
+// means for each of them; the meeting invitation names its job through the
+// job step, or here when the journey has no job step before the meeting.
 
 type Id = Types.ObjectId | string;
 
@@ -410,6 +412,12 @@ export async function openStepOfType(
         if (!describe || before[position].status !== 'succeeded') continue;
         lines.push(...(await describe({ ...stepContext(journey, visitor, step), ...(webOrigin ? { webOrigin } : {}) })));
       }
+      // The job a mutual interest of matching is about, which the job step says before the
+      // meeting: said here when the journey has none there (its owner removed it since)
+      const { mutualInterest } = journey;
+      if (mutualInterest && !journey.steps.slice(0, index).some((step) => step.type === jobStep.type)) {
+        lines.push(...mutualInterestLines(mutualInterest, webOrigin));
+      }
       return lines;
     }
   };
@@ -457,20 +465,22 @@ export async function submitStep(
  * Stores, for `visitorId` in the owner's journey, what steps hold without the visitor having
  * submitted them (`entries`: a step id and its data each), creating their progress when they have
  * none: what a mutual interest of matching leads to (services/matches.ts: the job step holds its
- * job, the job match is frozen). Replaces what those steps stored; the other steps keep theirs
- * (a note still to confirm, a meeting booked)
+ * job, the job match is frozen; on a journey without a job step, the progress alone, so that the
+ * meeting booked is recorded: recordStepData). Replaces what those steps stored; the other steps
+ * keep theirs (a note still to confirm, a meeting booked)
  */
 export async function seedVisitorProgress(
   ownerId: Id,
   visitorId: Id,
   entries: readonly { stepId: string; data: unknown }[]
 ): Promise<void> {
-  if (entries.length === 0) return;
   const updatedAt = new Date();
   // Unique (owner, visitor): MongoDB retries the upsert itself when two of them race
   await WorkflowInstance.updateOne(
     { owner: ownerId, visitor: visitorId },
-    { $set: Object.fromEntries(entries.map(({ stepId, data }) => [progressPath(stepId), { data, updatedAt }])) },
+    entries.length > 0
+      ? { $set: Object.fromEntries(entries.map(({ stepId, data }) => [progressPath(stepId), { data, updatedAt }])) }
+      : { $setOnInsert: { steps: {} } },
     { upsert: true }
   );
 }

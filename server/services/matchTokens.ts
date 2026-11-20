@@ -65,11 +65,17 @@ export function sealMatchToken(candidateId: string, scope: MatchTokenScope, now 
 
 /**
  * The candidate id a token stands for, when it was made by this server for `scope` (the same
- * recruiter and the same job) less than MATCH_TOKEN_TTL_MS ago; null for anything else: a token
- * made for another recruiter or another job, an older one, one changed by a single bit, or text
- * that is not a token. Never throws
+ * recruiter and the same job) less than `maxAgeMs` ago (MATCH_TOKEN_TTL_MS: a decision; an undo of
+ * the recruiter's own decision reads one of any age); null for anything else: a token made for
+ * another recruiter or another job, an older one, one changed by a single bit, or text that is not
+ * a token. Never throws
  */
-export function openMatchToken(token: unknown, scope: MatchTokenScope, now = new Date()): string | null {
+export function openMatchToken(
+  token: unknown,
+  scope: MatchTokenScope,
+  now = new Date(),
+  maxAgeMs = MATCH_TOKEN_TTL_MS
+): string | null {
   if (typeof token !== 'string' || !/^[A-Za-z0-9_-]+$/.test(token)) return null;
   if (!isObjectId(scope.recruiterId) || !isObjectId(scope.jobId)) return null;
   const bytes = Buffer.from(token, 'base64url');
@@ -84,7 +90,7 @@ export function openMatchToken(token: unknown, scope: MatchTokenScope, now = new
     const payload = Buffer.concat([decipher.update(sealed), decipher.final()]);
     const madeAt = Number(payload.readBigInt64BE(12));
     const age = now.getTime() - madeAt;
-    if (!Number.isFinite(madeAt) || age < -CLOCK_SKEW_MS || age > MATCH_TOKEN_TTL_MS) return null;
+    if (!Number.isFinite(madeAt) || age < -CLOCK_SKEW_MS || age > maxAgeMs) return null;
     return payload.subarray(0, 12).toString('hex');
   } catch {
     // Not sealed with this key for this scope: changed, or made for someone or something else

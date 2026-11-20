@@ -30,7 +30,13 @@ import {
   undoAsCandidate,
   undoAsRecruiter
 } from '../services/matches';
-import type { CandidateDecisionDto, MatchDto, MatchNotificationsDto, RecruiterDecisionDto } from '../services/matches';
+import type {
+  CandidateDecisionDto,
+  MatchDto,
+  MatchListDto,
+  MatchNotificationsDto,
+  RecruiterDecisionDto
+} from '../services/matches';
 import { candidateFeed, recruiterFeed } from '../services/matchFeeds';
 import type { CandidateFeedDto, RecruiterFeedDto } from '../services/matchFeeds';
 import { pendingReviews, requireMatchingReviewer, reviewJob } from '../services/matchingReviews';
@@ -159,13 +165,17 @@ const jobMatching = new Elysia()
 // seen yet
 const mutualInterests = new Elysia()
   .use(userLogged)
-  .get('/matches', ({ userId, query: { side } }): Promise<{ matches: MatchDto[] }> => listMatches(userId, side), {
-    query: matchesQuery,
-    detail: {
-      summary:
-        'Your mutual interests as a candidate or as a recruiter, the latest first: the job, and as a recruiter the portfolio revealed'
+  .get(
+    '/matches',
+    ({ userId, query: { side, job, after } }): Promise<MatchListDto> => listMatches(userId, side, { job, after }),
+    {
+      query: matchesQuery,
+      detail: {
+        summary:
+          "Your mutual interests as a candidate or as a recruiter, the latest first, a page at a time (`next`), or one job's (404 for a job that is not yours, as a recruiter): the job, and as a recruiter the portfolio revealed"
+      }
     }
-  })
+  )
   .get('/matches/:id', ({ userId, params: { id } }): Promise<MatchDto> => readMatch(userId, id), {
     params: objectIdParams,
     detail: { summary: 'One of your mutual interests (404 for one you are not a side of)' }

@@ -1580,7 +1580,8 @@ describe('a mutual interest of matching (Path 2) in the journey', () => {
     expect(progress['job-match'].data).toEqual({ via: 'mutual_match', match: id, job: jobId, frozenAt: at });
     expect(statuses(await journeyOf(owner.domain, recruiter))).toEqual(['job:succeeded', 'job-match:succeeded', 'meeting:pending']);
 
-    // Ended (what services/matches.ts would have removed is left here): what it stored holds nothing
+    // Ended (left here as an end interrupted midway would leave it: services/matches.ts and
+    // services/jobMatching.ts remove it): what it stored holds nothing
     await Match.updateOne({ _id: id }, { $set: { endedAt: new Date(), endReason: 'job_closed' } });
     const ended = await journeyOf(owner.domain, recruiter);
     expect(statuses(ended)).toEqual(['job:pending', 'job-match:pending', 'meeting:pending']);
@@ -1604,6 +1605,38 @@ describe('a mutual interest of matching (Path 2) in the journey', () => {
     expect(shared.steps[1].view).not.toHaveProperty('matched');
     const picked = (await WorkflowInstance.findOne({ owner: owner.id, visitor: recruiter.id }).lean())!.steps!;
     expect(picked.job.data).not.toHaveProperty('match');
+  });
+
+  it('names its job in the invitation on a journey without a job step, and records the meeting booked there', async () => {
+    env.matchingEnabled = true;
+    const owner = await createUser('owner', { domain: true });
+    const recruiter = await createUser('recruiter', { recruiter: true });
+    // The owner took the job step out since the mutual interest was made
+    await setJourney(owner, note(), meeting());
+    const jobId = await createJob(recruiter);
+    const { id } = await storeMutualInterest(owner, recruiter, jobId);
+
+    await handOffToJourney((await activeMutualInterest(owner.id, recruiter.id))!);
+    // Their progress alone: nothing to fill, but the meeting they book is recorded there
+    const instance = await WorkflowInstance.findOne({ owner: owner.id, visitor: recruiter.id }).lean();
+    expect(instance).not.toBeNull();
+    expect(Object.keys(instance!.steps ?? {})).toEqual([]);
+    const shown = await journeyOf(owner.domain, recruiter);
+    expect(shown.match).toMatchObject({ _id: id, job: { _id: jobId } });
+    expect(statuses(shown)).toEqual(['note:pending', 'meeting:pending']);
+    expect((await submit(owner.domain, 'note', { acknowledged: true }, recruiter)).status).toBe(200);
+    const step = await openStepOfType(owner.id, recruiter.id, 'meeting', noStep);
+    expect(await step.invitationLines('https://web.example')).toEqual([
+      'Job: Staff Engineer — Acme',
+      'Mutual interest on Portfolio',
+      `https://web.example/opportunities/${jobId}`
+    ]);
+    await recordStepData(owner.id, recruiter.id, step.stepId, { bookedAt: new Date() });
+    const booked = (await WorkflowInstance.findOne({ owner: owner.id, visitor: recruiter.id }).lean())!.steps!;
+    expect(booked.meeting.data).toEqual({ bookedAt: expect.any(Date) });
+    // Ended, the invitation names nothing of it
+    await Match.updateOne({ _id: id }, { $set: { endedAt: new Date(), endReason: 'candidate' } });
+    expect(await (await openStepOfType(owner.id, recruiter.id, 'meeting', noStep)).invitationLines()).toEqual([]);
   });
 
   it('holds the job of the latest mutual interest when the owner and the recruiter have two', async () => {

@@ -3,6 +3,7 @@ import { MATCHING_LIMITS, endedMatchExpiry, jobSnapshotsDiffer, matchDecisionExp
 import type { JobSnapshot, JobStatus, MatchDecision, MatchEndReason, MatchSide } from 'portfolio-common';
 import { Domain, JobPosting, Match } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
+import { FEED_CURSOR_PATTERN } from '../models/elysia/matchRequest.models';
 import { ConflictError, ForbiddenError, ResourceNotFoundError, TooManyRequestsError } from '../errors';
 import {
   CANDIDATE_UNAVAILABLE,
@@ -13,10 +14,10 @@ import {
   NOT_PROPOSED_TO_RECRUITERS
 } from '../protocol';
 import { commuteAvailability } from './commute';
-import { isProposed, touchDiscovery } from './discovery';
-import { isLiveInMatching } from './jobMatching';
+import { isProposed, touchDiscovery, withdrawnFromDiscovery } from './discovery';
+import { dropHandOffs, isLiveInMatching } from './jobMatching';
 import { JOB_NOT_FOUND, storedJobSnapshot } from './jobPostings';
-import { versionNow } from './jobVersion';
+import { reviewedVersion, versionNow } from './jobVersion';
 import { logger } from './logger';
 import { isDuplicateKeyError } from './mongoErrors';
 import { candidateProposedFor, jobProposedTo } from './matchFeeds';
@@ -28,7 +29,7 @@ import { rateLimitKey, takeRateLimit } from './rateLimit';
 import type { RateLimit } from './rateLimit';
 import { requireRecruiterSpace } from './recruiters';
 import type { TransitProvider } from './transit';
-import { dropVisitorProgress, ownerJourney, seedVisitorProgress } from './workflows';
+import { ownerJourney, seedVisitorProgress } from './workflows';
 import { mutualInterestShare } from './workflowSteps/job';
 import { freezeJobMatch, jobMatchCriteria } from './workflowSteps/jobMatch';
 import type { JobMatchCriterionView } from './workflowSteps/jobMatch';
@@ -44,23 +45,33 @@ import { m } from './matches.messages';
 // A decision is taken on a pair proposed now, by the one rule the feeds
 // follow (services/matchFeeds.ts: the job live in matching, the candidate
 // proposed to recruiters, the job meeting their bar, neither side having
-// passed the other), the reader's own earlier answer aside; it is recorded
-// with one atomic upsert on the Match (unique per job and candidate), then a
-// mutual interest is made by one write conditioned on both interests and on
-// none made yet (`matchedAt`), so two interests at once make exactly one, in
-// either order, and a pass or an undo landing between them makes none.
+// passed the other), the reader's own earlier answer aside; it is recorded,
+// with the version of the posting read, by one atomic upsert on the Match
+// (unique per job and candidate), and the pair is read again once it is
+// written: a withdrawal of the candidate, or the job leaving matching, that
+// landed between the check and the write had dropped the decisions before
+// this one was there, so it is undone and refused. Then a mutual interest is
+// made by one write conditioned on both interests, on the candidate's being on
+// that version, and on none made yet (`matchedAt`), so two interests at once
+// make exactly one, in either order, and a pass or an undo landing between
+// them makes none. A candidate's interest holds for the version they read:
+// given on another (the job edited, and reviewed again, since), the
+// recruiter's interest asks them again instead of making a mutual interest on
+// a version they never read.
 //
 // A mutual interest keeps what the candidate said yes to (`snapshot`: the
 // version of the posting, their score of it, their minimum, each criterion's
 // outcome, as the feeds read them: travel times from the cache only), reveals
-// the candidate's portfolio to the recruiter (`revealedAt`: revealAllowed, the
-// one hook should terms of introduction ever come first), and leads into the
-// candidate's own hiring journey: its job step holds the job, its job match is
-// frozen at that score, its notes are still the recruiter's to confirm, and
-// the meeting opens after them (handOffToJourney; the steps read the mutual
-// interest itself, services/mutualInterests.ts, so a journey edited since
-// keeps it). Either side ends it (POST /matches/:id/end); its job leaving
-// matching for good ends it too (services/jobMatching.ts).
+// the candidate's portfolio to the recruiter (`revealedAt`:
+// introductionTerms.revealAllowed, the one hook should terms of introduction
+// ever come first), and leads into the candidate's own hiring journey: its job
+// step holds the job, its job match is frozen at that score, its notes are
+// still the recruiter's to confirm, and the meeting opens after them
+// (handOffToJourney; the steps read the mutual interest itself,
+// services/mutualInterests.ts, so a journey edited since keeps it). Either
+// side ends it (POST /matches/:id/end); its job leaving matching for good ends
+// it too (services/jobMatching.ts); what it stored in the journey goes with
+// it (dropHandOffs).
 //
 // Deterministic: no model is asked anything. Private: a match is returned to
 // its two sides only, each reading what is theirs (never the candidate's name
@@ -83,21 +94,29 @@ const countDecision = async (userId: string) => {
   }
 };
 
-/**
- * Whether a mutual interest may reveal the candidate's portfolio to the recruiter now. Always
- * today: the one place where terms of introduction (a fee the recruiter agrees to, say) would
- * come first, should they ever exist. A mutual interest not revealed leads nowhere yet (no
- * portfolio, no journey)
- */
-export const revealAllowed = (_match: { job: Types.ObjectId; recruiter: Types.ObjectId; candidate: Types.ObjectId }): boolean =>
-  true;
+/** What terms of introduction would decide, should they ever exist. Tests replace it */
+export const introductionTerms = {
+  /**
+   * Whether a mutual interest may reveal the candidate's portfolio to the recruiter now. Always
+   * today: the one place where terms of introduction (a fee the recruiter agrees to, say) would
+   * come first. A mutual interest not revealed leads nowhere yet (no portfolio, no journey)
+   */
+  revealAllowed: (_match: { job: Types.ObjectId; recruiter: Types.ObjectId; candidate: Types.ObjectId }): boolean => true
+};
 
 const DECISION_FIELD = { candidate: 'candidateDecision', recruiter: 'recruiterDecision' } as const satisfies Record<MatchSide, string>;
 const SEEN_FIELD = { candidate: 'candidateSeenAt', recruiter: 'recruiterSeenAt' } as const satisfies Record<MatchSide, string>;
 
+interface StoredDecision {
+  value?: string | null;
+  at?: Date | null;
+  /** The version of the posting it was taken on (reviewedVersion) */
+  version?: string | null;
+}
+
 interface StoredMatch extends StoredMutualInterest {
-  candidateDecision?: { value?: string | null; at?: Date | null } | null;
-  recruiterDecision?: { value?: string | null; at?: Date | null } | null;
+  candidateDecision?: StoredDecision | null;
+  recruiterDecision?: StoredDecision | null;
   revealedAt?: Date | null;
   candidateSeenAt?: Date | null;
   recruiterSeenAt?: Date | null;
@@ -111,10 +130,11 @@ const requireNoMutualInterest = async (jobId: Types.ObjectId, candidateId: strin
 };
 
 /**
- * Records the decision `value` of `side` on the job `job` and the candidate `candidateId`: one
- * upsert on their Match (none yet: created), never on a mutual interest (its filter leaves one out,
- * and the unique index refuses a second Match: 409). Kept MATCH_RETENTION.decisionMonths after the
- * earliest decision at most. A Match inserted by the other side at the same moment is retried once
+ * Records the decision `value` of `side` on the job `job` and the candidate `candidateId`, on the
+ * version of the posting read (`version`: reviewedVersion): one upsert on their Match (none yet:
+ * created), never on a mutual interest (its filter leaves one out, and the unique index refuses a
+ * second Match: 409). Kept MATCH_RETENTION.decisionMonths after the earliest decision at most. A
+ * Match inserted by the other side at the same moment is retried once
  */
 const recordDecision = async (
   side: MatchSide,
@@ -125,7 +145,7 @@ const recordDecision = async (
 ): Promise<StoredMatch> => {
   const filter = { job: job._id, candidate: candidateId, matchedAt: { $exists: false } };
   const update = {
-    $set: { [DECISION_FIELD[side]]: { value, at: now }, recruiter: job.recruiter },
+    $set: { [DECISION_FIELD[side]]: { value, at: now, version: reviewedVersion(job) }, recruiter: job.recruiter },
     $min: { expiresAt: matchDecisionExpiry(now) }
   };
   for (let attempt = 0; ; attempt++) {
@@ -144,6 +164,79 @@ const recordDecision = async (
 
 const bothInterested = (match: StoredMatch) =>
   match.candidateDecision?.value === 'interested' && match.recruiterDecision?.value === 'interested';
+
+/** Removes what is left of a Match without a decision or a mutual interest: nothing is kept of it */
+const deleteIfEmpty = (matchId: Types.ObjectId) =>
+  Match.deleteOne({
+    _id: matchId,
+    matchedAt: { $exists: false },
+    candidateDecision: { $exists: false },
+    recruiterDecision: { $exists: false }
+  });
+
+/** Why a decision just recorded no longer stands: the job left matching, or the candidate withdrew */
+type Unproposed = 'job' | 'candidate';
+
+/**
+ * Whether the pair a decision was just recorded on is still proposed, read again once it is
+ * written (the job from the database, `fresh`): the job live in matching (isLiveInMatching) and the
+ * candidate not withdrawn from discovery (withdrawnFromDiscovery). A request that took the job out
+ * of matching (closed, out of matching, edited back to review) or withdrew the candidate, landing
+ * between the check before the decision and its write, dropped the decisions before this one was
+ * there: the caller undoes it (undoOwnDecision) and refuses it as it would have before. One that
+ * lands after the write drops it itself
+ */
+const proposalAfterWrite = async (
+  jobId: Types.ObjectId,
+  candidateId: string
+): Promise<{ fresh: StoredJobPosting | null; unproposed?: Unproposed }> => {
+  const [fresh, withdrawn] = await Promise.all([
+    JobPosting.findById(jobId).lean<StoredJobPosting>(),
+    withdrawnFromDiscovery(candidateId)
+  ]);
+  if (!fresh || !(await isLiveInMatching(fresh))) return { fresh, unproposed: 'job' };
+  return withdrawn ? { fresh, unproposed: 'candidate' } : { fresh };
+};
+
+/** Undoes the decision `side` recorded at `now` on `match` (while it is still that one), and what is left empty */
+const undoOwnDecision = async (side: MatchSide, match: StoredMatch, now: Date) => {
+  const field = DECISION_FIELD[side];
+  await Match.updateOne({ _id: match._id, matchedAt: { $exists: false }, [`${field}.at`]: now }, { $unset: { [field]: 1 } });
+  await deleteIfEmpty(match._id);
+};
+
+/**
+ * After a decision that left both sides interested in `match`: the candidate's interest holds for
+ * the version they read (`candidateDecision.version`). On the version of the job read before the
+ * decision or after it (`read`), a mutual interest is made on that version; on another one (the
+ * job edited since, and reviewed again, before its recruiter answered), the recruiter's interest
+ * asks the candidate again instead: their interest is dropped, and the job is proposed to them
+ * again, with its recruiter's interest, as it is now. Never on the candidate's own decision (theirs
+ * is on the version they read now)
+ */
+const afterBothInterested = async (
+  match: StoredMatch,
+  read: readonly (StoredJobPosting | null)[],
+  pair: ProposedPair,
+  side: MatchSide,
+  now: Date
+): Promise<StoredMatch | null> => {
+  const said = match.candidateDecision?.version;
+  const saidYesTo = said ? read.find((job) => job && reviewedVersion(job) === said) : undefined;
+  if (saidYesTo && said) return makeMutualInterest(match, saidYesTo, said, pair, side, now);
+  if (side !== 'recruiter') return match;
+  // (An interest stored before versions were kept has none: asked again too)
+  await Match.updateOne(
+    {
+      _id: match._id,
+      matchedAt: { $exists: false },
+      'candidateDecision.value': 'interested',
+      'candidateDecision.version': said ?? null
+    },
+    { $unset: { candidateDecision: 1 } }
+  );
+  return Match.findById(match._id).lean<StoredMatch>();
+};
 
 /**
  * What a mutual interest keeps of what the candidate said yes to: the version of the posting
@@ -170,28 +263,28 @@ const mutualInterestSnapshot = (job: StoredJobPosting, { bar, scored }: Proposed
  * step holds the job they are both interested in, and its job match is frozen at the score then
  * (the record of it: the steps read the mutual interest itself, services/mutualInterests.ts); the
  * other steps keep what the recruiter did there, and the notes are still theirs to confirm before
- * the meeting opens. Nothing for a journey without a job step (the candidate changed it since
- * they were proposed), nor a mutual interest not revealed
+ * the meeting opens. On a journey without a job step (the candidate changed it since they were
+ * proposed), the recruiter's progress alone, so that the meeting they book is recorded there; the
+ * invitation names the job all the same (services/workflows.ts). Nothing for a version that no
+ * longer reads back (it leads nowhere: activeMutualInterest)
  */
 export async function handOffToJourney(interest: MutualInterest): Promise<void> {
   const share = mutualInterestShare(interest);
   if (!share) return;
   const { steps } = await ownerJourney(interest.candidate);
   const jobIndex = steps.findIndex((step) => step.type === 'job');
-  if (jobIndex === -1) return;
-  const jobMatch = steps.slice(jobIndex + 1).find((step) => step.type === 'job-match');
-  await seedVisitorProgress(interest.candidate, interest.recruiter, [
-    { stepId: steps[jobIndex].id, data: share },
-    ...(jobMatch ? [{ stepId: jobMatch.id, data: freezeJobMatch(interest) }] : [])
-  ]);
+  const jobMatch = jobIndex === -1 ? undefined : steps.slice(jobIndex + 1).find((step) => step.type === 'job-match');
+  await seedVisitorProgress(
+    interest.candidate,
+    interest.recruiter,
+    jobIndex === -1
+      ? []
+      : [
+          { stepId: steps[jobIndex].id, data: share },
+          ...(jobMatch ? [{ stepId: jobMatch.id, data: freezeJobMatch(interest) }] : [])
+        ]
+  );
 }
-
-/**
- * Drops what a mutual interest stored in its candidate's journey (handOffToJourney), once it ended:
- * the recruiter's job step is to do again, as anyone's (what it stored would hold nothing anyway)
- */
-const dropHandOff = (matchId: string, recruiterId: string) =>
-  dropVisitorProgress(recruiterId, (data) => (data as { match?: unknown } | null | undefined)?.match === matchId);
 
 /** Runs `step` and logs that it failed, never failing its caller: the mutual interest is made, or ended */
 const bestEffort = async (what: string, step: () => Promise<void>) => {
@@ -204,26 +297,30 @@ const bestEffort = async (what: string, step: () => Promise<void>) => {
 };
 
 /**
- * After a decision that left both sides interested in `match`: the mutual interest, made by one
- * write conditioned on both interests and on none made yet, so that two decisions at once make
- * one, and a pass or an undo landing between them makes none. `side` decided last: they are told
- * now, the other side's is unseen (GET /me/notifications). Revealed (revealAllowed), it leads into
- * the candidate's journey (handOffToJourney). The match as it is after: a mutual interest, or the
- * decisions alone when another request made it or a decision changed meanwhile
+ * After a decision that left both sides interested in `match`, the candidate's interest on the
+ * version `said` of the posting, which `job` is: the mutual interest, made by one write conditioned
+ * on both interests, on that version, and on none made yet, so that two decisions at once make one,
+ * and a pass, an undo or another interest of the candidate landing between them makes none. `side`
+ * decided last: they are told now, the other side's is unseen (GET /me/notifications). Revealed
+ * (introductionTerms.revealAllowed), it leads into the candidate's journey (handOffToJourney). The
+ * match as it is after: a mutual interest, or the decisions alone when another request made it or
+ * a decision changed meanwhile
  */
 const makeMutualInterest = async (
   match: StoredMatch,
   job: StoredJobPosting,
+  said: string,
   pair: ProposedPair,
   side: MatchSide,
   now: Date
 ): Promise<StoredMatch | null> => {
-  const revealed = revealAllowed(match);
+  const revealed = introductionTerms.revealAllowed(match);
   const made = await Match.findOneAndUpdate(
     {
       _id: match._id,
       matchedAt: { $exists: false },
       'candidateDecision.value': 'interested',
+      'candidateDecision.version': said,
       'recruiterDecision.value': 'interested'
     },
     {
@@ -267,12 +364,7 @@ const undoDecision = async (side: MatchSide, jobId: Types.ObjectId | string, can
     throw new ResourceNotFoundError(DECISION_NOT_FOUND);
   }
   // Nothing left of it (the other side may have decided meanwhile: then it stays)
-  await Match.deleteOne({
-    _id: undone._id,
-    matchedAt: { $exists: false },
-    candidateDecision: { $exists: false },
-    recruiterDecision: { $exists: false }
-  });
+  await deleteIfEmpty(undone._id);
 };
 
 /** PUT and DELETE /opportunities/jobs/:id/decision */
@@ -313,7 +405,12 @@ export async function decideAsCandidate(
   const pair = await jobProposedTo(userId, job);
   if (!pair) throw new ResourceNotFoundError(JOB_NOT_FOUND);
   let match: StoredMatch | null = await recordDecision('candidate', job, userId, value, now);
-  if (bothInterested(match)) match = await makeMutualInterest(match, job, pair, 'candidate', now);
+  const { fresh, unproposed } = await proposalAfterWrite(job._id, userId);
+  if (unproposed) {
+    await undoOwnDecision('candidate', match, now);
+    throw unproposed === 'candidate' ? new ForbiddenError(NOT_PROPOSED_TO_RECRUITERS) : new ResourceNotFoundError(JOB_NOT_FOUND);
+  }
+  if (bothInterested(match)) match = await afterBothInterested(match, [job, fresh], pair, 'candidate', now);
   await touchDiscovery(userId, now);
   return { decision: value, match: match?.matchedAt ? (await candidateMatchDtos([match]))[0] ?? null : null };
 }
@@ -338,9 +435,17 @@ const ownLiveJob = async (recruiterId: string, jobId: string) => {
   return job;
 };
 
-/** The candidate a card's token stands for, for this recruiter and job; 409 CANDIDATE_UNAVAILABLE otherwise */
-const candidateOfToken = (token: string, recruiterId: string, job: StoredJobPosting, now: Date) => {
-  const candidateId = openMatchToken(token, { recruiterId, jobId: String(job._id) }, now);
+/**
+ * The candidate a card's token stands for, for this recruiter and job; 409 CANDIDATE_UNAVAILABLE
+ * otherwise. A decision reads a token made within MATCH_TOKEN_TTL_MS (a week: the feed is read
+ * again after); an undo (`anyAge`) reads one of any age, so a recruiter who kept a card's token
+ * undoes their own decision on that candidate whenever they wish, until both are interested
+ */
+const candidateOfToken = (token: string, recruiterId: string, job: StoredJobPosting, now: Date, anyAge = false) => {
+  const scope = { recruiterId, jobId: String(job._id) };
+  const candidateId = anyAge
+    ? openMatchToken(token, scope, now, Number.POSITIVE_INFINITY)
+    : openMatchToken(token, scope, now);
   if (!candidateId) throw new ConflictError(CANDIDATE_UNAVAILABLE);
   return candidateId;
 };
@@ -370,7 +475,13 @@ export async function decideAsRecruiter(
   const pair = await candidateProposedFor(recruiterId, job, candidateId, now);
   if (!pair) throw new ConflictError(CANDIDATE_UNAVAILABLE);
   let match: StoredMatch | null = await recordDecision('recruiter', job, candidateId, value, now);
-  if (bothInterested(match)) match = await makeMutualInterest(match, job, pair, 'recruiter', now);
+  const { fresh, unproposed } = await proposalAfterWrite(job._id, candidateId);
+  if (unproposed) {
+    await undoOwnDecision('recruiter', match, now);
+    throw new ConflictError(unproposed === 'candidate' ? CANDIDATE_UNAVAILABLE : JOB_NOT_PROPOSED);
+  }
+  // The latest version first: the one the recruiter is shown now
+  if (bothInterested(match)) match = await afterBothInterested(match, [fresh, job], pair, 'recruiter', now);
   return { decision: value, match: match?.matchedAt ? (await recruiterMatchDtos([match]))[0] ?? null : null };
 }
 
@@ -378,8 +489,11 @@ export async function decideAsRecruiter(
  * The recruiter `recruiterId` undoes their decision on the candidate whose card `token` stands for,
  * for their job `jobId` (DELETE /recruiter/jobs/:id/candidates/decision): 429 over
  * MATCHING_DECISIONS; 404 for a job that is not theirs; 409 CANDIDATE_UNAVAILABLE for a token that
- * is not one for it; 404 DECISION_NOT_FOUND without a decision; 409 MUTUAL_INTEREST_EXISTS once
- * they are both interested. Whether the job is still live does not matter
+ * is not one for it (a token of any age: the card they decided on); 404 DECISION_NOT_FOUND without
+ * a decision; 409 MUTUAL_INTEREST_EXISTS once they are both interested. Whether the job is still
+ * live, or the candidate still proposed, does not matter. A recruiter's feed never shows a
+ * candidate they answered again, and never lists them: the card's token, which their screen keeps
+ * from the card, is the only way back to their decision
  */
 export async function undoAsRecruiter(
   recruiterId: string,
@@ -390,7 +504,7 @@ export async function undoAsRecruiter(
   await countDecision(recruiterId);
   const job = await JobPosting.findOne({ _id: jobId, recruiter: recruiterId }).lean<StoredJobPosting>();
   if (!job) throw new ResourceNotFoundError(JOB_NOT_FOUND);
-  await undoDecision('recruiter', job._id, candidateOfToken(token, recruiterId, job, now));
+  await undoDecision('recruiter', job._id, candidateOfToken(token, recruiterId, job, now, true));
   return { decision: null, match: null };
 }
 
@@ -524,18 +638,55 @@ const asSideReads = async (match: StoredMatch, side: MatchSide): Promise<MatchDt
   return dto;
 };
 
+/** GET /matches */
+export interface MatchListDto {
+  matches: MatchDto[];
+  /** The cursor of the page after this one (`after`); null when this one is the last */
+  next: string | null;
+}
+
+/** Where a page of mutual interests ends: the last one's time (milliseconds, base 36) and id */
+const matchCursorOf = (match: StoredMatch) => `${(match.matchedAt?.getTime() ?? 0).toString(36)}.${String(match._id)}`;
+
+const readMatchCursor = (after: string | undefined) => {
+  if (!after || !new RegExp(FEED_CURSOR_PATTERN).test(after)) return undefined;
+  const [time, id] = after.split('.');
+  return { at: new Date(Number.parseInt(time, 36)), id: new Types.ObjectId(id) };
+};
+
 /**
  * The mutual interests of `userId` as `side` (GET /matches?side=), active and ended (until they
- * expire), the latest first, MATCHING_LIMITS.matchesPerRead at most. As a recruiter: with a
- * recruiter space and the terms in force (403, 422 on `consent`), like every recruiter route
+ * expire), the latest first, MATCHING_LIMITS.matchesPerRead a page (`next`: the page after, read
+ * with `after`); with `job`, that job's only (as its recruiter, one of their jobs: 404 otherwise,
+ * like one that does not exist). As a recruiter: with a recruiter space and the terms in force
+ * (403, 422 on `consent`), like every recruiter route
  */
-export async function listMatches(userId: string, side: MatchSide): Promise<{ matches: MatchDto[] }> {
+export async function listMatches(
+  userId: string,
+  side: MatchSide,
+  { job, after }: { job?: string; after?: string } = {}
+): Promise<MatchListDto> {
   if (side === 'recruiter') await requireRecruiterSpace(userId);
-  const matches = await Match.find({ [side]: userId, ...MATCHED })
+  if (job && side === 'recruiter' && !(await JobPosting.exists({ _id: job, recruiter: userId }))) {
+    throw new ResourceNotFoundError(JOB_NOT_FOUND);
+  }
+  const cursor = readMatchCursor(after);
+  const page = MATCHING_LIMITS.matchesPerRead;
+  const read = await Match.find({
+    [side]: userId,
+    ...MATCHED,
+    ...(job ? { job } : {}),
+    ...(cursor ? { $or: [{ matchedAt: { $lt: cursor.at } }, { matchedAt: cursor.at, _id: { $lt: cursor.id } }] } : {})
+  })
     .sort({ matchedAt: -1, _id: -1 })
-    .limit(MATCHING_LIMITS.matchesPerRead)
+    .limit(page + 1)
     .lean<StoredMatch[]>();
-  return { matches: side === 'candidate' ? await candidateMatchDtos(matches) : await recruiterMatchDtos(matches) };
+  const matches = read.slice(0, page);
+  const last = matches.at(-1);
+  return {
+    matches: side === 'candidate' ? await candidateMatchDtos(matches) : await recruiterMatchDtos(matches),
+    next: read.length > page && last ? matchCursorOf(last) : null
+  };
 }
 
 /**
@@ -589,7 +740,7 @@ export async function endMatch(userId: string, matchId: string, now = new Date()
       { returnDocument: 'after' }
     ).lean<StoredMatch>()) ?? (await Match.findById(match._id).lean<StoredMatch>());
   if (!ended) throw new ResourceNotFoundError(MATCH_NOT_FOUND);
-  await bestEffort('hand-off removal', () => dropHandOff(String(ended._id), String(ended.recruiter)));
+  await bestEffort('hand-off removal', () => dropHandOffs(String(ended.recruiter), [String(ended._id)]));
   return asSideReads(ended, side);
 }
 

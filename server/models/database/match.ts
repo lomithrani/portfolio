@@ -29,7 +29,13 @@ import { MATCH_DECISIONS, MATCH_END_REASONS } from 'portfolio-common';
 
 const decisionSchema = new Schema({
   value: { type: String, enum: MATCH_DECISIONS, required: true },
-  at: { type: Date, required: true }
+  at: { type: Date, required: true },
+  /**
+   * The version of the posting the decision was taken on (a hash of it as candidates read it:
+   * services/jobVersion.ts's reviewedVersion). A candidate's interest holds for that version only:
+   * a mutual interest keeps what they said yes to
+   */
+  version: { type: String }
 }, { _id: false });
 
 /**

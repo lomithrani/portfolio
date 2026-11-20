@@ -291,20 +291,26 @@ const storeJob = async (
   return String(job._id);
 };
 
-/** A decision of each side on `jobId`, stored directly (tests/matches.test.ts covers the decisions' routes) */
-const storeDecision = (
+/**
+ * A decision of each side on `jobId`, stored directly (tests/matches.test.ts covers the decisions'
+ * routes), on the version of the job as it is now, as the routes record it (`version`: another)
+ */
+const storeDecision = async (
   jobId: string,
   recruiter: TestUser,
   candidate: TestUser,
-  sides: { candidate?: 'interested' | 'pass'; recruiter?: 'interested' | 'pass' }
+  sides: { candidate?: 'interested' | 'pass'; recruiter?: 'interested' | 'pass' },
+  { version }: { version?: string } = {}
 ) => {
   const at = new Date(Date.now() - DAY);
+  const job = await JobPosting.findById(jobId).lean<StoredJobPosting>();
+  const on = version ?? (job ? reviewedVersion(job) : undefined);
   return Match.create({
     job: jobId,
     recruiter: recruiter.id,
     candidate: candidate.id,
-    ...(sides.candidate ? { candidateDecision: { value: sides.candidate, at } } : {}),
-    ...(sides.recruiter ? { recruiterDecision: { value: sides.recruiter, at } } : {}),
+    ...(sides.candidate ? { candidateDecision: { value: sides.candidate, at, version: on } } : {}),
+    ...(sides.recruiter ? { recruiterDecision: { value: sides.recruiter, at, version: on } } : {}),
     expiresAt: matchDecisionExpiry(at)
   });
 };
@@ -851,6 +857,13 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     const interested = (await recruiterFeed(recruiter, jobId)).json();
     expect(candidatesOf(interested, recruiter, jobId)).toEqual([last, ...order.slice(0, -1)]);
     expect(interested.cards.map((card: any) => card.interested)).toEqual([true, false, false, false]);
+    // Interested in another version of it (the job edited since): neither first nor said to be,
+    // their recruiter's interest asks them again (tests/matches.test.ts)
+    await Match.deleteOne({ job: jobId, candidate: last });
+    await storeDecision(jobId, recruiter, { id: last } as TestUser, { candidate: 'interested' }, { version: 'another-version' });
+    const older = (await recruiterFeed(recruiter, jobId)).json();
+    expect(candidatesOf(older, recruiter, jobId)).toEqual(order);
+    expect(older.cards.every((card: any) => card.interested === false)).toBe(true);
   });
 
   it('leaves out the candidates the recruiter answered, those who passed the job, and those they met through its link', async () => {

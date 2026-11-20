@@ -130,17 +130,28 @@ export const LASTING = {
   endedAt: { $exists: false }
 } as const;
 
+/** How many lasting mutual interests of one owner and one visitor are read, the latest first */
+const LASTING_READ = 20;
+
 /**
  * The mutual interest between the owner `ownerId` (the candidate) and the visitor `visitorId` (the
- * recruiter) that leads into the owner's journey now: lasting (LASTING), the latest when they have
- * several (two jobs of one recruiter). Undefined without one, and while MATCHING is off
+ * recruiter) that leads into the owner's journey now: lasting (LASTING), with a version that still
+ * reads back (its `posting`), the latest when they have several (two jobs of one recruiter).
+ * Undefined without one, and while MATCHING is off. One whose version no longer reads back (a rule
+ * of job descriptions made tighter since) leads nowhere: the recruiter shares a job as anyone does,
+ * rather than being held by a job the step cannot show (it fails open to the journey's own rules)
  */
 export async function activeMutualInterest(ownerId: string, visitorId: string): Promise<MutualInterest | undefined> {
   if (!env.matchingEnabled || !Types.ObjectId.isValid(ownerId) || !Types.ObjectId.isValid(visitorId)) return undefined;
-  const match = await Match.findOne({ candidate: ownerId, recruiter: visitorId, ...LASTING })
-    .sort({ matchedAt: -1 })
-    .lean<StoredMutualInterest>();
-  return match ? readMutualInterest(match) : undefined;
+  const matches = await Match.find({ candidate: ownerId, recruiter: visitorId, ...LASTING })
+    .sort({ matchedAt: -1, _id: -1 })
+    .limit(LASTING_READ)
+    .lean<StoredMutualInterest[]>();
+  for (const match of matches) {
+    const interest = readMutualInterest(match);
+    if (interest?.posting) return interest;
+  }
+  return undefined;
 }
 
 /**

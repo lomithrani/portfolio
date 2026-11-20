@@ -82,7 +82,8 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     Experience.estimatedDocumentCount(),
     JobPosting.estimatedDocumentCount(),
     JobPosting.countDocuments({ status: 'open' }),
-    // A visitor's progress in an owner's hiring journey, created by their first submit
+    // A visitor's progress in an owner's hiring journey, created by their first submit, or by a
+    // mutual interest of matching that leads them there
     WorkflowInstance.estimatedDocumentCount(),
     // MongoDB removes a booking once its slot is over
     AppointmentBooking.estimatedDocumentCount(),

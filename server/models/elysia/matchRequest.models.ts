@@ -72,7 +72,12 @@ export const recruiterUndoRequest = t.Object({
   token: cardToken
 });
 
-// GET /matches: the side of the mutual interests to list
+// GET /matches: the side of the mutual interests to list; optionally one job's
+// (as its recruiter: one of their jobs), and the page after a cursor (the
+// mutual interest time of the last one read, its milliseconds in base 36, then
+// its id, as the feed's)
 export const matchesQuery = t.Object({
-  side: t.UnionEnum(MATCH_SIDES, { default: undefined })
+  side: t.UnionEnum(MATCH_SIDES, { default: undefined }),
+  job: t.Optional(t.String({ pattern: '^[0-9a-fA-F]{24}$' })),
+  after: t.Optional(t.String({ maxLength: 40, pattern: FEED_CURSOR_PATTERN }))
 });

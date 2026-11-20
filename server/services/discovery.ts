@@ -115,6 +115,24 @@ export async function isProposed(
   return missing.length === 0;
 }
 
+/**
+ * Whether discovery is off for the account `userId`, or a withdrawal of it is under way: no consent
+ * in force (`enabledAt` unset), or a withdrawal asked since the latest consent (`withdrawnAt`, which
+ * a withdrawal writes before it unsets `enabledAt` and drops the decisions about them). What a
+ * decision of matching reads again once it is written (services/matches.ts): a withdrawal that
+ * landed between its check and its write had dropped the decisions before this one was there.
+ * Reads only
+ */
+export async function withdrawnFromDiscovery(userId: string): Promise<boolean> {
+  if (!Types.ObjectId.isValid(userId)) return true;
+  const profile = await DiscoveryProfile.findOne({ user: userId }, { enabledAt: 1, withdrawnAt: 1 }).lean<{
+    enabledAt?: Date | null;
+    withdrawnAt?: Date | null;
+  }>();
+  const { enabledAt, withdrawnAt } = profile ?? {};
+  return !enabledAt || (!!withdrawnAt && withdrawnAt.getTime() >= enabledAt.getTime());
+}
+
 /** Where the account `userId` stands in discovery: see DiscoveryDto. Reads only, stores nothing */
 export async function discoveryStatus(userId: string, now = new Date()): Promise<DiscoveryDto> {
   const profile = await storedProfile(userId);

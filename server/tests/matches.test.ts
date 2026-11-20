@@ -60,11 +60,11 @@ import { isLiveInMatching, jobMatchingWarmUp, liveJobsQuery, reviewedVersion } f
 import { JOB_NOT_FOUND, toJobPostingDto, toJobSnapshot } from '../services/jobPostings';
 import { recordConsent } from '../services/legal';
 import { logger } from '../services/logger';
-import { MATCHING_DECISIONS, matchingDecisionsKey } from '../services/matches';
+import { MATCHING_DECISIONS, introductionTerms, matchingDecisionsKey } from '../services/matches';
 import { matchFeedWarmUps, matchingFeedKey } from '../services/matchFeeds';
 import { sealMatchToken } from '../services/matchTokens';
 import { takeRateLimit } from '../services/rateLimit';
-import { assertStepOpen } from '../services/workflows';
+import { assertStepOpen, openStepOfType } from '../services/workflows';
 import { jobSharesKey } from '../services/workflowSteps/job';
 import { JourneyStepLockedError } from '../errors';
 import { CONSENT, authCookie, openRecruiterSpace, workflowRequestBody } from './helpers';
@@ -337,6 +337,79 @@ const meetingOpen = async (candidate: Candidate, visitor: TestUser) =>
 
 const progressOf = async (candidate: TestUser, recruiter: TestUser) =>
   (await WorkflowInstance.findOne({ owner: candidate.id, visitor: recruiter.id }).lean())?.steps ?? {};
+
+type MatchWrite = { filter: Record<string, unknown>; options?: { upsert?: boolean } };
+
+/** A decision's own write: the upsert that records it (services/matches.ts's recordDecision) */
+const decisionWrite = ({ options }: MatchWrite) => options?.upsert === true;
+
+/** The write that makes a mutual interest: conditioned on both interests */
+const mutualInterestWrite = ({ filter }: MatchWrite) => 'recruiterDecision.value' in filter;
+
+/**
+ * Runs `before` once, just before the first write of Match.findOneAndUpdate that `when` picks (the
+ * write itself then goes on unchanged): what another request does between a decision's check and
+ * its write, made certain instead of hoped for
+ */
+const beforeMatchWrite = (when: (write: MatchWrite) => boolean, before: () => Promise<unknown>) => {
+  const original = Match.findOneAndUpdate.bind(Match);
+  let done = false;
+  spyOn(Match, 'findOneAndUpdate').mockImplementation(((filter: Record<string, unknown>, update: unknown, options: MatchWrite['options']) => {
+    const query = original(filter, update as never, options as never);
+    if (done || !when({ filter: filter ?? {}, options })) return query;
+    done = true;
+    const exec = query.exec.bind(query);
+    query.exec = (async (...args: Parameters<typeof exec>) => {
+      await before();
+      return exec(...args);
+    }) as typeof query.exec;
+    return query;
+  }) as never);
+};
+
+/**
+ * Holds each decision's write until two of them, of two requests at once, are written: neither
+ * goes on before both decisions are there. Counts the writes that would make a mutual interest
+ * (`reached`) and those that made one (`made`): only one ever may
+ */
+const decisionsWrittenTogether = () => {
+  const original = Match.findOneAndUpdate.bind(Match);
+  let written = 0;
+  let release!: () => void;
+  const together = new Promise<void>((resolve) => (release = resolve));
+  const counts = { reached: 0, made: 0, restore: () => spy.mockRestore() };
+  const spy = spyOn(Match, 'findOneAndUpdate').mockImplementation(((filter: Record<string, unknown>, update: unknown, options: MatchWrite['options']) => {
+    const query = original(filter, update as never, options as never);
+    const write = { filter: filter ?? {}, options };
+    const exec = query.exec.bind(query);
+    if (mutualInterestWrite(write)) {
+      counts.reached++;
+      query.exec = (async (...args: Parameters<typeof exec>) => {
+        const result = await exec(...args);
+        if (result) counts.made++;
+        return result;
+      }) as typeof query.exec;
+    } else if (decisionWrite(write)) {
+      query.exec = (async (...args: Parameters<typeof exec>) => {
+        // A write refused (the other request's first insert at the same moment) is retried:
+        // counted once it lands
+        const result = await exec(...args);
+        if (++written === 2) release();
+        await Promise.race([together, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+        return result;
+      }) as typeof query.exec;
+    }
+    return query;
+  }) as never);
+  return counts;
+};
+
+/** Every answer of these, as text, holds none of `secrets` */
+const expectNone = (texts: readonly string[], secrets: readonly string[]) => {
+  for (const text of texts) {
+    for (const secret of secrets) expect(text).not.toContain(secret);
+  }
+};
 
 beforeAll(async () => {
   assertDisposableDatabase(env.MONGO_URL);
@@ -1373,9 +1446,16 @@ describe('decisions while MATCHING is off', () => {
     expect(journey).not.toHaveProperty('match');
     expect(journey.steps.find((step: { id: string }) => step.id === 'job')).toEqual({ id: 'job', type: 'job', status: 'pending' });
     expect(await statuses(candidate, recruiter)).toMatchObject({ job: 'pending', 'job-match': 'pending' });
-    // The recruiter shares a job as anyone does, and the job page is not the mutual interest's
+    // The job page is not the mutual interest's, and the recruiter shares a job as anyone does,
+    // once the note before it is confirmed
     expect((await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie })).status).toBe(404);
-    expect((await submitStep(candidate, recruiter, 'job', { jobId })).status).toBe(403);
+    expect((await submitStep(candidate, recruiter, 'note', { acknowledged: true })).status).toBe(200);
+    const shared = await submitStep(candidate, recruiter, 'job', { jobId });
+    expect(shared.status).toBe(200);
+    const step = shared.json().steps.find((entry: { id: string }) => entry.id === 'job');
+    expect(step.status).toBe('succeeded');
+    expect(step.view).not.toHaveProperty('matched');
+    expect((await progressOf(candidate, recruiter)).job?.data).not.toHaveProperty('match');
   });
 });
 
@@ -1385,11 +1465,20 @@ describe('PUT /opportunities/jobs/:id/decision (the candidate)', () => {
     const candidate = await proposedCandidate();
     const jobId = await liveJob(recruiter);
 
+    // Last active two days ago: a decision is activity
+    const before = new Date(Date.now() - 2 * DAY);
+    await DiscoveryProfile.updateOne({ user: candidate.id }, { $set: { lastActiveAt: before } });
+
     const interested = await candidateDecides(candidate, jobId, 'interested');
     expect(interested.status).toBe(200);
     expect(interested.json()).toEqual({ decision: 'interested', match: null });
     let match = await Match.findOne({ job: jobId, candidate: candidate.id }).lean();
-    expect(match).toMatchObject({ candidateDecision: { value: 'interested' }, recruiter: new Types.ObjectId(recruiter.id) });
+    expect(match).toMatchObject({
+      candidateDecision: { value: 'interested', version: reviewedVersion(await stored(jobId)) },
+      recruiter: new Types.ObjectId(recruiter.id)
+    });
+    const active = (await DiscoveryProfile.findOne({ user: candidate.id }).lean())!.lastActiveAt!;
+    expect(active.getTime()).toBeGreaterThan(before.getTime());
     expect(match!.recruiterDecision).toBeUndefined();
     expect(match!.expiresAt!.getTime()).toBe(matchDecisionExpiry(match!.candidateDecision!.at).getTime());
     // On its private page: proposed to them, with what they said of it
@@ -1528,6 +1617,104 @@ describe('PUT /recruiter/jobs/:id/candidates/decision (the recruiter)', () => {
     expect(stale.status).toBe(422);
     expect(stale.json()).toMatchObject({ property: 'consent' });
   });
+
+  it("undoes either side's decision whatever became of the pair since, the recruiter's with a card's token of any age", async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    const setStatus = (status: string) => call('PUT', `/jobs/${jobId}/status`, { body: { status }, cookie: recruiter.cookie });
+    // A card read a month ago: too old to decide on, never to undo the decision taken on it
+    const monthOld = sealMatchToken(candidate.id, { recruiterId: recruiter.id, jobId }, new Date(Date.now() - 30 * DAY));
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+    expect((await recruiterDecides(recruiter, jobId, candidate, 'pass')).status).toBe(200);
+
+    // On hold: proposed to nobody, its decisions undone all the same
+    expect((await setStatus('on_hold')).status).toBe(200);
+    expect((await candidateUndoes(candidate, jobId)).json()).toEqual({ decision: null, match: null });
+    const undone = await call('DELETE', `/recruiter/jobs/${jobId}/candidates/decision`, {
+      body: { token: monthOld },
+      cookie: recruiter.cookie
+    });
+    expect(undone.json()).toEqual({ decision: null, match: null });
+    expect(await Match.exists({ job: jobId, candidate: candidate.id })).toBeNull();
+
+    // Withdrawn: their decisions went with it, nothing is left to undo
+    expect((await setStatus('open')).status).toBe(200);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+    expect((await call('DELETE', '/discovery/consent', { cookie: candidate.cookie })).status).toBe(200);
+    const nothing = await candidateUndoes(candidate, jobId);
+    expect(nothing.status).toBe(404);
+    expect(nothing.text).toBe(DECISION_NOT_FOUND);
+  });
+});
+
+describe('a job whose version no longer reads back', () => {
+  it('is proposed to nobody: no decision on it, on either side', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    const feedJobs = async () =>
+      (await call('GET', '/opportunities', { cookie: candidate.cookie })).json().jobs.map((card: { job: { _id: string } }) => card.job._id);
+    expect(await feedJobs()).toContain(jobId);
+    // A rule made tighter since it was opened (here written by hand: a description over the limit)
+    await JobPosting.collection.updateOne({ _id: new Types.ObjectId(jobId) }, { $set: { description: 'x'.repeat(20_001) } });
+
+    expect(await isLiveInMatching(await stored(jobId))).toBe(false);
+    expect(await feedJobs()).not.toContain(jobId);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(404);
+    const recruiterAnswer = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+    expect(recruiterAnswer.status).toBe(409);
+    expect(recruiterAnswer.text).toBe(JOB_NOT_PROPOSED);
+    expect(await Match.exists({ job: jobId })).toBeNull();
+  });
+});
+
+describe('a decision and what lands between its check and its write', () => {
+  it('is undone when the candidate withdraws meanwhile: nothing is kept of them, on either side', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    const withdraw = () => call('DELETE', '/discovery/consent', { cookie: candidate.cookie });
+    expect((await recruiterDecides(recruiter, jobId, candidate, 'interested')).status).toBe(200);
+
+    // Their own interest: the withdrawal dropped the recruiter's before it was written
+    beforeMatchWrite(decisionWrite, withdraw);
+    const answer = await candidateDecides(candidate, jobId, 'interested');
+    expect(answer.status).toBe(403);
+    expect(answer.text).toBe(NOT_PROPOSED_TO_RECRUITERS);
+    expect(await Match.exists({ candidate: candidate.id })).toBeNull();
+    expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
+  });
+
+  it("is undone for the recruiter when the candidate withdraws meanwhile: never a mutual interest of a candidate who withdrew", async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+
+    beforeMatchWrite(decisionWrite, () => call('DELETE', '/discovery/consent', { cookie: candidate.cookie }));
+    const answer = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+    expect(answer.status).toBe(409);
+    expect(answer.text).toBe(CANDIDATE_UNAVAILABLE);
+    expect(await Match.exists({ candidate: candidate.id })).toBeNull();
+    expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
+  });
+
+  it('is undone when its job leaves matching meanwhile: never a mutual interest on a closed job', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await recruiterDecides(recruiter, jobId, candidate, 'interested')).status).toBe(200);
+
+    beforeMatchWrite(decisionWrite, () =>
+      call('PUT', `/jobs/${jobId}/status`, { body: { status: 'closed' }, cookie: recruiter.cookie })
+    );
+    const answer = await candidateDecides(candidate, jobId, 'interested');
+    expect(answer.status).toBe(404);
+    expect(answer.text).toBe(JOB_NOT_FOUND);
+    expect(await Match.exists({ job: jobId })).toBeNull();
+    expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
+  });
 });
 
 // ── The mutual interest ─────────────────────────────────────
@@ -1612,19 +1799,30 @@ describe('a mutual interest', () => {
       const jobId = await liveJob(recruiter, { title: `Job ${round} ${t.suffix}` });
       const fromCandidate = () => candidateDecides(candidate, jobId, 'interested');
       const fromRecruiter = () => recruiterDecides(recruiter, jobId, candidate, 'interested');
+      // Neither reads the match again before both decisions are written: both reach the write
+      // that makes the mutual interest, which only one of them may make
+      const writes = decisionsWrittenTogether();
 
       const answers = await Promise.all(order === 'candidate' ? [fromCandidate(), fromRecruiter()] : [fromRecruiter(), fromCandidate()]);
+      writes.restore();
 
+      // The decision written last read both interests: it made the mutual interest
+      expect(writes.made).toBe(1);
       expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
       const matches = await Match.find({ job: jobId, candidate: candidate.id }).lean();
       expect(matches).toHaveLength(1);
-      expect(matches[0].matchedAt).toBeInstanceOf(Date);
-      // At least the request that made it says so, and both say the same one
+      const [mutual] = matches;
+      expect(mutual.matchedAt).toBeInstanceOf(Date);
+      // Made by one request: one side told then, the other's unseen
+      const seen = [mutual.candidateSeenAt, mutual.recruiterSeenAt].filter((at): at is Date => !!at);
+      expect(seen).toHaveLength(1);
+      expect(seen[0].getTime()).toBe(mutual.matchedAt!.getTime());
+      // The request that made it says so (the other one may have read its own decision alone)
       const made = answers.map((answer) => answer.json().match).filter(Boolean);
       expect(made.length).toBeGreaterThan(0);
-      expect(new Set(made.map((match: { _id: string }) => match._id))).toEqual(new Set([String(matches[0]._id)]));
+      expect(new Set(made.map((match: { _id: string }) => match._id))).toEqual(new Set([String(mutual._id)]));
       // Led into the journey once
-      expect((await progressOf(candidate, recruiter)).job?.data).toMatchObject({ job: jobId, match: String(matches[0]._id) });
+      expect((await progressOf(candidate, recruiter)).job?.data).toMatchObject({ job: jobId, match: String(mutual._id) });
       expect(await WorkflowInstance.countDocuments({ owner: candidate.id, visitor: recruiter.id })).toBe(1);
     }
   });
@@ -1643,6 +1841,152 @@ describe('a mutual interest', () => {
     expect((await candidateDecides(candidate, jobId, 'pass')).json().match).toBeNull();
     expect(await Match.exists({ job: jobId, matchedAt: { $exists: true } })).toBeNull();
     expect(await WorkflowInstance.exists({ owner: candidate.id, visitor: recruiter.id })).toBeNull();
+  });
+
+  it('is made once when one side answers twice at the same moment: both reach the write, one makes it', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await recruiterDecides(recruiter, jobId, candidate, 'interested')).status).toBe(200);
+    const writes = decisionsWrittenTogether();
+
+    // Each of the two reads both interests once written: both reach the write that makes it
+    const answers = await Promise.all([candidateDecides(candidate, jobId, 'interested'), candidateDecides(candidate, jobId, 'interested')]);
+    writes.restore();
+
+    expect(writes.reached).toBe(2);
+    expect(writes.made).toBe(1);
+    expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
+    const [mutual, ...others] = await Match.find({ job: jobId, candidate: candidate.id }).lean();
+    expect(others).toEqual([]);
+    expect(mutual.candidateSeenAt!.getTime()).toBe(mutual.matchedAt!.getTime());
+    expect(mutual.recruiterSeenAt).toBeUndefined();
+    expect(answers.map((answer) => answer.json().match?._id)).toEqual([String(mutual._id), String(mutual._id)]);
+    expect(await WorkflowInstance.countDocuments({ owner: candidate.id, visitor: recruiter.id })).toBe(1);
+  });
+
+  it('is not made when a pass lands between the last interest and the write that would make it', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+
+    beforeMatchWrite(mutualInterestWrite, () =>
+      Match.updateOne({ job: jobId, candidate: candidate.id }, { $set: { 'candidateDecision.value': 'pass' } })
+    );
+    const answer = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+
+    expect(answer.status).toBe(200);
+    expect(answer.json()).toEqual({ decision: 'interested', match: null });
+    const match = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+    expect(match.matchedAt).toBeUndefined();
+    expect(match.revealedAt).toBeUndefined();
+    expect(match.candidateDecision!.value).toBe('pass');
+    expect(await WorkflowInstance.exists({ owner: candidate.id, visitor: recruiter.id })).toBeNull();
+  });
+
+  it('asks the candidate again when the job changed since their interest: never one on a version they did not read', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+    // Its recruiter edits it (back to review), and a reviewer approves the new version
+    const edited = await call('PUT', `/jobs/${jobId}`, {
+      body: { ...sampleJob({ title: `Senior Backend Engineer ${t.suffix}` }), description: 'A new description.', updatedAt: (await stored(jobId)).updatedAt },
+      cookie: recruiter.cookie
+    });
+    expect(edited.status).toBe(200);
+    expect((await stored(jobId)).matching?.review?.status).toBe('pending');
+    await approve(jobId);
+
+    const answer = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+
+    expect(answer.status).toBe(200);
+    expect(answer.json()).toEqual({ decision: 'interested', match: null });
+    const asked = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+    expect(asked.matchedAt).toBeUndefined();
+    expect(asked.candidateDecision).toBeUndefined();
+    expect(asked.recruiterDecision).toMatchObject({ value: 'interested', version: reviewedVersion(await stored(jobId)) });
+    expect(await WorkflowInstance.exists({ owner: candidate.id, visitor: recruiter.id })).toBeNull();
+    // Proposed to them again as it is now, with its recruiter's interest
+    const page = (await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie })).json();
+    expect(page).toMatchObject({ access: 'feed', interested: true, job: { description: 'A new description.' } });
+    expect(page).not.toHaveProperty('decision');
+    // Their interest in it now makes the mutual interest, on the version they read
+    const made = await candidateDecides(candidate, jobId, 'interested');
+    expect(made.json().match).toMatchObject({ side: 'candidate', job: { description: 'A new description.' }, changedAt: null });
+  });
+
+  it('reveals nothing while terms of introduction come first: the mutual interest leads nowhere yet', async () => {
+    spyOn(introductionTerms, 'revealAllowed').mockReturnValue(false);
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+
+    const made = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+
+    expect(made.status).toBe(200);
+    const match = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+    expect(match.matchedAt).toBeInstanceOf(Date);
+    expect(match.revealedAt).toBeUndefined();
+    const listed = await call('GET', '/matches?side=recruiter', { cookie: recruiter.cookie });
+    const one = await call('GET', `/matches/${match._id}`, { cookie: recruiter.cookie });
+    expect(made.json().match).toMatchObject({ _id: String(match._id), candidate: null });
+    expect(listed.json().matches).toEqual([expect.objectContaining({ _id: String(match._id), candidate: null })]);
+    expect(one.json()).toMatchObject({ _id: String(match._id), candidate: null });
+    expectNone([made.text, listed.text, one.text], [candidate.domain, 'Quill', candidate.id, candidate.email]);
+    expect(await WorkflowInstance.exists({ owner: candidate.id, visitor: recruiter.id })).toBeNull();
+    expect(await journeyOf(candidate, recruiter)).not.toHaveProperty('match');
+  });
+
+  it('never tells the candidate who the recruiter is, before or after they are both interested', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    const asCandidate = { cookie: candidate.cookie };
+    const proposed = await call('GET', `/opportunities/jobs/${jobId}`, asCandidate);
+    expect((await recruiterDecides(recruiter, jobId, candidate, 'interested')).status).toBe(200);
+    const made = await candidateDecides(candidate, jobId, 'interested');
+    const matchId = made.json().match._id as string;
+
+    const answers = [
+      proposed,
+      made,
+      await call('GET', `/opportunities/jobs/${jobId}`, asCandidate),
+      await call('GET', '/matches?side=candidate', asCandidate),
+      await call('GET', `/matches/${matchId}`, asCandidate),
+      await call('PUT', `/matches/${matchId}/seen`, asCandidate),
+      await call('GET', '/me/notifications', asCandidate),
+      await call('POST', `/matches/${matchId}/end`, asCandidate),
+      await call('GET', `/opportunities/jobs/${jobId}`, asCandidate)
+    ];
+
+    expect(answers.map((answer) => answer.status)).toEqual(answers.map(() => 200));
+    expect(answers[2].json().access).toBe('match');
+    // Its id, its address, its domain (what the reviewers read of it), its name
+    expectNone(
+      answers.map((answer) => answer.text),
+      [recruiter.id, recruiter.email, 'example.com', 'recruiter-first', 'recruiter-last']
+    );
+  });
+
+  it('logs nothing of who or which, its hand-off failing included', async () => {
+    const logs = capturedLogs();
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    // The hand-off into the journey fails once: the mutual interest is made all the same
+    spyOn(WorkflowInstance, 'updateOne').mockImplementationOnce((() => {
+      throw new Error(`hand-off of ${candidate.id} for ${recruiter.id} on ${jobId}`);
+    }) as never);
+
+    const matchId = await bothInterested(recruiter, candidate, jobId);
+    expect(await Match.exists({ _id: matchId, matchedAt: { $exists: true } })).not.toBeNull();
+    expect((await call('POST', `/matches/${matchId}/end`, { cookie: candidate.cookie })).status).toBe(200);
+
+    expect(logs.some((line) => line.includes('Mutual interest: hand-off into the journey failed'))).toBe(true);
+    expectNone(logs, [candidate.id, recruiter.id, candidate.email, recruiter.email, candidate.domain, jobId, matchId]);
   });
 
   it('is marked changed when the posting was edited since: each side keeps what the candidate said yes to', async () => {
@@ -1791,6 +2135,147 @@ describe("a mutual interest and the candidate's journey", () => {
     const scored = (await journeyOf(candidate, recruiter)).steps[1];
     expect(scored.view).not.toHaveProperty('matched');
   });
+
+  it('stops holding while its job is on hold or its recruiter has not accepted the terms in force, and holds again after', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate('candidate', gate({ note: false }));
+    const jobId = await liveJob(recruiter);
+    await bothInterested(recruiter, candidate, jobId);
+    const setStatus = (status: string) => call('PUT', `/jobs/${jobId}/status`, { body: { status }, cookie: recruiter.cookie });
+    const jobStep = async () => (await journeyOf(candidate, recruiter)).steps[0];
+    expect(await meetingOpen(candidate, recruiter)).toBe(true);
+
+    expect((await setStatus('on_hold')).status).toBe(200);
+    expect(await jobStep()).toMatchObject({ status: 'pending', view: { matched: true, job: { _id: jobId, status: 'on_hold' } } });
+    expect((await journeyOf(candidate, recruiter)).match).toMatchObject({ job: { _id: jobId } });
+    expect(await meetingOpen(candidate, recruiter)).toBe(false);
+    expect((await setStatus('open')).status).toBe(200);
+    expect((await jobStep()).status).toBe('succeeded');
+    expect(await meetingOpen(candidate, recruiter)).toBe(true);
+
+    await User.updateOne({ _id: recruiter.id }, { $set: { 'legalAcceptances.$[].version': '2025-01-01' } });
+    expect(await jobStep()).toMatchObject({ status: 'pending', view: { matched: true } });
+    expect(await meetingOpen(candidate, recruiter)).toBe(false);
+    await recordConsent(recruiter.id, CONSENT, 'recruiter');
+    expect((await jobStep()).status).toBe('succeeded');
+    expect(await meetingOpen(candidate, recruiter)).toBe(true);
+  });
+
+  it('takes the place of a job the recruiter shared on the job step before', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    const sharedBefore = (await createJob(recruiter, sampleJob({ title: `Shared ${t.suffix}` })))._id;
+    expect((await submitStep(candidate, recruiter, 'note', { acknowledged: true })).status).toBe(200);
+    expect((await submitStep(candidate, recruiter, 'job', { jobId: sharedBefore })).status).toBe(200);
+    expect((await progressOf(candidate, recruiter)).job?.data).toMatchObject({ job: sharedBefore });
+
+    const matchId = await bothInterested(recruiter, candidate, jobId);
+
+    const progress = await progressOf(candidate, recruiter);
+    expect(progress.job?.data).toMatchObject({ job: jobId, match: matchId });
+    expect(progress['job-match']?.data).toMatchObject({ via: 'mutual_match', match: matchId });
+    expect(progress.note).toBeDefined();
+    const [, job] = (await journeyOf(candidate, recruiter)).steps;
+    expect(job).toMatchObject({ status: 'succeeded', view: { job: { _id: jobId }, matched: true } });
+    expect(await meetingOpen(candidate, recruiter)).toBe(true);
+  });
+
+  it('goes with its job: deleted, nothing it stored is left in the journey', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate('candidate', gate({ note: false }));
+    const jobId = await liveJob(recruiter);
+    const matchId = await bothInterested(recruiter, candidate, jobId);
+    expect(Object.keys(await progressOf(candidate, recruiter)).sort()).toEqual(['job', 'job-match']);
+
+    expect((await call('DELETE', `/jobs/${jobId}`, { cookie: recruiter.cookie })).status).toBe(200);
+
+    expect(await Match.exists({ _id: matchId })).toBeNull();
+    const progress = await progressOf(candidate, recruiter);
+    expect(progress).not.toHaveProperty('job');
+    expect(progress).not.toHaveProperty('job-match');
+    expect(await statuses(candidate, recruiter)).toEqual({ job: 'pending', 'job-match': 'pending', meeting: 'pending' });
+  });
+
+  it('still names its job in the invitation once the candidate takes the job step out of their journey', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    const matchId = await bothInterested(recruiter, candidate, jobId);
+    const [note] = journeyTemplate('gate');
+    const meeting = { id: 'meeting', type: 'meeting', config: {} };
+    expect((await call('PUT', '/workflow', { body: { steps: [note, meeting] }, cookie: candidate.cookie })).status).toBe(200);
+
+    const journey = await journeyOf(candidate, recruiter);
+    expect(journey.match).toMatchObject({ _id: matchId, job: { _id: jobId } });
+    expect(await statuses(candidate, recruiter)).toEqual({ note: 'pending', meeting: 'pending' });
+    expect((await submitStep(candidate, recruiter, 'note', { acknowledged: true })).status).toBe(200);
+    const step = await openStepOfType(candidate.id, recruiter.id, 'meeting', () => new Error('No meeting step'));
+    expect(await step.invitationLines('https://web.example')).toEqual([
+      `Job: Senior Backend Engineer ${t.suffix} — Acme`,
+      'Mutual interest on Portfolio',
+      `https://web.example/opportunities/${jobId}`
+    ]);
+  });
+
+  it('ended, gives way to a share of the same job on the journey: the private page reads the version shared', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate('candidate', gate({ note: false }));
+    const jobId = await liveJob(recruiter);
+    const matchId = await bothInterested(recruiter, candidate, jobId);
+    expect((await call('POST', `/matches/${matchId}/end`, { cookie: recruiter.cookie })).status).toBe(200);
+    // A new version of it, shared on the candidate's page for recruiters as anyone shares a job
+    const edited = await call('PUT', `/jobs/${jobId}`, {
+      body: { ...sampleJob({ title: `Senior Backend Engineer ${t.suffix}` }), description: 'A new description.', updatedAt: (await stored(jobId)).updatedAt },
+      cookie: recruiter.cookie
+    });
+    expect(edited.status).toBe(200);
+    expect((await submitStep(candidate, recruiter, 'job', { jobId })).status).toBe(200);
+
+    const page = (await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie })).json();
+
+    expect(page).toMatchObject({ access: 'journey', job: { _id: jobId, description: 'A new description.' } });
+    expect(page.sharedAt).toMatch(ISO_INSTANT);
+    expect(page).not.toHaveProperty('match');
+  });
+
+  it('leads nowhere once its version no longer reads back: the recruiter shares a job as anyone does', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    const another = (await createJob(recruiter, sampleJob({ title: `Another ${t.suffix}` })))._id;
+    // A version a rule made tighter since refuses (here: nothing at all)
+    await storeMatch(jobId, recruiter, candidate, { candidate: 'interested', recruiter: 'interested', matched: true, snapshot: {} });
+
+    const journey = await journeyOf(candidate, recruiter);
+    expect(journey).not.toHaveProperty('match');
+    expect(journey.steps[1]).toEqual({ id: 'job', type: 'job', status: 'pending' });
+    expect((await submitStep(candidate, recruiter, 'note', { acknowledged: true })).status).toBe(200);
+    expect((await submitStep(candidate, recruiter, 'job', { jobId: another })).status).toBe(200);
+    expect((await statuses(candidate, recruiter)).job).toBe('succeeded');
+    // Each side still reads it, the candidate without a version
+    const listed = (await call('GET', '/matches?side=candidate', { cookie: candidate.cookie })).json().matches;
+    expect(listed).toEqual([expect.objectContaining({ job: null })]);
+  });
+
+  it('fails closed on a frozen score that is not one: the job match does not pass', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate('candidate', gate({ note: false }));
+    const jobId = await liveJob(recruiter);
+    const matchId = await storeMatch(jobId, recruiter, candidate, {
+      candidate: 'interested',
+      recruiter: 'interested',
+      matched: true,
+      snapshot: toJobSnapshot(await stored(jobId))
+    });
+    // Written by hand (what Mongoose would refuse): no score
+    await Match.collection.updateOne({ _id: matchId }, { $set: { 'snapshot.score': 'high' } });
+
+    const [job, jobMatch] = (await journeyOf(candidate, recruiter)).steps;
+    expect(job.status).toBe('succeeded');
+    expect(jobMatch).toMatchObject({ status: 'failed', view: { score: 0, minScore: 70, matched: true } });
+    expect(await meetingOpen(candidate, recruiter)).toBe(false);
+  });
 });
 
 // ── Each side's mutual interests ────────────────────────────
@@ -1888,6 +2373,65 @@ describe('mutual interests, as each side reads them', () => {
     });
   });
 
+  it("lists one job's to its recruiter, a page at a time", async () => {
+    const recruiter = await createRecruiter();
+    const rival = await createRecruiter('rival');
+    const jobId = (await createJob(recruiter, sampleJob({ title: `Listed ${t.suffix}` })))._id;
+    const otherJob = (await createJob(recruiter, sampleJob({ title: `Other ${t.suffix}` })))._id;
+    const rivalJob = (await createJob(rival))._id;
+    const posting = toJobSnapshot(await stored(jobId));
+    const page = MATCHING_LIMITS.matchesPerRead;
+    // One more than a page on the job, a minute apart, and one on another job of theirs
+    const base = Date.now() - DAY;
+    await Match.insertMany(
+      Array.from({ length: page + 1 }, (_, index) => {
+        const at = new Date(base + index * 60_000);
+        return {
+          job: jobId,
+          recruiter: recruiter.id,
+          candidate: new Types.ObjectId(),
+          matchedAt: at,
+          revealedAt: at,
+          snapshot: { posting, version: at, score: 90, minScore: 70, criteria: [] }
+        };
+      })
+    );
+    const other = await Match.create({
+      job: otherJob,
+      recruiter: recruiter.id,
+      candidate: new Types.ObjectId(),
+      matchedAt: new Date(),
+      revealedAt: new Date(),
+      snapshot: { posting, score: 90, minScore: 70, criteria: [] }
+    });
+    const list = (query: string) => call('GET', `/matches?side=recruiter&${query}`, { cookie: recruiter.cookie });
+
+    const first = await list(`job=${jobId}`);
+    expect(first.status).toBe(200);
+    const firstPage = first.json();
+    expect(firstPage.matches).toHaveLength(page);
+    expect(firstPage.next).toEqual(expect.any(String));
+    expect(firstPage.matches.every((match: { job: { _id: string } }) => match.job._id === jobId)).toBe(true);
+    const second = (await list(`job=${jobId}&after=${firstPage.next}`)).json();
+    expect(second.matches).toHaveLength(1);
+    expect(second.next).toBeNull();
+    // The latest first, each once, over both pages
+    const times = [...firstPage.matches, ...second.matches].map((match: { matchedAt: string }) => Date.parse(match.matchedAt));
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+    expect(new Set([...firstPage.matches, ...second.matches].map((match: { _id: string }) => match._id)).size).toBe(page + 1);
+    expect((await list(`job=${otherJob}`)).json().matches.map((match: { _id: string }) => match._id)).toEqual([String(other._id)]);
+    // All of theirs without one
+    expect((await list('')).json().matches[0]._id).toBe(String(other._id));
+    // Another recruiter's job, or one that does not exist: 404, alike
+    for (const id of [rivalJob, UNKNOWN_ID]) {
+      const answer = await list(`job=${id}`);
+      expect(answer.status).toBe(404);
+      expect(answer.text).toBe(JOB_NOT_FOUND);
+    }
+    expect((await list('job=not-an-id')).status).toBe(422);
+    expect((await list('after=not-a-cursor')).status).toBe(422);
+  });
+
   it('ends with its job: closed, the mutual interest ends and the journey holds it no more', async () => {
     const recruiter = await createRecruiter();
     const candidate = await proposedCandidate('candidate', gate({ note: false }));
@@ -1899,5 +2443,9 @@ describe('mutual interests, as each side reads them', () => {
     expect((await Match.findById(matchId).lean())).toMatchObject({ endReason: 'job_closed' });
     expect(await statuses(candidate, recruiter)).toEqual({ job: 'pending', 'job-match': 'pending', meeting: 'pending' });
     expect((await journeyOf(candidate, recruiter)).match).toBeUndefined();
+    // What it stored in the journey goes with it: nothing outlives the match, nor reads as a share
+    const progress = await progressOf(candidate, recruiter);
+    expect(progress).not.toHaveProperty('job');
+    expect(progress).not.toHaveProperty('job-match');
   });
 });

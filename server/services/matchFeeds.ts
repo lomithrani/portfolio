@@ -18,7 +18,8 @@ import type { CandidateCard, CardOutcome } from './candidateCard';
 import { cachedCommuteContext, commuteAvailability, commuteWarmUpPossible, warmCommute } from './commute';
 import type { CommutePair, CommuteReading } from './commute';
 import { isProposed, touchDiscovery } from './discovery';
-import { isLiveInMatching, liveJobsQuery } from './jobMatching';
+import { isLiveInMatching, liveJobsQuery, versionReadsBack } from './jobMatching';
+import { reviewedVersion } from './jobVersion';
 import { JOB_NOT_FOUND, toJobSnapshot } from './jobPostings';
 import type { JobPostingDto } from './jobPostings';
 import { logger } from './logger';
@@ -30,7 +31,7 @@ import type { TransitProvider } from './transit';
 import { ownerJourney, storedJourney } from './workflows';
 import { jobMatchCriteria, jobMatchMinScore } from './workflowSteps/jobMatch';
 import type { JobMatchCriterionView } from './workflowSteps/jobMatch';
-import { pickedJobId } from './workflowSteps/job';
+import { matchOfShare, pickedJobId } from './workflowSteps/job';
 import { m } from './matchFeeds.messages';
 
 // The feeds of matching (Path 2, behind MATCHING): the open jobs proposed to a
@@ -240,7 +241,9 @@ const pickedOn = (jobSteps: readonly string[], progress: readonly unknown[]): Se
     // is never read off an object's prototype
     const byStep = new Map(Object.entries((steps ?? {}) as Record<string, { data?: unknown } | undefined>));
     for (const stepId of jobSteps) {
-      const jobId = pickedJobId(byStep.get(stepId)?.data);
+      const data = byStep.get(stepId)?.data;
+      // What a mutual interest stored there is not a pick (it goes once the mutual interest ends)
+      const jobId = matchOfShare(data) ? undefined : pickedJobId(data);
       if (jobId) picked.add(jobId);
     }
   }
@@ -388,6 +391,8 @@ export async function candidateFeed(userId: string, after?: string, now = new Da
       const jobId = String(job._id);
       if (left.has(jobId)) continue;
       const snapshot = toJobSnapshot(job);
+      // A version that no longer reads back is proposed to nobody (isLiveInMatching)
+      if (!versionReadsBack(job)) continue;
       // Not met even with the commute matching: nothing to read of the pair, nothing to ask
       if (beyondReach(bar, snapshot)) continue;
       const scored = await scorePair(bar, snapshot);
@@ -660,17 +665,24 @@ export async function recruiterFeed(recruiterId: string, jobId: string, now = ne
     Match.find(
       { job: job._id, candidate: { $in: ids } },
       { candidate: 1, candidateDecision: 1, recruiterDecision: 1 }
-    ).lean<{ candidate: Types.ObjectId; candidateDecision?: { value?: string } | null; recruiterDecision?: unknown }[]>(),
+    ).lean<
+      { candidate: Types.ObjectId; candidateDecision?: { value?: string; version?: string } | null; recruiterDecision?: unknown }[]
+    >(),
     WorkflowInstance.find({ visitor: recruiterId, owner: { $in: ids } }, { owner: 1, steps: 1 }).lean<
       { owner: Types.ObjectId; steps?: unknown }[]
     >()
   ]);
   const answered = new Set<string>();
   const interested = new Set<string>();
+  // An interest holds for the version of the job it was given on: given on another (the job edited
+  // since), the recruiter's interest asks the candidate again (services/matches.ts)
+  const version = reviewedVersion(job);
   for (const decision of decisions) {
     const candidate = String(decision.candidate);
     if (decision.recruiterDecision || decision.candidateDecision?.value === 'pass') answered.add(candidate);
-    else if (decision.candidateDecision?.value === 'interested') interested.add(candidate);
+    else if (decision.candidateDecision?.value === 'interested' && decision.candidateDecision.version === version) {
+      interested.add(candidate);
+    }
   }
   const visitOf = new Map(visits.map((visit) => [String(visit.owner), visit.steps]));
 

@@ -249,6 +249,21 @@ const matchedJob = async (interest: MutualInterest, visitorId: string) => {
   return { job, holds: job.status === OPEN_JOB_STATUS && (await userAcceptedCurrentTerms(visitorId)) };
 };
 
+/** The link of a job's private page on the web app `webOrigin` (none without one) */
+const jobLink = (id: string, webOrigin: string | undefined) => (webOrigin ? [`${webOrigin}${opportunityPath(id)}`] : []);
+
+/**
+ * What the meeting invitation says of a mutual interest of matching: its job (the version the owner
+ * said yes to), that they are both interested in it, and its private page. The job step's lines;
+ * the engine's too when the journey has no job step before the meeting (services/workflows.ts: the
+ * owner removed it since), so the invitation always names the job they met over
+ */
+export const mutualInterestLines = (interest: MutualInterest, webOrigin?: string): string[] => {
+  if (!interest.posting) return [];
+  const { title, company } = interest.posting;
+  return [m.job.invitation(title, company), m.job.mutualInterest, ...jobLink(interest.job, webOrigin)];
+};
+
 export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView> = {
   type: 'job',
   evaluate: async (ctx) => {
@@ -313,16 +328,12 @@ export const jobStep: ServerStep<Record<string, never>, JobStepData, JobStepView
   // (services/jobAccess.ts)
   // A job of a mutual interest says so, between the two
   describe: async ({ webOrigin, ...ctx }) => {
-    const link = (id: string) => (webOrigin ? [`${webOrigin}${opportunityPath(id)}`] : []);
     const { mutualInterest } = ctx;
-    if (mutualInterest?.posting) {
-      const { title, company } = mutualInterest.posting;
-      return [m.job.invitation(title, company), m.job.mutualInterest, ...link(mutualInterest.job)];
-    }
-    if (mutualInterest || matchOfShare(ctx.data)) return [];
+    if (mutualInterest) return mutualInterestLines(mutualInterest, webOrigin);
+    if (matchOfShare(ctx.data)) return [];
     const picked = await pickedJob(ctx);
     if (!picked?.share) return [];
     const { title, company } = picked.share.posting;
-    return [m.job.invitation(title, company), ...link(picked.job._id)];
+    return [m.job.invitation(title, company), ...jobLink(picked.job._id, webOrigin)];
   }
 };

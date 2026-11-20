@@ -489,7 +489,9 @@ same steps, notes and meeting apply.
 `server/services/workflows.ts` reads, once per journey and only for a signed-in visitor who is not
 the owner, the latest mutual interest between the owner (the candidate) and the visitor (the
 recruiter) that leads somewhere now (`activeMutualInterest` of `server/services/mutualInterests.ts`:
-both interested, the portfolio revealed, not ended; none while `MATCHING` is off), and hands it to
+both interested, the portfolio revealed, not ended, its version reading back as a share does: one
+that a rule of job descriptions made tighter since breaks leads nowhere, and the recruiter shares a
+job as anyone does; none while `MATCHING` is off), and hands it to
 every step as `ctx.mutualInterest`, with what the candidate said yes to (`posting`, the version of
 the job, read back like a share; `score`, `minScore` and `criteria` then; `matchedAt`; `changedAt`).
 `GET /workflow/domains/:domainName` says it to that visitor as `match`
@@ -500,12 +502,17 @@ the job, read back like a share; `score`, `minScore` and `criteria` then; `match
   while the posting is the recruiter's and open and they accepted the terms in force, as for a
   share; it never says `outdated` (the version kept is the one both said yes to). `submit` answers
   409 `JOB_OF_MUTUAL_INTEREST` (`server/protocol.ts`): the recruiter cannot share another job while
-  it lasts. `describe` adds the line above.
+  it lasts. `describe` adds the line above (`mutualInterestLines`: the job, "Mutual interest on
+  Portfolio", its private page). On a journey without a job step before the meeting (the owner took
+  it out since, or kept the meeting alone), the engine adds those lines itself
+  (`openStepOfType`'s `invitationLines`), so the invitation always names the job they met over.
 - **The job match is frozen.** It is not scored again: `evaluate` succeeds with the score, the
   minimum and the outcomes of the mutual interest (the outcomes only while the owner's
   `showDetails` is on, as for a job scored), and says `matched: true` and `frozenAt` (when they both
   became interested), whatever the owner's criteria or minimum became since: their interest is their
-  yes to that job. `describe` says that score.
+  yes to that job. A frozen score under its minimum, which only a record not written by a mutual
+  interest can hold (`readMutualInterest` reads what is not a score as 0 and what is not a minimum
+  as 100), is `failed`: it fails closed. `describe` says that score.
 - **The notes and the meeting are as for anyone.** A note before or after the job is still the
   recruiter's to confirm, and the meeting opens once every step before it succeeded.
 
@@ -513,16 +520,20 @@ the job, read back like a share; `score`, `minScore` and `criteria` then; `match
 `server/services/matches.ts` records it in the visitor's progress (`seedVisitorProgress` of the
 engine, which creates it when the recruiter had none): the job step's data is the share of the
 version said yes to plus `match` (its id: `mutualInterestShare` of the job step), the job match's
-`{ via: 'mutual_match', match, job, frozenAt }` (`freezeJobMatch` of `jobMatch.ts`). The steps read
+`{ via: 'mutual_match', match, job, frozenAt }` (`freezeJobMatch` of `jobMatch.ts`); on a journey
+without a job step, the visitor's progress alone, so that `recordStepData` records the meeting they
+book (see below). The steps read
 the mutual interest itself, not this record, so a journey the owner edits since (its job step
 removed and added again: a new id, nothing stored under it) still leads there, and a record that
 failed to be written changes nothing. What a mutual interest stored holds nothing once it no longer
 leads there (ended, or `MATCHING` off): the job step is `pending` with no view, the job match scores
 nothing from it (`pickedSnapshot` leaves it out), the job's private page reads it through the mutual
-interest (`access: 'match'`), never as a pick. Ending a mutual interest (`POST /matches/:id/end`)
-removes the record (`dropVisitorProgress`), so the recruiter's job step is to do again, as anyone's;
-deleting the posting removes it with the shares of that job (the job match's record names the job
-for that). A new step type that should behave differently for a job that comes from matching reads
+interest (`access: 'match'`), never as a pick (nor do the feeds of matching read it as one). Ending
+a mutual interest (`POST /matches/:id/end`), or its job ending it (filled, closed or back to draft:
+`afterJobStatusChange` of `server/services/jobMatching.ts`), removes the record (`dropHandOffs`), so
+the recruiter's job step is to do again, as anyone's, and nothing of it outlives the match; deleting
+the posting removes it with the shares of that job (the job match's record names the job for
+that). A new step type that should behave differently for a job that comes from matching reads
 `ctx.mutualInterest`, never the Match itself.
 
 ## Steps with routes of their own
@@ -539,7 +550,8 @@ other routes follows the same pattern, with two functions of `server/services/wo
   returns the first open one.
 - `recordStepData(ownerId, visitorId, stepId, data)` once the work is done (the meeting step
   records `{ bookedAt }` after the booking is confirmed). It only updates the record a signed-in
-  visitor already has with this owner, the one their first submit created. It never creates one: a
+  visitor already has with this owner, the one their first submit created (or a mutual interest of
+  matching that led them there). It never creates one: a
   booking page open to anyone keeps no trace of its visitors. A visitor who books without having
   submitted a step of this owner's journey therefore leaves no record, and the meeting step stays
   `pending` for them.

@@ -23,6 +23,7 @@ import { warmOffice } from './commute';
 import { JOB_NOT_FOUND, storedJobSnapshot, toJobPostingDto, toJobSnapshot } from './jobPostings';
 import { reviewedVersion, versionNow } from './jobVersion';
 import { userAcceptedCurrentTerms } from './legal';
+import { dropVisitorProgress } from './workflows';
 import type { JobPostingDto } from './jobPostings';
 
 // The job side of matching (Path 2, behind MATCHING): a recruiter's switch,
@@ -106,14 +107,23 @@ export const LIVE_IN_MATCHING = {
 } as const;
 
 /**
+ * Whether a stored job's version reads back as a job step and a mutual interest keep it
+ * (storedJobSnapshot: today's rules). A job opened under rules made tighter since may not: it is
+ * proposed to nobody, as a job step refuses to share it, so that no mutual interest is ever made on
+ * a version that holds nothing in the candidate's journey
+ */
+export const versionReadsBack = (job: StoredJobPosting): boolean => storedJobSnapshot(toJobSnapshot(job)) !== undefined;
+
+/**
  * Whether the stored job is proposed to candidates now: open, in matching, approved
- * (jobLiveInMatching), and its recruiter accepted the terms in force. After a LEGAL_VERSION bump a
- * recruiter's jobs are proposed to nobody, and decided on by nobody, until they accept the new
- * terms (as a job picked on a job step holds only while its recruiter has): a mutual interest never
- * reveals a portfolio to a recruiter who did not agree to what the terms ask of them then
+ * (jobLiveInMatching), its version reads back (versionReadsBack), and its recruiter accepted the
+ * terms in force. After a LEGAL_VERSION bump a recruiter's jobs are proposed to nobody, and decided
+ * on by nobody, until they accept the new terms (as a job picked on a job step holds only while its
+ * recruiter has): a mutual interest never reveals a portfolio to a recruiter who did not agree to
+ * what the terms ask of them then
  */
 export async function isLiveInMatching(job: StoredJobPosting): Promise<boolean> {
-  return jobLiveInMatching(job) && (await userAcceptedCurrentTerms(job.recruiter));
+  return jobLiveInMatching(job) && versionReadsBack(job) && (await userAcceptedCurrentTerms(job.recruiter));
 }
 
 /**
@@ -356,7 +366,8 @@ export async function afterMatchingOff(jobId: Types.ObjectId | string): Promise<
  * open again). Filled, closed or back to draft, it leaves matching for good: out of it (its
  * recruiter turns it on again once it is open; its review stays), every decision no mutual
  * interest came of gone, and every mutual interest ended (`job_closed`, kept
- * MATCH_RETENTION.endedMatchMonths more, with what each side saw). Idempotent: a change stopped
+ * MATCH_RETENTION.endedMatchMonths more, with what each side saw), what it stored in its
+ * candidate's journey removed (dropHandOffs). Idempotent: a change stopped
  * midway is finished by the next. Whether it took the job out of matching (its posting changed)
  */
 export async function afterJobStatusChange(jobId: Types.ObjectId | string, status: JobStatus, now = new Date()): Promise<boolean> {
@@ -372,7 +383,34 @@ export async function afterJobStatusChange(jobId: Types.ObjectId | string, statu
     { job: jobId, matchedAt: { $exists: true }, endedAt: { $exists: false } },
     { $set: { endedAt: now, endReason: 'job_closed', expiresAt: endedMatchExpiry(now) } }
   );
+  // What the job's mutual interests stored in their candidates' journeys goes with them, as when a
+  // side ends one (every ended one of the job: a change stopped midway is finished by the next)
+  const ended = await Match.find({ job: jobId, endedAt: { $exists: true } }, { recruiter: 1 }).lean<
+    { _id: Types.ObjectId; recruiter: Types.ObjectId }[]
+  >();
+  for (const recruiter of new Set(ended.map((match) => String(match.recruiter)))) {
+    await dropHandOffs(
+      recruiter,
+      ended.filter((match) => String(match.recruiter) === recruiter).map((match) => String(match._id))
+    );
+  }
   return modifiedCount > 0;
+}
+
+/**
+ * Drops what the mutual interests `matchIds` of the recruiter `recruiterId` stored in their
+ * candidates' journeys once they ended (services/matches.ts's hand-off: the job step's share and
+ * the job match's freeze, each naming its mutual interest, `match`): their job step is to do again,
+ * as anyone's. What an ended one stored holds nothing anyway (services/workflowSteps/job.ts); it
+ * must not outlive the match, which MATCH_RETENTION keeps a few months, nor be read as a pick
+ */
+export async function dropHandOffs(recruiterId: string, matchIds: readonly string[]): Promise<void> {
+  if (matchIds.length === 0) return;
+  const ended = new Set(matchIds);
+  await dropVisitorProgress(recruiterId, (data) => {
+    const match = (data as { match?: unknown } | null | undefined)?.match;
+    return typeof match === 'string' && ended.has(match);
+  });
 }
 
 /**

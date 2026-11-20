@@ -1415,6 +1415,43 @@ describe('hiring journey gate', () => {
     expect(instance?.steps?.job.data).toMatchObject({ job: jobId });
   });
 
+  it('names the job of a mutual interest in the invitation once the owner kept the meeting alone, and records the booking', async () => {
+    env.matchingEnabled = true;
+    // "Keep the meeting alone" since the mutual interest was made: no job step, nothing to confirm
+    const steps = [{ id: 'meeting', type: 'meeting', config: {} }];
+    expect((await call('PUT', '/workflow', { body: { steps }, cookie: owner.cookie })).status).toBe(200);
+    const jobId = await recruiterJob('open');
+    const posting = (await JobPosting.findById(jobId).lean<StoredJobPosting>())!;
+    const matchedAt = new Date();
+    await Match.create({
+      job: jobId,
+      recruiter: other.userId,
+      candidate: owner.userId,
+      candidateDecision: { value: 'interested', at: matchedAt },
+      recruiterDecision: { value: 'interested', at: matchedAt },
+      matchedAt,
+      revealedAt: matchedAt,
+      snapshot: { posting: toJobSnapshot(posting), version: posting.updatedAt, score: 92, minScore: 70, criteria: [] }
+    });
+    await handOffToJourney((await activeMutualInterest(owner.userId, other.userId))!);
+    const visitor = meetingRoutes(other.cookie);
+
+    expect((await visitor.book()).status).toBe(200);
+
+    const [event] = [...google.state.events.values()];
+    expect(event.description).toBe(
+      [
+        `Booked via Portfolio by Jane Recruiter (${t.email('jane')})`,
+        'Job: Staff Engineer — Acme',
+        'Mutual interest on Portfolio',
+        `${WEB_ORIGIN}/opportunities/${jobId}`
+      ].join('\n')
+    );
+    // On their progress, which the mutual interest started: an open booking page keeps none otherwise
+    const instance = await WorkflowInstance.findOne({ owner: owner.userId, visitor: other.userId }).lean();
+    expect(instance?.steps?.meeting.data).toEqual({ bookedAt: expect.any(Date) });
+  });
+
   it('never stops the owner on their own journey', async () => {
     await setJourney('job', 'meeting');
     const routes = meetingRoutes(owner.cookie);

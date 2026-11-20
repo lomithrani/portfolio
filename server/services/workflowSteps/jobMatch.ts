@@ -25,9 +25,10 @@ import { m } from './steps.messages';
 //
 // A job that comes from matching (Path 2: the owner and the recruiter are both
 // interested in it, which the job step before holds) is not scored again: the
-// step is frozen at the score the owner said yes to, the mutual interest's
-// (succeeded, whatever the owner's criteria or minimum became since: their
-// interest is their yes to that job), and says so (`matched`, `frozenAt`).
+// step is frozen at the score the owner said yes to and the minimum it passed
+// then, the mutual interest's (succeeded, whatever the owner's criteria or
+// minimum became since: their interest is their yes to that job), and says so
+// (`matched`, `frozenAt`).
 // services/matches.ts records the freeze in the visitor's progress
 // (freezeJobMatch, `via: 'mutual_match'`); it holds from the mutual interest
 // itself while it lasts (a journey edited since keeps it), never after.
@@ -184,7 +185,11 @@ export const jobMatchStep: ServerStep<JobMatchStepConfig, FrozenJobMatchData | u
   evaluate: async (ctx) => {
     if (ctx.mutualInterest) {
       const view = frozen(ctx, ctx.mutualInterest);
-      return view ? { status: 'succeeded', view } : { status: 'pending' };
+      if (!view) return { status: 'pending' };
+      // A mutual interest's score passed its minimum (it was made so): one that does not was not
+      // written by a mutual interest, and fails closed (readMutualInterest reads what is not a
+      // score as 0 and what is not a minimum as 100)
+      return { status: view.score >= view.minScore ? 'succeeded' : 'failed', view };
     }
     const view = await scored(ctx);
     if (!view) return { status: 'pending' };
