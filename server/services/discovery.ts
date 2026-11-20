@@ -1,17 +1,20 @@
 import { Types } from 'mongoose';
 import {
-  discoveryConsentCutoff,
   discoveryConsentExpiry,
   discoveryConsentKey,
+  discoveryConsentRenewable,
+  discoveryRenewalCutoff,
   discoveryRequirementMessage,
   discoveryRequirements,
   discoveryState,
+  headlineNames,
+  matchingMessages,
   parseDiscoveryCard,
   parseDiscoveryConsent
 } from 'portfolio-common';
 import type { DiscoveryConsentInput, DiscoveryRequirement, DiscoveryState } from 'portfolio-common';
 import { env } from '../env';
-import { DiscoveryProfile, Domain } from '../models/database';
+import { DiscoveryProfile, Domain, User } from '../models/database';
 import { FieldValidationError, TooManyRequestsError } from '../errors';
 import { candidateReadiness } from './candidateReadiness';
 import { userAcceptedCurrentTerms } from './legal';
@@ -72,11 +75,50 @@ interface StoredProfile {
 const storedProfile = (userId: string) =>
   DiscoveryProfile.findOne({ user: userId }, { enabledAt: 1, lastActiveAt: 1, card: 1 }).lean<StoredProfile>();
 
-/** The ids of the experiences of the portfolio `userId` owns */
-const ownExperiences = async (userId: string): Promise<Set<string>> => {
-  const domain = await Domain.findOne({ admin: userId }, { experiences: 1 })
-    .lean<{ experiences?: Types.ObjectId[] }>();
-  return new Set((domain?.experiences ?? []).map(String));
+interface OwnPortfolio {
+  /** Its address name; null without a portfolio */
+  name: string | null;
+  /** Its title, as its header shows it */
+  title: string | null;
+  /** The ids of its experiences */
+  experiences: Set<string>;
+}
+
+/** The portfolio `userId` owns: what the card may name of it (nothing), and its experiences */
+const ownPortfolio = async (userId: string): Promise<OwnPortfolio> => {
+  const domain = await Domain.findOne({ admin: userId }, { name: 1, headerTitle: 1, experiences: 1 })
+    .lean<{ name?: string; headerTitle?: string | null; experiences?: Types.ObjectId[] }>();
+  return {
+    name: domain?.name ?? null,
+    title: domain?.headerTitle ?? null,
+    experiences: new Set((domain?.experiences ?? []).map(String))
+  };
+};
+
+/** The hosts of the site's web pages (ALLOWED_DOMAINS), lower case: where portfolios are */
+const siteHosts = (): string[] =>
+  env.ALLOWED_DOMAINS.flatMap((origin) => {
+    try {
+      return [new URL(origin).host.toLowerCase()];
+    } catch {
+      return [];
+    }
+  });
+
+/**
+ * Whether `headline` says who the account `userId` is, whose portfolio is
+ * `portfolio`: its name, the portfolio's title or address name
+ * (portfolio-common's headlineNames), or a page of the site (`<host>/`). The
+ * card is anonymous until both sides are interested
+ */
+const headlineIdentifies = async (userId: string, headline: string, portfolio: OwnPortfolio) => {
+  const user = await User.findById(userId, { name: 1, surname: 1 }).lean<{ name?: string; surname?: string }>();
+  const fullName = [user?.name, user?.surname].filter(Boolean).join(' ');
+  const lower = headline.toLowerCase();
+  return (
+    headlineNames(headline, [fullName, portfolio.title, portfolio.name]) ||
+    siteHosts().some((host) => lower.includes(`${host}/`))
+  );
 };
 
 /**
@@ -100,11 +142,11 @@ const missingRequirements = async (
 export async function discoveryStatus(userId: string, now = new Date()): Promise<DiscoveryDto> {
   const profile = await storedProfile(userId);
   const enabledAt = profile?.enabledAt ?? null;
-  const [missing, journey, own] = await Promise.all([
+  const [missing, journey, portfolio] = await Promise.all([
     // Activity counts only while discovery is on: turning it on again is activity
     missingRequirements(userId, enabledAt ? profile?.lastActiveAt : undefined, now),
     ownerJourney(userId),
-    ownExperiences(userId)
+    ownPortfolio(userId)
   ]);
   const jobMatch = journey.steps.find((step) => step.type === 'job-match');
   return {
@@ -116,10 +158,19 @@ export async function discoveryStatus(userId: string, now = new Date()): Promise
     card: {
       headline: profile?.card?.headline || null,
       // An experience deleted since is no longer hidden: it is gone
-      hiddenExperiences: (profile?.card?.hiddenExperiences ?? []).map(String).filter((id) => own.has(id))
+      hiddenExperiences: (profile?.card?.hiddenExperiences ?? [])
+        .map(String)
+        .filter((id) => portfolio.experiences.has(id))
     }
   };
 }
+
+/**
+ * The message of a refusal, read again in the language in use: a pure parse
+ * asked once more, so the 422 is in the visitor's language and its log line
+ * in English (inBothLanguages)
+ */
+const refusal = (result: { ok: true } | { ok: false; message: string }) => (result.ok ? '' : result.message);
 
 /**
  * The discovery consent a client sent, checked (portfolio-common
@@ -129,7 +180,7 @@ export async function discoveryStatus(userId: string, now = new Date()): Promise
  */
 export const assertValidDiscoveryConsent = (input: unknown): DiscoveryConsentInput => {
   const result = parseDiscoveryConsent(input);
-  if (!result.ok) throw new FieldValidationError(result.property, result.message);
+  if (!result.ok) throw new FieldValidationError(result.property, () => refusal(parseDiscoveryConsent(input)));
   return result.consent;
 };
 
@@ -137,18 +188,24 @@ export const assertValidDiscoveryConsent = (input: unknown): DiscoveryConsentInp
  * Turns discovery on for the account `userId` with the consent `input`
  * (POST /discovery/consent). 422 on `consent...` for a consent that is not
  * one, then on `requirements.<requirement>` for the first requirement it
- * misses (discoveryRequirements), and 429 over DISCOVERY_GRANTS_PER_DAY.
- * Recorded once, atomically: an account already on, with its consent in
- * force, records nothing again (two requests at once append one entry); a
- * lapsed consent is given again. Turning it on is activity.
+ * misses (discoveryRequirements), and 429 over DISCOVERY_GRANTS_PER_DAY (an
+ * opt-in refused with a 422 uses none of them). Recorded once, atomically: an account
+ * already on, with a consent in force that does not lapse within
+ * DISCOVERY_CONSENT_RENEWAL_DAYS, records nothing again (two requests at once
+ * append one entry); one that lapses within them, or has lapsed, is given
+ * again, from which DISCOVERY_CONSENT_MONTHS count again. A withdrawal made
+ * after this request started wins: the opt-in then records nothing
+ * (withdrawDiscovery). Turning it on is activity.
+ *
+ * `now` is when the request started, which a withdrawal is compared with.
  */
 export async function grantDiscovery(userId: string, input: unknown, now = new Date()): Promise<DiscoveryDto> {
   const consent = assertValidDiscoveryConsent(input);
   const [missing, profile] = await Promise.all([missingRequirements(userId, now, now), storedProfile(userId)]);
   const [first] = missing;
   if (first) throw new FieldValidationError(`requirements.${first}`, () => discoveryRequirementMessage(first));
-  if (discoveryState(profile?.enabledAt, missing, now) === 'on') {
-    // On already, with a consent in force: nothing to record, but it is activity
+  if (discoveryState(profile?.enabledAt, missing, now) === 'on' && !discoveryConsentRenewable(profile?.enabledAt, now)) {
+    // On already, with a consent in force for a while yet: nothing to record, but it is activity
     await DiscoveryProfile.updateOne({ user: userId }, { $set: { lastActiveAt: now } });
     return discoveryStatus(userId, now);
   }
@@ -158,12 +215,16 @@ export async function grantDiscovery(userId: string, input: unknown, now = new D
     throw new TooManyRequestsError(() => m.tooManyGrants(DISCOVERY_GRANTS_PER_DAY.limit), retryAfterSeconds);
   }
   // The profile first (concurrent upserts on its unique user are retried by
-  // MongoDB), then the consent, only where none is in force
+  // MongoDB), then the consent, only where none is in force for a while yet,
+  // and where no withdrawal came after this request started
   await DiscoveryProfile.updateOne({ user: userId }, { $setOnInsert: { user: userId } }, { upsert: true });
   await DiscoveryProfile.updateOne(
     {
       user: userId,
-      $or: [{ enabledAt: { $exists: false } }, { enabledAt: { $lte: discoveryConsentCutoff(now) } }]
+      $and: [
+        { $or: [{ enabledAt: { $exists: false } }, { enabledAt: { $lte: discoveryRenewalCutoff(now) } }] },
+        { $or: [{ withdrawnAt: { $exists: false } }, { withdrawnAt: { $lt: now } }] }
+      ]
     },
     {
       $set: { enabledAt: now, lastActiveAt: now },
@@ -197,10 +258,17 @@ export const discoveryWithdrawal = {
 /**
  * Turns discovery off for the account `userId` (DELETE /discovery/consent):
  * at once, whatever it misses, and recorded (a withdrawal, appended to its
- * consents). An account already off records nothing. The pending decisions
+ * consents). An account already off appends nothing. The pending decisions
  * about the candidate are dropped (discoveryWithdrawal)
+ *
+ * Every withdrawal, an account never on included, first keeps when it was
+ * asked (`withdrawnAt`, the latest): an opt-in that started before it and
+ * writes after it then records nothing (grantDiscovery), so a candidate who
+ * turned discovery on then off at once is off, whatever order the two
+ * requests' writes land in.
  */
 export async function withdrawDiscovery(userId: string, now = new Date()): Promise<DiscoveryDto> {
+  await DiscoveryProfile.updateOne({ user: userId }, { $max: { withdrawnAt: now } }, { upsert: true });
   await DiscoveryProfile.updateOne(
     { user: userId, enabledAt: { $exists: true } },
     { $unset: { enabledAt: 1 }, $push: { consents: { action: 'withdrawn', at: now } } }
@@ -213,15 +281,22 @@ export async function withdrawDiscovery(userId: string, now = new Date()): Promi
 /**
  * Saves what the anonymous card of the account `userId` shows (PUT
  * /discovery), on or off: 422 on `card...` for settings that break a rule
- * (portfolio-common's parseDiscoveryCard). Only the experiences of its own
- * portfolio are kept hidden. Changing it is activity.
+ * (portfolio-common's parseDiscoveryCard), then on `card.headline` for a
+ * headline that names the account or its portfolio (headlineIdentifies). Only
+ * the experiences of its own portfolio are kept hidden. Changing it is
+ * activity.
  */
 export async function saveDiscoveryCard(userId: string, input: unknown, now = new Date()): Promise<DiscoveryDto> {
   const result = parseDiscoveryCard(input);
-  if (!result.ok) throw new FieldValidationError(result.property, result.message);
-  const own = await ownExperiences(userId);
-  const hidden = result.card.hiddenExperiences.filter((id) => own.has(id)).map((id) => new Types.ObjectId(id));
+  if (!result.ok) throw new FieldValidationError(result.property, () => refusal(parseDiscoveryCard(input)));
+  const portfolio = await ownPortfolio(userId);
   const { headline } = result.card;
+  if (headline && (await headlineIdentifies(userId, headline, portfolio))) {
+    throw new FieldValidationError('card.headline', () => matchingMessages.card.headlineIdentity);
+  }
+  const hidden = result.card.hiddenExperiences
+    .filter((id) => portfolio.experiences.has(id))
+    .map((id) => new Types.ObjectId(id));
   await DiscoveryProfile.updateOne(
     { user: userId },
     {

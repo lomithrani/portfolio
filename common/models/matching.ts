@@ -25,6 +25,13 @@ export const DISCOVERY_INACTIVITY_DAYS = 180;
 /** Months after which a discovery consent lapses: the candidate gives it again to stay proposed */
 export const DISCOVERY_CONSENT_MONTHS = 24;
 
+/**
+ * Days before a discovery consent lapses from which the candidate can confirm it again: a new
+ * consent, recorded like the first, from which DISCOVERY_CONSENT_MONTHS count again (earlier, an
+ * opt-in of a candidate already on records nothing)
+ */
+export const DISCOVERY_CONSENT_RENEWAL_DAYS = 30;
+
 /** Lengths and counts of what a candidate sets for discovery, which PUT /discovery enforces */
 export const DISCOVERY_LIMITS = {
 	/** The line a candidate writes atop their anonymous card, in characters */
@@ -37,8 +44,6 @@ export const DISCOVERY_LIMITS = {
 export const MATCHING_LIMITS = {
 	/** Jobs a recruiter has in matching at once */
 	matchingJobsPerRecruiter: 10,
-	/** Edits of the scored fields of a job in matching, per job and UTC day */
-	scoredEditsPerJobPerDay: 5,
 	/** Jobs in one page of a candidate's feed */
 	candidateFeedPage: 30,
 	/** Anonymous cards a recruiter gets per read of a job's feed */
@@ -153,6 +158,27 @@ export const discoveryConsentCutoff = (now = new Date()): Date => {
 };
 
 /**
+ * The latest grant that can be confirmed again at `now`: one that lapses within
+ * DISCOVERY_CONSENT_RENEWAL_DAYS (or has lapsed). What the API's opt-in compares with, so that two
+ * opt-ins at once record one consent
+ */
+export const discoveryRenewalCutoff = (now = new Date()): Date =>
+	discoveryConsentCutoff(new Date(now.getTime() + DISCOVERY_CONSENT_RENEWAL_DAYS * DAY_MS));
+
+/**
+ * Whether the consent given at `enabledAt` can be confirmed again at `now`: it lapses within
+ * DISCOVERY_CONSENT_RENEWAL_DAYS, or has lapsed. None (off): no, it is given, not confirmed
+ */
+export const discoveryConsentRenewable = (
+	enabledAt: Date | string | null | undefined,
+	now = new Date()
+): boolean => {
+	if (enabledAt === undefined || enabledAt === null) return false;
+	const at = new Date(enabledAt).getTime();
+	return !Number.isNaN(at) && at <= discoveryRenewalCutoff(now).getTime();
+};
+
+/**
  * Where a candidate stands: `off` (never turned on, or withdrawn), `on` (proposed to
  * recruiters), `paused` (turned on, but a requirement is missing since: proposed to nobody until
  * it is back) or `lapsed` (the consent is DISCOVERY_CONSENT_MONTHS old: given again to be
@@ -198,19 +224,62 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
-// A link, or an email address: the card is read before both sides are interested, and a way to
-// reach the candidate there would reveal them before that
-const LINK_OR_EMAIL = /[a-z][a-z0-9+.-]*:\/\/|www\.|[^\s@]+@[^\s@]+\.[^\s@]{2,}/i;
+// Ways to reach or find the candidate, which the card is read before both sides are interested
+// in: a link (a scheme, `www.`, or a host followed by a path, `linkedin.com/in/jane`, but not a
+// technology such as `Node.js/React`: .js and .ts are no domains), an email address, and a phone
+// number (9 digits or more, one separator at most between two of them). Tested on the headline as
+// it is kept, folded by NFKC (`jane＠acme.fr` is `jane@acme.fr`)
+const HEADLINE_CONTACTS = [
+	/[a-z][a-z0-9+.-]*:\/\/|www\./i,
+	/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?!(?:js|ts)\/)[a-z]{2,24}\/\S/i,
+	/[^\s@]+@[^\s@]+\.[^\s@]{2,}/,
+	/(?:\+?\d[\s.()-]?){9,}/
+];
 
-/** A headline as it is kept: nothing invisible (cleanIssueText), on one line, trimmed */
-export const cleanHeadline = (value: string) => cleanIssueText(value).replace(/\s+/g, ' ').trim();
+/**
+ * A headline as it is kept: folded by NFKC (what looks like a letter or a sign is that letter or
+ * that sign), nothing invisible (cleanIssueText), on one line, trimmed
+ */
+export const cleanHeadline = (value: string) =>
+	cleanIssueText(value.normalize('NFKC')).replace(/\s+/g, ' ').trim();
+
+/** Text compared without its case, its accents or its spacing */
+const folded = (text: string) =>
+	text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A sign that is neither a letter nor a digit: where a name starts or ends */
+const NOT_WORD = '[^\\p{L}\\p{N}]';
+
+/** Names shorter than this are words (`a`, `go`), not a way to find someone */
+const MIN_NAME_LENGTH = 3;
+
+/**
+ * Whether `headline` names one of `names` (the candidate's name, the title of their portfolio, its
+ * address name), whole, whatever its case, accents or spacing: `Jane Doe` in `jane doe, backend`,
+ * `dev` not in `developer`. Names shorter than MIN_NAME_LENGTH are left out. The API refuses such a
+ * headline (422 on `card.headline`): the card is anonymous until both sides are interested
+ */
+export const headlineNames = (
+	headline: string,
+	names: readonly (string | null | undefined)[]
+): boolean => {
+	const text = folded(headline);
+	return names.some((name) => {
+		const key = typeof name === 'string' ? folded(name) : '';
+		if (key.length < MIN_NAME_LENGTH) return false;
+		return new RegExp(`(?:^|${NOT_WORD})${escapeRegExp(key)}(?:$|${NOT_WORD})`, 'u').test(text);
+	});
+};
 
 /**
  * The card settings a client sent (untrusted), as they are kept, or the first rule they break:
  * the headline cleaned (cleanHeadline; empty is none), at most DISCOVERY_LIMITS.headline
- * characters, without a link or an email address; the hidden experiences a list of ids, without
- * duplicates, at most DISCOVERY_LIMITS.hiddenExperiences (the API keeps those of the candidate's
- * own portfolio)
+ * characters, without a link, an email address or a phone number (the API also refuses one that
+ * names the candidate or their portfolio: headlineNames); the hidden experiences a list of ids,
+ * without duplicates, at most DISCOVERY_LIMITS.hiddenExperiences (the API keeps those of the
+ * candidate's own portfolio)
  */
 export const parseDiscoveryCard = (input: unknown): DiscoveryCardResult => {
 	if (!isRecord(input)) return { ok: false, property: 'card', message: m.card.invalid };
@@ -228,7 +297,7 @@ export const parseDiscoveryCard = (input: unknown): DiscoveryCardResult => {
 				message: m.card.headlineTooLong(DISCOVERY_LIMITS.headline)
 			};
 		}
-		if (LINK_OR_EMAIL.test(cleaned)) {
+		if (HEADLINE_CONTACTS.some((pattern) => pattern.test(cleaned))) {
 			return { ok: false, property: 'card.headline', message: m.card.headlineContact };
 		}
 		headline = cleaned || null;

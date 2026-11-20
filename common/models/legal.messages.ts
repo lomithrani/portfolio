@@ -16,13 +16,17 @@ export const legalMessages = defineMessages({
 	},
 	/**
 	 * The exact wording of the discovery consent a person ticks (Path 2, apart from the terms):
-	 * the age of discovery (MINIMUM_DISCOVERY_AGE), what recruiters see before both sides are
-	 * interested, and how to stop. The API records which wording it was (DISCOVERY_CONSENT_KEYS,
-	 * one key per language): changing a text here means a new key.
+	 * the age of discovery (MINIMUM_DISCOVERY_AGE, written out: legal.ts imports this file), what is
+	 * matched (their criteria, both ways: the jobs shown to them, their card proposed to those
+	 * jobs' recruiters), everything the anonymous card shows before both sides are interested (the
+	 * headline, the role titles and their time, the skills and their time, and, when their job
+	 * match shows details, the outcome of each criterion but the commute and the location), and how
+	 * to stop. The API records which wording it was (DISCOVERY_CONSENT_KEYS, one key per language):
+	 * changing a text here means a new key, which server/tests/matching.test.ts pins.
 	 */
 	discoveryConsent: {
-		en: 'I confirm that I am at least 18 years old. I want Portfolio to propose my anonymous card (my role titles, the time spent in each, my skills) to recruiters whose open jobs meet my criteria. A recruiter sees my name and my portfolio only once we are both interested. I can turn this off at any time.',
-		fr: "Je confirme avoir au moins 18 ans. Je souhaite que Portfolio propose ma fiche anonyme (mes intitulés de poste, le temps passé à chacun, mes compétences) aux recruteurs dont les offres ouvertes répondent à mes critères. Un recruteur ne voit mon nom et mon portfolio qu'en cas d'intérêt réciproque. Je peux désactiver cela à tout moment."
+		en: 'I confirm that I am at least 18 years old. I want Portfolio to show me the open jobs that meet my criteria, and to propose my anonymous card to their recruiters. My card shows the headline I write, my role titles and the time spent in each, and my skills and how long I used each. If my page for recruiters shows them how their job does on each of my criteria, my card shows it too, except for my commute and where I want to work. A recruiter sees my name and my portfolio only once we are both interested. I can turn this off at any time.',
+		fr: "Je confirme avoir au moins 18 ans. Je souhaite que Portfolio me montre les offres ouvertes qui répondent à mes critères et propose ma fiche anonyme à leurs recruteurs. Ma fiche montre l'accroche que j'écris, mes intitulés de poste et le temps passé à chacun, ainsi que mes compétences et leur durée d'utilisation. Si ma page recruteurs leur montre le résultat de leur offre sur chacun de mes critères, ma fiche le montre aussi, sauf pour mon trajet et le lieu où je veux travailler. Un recruteur ne voit mon nom et mon portfolio qu'en cas d'intérêt réciproque. Je peux désactiver cela à tout moment."
 	},
 	/** No discovery consent (no object, or not ticked) */
 	discoveryConsentRequired: {

@@ -682,9 +682,11 @@ this one has, see [Résumé import](#résumé-import), but the budget does not c
 ## Matching
 
 Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=true`**: its routes
-(`GET`/`PUT /discovery`, `POST`/`DELETE /discovery/consent` for now) answer 404 as routes that do
-not exist, nothing of it is read or written, and the metric `discoverable_candidates` is 0. The
-startup line `Running at ...` says `"matching":"on"` or why it is off.
+(`GET`/`PUT /discovery`, `POST`/`DELETE /discovery/consent` for now) are not registered, so they
+answer 404 as routes that do not exist whatever the request (`/swagger` does not list them),
+nothing of it is read or written, and the metric `discoverable_candidates` is 0. The flag is read
+when the API starts: a change takes effect at its next deploy. The startup line `Running at ...`
+says `"matching":"on"` or why it is off.
 
 - **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
   calls its routes yet: they are for the screens that come next, and for the tests.
@@ -694,8 +696,8 @@ startup line `Running at ...` says `"matching":"on"` or why it is off.
   times then come from HERE or from nowhere, never from Transitous (see
   [Travel times](#travel-times), "Matching").
 
-The first opt-in creates the `discoveryprofiles` collection (one document per candidate who turned
-discovery on or set their anonymous card): no migration. Turning `MATCHING` off again proposes
+The first opt-in creates the `discoveryprofiles` collection (one document per account that turned
+discovery on or off or set its anonymous card): no migration. Turning `MATCHING` off again proposes
 nobody to anyone, and keeps those documents as they are: candidates find their choice again when
 it is turned back on (paused until they sign in, if that was over 180 days before), and account
 deletion removes them whatever the flag.

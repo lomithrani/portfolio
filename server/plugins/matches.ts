@@ -31,10 +31,20 @@ const discovery = new Elysia()
   });
 
 export const matches = new Elysia()
-  // Before the session is read: while MATCHING is off, every route answers
-  // the 404 of a route that does not exist, signed in or not, and nothing is
-  // read or written
+  // A backstop: createApp registers none of these routes while MATCHING is
+  // off (matchingRoutes), so they answer the 404 of a route that does not
+  // exist whatever the request, before its body is read. Should the flag be
+  // turned off once the app is built (tests do), they still answer it before
+  // the session is read, and nothing is read or written
   .onTransform(() => {
     if (!env.matchingEnabled) throw new NotFoundError();
   })
   .use(discovery);
+
+/**
+ * The matching routes as createApp mounts them, the flag read when the app is
+ * built: none while MATCHING is off (not even listed by /swagger), every one
+ * once it is on. Typed as when on, so the client is typed against them
+ */
+export const matchingRoutes = (): typeof matches =>
+  env.matchingEnabled ? matches : (new Elysia() as unknown as typeof matches);

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   AGE_CONFIRMATION_KEYS,
   DISCOVERY_CONSENT_KEYS,
+  DISCOVERY_CONSENT_RENEWAL_DAYS,
   DISCOVERY_INACTIVITY_DAYS,
   DISCOVERY_LIMITS,
   DISCOVERY_MIN_CRITERIA,
@@ -18,11 +19,14 @@ import {
   discoveryConsentCutoff,
   discoveryConsentExpiry,
   discoveryConsentKey,
+  discoveryConsentRenewable,
   discoveryInactive,
+  discoveryRenewalCutoff,
   discoveryRequirementMessage,
   discoveryRequirements,
   discoveryState,
   emailDomainOf,
+  headlineNames,
   legalMessages,
   parseDiscoveryCard,
   parseDiscoveryConsent,
@@ -52,6 +56,18 @@ const NOTHING: CandidateReadiness = {
 };
 
 const ready = { termsAccepted: true, now: NOW };
+
+/**
+ * The exact wording each key of DISCOVERY_CONSENT_KEYS stands for. A consent recorded under a key
+ * is the proof of what the candidate ticked (GDPR art. 7(1)): a wording changes only with a new key,
+ * here and in common/models/legal.ts together, never under a key already recorded
+ */
+const DISCOVERY_CONSENT_WORDINGS: Record<string, string> = {
+  'discovery-18-v1':
+    'I confirm that I am at least 18 years old. I want Portfolio to show me the open jobs that meet my criteria, and to propose my anonymous card to their recruiters. My card shows the headline I write, my role titles and the time spent in each, and my skills and how long I used each. If my page for recruiters shows them how their job does on each of my criteria, my card shows it too, except for my commute and where I want to work. A recruiter sees my name and my portfolio only once we are both interested. I can turn this off at any time.',
+  'discovery-18-v1-fr':
+    "Je confirme avoir au moins 18 ans. Je souhaite que Portfolio me montre les offres ouvertes qui répondent à mes critères et propose ma fiche anonyme à leurs recruteurs. Ma fiche montre l'accroche que j'écris, mes intitulés de poste et le temps passé à chacun, ainsi que mes compétences et leur durée d'utilisation. Si ma page recruteurs leur montre le résultat de leur offre sur chacun de mes critères, ma fiche le montre aussi, sauf pour mon trajet et le lieu où je veux travailler. Un recruteur ne voit mon nom et mon portfolio qu'en cas d'intérêt réciproque. Je peux désactiver cela à tout moment."
+};
 
 describe('discoveryRequirements', () => {
   it('asks nothing more of a candidate who has set everything up', () => {
@@ -152,6 +168,14 @@ describe('the discovery consent', () => {
     expect(withLocale('en', discoveryConsentKey)).toBe(DISCOVERY_CONSENT_KEYS.en);
   });
 
+  it('keeps each key to the exact wording it stands for: a new wording needs a new key', () => {
+    for (const locale of ['en', 'fr'] as const) {
+      const key = DISCOVERY_CONSENT_KEYS[locale];
+      expect(DISCOVERY_CONSENT_WORDINGS[key]).toBeDefined();
+      expect(withLocale(locale, () => legalMessages.discoveryConsent)).toBe(DISCOVERY_CONSENT_WORDINGS[key]);
+    }
+  });
+
   it('accepts the confirmation of the terms in force, and keeps only its two fields', () => {
     expect(parseDiscoveryConsent({ ...currentDiscoveryConsent(), extra: 'kept?' })).toEqual({
       ok: true,
@@ -180,6 +204,20 @@ describe('the discovery consent', () => {
   it('lapses 24 months after it was given', () => {
     expect(discoveryConsentExpiry(new Date('2026-11-20T10:00:00Z'))).toEqual(new Date('2028-11-20T10:00:00Z'));
     expect(discoveryConsentCutoff(new Date('2028-11-20T10:00:00Z'))).toEqual(new Date('2026-11-20T10:00:00Z'));
+  });
+
+  it(`can be confirmed again in its last ${DISCOVERY_CONSENT_RENEWAL_DAYS} days, or once lapsed, not before`, () => {
+    const given = new Date('2026-11-20T10:00:00Z');
+    const expiry = discoveryConsentExpiry(given);
+    const daysBefore = (days: number) => new Date(expiry.getTime() - days * DAY);
+    expect(discoveryConsentRenewable(given, daysBefore(DISCOVERY_CONSENT_RENEWAL_DAYS + 1))).toBe(false);
+    expect(discoveryConsentRenewable(given, daysBefore(DISCOVERY_CONSENT_RENEWAL_DAYS))).toBe(true);
+    expect(discoveryConsentRenewable(given.toISOString(), daysBefore(1))).toBe(true);
+    expect(discoveryConsentRenewable(given, new Date(expiry.getTime() + DAY))).toBe(true);
+    // Off: a consent is given, not confirmed again; a date that cannot be read is not one
+    expect(discoveryConsentRenewable(null, NOW)).toBe(false);
+    expect(discoveryConsentRenewable('not a date', NOW)).toBe(false);
+    expect(discoveryRenewalCutoff(daysBefore(DISCOVERY_CONSENT_RENEWAL_DAYS))).toEqual(given);
   });
 });
 
@@ -234,13 +272,40 @@ describe('parseDiscoveryCard', () => {
     'Backend engineer, see https://jane.dev',
     'Reach me at www.jane.dev',
     'jane.doe@example.com for a call',
-    'ftp://files.example.com'
+    'ftp://files.example.com',
+    // A host followed by a path
+    'linkedin.com/in/jane-doe',
+    'Backend, github.com/jane',
+    'portfolio.gentil.tech/jane-doe',
+    // A phone number
+    'Call 06 12 34 56 78',
+    'Backend +33 6 12 34 56 78',
+    '0612345678 any time',
+    // Look-alike signs, folded by NFKC
+    'jane＠acme.fr',
+    'https：／／jane.dev',
+    'ｗｗｗ．jane.dev'
   ])('refuses a way to reach the candidate in the headline: %p', (headline) => {
     expect(parseDiscoveryCard({ headline })).toMatchObject({ ok: false, property: 'card.headline' });
   });
 
-  it('keeps a headline with an @ that is no address', () => {
-    expect(parseDiscoveryCard({ headline: 'Lead dev @ fintech, 10 years' })).toMatchObject({ ok: true });
+  it.each([
+    'Lead dev @ fintech, 10 years',
+    'Node.js, ASP.NET and Vue.js',
+    'Node.js/React developer',
+    'Next.js/TypeScript',
+    'CI/CD, 2015-2024',
+    'Java 8, 11, 17 and 21',
+    '10 years, 3 teams of 12'
+  ])('keeps a headline that reaches nobody: %p', (headline) => {
+    expect(parseDiscoveryCard({ headline })).toMatchObject({ ok: true, card: { headline } });
+  });
+
+  it('keeps a headline folded by NFKC: what looks like a letter is that letter', () => {
+    expect(parseDiscoveryCard({ headline: 'Ｂａｃｋｅｎｄ ｅｎｇｉｎｅｅｒ' })).toMatchObject({
+      ok: true,
+      card: { headline: 'Backend engineer' }
+    });
   });
 
   it.each([
@@ -261,6 +326,28 @@ describe('parseDiscoveryCard', () => {
 
   it('cleans a headline as it is kept', () => {
     expect(cleanHeadline(' a‮b \n c ')).toBe('ab c');
+  });
+});
+
+describe('headlineNames', () => {
+  it('finds a name whole, whatever its case, accents or spacing', () => {
+    expect(headlineNames('Backend engineer, Léa  Dupont', ['Lea Dupont'])).toBe(true);
+    expect(headlineNames('LOUIS.GENTIL — backend', [null, undefined, 'louis.gentil'])).toBe(true);
+    expect(headlineNames('louis.gentil', ['louis.gentil'])).toBe(true);
+    expect(headlineNames('Backend (jane)', ['Jane'])).toBe(true);
+  });
+
+  it('finds no name inside another word, nor one too short to be a name', () => {
+    expect(headlineNames('Senior developer', ['dev'])).toBe(false);
+    expect(headlineNames('Janet, backend', ['Jane'])).toBe(false);
+    expect(headlineNames('A Go engineer', ['a', 'go', ' '])).toBe(false);
+    expect(headlineNames('Backend engineer', [])).toBe(false);
+  });
+
+  it('reads a name as text, never as a pattern', () => {
+    expect(headlineNames('Backend engineer', ['.*'])).toBe(false);
+    expect(headlineNames('Backend a.b engineer', ['a.b'])).toBe(true);
+    expect(headlineNames('Backend axb engineer', ['a.b'])).toBe(false);
   });
 });
 

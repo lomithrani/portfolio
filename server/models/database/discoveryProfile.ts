@@ -4,8 +4,8 @@ import type { InferSchemaType, Types } from 'mongoose';
 // The discovery of a candidate (Path 2, matching on open jobs, behind MATCHING):
 // whether they asked to be proposed to recruiters, as an anonymous card, and
 // what that card shows. One per account (unique index), created the first
-// time the account turns discovery on or sets its card; an account without one
-// is off. Written only by services/discovery.ts.
+// time the account turns discovery on or off or sets its card; an account
+// without one is off. Written only by services/discovery.ts.
 //
 // Apart from the Domain (GET /domain/:name answers a whole portfolio, to
 // anyone) and from the PerfectJob (PUT /perfect-job replaces it whole).
@@ -37,6 +37,13 @@ export const discoveryProfileSchema = new Schema({
    * DISCOVERY_INACTIVITY_DAYS later, until they come back
    */
   lastActiveAt: { type: Date },
+  /**
+   * When the latest withdrawal was asked (DELETE /discovery/consent, an
+   * account never on included): an opt-in that started before it records
+   * nothing, so the later of the two requests wins whatever order their
+   * writes land in
+   */
+  withdrawnAt: { type: Date },
   /** What the anonymous card shows (portfolio-common's parseDiscoveryCard) */
   card: {
     /** A line of their own, atop the card */

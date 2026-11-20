@@ -18,7 +18,7 @@ import {
   perfectJob,
   addresses,
   feedback,
-  matches
+  matchingRoutes
 } from './plugins'
 import { errors, MissingAuthCookieError, PayloadTooLargeError, UnsupportedMediaTypeError } from './errors'
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
@@ -212,8 +212,9 @@ export const createApp = () =>
     .use(perfectJob)
     .use(addresses)
     .use(feedback)
-    // Path 2 (CLAUDE.md, Matching): its routes answer 404 while MATCHING is off
-    .use(matches)
+    // Path 2 (CLAUDE.md, Matching): its routes are not even registered while
+    // MATCHING is off, so they answer 404 like any route that does not exist
+    .use(matchingRoutes())
     .use(appointments)
     .use(opportunities)
     // Before jobs: its static /jobs/import routes, then the /jobs/:id ones

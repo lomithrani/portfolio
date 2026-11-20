@@ -58,10 +58,21 @@ export const matchingMessages = defineMessages({
 			en: (max: number) => `Your headline can be ${max} characters at most.`,
 			fr: (max: number) => `Votre accroche peut faire ${max} caractères au plus.`
 		},
-		/** A link or an email address in the headline: the card is read before both sides are interested */
+		/**
+		 * A link, an email address or a phone number in the headline: the card is read before both
+		 * sides are interested
+		 */
 		headlineContact: {
-			en: 'Leave links and email addresses out of your headline: recruiters read it before they know who you are.',
-			fr: 'Retirez les liens et adresses e-mail de votre accroche : les recruteurs la lisent avant de savoir qui vous êtes.'
+			en: 'Leave links, email addresses and phone numbers out of your headline: recruiters read it before they know who you are.',
+			fr: 'Retirez les liens, adresses e-mail et numéros de téléphone de votre accroche : les recruteurs la lisent avant de savoir qui vous êtes.'
+		},
+		/**
+		 * The headline names the candidate or their portfolio (headlineNames, or the address of the
+		 * site followed by a path): the card stays anonymous until both sides are interested
+		 */
+		headlineIdentity: {
+			en: 'Leave your name, the title of your portfolio and its address out of your headline: recruiters read it before they know who you are.',
+			fr: 'Retirez votre nom, le titre de votre portfolio et son adresse de votre accroche : les recruteurs la lisent avant de savoir qui vous êtes.'
 		},
 		hiddenExperiences: {
 			en: 'The experiences to hide could not be read.',

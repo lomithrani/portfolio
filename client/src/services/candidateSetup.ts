@@ -1,3 +1,4 @@
+import type { CandidateReadiness } from 'portfolio-common';
 import { portfolioTextApi } from '#services';
 import { errorStatus } from './apiErrors';
 import { isNetworkFailure } from './recruiter';
@@ -12,39 +13,12 @@ import { isNetworkFailure } from './recruiter';
 
 // --- Shapes ------------------------------------------------------------------------------
 
-/** GET /me/readiness, read defensively: a field missing or of the wrong type reads as not set */
-export interface Readiness {
-	/** The address name of the portfolio the account owns; null until it claims one */
-	domain: string | null;
-	experiences: number;
-	perfectJob: {
-		criteria: number;
-		essentials: { pay: boolean; workMode: boolean; place: boolean; contractTypes: boolean };
-	};
-	journey: {
-		/** false: the default journey (a meeting step only), never saved by the owner */
-		saved: boolean;
-		types: string[];
-		/**
-		 * A step before the meeting can never succeed (a step that is not available anymore):
-		 * recruiters never reach the meeting, and `gate` and `meeting` are false
-		 */
-		blocked: boolean;
-		/** A job step, then a job match, then a meeting */
-		gate: boolean;
-		/** It leads to a meeting recruiters can reach */
-		meeting: boolean;
-	};
-	calendar: {
-		/** This site takes Google Calendar connections */
-		configured: boolean;
-		connected: boolean;
-		/** Google refused the stored access: the owner connects again */
-		reconnect: boolean;
-		/** The appointment schedules turned on that have hours (weekly, or on a day of their own) */
-		enabledSchedules: number;
-	};
-}
+/**
+ * GET /me/readiness (portfolio-common's CandidateReadiness, the shape the API answers, which the
+ * requirements of discovery read too), read defensively by readReadiness: a field missing or of
+ * the wrong type reads as not set
+ */
+export type Readiness = CandidateReadiness;
 
 /** The essentials of a perfect job (Readiness.perfectJob.essentials), in the order they are shown */
 export const ESSENTIALS = ['pay', 'workMode', 'place', 'contractTypes'] as const;

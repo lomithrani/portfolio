@@ -10,12 +10,16 @@ import mongoose, { Types } from 'mongoose';
 import { readFileSync } from 'node:fs';
 import {
   DISCOVERY_CONSENT_KEYS,
+  DISCOVERY_CONSENT_RENEWAL_DAYS,
   DISCOVERY_INACTIVITY_DAYS,
   LEGAL_VERSION,
   currentDiscoveryConsent,
+  discoveryConsentCutoff,
   discoveryConsentExpiry,
   ExperienceType,
-  journeyTemplate
+  journeyTemplate,
+  matchingMessages,
+  withLocale
 } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
@@ -57,12 +61,13 @@ const saved = { matching: env.matchingEnabled, calendar: env.googleCalendarEnabl
 const call = async (
   method: string,
   path: string,
-  { body, cookie, language }: { body?: unknown; cookie?: string; language?: string } = {}
+  { body, raw, cookie, language }: { body?: unknown; raw?: string; cookie?: string; language?: string } = {}
 ) => {
   const headers: Record<string, string> = {};
   if (cookie) headers.Cookie = cookie;
   if (language) headers['Accept-Language'] = language;
-  const text = body === undefined ? undefined : JSON.stringify(body);
+  // `raw`: a body sent as it is, JSON or not
+  const text = raw ?? (body === undefined ? undefined : JSON.stringify(body));
   if (text !== undefined) headers['Content-Type'] = 'application/json';
   const response = await app.fetch(new Request(`http://localhost${path}`, { method, headers, body: text }));
   const responseText = await response.text();
@@ -178,9 +183,10 @@ afterAll(async () => {
 
 beforeEach(() => {
   t = testNames();
-  app = createApp();
+  // Before the app is built: it registers the matching routes only while the flag is on
   env.matchingEnabled = true;
   env.googleCalendarEnabled = true;
+  app = createApp();
 });
 
 afterEach(async () => {
@@ -202,33 +208,64 @@ afterEach(async () => {
   await User.deleteMany({ _id: { $in: users } });
 });
 
-describe('while MATCHING is off', () => {
-  it.each([
-    ['GET', '/discovery', undefined],
-    ['PUT', '/discovery', { card: { headline: 'Backend engineer' } }],
-    ['POST', '/discovery/consent', { consent: currentDiscoveryConsent() }],
-    ['DELETE', '/discovery/consent', undefined]
-  ])('%s %s answers the 404 of a route that does not exist, signed in or not, and writes nothing', async (method, path, body) => {
-    env.matchingEnabled = false;
-    const candidate = await readyCandidate('off');
-    const unknownRoute = await call(method, `${path}-that-does-not-exist`, { body, cookie: candidate.cookie });
+const MATCHING_ROUTES: [string, string, unknown][] = [
+  ['GET', '/discovery', undefined],
+  ['PUT', '/discovery', { card: { headline: 'Backend engineer' } }],
+  ['POST', '/discovery/consent', { consent: currentDiscoveryConsent() }],
+  ['DELETE', '/discovery/consent', undefined]
+];
 
-    for (const cookie of [undefined, candidate.cookie]) {
-      const answer = await call(method, path, { body, cookie });
-      expect(answer.status).toBe(404);
-      expect(answer.text).toBe(unknownRoute.text);
+describe('while MATCHING is off', () => {
+  it.each(MATCHING_ROUTES)(
+    '%s %s is not registered: the 404 of a route that does not exist, whatever the session or the body, and nothing written',
+    async (method, path, body) => {
+      env.matchingEnabled = false;
+      app = createApp();
+      const candidate = await readyCandidate('off');
+      expect(app.routes.some((route) => route.path.startsWith('/discovery'))).toBe(false);
+      // A body that is not JSON, and one too large without a Content-Length, would be refused before a registered route's guard ran
+      const bodies = body === undefined ? [undefined] : [JSON.stringify(body), '{"card": {', 'x'.repeat(2 * 1024 * 1024)];
+
+      for (const raw of bodies) {
+        const unknownRoute = await call(method, `${path}-that-does-not-exist`, { raw, cookie: candidate.cookie });
+        for (const cookie of [undefined, candidate.cookie]) {
+          const answer = await call(method, path, { raw, cookie });
+          expect(answer.status).toBe(unknownRoute.status);
+          expect(answer.text).toBe(unknownRoute.text);
+        }
+      }
+      expect((await call(method, path, { body, cookie: candidate.cookie })).status).toBe(404);
+      expect(await DiscoveryProfile.exists({ user: candidate.id })).toBeNull();
+      expect(await RateLimitCounter.exists({ _id: new RegExp(`^${discoveryGrantsKey(candidate.id)}:`) })).toBeNull();
     }
-    expect(await DiscoveryProfile.exists({ user: candidate.id })).toBeNull();
-    expect(await RateLimitCounter.exists({ _id: new RegExp(`^${discoveryGrantsKey(candidate.id)}:`) })).toBeNull();
-  });
+  );
+
+  it.each(MATCHING_ROUTES)(
+    '%s %s still answers the 404 of a route that does not exist when the flag is turned off once the app is built',
+    async (method, path, body) => {
+      const candidate = await readyCandidate('later');
+      env.matchingEnabled = false;
+      const unknownRoute = await call(method, `${path}-that-does-not-exist`, { body, cookie: candidate.cookie });
+
+      for (const cookie of [undefined, candidate.cookie]) {
+        const answer = await call(method, path, { body, cookie });
+        expect(answer.status).toBe(404);
+        expect(answer.text).toBe(unknownRoute.text);
+      }
+      expect(await DiscoveryProfile.exists({ user: candidate.id })).toBeNull();
+    }
+  );
 
   it('records no activity at sign-in', async () => {
+    useTestGoogleKeys();
     const candidate = await readyCandidate('quiet');
     expect((await grant(candidate)).status).toBe(200);
     const long = new Date(Date.now() - 200 * DAY);
     await DiscoveryProfile.updateOne({ user: candidate.id }, { $set: { lastActiveAt: long } });
     env.matchingEnabled = false;
 
+    const token = await signGoogleIdToken({ claims: { sub: t.id('sub-quiet'), email: t.email('quiet') } });
+    expect((await call('POST', '/login', { body: { token } })).status).toBe(200);
     await touchDiscovery(candidate.id);
 
     expect((await profileOf(candidate))?.lastActiveAt).toEqual(long);
@@ -264,6 +301,20 @@ describe('GET /discovery', () => {
     expect((await status(candidate)).minScore).toBe(82);
   });
 
+  it('writes nothing for a candidate who is on, nor for one paused for inactivity', async () => {
+    const candidate = await readyCandidate('reader');
+    expect((await grant(candidate)).status).toBe(200);
+    const asleep = new Date(Date.now() - (DISCOVERY_INACTIVITY_DAYS + 1) * DAY);
+    await DiscoveryProfile.updateOne({ user: candidate.id }, { $set: { lastActiveAt: asleep } });
+    const before = await profileOf(candidate);
+
+    expect(await status(candidate)).toMatchObject({ state: 'paused', missing: ['active'] });
+
+    const after = await profileOf(candidate);
+    expect(after?.lastActiveAt).toEqual(asleep);
+    expect(after?.updatedAt).toEqual(before?.updatedAt);
+  });
+
   it("reads the session's account only", async () => {
     const candidate = await readyCandidate('owner');
     expect((await grant(candidate)).status).toBe(200);
@@ -292,6 +343,7 @@ describe('POST /discovery/consent', () => {
     expect(answer.status).toBe(422);
     expect(answer.json()).toMatchObject({ type: 'validation', property });
     expect(await DiscoveryProfile.exists({ user: user.id })).toBeNull();
+    expect(await RateLimitCounter.exists({ _id: new RegExp(`^${discoveryGrantsKey(user.id)}:`) })).toBeNull();
   });
 
   it('names each requirement still missing in turn, in the language of the request', async () => {
@@ -335,7 +387,9 @@ describe('POST /discovery/consent', () => {
     await refusedOn('schedule');
     await createSchedule(candidate);
 
+    // Refused, none of them used the day's opt-ins: a candidate setting up is never locked out
     expect(await DiscoveryProfile.exists({ user: candidate.id })).toBeNull();
+    expect(await RateLimitCounter.exists({ _id: new RegExp(`^${discoveryGrantsKey(candidate.id)}:`) })).toBeNull();
     const answer = await grant(candidate);
     expect(answer.status).toBe(200);
     expect(answer.json()).toMatchObject({ state: 'on', missing: [] });
@@ -384,8 +438,9 @@ describe('POST /discovery/consent', () => {
   it(`takes ${DISCOVERY_GRANTS_PER_DAY.limit} consents a day, then answers 429 with when to try again`, async () => {
     const candidate = await readyCandidate('toggle');
     for (let index = 0; index < DISCOVERY_GRANTS_PER_DAY.limit; index += 1) {
-      expect((await grant(candidate)).status).toBe(200);
-      expect((await withdraw(candidate)).status).toBe(200);
+      // On each time: an opt-in asked after a withdrawal wins over it
+      expect((await grant(candidate)).json()).toMatchObject({ state: 'on' });
+      expect((await withdraw(candidate)).json()).toMatchObject({ state: 'off' });
     }
 
     const refused = await grant(candidate);
@@ -411,6 +466,39 @@ describe('POST /discovery/consent', () => {
     const profile = await profileOf(candidate);
     expect(profile?.consents?.map((consent) => consent.action)).toEqual(['granted', 'granted']);
     expect(profile!.enabledAt!.getTime()).toBeGreaterThan(given.getTime());
+  });
+
+  it(`confirms a consent again in its last ${DISCOVERY_CONSENT_RENEWAL_DAYS} days, once for two requests at once`, async () => {
+    const candidate = await readyCandidate('renew');
+    expect((await grant(candidate)).status).toBe(200);
+    // Lapsing in 10 days: on still, and confirmed again
+    const lapsingSoon = discoveryConsentCutoff(new Date(Date.now() + 10 * DAY));
+    await DiscoveryProfile.updateOne({ user: candidate.id }, { $set: { enabledAt: lapsingSoon } });
+    expect(await status(candidate)).toMatchObject({ state: 'on', enabledAt: lapsingSoon.toISOString() });
+
+    const answers = await Promise.all([grant(candidate, currentDiscoveryConsent(), 'fr'), grant(candidate)]);
+
+    expect(answers.map((answer) => answer.json().state)).toEqual(['on', 'on']);
+    const profile = await profileOf(candidate);
+    expect(profile?.consents?.map((consent) => consent.action)).toEqual(['granted', 'granted']);
+    expect(profile?.consents?.[1]).toMatchObject({ termsVersion: LEGAL_VERSION });
+    const renewed = profile!.enabledAt!;
+    expect(renewed.getTime()).toBeGreaterThan(lapsingSoon.getTime());
+    expect(Date.now() - renewed.getTime()).toBeLessThan(60_000);
+    expect(new Date((await status(candidate)).consentExpiresAt)).toEqual(discoveryConsentExpiry(renewed));
+  });
+
+  it(`records nothing again for a consent that lapses in more than ${DISCOVERY_CONSENT_RENEWAL_DAYS} days`, async () => {
+    const candidate = await readyCandidate('early');
+    expect((await grant(candidate)).status).toBe(200);
+    const lapsingLater = discoveryConsentCutoff(new Date(Date.now() + (DISCOVERY_CONSENT_RENEWAL_DAYS + 2) * DAY));
+    await DiscoveryProfile.updateOne({ user: candidate.id }, { $set: { enabledAt: lapsingLater } });
+
+    expect((await grant(candidate)).json()).toMatchObject({ state: 'on', enabledAt: lapsingLater.toISOString() });
+
+    const profile = await profileOf(candidate);
+    expect(profile?.enabledAt).toEqual(lapsingLater);
+    expect(profile?.consents).toHaveLength(1);
   });
 });
 
@@ -442,9 +530,78 @@ describe('DELETE /discovery/consent', () => {
     expect((await withdraw(candidate)).json()).toMatchObject({ state: 'off' });
 
     const never = await createUser('never');
-    expect((await withdraw(never)).status).toBe(200);
+    expect((await withdraw(never)).json()).toMatchObject({ state: 'off' });
     expect((await profileOf(candidate))?.consents?.map((consent) => consent.action)).toEqual(['granted', 'withdrawn']);
-    expect(await DiscoveryProfile.exists({ user: never.id })).toBeNull();
+    // When it was asked, and nothing else: no consent was ever given
+    const kept = await profileOf(never);
+    expect(kept?.withdrawnAt).toBeInstanceOf(Date);
+    expect(kept?.enabledAt).toBeUndefined();
+    expect(kept?.consents).toBeUndefined();
+  });
+
+  it('wins over an opt-in under way when it was asked: the candidate ends off', async () => {
+    const candidate = await readyCandidate('race');
+    // The opt-in held just before it writes, past its reads and its rate limit
+    const updateOne = DiscoveryProfile.updateOne.bind(DiscoveryProfile);
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached = () => {};
+    const atWrite = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    spyOn(DiscoveryProfile, 'updateOne').mockImplementation(((...args: Parameters<typeof updateOne>) => {
+      if (args[1] && '$setOnInsert' in args[1]) {
+        reached();
+        return released.then(() => updateOne(...args));
+      }
+      return updateOne(...args);
+    }) as never);
+
+    const granting = grant(candidate);
+    await atWrite;
+    expect((await withdraw(candidate)).json()).toMatchObject({ state: 'off' });
+    release();
+
+    expect((await granting).json()).toMatchObject({ state: 'off', enabledAt: null });
+    expect(await status(candidate)).toMatchObject({ state: 'off' });
+    const profile = await profileOf(candidate);
+    expect(profile?.enabledAt).toBeUndefined();
+    expect(profile?.consents).toBeUndefined();
+  });
+
+  it('wins over an opt-in under way for a candidate who was on: off, the withdrawal recorded last', async () => {
+    const candidate = await readyCandidate('race-on');
+    expect((await grant(candidate)).status).toBe(200);
+    // Lapsed: the next opt-in records a consent again, held just before its write
+    await DiscoveryProfile.updateOne({ user: candidate.id }, { $set: { enabledAt: new Date(Date.now() - 25 * 30 * DAY) } });
+    const updateOne = DiscoveryProfile.updateOne.bind(DiscoveryProfile);
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached = () => {};
+    const atWrite = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    spyOn(DiscoveryProfile, 'updateOne').mockImplementation(((...args: Parameters<typeof updateOne>) => {
+      if (args[1] && '$setOnInsert' in args[1]) {
+        reached();
+        return released.then(() => updateOne(...args));
+      }
+      return updateOne(...args);
+    }) as never);
+
+    const granting = grant(candidate);
+    await atWrite;
+    expect((await withdraw(candidate)).json()).toMatchObject({ state: 'off' });
+    release();
+
+    expect((await granting).json()).toMatchObject({ state: 'off' });
+    const profile = await profileOf(candidate);
+    expect(profile?.enabledAt).toBeUndefined();
+    expect(profile?.consents?.map((consent) => consent.action)).toEqual(['granted', 'withdrawn']);
   });
 });
 
@@ -476,6 +633,21 @@ describe('paused, and active again', () => {
 
     const cookie = `auth=${parseCookie(login.headers.get('Set-Cookie') ?? '')['auth']}`;
     expect(await status({ ...candidate, cookie })).toMatchObject({ state: 'on', missing: [] });
+  });
+
+  it('counts saving the card as activity: a candidate paused for inactivity is on again', async () => {
+    const candidate = await readyCandidate('back');
+    expect((await grant(candidate)).status).toBe(200);
+    await DiscoveryProfile.updateOne(
+      { user: candidate.id },
+      { $set: { lastActiveAt: new Date(Date.now() - (DISCOVERY_INACTIVITY_DAYS + 1) * DAY) } }
+    );
+    expect(await status(candidate)).toMatchObject({ state: 'paused', missing: ['active'] });
+
+    const saved = await call('PUT', '/discovery', { body: { card: { headline: 'Backend engineer' } }, cookie: candidate.cookie });
+
+    expect(saved.json()).toMatchObject({ state: 'on', missing: [] });
+    expect(Date.now() - (await profileOf(candidate))!.lastActiveAt!.getTime()).toBeLessThan(60_000);
   });
 
   it('writes the activity at most once a day, and only while discovery is on', async () => {
@@ -547,6 +719,10 @@ describe('PUT /discovery', () => {
     ['a headline too long', { headline: 'a'.repeat(81) }, 'card.headline'],
     ['a link in the headline', { headline: 'See https://jane.dev' }, 'card.headline'],
     ['an email address in the headline', { headline: 'jane@example.com' }, 'card.headline'],
+    ['an address in look-alike signs', { headline: 'jane＠example.com' }, 'card.headline'],
+    ['a profile on another site', { headline: 'linkedin.com/in/jane' }, 'card.headline'],
+    ["a portfolio's address", { headline: 'portfolio.gentil.tech/louis.gentil' }, 'card.headline'],
+    ['a phone number', { headline: 'Backend, 06 12 34 56 78' }, 'card.headline'],
     ['ids that are not ids', { hiddenExperiences: ['abc'] }, 'card.hiddenExperiences']
   ])('refuses %s (422) and saves nothing', async (_label, card, property) => {
     const candidate = await createUser('bad', { domain: true, experiences: 1 });
@@ -564,6 +740,68 @@ describe('PUT /discovery', () => {
       language: 'fr'
     });
     expect(answer.json().message).toBe('Votre accroche peut faire 80 caractères au plus.');
+  });
+
+  it("refuses a headline that names the candidate or their portfolio, and keeps one that does not", async () => {
+    const candidate = await createUser('named', { domain: true });
+    await Domain.updateOne({ admin: candidate.id }, { $set: { headerTitle: 'Léa Quillfeather' } });
+    await User.updateOne({ _id: candidate.id }, { $set: { name: 'Zoé', surname: 'Marchetti' } });
+    const host = new URL(env.ALLOWED_DOMAINS[0]).host;
+    const save = (headline: string, language?: string) =>
+      call('PUT', '/discovery', { body: { card: { headline } }, cookie: candidate.cookie, language });
+
+    for (const headline of [
+      // Its address name, the title of its portfolio (whatever the case or the accents), its name, a page of the site
+      `${candidate.domain} — backend`,
+      `${candidate.domain!.toUpperCase()}, backend`,
+      'lea quillfeather, backend engineer',
+      'Backend engineer (Zoé Marchetti)',
+      `See ${host}/someone`
+    ]) {
+      const answer = await save(headline);
+      expect(answer.status).toBe(422);
+      expect(answer.json()).toMatchObject({ property: 'card.headline', message: matchingMessages.card.headlineIdentity });
+    }
+    expect((await save('lea quillfeather', 'fr')).json().message).toBe(
+      withLocale('fr', () => matchingMessages.card.headlineIdentity)
+    );
+    expect(await DiscoveryProfile.exists({ user: candidate.id })).toBeNull();
+
+    // A word of them inside another word is no name: kept
+    const kept = await save('Quillfeathered backend engineer, Node.js/React');
+    expect(kept.status).toBe(200);
+    expect(kept.json().card.headline).toBe('Quillfeathered backend engineer, Node.js/React');
+  });
+
+  it('logs nothing the candidate set: neither a headline nor the experiences hidden', async () => {
+    const lines: unknown[][] = [];
+    for (const level of ['debug', 'info', 'warn', 'error'] as const) {
+      spyOn(logger, level).mockImplementation((...args: unknown[]) => {
+        lines.push(args);
+      });
+    }
+    const candidate = await readyCandidate('private', { experiences: 2 });
+    const headline = `Quillwright ${t.suffix}`;
+
+    const saved = await call('PUT', '/discovery', {
+      body: { card: { headline, hiddenExperiences: candidate.experiences } },
+      cookie: candidate.cookie
+    });
+    const refused = await call('PUT', '/discovery', {
+      body: { card: { headline: `${headline} https://jane.dev`, hiddenExperiences: candidate.experiences } },
+      cookie: candidate.cookie
+    });
+    const named = await call('PUT', '/discovery', { body: { card: { headline: candidate.domain } }, cookie: candidate.cookie });
+    expect([saved.status, refused.status, named.status]).toEqual([200, 422, 422]);
+    expect((await grant(candidate)).status).toBe(200);
+    expect((await withdraw(candidate)).status).toBe(200);
+
+    // The 422s were logged, without what was sent
+    expect(lines.length).toBeGreaterThan(0);
+    const logged = JSON.stringify(lines);
+    for (const secret of [headline, candidate.domain!, ...candidate.experiences]) {
+      expect(logged).not.toContain(secret);
+    }
   });
 });
 

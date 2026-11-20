@@ -252,6 +252,7 @@ export {
 	DISCOVERY_MIN_CRITERIA,
 	DISCOVERY_INACTIVITY_DAYS,
 	DISCOVERY_CONSENT_MONTHS,
+	DISCOVERY_CONSENT_RENEWAL_DAYS,
 	DISCOVERY_LIMITS,
 	MATCHING_LIMITS,
 	DISCOVERY_REQUIREMENTS,
@@ -261,8 +262,11 @@ export {
 	discoveryRequirementMessage,
 	discoveryConsentExpiry,
 	discoveryConsentCutoff,
+	discoveryRenewalCutoff,
+	discoveryConsentRenewable,
 	discoveryState,
 	cleanHeadline,
+	headlineNames,
 	parseDiscoveryCard,
 	emailDomainOf
 } from './matching';

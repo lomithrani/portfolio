@@ -407,6 +407,7 @@ let testResponses = 0;
 let owner: { cookie: string; userId: string };
 let other: { cookie: string; userId: string };
 const savedSecret = env.GOOGLE_CLIENT_SECRET;
+const savedMatching = env.matchingEnabled;
 // Set once beforeAll has connected. Teardown then always runs: after a dropped
 // connection Mongoose waits for it to come back, or the hook fails (never skipped)
 let connected = false;
@@ -443,6 +444,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   mock.restore();
+  env.matchingEnabled = savedMatching;
   // No Google token in any body or header this test received, whichever order the tests run in
   const leaks = tokenLeaks(responses.slice(testResponses));
   if (connected) await removeTestData(t.suffix);
@@ -1844,6 +1846,10 @@ describe('a grant Google refuses', () => {
 
 describe('no Google token in any API response', () => {
   it('calls every route with valid input and finds the tokens in none of the responses', async () => {
+    // Matching on (Path 2) before the app is built: its routes are registered
+    // only then, and every one of them is swept too
+    env.matchingEnabled = true;
+    app = createApp();
     const first = responses.length;
     const sweepDomain = t.id('domain-sweep');
     const sweep = await login('sweep');
@@ -2053,31 +2059,25 @@ describe('no Google token in any API response', () => {
     // What the account still has to set up, its calendar included (tests/candidateReadiness.test.ts covers it)
     expect((await call('GET', '/me/readiness', auth)).json().calendar).toMatchObject({ connected: true });
 
-    // Discovery, with matching on (tests/discovery.test.ts covers it): the
-    // account set up as it asks (the criteria, the gate, the calendar and
-    // meeting type above), then back to a meeting alone for the booking below
-    const matching = env.matchingEnabled;
-    env.matchingEnabled = true;
+    // Discovery (tests/discovery.test.ts covers it): the account set up as it
+    // asks (the criteria, the gate, the calendar and meeting type above), then
+    // back to a meeting alone for the booking below
     rateLimitKeys.add(discoveryGrantsKey(sweep.userId));
-    try {
-      const criteria = {
-        pay: { importance: 5, perYear: 60_000 },
-        workMode: { importance: 4, modes: ['remote'] },
-        contractTypes: { importance: 3, types: ['cdi'] }
-      };
-      expect((await call('PUT', '/perfect-job', { ...auth, body: { criteria } })).status).toBe(200);
-      expect((await call('PUT', '/workflow', { ...auth, body: { steps: journeyTemplate('gate') } })).status).toBe(200);
-      expect((await call('GET', '/discovery', auth)).status).toBe(200);
-      expect((await call('PUT', '/discovery', { ...auth, body: { card: { headline: 'Sweep engineer' } } })).status).toBe(200);
-      const consent = { consent: currentDiscoveryConsent() };
-      expect((await call('POST', '/discovery/consent', { ...auth, body: consent })).json().state).toBe('on');
-      expect((await call('DELETE', '/discovery/consent', auth)).status).toBe(200);
-      expect(
-        (await call('PUT', '/workflow', { ...auth, body: { steps: [{ id: 'meeting', type: 'meeting', config: {} }] } })).status
-      ).toBe(200);
-    } finally {
-      env.matchingEnabled = matching;
-    }
+    const criteria = {
+      pay: { importance: 5, perYear: 60_000 },
+      workMode: { importance: 4, modes: ['remote'] },
+      contractTypes: { importance: 3, types: ['cdi'] }
+    };
+    expect((await call('PUT', '/perfect-job', { ...auth, body: { criteria } })).status).toBe(200);
+    expect((await call('PUT', '/workflow', { ...auth, body: { steps: journeyTemplate('gate') } })).status).toBe(200);
+    expect((await call('GET', '/discovery', auth)).status).toBe(200);
+    expect((await call('PUT', '/discovery', { ...auth, body: { card: { headline: 'Backend engineer, payments' } } })).status).toBe(200);
+    const consent = { consent: currentDiscoveryConsent() };
+    expect((await call('POST', '/discovery/consent', { ...auth, body: consent })).json().state).toBe('on');
+    expect((await call('DELETE', '/discovery/consent', auth)).status).toBe(200);
+    expect(
+      (await call('PUT', '/workflow', { ...auth, body: { steps: [{ id: 'meeting', type: 'meeting', config: {} }] } })).status
+    ).toBe(200);
 
     google.state.busy = [];
     expect((await call('GET', `/appointments/domains/${sweepDomain}/schedules`)).status).toBe(200);
@@ -2118,7 +2118,7 @@ describe('no Google token in any API response', () => {
     const swept = responses.slice(first);
 
     // Every API route answered at least once with a 2xx: a new route fails
-    // this test until it is added above
+    // this test until it is added above (matching's too: the flag is on)
     const routes = createApp()
       .routes.filter((route) => route.method !== 'OPTIONS' && !route.path.startsWith('/swagger'))
       .map((route) => ({
