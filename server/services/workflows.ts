@@ -111,11 +111,20 @@ export interface OwnerJourney {
  * what its owner asked for
  */
 export async function ownerJourney(ownerId: Id): Promise<OwnerJourney> {
-  const workflow = await Workflow.findOne({ user: ownerId }, { steps: 1 }).lean();
+  return storedJourney(await Workflow.findOne({ user: ownerId }, { steps: 1 }).lean());
+}
+
+/**
+ * The journey a stored Workflow (its `steps`, as read with lean()) holds, as ownerJourney reads it;
+ * DEFAULT_WORKFLOW_STEPS without one. For what reads the journeys of many owners at once (the
+ * recruiter feed of matching)
+ */
+export function storedJourney(workflow: { steps?: unknown } | null | undefined): OwnerJourney {
   if (!workflow) {
     return { steps: DEFAULT_WORKFLOW_STEPS.map((step) => ({ ...step, config: { ...step.config } })), saved: false };
   }
-  const steps = (workflow.steps ?? []).map((step, index) => {
+  const stored = Array.isArray(workflow.steps) ? (workflow.steps as { id?: unknown; type?: unknown; config?: unknown }[]) : [];
+  const steps = stored.map((step, index) => {
     const id = typeof step?.id === 'string' && isStepId(step.id) ? step.id : undefined;
     // Not a step as PUT /workflow stores them (written by hand, or by an older version): kept
     // under an id and a type nothing has, so it blocks the journey like a step of a removed type

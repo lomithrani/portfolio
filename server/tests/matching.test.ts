@@ -87,7 +87,12 @@ const DISCOVERY_CONSENT_WORDINGS: Record<string, string> = {
   'discovery-18-v2':
     'I confirm that I am at least 18 years old. I want Portfolio to show me the open jobs that meet my criteria, and to propose my anonymous card to their recruiters. My card shows the headline I write, my role titles with the time spent in each and whether I still hold it, my total time of professional experience, and my skills with how long I used each. If my page for recruiters shows them how their job does on each of my criteria, my card shows it too, except for my commute and where I want to work. A recruiter sees my name and my portfolio only once we are both interested. I can turn this off at any time.',
   'discovery-18-v2-fr':
-    "Je confirme avoir au moins 18 ans. Je souhaite que Portfolio me montre les offres ouvertes qui répondent à mes critères et propose ma fiche anonyme à leurs recruteurs. Ma fiche montre l'accroche que j'écris, mes intitulés de poste avec le temps passé à chacun et si je l'occupe encore, ma durée totale d'expérience professionnelle, ainsi que mes compétences et leur durée d'utilisation. Si ma page recruteurs leur montre le résultat de leur offre sur chacun de mes critères, ma fiche le montre aussi, sauf pour mon trajet et le lieu où je veux travailler. Un recruteur ne voit mon nom et mon portfolio qu'en cas d'intérêt réciproque. Je peux désactiver cela à tout moment."
+    "Je confirme avoir au moins 18 ans. Je souhaite que Portfolio me montre les offres ouvertes qui répondent à mes critères et propose ma fiche anonyme à leurs recruteurs. Ma fiche montre l'accroche que j'écris, mes intitulés de poste avec le temps passé à chacun et si je l'occupe encore, ma durée totale d'expérience professionnelle, ainsi que mes compétences et leur durée d'utilisation. Si ma page recruteurs leur montre le résultat de leur offre sur chacun de mes critères, ma fiche le montre aussi, sauf pour mon trajet et le lieu où je veux travailler. Un recruteur ne voit mon nom et mon portfolio qu'en cas d'intérêt réciproque. Je peux désactiver cela à tout moment.",
+  // What a recruiter reads beside the card before both are interested: the candidate's interest in their job
+  'discovery-18-v3':
+    'I confirm that I am at least 18 years old. I want Portfolio to show me the open jobs that meet my criteria, and to propose my anonymous card to their recruiters. My card shows the headline I write, my role titles with the time spent in each and whether I still hold it, my total time of professional experience, and my skills with how long I used each. If my page for recruiters shows them how their job does on each of my criteria, my card shows it too, except for my commute and where I want to work. If I say I am interested in a job, its recruiter sees it on my card. A recruiter sees my name and my portfolio only once we are both interested. I can turn this off at any time.',
+  'discovery-18-v3-fr':
+    "Je confirme avoir au moins 18 ans. Je souhaite que Portfolio me montre les offres ouvertes qui répondent à mes critères et propose ma fiche anonyme à leurs recruteurs. Ma fiche montre l'accroche que j'écris, mes intitulés de poste avec le temps passé à chacun et si je l'occupe encore, ma durée totale d'expérience professionnelle, ainsi que mes compétences et leur durée d'utilisation. Si ma page recruteurs leur montre le résultat de leur offre sur chacun de mes critères, ma fiche le montre aussi, sauf pour mon trajet et le lieu où je veux travailler. Si je dis qu'une offre m'intéresse, son recruteur le voit sur ma fiche. Un recruteur ne voit mon nom et mon portfolio qu'en cas d'intérêt réciproque. Je peux désactiver cela à tout moment."
 };
 
 describe('discoveryRequirements', () => {
@@ -197,16 +202,18 @@ describe('the discovery consent', () => {
     }
   });
 
-  it('names every field of the anonymous card, in both languages', () => {
+  it('names every field of the anonymous card, and the interest a recruiter reads beside it, in both languages', () => {
     // The card (services/candidateCard.ts, CANDIDATE_CARD_FIELDS, which tests/discovery.test.ts pins) is
-    // { headline, experienceMonths, roles: { title, months, current }, skills: { name, months } }
+    // { headline, experienceMonths, roles: { title, months, current }, skills: { name, months } }; the
+    // recruiter's feed adds `interested` (services/matchFeeds.ts): the candidate said so of the job
     const en = withLocale('en', () => legalMessages.discoveryConsent);
     for (const field of [
       'the headline I write',
       'my total time of professional experience',
       'my role titles with the time spent in each',
       'whether I still hold it',
-      'my skills with how long I used each'
+      'my skills with how long I used each',
+      'If I say I am interested in a job, its recruiter sees it'
     ]) {
       expect(en).toContain(field);
     }
@@ -216,7 +223,8 @@ describe('the discovery consent', () => {
       "ma durée totale d'expérience professionnelle",
       'mes intitulés de poste avec le temps passé à chacun',
       "si je l'occupe encore",
-      "mes compétences et leur durée d'utilisation"
+      "mes compétences et leur durée d'utilisation",
+      "Si je dis qu'une offre m'intéresse, son recruteur le voit"
     ]) {
       expect(fr).toContain(field);
     }

@@ -686,18 +686,18 @@ Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=tr
 (`GET`/`PUT /discovery`, `GET /discovery/card`, `POST`/`DELETE /discovery/consent`,
 `PUT /jobs/:id/matching`, `GET /matching/reviews`, `PUT /matching/reviews/:id`, the feeds
 `GET /opportunities` and `GET /recruiter/jobs/:id/candidates`, the decisions
-`PUT`/`DELETE /opportunities/jobs/:id/decision` and `PUT`/`DELETE /recruiter/jobs/:id/candidates/decision`,
-and the mutual interests `GET /matches`, `GET /matches/:id`, `PUT /matches/:id/seen`,
-`POST /matches/:id/end` and `GET /me/notifications`) are not registered, so they answer 404 as
-routes that do not exist whatever the request (`/swagger` does not list them), `POST /jobs` ignores
-its `matching`, no matching route answers and nothing is proposed, the hiring journeys read no
-mutual interest (what one stored in a journey holds nothing: its recruiter shares a job as anyone
-does), and the metrics `discoverable_candidates`, `matching_job_postings`, `matching_job_reviews`
-and `active_matches` are 0. What a job's changes do to its matches (closed, deleted, edited) runs
-whatever the flag: it only ends, drops or deletes matches, or sends an edited job back for review.
-The flag is read when the API starts: a change
-takes effect at its next deploy. The startup line `Running at ...` says `"matching":"on (1 job
-reviewer)"` (how many reviewers, never who) or why it is off.
+`PUT`/`DELETE /opportunities/jobs/:id/decision` and
+`PUT`/`DELETE /recruiter/jobs/:id/candidates/decision`, and the mutual interests `GET /matches`,
+`GET /matches/:id`, `PUT /matches/:id/seen`, `POST /matches/:id/end` and `GET /me/notifications`)
+are not registered, so they answer 404 as routes that do not exist whatever the request (`/swagger`
+does not list them), `POST /jobs` ignores its `matching`, no matching route answers and nothing is
+proposed, the hiring journeys read no mutual interest (what one stored in a journey holds nothing:
+its recruiter shares a job as anyone does), and the metrics `discoverable_candidates`,
+`matching_job_postings`, `matching_job_reviews` and `active_matches` are 0. What a job's changes do
+to its matches (closed, deleted, edited) runs whatever the flag: it only ends, drops or deletes
+matches, or sends an edited job back for review. The flag is read when the API starts: a change
+takes effect at its next deploy. The startup line `Running at ...` says
+`"matching":"on (1 job reviewer)"` (how many reviewers, never who) or why it is off.
 
 **Reviewers.** Every job a recruiter puts into matching is read by hand before it reaches any
 candidate: it starts pending, and only a reviewer's approval proposes it (a rejection carries a
@@ -717,9 +717,6 @@ their approved jobs leave every feed, and `matching_job_postings`, until they ac
 (nothing to do on the operator's side; the review stays). A posting opened before the pay range cap
 with a wider range cannot be put into matching (422 on `pay.max`) until its recruiter saves it
 again.
-
-- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
-  calls its routes yet: they are for the screens that come next, and for the tests.
 
 **Feeds.** The jobs proposed to a candidate and the anonymous cards of the candidates proposed for
 a recruiter's job are computed when they are read, from what is stored: no background job, no
@@ -744,6 +741,9 @@ leads into the candidate's own hiring journey (its job step holds the job, its j
 at the score then, its notes are still the recruiter's to confirm before the meeting opens). Either
 side ends it (`POST /matches/:id/end`). No email is sent: each side sees how many mutual interests
 it has not seen yet (`GET /me/notifications`), for the account menu's badge of the screens to come.
+
+- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
+  calls its routes yet: they are for the screens that come next, and for the tests.
 - **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
   and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
   assessment is signed: a candidate's consent must point to published texts. Public transport

@@ -99,12 +99,13 @@ export const MINIMUM_DISCOVERY_AGE = 18;
 
 /**
  * Key of the exact wording of the discovery consent the person ticked (stored with it), one per
- * language: the wordings are legalMessages.discoveryConsent. v2 names every field of the card (v1
- * left out the total time of professional experience and whether a role is held now)
+ * language: the wordings are legalMessages.discoveryConsent. v2 named every field of the card (v1
+ * left out the total time of professional experience and whether a role is held now); v3 also says
+ * that a job's recruiter sees the candidate's interest in it before both are interested
  */
 export const DISCOVERY_CONSENT_KEYS: Localized<string> = {
-	en: 'discovery-18-v2',
-	fr: 'discovery-18-v2-fr'
+	en: 'discovery-18-v3',
+	fr: 'discovery-18-v3-fr'
 };
 
 /** Key of the discovery consent's wording in the language in use */

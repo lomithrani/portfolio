@@ -8,8 +8,11 @@
 // perfect jobs, journeys, postings and decisions, named with a suffix unique to
 // that test, and removes them after: tests pass in any order (--randomize).
 // Every job of a test is titled with its suffix, which its candidates ask for
-// (a deal-breaker): what another test left behind is never proposed here.
-// Nothing asks an outside service: fetch fails the test unless a test answers
+// (a deal-breaker): a job another test left behind is never proposed to this
+// test's candidates. A recruiter's feed reads every candidate in discovery,
+// whoever made them: the file needs a database without other candidates in
+// discovery (beforeAll says so; seed:e2e proposes the e2e-match candidates,
+// so run it with TEST_MONGO_URL). Nothing asks an outside service: fetch fails the test unless a test answers
 // it (the geocoder and the routes, for the one warm-up that runs), and the
 // warm-ups a feed asks for are recorded instead.
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
@@ -52,8 +55,9 @@ import { discoveryGrantsKey } from '../services/discovery';
 import { isLiveInMatching, jobMatchingWarmUp } from '../services/jobMatching';
 import { reviewedVersion } from '../services/jobVersion';
 import { JOB_NOT_FOUND } from '../services/jobPostings';
-import { MATCHING_FEED_READS, matchFeedWarmUps, matchingFeedKey } from '../services/matchFeeds';
+import { MATCHING_FEED_READS, matchFeedWarmUps, matchingFeedKey, recruiterFeedTuning } from '../services/matchFeeds';
 import { MATCH_TOKEN_TTL_MS, openMatchToken, sealMatchToken } from '../services/matchTokens';
+import { matchingDecisionsKey } from '../services/matches';
 import { hashValue, takeRateLimit } from '../services/rateLimit';
 import { recordConsent } from '../services/legal';
 import { CONSENT, authCookie, openRecruiterSpace } from './helpers';
@@ -85,7 +89,24 @@ const saved = {
   calendar: env.googleCalendarEnabled,
   commute: env.commuteTimesEnabled,
   transit: env.COMMUTE_TRANSIT,
-  warmUps: { ...commuteWarmUps }
+  contact: env.COMMUTE_CONTACT,
+  hereKey: env.HERE_API_KEY,
+  limit: env.COMMUTE_DAILY_LIMIT,
+  warmUps: { ...commuteWarmUps },
+  tuning: { ...recruiterFeedTuning }
+};
+
+/** Puts back what a test changed of the API's settings */
+const restoreSettings = () => {
+  env.matchingEnabled = saved.matching;
+  env.googleCalendarEnabled = saved.calendar;
+  env.commuteTimesEnabled = saved.commute;
+  env.COMMUTE_TRANSIT = saved.transit;
+  env.COMMUTE_CONTACT = saved.contact;
+  env.HERE_API_KEY = saved.hereKey;
+  env.COMMUTE_DAILY_LIMIT = saved.limit;
+  Object.assign(commuteWarmUps, saved.warmUps);
+  Object.assign(recruiterFeedTuning, saved.tuning);
 };
 
 const call = async (
@@ -327,14 +348,18 @@ beforeAll(async () => {
     WorkflowInstance.init(),
     PerfectJob.init()
   ]);
+  // A recruiter's feed reads every candidate whose consent is in force: another's would be in this
+  // file's feeds (the e2e-match candidates of seed:e2e meet this file's jobs)
+  if (await DiscoveryProfile.exists({ enabledAt: { $gt: discoveryConsentCutoff() } })) {
+    throw new Error(
+      'matchFeeds.test.ts needs a database without other candidates in discovery: run it with TEST_MONGO_URL ' +
+        '(seed:e2e proposes the e2e-match candidates)'
+    );
+  }
 });
 
 afterAll(async () => {
-  env.matchingEnabled = saved.matching;
-  env.googleCalendarEnabled = saved.calendar;
-  env.commuteTimesEnabled = saved.commute;
-  env.COMMUTE_TRANSIT = saved.transit;
-  Object.assign(commuteWarmUps, saved.warmUps);
+  restoreSettings();
   if (connected) await mongoose.disconnect();
 });
 
@@ -346,6 +371,10 @@ beforeEach(() => {
   env.googleCalendarEnabled = true;
   env.commuteTimesEnabled = false;
   env.COMMUTE_TRANSIT = undefined;
+  env.COMMUTE_CONTACT = undefined;
+  env.HERE_API_KEY = undefined;
+  // Whatever server/.env says: the warm-ups' allowances are shares of it
+  env.COMMUTE_DAILY_LIMIT = 500;
   app = createApp();
   warmUps = [];
   fetched = [];
@@ -361,11 +390,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   mock.restore();
-  env.matchingEnabled = saved.matching;
-  env.googleCalendarEnabled = saved.calendar;
-  env.commuteTimesEnabled = saved.commute;
-  env.COMMUTE_TRANSIT = saved.transit;
-  Object.assign(commuteWarmUps, saved.warmUps);
+  restoreSettings();
   if (!connected) return;
   const users = (await User.find({ email: new RegExp(`-${t.suffix}@`) }, '_id').lean()).map((user) => user._id);
   const jobs = (await JobPosting.find({ recruiter: { $in: users } }, '_id').lean()).map((job) => job._id);
@@ -381,7 +406,7 @@ afterEach(async () => {
   await Domain.deleteMany({ admin: { $in: users } });
   await DiscoveryProfile.deleteMany({ user: { $in: users } });
   for (const user of users) {
-    for (const key of [matchingFeedKey(String(user)), discoveryGrantsKey(String(user))]) {
+    for (const key of [matchingFeedKey(String(user)), matchingDecisionsKey(String(user)), discoveryGrantsKey(String(user))]) {
       await RateLimitCounter.deleteMany({ _id: new RegExp(`^${key}:`) });
     }
   }
@@ -479,7 +504,8 @@ describe('GET /opportunities', () => {
     expect(body).toMatchObject({ more: false, next: null, pending: false });
     const [card] = body.jobs;
     // In the top tenth of the range: 0.7 of the pay's 5, the rest matching (1 + 3.5 + 4 + 3 of 13)
-    expect(card).toMatchObject({ score: 88, minScore: 70 });
+    expect(Object.keys(card).sort()).toEqual(['criteria', 'interested', 'job', 'minScore', 'score']);
+    expect(card).toMatchObject({ score: 88, minScore: 70, interested: false });
     expect(card.criteria).toEqual([
       { criterion: 'titles', outcome: 'match' },
       { criterion: 'workMode', outcome: 'match' },
@@ -541,12 +567,16 @@ describe('GET /opportunities', () => {
     const body = (await candidateFeed(candidate)).json();
 
     expect(body.jobs.map((card: any) => card.job._id).sort()).toEqual([proposed, wanted].sort());
+    // The recruiter interested in them says so, the other has said nothing
+    const interestOf = (read: any) => Object.fromEntries(read.jobs.map((card: any) => [card.job._id, card.interested]));
+    expect(interestOf(body)).toEqual({ [proposed]: false, [wanted]: true });
     expect(await isLiveInMatching((await JobPosting.findById(behindJob).lean<StoredJobPosting>())!)).toBe(false);
 
     // Once they accept them again, it is
     await recordConsent(behind.id, CONSENT, 'recruiter');
     const again = (await candidateFeed(candidate)).json();
     expect(again.jobs.map((card: any) => card.job._id).sort()).toEqual([proposed, wanted, behindJob].sort());
+    expect(interestOf(again)).toEqual({ [proposed]: false, [wanted]: true, [behindJob]: true });
   });
 
   it('goes page by page, without a job twice, and leaves out a job closed since', async () => {
@@ -586,6 +616,7 @@ describe('GET /opportunities', () => {
     const candidate = await proposedCandidate('candidate', {
       rated: criteria({ commute: commuteCriterion({ dealBreaker: true }) })
     });
+    const relaxed = await proposedCandidate('relaxed', { rated: criteria({ commute: commuteCriterion() }) });
     const jobId = await storeJob(recruiter, { overrides: atTheOffice() });
 
     const answer = await candidateFeed(candidate);
@@ -599,13 +630,87 @@ describe('GET /opportunities', () => {
     expect(body.jobs[0]).not.toHaveProperty('transit');
     expect(warmUps).toEqual([{ pair: { candidateId: candidate.id, location: expect.objectContaining({ city: 'Lyon' }) }, accountId: candidate.id }]);
 
-    // Nothing more can be asked today: nothing pending, nothing asked
+    // Nothing more can be asked today: nothing pending, nothing asked. A commute that is a
+    // deal-breaker cannot be told: the job is no longer proposed to them (nor them to its recruiter,
+    // as the recruiter's feed holds them out); another is left out of the score
     warmUps = [];
     spyOn(matchFeedWarmUps, 'possible').mockImplementation(async () => false);
     const spent = (await candidateFeed(candidate)).json();
-    expect(spent.pending).toBe(false);
-    expect(spent.jobs).toHaveLength(1);
+    expect(spent).toEqual({ jobs: [], more: false, next: null, pending: false });
+    expect((await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie })).status).toBe(404);
+    const left = (await candidateFeed(relaxed)).json();
+    expect(left.jobs.map((card: any) => card.job._id)).toEqual([jobId]);
+    expect(left.jobs[0].criteria).toContainEqual({ criterion: 'commute', outcome: 'unknown' });
+    expect(left.pending).toBe(false);
     expect(warmUps).toEqual([]);
+    expect(fetched).toEqual([]);
+  });
+
+  it('asks the travel time of a job that meets the candidate only once it is known, and shows it then', async () => {
+    env.commuteTimesEnabled = true;
+    commuteWarmUps.pauseMs = 0;
+    const recruiter = await createRecruiter();
+    // 58 k€ asked of a 45-55 k€ job: 73 without the commute, under their 78; with a commute that
+    // matches (20 minutes, 120 a week of the 300 accepted), 81
+    const candidate = await proposedCandidate('candidate', {
+      rated: criteria({ perYear: 58_000, payDealBreaker: false, commute: commuteCriterion({ importance: 5 }) }),
+      minScore: 78
+    });
+    const jobId = await storeJob(recruiter, { overrides: atTheOffice() });
+
+    const waiting = (await candidateFeed(candidate)).json();
+
+    expect(fetched).toEqual([]);
+    expect(waiting).toEqual({ jobs: [], more: false, next: null, pending: true });
+    expect(warmUps).toEqual([{ pair: { candidateId: candidate.id, location: expect.objectContaining({ city: 'Lyon' }) }, accountId: candidate.id }]);
+    expect((await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie })).status).toBe(404);
+
+    // Asked: found, and the job meets them
+    answerGeoplateforme();
+    await warmCommute(warmUps[0].pair, candidate.id);
+    warmUps = [];
+    const found = (await candidateFeed(candidate)).json();
+    expect(found).toMatchObject({ pending: false, jobs: [{ job: { _id: jobId }, score: 81, minScore: 78 }] });
+    expect(found.jobs[0].criteria).toContainEqual({ criterion: 'commute', outcome: 'match' });
+    // By car: no public transport service to credit
+    expect(found.jobs[0]).not.toHaveProperty('transit');
+    expect(warmUps).toEqual([]);
+    const page = (await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie })).json();
+    expect(page).toMatchObject({ access: 'feed', jobMatch: { score: 81, minScore: 78 }, interested: false });
+
+    // On a site that asks HERE for public transport, a known travel time credits it
+    env.COMMUTE_TRANSIT = 'here';
+    env.HERE_API_KEY = t.id('here-key');
+    const credited = (await candidateFeed(candidate)).json();
+    expect(credited.jobs[0]).toMatchObject({ transit: 'here' });
+    expect(credited.jobs[0].criteria).toContainEqual({ criterion: 'commute', outcome: 'match' });
+  });
+
+  it('keeps a job and a candidate apart on both sides when a deal-breaker commute can never be told', async () => {
+    // Public transport from Transitous, which matching never asks: a commute by it alone is unknowable
+    env.commuteTimesEnabled = true;
+    env.COMMUTE_TRANSIT = 'transitous';
+    env.COMMUTE_CONTACT = 'ops@example.com';
+    const recruiter = await createRecruiter();
+    const jobId = await storeJob(recruiter, { overrides: atTheOffice() });
+    const strict = await proposedCandidate('strict', {
+      rated: criteria({ commute: commuteCriterion({ modes: ['transit'], dealBreaker: true }) })
+    });
+    const relaxed = await proposedCandidate('relaxed', { rated: criteria({ commute: commuteCriterion({ modes: ['transit'] }) }) });
+
+    // Nothing to ask: nothing pending, on either side
+    expect((await candidateFeed(strict)).json()).toEqual({ jobs: [], more: false, next: null, pending: false });
+    expect((await call('GET', `/opportunities/jobs/${jobId}`, { cookie: strict.cookie })).status).toBe(404);
+    expect((await call('PUT', `/opportunities/jobs/${jobId}/decision`, { body: { decision: 'interested' }, cookie: strict.cookie })).status).toBe(404);
+    const recruiterRead = (await recruiterFeed(recruiter, jobId)).json();
+    expect(candidatesOf(recruiterRead, recruiter, jobId)).toEqual([relaxed.id]);
+    expect(recruiterRead.pending).toBe(false);
+    // Not a deal-breaker: left out of the score, on both sides
+    const relaxedRead = (await candidateFeed(relaxed)).json();
+    expect(relaxedRead.jobs.map((card: any) => card.job._id)).toEqual([jobId]);
+    expect(relaxedRead.jobs[0].criteria).toContainEqual({ criterion: 'commute', outcome: 'unknown' });
+    expect(warmUps).toEqual([]);
+    expect(fetched).toEqual([]);
   });
 
   it('is activity: the candidate stays proposed', async () => {
@@ -662,17 +767,22 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
       expect(answer.status).toBe(409);
       expect(answer.text).toBe(JOB_NOT_PROPOSED);
     }
+
+    // The terms in force not accepted since they changed: the 422 of every recruiter route, before
+    // the read is counted or anything of the job is read
+    const behind = await createRecruiter('behind');
+    const behindJob = await storeJob(behind);
+    await User.updateOne({ _id: behind.id }, { $set: { 'legalAcceptances.$[].version': '2025-01-01' } });
+    const stale = await recruiterFeed(behind, behindJob);
+    expect(stale.status).toBe(422);
+    expect(stale.json()).toMatchObject({ property: 'consent' });
+    expect(await RateLimitCounter.exists({ _id: new RegExp(`^${matchingFeedKey(behind.id)}:`) })).toBeNull();
   });
 
   it('proposes only candidates proposed now whom the job meets, in a neutral order, those interested first', async () => {
     const recruiter = await createRecruiter();
     const jobId = await storeJob(recruiter);
-    // Three scores: 100, 88 and 73
-    const shown: Candidate[] = [
-      await proposedCandidate('a', { rated: criteria({ perYear: 50_000 }) }),
-      await proposedCandidate('b', { rated: criteria({ perYear: 54_500, payDealBreaker: false }) }),
-      await proposedCandidate('c', { rated: criteria({ perYear: 58_000, payDealBreaker: false }) })
-    ];
+    const shown: Candidate[] = [await proposedCandidate('a'), await proposedCandidate('b'), await proposedCandidate('c')];
     // Not proposed for this job: under their minimum, a deal-breaker missed, never on, withdrawn,
     // paused, inactive, their consent lapsed, the recruiter's own account
     await proposedCandidate('under', { rated: criteria({ perYear: 58_000, payDealBreaker: false }), minScore: 80 });
@@ -697,29 +807,49 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     expect(candidatesOf((await recruiterFeed(self, ownJob)).json(), self, ownJob)).toEqual(hashOrder(ownJob, shown));
     shown.push(self);
 
+    // Scores rising along the order the hash draws: 73, 88, 100 and 100. A feed ordered by score
+    // would read it otherwise, whatever the hash
+    const order = hashOrder(jobId, shown);
+    const rated = [
+      { perYear: 58_000, score: 73 },
+      { perYear: 54_500, score: 88 },
+      { perYear: 50_000, score: 100 },
+      { perYear: 50_000, score: 100 }
+    ];
+    const byId = new Map(shown.map((candidate) => [candidate.id, candidate]));
+    for (const [index, id] of order.entries()) {
+      const body = { criteria: criteria({ perYear: rated[index].perYear, payDealBreaker: false }) };
+      expect((await call('PUT', '/perfect-job', { body, cookie: byId.get(id)!.cookie })).status).toBe(200);
+    }
+    const byScore = order
+      .map((id, index) => ({ id, score: rated[index].score }))
+      .sort((a, b) => b.score - a.score)
+      .map(({ id }) => id);
+    expect(byScore).not.toEqual(order);
+
     const answer = await recruiterFeed(recruiter, jobId);
 
     expect(answer.status).toBe(200);
     const body = answer.json();
-    expect(candidatesOf(body, recruiter, jobId)).toEqual(hashOrder(jobId, shown));
+    expect(candidatesOf(body, recruiter, jobId)).toEqual(order);
     expect(body).toMatchObject({ more: false, pending: false });
     expect(body.cards.every((card: any) => card.interested === false)).toBe(true);
 
     // The same at every read; a score changed since changes nothing of it
-    expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual(hashOrder(jobId, shown));
-    const rerated = criteria({ perYear: 50_000 });
-    expect((await call('PUT', '/perfect-job', { body: { criteria: rerated }, cookie: shown[2].cookie })).status).toBe(200);
-    expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual(hashOrder(jobId, shown));
+    expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual(order);
+    const first = { criteria: criteria({ perYear: 50_000 }) };
+    expect((await call('PUT', '/perfect-job', { body: first, cookie: byId.get(order[0])!.cookie })).status).toBe(200);
+    expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual(order);
 
     // Another job of theirs: its own order, from the same candidates
     const second = await storeJob(recruiter);
     expect(candidatesOf((await recruiterFeed(recruiter, second)).json(), recruiter, second)).toEqual(hashOrder(second, shown));
 
     // A candidate interested in the job comes first, and says so
-    const last = hashOrder(jobId, shown).at(-1)!;
+    const last = order.at(-1)!;
     await storeDecision(jobId, recruiter, { id: last } as TestUser, { candidate: 'interested' });
     const interested = (await recruiterFeed(recruiter, jobId)).json();
-    expect(candidatesOf(interested, recruiter, jobId)).toEqual([last, ...hashOrder(jobId, shown).slice(0, -1)]);
+    expect(candidatesOf(interested, recruiter, jobId)).toEqual([last, ...order.slice(0, -1)]);
     expect(interested.cards.map((card: any) => card.interested)).toEqual([true, false, false, false]);
   });
 
@@ -744,7 +874,26 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     expect(candidatesOf((await recruiterFeed(recruiter, jobId)).json(), recruiter, jobId)).toEqual([kept.id]);
   });
 
+  it('tells a recruiter nothing of a pass the candidate made after they answered', async () => {
+    const recruiter = await createRecruiter();
+    const jobId = await storeJob(recruiter);
+    await proposedCandidate('candidate');
+    const [card] = (await recruiterFeed(recruiter, jobId)).json().cards;
+    const decide = (decision: string) =>
+      call('PUT', `/recruiter/jobs/${jobId}/candidates/decision`, { body: { token: card.token, decision }, cookie: recruiter.cookie });
+    expect((await decide('interested')).status).toBe(200);
+    const candidateId = openMatchToken(card.token, { recruiterId: recruiter.id, jobId })!;
+
+    // The candidate passes afterwards: the recruiter decides again as before
+    await Match.updateOne({ job: jobId, candidate: candidateId }, { $set: { candidateDecision: { value: 'pass', at: new Date() } } });
+    const again = await decide('pass');
+    expect(again.status).toBe(200);
+    expect(again.json()).toEqual({ decision: 'pass', match: null });
+  });
+
   it('gives a few cards at a time and whether there are more, never how many', async () => {
+    // Two candidates evaluated at once: the cards come from several batches, `more` from the last
+    recruiterFeedTuning.evaluatedAtOnce = 2;
     const recruiter = await createRecruiter();
     const jobId = await storeJob(recruiter);
     const limit = MATCHING_LIMITS.recruiterCardsPerRead;
@@ -789,11 +938,13 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
       { criterion: 'contractTypes', outcome: 'match' },
       { criterion: 'pay', outcome: 'match' }
     ]);
-    const read = answer.text.toLowerCase();
+    // The cards as read, but their random tokens (which may hold any short text by chance)
+    const read = JSON.stringify(answer.json().cards.map(({ token, ...rest }: any) => rest)).toLowerCase();
     for (const secret of [
       candidate.id,
       candidate.email,
       candidate.email.split('@')[0],
+      t.suffix,
       'leakfirst',
       'leaklast',
       candidate.domain,
@@ -803,12 +954,47 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
       'falcon',
       'ledger',
       candidate.experience,
+      // When their role started: the card says for how long, never since when
+      '2020',
+      // What they ask for: the pay, the town they want, where they travel from
       '50000',
+      'lyon',
+      '69001',
+      'rue du test',
+      '45.767',
+      '4.834',
       'score',
       'dealbreaker',
       ...CARD_WITHHELD_CRITERIA
     ]) {
       expect(read).not.toContain(secret.toLowerCase());
+    }
+  });
+
+  it('leaves out a candidate it could not evaluate, without failing the feed or logging who', async () => {
+    env.commuteTimesEnabled = true;
+    const recruiter = await createRecruiter();
+    const jobId = await storeJob(recruiter, { overrides: atTheOffice() });
+    const plain = await proposedCandidate('plain');
+    const troubled = await proposedCandidate('troubled', { rated: criteria({ commute: commuteCriterion() }) });
+    // Reading their travel time fails (stored data a release cannot read, say)
+    spyOn(CommuteCache, 'findById').mockImplementation((() => {
+      throw new TypeError('Cannot read what is stored');
+    }) as never);
+    const logged: string[] = [];
+    for (const level of ['error', 'warn', 'info', 'log'] as const) {
+      spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args.map(String).join(' '));
+      });
+    }
+
+    const answer = await recruiterFeed(recruiter, jobId);
+
+    expect(answer.status).toBe(200);
+    expect(candidatesOf(answer.json(), recruiter, jobId)).toEqual([plain.id]);
+    expect(logged.some((line) => line.includes('could not be evaluated'))).toBe(true);
+    for (const line of logged) {
+      for (const secret of [troubled.id, troubled.email, troubled.domain, t.suffix]) expect(line).not.toContain(secret);
     }
   });
 
@@ -924,19 +1110,47 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
 // ── The job's private page ──────────────────────────────────
 
 describe("GET /opportunities/jobs/:id (access 'feed')", () => {
-  it('shows a job proposed to the candidate, whatever they answered, and nothing else', async () => {
+  it('shows a job proposed to the candidate, scored as their feed scores it, whatever they answered, and nothing else', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate('candidate', { rated: criteria({ perYear: 54_500, payDealBreaker: false }) });
+    const jobId = await storeJob(recruiter);
+    const page = () => call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie });
+
+    const answer = await page();
+    expect(answer.status).toBe(200);
+    const [card] = (await candidateFeed(candidate)).json().jobs;
+    expect(answer.json()).toMatchObject({
+      access: 'feed',
+      job: { _id: jobId, status: 'open', company: 'Acme Feeds' },
+      jobMatch: { score: 88, minScore: 70, criteria: card.criteria },
+      interested: false
+    });
+    expect(Object.keys(answer.json()).sort()).toEqual(['access', 'interested', 'job', 'jobMatch']);
+    for (const secret of [recruiter.id, recruiter.email, 'example.com']) expect(answer.text).not.toContain(secret);
+
+    // Answered: theirs to read still, with what they said
+    await storeDecision(jobId, recruiter, candidate, { candidate: 'interested' });
+    expect((await page()).json()).toMatchObject({ access: 'feed', decision: 'interested', interested: false });
+
+    // Its recruiter passing them afterwards changes nothing they read (it would tell them of it):
+    // the page, and their decision on it again
+    await Match.updateOne({ job: jobId, candidate: candidate.id }, { $set: { recruiterDecision: { value: 'pass', at: new Date() } } });
+    expect((await page()).json()).toMatchObject({ access: 'feed', decision: 'interested', interested: false });
+    const again = await call('PUT', `/opportunities/jobs/${jobId}/decision`, { body: { decision: 'pass' }, cookie: candidate.cookie });
+    expect(again.status).toBe(200);
+    expect(again.json()).toEqual({ decision: 'pass', match: null });
+  });
+
+  it('says when the job recruiter is interested in the candidate', async () => {
     const recruiter = await createRecruiter();
     const candidate = await proposedCandidate('candidate');
     const jobId = await storeJob(recruiter);
+    await storeDecision(jobId, recruiter, candidate, { recruiter: 'interested' });
 
     const answer = await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie });
-    expect(answer.status).toBe(200);
-    expect(answer.json()).toMatchObject({ access: 'feed', job: { _id: jobId, status: 'open', company: 'Acme Feeds' } });
-    for (const secret of [recruiter.id, recruiter.email, 'example.com']) expect(answer.text).not.toContain(secret);
 
-    // Answered: theirs to read still
-    await storeDecision(jobId, recruiter, candidate, { candidate: 'interested' });
-    expect((await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie })).json().access).toBe('feed');
+    expect(answer.json()).toMatchObject({ access: 'feed', interested: true, jobMatch: { score: 100 } });
+    expect(answer.json()).not.toHaveProperty('decision');
   });
 
   it('answers the 404 of an unknown job when it is not proposed to the caller', async () => {

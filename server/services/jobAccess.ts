@@ -7,6 +7,7 @@ import { ResourceNotFoundError } from '../errors';
 import { JOB_NOT_FOUND, toJobPostingDto } from './jobPostings';
 import type { JobPostingDto } from './jobPostings';
 import { proposedJobPosting } from './matchFeeds';
+import type { OpportunityScore } from './matchFeeds';
 import { candidateDecisionOn, mutualInterestOn } from './mutualInterests';
 import { journeySteps } from './workflows';
 import { jobStep, legacyPick, matchOfShare, pickedJobId, storedShare } from './workflowSteps/job';
@@ -31,8 +32,9 @@ import type { StoredShare } from './workflowSteps/job';
 //   posting's status and dates, and when the posting was edited since (`match.changedAt`);
 // - 'feed' (matching, Path 2, while MATCHING is on): a candidate to whom the job is proposed now,
 //   as their feed shows it (services/matchFeeds.ts: live in matching, meeting their criteria and
-//   their minimum, its recruiter not having passed them), whatever they answered of it (their
-//   `decision`). They read the posting as it is now, as their feed scores it.
+//   their minimum, its recruiter not having passed them before they answered), whatever they
+//   answered of it (their `decision`). They read the posting as it is now, as their feed scores
+//   it, with its score (`jobMatch`) and whether its recruiter is interested in them.
 // Anyone else, like an unknown id, gets the 404 of a posting that does not exist, never a 403:
 // an id says nothing about the postings behind it. What is returned never names the recruiter.
 
@@ -60,6 +62,10 @@ export interface SharedJobPostingDto {
   };
   /** `access: 'feed'`: what the candidate said of the job, while they are not both interested */
   decision?: MatchDecision;
+  /** `access: 'feed'`: how the job does against the candidate's criteria, as their feed says it */
+  jobMatch?: OpportunityScore;
+  /** `access: 'feed'`: the job's recruiter said they are interested in the candidate */
+  interested?: boolean;
 }
 
 const isObjectId = (value: string) => Types.ObjectId.isValid(value) && /^[0-9a-fA-F]{24}$/.test(value);
@@ -125,7 +131,8 @@ export async function readableJobPosting(userId: string, jobId: string): Promise
     const proposed = env.matchingEnabled ? await proposedJobPosting(userId, job) : null;
     if (proposed) {
       const decision = await candidateDecisionOn(String(job._id), userId);
-      return { job: proposed, access: 'feed', ...(decision ? { decision } : {}) };
+      const { job: posting, jobMatch, interested } = proposed;
+      return { job: posting, access: 'feed', jobMatch, interested, ...(decision ? { decision } : {}) };
     }
     throw notFound();
   }
