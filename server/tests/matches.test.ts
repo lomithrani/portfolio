@@ -64,7 +64,7 @@ import { recordConsent } from '../services/legal';
 import { logger } from '../services/logger';
 import { MATCHING_DECISIONS, introductionTerms, matchingDecisionsKey } from '../services/matches';
 import { matchFeedWarmUps, matchingFeedKey } from '../services/matchFeeds';
-import { sealMatchToken } from '../services/matchTokens';
+import { MATCH_TOKEN_TTL_MS, sealMatchToken } from '../services/matchTokens';
 import { takeRateLimit } from '../services/rateLimit';
 import { assertStepOpen, openStepOfType } from '../services/workflows';
 import { jobSharesKey } from '../services/workflowSteps/job';
@@ -350,23 +350,41 @@ const mutualInterestWrite = ({ filter }: MatchWrite) => 'recruiterDecision.value
 
 /**
  * Runs `before` once, just before the first write of Match.findOneAndUpdate that `when` picks (the
- * write itself then goes on unchanged): what another request does between a decision's check and
- * its write, made certain instead of hoped for
+ * write itself then goes on unchanged), and `after` once it is written: what another request does
+ * between a decision's check and its write, or reads right after it, made certain instead of hoped
+ * for. The spy, to restore it before another
  */
-const beforeMatchWrite = (when: (write: MatchWrite) => boolean, before: () => Promise<unknown>) => {
+const beforeMatchWrite = (when: (write: MatchWrite) => boolean, before: () => Promise<unknown>, after?: () => Promise<unknown>) => {
   const original = Match.findOneAndUpdate.bind(Match);
   let done = false;
-  spyOn(Match, 'findOneAndUpdate').mockImplementation(((filter: Record<string, unknown>, update: unknown, options: MatchWrite['options']) => {
+  return spyOn(Match, 'findOneAndUpdate').mockImplementation(((filter: Record<string, unknown>, update: unknown, options: MatchWrite['options']) => {
     const query = original(filter, update as never, options as never);
     if (done || !when({ filter: filter ?? {}, options })) return query;
     done = true;
     const exec = query.exec.bind(query);
     query.exec = (async (...args: Parameters<typeof exec>) => {
       await before();
-      return exec(...args);
+      const written = await exec(...args);
+      await after?.();
+      return written;
     }) as typeof query.exec;
     return query;
   }) as never);
+};
+
+/**
+ * A mutual interest taken back once made: no decision of the side that made it, nothing of the
+ * mutual interest, and when `kept` first answered still there (a closed job drops its decision
+ * too), until the match expires
+ */
+const expectTakenBack = (match: Record<string, unknown> | null, { kept }: { kept: 'candidate' | 'recruiter' }) => {
+  expect(match).not.toBeNull();
+  const made = kept === 'candidate' ? 'recruiter' : 'candidate';
+  for (const field of [`${made}Decision`, `${made}FirstAt`, `${kept}Decision`, 'matchedAt', 'revealedAt', 'snapshot', 'candidateSeenAt', 'recruiterSeenAt']) {
+    expect(match).not.toHaveProperty(field);
+  }
+  expect(match![`${kept}FirstAt`]).toBeInstanceOf(Date);
+  expect(match!.expiresAt).toBeInstanceOf(Date);
 };
 
 /**
@@ -684,12 +702,13 @@ describe('PUT /jobs/:id/matching', () => {
     }
   });
 
-  it('turns matching off in any status: every interest no mutual interest came of goes, passes and mutual interests stay', async () => {
+  it('turns matching off in any status: every interest no mutual interest came of goes, passes, first answers and mutual interests stay', async () => {
     const recruiter = await createRecruiter();
     const job = await jobInMatching(recruiter);
     const other = await jobInMatching(recruiter, sampleJob({ title: 'Other job' }));
-    const candidates = await Promise.all(['a', 'b', 'c', 'd', 'e'].map((name) => createUser(name)));
-    const [a, b, c, d, e] = candidates as [TestUser, TestUser, TestUser, TestUser, TestUser];
+    const candidates = await Promise.all(['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((name) => createUser(name)));
+    const [a, b, c, d, e, f, g] = candidates as [TestUser, TestUser, TestUser, TestUser, TestUser, TestUser, TestUser];
+    // Stored as before first answers were kept: the decision's date is the first answer
     const candidateInterest = await storeMatch(job._id, recruiter, a, { candidate: 'interested' });
     const recruiterInterest = await storeMatch(job._id, recruiter, b, { recruiter: 'interested' });
     const candidatePass = await storeMatch(job._id, recruiter, c, { candidate: 'pass' });
@@ -697,6 +716,13 @@ describe('PUT /jobs/:id/matching', () => {
     const answeredWithPass = await storeMatch(job._id, recruiter, d, { candidate: 'interested', recruiter: 'pass' });
     const mutual = await storeMatch(job._id, recruiter, e, { candidate: 'interested', recruiter: 'interested', matched: true });
     const elsewhere = await storeMatch(other._id, recruiter, a, { candidate: 'interested' });
+    // Decided again since their first answer: the first answer stays as it was
+    const firstAnswer = new Date(Date.now() - 3 * DAY);
+    const decidedAgain = await storeMatch(job._id, recruiter, f, { recruiter: 'interested' });
+    await Match.updateOne({ _id: decidedAgain }, { $set: { recruiterFirstAt: firstAnswer } });
+    // Nothing kept of anyone: nothing left to keep
+    const empty = await storeMatch(job._id, recruiter, g);
+    const interestAt = (await matchOf(candidateInterest))!.candidateDecision!.at;
 
     const answer = await setMatching(recruiter, job._id, false);
 
@@ -706,11 +732,20 @@ describe('PUT /jobs/:id/matching', () => {
     expect(after.matching?.enabledAt).toBeUndefined();
     // Its review stays, for when it is turned on again
     expect(after.matching?.review?.status).toBe('pending');
-    expect(await matchOf(candidateInterest)).toBeNull();
-    expect(await matchOf(recruiterInterest)).toBeNull();
+    // The interests go; when each side first answered stays, until the match expires
+    const droppedInterest = (await matchOf(candidateInterest))!;
+    expect(droppedInterest.candidateDecision).toBeUndefined();
+    expect(droppedInterest.candidateFirstAt).toEqual(interestAt);
+    expect(droppedInterest.expiresAt).toEqual(matchDecisionExpiry(interestAt));
+    const droppedRecruiterInterest = (await matchOf(recruiterInterest))!;
+    expect(droppedRecruiterInterest.recruiterDecision).toBeUndefined();
+    expect(droppedRecruiterInterest.recruiterFirstAt).toBeInstanceOf(Date);
+    expect((await matchOf(decidedAgain))?.recruiterFirstAt).toEqual(firstAnswer);
+    expect(await matchOf(empty)).toBeNull();
     expect((await matchOf(candidatePass))?.candidateDecision?.value).toBe('pass');
     const passed = await matchOf(answeredWithPass);
     expect(passed?.candidateDecision).toBeUndefined();
+    expect(passed?.candidateFirstAt).toBeInstanceOf(Date);
     expect(passed?.recruiterDecision?.value).toBe('pass');
     expect((await matchOf(mutual))?.matchedAt).toBeInstanceOf(Date);
     expect(await matchOf(elsewhere)).not.toBeNull();
@@ -854,9 +889,21 @@ const jobWithMatches = async (recruiter: TestUser, prefix = 'with') => {
   };
 };
 
+/**
+ * A match whose job left matching for good: no decision of either side left, and when `answered`
+ * first answered kept (the decision's own date, for a match stored before first answers were
+ * kept), until it expires
+ */
+const expectDecisionsDropped = (match: Awaited<ReturnType<typeof matchOf>>, answered: 'candidate' | 'recruiter') => {
+  expect(match).not.toBeNull();
+  expect([match!.candidateDecision, match!.recruiterDecision, match!.matchedAt]).toEqual([undefined, undefined, undefined]);
+  expect(match![`${answered}FirstAt`]).toBeInstanceOf(Date);
+  expect(match!.expiresAt!.getTime()).toBe(matchDecisionExpiry(match![`${answered}FirstAt`]!).getTime());
+};
+
 describe("a job's status and its matches", () => {
   it.each(['filled', 'closed', 'draft'])(
-    'takes a job %s out of matching: its decisions go, its mutual interests end',
+    'takes a job %s out of matching: its decisions go (when each side first answered stays), its mutual interests end',
     async (status) => {
       const recruiter = await createRecruiter();
       const { job, pendingInterest, pass, mutual, ended, endedAt } = await jobWithMatches(recruiter);
@@ -867,8 +914,8 @@ describe("a job's status and its matches", () => {
       expect(answer.status).toBe(200);
       expect(answer.json().matching).toMatchObject({ enabledAt: null, review: { status: 'approved' } });
       expect((await stored(job._id)).matching?.enabledAt).toBeUndefined();
-      expect(await matchOf(pendingInterest)).toBeNull();
-      expect(await matchOf(pass)).toBeNull();
+      expectDecisionsDropped(await matchOf(pendingInterest), 'candidate');
+      expectDecisionsDropped(await matchOf(pass), 'recruiter');
       const closed = await matchOf(mutual);
       expect(closed?.endReason).toBe('job_closed');
       expect(closed!.endedAt!.getTime()).toBeGreaterThanOrEqual(before);
@@ -905,7 +952,7 @@ describe("a job's status and its matches", () => {
     expect(answer.status).toBe(200);
     expect(answer.json().matching.enabledAt).toBeNull();
     expect((await matchOf(edited.mutual))?.endReason).toBe('job_closed');
-    expect(await matchOf(edited.pendingInterest)).toBeNull();
+    expectDecisionsDropped(await matchOf(edited.pendingInterest), 'candidate');
 
     const offline = await jobWithMatches(recruiter, 'offline');
     const deleted = await jobWithMatches(recruiter, 'deleted');
@@ -915,7 +962,7 @@ describe("a job's status and its matches", () => {
     expect((await call('PUT', `/jobs/${offline.job._id}/status`, { body: { status: 'filled' }, cookie: recruiter.cookie })).status).toBe(200);
     expect((await stored(offline.job._id)).matching?.enabledAt).toBeUndefined();
     expect((await matchOf(offline.mutual))?.endReason).toBe('job_closed');
-    expect(await matchOf(offline.pass)).toBeNull();
+    expectDecisionsDropped(await matchOf(offline.pass), 'recruiter');
     // Deleted: its matches go
     expect((await call('DELETE', `/jobs/${deleted.job._id}`, { cookie: recruiter.cookie })).status).toBe(200);
     expect(await Match.countDocuments({ job: deleted.job._id })).toBe(0);
@@ -974,7 +1021,8 @@ describe('an edit of a job in matching', () => {
     const after = await stored(job._id);
     expect(after.company).toBeUndefined();
     expect(after.matching?.enabledAt).toBeUndefined();
-    expect(await matchOf(interest)).toBeNull();
+    // Its interests dropped, as matching turned off drops them
+    expectDecisionsDropped(await matchOf(interest), 'candidate');
   });
 
   it('sends an approved or rejected job that changed back for review; its decisions and mutual interests stay', async () => {
@@ -1552,12 +1600,7 @@ describe('PUT /opportunities/jobs/:id/decision (the candidate)', () => {
       decision: 'interested'
     });
 
-    // Again: the latest counts, kept as long as the first decision says
-    expect((await candidateDecides(candidate, jobId, 'pass')).json()).toEqual({ decision: 'pass', match: null });
-    const passed = await Match.findOne({ job: jobId, candidate: candidate.id }).lean();
-    expect(passed!.candidateDecision!.value).toBe('pass');
-    expect(passed!.expiresAt!.getTime()).toBe(match!.expiresAt!.getTime());
-
+    // Their first answer, undone within the minutes
     expect((await candidateUndoes(candidate, jobId)).json()).toEqual({ decision: null, match: null });
     const again = await candidateUndoes(candidate, jobId);
     expect(again.status).toBe(404);
@@ -1567,6 +1610,17 @@ describe('PUT /opportunities/jobs/:id/decision (the candidate)', () => {
     expect(undone.candidateDecision).toBeUndefined();
     expect(undone.candidateFirstAt).toEqual(match!.candidateDecision!.at);
     expect(undone.expiresAt).toEqual(match!.expiresAt);
+
+    // Again: the latest counts, kept as long as the first decision says; decided again, it is
+    // changed by deciding again, never undone
+    expect((await candidateDecides(candidate, jobId, 'pass')).json()).toEqual({ decision: 'pass', match: null });
+    const passed = await Match.findOne({ job: jobId, candidate: candidate.id }).lean();
+    expect(passed!.candidateDecision!.value).toBe('pass');
+    expect(passed!.candidateFirstAt).toEqual(match!.candidateDecision!.at);
+    expect(passed!.expiresAt!.getTime()).toBe(match!.expiresAt!.getTime());
+    const final = await candidateUndoes(candidate, jobId);
+    expect([final.status, final.text]).toEqual([409, DECISION_FINAL]);
+    expect((await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!.candidateDecision!.value).toBe('pass');
   });
 
   it('refuses a candidate not proposed to recruiters (403), and a job not proposed to them like one that does not exist (404)', async () => {
@@ -1632,7 +1686,6 @@ describe('PUT /recruiter/jobs/:id/candidates/decision (the recruiter)', () => {
     // Answered: no longer in their feed
     expect((await call('GET', `/recruiter/jobs/${jobId}/candidates`, { cookie: recruiter.cookie })).json().cards).toEqual([]);
 
-    expect((await recruiterDecides(recruiter, jobId, candidate, 'pass')).json()).toEqual({ decision: 'pass', match: null });
     expect((await recruiterUndoes(recruiter, jobId, candidate)).json()).toEqual({ decision: null, match: null });
     const undone = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
     expect(undone.recruiterDecision).toBeUndefined();
@@ -1640,6 +1693,10 @@ describe('PUT /recruiter/jobs/:id/candidates/decision (the recruiter)', () => {
     expect((await recruiterUndoes(recruiter, jobId, candidate)).text).toBe(DECISION_NOT_FOUND);
     // Undone, the card is theirs to answer again
     expect((await call('GET', `/recruiter/jobs/${jobId}/candidates`, { cookie: recruiter.cookie })).json().cards).toHaveLength(1);
+    // Again: the latest counts; decided again, it is never undone
+    expect((await recruiterDecides(recruiter, jobId, candidate, 'pass')).json()).toEqual({ decision: 'pass', match: null });
+    expect((await recruiterUndoes(recruiter, jobId, candidate)).text).toBe(DECISION_FINAL);
+    expect((await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!.recruiterDecision!.value).toBe('pass');
   });
 
   it('refuses a token made for another recruiter or job, or not one, and a candidate not proposed for the job (409)', async () => {
@@ -1689,21 +1746,23 @@ describe('PUT /recruiter/jobs/:id/candidates/decision (the recruiter)', () => {
     expect(stale.json()).toMatchObject({ property: 'consent' });
   });
 
-  it("undoes either side's decision whatever became of the pair since, the recruiter's with a card's token of any age", async () => {
+  it("undoes either side's decision whatever became of the pair since, the recruiter's with the token of the card decided on", async () => {
     const recruiter = await createRecruiter();
     const candidate = await proposedCandidate();
     const jobId = await liveJob(recruiter);
     const setStatus = (status: string) => call('PUT', `/jobs/${jobId}/status`, { body: { status }, cookie: recruiter.cookie });
-    // A card read a month ago: too old to decide on, never to undo the decision taken on it
-    const monthOld = sealMatchToken(candidate.id, { recruiterId: recruiter.id, jobId }, new Date(Date.now() - 30 * DAY));
+    // A card read a week and a few minutes ago, decided on just before it was too old: too old to
+    // decide on now, never to undo the decision taken on it
+    const weekOld = sealMatchToken(candidate.id, { recruiterId: recruiter.id, jobId }, new Date(Date.now() - MATCH_TOKEN_TTL_MS - 5 * 60_000));
     expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
     expect((await recruiterDecides(recruiter, jobId, candidate, 'pass')).status).toBe(200);
+    expect((await recruiterDecides(recruiter, jobId, candidate, 'pass', weekOld)).text).toBe(CANDIDATE_UNAVAILABLE);
 
     // On hold: proposed to nobody, its decisions undone all the same
     expect((await setStatus('on_hold')).status).toBe(200);
     expect((await candidateUndoes(candidate, jobId)).json()).toEqual({ decision: null, match: null });
     const undone = await call('DELETE', `/recruiter/jobs/${jobId}/candidates/decision`, {
-      body: { token: monthOld },
+      body: { token: weekOld },
       cookie: recruiter.cookie
     });
     expect(undone.json()).toEqual({ decision: null, match: null });
@@ -1717,6 +1776,31 @@ describe('PUT /recruiter/jobs/:id/candidates/decision (the recruiter)', () => {
     const nothing = await candidateUndoes(candidate, jobId);
     expect(nothing.status).toBe(404);
     expect(nothing.text).toBe(DECISION_NOT_FOUND);
+  });
+
+  it('reads no card token older than a decision that can still be undone was taken with: the same answer whether the decision is there or gone', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    const stale = sealMatchToken(
+      candidate.id,
+      { recruiterId: recruiter.id, jobId },
+      new Date(Date.now() - MATCH_TOKEN_TTL_MS - (MATCHING_LIMITS.undoMinutes + 1) * 60_000)
+    );
+    const undoWith = (token: string) =>
+      call('DELETE', `/recruiter/jobs/${jobId}/candidates/decision`, { body: { token }, cookie: recruiter.cookie });
+    expect((await recruiterDecides(recruiter, jobId, candidate, 'pass')).status).toBe(200);
+
+    // Their pass is there (an old one, final by now) ...
+    const old = new Date(Date.now() - DAY);
+    await Match.updateOne({ job: jobId, candidate: candidate.id }, { $set: { 'recruiterDecision.at': old, recruiterFirstAt: old } });
+    const there = await undoWith(stale);
+    // ... or gone, once the candidate withdrew: an old token never tells the two apart
+    expect((await call('DELETE', '/discovery/consent', { cookie: candidate.cookie })).status).toBe(200);
+    const gone = await undoWith(stale);
+
+    expect([there.status, there.text]).toEqual([409, CANDIDATE_UNAVAILABLE]);
+    expect([gone.status, gone.text]).toEqual([there.status, there.text]);
   });
 });
 
@@ -1748,6 +1832,41 @@ describe('an undo', () => {
     expect((await Match.findOne({ job: second, candidate: candidate.id }).lean())?.recruiterDecision?.value).toBe('pass');
     // Their pass on the first job is their latest now: within the minutes, it is undone
     expect((await recruiterUndoes(recruiter, first, candidate)).status).toBe(200);
+  });
+
+  it("never takes back a candidate's decision taken again: an older pass decided again is changed, never undone (409)", async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const first = await liveJob(recruiter);
+    const second = await liveJob(recruiter, { description: '## The job\n\nAnother one.' });
+    expect((await candidateDecides(candidate, first, 'pass')).status).toBe(200);
+    expect((await candidateDecides(candidate, second, 'pass')).status).toBe(200);
+    expect((await candidateUndoes(candidate, first)).text).toBe(DECISION_FINAL);
+
+    // Their older pass decided again: their latest decision, within the minutes, but not their first answer
+    expect((await candidateDecides(candidate, first, 'pass')).status).toBe(200);
+    const again = await candidateUndoes(candidate, first);
+
+    expect([again.status, again.text]).toEqual([409, DECISION_FINAL]);
+    expect((await Match.findOne({ job: first, candidate: candidate.id }).lean())?.candidateDecision?.value).toBe('pass');
+    // Nor does it make the pass after it undoable again
+    expect((await candidateUndoes(candidate, second)).text).toBe(DECISION_FINAL);
+  });
+
+  it("never takes back a recruiter's decision taken again with a card's token (409)", async () => {
+    const recruiter = await createRecruiter();
+    const one = await proposedCandidate('one');
+    const two = await proposedCandidate('two');
+    const jobId = await liveJob(recruiter);
+    expect((await recruiterDecides(recruiter, jobId, one, 'pass')).status).toBe(200);
+    expect((await recruiterDecides(recruiter, jobId, two, 'pass')).status).toBe(200);
+    expect((await recruiterUndoes(recruiter, jobId, one)).text).toBe(DECISION_FINAL);
+
+    expect((await recruiterDecides(recruiter, jobId, one, 'pass')).status).toBe(200);
+    const again = await recruiterUndoes(recruiter, jobId, one);
+
+    expect([again.status, again.text]).toEqual([409, DECISION_FINAL]);
+    expect((await Match.findOne({ job: jobId, candidate: one.id }).lean())?.recruiterDecision?.value).toBe('pass');
   });
 });
 
@@ -1815,7 +1934,10 @@ describe('a decision and what lands between its check and its write', () => {
     const answer = await candidateDecides(candidate, jobId, 'interested');
     expect(answer.status).toBe(404);
     expect(answer.text).toBe(JOB_NOT_FOUND);
-    expect(await Match.exists({ job: jobId })).toBeNull();
+    // Nothing of the candidate's decision; the recruiter's dropped with the job, when they first answered kept
+    const left = (await Match.findOne({ job: jobId }).lean())!;
+    expect(left).not.toHaveProperty('candidateFirstAt');
+    expectDecisionsDropped(left, 'recruiter');
     expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
   });
 });
@@ -1975,13 +2097,21 @@ describe('a mutual interest', () => {
     expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
 
     // The withdrawal's first writes land just before the mutual interest's: its drop of the
-    // decisions comes after it, and would leave a mutual interest alone
-    beforeMatchWrite(mutualInterestWrite, () =>
-      DiscoveryProfile.updateOne({ user: candidate.id }, { $max: { withdrawnAt: new Date() }, $unset: { enabledAt: 1 } })
+    // decisions comes after it, and would leave a mutual interest alone. The recruiter reads their
+    // mutual interests right after that write, before it is read again
+    let readMeanwhile: { matches: { candidate: unknown }[] } | undefined;
+    beforeMatchWrite(
+      mutualInterestWrite,
+      () => DiscoveryProfile.updateOne({ user: candidate.id }, { $max: { withdrawnAt: new Date() }, $unset: { enabledAt: 1 } }),
+      async () => {
+        readMeanwhile = (await call('GET', '/matches?side=recruiter', { cookie: recruiter.cookie })).json();
+      }
     );
     const answer = await recruiterDecides(recruiter, jobId, candidate, 'interested');
 
     expect([answer.status, answer.text]).toEqual([409, CANDIDATE_UNAVAILABLE]);
+    // Made unrevealed: nothing of the portfolio could be read before it was taken back
+    expect(readMeanwhile?.matches).toEqual([expect.objectContaining({ candidate: null })]);
     expect(await Match.exists({ candidate: candidate.id })).toBeNull();
     expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
   });
@@ -1997,8 +2127,130 @@ describe('a mutual interest', () => {
     const answer = await candidateDecides(candidate, jobId, 'interested');
 
     expect([answer.status, answer.text]).toEqual([404, JOB_NOT_FOUND]);
-    expect(await Match.exists({ job: jobId })).toBeNull();
+    // The decisions gone, as a closed job drops them; when the recruiter first answered stays
+    expectTakenBack(await Match.findOne({ job: jobId }).lean(), { kept: 'recruiter' });
     expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
+  });
+
+  it('is taken back when its job was taken out of matching between the check and the write: the interests dropped, first answers kept', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+
+    beforeMatchWrite(mutualInterestWrite, () =>
+      JobPosting.updateOne({ _id: jobId }, { $unset: { 'matching.enabledAt': 1 } }, { timestamps: false })
+    );
+    const answer = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+
+    expect([answer.status, answer.text]).toEqual([409, JOB_NOT_PROPOSED]);
+    expectTakenBack(await Match.findOne({ job: jobId, candidate: candidate.id }).lean(), { kept: 'candidate' });
+    expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
+  });
+
+  it('is taken back when its job was sent back for review between the check and the write: the candidate interest kept', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+
+    beforeMatchWrite(mutualInterestWrite, () =>
+      JobPosting.updateOne({ _id: jobId }, { $set: { 'matching.review.status': 'pending' } }, { timestamps: false })
+    );
+    const answer = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+
+    expect([answer.status, answer.text]).toEqual([409, JOB_NOT_PROPOSED]);
+    // Its decisions and matches stay while it waits for a review: the recruiter's interest never stood
+    const left = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+    expect(left.candidateDecision?.value).toBe('interested');
+    expect(left.candidateFirstAt).toBeInstanceOf(Date);
+    for (const field of ['recruiterDecision', 'recruiterFirstAt', 'matchedAt', 'revealedAt', 'snapshot', 'recruiterSeenAt']) {
+      expect(left).not.toHaveProperty(field);
+    }
+    expect(left.expiresAt).toBeInstanceOf(Date);
+    expect(await WorkflowInstance.exists({ owner: candidate.id })).toBeNull();
+  });
+
+  it('starts clean, whatever a request that raced a take-back left on the match: not ended, unseen by the other side', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+    const past = new Date(Date.now() - DAY);
+    await Match.updateOne(
+      { job: jobId, candidate: candidate.id },
+      { $set: { endedAt: past, endReason: 'candidate', changedAt: past, candidateSeenAt: past, revealedAt: past } }
+    );
+
+    const made = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+
+    expect(made.json().match).toMatchObject({ endedAt: null, endReason: null, changedAt: null, candidate: { domain: candidate.domain } });
+    const match = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+    for (const field of ['endedAt', 'endReason', 'changedAt', 'candidateSeenAt', 'expiresAt']) expect(match).not.toHaveProperty(field);
+    expect(match.revealedAt!.getTime()).toBe(match.matchedAt!.getTime());
+    expect(match.recruiterSeenAt!.getTime()).toBe(match.matchedAt!.getTime());
+    expect((await call('GET', '/me/notifications', { cookie: candidate.cookie })).json()).toEqual({
+      mutualInterests: { candidate: 1, recruiter: 0 }
+    });
+    expect((await progressOf(candidate, recruiter)).job?.data).toMatchObject({ job: jobId, match: String(match._id) });
+  });
+
+  it('is never ended nor marked seen once taken back: written only on the mutual interest read (404)', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    const matchId = await bothInterested(recruiter, candidate, jobId);
+    const made = (await Match.findById(matchId).lean())!;
+    // Taken back between the read of the mutual interest and the write, as a take-back does
+    const takeBack = () =>
+      Match.updateOne({ _id: matchId }, { $unset: { matchedAt: 1, revealedAt: 1, snapshot: 1, candidateSeenAt: 1, recruiterSeenAt: 1 } });
+    const onTheMutualInterest = ({ filter }: MatchWrite) => filter.matchedAt instanceof Date;
+
+    const ending = beforeMatchWrite(onTheMutualInterest, takeBack);
+    const ended = await call('POST', `/matches/${matchId}/end`, { cookie: candidate.cookie });
+    ending.mockRestore();
+
+    expect([ended.status, ended.text]).toEqual([404, MATCH_NOT_FOUND]);
+    const notEnded = (await Match.findById(matchId).lean())!;
+    expect(notEnded).not.toHaveProperty('endedAt');
+    expect(notEnded).not.toHaveProperty('endReason');
+
+    await Match.updateOne({ _id: matchId }, { $set: { matchedAt: made.matchedAt, revealedAt: made.revealedAt, snapshot: made.snapshot } });
+    beforeMatchWrite(onTheMutualInterest, takeBack);
+    const seen = await call('PUT', `/matches/${matchId}/seen`, { cookie: candidate.cookie });
+
+    expect([seen.status, seen.text]).toEqual([404, MATCH_NOT_FOUND]);
+    expect(await Match.findById(matchId).lean()).not.toHaveProperty('candidateSeenAt');
+  });
+
+  it('drops what it handed off when it ends while it is handed off: nothing outlives it in the journey', async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await proposedCandidate();
+    const jobId = await liveJob(recruiter);
+    expect((await candidateDecides(candidate, jobId, 'interested')).status).toBe(200);
+    // The candidate ends it just before the hand-off is written: the end's removal finds nothing yet
+    const updateOne = WorkflowInstance.updateOne.bind(WorkflowInstance);
+    let ended: { status: number } | undefined;
+    spyOn(WorkflowInstance, 'updateOne').mockImplementation((async (...args: Parameters<typeof updateOne>) => {
+      const [filter, update] = args as unknown as [Record<string, unknown>, Record<string, unknown>];
+      if (!ended && filter?.owner && filter?.visitor && update?.$set) {
+        const match = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+        ended = await call('POST', `/matches/${match._id}/end`, { cookie: candidate.cookie });
+      }
+      return updateOne(...args);
+    }) as never);
+
+    const made = await recruiterDecides(recruiter, jobId, candidate, 'interested');
+
+    expect(made.status).toBe(200);
+    expect(ended?.status).toBe(200);
+    const match = (await Match.findOne({ job: jobId, candidate: candidate.id }).lean())!;
+    expect(match.endReason).toBe('candidate');
+    const progress = await progressOf(candidate, recruiter);
+    for (const entry of Object.values(progress) as { data?: { match?: string } }[]) {
+      expect(entry?.data?.match).not.toBe(String(match._id));
+    }
+    expect(progress.job).toBeUndefined();
   });
 
   it('is not made when a pass lands between the last interest and the write that would make it', async () => {

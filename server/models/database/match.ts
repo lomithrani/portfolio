@@ -9,9 +9,9 @@ import { MATCH_DECISIONS, MATCH_END_REASONS } from 'portfolio-common';
 // decided goes with their account even once the job is gone.
 //
 // Until both sides are interested, a match is a pair of decisions (and when
-// each side first answered, which an undo keeps) that expire
-// (`expiresAt`, a TTL index: portfolio-common's MATCH_RETENTION, the one place
-// the numbers live, which the privacy policy states). Once both are, it is a
+// each side first answered, which an undo or the job leaving matching keeps)
+// that expire (`expiresAt`, a TTL index: portfolio-common's MATCH_RETENTION,
+// the one place the numbers live, which the privacy policy states). Once both are, it is a
 // mutual interest (`matchedAt`): the portfolio is revealed (`revealedAt`), and
 // what each side saw of the other then is kept (`snapshot`), whatever the job
 // or the candidate's criteria become; it lasts until a side or the job ends it
@@ -67,10 +67,12 @@ export const matchSchema = new Schema({
   recruiterDecision: { type: decisionSchema },
   /**
    * When each side first answered the pair, kept when they undo their answer
-   * or when matching drops it (the job taken out of matching): the other
-   * side's pass made after it changes nothing that side reads (an undo, or
-   * the job put into matching again, would otherwise show the pass by the
-   * pair it hides). Expires with the match
+   * or when matching drops it (the job switched off, filled, closed or back to
+   * draft: services/jobMatching.ts's EMPTY_MATCH): the other side's pass made
+   * after it changes nothing that side reads (an undo, or the job put into
+   * matching again, would otherwise show the pass by the pair it hides), and
+   * an undo never makes an older decision the latest again. Expires with the
+   * match
    */
   candidateFirstAt: { type: Date },
   recruiterFirstAt: { type: Date },

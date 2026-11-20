@@ -101,8 +101,8 @@ export const matchingFeedKey = (userId: string) => rateLimitKey('matching-feed',
 
 /**
  * Counts one read of a feed by `userId`, or of the private page of a job that may be proposed to
- * them (services/jobAccess.ts, which does a feed's work for one job); 429 over MATCHING_FEED_READS.
- * Never given back
+ * them (services/jobAccess.ts, which does a feed's work for one job, and counts the 404s of that
+ * page alike); 429 over MATCHING_FEED_READS. Never given back
  */
 export const countFeedRead = async (userId: string) => {
   const { retryAfterSeconds } = await takeRateLimit(matchingFeedKey(userId), MATCHING_FEED_READS);

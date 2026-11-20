@@ -776,33 +776,39 @@ describe('GET /opportunities', () => {
     );
   });
 
-  it("counts the private page of a job that may be proposed with the feed's reads, never a page shared through a journey", async () => {
+  it("counts the private page with the feed's reads whatever the id names, never a page shared through a journey", async () => {
     const recruiter = await createRecruiter();
     const proposed = await storeJob(recruiter);
     const picked = await storeJob(recruiter, { overrides: { description: '## The job\n\nPicked on their page.' } });
+    const draft = await storeJob(recruiter, { overrides: { status: 'draft' }, matching: false });
+    const pending = await storeJob(recruiter, { review: 'pending' });
+    const unknown = new Types.ObjectId().toString();
     const candidate = await proposedCandidate('candidate');
     await pickOnJourney(candidate, recruiter, picked);
     const page = (jobId: string) => call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie });
     const counted = async () =>
       (await RateLimitCounter.findOne({ _id: new RegExp(`^${matchingFeedKey(candidate.id)}:`) }).lean())?.count ?? 0;
 
-    // A job proposed to them: counted; an id that is no job, never (nothing to do)
+    // A job proposed to them: counted, as it does the feed's work
     expect((await page(proposed)).json()).toMatchObject({ access: 'feed' });
     expect(await counted()).toBe(1);
-    expect((await page(new Types.ObjectId().toString())).status).toBe(404);
-    expect(await counted()).toBe(1);
-    // A job that exists but is not proposed (a pending review): counted as it did the feed's work
-    const pending = await storeJob(recruiter, { review: 'pending' });
-    expect((await page(pending)).status).toBe(404);
-    expect(await counted()).toBe(2);
+    // A job not proposed (a pending review), a draft and an id that is no job: counted alike, so
+    // the count never tells a posting from an unknown id
+    for (const [index, id] of [pending, draft, unknown].entries()) {
+      expect((await page(id)).status).toBe(404);
+      expect(await counted()).toBe(index + 2);
+    }
     // The job picked on their page for recruiters: never
     expect((await page(picked)).json()).toMatchObject({ access: 'journey' });
-    expect(await counted()).toBe(2);
+    expect(await counted()).toBe(4);
 
     await Promise.all(
       Array.from({ length: MATCHING_FEED_READS.limit }, () => takeRateLimit(matchingFeedKey(candidate.id), MATCHING_FEED_READS))
     );
-    expect((await page(proposed)).status).toBe(429);
+    // Over the limit, the same answer whatever the id names
+    const over = await Promise.all([proposed, pending, draft, unknown].map(async (id) => (await page(id)).text));
+    expect(new Set(over).size).toBe(1);
+    expect((await page(unknown)).status).toBe(429);
     expect((await page(picked)).status).toBe(200);
   });
 });
@@ -967,16 +973,16 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     expect((await decide('interested')).status).toBe(200);
     const candidateId = openMatchToken(card.token, { recruiterId: recruiter.id, jobId })!;
 
-    // The candidate passes afterwards: the recruiter decides again as before
+    // The candidate passes afterwards. Nor once they undo theirs: the card is back, and theirs to
+    // answer again
     await Match.updateOne({ job: jobId, candidate: candidateId }, { $set: { candidateDecision: { value: 'pass', at: new Date() } } });
-    const again = await decide('pass');
-    expect(again.status).toBe(200);
-    expect(again.json()).toEqual({ decision: 'pass', match: null });
-
-    // Nor once they undo theirs: the card is back, and theirs to answer again
     const undo = () => call('DELETE', `/recruiter/jobs/${jobId}/candidates/decision`, { body: { token: card.token }, cookie: recruiter.cookie });
     expect((await undo()).status).toBe(200);
     expect(await orderOf(recruiter, jobId)).toEqual([candidateId]);
+    // They decide again as before
+    const again = await decide('pass');
+    expect(again.status).toBe(200);
+    expect(again.json()).toEqual({ decision: 'pass', match: null });
     expect((await decide('interested')).status).toBe(200);
 
     // Nor once the job is taken out of matching and put back (their interest dropped, the
@@ -1016,6 +1022,65 @@ describe('GET /recruiter/jobs/:id/candidates', () => {
     expect((await candidateFeed(candidate)).json().jobs.map((card: any) => card.job._id)).toEqual([jobId]);
     expect((await decide('pass')).status).toBe(200);
   });
+
+  /** The job taken out of matching (switched off, or closed) by its recruiter, then put back into it as it was */
+  const leaveAndComeBack = async (recruiter: TestUser, jobId: string, how: 'switched off' | 'closed') => {
+    const put = (path: string, body: unknown) => call('PUT', `/jobs/${jobId}${path}`, { body, cookie: recruiter.cookie });
+    if (how === 'closed') {
+      expect((await put('/status', { status: 'closed' })).status).toBe(200);
+      expect((await put('/status', { status: 'open' })).status).toBe(200);
+    } else {
+      expect((await put('/matching', { enabled: false })).status).toBe(200);
+    }
+    // Unchanged: it keeps its approval
+    expect((await put('/matching', { enabled: true })).json().matching.review.status).toBe('approved');
+  };
+
+  it.each(['switched off', 'closed'] as const)(
+    "keeps a candidate's first answer through the job %s and back: the recruiter's pass after it never shows",
+    async (how) => {
+      const recruiter = await createRecruiter();
+      const jobId = await storeJob(recruiter);
+      const candidate = await proposedCandidate('candidate');
+      const decide = (decision: string) =>
+        call('PUT', `/opportunities/jobs/${jobId}/decision`, { body: { decision }, cookie: candidate.cookie });
+      expect((await decide('interested')).status).toBe(200);
+
+      await leaveAndComeBack(recruiter, jobId, how);
+      // Its recruiter passes them once it is back: the candidate answered before
+      const token = sealMatchToken(candidate.id, { recruiterId: recruiter.id, jobId });
+      const passed = await call('PUT', `/recruiter/jobs/${jobId}/candidates/decision`, {
+        body: { token, decision: 'pass' },
+        cookie: recruiter.cookie
+      });
+      expect(passed.status).toBe(200);
+
+      expect((await candidateFeed(candidate)).json().jobs.map((card: any) => card.job._id)).toEqual([jobId]);
+      expect((await call('GET', `/opportunities/jobs/${jobId}`, { cookie: candidate.cookie })).json()).toMatchObject({ access: 'feed' });
+      expect((await decide('interested')).status).toBe(200);
+    }
+  );
+
+  it.each(['switched off', 'closed'] as const)(
+    "keeps a recruiter's first answer through the job %s and back: the candidate's pass after it never shows",
+    async (how) => {
+      const recruiter = await createRecruiter();
+      const jobId = await storeJob(recruiter);
+      const candidate = await proposedCandidate('candidate');
+      const token = sealMatchToken(candidate.id, { recruiterId: recruiter.id, jobId });
+      const decide = (decision: string) =>
+        call('PUT', `/recruiter/jobs/${jobId}/candidates/decision`, { body: { token, decision }, cookie: recruiter.cookie });
+      expect((await decide('interested')).status).toBe(200);
+
+      await leaveAndComeBack(recruiter, jobId, how);
+      // The candidate passes the job once it is back: the recruiter answered before
+      const passed = await call('PUT', `/opportunities/jobs/${jobId}/decision`, { body: { decision: 'pass' }, cookie: candidate.cookie });
+      expect(passed.status).toBe(200);
+
+      expect(await orderOf(recruiter, jobId)).toEqual([candidate.id]);
+      expect((await decide('interested')).status).toBe(200);
+    }
+  );
 
   it('gives one card at a time and whether there are more, never how many', async () => {
     // One card a read: a page that is not full would be a count of the job's candidates

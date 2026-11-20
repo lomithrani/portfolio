@@ -4,7 +4,7 @@ export const m = defineMessages({
   /**
    * GET /opportunities and GET /recruiter/jobs/:id/candidates over MATCHING_FEED_READS (429): one
    * counter for both, the jobs proposed to a candidate and the candidates proposed for a
-   * recruiter's job
+   * recruiter's job, which GET /opportunities/jobs/:id counts too (services/jobAccess.ts)
    */
   tooManyReads: {
     en: (limit: number) =>

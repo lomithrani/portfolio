@@ -149,7 +149,8 @@ export const jobs = new Elysia()
     params: objectIdParams,
     body: jobPostingEditRequest,
     detail: {
-      summary: 'Edit a job posting (409 when it changed since `updatedAt`, or when it changes the terms of a posting opened before)'
+      summary:
+        'Edit a job posting (409 when it changed since `updatedAt`, when its matching changed while you edited it, or when it changes the terms of a posting opened before)'
     }
   })
   .put('/jobs/:id/status', async ({ userId, params: { id }, body: { status } }): Promise<RecruiterJobPostingDto> => {

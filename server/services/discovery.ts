@@ -180,21 +180,25 @@ export const assertValidDiscoveryConsent = (input: unknown): DiscoveryConsentInp
   return result.consent;
 };
 
+/** DISCOVERY_REJOIN_DAYS, in milliseconds */
+const REJOIN_MS = DISCOVERY_REJOIN_DAYS * 24 * 60 * 60_000;
+
 /**
  * In how many seconds the account `userId` may turn discovery on again at `now`: null when it may,
  * else the rest of DISCOVERY_REJOIN_DAYS after the withdrawal that last turned it off (its consents'
  * latest entry). A withdrawal drops every decision about the candidate no mutual interest came of,
  * recruiters' passes included: turning discovery on again at once would put them back before
  * every recruiter who passed them, and tell them which jobs those were. A withdrawal of an account
- * that was not on records nothing, and holds nothing back
+ * that was not on records nothing, and holds nothing back; nor does one asked after `now`, or at
+ * the same moment (a later request, which wins: the opt-in then records nothing)
  */
 const rejoinRetryAfter = async (userId: string, now: Date): Promise<number | null> => {
   const profile = await DiscoveryProfile.findOne({ user: userId }, { consents: { $slice: -1 } }).lean<{
     consents?: { action?: string; at?: Date }[];
   }>();
   const [latest] = profile?.consents ?? [];
-  if (latest?.action !== 'withdrawn' || !latest.at) return null;
-  const rejoinAt = latest.at.getTime() + DISCOVERY_REJOIN_DAYS * 24 * 60 * 60_000;
+  if (latest?.action !== 'withdrawn' || !latest.at || latest.at >= now) return null;
+  const rejoinAt = latest.at.getTime() + REJOIN_MS;
   return rejoinAt > now.getTime() ? Math.ceil((rejoinAt - now.getTime()) / 1000) : null;
 };
 
@@ -203,7 +207,8 @@ const rejoinRetryAfter = async (userId: string, now: Date): Promise<number | nul
  * (POST /discovery/consent). 422 on `consent...` for a consent that is not
  * one, then on `requirements.<requirement>` for the first requirement it
  * misses (discoveryRequirements), 429 within DISCOVERY_REJOIN_DAYS of the
- * withdrawal that last turned it off (rejoinRetryAfter), and 429 over
+ * withdrawal that last turned it off (rejoinRetryAfter, checked again in the
+ * write that records the consent, so one that lands meanwhile counts), and 429 over
  * DISCOVERY_GRANTS_PER_DAY (an opt-in refused before uses none of them).
  * Recorded once, atomically: an account
  * already on, with a consent in force that does not lapse within
@@ -235,14 +240,18 @@ export async function grantDiscovery(userId: string, input: unknown, now = new D
   }
   // The profile first (concurrent upserts on its unique user are retried by
   // MongoDB), then the consent, only where none is in force for a while yet,
-  // and where no withdrawal came after this request started
+  // where no withdrawal came after this request started, and where none turned
+  // discovery off within DISCOVERY_REJOIN_DAYS (rejoinRetryAfter, checked again
+  // in the write: a withdrawal that started before this request, and turned it
+  // off between the reads above and this write, holds it back all the same)
   await DiscoveryProfile.updateOne({ user: userId }, { $setOnInsert: { user: userId } }, { upsert: true });
-  await DiscoveryProfile.updateOne(
+  const { modifiedCount } = await DiscoveryProfile.updateOne(
     {
       user: userId,
       $and: [
         { $or: [{ enabledAt: { $exists: false } }, { enabledAt: { $lte: discoveryRenewalCutoff(now) } }] },
-        { $or: [{ withdrawnAt: { $exists: false } }, { withdrawnAt: { $lt: now } }] }
+        { $or: [{ withdrawnAt: { $exists: false } }, { withdrawnAt: { $lt: now } }] },
+        { consents: { $not: { $elemMatch: { action: 'withdrawn', at: { $gt: new Date(now.getTime() - REJOIN_MS) } } } } }
       ]
     },
     {
@@ -257,6 +266,10 @@ export async function grantDiscovery(userId: string, input: unknown, now = new D
       }
     }
   );
+  if (modifiedCount === 0) {
+    const heldIn = await rejoinRetryAfter(userId, now);
+    if (heldIn !== null) throw new TooManyRequestsError(() => m.rejoinTooSoon(DISCOVERY_REJOIN_DAYS), heldIn);
+  }
   return discoveryStatus(userId, now);
 }
 

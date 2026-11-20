@@ -75,7 +75,10 @@ const discovery = new Elysia()
   // requirement, or a 422 naming the first that is missing
   .post('/discovery/consent', ({ userId, body }): Promise<DiscoveryDto> => grantDiscovery(userId, body.consent), {
     body: discoveryConsentRequest,
-    detail: { summary: 'Be proposed to recruiters, as an anonymous card: needs your consent and every requirement' }
+    detail: {
+      summary:
+        'Be proposed to recruiters, as an anonymous card: needs your consent and every requirement (422 naming what is missing; 429 within DISCOVERY_REJOIN_DAYS of a withdrawal, or over the opt-ins of a day)'
+    }
   })
   // Withdrawal: at once, whatever is missing, and recorded
   .delete('/discovery/consent', ({ userId }): Promise<DiscoveryDto> => withdrawDiscovery(userId), {
@@ -107,7 +110,10 @@ const discovery = new Elysia()
     ({ userId, params: { id } }): Promise<CandidateDecisionDto> => undoAsCandidate(userId, id),
     {
       params: objectIdParams,
-      detail: { summary: 'Undo what you said of a job, until you and its recruiter are both interested (404 without a decision; 409 after)' }
+      detail: {
+        summary:
+          'Undo what you said of a job (404 without a decision; 409 once you and its recruiter are both interested, once it is over MATCHING_LIMITS.undoMinutes old, no longer your latest decision, or not your first answer on the job)'
+      }
     }
   );
 
@@ -131,7 +137,7 @@ const jobMatching = new Elysia()
     params: objectIdParams,
     detail: {
       summary:
-        'The anonymous cards of the candidates proposed for your job, those interested in it first, a few at a time, and whether there are more (409 unless it is proposed to candidates; 429 over the reads of an hour)'
+        'The anonymous cards of the candidates proposed for your job, those interested in it first, one card at a time, and whether there are more (409 unless it is proposed to candidates; 429 over the reads of an hour)'
     }
   })
   // What the recruiter says of a card, for their job: the card's token in the body, never the path
@@ -155,7 +161,8 @@ const jobMatching = new Elysia()
       params: objectIdParams,
       body: recruiterUndoRequest,
       detail: {
-        summary: "Undo what you said of a card's candidate, until you are both interested (404 without a decision; 409 after)"
+        summary:
+          "Undo what you said of a card's candidate, with the card's token (404 without a decision; 409 for a token that is not one, once you are both interested, once it is over MATCHING_LIMITS.undoMinutes old, no longer your latest decision, or not your first answer on the candidate)"
       }
     }
   );

@@ -13,7 +13,7 @@ import {
   normalizeJobPosting,
   validateJobPosting
 } from 'portfolio-common';
-import type { JobPostingInput, JobStatus, MatchingReviewStatus } from 'portfolio-common';
+import type { JobPostingInput, JobStatus, MatchSide, MatchingReviewStatus } from 'portfolio-common';
 import { env } from '../env';
 import { JobPosting, Match, User } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
@@ -346,18 +346,64 @@ export async function settleCreatedInMatching(recruiterId: string, job: StoredJo
 // ── What a job's changes do to its matches ──────────────────
 
 /**
+ * A Match left with nothing to keep: no decision, no first answer, no mutual interest. When each
+ * side first answered stays until the match expires, its decisions dropped or undone since: the
+ * other side's pass made after it then changes nothing that side reads (services/matchFeeds.ts's
+ * hiddenFrom), and an undo never makes an older decision the latest again (services/matches.ts)
+ */
+export const EMPTY_MATCH = {
+  matchedAt: { $exists: false },
+  candidateDecision: { $exists: false },
+  recruiterDecision: { $exists: false },
+  candidateFirstAt: { $exists: false },
+  recruiterFirstAt: { $exists: false }
+} as const;
+
+const SIDE_FIELDS = {
+  candidate: { decision: 'candidateDecision', first: 'candidateFirstAt' },
+  recruiter: { decision: 'recruiterDecision', first: 'recruiterFirstAt' }
+} as const satisfies Record<MatchSide, { decision: string; first: string }>;
+
+/**
+ * Drops the decision of `side` on the Matches `filter` selects, keeping when that side first
+ * answered (the earlier of its first answer and that decision: a match recorded before first
+ * answers were kept has the decision's date alone)
+ */
+const dropDecision = (filter: Record<string, unknown>, side: MatchSide) => {
+  const { decision, first } = SIDE_FIELDS[side];
+  return Match.updateMany(
+    { ...filter, [decision]: { $exists: true } },
+    [{ $set: { [first]: { $min: [`$${first}`, `$${decision}.at`] } } }, { $unset: decision }],
+    { updatePipeline: true }
+  );
+};
+
+/**
+ * Drops every decision no mutual interest came of on the Matches `filter` selects (their job left
+ * matching for good): when each side first answered stays, until the match expires; a match left
+ * with nothing goes (EMPTY_MATCH)
+ */
+export async function dropDecisions(filter: Record<string, unknown>): Promise<void> {
+  const pending = { ...filter, matchedAt: { $exists: false } };
+  await dropDecision(pending, 'candidate');
+  await dropDecision(pending, 'recruiter');
+  await Match.deleteMany({ ...filter, ...EMPTY_MATCH });
+}
+
+/**
  * After matching was turned off for the job `jobId`: every interest no mutual interest came of goes
  * (a candidate's in the job, a recruiter's in a candidate for it), whether the other side answered
  * it with a pass or not answered it at all, since nothing is left for it to lead to; the passes stay
  * until they expire (MATCH_RETENTION), so turning matching off then on again proposes the job to no
  * candidate who passed it, nor a card its recruiter passed (an interest answered with a pass is not
- * proposed again either: the pass is kept); the mutual interests go on
+ * proposed again either: the pass is kept). When each side first answered stays too (EMPTY_MATCH),
+ * so the job put into matching again never shows a pass made after it. The mutual interests go on
  */
 export async function afterMatchingOff(jobId: Types.ObjectId | string): Promise<void> {
   const pending = { job: jobId, matchedAt: { $exists: false } };
-  await Match.updateMany({ ...pending, 'candidateDecision.value': 'interested' }, { $unset: { candidateDecision: 1 } });
-  await Match.updateMany({ ...pending, 'recruiterDecision.value': 'interested' }, { $unset: { recruiterDecision: 1 } });
-  await Match.deleteMany({ ...pending, candidateDecision: { $exists: false }, recruiterDecision: { $exists: false } });
+  await dropDecision({ ...pending, 'candidateDecision.value': 'interested' }, 'candidate');
+  await dropDecision({ ...pending, 'recruiterDecision.value': 'interested' }, 'recruiter');
+  await Match.deleteMany({ job: jobId, ...EMPTY_MATCH });
 }
 
 /**
@@ -365,10 +411,11 @@ export async function afterMatchingOff(jobId: Types.ObjectId | string): Promise<
  * PUT /jobs/:id). Open or on hold: nothing (on hold, the feeds propose it to nobody until it is
  * open again). Filled, closed or back to draft, it leaves matching for good: out of it (its
  * recruiter turns it on again once it is open; its review stays), every decision no mutual
- * interest came of gone, and every mutual interest ended (`job_closed`, kept
- * MATCH_RETENTION.endedMatchMonths more, with what each side saw), what it stored in its
- * candidate's journey removed (dropHandOffs). Idempotent: a change stopped
- * midway is finished by the next. Whether it took the job out of matching (its posting changed)
+ * interest came of gone (when each side first answered stays until it expires: dropDecisions),
+ * and every mutual interest ended (`job_closed`, kept MATCH_RETENTION.endedMatchMonths more, with
+ * what each side saw), what it stored in its candidate's journey removed (dropHandOffs).
+ * Idempotent: a change stopped midway is finished by the next. Whether it took the job out of
+ * matching (its posting changed)
  */
 export async function afterJobStatusChange(jobId: Types.ObjectId | string, status: JobStatus, now = new Date()): Promise<boolean> {
   if (keepsMatching(status)) return false;
@@ -378,7 +425,7 @@ export async function afterJobStatusChange(jobId: Types.ObjectId | string, statu
     { $unset: { 'matching.enabledAt': 1 } },
     { timestamps: false }
   );
-  await Match.deleteMany({ job: jobId, matchedAt: { $exists: false } });
+  await dropDecisions({ job: jobId });
   await Match.updateMany(
     { job: jobId, matchedAt: { $exists: true }, endedAt: { $exists: false } },
     { $set: { endedAt: now, endReason: 'job_closed', expiresAt: endedMatchExpiry(now) } }

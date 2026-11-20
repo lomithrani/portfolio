@@ -748,10 +748,13 @@ unreadable, and recruiters read their feed again.
 
 **Decisions and mutual interests.** A candidate says whether a job proposed to them interests
 them, a recruiter whether a card's candidate does (the card's token in the body); either undoes
-theirs within 10 minutes, and only their latest decision, until both are interested (the
-recruiter with the token of the card they decided on, which their screen keeps: their feed never
-shows a candidate they answered again). When each side first answered a pair is kept with it, an
-undo included, so that the other side's pass after it never shows. A candidate who withdraws
+theirs within 10 minutes, and only their latest decision when it is their first answer on the
+pair (a decision taken again is changed, never undone), until both are interested (the recruiter
+with the token of the card they decided on, which their screen keeps: their feed never shows a
+candidate they answered again; a token older than a week and those 10 minutes is refused). When
+each side first answered a pair is kept with it, through an undo and through the job leaving
+matching (switched off, filled, closed or back to draft: its decisions go, that date stays until
+the match expires), so that the other side's pass after it never shows. A candidate who withdraws
 cannot turn discovery on again for 7 days (`DISCOVERY_REJOIN_DAYS`; 429 with `Retry-After`). A decision
 holds for the version of the job it was given on: a candidate's interest in a version since edited
 (and reviewed again) is not made into a mutual interest by the recruiter's; the job is proposed to
@@ -760,7 +763,8 @@ UTC day**, both sides together (`MATCHING_DECISIONS` of `server/services/matches
 `MATCHING_LIMITS.decisionsPerDay`; 429 with `Retry-After`, counters `matching-decision:<hash>`), and
 asks no outside service (travel times from the cache, as the feeds read them). Both interested is a
 mutual interest: one per job and candidate, made by one conditioned write, whatever the order or
-the moment of the two decisions; it reveals the candidate's portfolio address to the recruiter and
+the moment of the two decisions; once read again (a withdrawal or the job leaving matching that
+landed meanwhile takes it back first) it reveals the candidate's portfolio address to the recruiter and
 leads into the candidate's own hiring journey (its job step holds the job, its job match is frozen
 at the score then, its notes are still the recruiter's to confirm before the meeting opens). Either
 side ends it (`POST /matches/:id/end`). No email is sent: each side sees how many mutual interests

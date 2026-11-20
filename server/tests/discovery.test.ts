@@ -45,8 +45,11 @@ import {
   DISCOVERY_GRANTS_PER_DAY,
   discoveryGrantsKey,
   discoveryWithdrawal,
-  touchDiscovery
+  grantDiscovery,
+  touchDiscovery,
+  withdrawDiscovery
 } from '../services/discovery';
+import { TooManyRequestsError } from '../errors';
 import { recordConsent } from '../services/legal';
 import { logger } from '../services/logger';
 import { CONSENT, authCookie, parseCookie, signGoogleIdToken, useTestGoogleKeys } from './helpers';
@@ -660,6 +663,39 @@ describe('DELETE /discovery/consent', () => {
     release();
 
     expect((await granting).json()).toMatchObject({ state: 'off' });
+    const profile = await profileOf(candidate);
+    expect(profile?.enabledAt).toBeUndefined();
+    expect(profile?.consents?.map((consent) => consent.action)).toEqual(['granted', 'withdrawn']);
+  });
+
+  it(`holds back an opt-in that started after a withdrawal which turned discovery off while it ran: ${DISCOVERY_REJOIN_DAYS} days all the same (429)`, async () => {
+    const candidate = await readyCandidate('race-rejoin');
+    expect((await grant(candidate)).status).toBe(200);
+    // Lapsing in 10 days: the opt-in confirms it again, past its reads and the day's count
+    await DiscoveryProfile.updateOne({ user: candidate.id }, { $set: { enabledAt: discoveryConsentCutoff(new Date(Date.now() + 10 * DAY)) } });
+    const startedAt = new Date();
+    const withdrawalAskedAt = new Date(startedAt.getTime() - 1000);
+    // A withdrawal asked a moment before the opt-in turns discovery off just before the opt-in writes
+    const updateOne = DiscoveryProfile.updateOne.bind(DiscoveryProfile);
+    let withdrawn = false;
+    spyOn(DiscoveryProfile, 'updateOne').mockImplementation((async (...args: Parameters<typeof updateOne>) => {
+      const update = args[1] as { $push?: { consents?: { action?: string } } } | undefined;
+      if (!withdrawn && update?.$push?.consents?.action === 'granted') {
+        withdrawn = true;
+        await withdrawDiscovery(candidate.id, withdrawalAskedAt);
+      }
+      return updateOne(...args);
+    }) as never);
+
+    const granting = grantDiscovery(candidate.id, currentDiscoveryConsent(), startedAt);
+
+    const refused = await granting.then(
+      () => undefined,
+      (error: unknown) => error
+    );
+    expect(withdrawn).toBe(true);
+    expect(refused).toBeInstanceOf(TooManyRequestsError);
+    expect((refused as TooManyRequestsError).retryAfterSeconds).toBeGreaterThan((DISCOVERY_REJOIN_DAYS * DAY) / 1000 - 120);
     const profile = await profileOf(candidate);
     expect(profile?.enabledAt).toBeUndefined();
     expect(profile?.consents?.map((consent) => consent.action)).toEqual(['granted', 'withdrawn']);

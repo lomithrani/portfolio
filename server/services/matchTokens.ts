@@ -66,7 +66,8 @@ export function sealMatchToken(candidateId: string, scope: MatchTokenScope, now 
 /**
  * The candidate id a token stands for, when it was made by this server for `scope` (the same
  * recruiter and the same job) less than `maxAgeMs` ago (MATCH_TOKEN_TTL_MS: a decision; an undo of
- * the recruiter's own decision reads one of any age); null for anything else: a token made for
+ * the recruiter's own decision reads one up to MATCHING_LIMITS.undoMinutes older, the oldest a
+ * decision that can still be undone was taken with); null for anything else: a token made for
  * another recruiter or another job, an older one, one changed by a single bit, or text that is not
  * a token. Never throws
  */

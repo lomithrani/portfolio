@@ -37,11 +37,14 @@ import type { StoredShare } from './workflowSteps/job';
 //   as their feed shows it (services/matchFeeds.ts: live in matching, meeting their criteria and
 //   their minimum, its recruiter not having passed them before they first answered), whatever
 //   they answered of it (their `decision`). They read the posting as it is now, as their feed
-//   scores it, with its score (`jobMatch`) and whether its recruiter is interested in them. Each
-//   read that reaches it is counted against the feeds' reads (MATCHING_FEED_READS: 429 over it),
-//   whatever its answer.
+//   scores it, with its score (`jobMatch`) and whether its recruiter is interested in them.
 // Anyone else, like an unknown id, gets the 404 of a posting that does not exist, never a 403:
-// an id says nothing about the postings behind it. What is returned never names the recruiter.
+// an id says nothing about the postings behind it. While MATCHING is on, every read that ends
+// neither as the posting's recruiter, nor on a journey's pick, nor on a mutual interest is counted
+// against the feeds' reads (MATCHING_FEED_READS: 429 over it), whatever the id names (an unknown
+// id, a draft, a posting not proposed, one proposed): whether the page answers 404 or 429 then
+// depends on the reader's own count alone, never on the postings behind the id. What is returned
+// never names the recruiter.
 
 /** Why the caller may read the posting */
 export type JobAccess = 'recruiter' | 'journey' | 'match' | 'feed';
@@ -112,8 +115,15 @@ async function pickOnJourney(
 export async function readableJobPosting(userId: string, jobId: string): Promise<SharedJobPostingDto> {
   const notFound = () => new ResourceNotFoundError(JOB_NOT_FOUND);
   if (!isObjectId(userId) || !isObjectId(jobId)) throw notFound();
+  // A feed's work for one job (the pair read, scored, decided on) is counted with the feeds' reads,
+  // so that the page is not a way to poll many jobs (or one) without their limit; and so is every
+  // other read that ends in the 404, so that the count never tells a posting from an unknown id
+  const countRead = () => (env.matchingEnabled ? countFeedRead(userId) : Promise.resolve());
   const job = await JobPosting.findById(jobId).lean<StoredJobPosting>();
-  if (!job) throw notFound();
+  if (!job) {
+    await countRead();
+    throw notFound();
+  }
   if (String(job.recruiter) === userId) return { job: toJobPostingDto(job), access: 'recruiter' };
   const interest = await mutualInterestOn(String(job._id), userId);
   const asMatch = (matched: MutualInterest & { posting: JobSnapshot }): SharedJobPostingDto => {
@@ -137,12 +147,13 @@ export async function readableJobPosting(userId: string, jobId: string): Promise
   // invitation of a later meeting names); else what they said yes to, until it expires
   const pick = job.status === 'draft' ? undefined : await pickOnJourney(userId, job.recruiter, String(job._id));
   if (matched && !pick) return asMatch(matched);
-  if (job.status === 'draft') throw notFound();
+  if (job.status === 'draft') {
+    await countRead();
+    throw notFound();
+  }
   if (!pick) {
     if (!env.matchingEnabled) throw notFound();
-    // A feed's work for one job (the pair read, scored, decided on): counted with the feeds' reads,
-    // so that the page is not a way to poll many jobs (or one) without their limit
-    await countFeedRead(userId);
+    await countRead();
     const proposed = await proposedJobPosting(userId, job);
     if (proposed) {
       const decision = await candidateDecisionOn(String(job._id), userId);

@@ -27,7 +27,11 @@ import { hashValue } from './rateLimit';
 // differ in: a recruiter who puts copies of a job that differ in one term into
 // matching (the pay, the office) to learn candidates' floors or areas from
 // the cards each copy gets is told apart from one who posts several jobs.
-// Never a candidate's data, and never the recruiter's name or address. No
+// Only the jobs still stored, of that account: a copy deleted before the next
+// is put into matching, or posted from another account, is not shown (nothing
+// of a deleted job is kept for this; each copy is reviewed all the same, and
+// reads one card at a time). Never a candidate's data, and never the
+// recruiter's name or address. No
 // reviewer is named to anyone, nor stored: the decision keeps when it was
 // taken and on which version.
 

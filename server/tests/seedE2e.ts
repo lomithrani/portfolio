@@ -24,7 +24,10 @@
 // Matching (Path 2), for the test files of its screens to come, one candidate and one job for each
 // file, so that the two files, which run in parallel, never read what the other decides: 'e2e-match'
 // (fixed id 65e2e0000000000000000003, client/tests/matching-candidate.test.ts, seeded with
-// discovery off: the test turns it on, and off) and 'e2e-match-card' (fixed id
+// discovery off: the test turns it on; a withdrawal holds the next opt-in back
+// DISCOVERY_REJOIN_DAYS (429), which only this seed clears, as it empties the profile's consents:
+// that file answers DELETE /discovery/consent in the browser, or this seed runs again before each
+// of its runs) and 'e2e-match-card' (fixed id
 // 65e2e0000000000000000004, client/tests/matching-recruiter.test.ts, seeded on: the e2e recruiter
 // reads its anonymous card).
 // Each has everything discovery asks for, set back on every run: the terms in force, a perfect job
