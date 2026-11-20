@@ -4,17 +4,20 @@
 import {
 	experiencePeriod,
 	intlLocale,
+	monthCount,
 	monthIndex,
 	projectEnd,
+	sortExperiences,
 	toDate,
 	type DateInput,
 	type ExperiencePeriod
 } from 'portfolio-common';
 import { m } from './experienceDates.messages.ts';
 
-// The month arithmetic is portfolio-common's (common/models/experienceMonths.ts), shared with the
-// API; it is exported from here as well, next to the formatting
-export { experiencePeriod, monthIndex, projectEnd, toDate, type ExperiencePeriod };
+// The month arithmetic (how many months a period lasted, the order experiences are listed in) is
+// portfolio-common's (common/models/experienceMonths.ts), shared with the API; it is exported from
+// here as well, next to the formatting
+export { experiencePeriod, monthIndex, projectEnd, sortExperiences, toDate, type ExperiencePeriod };
 
 const pad = (value: number, length = 2) => String(value).padStart(length, '0');
 
@@ -68,12 +71,12 @@ export function formatMonthRange(start?: DateInput, end?: DateInput): string {
 	return m.range(formatMonth(from), formatMonth(to));
 }
 
-/** '2 yrs 3 mos', '8 mos', '1 yr' (inclusive months, end defaults to now); '' when no start */
+/**
+ * '2 yrs 3 mos', '8 mos', '1 yr' (inclusive months, end defaults to now: portfolio-common's
+ * monthCount); '' when no start
+ */
 export function formatDuration(start?: DateInput, end?: DateInput, now: Date = new Date()): string {
-	const from = toDate(start);
-	if (!from) return '';
-	const to = toDate(end) ?? now;
-	const months = monthIndex(to) - monthIndex(from) + 1;
+	const months = monthCount(start, end, now);
 	if (months < 1) return '';
 	return m.duration(Math.floor(months / 12), months % 12);
 }
@@ -92,29 +95,6 @@ type Dated = { start?: Date | string | null; end?: Date | string | null };
  */
 export const formatProjectMonths = (project: Dated, period: ExperiencePeriod): string =>
 	formatMonthRange(project.start, projectEnd(project, period));
-
-/** Sort for display: ongoing first, then by end desc, then start desc; undated last; stable */
-export function sortExperiences<T extends Parameters<typeof experiencePeriod>[0]>(
-	experiences: T[]
-): T[] {
-	const keyed = experiences.map((experience, index) => {
-		const period = experiencePeriod(experience);
-		return {
-			experience,
-			index,
-			dated: period.start !== undefined,
-			end: period.ongoing ? Infinity : period.end ? monthIndex(period.end) : -Infinity,
-			start: period.start ? monthIndex(period.start) : -Infinity
-		};
-	});
-	keyed.sort((a, b) => {
-		if (a.dated !== b.dated) return a.dated ? -1 : 1;
-		if (a.end !== b.end) return b.end - a.end;
-		if (a.start !== b.start) return b.start - a.start;
-		return a.index - b.index;
-	});
-	return keyed.map(({ experience }) => experience);
-}
 
 type WithDates = { start?: DateInput; end?: DateInput };
 type WithProjects = WithDates & { projects?: WithDates[] | null };

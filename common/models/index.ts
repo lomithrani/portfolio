@@ -5,16 +5,25 @@ export {
 	monthIndex,
 	experiencePeriod,
 	projectEnd,
+	monthCount,
+	sortExperiences,
 	periodMonths,
 	placeProject,
 	projectMonthSpan,
 	skillMonths,
+	skillUsesByKey,
 	professionalMonths,
 	normalizeSkill,
 	skillDisplayName,
 	projectUsesSkill
 } from './experienceMonths';
-export type { DateInput, ExperiencePeriod, MonthSpan, PlacedMonths } from './experienceMonths';
+export type {
+	DateInput,
+	ExperiencePeriod,
+	MonthSpan,
+	PlacedMonths,
+	SkillUse
+} from './experienceMonths';
 export {
 	DOMAIN_NAME_PATTERN,
 	RESERVED_DOMAIN_NAMES,

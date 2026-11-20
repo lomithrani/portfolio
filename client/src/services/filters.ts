@@ -1,7 +1,8 @@
-import { normalizeSkill, skillDisplayName } from 'portfolio-common';
+import { normalizeSkill, projectUsesSkill, skillDisplayName } from 'portfolio-common';
 
-// How a skill is named and matched (normalizeSkill, skillDisplayName) is portfolio-common's
-// (common/models/experienceMonths.ts), so the API can count a skill's months on the same projects
+// How a skill is named and matched (normalizeSkill, skillDisplayName, and projectUsesSkill, which
+// projectMatchesFilters asks) is portfolio-common's (common/models/experienceMonths.ts), so the
+// API counts a skill on the same projects as the page
 export { normalizeSkill };
 
 /**
@@ -85,16 +86,16 @@ export function isSkillHighlighted(filters: ExperienceFilters, displayName: stri
 	return filters.skills.includes(normalizeSkill(displayName));
 }
 
-/** Whether a project uses any of the selected skills (never when none is selected) */
+/**
+ * Whether a project uses any of the selected skills (never when none is selected), as
+ * portfolio-common's projectUsesSkill says
+ */
 export function projectMatchesFilters(
 	project: FilterableProject,
 	filters: ExperienceFilters
 ): boolean {
 	if (filters.skills.length === 0) return false;
-	return [...(project.hardSkills ?? []), ...(project.softSkills ?? [])].some((entry) => {
-		const name = skillDisplayName(entry);
-		return name !== undefined && filters.skills.includes(normalizeSkill(name));
-	});
+	return filters.skills.some((key) => projectUsesSkill(project, key));
 }
 
 /** Whether a project of the experience uses the skill (by key, see normalizeSkill) */

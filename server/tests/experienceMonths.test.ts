@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   ExperienceType,
   experiencePeriod,
+  monthCount,
   monthIndex,
   normalizeSkill,
   periodMonths,
@@ -16,6 +17,8 @@ import {
   projectUsesSkill,
   skillDisplayName,
   skillMonths,
+  skillUsesByKey,
+  sortExperiences,
   toDate
 } from 'portfolio-common'
 
@@ -77,6 +80,60 @@ describe('experiencePeriod and projectEnd', () => {
     expect(projectEnd({ start: utc('2019-06') }, ended)).toEqual(utc('2020-12'))
     expect(projectEnd({ start: utc('2021-03') }, ended)).toEqual(utc('2021-03'))
     expect(projectEnd({ start: utc('2019-06') }, experiencePeriod(job('2019-01')))).toBeUndefined()
+  })
+})
+
+describe('monthCount', () => {
+  it('counts the months of a period, both ends included, as an experience card does', () => {
+    expect(monthCount(utc('2024-03'), utc('2024-03'), NOW)).toBe(1)
+    expect(monthCount(utc('2022-01'), utc('2024-03'), NOW)).toBe(27)
+    expect(monthCount('2024-01-01T00:00:00.000Z', '2024-08-01T00:00:00.000Z', NOW)).toBe(8)
+  })
+
+  it('runs to the current month without an end, and to a planned end with one', () => {
+    // Mar 2024 to Nov 2026
+    expect(monthCount(utc('2024-03'), undefined, NOW)).toBe(33)
+    expect(monthCount(utc('2025-09'), utc('2028-06'), NOW)).toBe(34)
+    // An experience's: its period's start and end
+    const period = experiencePeriod(job('2025-09', '2028-06'))
+    expect(monthCount(period.start, period.end, NOW)).toBe(34)
+  })
+
+  it('counts nothing without a start, or for an end before the start', () => {
+    expect(monthCount(undefined, utc('2024-03'), NOW)).toBe(0)
+    expect(monthCount(utc('2025-03'), utc('2024-03'), NOW)).toBe(0)
+  })
+})
+
+describe('sortExperiences', () => {
+  const dated = (id: string, start?: string, end?: string, projects: Project[] = []) => ({ id, ...job(start, end, projects) })
+
+  it('lists ongoing first, then by end and start, the most recent first, undated last', () => {
+    const input = [
+      dated('undated'),
+      dated('old', '2010-01', '2012-01'),
+      dated('current-old', '2018-01'),
+      dated('recent', '2020-01', '2024-06'),
+      dated('current-new', '2023-01'),
+      dated('same-end-later-start', '2022-01', '2024-06'),
+      dated('from-projects', undefined, undefined, [project('A', '2024-09', '2025-02')])
+    ]
+    const copy = [...input]
+    expect(sortExperiences(input).map(({ id }) => id)).toEqual([
+      'current-new',
+      'current-old',
+      'from-projects',
+      'same-end-later-start',
+      'recent',
+      'old',
+      'undated'
+    ])
+    expect(input).toEqual(copy)
+  })
+
+  it('keeps the order of experiences that tie', () => {
+    const input = [dated('a', '2020-01', '2021-01'), dated('b', '2020-01', '2021-01'), dated('c'), dated('d')]
+    expect(sortExperiences(input).map(({ id }) => id)).toEqual(['a', 'b', 'c', 'd'])
   })
 })
 
@@ -171,6 +228,51 @@ describe('skillMonths', () => {
 
   it('counts nothing for the projects of an experience without dates', () => {
     expect(skillMonths([job(undefined, undefined, [go('Lab')])], usesGo, NOW)).toBe(0)
+  })
+})
+
+describe('skillUsesByKey', () => {
+  const portfolio = [
+    job('2020-01', '2022-12', [
+      project('Long', '2020-01', '2020-12', ['Go', 'Kafka'], ['Leadership']),
+      project('Inside', '2020-03', '2020-05', [' go ']),
+      project('Across', '2020-11', '2021-02', ['GO'], ['Kafka']),
+      project('Undated', undefined, undefined, ['Rust']),
+      project('No skills', '2021-01', '2021-06')
+    ]),
+    job('2025-09', undefined, [project('Ongoing', '2025-09', undefined, ['Rust', 'TypeScript'])]),
+    job('2026-01', undefined, [project('Next', '2027-03', undefined, ['Elixir'])]),
+    job(undefined, undefined, [project('Lab', undefined, undefined, ['Go', 'Zig'], ['leadership'])]),
+    experience(ExperienceType.Personal, '2019-01', '2019-06', [
+      project('Side', undefined, '2019-02', ['TypeScript']),
+      { name: 'Not populated', hardSkills: [{ skill: '65e2e0000000000000000002' }], softSkills: [] }
+    ])
+  ]
+
+  it('counts each skill as skillMonths and the projects using it, technical or soft, in one pass', () => {
+    const uses = skillUsesByKey(portfolio, NOW)
+    expect([...uses.keys()].sort()).toEqual(['elixir', 'go', 'kafka', 'leadership', 'rust', 'typescript', 'zig'])
+    for (const [key, use] of uses) {
+      expect(use.months).toBe(skillMonths(portfolio, (candidate) => projectUsesSkill(candidate, key), NOW))
+      expect(use.projects).toBe(
+        portfolio.flatMap((each) => each.projects).filter((candidate) => projectUsesSkill(candidate, key)).length
+      )
+    }
+  })
+
+  it('counts a month once, and a project once however many times it names the skill', () => {
+    const uses = skillUsesByKey(portfolio, NOW)
+    // Jan 2020 to Feb 2021, and the project without dates counts for nothing
+    expect(uses.get('go')).toEqual({ months: 14, projects: 4 })
+    // A technical skill of one project and a soft skill of another
+    expect(uses.get('kafka')).toEqual({ months: 14, projects: 2 })
+    // Jan to Dec 2022 for the project without dates of its job, Sep 2025 to Nov 2026 for the other
+    expect(uses.get('rust')).toEqual({ months: 36 + 15, projects: 2 })
+    // Planned: used by a project, no month yet
+    expect(uses.get('elixir')).toEqual({ months: 0, projects: 1 })
+    expect(skillUsesByKey([], NOW).size).toBe(0)
+    const twice = [job('2020-01', '2020-03', [project('API', '2020-01', '2020-03', ['Go', 'go'], ['GO'])])]
+    expect(skillUsesByKey(twice, NOW).get('go')).toEqual({ months: 3, projects: 1 })
   })
 })
 

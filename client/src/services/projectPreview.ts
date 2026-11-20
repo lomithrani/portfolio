@@ -7,7 +7,7 @@ import {
 	formatProjectMonths,
 	projectEnd
 } from '#services/experienceDates.ts';
-import { normalizeSkill, projectMatchesFilters, skillOptions } from '#services/filters.ts';
+import { normalizeSkill, skillOptions } from '#services/filters.ts';
 import {
 	buildTimeline,
 	timelineAxis,
@@ -124,7 +124,10 @@ export const skillMonths = (
 	now: Date = new Date()
 ): number => monthsOfSkill(experiences, (project) => projectUsesSkill(project, key), now);
 
-/** The projects using a skill (by key, see normalizeSkill), in the experiences' order */
+/**
+ * The projects using a skill (by key, see normalizeSkill), in the experiences' order: those
+ * skillMonths counts the months of (projectUsesSkill)
+ */
 export function skillPreview(
 	experiences: PreviewedExperience[],
 	key: string,
@@ -134,7 +137,7 @@ export function skillPreview(
 	const entries: PreviewEntry[] = [];
 	for (const experience of experiences) {
 		for (const project of experience.projects ?? []) {
-			if (!projectMatchesFilters(project, { skills: [skill] })) continue;
+			if (!projectUsesSkill(project, skill)) continue;
 			entries.push({
 				name: project.name?.trim() ?? '',
 				context: experienceContext(experience),
@@ -169,11 +172,10 @@ export function skillTimeline(
 	key: string,
 	now: Date = new Date()
 ): PreviewTimeline | undefined {
-	const filters = { skills: [normalizeSkill(key)] };
 	const timeline = buildTimeline(experiences, now);
 	const bars: PreviewBar[] = timeline.items.flatMap((item) =>
 		item.projects
-			.filter((entry) => projectMatchesFilters(entry.project, filters))
+			.filter((entry) => projectUsesSkill(entry.project, key))
 			.map((entry) => ({
 				name: entry.project.name?.trim() ?? '',
 				context: experienceContext(item.experience),
@@ -187,7 +189,7 @@ export function skillTimeline(
 	bars.sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end);
 	const undated: PreviewEntry[] = timeline.undated.flatMap((experience) =>
 		(experience.projects ?? [])
-			.filter((project) => projectMatchesFilters(project, filters))
+			.filter((project) => projectUsesSkill(project, key))
 			.map((project) => ({
 				name: project.name?.trim() ?? '',
 				context: experienceContext(experience),

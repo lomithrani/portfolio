@@ -61,6 +61,44 @@ export function projectEnd(project: Dated, period: ExperiencePeriod): Date | und
 	return start && start > period.end ? start : period.end;
 }
 
+/**
+ * How many months `start` to `end` lasted, both included (Mar to May 2024 is 3), `end` defaulting
+ * to the current month: what an experience card says it lasted, `monthCount(period.start,
+ * period.end, now)` of its experiencePeriod (one with a planned end counts to that end). 0 without
+ * a start, or when it ends before it starts.
+ */
+export function monthCount(start: DateInput, end: DateInput, now: Date = new Date()): number {
+	const from = toDate(start);
+	if (!from) return 0;
+	const to = toDate(end) ?? now;
+	return Math.max(0, monthIndex(to) - monthIndex(from) + 1);
+}
+
+/**
+ * Experiences in the order the experiences page lists them: ongoing first, then by end, then by
+ * start, the most recent first (each taking its period as experiencePeriod gives it), the ones
+ * that cannot be placed last; stable, and the input is left as it is
+ */
+export function sortExperiences<T extends DatedExperience>(experiences: readonly T[]): T[] {
+	const keyed = experiences.map((experience, index) => {
+		const period = experiencePeriod(experience);
+		return {
+			experience,
+			index,
+			dated: period.start !== undefined,
+			end: period.ongoing ? Infinity : period.end ? monthIndex(period.end) : -Infinity,
+			start: period.start ? monthIndex(period.start) : -Infinity
+		};
+	});
+	keyed.sort((a, b) => {
+		if (a.dated !== b.dated) return a.dated ? -1 : 1;
+		if (a.end !== b.end) return b.end - a.end;
+		if (a.start !== b.start) return b.start - a.start;
+		return a.index - b.index;
+	});
+	return keyed.map(({ experience }) => experience);
+}
+
 /** Months `start` to `end`, `end` excluded: Jan to Mar 2024 is { start: Jan, end: Apr } */
 export type MonthSpan = { start: number; end: number };
 
@@ -72,10 +110,7 @@ export type PlacedMonths = { start: number; last: number };
  * month (`nowMonth`, a monthIndex), one starting later takes its first month. Undefined when the
  * period has no start: the experience cannot be placed.
  */
-export function periodMonths(
-	period: ExperiencePeriod,
-	nowMonth: number
-): PlacedMonths | undefined {
+export function periodMonths(period: ExperiencePeriod, nowMonth: number): PlacedMonths | undefined {
 	if (!period.start) return undefined;
 	const start = monthIndex(period.start);
 	const last = Math.max(
@@ -129,7 +164,16 @@ export function projectMonthSpan(
 	const nowMonth = monthIndex(now);
 	const period = experiencePeriod(experience);
 	const own = periodMonths(period, nowMonth);
-	if (!own) return undefined;
+	return own && placedSpan(project, period, own, nowMonth);
+}
+
+/** The months of a project of an experience placed at `own` (see placeProject), as a span */
+function placedSpan(
+	project: Dated,
+	period: ExperiencePeriod,
+	own: PlacedMonths,
+	nowMonth: number
+): MonthSpan {
 	const { start, last } = placeProject(project, period, own, nowMonth);
 	return { start, end: last + 1 };
 }
@@ -161,16 +205,19 @@ export function skillMonths<P extends Dated>(
 	usesSkill: (project: P) => boolean,
 	now: Date = new Date()
 ): number {
+	const nowMonth = monthIndex(now);
 	const spans: MonthSpan[] = [];
 	for (const experience of experiences) {
-		for (const project of experience.projects ?? []) {
-			if (!usesSkill(project)) continue;
-			const span = projectMonthSpan(project, experience, now);
-			if (span) spans.push(span);
-		}
+		const using = (experience.projects ?? []).filter((project) => usesSkill(project));
+		if (using.length === 0) continue;
+		// Each experience's period worked out once, as projectMonthSpan works it out
+		const period = experiencePeriod(experience);
+		const own = periodMonths(period, nowMonth);
+		if (!own) continue;
+		for (const project of using) spans.push(placedSpan(project, period, own, nowMonth));
 	}
 	// The month after the current one: nothing is counted from there on
-	return countMonths(spans, monthIndex(now) + 1);
+	return countMonths(spans, nowMonth + 1);
 }
 
 /**
@@ -221,4 +268,55 @@ export function projectUsesSkill(project: SkilledProject, skill: string): boolea
 		const name = skillDisplayName(entry);
 		return name !== undefined && normalizeSkill(name) === key;
 	});
+}
+
+/** How much a skill was used: its months, as skillMonths counts them, and its projects */
+export type SkillUse = {
+	/** The calendar months of the projects using it, each counted once (see skillMonths) */
+	months: number;
+	/** How many projects use it, dated or not: the page's "Used in 3 projects" */
+	projects: number;
+};
+
+/**
+ * Every skill of these experiences' projects, technical or soft, by key (see normalizeSkill), with
+ * how much it was used: what skillMonths(experiences, (project) => projectUsesSkill(project, key),
+ * now) counts for each key, and how many projects use it, in one pass (each experience's period
+ * worked out once, each project placed once), for the API, which ranks a candidate's skills
+ */
+export function skillUsesByKey<P extends Dated & SkilledProject>(
+	experiences: readonly (Dated & { projects?: readonly P[] | null })[],
+	now: Date = new Date()
+): Map<string, SkillUse> {
+	const nowMonth = monthIndex(now);
+	const used = new Map<string, { spans: MonthSpan[]; projects: number }>();
+	for (const experience of experiences) {
+		const projects = experience.projects ?? [];
+		if (projects.length === 0) continue;
+		const period = experiencePeriod(experience);
+		const own = periodMonths(period, nowMonth);
+		for (const project of projects) {
+			const keys = new Set<string>();
+			for (const entry of [...(project.hardSkills ?? []), ...(project.softSkills ?? [])]) {
+				const name = skillDisplayName(entry);
+				if (name !== undefined) keys.add(normalizeSkill(name));
+			}
+			if (keys.size === 0) continue;
+			const span = own && placedSpan(project, period, own, nowMonth);
+			for (const key of keys) {
+				const skill = used.get(key) ?? { spans: [], projects: 0 };
+				skill.projects += 1;
+				if (span) skill.spans.push(span);
+				used.set(key, skill);
+			}
+		}
+	}
+	// The month after the current one: nothing is counted from there on (as skillMonths)
+	const until = nowMonth + 1;
+	return new Map(
+		[...used].map(([key, { spans, projects }]) => [
+			key,
+			{ months: countMonths(spans, until), projects }
+		])
+	);
 }
