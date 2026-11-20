@@ -18,7 +18,7 @@ import {
   WorkflowInstance
 } from '../models/database'
 import { env } from '../env'
-import { LIVE_IN_MATCHING } from './jobMatching'
+import { liveJobsQuery } from './jobMatching'
 import { logger } from './logger'
 
 /** What `portfolio.records` counts: the values of its `kind` attribute */
@@ -87,8 +87,9 @@ export const countSiteRecords = async (): Promise<SiteRecordCounts> => {
     // MongoDB removes a booking once its slot is over
     AppointmentBooking.estimatedDocumentCount(),
     discoverableCandidates(),
-    // Proposed to candidates: open, in matching and approved by a reviewer
-    whileMatching(() => JobPosting.countDocuments(LIVE_IN_MATCHING)),
+    // Proposed to candidates: open, in matching and approved by a reviewer, of a recruiter who
+    // accepted the terms in force
+    whileMatching(async () => JobPosting.countDocuments(await liveJobsQuery())),
     // In matching, waiting for a reviewer (nothing tells the reviewers but this and their list)
     whileMatching(() =>
       JobPosting.countDocuments({ 'matching.enabledAt': { $exists: true }, 'matching.review.status': 'pending' })

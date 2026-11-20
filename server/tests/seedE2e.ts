@@ -29,7 +29,9 @@
 // (a placeholder: nothing ever asks Google with it) and a meeting type with hours, a discovery
 // consent in force, an experience; and a job of the e2e recruiter in matching, approved, which
 // both candidates' criteria pass (E2E_MATCHING_JOB_TITLE: no test tag matches it, so the files that
-// remove their tagged postings leave it). They are proposed only by an API run with MATCHING=true,
+// remove their tagged postings leave it). Every run also removes the matches of that job and of
+// those candidates (what a run before decided), and the counters of the day's discovery opt-ins
+// and of the hour's feed reads. They are proposed only by an API run with MATCHING=true,
 // and with GOOGLE_CLIENT_SECRET set (any value: Calendar counts as configured; nothing asks Google
 // unless a page books or lists slots, which the tests answer in the browser).
 // Idempotent: safe to run against a seeded database.
@@ -49,6 +51,7 @@ import {
   Domain,
   Experience,
   JobPosting,
+  Match,
   PerfectJob,
   RateLimitCounter,
   User,
@@ -180,6 +183,7 @@ const matchCandidates = [
 ];
 
 const now = new Date();
+const matchCandidateIds: Types.ObjectId[] = [];
 for (const candidate of matchCandidates) {
   const user = await User.findOneAndUpdate(
     { email: candidate.email },
@@ -191,6 +195,7 @@ for (const candidate of matchCandidates) {
     },
     { upsert: true, returnDocument: 'after' }
   );
+  matchCandidateIds.push(user._id);
   await recordConsent(user._id, currentConsent(), 'account');
   const domain = await Domain.findOneAndUpdate(
     { name: candidate.domain },
@@ -269,11 +274,20 @@ await JobPosting.updateOne(
   { timestamps: false }
 );
 
+// What the matching test files decided, on that job or about those candidates (decisions, mutual
+// interests): every run starts from none, so the job and the cards are proposed again whatever a
+// run before recorded
+await Match.deleteMany({ $or: [{ job: E2E_MATCHING_JOB_ID }, { candidate: { $in: matchCandidateIds } }] });
+
 // The jobs shared on a journey that scores them are counted, per owner and recruiter and per UTC
 // day (JOB_SHARES_PER_DAY of services/workflowSteps/job.ts, keyed 'job-share:<hash>'): every run
 // starts from none, so the e2e recruiter's picks never depend on the runs before it on the same day
-// (client/tests/hire-journey.test.ts shares jobs on the scored journey of 'e2e-journey')
-await RateLimitCounter.deleteMany({ _id: /^job-share:/ });
+// (client/tests/hire-journey.test.ts shares jobs on the scored journey of 'e2e-journey'). So do the
+// discovery opt-ins of a day (DISCOVERY_GRANTS_PER_DAY of services/discovery.ts, 'discovery-grant:',
+// which client/tests/matching-candidate.test.ts uses turning discovery off and on) and the reads of
+// the feeds of an hour (MATCHING_FEED_READS of services/matchFeeds.ts, 'matching-feed:'): keyed by a
+// hash of the account, they are cleared for every account of the e2e database
+await RateLimitCounter.deleteMany({ _id: /^(job-share|discovery-grant|matching-feed):/ });
 
 console.log(
   `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate, ` +

@@ -49,7 +49,7 @@ import { CANDIDATE_CARD_FIELDS } from '../services/candidateCard';
 import { commuteWarmUps, warmCommute } from '../services/commute';
 import type { CommutePair } from '../services/commute';
 import { discoveryGrantsKey } from '../services/discovery';
-import { jobMatchingWarmUp } from '../services/jobMatching';
+import { isLiveInMatching, jobMatchingWarmUp } from '../services/jobMatching';
 import { reviewedVersion } from '../services/jobVersion';
 import { JOB_NOT_FOUND } from '../services/jobPostings';
 import { MATCHING_FEED_READS, matchFeedWarmUps, matchingFeedKey } from '../services/matchFeeds';
@@ -531,10 +531,22 @@ describe('GET /opportunities', () => {
     // A recruiter interested in them, without their answer: proposed still
     const wanted = await storeJob(other);
     await storeDecision(wanted, other, candidate, { recruiter: 'interested' });
+    // Of a recruiter who has not accepted the terms in force since they changed (interested in the
+    // candidate before): proposed to nobody until they do
+    const behind = await createRecruiter('behind');
+    const behindJob = await storeJob(behind);
+    await storeDecision(behindJob, behind, candidate, { recruiter: 'interested' });
+    await User.updateOne({ _id: behind.id }, { $set: { 'legalAcceptances.$[].version': '2025-01-01' } });
 
     const body = (await candidateFeed(candidate)).json();
 
     expect(body.jobs.map((card: any) => card.job._id).sort()).toEqual([proposed, wanted].sort());
+    expect(await isLiveInMatching((await JobPosting.findById(behindJob).lean<StoredJobPosting>())!)).toBe(false);
+
+    // Once they accept them again, it is
+    await recordConsent(behind.id, CONSENT, 'recruiter');
+    const again = (await candidateFeed(candidate)).json();
+    expect(again.jobs.map((card: any) => card.job._id).sort()).toEqual([proposed, wanted, behindJob].sort());
   });
 
   it('goes page by page, without a job twice, and leaves out a job closed since', async () => {
@@ -936,11 +948,16 @@ describe("GET /opportunities/jobs/:id (access 'feed')", () => {
     await storeDecision(refused, recruiter, candidate, { recruiter: 'pass' });
     const stranger = await createUser('stranger');
     const live = await storeJob(recruiter);
+    // Of a recruiter who has not accepted the terms in force since they changed
+    const behind = await createRecruiter('behind');
+    const behindJob = await storeJob(behind);
+    await User.updateOne({ _id: behind.id }, { $set: { 'legalAcceptances.$[].version': '2025-01-01' } });
 
     for (const [user, jobId] of [
       [candidate, notMet],
       [candidate, pending],
       [candidate, refused],
+      [candidate, behindJob],
       [stranger, live]
     ] as const) {
       const answer = await call('GET', `/opportunities/jobs/${jobId}`, { cookie: user.cookie });

@@ -13,7 +13,7 @@ import {
   PeriodicExportingMetricReader
 } from '@opentelemetry/sdk-metrics';
 import { env } from '../env';
-import { DISCOVERY_CONSENT_MONTHS, DISCOVERY_INACTIVITY_DAYS } from 'portfolio-common';
+import { DISCOVERY_CONSENT_MONTHS, DISCOVERY_INACTIVITY_DAYS, LEGAL_VERSION } from 'portfolio-common';
 import { DiscoveryProfile, Domain, JobPosting, Match, User } from '../models/database';
 import { logger } from '../services/logger';
 import {
@@ -216,14 +216,27 @@ describe('countSiteRecords', () => {
     env.matchingEnabled = true;
     try {
       const before = await countSiteRecords();
-      const recruiter = await User.create({ email: email('matching'), googleId: `sub-matching-${suffix}` });
-      const candidate = await User.create({ email: email('matched'), googleId: `sub-matched-${suffix}` });
       const now = new Date();
+      const acceptance = (version: string) => ({ version, acceptedAt: now, ageConfirmationKey: 'age-16-v1', source: 'recruiter' });
+      // A recruiter who accepted the terms in force, and one who has not accepted them since a bump
+      const recruiter = await User.create({
+        email: email('matching'),
+        googleId: `sub-matching-${suffix}`,
+        legalAcceptances: [acceptance(LEGAL_VERSION)]
+      });
+      const behind = await User.create({
+        email: email('behind'),
+        googleId: `sub-behind-${suffix}`,
+        legalAcceptances: [acceptance('2025-01-01')]
+      });
+      const candidate = await User.create({ email: email('matched'), googleId: `sub-matched-${suffix}` });
       const review = (status: string) => ({ status, requestedAt: now, ...(status === 'pending' ? {} : { reviewedAt: now }) });
-      const job = (status: 'open' | 'on_hold', matching?: Record<string, unknown>) =>
-        JobPosting.create({ ...COMPLETE_POSTINGS[0], recruiter: recruiter._id, status, publishedAt: now, ...(matching ? { matching } : {}) });
+      const job = (status: 'open' | 'on_hold', matching?: Record<string, unknown>, by = recruiter) =>
+        JobPosting.create({ ...COMPLETE_POSTINGS[0], recruiter: by._id, status, publishedAt: now, ...(matching ? { matching } : {}) });
       const live = await job('open', { enabledAt: now, review: review('approved') });
-      // Not proposed: waiting for a review, rejected, on hold, turned off, not in matching at all
+      // Not proposed: of a recruiter without the terms in force, waiting for a review, rejected, on
+      // hold, turned off, not in matching at all
+      await job('open', { enabledAt: now, review: review('approved') }, behind);
       await job('open', { enabledAt: now, review: review('pending') });
       await job('on_hold', { enabledAt: now, review: review('pending') });
       await job('open', { enabledAt: now, review: review('rejected') });

@@ -686,10 +686,11 @@ Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=tr
 (`GET`/`PUT /discovery`, `GET /discovery/card`, `POST`/`DELETE /discovery/consent`,
 `PUT /jobs/:id/matching`, `GET /matching/reviews`, `PUT /matching/reviews/:id`, and the feeds
 `GET /opportunities` and `GET /recruiter/jobs/:id/candidates` for now) are not registered, so they answer 404 as routes that do not exist whatever the request (`/swagger` does
-not list them), `POST /jobs` ignores its `matching`, nothing of it is read or written, and the
-metrics `discoverable_candidates`, `matching_job_postings`, `matching_job_reviews` and
-`active_matches` are 0. What a job's changes do to its matches (closed, deleted, edited) runs
-whatever the flag: it only ends, drops or deletes. The flag is read when the API starts: a change
+not list them), `POST /jobs` ignores its `matching`, no matching route answers and nothing is
+proposed, and the metrics `discoverable_candidates`, `matching_job_postings`,
+`matching_job_reviews` and `active_matches` are 0. What a job's changes do to its matches (closed,
+deleted, edited) runs whatever the flag: it only ends, drops or deletes matches, or sends an edited
+job back for review. The flag is read when the API starts: a change
 takes effect at its next deploy. The startup line `Running at ...` says `"matching":"on (1 job
 reviewer)"` (how many reviewers, never who) or why it is off.
 
@@ -705,7 +706,12 @@ recruiter's email, nothing of any candidate) and decides with `PUT /matching/rev
 No screen does it yet: until the review screen ships, a reviewer calls the API signed in (the
 `auth` cookie of their session). The `matching_job_reviews` metric counts the jobs waiting: nothing
 else tells the reviewers (no email is sent). An approved job its recruiter edits (its description,
-or another field no criterion reads: its terms are locked) waits for a review again.
+or another field no criterion reads: its terms are locked) waits for a review again. A job is
+proposed only while its recruiter has accepted the terms in force: after a `LEGAL_VERSION` bump,
+their approved jobs leave every feed, and `matching_job_postings`, until they accept the new terms
+(nothing to do on the operator's side; the review stays). A posting opened before the pay range cap
+with a wider range cannot be put into matching (422 on `pay.max`) until its recruiter saves it
+again.
 
 - **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
   calls its routes yet: they are for the screens that come next, and for the tests.

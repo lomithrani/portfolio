@@ -703,8 +703,11 @@ export const MATCHING_REVIEW_DECISIONS = ['approve', 'reject'] as const;
 export type MatchingReviewDecision = (typeof MATCHING_REVIEW_DECISIONS)[number];
 
 /**
- * Whether a job is proposed to candidates now: open, in matching, and approved by a reviewer. The
- * one rule the feeds, the decisions and the counts follow (on hold, pending or rejected: nobody)
+ * Whether a job is proposed to candidates now, as far as the job itself says: open, in matching,
+ * and approved by a reviewer (on hold, pending or rejected: nobody). The API adds the one thing the
+ * job does not hold, that its recruiter accepted the terms in force (isLiveInMatching and
+ * liveJobsQuery of server/services/jobMatching.ts): the rule the feeds, the decisions and the
+ * counts follow
  */
 export const jobLiveInMatching = (job: {
 	status: JobStatus;

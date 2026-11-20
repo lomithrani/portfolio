@@ -25,6 +25,7 @@ import {
   leavesMatchingOnEdit,
   newJobMatching,
   requireMatchingKept,
+  reviewSavedWithEdit,
   settleCreatedInMatching,
   toRecruiterJobDto
 } from '../services/jobMatching';
@@ -132,11 +133,14 @@ export const jobs = new Elysia()
     // While MATCHING is off, an edit that leaves matching nothing to propose takes it out instead
     const leavesMatching = leavesMatchingOnEdit(before, fields);
     if (leavesMatching) job.set('matching.enabledAt', undefined);
+    // In matching, approved or rejected on another version: pending again in the same write
+    for (const [path, value] of reviewSavedWithEdit(job.toObject<StoredJobPosting>())) job.set(path, value);
     const saved = (await saveJobPosting(job)).toObject<StoredJobPosting>();
     if (leavesMatching) await afterMatchingOff(saved._id);
     const closed = await afterJobStatusChange(saved._id, fields.status);
-    const sentBack = await afterJobEdited(before, saved);
-    return toRecruiterJobDto(await currentPosting(saved, closed || sentBack));
+    // From what is stored: a review or a switch that changed it while this edit ran
+    const changed = await afterJobEdited(before, saved);
+    return toRecruiterJobDto(await currentPosting(saved, closed || changed));
   }, {
     params: objectIdParams,
     body: jobPostingEditRequest,

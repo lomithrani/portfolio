@@ -1,23 +1,28 @@
 import type { Types } from 'mongoose';
 import {
+  LEGAL_VERSION,
   MATCHING_JOB_STATUSES,
   MATCHING_LIMITS,
   OPEN_JOB_STATUS,
   endedMatchExpiry,
+  jobLiveInMatching,
   jobSnapshotsDiffer,
   keepsMatching,
   matchingJobProblem,
-  matchingMessages
+  matchingMessages,
+  normalizeJobPosting,
+  validateJobPosting
 } from 'portfolio-common';
-import type { JobPostingInput, JobSnapshot, JobStatus, MatchingReviewStatus } from 'portfolio-common';
+import type { JobPostingInput, JobStatus, MatchingReviewStatus } from 'portfolio-common';
 import { env } from '../env';
-import { JobPosting, Match } from '../models/database';
+import { JobPosting, Match, User } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../errors';
-import { MATCHING_NEEDS_OPEN_JOB } from '../protocol';
+import { JOB_CHANGED, MATCHING_NEEDS_OPEN_JOB } from '../protocol';
 import { warmOffice } from './commute';
 import { JOB_NOT_FOUND, storedJobSnapshot, toJobPostingDto, toJobSnapshot } from './jobPostings';
 import { reviewedVersion, versionNow } from './jobVersion';
+import { userAcceptedCurrentTerms } from './legal';
 import type { JobPostingDto } from './jobPostings';
 
 // The job side of matching (Path 2, behind MATCHING): a recruiter's switch,
@@ -90,14 +95,41 @@ export const jobMatchingWarmUp = {
 };
 
 /**
- * The jobs proposed to candidates now, as a MongoDB filter: open, in matching and approved by a
- * reviewer (portfolio-common's jobLiveInMatching). On hold, pending or rejected: nobody
+ * What a job itself holds of being proposed to candidates now, as a MongoDB filter: open, in
+ * matching and approved by a reviewer (portfolio-common's jobLiveInMatching). On hold, pending or
+ * rejected: nobody. What reads the jobs proposed adds its recruiter's terms: liveJobsQuery
  */
 export const LIVE_IN_MATCHING = {
   status: OPEN_JOB_STATUS,
   'matching.enabledAt': { $exists: true },
   'matching.review.status': 'approved'
 } as const;
+
+/**
+ * Whether the stored job is proposed to candidates now: open, in matching, approved
+ * (jobLiveInMatching), and its recruiter accepted the terms in force. After a LEGAL_VERSION bump a
+ * recruiter's jobs are proposed to nobody, and decided on by nobody, until they accept the new
+ * terms (as a job picked on a job step holds only while its recruiter has): a mutual interest never
+ * reveals a portfolio to a recruiter who did not agree to what the terms ask of them then
+ */
+export async function isLiveInMatching(job: StoredJobPosting): Promise<boolean> {
+  return jobLiveInMatching(job) && (await userAcceptedCurrentTerms(job.recruiter));
+}
+
+/**
+ * The jobs proposed to candidates now (isLiveInMatching), as a MongoDB filter: LIVE_IN_MATCHING,
+ * of the recruiters who accepted the terms in force, read once (the recruiters of the jobs live
+ * now), never `except` (a candidate's own jobs, when they are a recruiter too)
+ */
+export async function liveJobsQuery(except?: string) {
+  const recruiters = await JobPosting.distinct('recruiter', LIVE_IN_MATCHING);
+  const accepted = await User.find(
+    { _id: { $in: recruiters }, 'legalAcceptances.version': LEGAL_VERSION },
+    { _id: 1 }
+  ).lean<{ _id: Types.ObjectId }[]>();
+  const ids = accepted.map((user) => user._id).filter((id) => String(id) !== except);
+  return { ...LIVE_IN_MATCHING, recruiter: { $in: ids } };
+}
 
 // ── The version a review is of ──────────────────────────────
 
@@ -137,6 +169,26 @@ const requireRoomInMatching = async (recruiterId: string) => {
 };
 
 /**
+ * 422 for a posting whose stored version breaks a rule a posting is saved under today (saved before
+ * that rule was made tighter: a pay range wider than JOB_LIMITS.pay.maxRangeRatio times its bottom,
+ * which a posting opened before that cap keeps): the first rule it breaks, as validateJobPosting
+ * names it (`pay.max`...), or on `matching` when only the request schema refuses it (its version
+ * would not read back: storedJobSnapshot). Matching proposes what a recruiter could save today, and
+ * a mutual interest leads into the candidate's journey with its snapshot, read back with those
+ * rules. Its recruiter saves it again in the editor (which shows an opened posting's range brought
+ * down to the top it is scored with). POST /jobs's posting passed them already (validJobPosting)
+ */
+const requireCurrentRules = (job: StoredJobPosting) => {
+  const { _id, createdAt, updatedAt, publishedAt, ...fields } = toJobPostingDto(job);
+  const firstProblem = () => validateJobPosting(normalizeJobPosting(fields))[0];
+  const problem = firstProblem();
+  if (problem) throw new FieldValidationError(problem.field, () => firstProblem()?.message ?? '');
+  if (!storedJobSnapshot(toJobSnapshot(job))) {
+    throw new FieldValidationError('matching', () => matchingMessages.job.saveAgain);
+  }
+};
+
+/**
  * Over the limit once written (jobs entering matching at once, and together over it): what
  * `takeBack` undoes, then 409. Counted after the write, as createJobPosting counts the postings, so
  * the limit holds whatever the number of parallel requests (at the boundary they may all be
@@ -157,18 +209,47 @@ const reloadOwn = async (recruiterId: string, jobId: Types.ObjectId | string) =>
 };
 
 /**
+ * Puts the posting `job` (as read) into matching at `now`, with the review it enters with
+ * (reviewOnEntry): what is checked first, then one write conditioned on the version read (its
+ * `updatedAt`, which an edit changes and matching's own writes do not), so a review kept for that
+ * version is never set on a posting edited meanwhile. Whether it was written (false: changed
+ * meanwhile), or the stored posting when it was in matching already
+ */
+const enterMatching = async (recruiterId: string, job: StoredJobPosting, now: Date) => {
+  if (job.status !== OPEN_JOB_STATUS) throw new ConflictError(MATCHING_NEEDS_OPEN_JOB);
+  requireMatchingFields(job);
+  requireCurrentRules(job);
+  if (job.matching?.enabledAt) return job;
+  await requireRoomInMatching(recruiterId);
+  const { modifiedCount } = await JobPosting.updateOne(
+    {
+      _id: job._id,
+      recruiter: recruiterId,
+      status: OPEN_JOB_STATUS,
+      updatedAt: job.updatedAt ?? null,
+      'matching.enabledAt': { $exists: false }
+    },
+    { $set: { 'matching.enabledAt': now, 'matching.review': reviewOnEntry(job, now) } },
+    { timestamps: false }
+  );
+  return modifiedCount > 0;
+};
+
+/**
  * Turns matching on or off for the posting `jobId` of `recruiterId` (PUT /jobs/:id/matching), and
  * answers the posting as it is then. 404 for a posting that is not theirs.
  *
  * On: only for an open posting (409 MATCHING_NEEDS_OPEN_JOB), that names its company and has a
- * description (422 on `company` or `description`), within MATCHING_LIMITS.matchingJobsPerRecruiter
+ * description (422 on `company` or `description`), whose stored version passes the rules a posting
+ * is saved under today (422: requireCurrentRules), within MATCHING_LIMITS.matchingJobsPerRecruiter
  * jobs in matching (409); already on, nothing is written. It is then sent for review (pending:
  * proposed to nobody until a reviewer approves it), unless it was approved or rejected before and
  * has not changed since (reviewOnEntry), and its office is looked up in the background
- * (jobMatchingWarmUp). The terms in force are the recruiter routes' (requireRecruiterSpace).
+ * (jobMatchingWarmUp). Edited between the read and the write, it is read and checked again, once
+ * (then 409 JOB_CHANGED). The terms in force are the recruiter routes' (requireRecruiterSpace).
  *
  * Off: in any status, whatever was set; the job leaves every feed at once, and the interests no
- * other side answered go (afterMatchingOff). Its review stays, for when it is turned on again.
+ * mutual interest came of go (afterMatchingOff). Its review stays, for when it is turned on again.
  *
  * Neither changes the posting's `updatedAt`: matching is not part of the posting, and an edit
  * started before (PUT /jobs/:id's `updatedAt`) is not refused for it
@@ -179,7 +260,7 @@ export async function setJobMatching(
   enabled: boolean,
   now = new Date()
 ): Promise<StoredJobPosting> {
-  const job = await reloadOwn(recruiterId, jobId);
+  let job = await reloadOwn(recruiterId, jobId);
   if (!enabled) {
     await JobPosting.updateOne(
       { _id: job._id, recruiter: recruiterId },
@@ -191,25 +272,23 @@ export async function setJobMatching(
     return reloadOwn(recruiterId, job._id);
   }
 
-  if (job.status !== OPEN_JOB_STATUS) throw new ConflictError(MATCHING_NEEDS_OPEN_JOB);
-  requireMatchingFields(job);
-  if (job.matching?.enabledAt) return job;
-  await requireRoomInMatching(recruiterId);
-  const { modifiedCount } = await JobPosting.updateOne(
-    { _id: job._id, recruiter: recruiterId, status: OPEN_JOB_STATUS, 'matching.enabledAt': { $exists: false } },
-    { $set: { 'matching.enabledAt': now, 'matching.review': reviewOnEntry(job, now) } },
-    { timestamps: false }
-  );
-  if (modifiedCount === 0) {
-    // Changed meanwhile: put in matching by another request (nothing to do), or no longer open
-    const current = await reloadOwn(recruiterId, job._id);
-    if (current.status !== OPEN_JOB_STATUS) throw new ConflictError(MATCHING_NEEDS_OPEN_JOB);
-    return current;
+  let entered = await enterMatching(recruiterId, job, now);
+  if (entered === false) {
+    // Changed meanwhile (edited, its status changed, or put in matching by another request): read
+    // and checked again, once
+    job = await reloadOwn(recruiterId, job._id);
+    entered = await enterMatching(recruiterId, job, now);
+    if (entered === false) throw new ConflictError(JOB_CHANGED);
   }
+  if (entered !== true) return entered;
+  const before = job.matching;
   await holdLimit(recruiterId, () =>
+    // As it was before this request: off, with the review it had (or no matching at all)
     JobPosting.updateOne(
       { _id: job._id, 'matching.enabledAt': now },
-      { $unset: { 'matching.enabledAt': 1 } },
+      before?.review
+        ? { $unset: { 'matching.enabledAt': 1 }, $set: { 'matching.review': before.review } }
+        : { $unset: { matching: 1 } },
       { timestamps: false }
     )
   );
@@ -257,11 +336,12 @@ export async function settleCreatedInMatching(recruiterId: string, job: StoredJo
 // ── What a job's changes do to its matches ──────────────────
 
 /**
- * After matching was turned off for the job `jobId`: the interests no other side answered go (a
- * candidate's in the job, a recruiter's in a candidate for it), since nobody is proposed it to
- * answer them; the passes stay until they expire (MATCH_RETENTION), so turning matching off then on
- * again proposes the job to no candidate who passed it, nor a card its recruiter passed; the mutual
- * interests go on
+ * After matching was turned off for the job `jobId`: every interest no mutual interest came of goes
+ * (a candidate's in the job, a recruiter's in a candidate for it), whether the other side answered
+ * it with a pass or not answered it at all, since nothing is left for it to lead to; the passes stay
+ * until they expire (MATCH_RETENTION), so turning matching off then on again proposes the job to no
+ * candidate who passed it, nor a card its recruiter passed (an interest answered with a pass is not
+ * proposed again either: the pass is kept); the mutual interests go on
  */
 export async function afterMatchingOff(jobId: Types.ObjectId | string): Promise<void> {
   const pending = { job: jobId, matchedAt: { $exists: false } };
@@ -327,44 +407,85 @@ export function requireMatchingKept(stored: StoredJobPosting, fields: JobPosting
 export const leavesMatchingOnEdit = (stored: StoredJobPosting, fields: JobPostingInput): boolean =>
   !!stored.matching?.enabledAt && keepsMatching(fields.status) && matchingJobProblem(fields) !== null;
 
+/** The review a job in matching that `edited` is now holds no more: decided on another version */
+const decidedOnAnotherVersion = (edited: StoredJobPosting) => {
+  const review = edited.matching?.review;
+  return (
+    !!edited.matching?.enabledAt &&
+    keepsMatching(edited.status) &&
+    !!review &&
+    review.status !== 'pending' &&
+    review.version !== reviewedVersion(edited)
+  );
+};
+
 /**
- * After an edit of the job (PUT /jobs/:id: `before` and `after` it). Its terms are locked once it
- * is opened: what changes is what no criterion reads (its description...).
- * - Its review holds for the version decided on: a job in matching approved or rejected that is no
- *   longer that version is sent for review again (pending: out of the feeds until a reviewer
- *   approves it); its decisions and mutual interests stay.
+ * What an edit of a job in matching saves of its review with the posting (PUT /jobs/:id: `edited`,
+ * the posting about to be saved), as paths of the stored document and their values: approved or
+ * rejected on a version the posting no longer is, it is pending again in the same write, so its new
+ * text is never proposed unreviewed, not even between the save and afterJobEdited (which sends it
+ * back again from what is stored, for a decision taken while the edit ran). Nothing otherwise
+ */
+export const reviewSavedWithEdit = (edited: StoredJobPosting, now = new Date()): [string, unknown][] =>
+  decidedOnAnotherVersion(edited)
+    ? [
+        ['matching.review.status', 'pending'],
+        ['matching.review.requestedAt', now],
+        ['matching.review.reason', undefined]
+      ]
+    : [];
+
+/**
+ * After an edit of the job (PUT /jobs/:id: `before` and `after` it, `after` as saved). Its terms
+ * are locked once it is opened: what changes is what no criterion reads (its description...).
+ * Decided from what is stored, not from the copy the edit loaded, which a request that ran
+ * meanwhile (a reviewer's decision, matching turned on) may have made stale:
+ * - Its review holds for the version decided on: a job in matching approved or rejected on another
+ *   version than the one saved is sent for review again (pending: out of the feeds until a reviewer
+ *   approves it); its decisions and mutual interests stay. A decision taken meanwhile on the
+ *   version saved is not undone.
+ * - A job in matching that matching cannot propose any more (its company taken out by an edit that
+ *   started before it was put into matching) is taken out of it (afterMatchingOff).
  * - A snapshot never changes (each side keeps what it saw): a mutual interest whose snapshot is no
  *   longer the posting is marked changed (`changedAt`: the latest edit that changed the posting, or
  *   this one when none was marked yet); one the edit brings back to its snapshot is not any more. A
  *   snapshot that cannot be read counts as changed
- * Whether it sent the job back for review (its posting changed)
+ * Whether it changed the job (sent back for review, or out of matching): its posting is read again
  */
 export async function afterJobEdited(before: StoredJobPosting, after: StoredJobPosting, now = new Date()): Promise<boolean> {
-  const review = after.matching?.review;
-  let sentBack = false;
-  if (after.matching?.enabledAt && review && review.status !== 'pending' && review.version !== reviewedVersion(after)) {
-    // Conditioned on the decision read: one taken meanwhile on this version is not undone
+  let changed = false;
+  if (keepsMatching(after.status) && matchingJobProblem(after)) {
     const { modifiedCount } = await JobPosting.updateOne(
-      {
-        _id: after._id,
-        'matching.enabledAt': { $exists: true },
-        'matching.review.status': review.status,
-        'matching.review.version': review.version ?? null
-      },
-      {
-        $set: { 'matching.review.status': 'pending', 'matching.review.requestedAt': now },
-        $unset: { 'matching.review.reason': 1 }
-      },
+      { _id: after._id, 'matching.enabledAt': { $exists: true } },
+      { $unset: { 'matching.enabledAt': 1 } },
       { timestamps: false }
     );
-    sentBack = modifiedCount > 0;
+    if (modifiedCount > 0) {
+      await afterMatchingOff(after._id);
+      changed = true;
+    }
   }
+  const { modifiedCount: sentBack } = await JobPosting.updateOne(
+    {
+      _id: after._id,
+      status: { $in: MATCHING_JOB_STATUSES },
+      'matching.enabledAt': { $exists: true },
+      'matching.review.status': { $in: ['approved', 'rejected'] },
+      'matching.review.version': { $ne: reviewedVersion(after) }
+    },
+    {
+      $set: { 'matching.review.status': 'pending', 'matching.review.requestedAt': now },
+      $unset: { 'matching.review.reason': 1 }
+    },
+    { timestamps: false }
+  );
+  changed ||= sentBack > 0;
 
   const active = await Match.find(
     { job: after._id, matchedAt: { $exists: true }, endedAt: { $exists: false } },
     { 'snapshot.posting': 1 }
   ).lean<{ _id: Types.ObjectId; snapshot?: { posting?: unknown } | null }[]>();
-  if (active.length === 0) return sentBack;
+  if (active.length === 0) return changed;
   const current = versionNow(after);
   const edited = jobSnapshotsDiffer(versionNow(before), current);
   const differ: Types.ObjectId[] = [];
@@ -381,5 +502,5 @@ export async function afterJobEdited(before: StoredJobPosting, after: StoredJobP
       ),
     same.length > 0 && Match.updateMany({ _id: { $in: same }, changedAt: { $exists: true } }, { $unset: { changedAt: 1 } })
   ]);
-  return sentBack;
+  return changed;
 }

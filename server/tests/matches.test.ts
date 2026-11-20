@@ -12,27 +12,41 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
 import {
+  DISCOVERY_CONSENT_KEYS,
+  LEGAL_VERSION,
   MATCHING_LIMITS,
   MATCH_RETENTION,
   endedMatchExpiry,
   jobLiveInMatching,
-  matchDecisionExpiry
+  matchDecisionExpiry,
+  parsePerfectJob
 } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
-import { DiscoveryProfile, JobPosting, Match, User } from '../models/database';
+import {
+  DiscoveryProfile,
+  Domain,
+  JobPosting,
+  Match,
+  PerfectJob,
+  User,
+  Workflow,
+  WorkflowInstance
+} from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
 import { JOB_CHANGED, MATCHING_NEEDS_OPEN_JOB, NOT_A_MATCHING_REVIEWER } from '../protocol';
 import { deleteAccount } from '../services/accountDeletion';
-import { jobMatchingWarmUp, reviewedVersion } from '../services/jobMatching';
-import { toJobSnapshot } from '../services/jobPostings';
+import { isLiveInMatching, jobMatchingWarmUp, liveJobsQuery, reviewedVersion } from '../services/jobMatching';
+import { toJobPostingDto, toJobSnapshot } from '../services/jobPostings';
+import { recordConsent } from '../services/legal';
 import { logger } from '../services/logger';
-import { authCookie, openRecruiterSpace } from './helpers';
+import { CONSENT, authCookie, openRecruiterSpace, workflowRequestBody } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
 const testNames = () => {
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  // A letter between the time and the random part: never 9 digits in a row (read as a phone number)
+  const suffix = `${Date.now().toString(36)}x${Math.random().toString(36).slice(2, 8)}`;
   const id = (name: string) => `match-${name}-${suffix}`;
   return { suffix, id, email: (name: string) => `${id(name)}@example.com` };
 };
@@ -206,11 +220,16 @@ afterEach(async () => {
   env.matchingEnabled = saved.matching;
   env.matchingReviewers = saved.reviewers;
   if (!connected) return;
-  const users = (await User.find({ email: new RegExp(`-${t.suffix}@`) }, '_id').lean()).map((user) => user._id);
+  // Whatever the case of the address (a test writes one in capitals)
+  const users = (await User.find({ email: new RegExp(`-${t.suffix}@`, 'i') }, '_id').lean()).map((user) => user._id);
   const jobs = (await JobPosting.find({ recruiter: { $in: users } }, '_id').lean()).map((job) => job._id);
   await Match.deleteMany({ $or: [{ candidate: { $in: users } }, { recruiter: { $in: users } }, { job: { $in: jobs } }] });
   await JobPosting.deleteMany({ _id: { $in: jobs } });
   await DiscoveryProfile.deleteMany({ user: { $in: users } });
+  await PerfectJob.deleteMany({ user: { $in: users } });
+  await Workflow.deleteMany({ user: { $in: users } });
+  await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: users } }, { visitor: { $in: users } }] });
+  await Domain.deleteMany({ admin: { $in: users } });
   await User.deleteMany({ _id: { $in: users } });
 });
 
@@ -304,6 +323,53 @@ describe('PUT /jobs/:id/matching', () => {
     expect(warmed).toEqual([]);
   });
 
+  it('refuses a job whose stored version breaks a rule a posting is saved under today (422), until it is saved again', async () => {
+    const recruiter = await createRecruiter();
+    const job = await createJob(recruiter);
+    // Opened before the pay cap with 45-80 k€: it keeps its status changes, scored as 45-67.5 k€
+    await JobPosting.updateOne({ _id: job._id }, { $set: { 'pay.max': 80000 } });
+
+    for (const [language, message] of [
+      ['en', 'Maximum pay must be at most €67,500 (1.5 times the minimum)'],
+      ['fr', 'Rémunération maximale\u00a0: indiquez 67\u202f500\u00a0€ au maximum (1,5 fois la minimale)']
+    ]) {
+      const refused = await setMatching(recruiter, job._id, true, language);
+      expect(refused.json()).toEqual({ type: 'validation', on: 'body', property: 'pay.max', message });
+    }
+    expect((await stored(job._id)).matching).toBeUndefined();
+    expect(warmed).toEqual([]);
+
+    // Saved again with the top it is scored with (what its editor shows): it goes in
+    const narrowed = sampleJob({ pay: { min: 45000, max: 67500, currency: 'EUR', period: 'year' } });
+    expect((await call('PUT', `/jobs/${job._id}`, { body: narrowed, cookie: recruiter.cookie })).status).toBe(200);
+    expect((await setMatching(recruiter, job._id, true)).json().matching.review.status).toBe('pending');
+  });
+
+  it("puts a job its recruiter first shared on a candidate's page for recruiters into matching, the journey left as it was", async () => {
+    const recruiter = await createRecruiter();
+    const candidate = await createUser('candidate');
+    const domain = t.id('candidate');
+    await Domain.create({ name: domain, admin: candidate.id, experiences: [] });
+    expect((await call('PUT', '/workflow', { body: workflowRequestBody, cookie: candidate.cookie })).status).toBe(200);
+    // Written from the page for recruiters: created without `matching`, so off
+    const job = await createJob(recruiter);
+    expect(job.matching).toEqual({ enabledAt: null, review: null });
+    const picked = await call('POST', `/workflow/domains/${domain}/steps/job`, {
+      body: { input: { jobId: job._id } },
+      cookie: recruiter.cookie
+    });
+    expect(picked.status).toBe(200);
+    const shared = await WorkflowInstance.findOne({ owner: candidate.id, visitor: recruiter.id }).lean();
+    expect(shared?.steps).toBeDefined();
+
+    const answer = await setMatching(recruiter, job._id, true);
+
+    expect(answer.status).toBe(200);
+    expect(answer.json().matching.review).toMatchObject({ status: 'pending' });
+    // The version shared on the journey stays as it was shared
+    expect((await WorkflowInstance.findOne({ owner: candidate.id, visitor: recruiter.id }).lean())?.steps).toEqual(shared!.steps);
+  });
+
   it("answers 404 for another recruiter's posting or an unknown one, 403 without a recruiter space, 422 on consent without the terms in force", async () => {
     const recruiter = await createRecruiter();
     const other = await createRecruiter('other');
@@ -342,15 +408,32 @@ describe('PUT /jobs/:id/matching', () => {
     expect((await setMatching(recruiter, ids[max]!, true)).status).toBe(200);
 
     const racer = await createRecruiter('racer');
+    // Every other job approved once, then off and changed since: it would be sent for review again
+    const earlier = new Date(Date.now() - DAY);
+    const decided = { review: { status: 'approved', requestedAt: earlier, reviewedAt: earlier, version: 'an older version' } };
     const raced = await JobPosting.insertMany(
-      Array.from({ length: max + 3 }, (_, index) => ({ ...sampleJob({ title: `Raced ${index}` }), recruiter: racer.id, publishedAt: new Date() }))
+      Array.from({ length: max + 3 }, (_, index) => ({
+        ...sampleJob({ title: `Raced ${index}` }),
+        recruiter: racer.id,
+        publishedAt: new Date(),
+        ...(index % 2 === 0 ? { matching: decided } : {})
+      }))
+    );
+    const before = new Map(
+      await Promise.all(raced.map(async (job) => [job._id.toString(), (await stored(job._id.toString())).matching] as const))
     );
     const answers = await Promise.all(raced.map((job) => setMatching(racer, job._id.toString(), true)));
     expect(answers.every((answer) => answer.status === 200 || answer.status === 409)).toBe(true);
     expect(await JobPosting.countDocuments({ recruiter: racer.id, 'matching.enabledAt': { $exists: true } })).toBeLessThanOrEqual(max);
+    // A job refused is left as it was: off, with the review it had (or none at all)
+    for (const [index, answer] of answers.entries()) {
+      if (answer.status !== 409) continue;
+      const id = raced[index]!._id.toString();
+      expect((await stored(id)).matching).toEqual(before.get(id));
+    }
   });
 
-  it('turns matching off in any status: the interests nobody answered go, passes and mutual interests stay', async () => {
+  it('turns matching off in any status: every interest no mutual interest came of goes, passes and mutual interests stay', async () => {
     const recruiter = await createRecruiter();
     const job = await jobInMatching(recruiter);
     const other = await jobInMatching(recruiter, sampleJob({ title: 'Other job' }));
@@ -359,6 +442,7 @@ describe('PUT /jobs/:id/matching', () => {
     const candidateInterest = await storeMatch(job._id, recruiter, a, { candidate: 'interested' });
     const recruiterInterest = await storeMatch(job._id, recruiter, b, { recruiter: 'interested' });
     const candidatePass = await storeMatch(job._id, recruiter, c, { candidate: 'pass' });
+    // Answered with a pass: the interest goes all the same, the pass stays
     const answeredWithPass = await storeMatch(job._id, recruiter, d, { candidate: 'interested', recruiter: 'pass' });
     const mutual = await storeMatch(job._id, recruiter, e, { candidate: 'interested', recruiter: 'interested', matched: true });
     const elsewhere = await storeMatch(other._id, recruiter, a, { candidate: 'interested' });
@@ -479,6 +563,26 @@ describe('POST /jobs with `matching`', () => {
     expect(await JobPosting.countDocuments({ recruiter: recruiter.id })).toBe(MATCHING_LIMITS.matchingJobsPerRecruiter);
     expect(warmed).toEqual([]);
   });
+
+  it(`keeps at most ${MATCHING_LIMITS.matchingJobsPerRecruiter} jobs in matching when they are created in it at once: a creation refused leaves nothing`, async () => {
+    const max = MATCHING_LIMITS.matchingJobsPerRecruiter;
+    const recruiter = await createRecruiter();
+    const titles = Array.from({ length: max + 3 }, (_, index) => `Created ${index}`);
+
+    const answers = await Promise.all(
+      titles.map((title) => call('POST', '/jobs', { body: { ...sampleJob({ title }), matching: true }, cookie: recruiter.cookie }))
+    );
+
+    expect(answers.every((answer) => answer.status === 200 || answer.status === 409)).toBe(true);
+    const created = answers.filter((answer) => answer.status === 200).length;
+    expect(created).toBeLessThanOrEqual(max);
+    for (const [index, answer] of answers.entries()) {
+      if (answer.status === 409) expect(await JobPosting.exists({ recruiter: recruiter.id, title: titles[index] })).toBeNull();
+    }
+    // Every posting left was created in matching
+    expect(await JobPosting.countDocuments({ recruiter: recruiter.id })).toBe(created);
+    expect(await JobPosting.countDocuments({ recruiter: recruiter.id, 'matching.enabledAt': { $exists: true } })).toBe(created);
+  });
 });
 
 // ── A job's status ──────────────────────────────────────────
@@ -553,12 +657,26 @@ describe("a job's status and its matches", () => {
     expect(await matchOf(edited.pendingInterest)).toBeNull();
 
     const offline = await jobWithMatches(recruiter, 'offline');
+    const deleted = await jobWithMatches(recruiter, 'deleted');
+    const reworded = await jobWithMatches(recruiter, 'reworded');
     env.matchingEnabled = false;
     app = createApp();
     expect((await call('PUT', `/jobs/${offline.job._id}/status`, { body: { status: 'filled' }, cookie: recruiter.cookie })).status).toBe(200);
     expect((await stored(offline.job._id)).matching?.enabledAt).toBeUndefined();
     expect((await matchOf(offline.mutual))?.endReason).toBe('job_closed');
     expect(await matchOf(offline.pass)).toBeNull();
+    // Deleted: its matches go
+    expect((await call('DELETE', `/jobs/${deleted.job._id}`, { cookie: recruiter.cookie })).status).toBe(200);
+    expect(await Match.countDocuments({ job: deleted.job._id })).toBe(0);
+    // Edited: sent back for review, its matches kept
+    const edit = await call('PUT', `/jobs/${reworded.job._id}`, {
+      body: sampleJob({ description: '## The job\n\nReworded while matching is off.' }),
+      cookie: recruiter.cookie
+    });
+    expect(edit.status).toBe(200);
+    expect(edit.json()).not.toHaveProperty('matching');
+    expect((await stored(reworded.job._id)).matching?.review?.status).toBe('pending');
+    expect(await matchOf(reworded.pendingInterest)).not.toBeNull();
   });
 });
 
@@ -650,6 +768,78 @@ describe('an edit of a job in matching', () => {
     expect((await stored(job._id)).matching?.review?.reason).toBeUndefined();
   });
 
+  it('sends it back for review from what is stored: a decision or a switch made while the edit ran', async () => {
+    const recruiter = await createRecruiter();
+    const reviewer = await createUser('reviewer');
+    const description = (text: string) => sampleJob({ description: `## The job\n\n${text}` });
+    const save = JobPosting.prototype.save;
+    /** The edit's save, once `meanwhile` ran: after the edit read the posting, before it writes */
+    const beforeTheSave = (meanwhile: () => Promise<void>) =>
+      spyOn(JobPosting.prototype, 'save').mockImplementationOnce(async function (this: any, ...args: any[]) {
+        await meanwhile();
+        return save.apply(this, args as never);
+      } as never);
+
+    // A reviewer approves the version they read, the edit then saves another
+    const reviewed = await jobInMatching(recruiter);
+    const version = reviewedVersion(await stored(reviewed._id));
+    beforeTheSave(async () => {
+      const approval = { body: { decision: 'approve', version }, cookie: reviewer.cookie };
+      expect((await call('PUT', `/matching/reviews/${reviewed._id}`, approval)).status).toBe(200);
+    });
+    const edit = await call('PUT', `/jobs/${reviewed._id}`, { body: description('Edited while it was reviewed.'), cookie: recruiter.cookie });
+    expect(edit.json().matching.review.status).toBe('pending');
+    expect(jobLiveInMatching((await stored(reviewed._id)) as never)).toBe(false);
+
+    // Approved, off, then turned on again (its approval kept: unchanged) while an edit ran
+    const switched = await jobInMatching(recruiter, sampleJob({ title: 'Switched' }));
+    await approve(switched._id);
+    await setMatching(recruiter, switched._id, false);
+    mock.restore();
+    spyOn(jobMatchingWarmUp, 'office').mockImplementation(async () => {});
+    beforeTheSave(async () => {
+      expect((await setMatching(recruiter, switched._id, true)).json().matching.review.status).toBe('approved');
+    });
+    const late = await call('PUT', `/jobs/${switched._id}`, {
+      body: sampleJob({ title: 'Switched', description: '## The job\n\nEdited while it was turned on.' }),
+      cookie: recruiter.cookie
+    });
+    expect(late.json().matching).toMatchObject({ enabledAt: expect.stringMatching(ISO_INSTANT), review: { status: 'pending' } });
+    expect(jobLiveInMatching((await stored(switched._id)) as never)).toBe(false);
+  });
+
+  it('turns matching on for the version an edit saved while it was being turned on', async () => {
+    const recruiter = await createRecruiter();
+    const job = await jobInMatching(recruiter);
+    await approve(job._id);
+    await setMatching(recruiter, job._id, false);
+    // The edit saved between the switch's read and its write (while it counts the jobs in matching)
+    const count = JobPosting.countDocuments.bind(JobPosting);
+    let edited = false;
+    spyOn(JobPosting, 'countDocuments').mockImplementation(((...args: Parameters<typeof count>) => {
+      if (edited) return count(...args);
+      edited = true;
+      return (async () => {
+        const edit = await call('PUT', `/jobs/${job._id}`, {
+          body: sampleJob({ description: '## The job\n\nEdited while it was turned on.' }),
+          cookie: recruiter.cookie
+        });
+        expect(edit.status).toBe(200);
+        return count(...args);
+      })();
+    }) as never);
+
+    const on = await setMatching(recruiter, job._id, true);
+
+    expect(edited).toBe(true);
+    expect(on.status).toBe(200);
+    // Read again: the approval was of the version before the edit
+    expect(on.json().matching.review.status).toBe('pending');
+    const after = await stored(job._id);
+    expect(after.description).toContain('Edited while it was turned on.');
+    expect(jobLiveInMatching(after as never)).toBe(false);
+  });
+
   it('marks a mutual interest whose snapshot is no longer the posting, and unmarks it once it is again', async () => {
     const recruiter = await createRecruiter();
     const job = await jobInMatching(recruiter);
@@ -689,17 +879,49 @@ describe('an edit of a job in matching', () => {
 // ── The review ──────────────────────────────────────────────
 
 describe('the review of the jobs in matching', () => {
-  it('lists the jobs waiting for a review to the reviewers alone (403 for anyone else)', async () => {
+  it('lists the jobs waiting for a review to the reviewers alone (403 for anyone else), and nothing of any candidate', async () => {
     const recruiter = await createRecruiter();
     const reviewer = await createUser('reviewer');
     const stranger = await createUser('stranger');
     const first = await jobInMatching(recruiter, sampleJob({ title: 'First' }));
-    await Bun.sleep(5);
     const second = await jobInMatching(recruiter, sampleJob({ title: 'Second' }));
+    // Asked before anything else waiting (the list is the oldest first, a page at most): this
+    // test's jobs are in it whatever other jobs wait in the database
+    const asked = [new Date(1), new Date(2)];
+    for (const [index, job] of [first, second].entries()) {
+      await JobPosting.updateOne({ _id: job._id }, { $set: { 'matching.review.requestedAt': asked[index] } }, { timestamps: false });
+    }
     const approved = await jobInMatching(recruiter, sampleJob({ title: 'Approved' }));
     await approve(approved._id);
     const off = await jobInMatching(recruiter, sampleJob({ title: 'Off' }));
     await setMatching(recruiter, off._id, false);
+
+    // Candidates of the first job: one interested, one in a mutual interest, each with a portfolio,
+    // a perfect job and an anonymous card
+    const candidates = await Promise.all(['interested', 'mutual'].map((name) => createUser(`candidate-${name}`)));
+    const headline = `Distinctive headline ${t.suffix}`;
+    const ask = 51_234;
+    for (const candidate of candidates) {
+      await Domain.create({ name: t.id(`portfolio-${candidate.id}`), admin: candidate.id, experiences: [] });
+      await PerfectJob.create({ user: candidate.id, criteria: parsePerfectJob({ pay: { importance: 5, perYear: ask } }).criteria });
+      await DiscoveryProfile.create({
+        user: candidate.id,
+        enabledAt: new Date(),
+        lastActiveAt: new Date(),
+        card: { headline, hiddenExperiences: [] },
+        consents: [{ action: 'granted', at: new Date(), termsVersion: LEGAL_VERSION, wordingKey: DISCOVERY_CONSENT_KEYS.en }]
+      });
+    }
+    const [interested, mutual] = candidates as [TestUser, TestUser];
+    const matches = [
+      await storeMatch(first._id, recruiter, interested, { candidate: 'interested' }),
+      await storeMatch(first._id, recruiter, mutual, {
+        candidate: 'interested',
+        recruiter: 'interested',
+        matched: true,
+        snapshot: toJobSnapshot(await stored(first._id))
+      })
+    ];
 
     for (const user of [stranger, recruiter]) {
       const refused = await call('GET', '/matching/reviews', { cookie: user.cookie });
@@ -716,15 +938,30 @@ describe('the review of the jobs in matching', () => {
     const mine = answer.json().jobs.filter((entry: any) => [first._id, second._id, approved._id, off._id].includes(entry.job._id));
     expect(mine.map((entry: any) => entry.job.title)).toEqual(['First', 'Second']);
     const [entry] = mine;
+    // The posting as its recruiter saved it, and nothing more: no candidate, no count of them
     expect(entry).toEqual({
-      job: expect.objectContaining({ _id: first._id, title: 'First', company: 'Acme', description: first.description }),
+      job: JSON.parse(JSON.stringify(toJobPostingDto(await stored(first._id)))),
       recruiter: { emailDomain: 'example.com' },
       matchingSince: first.matching.enabledAt,
-      review: { status: 'pending', requestedAt: first.matching.enabledAt, reviewedAt: null, reason: null },
+      review: { status: 'pending', requestedAt: asked[0]!.toISOString(), reviewedAt: null, reason: null },
       version: reviewedVersion(await stored(first._id))
     });
     // Who is behind the job, by the domain of their address only
     for (const leak of [recruiter.id, recruiter.email, 'recruiter-first', 'recruiter-last']) {
+      expect(answer.text).not.toContain(leak);
+    }
+    // Nothing of the candidates its matches name
+    const domains = await Domain.find({ admin: { $in: candidates.map((candidate) => candidate.id) } }).lean();
+    expect(domains).toHaveLength(2);
+    for (const leak of [
+      ...candidates.flatMap((candidate) => [candidate.id, candidate.email]),
+      'candidate-interested-first',
+      'candidate-mutual-last',
+      ...domains.map((domain) => domain.name),
+      ...matches.map(String),
+      headline,
+      String(ask)
+    ]) {
       expect(answer.text).not.toContain(leak);
     }
 
@@ -801,6 +1038,10 @@ describe('the review of the jobs in matching', () => {
     expect((await stored(job._id)).matching?.review?.status).toBe('pending');
 
     const fresh = reviewedVersion(await stored(job._id));
+    // A decision left out is no approval (no default fills it in)
+    const undecided = await call('PUT', `/matching/reviews/${job._id}`, { body: { version: fresh }, cookie: reviewer.cookie });
+    expect(undecided.status).toBe(422);
+    expect((await stored(job._id)).matching?.review?.status).toBe('pending');
     await setMatching(recruiter, job._id, false);
     expect((await call('PUT', `/matching/reviews/${job._id}`, { body: { decision: 'approve', version: fresh }, cookie: reviewer.cookie })).status).toBe(404);
     expect((await call('PUT', `/matching/reviews/${UNKNOWN_ID}`, { body: { decision: 'approve', version: fresh }, cookie: reviewer.cookie })).status).toBe(404);
@@ -861,6 +1102,31 @@ describe('a withdrawal of discovery', () => {
   });
 });
 
+// ── The jobs proposed ───────────────────────────────────────
+
+describe('the jobs proposed to candidates', () => {
+  it('are the jobs live in matching of a recruiter who accepted the terms in force, never the reader own', async () => {
+    const recruiter = await createRecruiter();
+    const job = await jobInMatching(recruiter);
+    await approve(job._id);
+    const proposed = async (except?: string) => JobPosting.countDocuments({ ...(await liveJobsQuery(except)), _id: job._id });
+    expect(await isLiveInMatching(await stored(job._id))).toBe(true);
+    expect(await proposed()).toBe(1);
+    expect(await proposed(recruiter.id)).toBe(0);
+
+    // The terms changed since they accepted them: proposed to nobody until they accept them again
+    await User.updateOne({ _id: recruiter.id }, { $set: { 'legalAcceptances.$[].version': '2025-01-01' } });
+    expect(await isLiveInMatching(await stored(job._id))).toBe(false);
+    expect(await proposed()).toBe(0);
+    // Its own state says nothing of it: still open, in matching and approved
+    expect(jobLiveInMatching((await stored(job._id)) as never)).toBe(true);
+
+    await recordConsent(recruiter.id, CONSENT, 'recruiter');
+    expect(await isLiveInMatching(await stored(job._id))).toBe(true);
+    expect(await proposed()).toBe(1);
+  });
+});
+
 // ── The model ───────────────────────────────────────────────
 
 describe('the Match model', () => {
@@ -872,8 +1138,7 @@ describe('the Match model', () => {
 
     const twice = storeMatch(job._id, recruiter, candidate, { recruiter: 'interested' });
 
-    expect(twice).rejects.toMatchObject({ code: 11000 });
-    await twice.catch(() => {});
+    await expect(twice).rejects.toMatchObject({ code: 11000 });
     expect(await Match.countDocuments({ job: job._id, candidate: candidate.id })).toBe(1);
   });
 

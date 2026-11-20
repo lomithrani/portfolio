@@ -107,6 +107,14 @@ export const matchingMessages = defineMessages({
 			en: 'Only an open job can be proposed to candidates: create it open, or propose it once it is.',
 			fr: "Seule une offre ouverte peut être proposée aux candidats : créez-la ouverte, ou proposez-la une fois qu'elle l'est."
 		},
+		/**
+		 * 422 on `matching`: a job whose stored version a recruiter could not save today (saved
+		 * under rules made tighter since), which matching does not propose until it is saved again
+		 */
+		saveAgain: {
+			en: 'Save this job again in the editor before you propose it to candidates: it was saved under rules that have changed since.',
+			fr: "Enregistrez de nouveau cette offre dans l'éditeur avant de la proposer aux candidats : elle a été enregistrée selon des règles qui ont changé depuis."
+		},
 		/** 422 on `company`: an edit of a job in matching that takes its company out */
 		companyKept: {
 			en: 'This job is proposed to candidates, so it names its company: stop proposing it before you remove the company.',

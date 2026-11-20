@@ -4,7 +4,6 @@ import {
   JOB_MATCH_STEP_LIMITS,
   MATCHING_LIMITS,
   discoveryConsentCutoff,
-  jobLiveInMatching,
   scorePerfectJob
 } from 'portfolio-common';
 import type { JobSnapshot, PerfectJob as PerfectJobCriteria, PerfectJobScore } from 'portfolio-common';
@@ -18,7 +17,7 @@ import type { CandidateCard, CardOutcome } from './candidateCard';
 import { cachedCommuteContext, commuteAvailability, commuteWarmUpPossible, warmCommute } from './commute';
 import type { CommutePair, CommuteReading } from './commute';
 import { isProposed, touchDiscovery } from './discovery';
-import { LIVE_IN_MATCHING } from './jobMatching';
+import { isLiveInMatching, liveJobsQuery } from './jobMatching';
 import { JOB_NOT_FOUND, toJobSnapshot } from './jobPostings';
 import type { JobPostingDto } from './jobPostings';
 import { sealMatchToken } from './matchTokens';
@@ -40,8 +39,9 @@ import { m } from './matchFeeds.messages';
 // of an outside service while they are read.
 //
 // Who is proposed to whom is one rule, on both sides: a job proposed to
-// candidates now (open, in matching and approved by a reviewer:
-// jobLiveInMatching), a candidate proposed to recruiters now (their consent in
+// candidates now (open, in matching and approved by a reviewer, of a
+// recruiter who accepted the terms in force: jobMatching.ts's
+// isLiveInMatching), a candidate proposed to recruiters now (their consent in
 // force and nothing missing: discovery.ts's isProposed), the job scored
 // against the candidate's own criteria (portfolio-common's scorePerfectJob,
 // the score the "Get the job scored" step of their journey gives) at least
@@ -270,9 +270,9 @@ export async function candidateFeed(userId: string, after?: string, now = new Da
   for (const jobId of pickedOn(bar.jobSteps, visits.map((visit) => visit.steps))) left.add(jobId);
 
   const cursor = readCursor(after);
+  // Live in matching, of a recruiter who accepted the terms in force, never their own
   const jobs = JobPosting.find({
-    ...LIVE_IN_MATCHING,
-    recruiter: { $ne: userId },
+    ...(await liveJobsQuery(userId)),
     ...(cursor
       ? { $or: [{ publishedAt: { $lt: cursor.at } }, { publishedAt: cursor.at, _id: { $lt: cursor.id } }] }
       : {})
@@ -342,8 +342,8 @@ export async function proposedJobPosting(
   job: StoredJobPosting,
   now = new Date()
 ): Promise<JobPostingDto | null> {
-  if (!jobLiveInMatching(job)) return null;
   if (String(job.recruiter) === candidateId) return null;
+  if (!(await isLiveInMatching(job))) return null;
   const [proposed, passed] = await Promise.all([
     isProposed(candidateId, now),
     Match.exists({ job: job._id, candidate: candidateId, 'recruiterDecision.value': 'pass' })
@@ -414,7 +414,7 @@ export async function recruiterFeed(recruiterId: string, jobId: string, now = ne
   await countRead(recruiterId);
   const job = await JobPosting.findOne({ _id: jobId, recruiter: recruiterId }).lean<StoredJobPosting>();
   if (!job) throw new ResourceNotFoundError(JOB_NOT_FOUND);
-  if (!jobLiveInMatching(job)) throw new ConflictError(JOB_NOT_PROPOSED);
+  if (!(await isLiveInMatching(job))) throw new ConflictError(JOB_NOT_PROPOSED);
   const snapshot = toJobSnapshot(job);
   const jobKey = String(job._id);
 
