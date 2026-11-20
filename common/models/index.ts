@@ -1,6 +1,21 @@
 export { ExperienceType } from './experienceType';
 export { EXPERIENCE_LIMITS } from './experienceLimits';
 export {
+	toDate,
+	monthIndex,
+	experiencePeriod,
+	projectEnd,
+	periodMonths,
+	placeProject,
+	projectMonthSpan,
+	skillMonths,
+	professionalMonths,
+	normalizeSkill,
+	skillDisplayName,
+	projectUsesSkill
+} from './experienceMonths';
+export type { DateInput, ExperiencePeriod, MonthSpan, PlacedMonths } from './experienceMonths';
+export {
 	DOMAIN_NAME_PATTERN,
 	RESERVED_DOMAIN_NAMES,
 	isValidDomainName,

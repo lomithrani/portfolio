@@ -1,3 +1,9 @@
+import { normalizeSkill, skillDisplayName } from 'portfolio-common';
+
+// How a skill is named and matched (normalizeSkill, skillDisplayName) is portfolio-common's
+// (common/models/experienceMonths.ts), so the API can count a skill's months on the same projects
+export { normalizeSkill };
+
 /**
  * Filters of an experience list: `skills` holds normalized keys (see normalizeSkill), in the
  * order they were selected
@@ -21,20 +27,7 @@ export type SkillOption = { key: string; label: string };
 
 export const emptyFilters = (): ExperienceFilters => ({ skills: [] });
 
-/** Key of a skill name: skills match ignoring case and surrounding spaces ('TypeScript ' = 'typescript') */
-export function normalizeSkill(name: string): string {
-	return name.trim().toLowerCase();
-}
-
 const unique = <T>(values: T[]): T[] => [...new Set(values)];
-
-/** Display name of a populated skill entry (undefined when not populated or blank) */
-const displayNameOf = (entry: SkillEntry): string | undefined => {
-	const skill = entry.skill;
-	if (!skill || typeof skill !== 'object' || !('displayName' in skill)) return undefined;
-	const name = (skill as { displayName?: unknown }).displayName;
-	return typeof name === 'string' && name.trim() ? name.trim() : undefined;
-};
 
 const skillEntriesOf = (experience: FilterableExperience, kind: 'hardSkills' | 'softSkills') =>
 	(experience.projects ?? []).flatMap((project) => project[kind] ?? []);
@@ -46,7 +39,7 @@ function experienceSkillKeys(experience: FilterableExperience): Set<string> {
 		...skillEntriesOf(experience, 'hardSkills'),
 		...skillEntriesOf(experience, 'softSkills')
 	]) {
-		const name = displayNameOf(entry);
+		const name = skillDisplayName(entry);
 		if (name) keys.add(normalizeSkill(name));
 	}
 	return keys;
@@ -99,7 +92,7 @@ export function projectMatchesFilters(
 ): boolean {
 	if (filters.skills.length === 0) return false;
 	return [...(project.hardSkills ?? []), ...(project.softSkills ?? [])].some((entry) => {
-		const name = displayNameOf(entry);
+		const name = skillDisplayName(entry);
 		return name !== undefined && filters.skills.includes(normalizeSkill(name));
 	});
 }
@@ -123,7 +116,7 @@ export function skillOptions(experiences: FilterableExperience[]): {
 	for (const experience of experiences) {
 		for (const kind of ['hardSkills', 'softSkills'] as const) {
 			for (const entry of skillEntriesOf(experience, kind)) {
-				const name = displayNameOf(entry);
+				const name = skillDisplayName(entry);
 				if (!name) continue;
 				const key = normalizeSkill(name);
 				const group = groups.get(key) ?? { spellings: new Map(), hard: 0, soft: 0 };

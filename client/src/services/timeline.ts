@@ -1,16 +1,20 @@
-import { ExperienceType } from 'portfolio-common';
 import {
+	ExperienceType,
 	experiencePeriod,
-	formatMonth,
 	monthIndex,
-	projectEnd,
-	toDate,
-	type ExperiencePeriod
-} from '#services/experienceDates.ts';
+	periodMonths,
+	placeProject,
+	type MonthSpan
+} from 'portfolio-common';
+import { formatMonth } from '#services/experienceDates.ts';
 
 // The timeline view of the experiences page: experiences and their projects as bars over a
 // time axis. Everything has month precision (see experienceDates.ts) and is counted in months
-// since year 0, so the layout is plain arithmetic the server and the browser agree on.
+// since year 0, so the layout is plain arithmetic the server and the browser agree on. Where an
+// experience and each of its projects are placed is portfolio-common's month arithmetic
+// (common/models/experienceMonths.ts: periodMonths, placeProject), shared with the API.
+
+export { projectMonthSpan, type MonthSpan } from 'portfolio-common';
 
 /** The views of the experiences page; the list is the default */
 export type ExperienceView = 'list' | 'timeline';
@@ -37,9 +41,6 @@ export function viewToSearchParams(
 type Dated = { start?: Date | string | null; end?: Date | string | null };
 type SourceProject = Dated;
 type SourceExperience = Dated & { type?: ExperienceType; projects?: SourceProject[] | null };
-
-/** Months `start` to `end`, `end` excluded: Jan to Mar 2024 is { start: Jan, end: Apr } */
-export type MonthSpan = { start: number; end: number };
 
 export type TimelineProject<P> = {
 	project: P;
@@ -173,69 +174,6 @@ export function timelineAxis(
 	return { start, end, years };
 }
 
-/** The months of a dated experience, both included: an ongoing one runs to the current month */
-function experienceMonths(
-	period: ExperiencePeriod,
-	nowMonth: number
-): { start: number; last: number } | undefined {
-	if (!period.start) return undefined;
-	const start = monthIndex(period.start);
-	const last = Math.max(
-		start,
-		period.ongoing ? nowMonth : period.end ? monthIndex(period.end) : start
-	);
-	return { start, last };
-}
-
-/** The months of a project inside its (dated) experience, which covers `own` */
-function placeProject(
-	project: SourceProject,
-	period: ExperiencePeriod,
-	own: { start: number; last: number },
-	nowMonth: number
-): { placed: Placed; ongoing: boolean; undated: boolean } {
-	const projectStart = toDate(project.start);
-	if (!projectStart) {
-		// No start: it began with its experience, and lasted as long unless it has an end
-		const ownEnd = toDate(project.end);
-		return {
-			placed: {
-				start: own.start,
-				last: ownEnd ? Math.max(own.start, monthIndex(ownEnd)) : own.last,
-				floor: own.start
-			},
-			ongoing: !ownEnd && period.ongoing,
-			undated: true
-		};
-	}
-	const from = monthIndex(projectStart);
-	// No end: ongoing, unless its experience ended (then it stopped with it)
-	const end = projectEnd(project, period);
-	return {
-		placed: { start: from, last: Math.max(from, end ? monthIndex(end) : nowMonth), floor: from },
-		ongoing: !end,
-		undated: false
-	};
-}
-
-/**
- * The months a project of an experience lasted, as the timeline places it (see buildTimeline):
- * all of them, where the timeline cuts a bar short at the next one's start. Undefined when the
- * experience has no dates: the project cannot be placed.
- */
-export function projectMonthSpan(
-	project: SourceProject,
-	experience: SourceExperience,
-	now: Date = new Date()
-): MonthSpan | undefined {
-	const nowMonth = monthIndex(now);
-	const period = experiencePeriod(experience);
-	const own = experienceMonths(period, nowMonth);
-	if (!own) return undefined;
-	const { placed } = placeProject(project, period, own, nowMonth);
-	return { start: placed.start, end: placed.last + 1 };
-}
-
 /**
  * Lays the experiences out over time.
  *
@@ -266,18 +204,24 @@ export function buildTimeline<E extends SourceExperience>(
 
 	for (const experience of experiences) {
 		const period = experiencePeriod(experience);
-		const own = experienceMonths(period, nowMonth);
+		const own = periodMonths(period, nowMonth);
 		if (!own) {
 			undated.push(experience);
 			continue;
 		}
 		const { start, last } = own;
 
-		const projects = (experience.projects ?? []).map((project: P, index) => ({
-			project,
-			index,
-			...placeProject(project, period, own, nowMonth)
-		}));
+		const projects = (experience.projects ?? []).map((project: P, index) => {
+			const placed = placeProject(project, period, own, nowMonth);
+			return {
+				project,
+				index,
+				// A project holds nothing: its floor is its own start (see Placed)
+				placed: { start: placed.start, last: placed.last, floor: placed.start },
+				ongoing: placed.ongoing,
+				undated: placed.undated
+			};
+		});
 
 		drafts.push({
 			experience,
