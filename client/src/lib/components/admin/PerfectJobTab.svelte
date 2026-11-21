@@ -64,7 +64,7 @@ recruiters as an anonymous card, saved apart from the criteria), while matching 
 	import Rich from '#lib/i18n/Rich.svelte';
 	import AddressSearch from '#components/address/AddressSearch.svelte';
 	import type { AdminTab } from '#services/candidateSetup.ts';
-	import type { CardExperience, DiscoveryLoad } from '#services/discovery.ts';
+	import type { CardExperience, DiscoveryKnown } from '#services/discovery.ts';
 	import type { DiscoveryStatus } from '#services/matching.ts';
 	import DiscoverySettings from './discovery/DiscoverySettings.svelte';
 	import { m } from './PerfectJobTab.messages.ts';
@@ -94,7 +94,7 @@ recruiters as an anonymous card, saved apart from the criteria), while matching 
 		 * Being proposed to recruiters (GET /discovery, read by the page; null until it was; `off`:
 		 * matching is off, nothing of it shows), saved apart from the criteria (DiscoverySettings)
 		 */
-		discovery?: DiscoveryLoad | null;
+		discovery?: DiscoveryKnown | null;
 		/** What a change of discovery answered */
 		onDiscovery?: (status: DiscoveryStatus) => void;
 		/** Reads discovery again (what the criteria saved changes what is missing) */
@@ -245,15 +245,23 @@ recruiters as an anonymous card, saved apart from the criteria), while matching 
 			which === 'pay'
 				? root?.querySelector<HTMLElement>('[data-criterion="pay"]')
 				: root?.querySelector<HTMLElement>('[data-criterion]');
-		if (!target) return;
-		target.scrollIntoView({ block: 'start' });
-		target.querySelector<HTMLElement>('input')?.focus({ preventScroll: true });
+		if (target) {
+			target.scrollIntoView({ block: 'start' });
+			target.querySelector<HTMLElement>('input')?.focus({ preventScroll: true });
+			return;
+		}
+		// The criteria are not there (still loading, or they could not be read): the top of the tab,
+		// where it says so, its Retry when they could not
+		root?.scrollIntoView({ block: 'start' });
+		(status === 'error' ? retryButton : title)?.focus({ preventScroll: true });
 	}
+	let title: HTMLElement | undefined = $state();
+	let retryButton: HTMLButtonElement | undefined = $state();
 </script>
 
 <div class="space-y-6" bind:this={root}>
 	<section class="space-y-2">
-		<h2 class="h3">{m.title}</h2>
+		<h2 class="h3 outline-none" tabindex="-1" bind:this={title}>{m.title}</h2>
 		<p class="opacity-75">{m.intro}</p>
 	</section>
 
@@ -262,7 +270,9 @@ recruiters as an anonymous card, saved apart from the criteria), while matching 
 	{:else if status === 'error'}
 		<div class="card preset-tonal-error space-y-3 p-4" role="alert">
 			<p class="text-sm">{loadError}</p>
-			<button type="button" class="btn btn-sm preset-tonal" onclick={load}>{common.retry}</button>
+			<button type="button" class="btn btn-sm preset-tonal" bind:this={retryButton} onclick={load}
+				>{common.retry}</button
+			>
 		</div>
 	{:else}
 		<div class="card preset-tonal flex items-start gap-3 p-4 text-sm" role="note">

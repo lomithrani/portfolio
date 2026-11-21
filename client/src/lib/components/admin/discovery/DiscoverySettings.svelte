@@ -4,22 +4,27 @@ Discovery (Path 2, CLAUDE.md "Matching"), at the end of the Perfect job tab (#di
 proposed to recruiters as an anonymous card, optional, off until the owner turns it on. Saved apart
 from the criteria form, so that turning it off never waits for a save. The admin page owns the
 status (GET /discovery, read by the Get started tab too) and gives it here; while matching is off
-(a 404) nothing shows, and nothing errors.
+(a 404) nothing shows, and nothing errors; nor before a read answered (a read that failed shows
+nothing either: whether matching is available is not known).
 
 It shows where the owner stands (off, on since a day, paused for what is missing, a consent that
 ends soon or has ended) and the one bar a job is held to (their journey's job match minimum), what
 is missing with what fixes it (ReadinessChecklist), the card's settings (a headline, the
 experiences it leaves out: PUT /discovery, a headline the API refuses for saying who they are shown
-on the field) with a preview of the card as recruiters read it (CardPreviewDialog), the consent (an
-unticked box of its own, worded legalMessages.discoveryConsent, apart from the terms: POST
-/discovery/consent), and turning it off (DELETE /discovery/consent), asked first, which says that
-turning it on again waits DISCOVERY_REJOIN_DAYS; a refused opt-in (429) says from when it can be
-turned on again (its Retry-After).
+on the field; leaving the page with changes not saved asks first) with a preview of the card as
+recruiters read it (CardPreviewDialog), the consent (an unticked box of its own, worded
+legalMessages.discoveryConsent, apart from the terms: POST /discovery/consent, held back while the
+card or the criteria hold changes not saved yet), a link to the jobs proposed (/opportunities) while
+it is on, and turning it off (DELETE /discovery/consent, also once the consent ended: it drops the
+answers about them), asked first, which says that turning it on again waits DISCOVERY_REJOIN_DAYS; a
+refused opt-in (429) says from when it can be turned on again (its Retry-After). The button that
+turns it on stays focusable when it cannot be used (aria-disabled), and why is read out.
 -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { ArrowPath, Eye, MagnifyingGlass } from 'svelte-heros-v2';
+	import { ArrowPath, ArrowRight, Eye, MagnifyingGlass } from 'svelte-heros-v2';
 	import {
 		DISCOVERY_LIMITS,
 		DISCOVERY_REJOIN_DAYS,
@@ -35,6 +40,7 @@ turned on again (its Retry-After).
 		cardSettings,
 		consentAction,
 		discoveryOn,
+		discoveryWithdrawable,
 		formatMoment,
 		rejoinDate,
 		saveDiscoveryCard,
@@ -43,7 +49,7 @@ turned on again (its Retry-After).
 		type CardExperience,
 		type CardForm,
 		type DiscoveryFailure,
-		type DiscoveryLoad
+		type DiscoveryKnown
 	} from '#services/discovery.ts';
 	import type { DiscoveryStatus } from '#services/matching.ts';
 	import { formatDay, networkError } from '#services/recruiter.ts';
@@ -66,8 +72,8 @@ turned on again (its Retry-After).
 		openTab,
 		onCriteria
 	}: {
-		/** GET /discovery as the page read it; null until it was */
-		discovery: DiscoveryLoad | null;
+		/** GET /discovery as the page read it; null until a read answered */
+		discovery: DiscoveryKnown | null;
 		/** What a change answered: the page keeps it (the Get started tab reads it too) */
 		onDiscovery: (status: DiscoveryStatus) => void;
 		/** Reads it again */
@@ -135,6 +141,17 @@ turned on again (its Retry-After).
 	});
 
 	let changed = $derived(!!status && cardChanged(form, status.card));
+
+	// A card not saved: leaving the page asks first, as for the criteria above (whose own guard asks
+	// when they hold changes too: one question). A reload or a closed tab gets the browser's prompt
+	beforeNavigate((navigation) => {
+		if (!changed || criteriaChanged) return;
+		if (navigation.type === 'leave') {
+			navigation.cancel();
+			return;
+		}
+		if (!confirm(m.card.leaveUnsaved)) navigation.cancel();
+	});
 	let localProblem = $derived(cardProblem(form));
 	let headlineError = $derived(
 		localProblem?.field === 'headline'
@@ -152,7 +169,7 @@ turned on again (its Retry-After).
 	}
 
 	async function saveCard() {
-		if (!changed || localProblem || headlineError || savingCard) return;
+		if (!changed || localProblem || headlineError || savingCard || turningOn) return;
 		savingCard = true;
 		cardError = '';
 		const sent = form.headline;
@@ -198,17 +215,34 @@ turned on again (its Retry-After).
 	 * owner turned it off here (a later visit learns it from the 429)
 	 */
 	let waitUntil = $state.raw<Date | null>(null);
-	let waiting = $derived(!!waitUntil && waitUntil.getTime() > Date.now());
+	// Once that moment passes, it can be turned on again: the wait goes (a timer never runs more than
+	// setTimeout's longest delay at once: it is set again until the moment comes)
+	$effect(() => {
+		const until = waitUntil;
+		if (!until) return;
+		const left = until.getTime() - Date.now();
+		if (left <= 0) {
+			waitUntil = null;
+			return;
+		}
+		const timer = setTimeout(
+			() => (waitUntil = until.getTime() <= Date.now() ? null : new Date(until)),
+			Math.min(left, MAX_TIMEOUT_MS)
+		);
+		return () => clearTimeout(timer);
+	});
 	let blockedBy = $derived(
 		!status
 			? ''
 			: status.missing.length > 0
 				? m.consent.missingFirst
-				: criteriaChanged
-					? m.consent.saveCriteriaFirst
-					: waiting && waitUntil
-						? m.consent.waitUntil(formatMoment(waitUntil))
-						: ''
+				: changed || savingCard
+					? m.consent.saveCardFirst
+					: criteriaChanged
+						? m.consent.saveCriteriaFirst
+						: waitUntil
+							? m.consent.waitUntil(formatMoment(waitUntil))
+							: ''
 	);
 
 	async function turnOn() {
@@ -216,6 +250,7 @@ turned on again (its Retry-After).
 		turnOnError = '';
 		if (!ticked) {
 			consentError = legalMessages.discoveryConsentRequired;
+			await tick();
 			document.getElementById(`${uid}-consent`)?.focus();
 			return;
 		}
@@ -226,13 +261,19 @@ turned on again (its Retry-After).
 		turningOn = false;
 		if (!result.ok) {
 			const { failure } = result;
-			if (failure.kind === 'consent') consentError = failure.message;
-			else if (failure.kind === 'wait') {
+			if (failure.kind === 'wait') {
+				// Said by the line under the button, read out (the button keeps the focus)
 				waitUntil = failure.until;
 				if (!failure.until) turnOnError = m.consent.waitLater;
-			} else turnOnError = failureText(failure, m.consent.failed);
+			} else if (failure.kind !== 'consent') turnOnError = failureText(failure, m.consent.failed);
 			// What the API found missing, or matching turned off: the page reads where it stands
 			if (failure.kind === 'requirement' || failure.kind === 'off') reload();
+			if (failure.kind === 'consent') {
+				// Said at the box, which takes the focus so that it is read
+				consentError = failure.message;
+				await tick();
+				document.getElementById(`${uid}-consent`)?.focus();
+			}
 			return;
 		}
 		ticked = false;
@@ -248,9 +289,12 @@ turned on again (its Retry-After).
 
 	// --- Turning it off ----------------------------------------------------------------------
 	let confirmingOff = $state(false);
+	/** It is turned off once the consent ended (already proposed to nobody): said so */
+	let offLapsed = $state(false);
 	let turningOff = $state(false);
 	let offError = $state('');
 	let heading: HTMLElement | undefined = $state();
+	let offButton: HTMLButtonElement | undefined = $state();
 
 	async function turnOff() {
 		if (turningOff) return;
@@ -282,6 +326,8 @@ turned on again (its Retry-After).
 		}
 	});
 
+	/** setTimeout's longest delay (about 24 days) */
+	const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 	const smallButton = 'btn btn-sm max-w-full whitespace-normal text-center leading-5 py-0.75';
 	const stateBadge = {
 		off: 'preset-tonal',
@@ -291,26 +337,7 @@ turned on again (its Retry-After).
 	} as const;
 </script>
 
-{#if discovery?.kind === 'failed'}
-	<section
-		id="discovery"
-		class="card space-y-3 border border-surface-200-800 p-4 sm:p-5"
-		aria-labelledby="{uid}-title"
-		data-discovery
-	>
-		<h3 id="{uid}-title" class="h4">{m.title}</h3>
-		<div class="card preset-tonal-error space-y-3 p-4" role="alert">
-			<p class="text-sm">
-				{discovery.reason === 'session-expired'
-					? m.sessionExpired
-					: discovery.reason === 'network'
-						? networkError()
-						: m.loadFailed}
-			</p>
-			<button type="button" class="btn btn-sm preset-tonal" onclick={reload}>{common.retry}</button>
-		</div>
-	</section>
-{:else if status}
+{#if status}
 	<section
 		id="discovery"
 		class="card space-y-5 border border-surface-200-800 p-4 sm:p-5"
@@ -348,10 +375,19 @@ turned on again (its Retry-After).
 					</p>
 				{:else if status.state === 'paused'}
 					<p class="text-sm font-medium">{m.paused}</p>
+					{#if action === 'renew' && status.consentExpiresAt}
+						<p class="text-sm font-medium">{m.pausedRenew(formatDay(status.consentExpiresAt))}</p>
+					{/if}
 				{:else if status.state === 'lapsed' && status.consentExpiresAt}
 					<p class="text-sm font-medium">{m.lapsed(formatDay(status.consentExpiresAt))}</p>
 				{/if}
 			</div>
+			{#if discoveryOn(status)}
+				<a class="{smallButton} preset-tonal" href={resolve('/(app)/opportunities')}>
+					{m.opportunities}
+					<ArrowRight size="16" aria-hidden="true" />
+				</a>
+			{/if}
 			{#if status.minScore !== null}
 				<p class="text-sm">
 					<Rich text={m.minimum(status.minScore)}>
@@ -465,7 +501,7 @@ turned on again (its Retry-After).
 				<button
 					type="button"
 					class="btn preset-filled-primary-700-300"
-					disabled={!changed || !!localProblem || !!headlineError || savingCard}
+					disabled={!changed || !!localProblem || !!headlineError || savingCard || turningOn}
 					onclick={saveCard}
 				>
 					{savingCard ? common.saving : m.card.save}
@@ -500,7 +536,7 @@ turned on again (its Retry-After).
 							type="checkbox"
 							class="checkbox mt-0.5 shrink-0"
 							bind:checked={ticked}
-							disabled={turningOn}
+							disabled={turningOn || savingCard}
 							onchange={() => (consentError = '')}
 							aria-invalid={consentError ? 'true' : undefined}
 							aria-describedby={consentError
@@ -524,11 +560,15 @@ turned on again (its Retry-After).
 					{/if}
 				</div>
 				<div class="flex flex-wrap items-center gap-3">
+					<!-- Never disabled: it keeps the focus when it cannot be used (aria-disabled), and the
+					line beside it, read out, says why -->
 					<button
 						type="button"
-						class="btn preset-filled-primary-700-300 max-w-full whitespace-normal text-center"
-						disabled={!!blockedBy}
-						aria-disabled={turningOn ? 'true' : undefined}
+						class={[
+							'btn preset-filled-primary-700-300 max-w-full whitespace-normal text-center',
+							blockedBy ? 'cursor-not-allowed opacity-50' : ''
+						]}
+						aria-disabled={blockedBy || turningOn ? 'true' : undefined}
 						aria-describedby={blockedBy ? `${uid}-blocked` : undefined}
 						onclick={turnOn}
 					>
@@ -547,9 +587,11 @@ turned on again (its Retry-After).
 									: m.consent.turnOn}
 						{/if}
 					</button>
-					{#if blockedBy}
-						<p id="{uid}-blocked" class="text-sm text-surface-700-300">{blockedBy}</p>
-					{/if}
+					<div aria-live="polite">
+						{#if blockedBy}
+							<p id="{uid}-blocked" class="text-sm text-surface-700-300">{blockedBy}</p>
+						{/if}
+					</div>
 				</div>
 				{#if turnOnError}
 					<p class="text-sm text-error-700-300" role="alert">{turnOnError}</p>
@@ -557,18 +599,20 @@ turned on again (its Retry-After).
 			</section>
 		{/if}
 
-		{#if discoveryOn(status)}
+		{#if discoveryWithdrawable(status)}
 			<div class="border-t border-surface-200-800 pt-4">
 				<button
 					type="button"
 					class="{smallButton} preset-tonal-error"
 					data-discovery-off
+					bind:this={offButton}
 					onclick={() => {
 						offError = '';
+						offLapsed = status?.state === 'lapsed';
 						confirmingOff = true;
 					}}
 				>
-					{m.off.button}
+					{status.state === 'lapsed' ? m.off.lapsedButton : m.off.button}
 				</button>
 			</div>
 		{/if}
@@ -579,15 +623,20 @@ turned on again (its Retry-After).
 		{experiences}
 		unsaved={changed}
 		onClose={() => (previewOpen = false)}
+		onOff={() => {
+			// Matching was turned off meanwhile: the page reads it again, and shows nothing of it
+			previewOpen = false;
+			reload();
+		}}
 		returnFocus={() => previewButton ?? null}
 	/>
 
 	<ConfirmDialog
 		open={confirmingOff}
-		title={m.off.title}
-		description={m.off.description}
+		title={offLapsed ? m.off.lapsedTitle : m.off.title}
+		description={offLapsed ? m.off.lapsedDescription : m.off.description}
 		details={m.off.details(DISCOVERY_REJOIN_DAYS)}
-		confirmLabel={m.off.button}
+		confirmLabel={offLapsed ? m.off.lapsedButton : m.off.button}
 		busyLabel={m.off.busy}
 		busy={turningOff}
 		error={offError}
@@ -596,6 +645,8 @@ turned on again (its Retry-After).
 			confirmingOff = false;
 			offError = '';
 		}}
-		finalFocusEl={() => heading ?? null}
+		finalFocusEl={() =>
+			(offButton?.isConnected && status && discoveryWithdrawable(status) ? offButton : heading) ??
+			null}
 	/>
 {/if}

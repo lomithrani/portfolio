@@ -5,8 +5,10 @@ The candidate's anonymous card exactly as recruiters read it before both are int
 criteria whose outcome a recruiter reads beside it (only those: never what is asked, the commute or
 the places), and what it leaves out of what the candidate set, and why, for them to change: a
 headline that says who they are, the experiences they hid, a role whose title says who they are,
-one not started yet, one over the roles a card lists, a skill whose name says who they are. The card
-is the one saved: changes not saved yet are said not to be in it.
+one not started yet, one over the roles a card lists, a skill whose name says who they are; and what
+else recruiters read beside it (their job reaches the candidate's minimum, whether the candidate said
+it interests them). The card is the one saved: changes not saved yet are said not to be in it. A 404
+(matching turned off since the page read it) closes it: the page then shows nothing of matching.
 -->
 <script lang="ts">
 	import { Dialog, Portal } from '@skeletonlabs/skeleton-svelte';
@@ -26,6 +28,7 @@ is the one saved: changes not saved yet are said not to be in it.
 		experiences,
 		unsaved = false,
 		onClose,
+		onOff,
 		returnFocus
 	}: {
 		open: boolean;
@@ -34,12 +37,14 @@ is the one saved: changes not saved yet are said not to be in it.
 		/** The card's settings hold changes not saved yet */
 		unsaved?: boolean;
 		onClose: () => void;
+		/** Matching was turned off meanwhile (a 404): the page reads discovery again */
+		onOff: () => void;
 		/** Where the focus goes once it closes (the button that opened it) */
 		returnFocus?: () => HTMLElement | null;
 	} = $props();
 
 	const uid = $props.id();
-	let load = $state.raw<CardPreviewLoad | null>(null);
+	let load = $state.raw<Exclude<CardPreviewLoad, { kind: 'off' }> | null>(null);
 	let request: AbortController | undefined;
 	let closeButton: HTMLButtonElement | undefined = $state();
 
@@ -49,7 +54,12 @@ is the one saved: changes not saved yet are said not to be in it.
 		request = current;
 		load = null;
 		const result = await loadCardPreview(current.signal);
-		if (!current.signal.aborted) load = result;
+		if (current.signal.aborted) return;
+		if (result.kind === 'off') {
+			onOff();
+			return;
+		}
+		load = result;
 	}
 
 	// Read each time it opens: the card follows what was saved since
@@ -119,7 +129,7 @@ is the one saved: changes not saved yet are said not to be in it.
 					{/if}
 					{#if load === null}
 						<p class="text-sm opacity-60" role="status">{m.preview.loading}</p>
-					{:else if load.kind !== 'ready'}
+					{:else if load.kind === 'failed'}
 						<div class="card preset-tonal-error space-y-3 p-4" role="alert">
 							<p class="text-sm">{m.preview.failed}</p>
 							<button type="button" class="btn btn-sm preset-tonal" onclick={read}>
@@ -136,6 +146,7 @@ is the one saved: changes not saved yet are said not to be in it.
 									)
 								: m.preview.noOutcomes}
 						</p>
+						<p class="text-sm" data-preview-also>{m.preview.alsoRead}</p>
 						{#if withheld.headline || withheld.roles.length > 0 || withheld.skills.length > 0}
 							<section class="space-y-2" aria-labelledby="{uid}-withheld" data-withheld>
 								<h3 id="{uid}-withheld" class="text-sm font-semibold">

@@ -44,6 +44,13 @@ export const m = defineMessages({
 		en: 'Paused: you are proposed to no recruiter until what is missing below is set.',
 		fr: "En pause : vous n'êtes proposé à aucun recruteur tant que ce qui manque ci-dessous n'est pas réglé."
 	},
+	/** Paused, and the consent in its last DISCOVERY_CONSENT_RENEWAL_DAYS days too */
+	pausedRenew: {
+		en: (until: string) =>
+			`Your consent ends on ${until}: once what is missing is set, confirm it again to stay visible.`,
+		fr: (until: string) =>
+			`Votre consentement prend fin le ${until} : une fois réglé ce qui manque, confirmez-le de nouveau pour rester visible.`
+	},
 	/** Its last DISCOVERY_CONSENT_RENEWAL_DAYS days: confirmed again, it counts from then */
 	renew: {
 		en: (until: string) =>
@@ -68,9 +75,13 @@ export const m = defineMessages({
 		fr: (score: number) =>
 			`Une offre ne vous est proposée, et votre fiche à son recruteur, que si elle obtient au moins ${score} sur 100 selon vos critères, sans critère éliminatoire manqué : le minimum de votre parcours de recrutement. <journey>Le modifier</journey>`
 	},
-	loadFailed: {
-		en: 'Your visibility to recruiters could not be loaded.',
-		fr: "Votre visibilité auprès des recruteurs n'a pas pu être chargée."
+	/**
+	 * While on or paused: the candidate's inbox. Backed by: routes/(app)/opportunities (the jobs
+	 * proposed, GET /opportunities, or why there are none)
+	 */
+	opportunities: {
+		en: 'See the jobs proposed to you',
+		fr: 'Voir les offres qui vous sont proposées'
 	},
 	/** A change answered a 404: matching was turned off meanwhile */
 	unavailable: {
@@ -104,13 +115,15 @@ export const m = defineMessages({
 	card: {
 		title: { en: 'Your anonymous card', fr: 'Votre fiche anonyme' },
 		/**
-		 * Backed by: server/services/candidateCard.ts (CANDIDATE_CARD_FIELDS: the headline, the role
-		 * titles with the months in each, the months of professional experience, the skills with
-		 * their months; never a name, the portfolio, a company or a place)
+		 * As legalMessages.discoveryConsent says it. Backed by: server/services/candidateCard.ts
+		 * (CANDIDATE_CARD_FIELDS: the headline, the role titles with the months in each and whether
+		 * each is held now, the months of professional experience, the skills with their months; never
+		 * a name, the portfolio, a company or a place) and server/services/matchFeeds.ts (`interested`
+		 * on a recruiter's feed: the candidate said the job interests them)
 		 */
 		text: {
-			en: 'What recruiters read of you before you are both interested: your headline, your role titles with the time in each, your total time of professional experience, and your skills with how long you used each. Never your name, your portfolio, a company or a place.',
-			fr: "Ce que les recruteurs lisent de vous avant un intérêt réciproque : votre accroche, vos intitulés de poste avec le temps passé à chacun, votre durée totale d'expérience professionnelle, ainsi que vos compétences et leur durée d'utilisation. Jamais votre nom, votre portfolio, une entreprise ou un lieu."
+			en: 'What recruiters read of you before you are both interested: your headline, your role titles with the time in each and whether you still hold it, your total time of professional experience, and your skills with how long you used each. If you say a job interests you, its recruiter sees it on your card. Never your name, your portfolio, a company or a place.',
+			fr: "Ce que les recruteurs lisent de vous avant un intérêt réciproque : votre accroche, vos intitulés de poste avec le temps passé à chacun et si vous l'occupez encore, votre durée totale d'expérience professionnelle, ainsi que vos compétences et leur durée d'utilisation. Si vous dites qu'une offre vous intéresse, son recruteur le voit sur votre fiche. Jamais votre nom, votre portfolio, une entreprise ou un lieu."
 		},
 		headline: { en: 'Headline', fr: 'Accroche' },
 		/** `max`: DISCOVERY_LIMITS.headline */
@@ -141,6 +154,11 @@ export const m = defineMessages({
 		/** An experience without a title, in the list */
 		untitled: { en: 'Untitled experience', fr: 'Expérience sans intitulé' },
 		save: { en: 'Save my card', fr: 'Enregistrer ma fiche' },
+		/** Leaving the page with the card's settings not saved */
+		leaveUnsaved: {
+			en: 'Leave without saving your anonymous card? Your changes will be lost.',
+			fr: 'Quitter sans enregistrer votre fiche anonyme ? Vos modifications seront perdues.'
+		},
 		undo: { en: 'Undo changes', fr: 'Annuler les modifications' },
 		saved: { en: 'Card saved', fr: 'Fiche enregistrée' },
 		saveFailed: {
@@ -162,6 +180,11 @@ export const m = defineMessages({
 		missingFirst: {
 			en: 'Set what is missing above first.',
 			fr: "Réglez d'abord ce qui manque ci-dessus."
+		},
+		/** The card's settings hold changes not saved yet: recruiters would read the card saved */
+		saveCardFirst: {
+			en: 'Save or undo the changes to your card first.',
+			fr: "Enregistrez ou annulez d'abord les modifications de votre fiche."
 		},
 		saveCriteriaFirst: {
 			en: 'Save your criteria first.',
@@ -208,6 +231,20 @@ export const m = defineMessages({
 			fr: (days: number) =>
 				`Vous pourrez l'activer de nouveau ${days} ${plural(days, 'jour', 'jours')} après l'avoir désactivé.`
 		},
+		/** Once the consent ended: proposed to nobody already, the answers about them still kept */
+		lapsedButton: { en: 'Turn it off', fr: 'Désactiver' },
+		lapsedTitle: {
+			en: 'Turn off being found by recruiters?',
+			fr: 'Désactiver la visibilité auprès des recruteurs ?'
+		},
+		/**
+		 * Backed by: services/discovery.ts withdrawDiscovery (dropPendingDecisions whatever the state;
+		 * the opt-in held back DISCOVERY_REJOIN_DAYS after it, which `details` says)
+		 */
+		lapsedDescription: {
+			en: "Your consent ended, so you are already proposed to no recruiter. Turning it off also drops your answers on the jobs proposed to you, and recruiters' answers about you, except where you are both interested: those go on until you or the recruiter ends them.",
+			fr: "Votre consentement a pris fin : vous n'êtes déjà proposé à aucun recruteur. Le désactiver efface aussi vos réponses aux offres qui vous ont été proposées, et celles des recruteurs à votre sujet, sauf en cas d'intérêt réciproque : celui-ci continue jusqu'à ce que vous ou le recruteur y mettiez fin."
+		},
 		busy: { en: 'Turning it off…', fr: 'Désactivation…' },
 		done: {
 			en: 'You are no longer visible to recruiters',
@@ -249,6 +286,14 @@ export const m = defineMessages({
 			en: 'Beside your card, recruiters read no outcome per criterion: your hiring journey does not show them how their job does on each.',
 			fr: 'À côté de votre fiche, les recruteurs ne lisent aucun résultat par critère : votre parcours de recrutement ne leur montre pas le résultat de leur offre sur chacun.'
 		},
+		/**
+		 * Backed by: components/matching/CandidateCard.svelte (`reaches`, beside every card a feed
+		 * gives) and server/services/matchFeeds.ts (`interested` on a recruiter's feed)
+		 */
+		alsoRead: {
+			en: 'Recruiters also read that their job reaches your minimum score, and whether you said you are interested in it.',
+			fr: "Les recruteurs lisent aussi que leur offre atteint votre note minimale, et si vous avez dit qu'elle vous intéresse."
+		},
 		withheld: { en: 'Left out of your card', fr: 'Laissé hors de votre fiche' },
 		headline: {
 			en: "Your headline: it says who you are (your name, a company or a place). Change it in your card's settings.",
@@ -258,7 +303,7 @@ export const m = defineMessages({
 		role: {
 			hidden: {
 				en: (title: string) => `${title}: you left it out.`,
-				fr: (title: string) => `${title} : vous l'avez laissée hors de votre fiche.`
+				fr: (title: string) => `${title} : vous avez laissé cette expérience hors de votre fiche.`
 			},
 			title: {
 				en: (title: string) =>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
 import { legalMessages, withLocale } from 'portfolio-common';
-import type { DiscoveryLoad } from '#services/discovery.ts';
+import type { DiscoveryKnown } from '#services/discovery.ts';
 import type { DiscoveryStatus } from '#services/matching.ts';
 import DiscoverySettings from './DiscoverySettings.svelte';
 import ReadinessChecklist from './ReadinessChecklist.svelte';
@@ -34,14 +34,14 @@ const EXPERIENCES = [
 	{ id: '65e2e0000000000000000202', title: 'Intern', company: null }
 ];
 
-const settings = (discovery: DiscoveryLoad | null) =>
+const settings = (discovery: DiscoveryKnown | null, criteriaChanged = false) =>
 	render(DiscoverySettings, {
 		props: {
 			discovery,
 			onDiscovery: () => {},
 			reload: () => {},
 			experiences: EXPERIENCES,
-			criteriaChanged: false,
+			criteriaChanged,
 			active: true,
 			openJourney: () => {},
 			openTab: () => {},
@@ -49,7 +49,7 @@ const settings = (discovery: DiscoveryLoad | null) =>
 		}
 	}).body;
 
-const ready = (status: Partial<DiscoveryStatus>): DiscoveryLoad => ({
+const ready = (status: Partial<DiscoveryStatus>): DiscoveryKnown => ({
 	kind: 'ready',
 	status: { ...OFF, ...status }
 });
@@ -60,10 +60,10 @@ describe('DiscoverySettings', () => {
 		expect(textOf(settings({ kind: 'off' }))).toBe('');
 	});
 
-	it('says a read that failed, with a way to read it again', () => {
-		const text = textOf(settings({ kind: 'failed', reason: 'error' }));
-		expect(text).toContain('Your visibility to recruiters could not be loaded.');
-		expect(text).toContain('Try again');
+	it('says what the card shows recruiters, as the consent words it', () => {
+		const text = textOf(settings(ready({})));
+		expect(text).toContain('your role titles with the time in each and whether you still hold it');
+		expect(text).toContain('If you say a job interests you, its recruiter sees it on your card.');
 	});
 
 	it('offers to turn it on with a box of its own, unticked, worded as recorded', () => {
@@ -95,6 +95,22 @@ describe('DiscoverySettings', () => {
 		expect(text).toContain('Set what is missing above first.');
 	});
 
+	it('keeps the button that turns it on focusable when it cannot be used, saying why', () => {
+		const body = settings(ready({ missing: ['calendar'] }));
+		const button = /<button[^>]*>\s*(?:<!--[^>]*-->\s*)*Make me visible to recruiters/.exec(
+			body
+		)?.[0];
+		expect(button).toBeDefined();
+		expect(button).toContain('aria-disabled="true"');
+		expect(button).not.toMatch(/\sdisabled(=|\s|>)/);
+		expect(body).toMatch(/aria-live="polite"[^>]*>\s*(?:<!--[^>]*-->\s*)*<p id="[^"]*-blocked"/);
+	});
+
+	it('waits for the criteria not saved yet, saying so', () => {
+		const text = textOf(settings(ready({}), true));
+		expect(text).toContain('Save your criteria first.');
+	});
+
 	it('while on, says since when, and offers to turn it off, not to turn it on', () => {
 		const since = new Date();
 		const until = new Date(since.getTime() + 700 * 24 * 60 * 60 * 1000);
@@ -111,6 +127,9 @@ describe('DiscoverySettings', () => {
 		expect(text).not.toContain('Make me visible to recruiters');
 		expect(text).not.toContain(legalMessages.discoveryConsent);
 		expect(text).not.toContain('Optional, and off until you turn it on.');
+		// Where the jobs proposed are
+		expect(text).toContain('See the jobs proposed to you');
+		expect(body).toMatch(/href="\/opportunities"/);
 	});
 
 	it('paused, says what is missing, and still offers to turn it off', () => {
@@ -129,6 +148,30 @@ describe('DiscoverySettings', () => {
 		expect(text).toContain('What is missing');
 		expect(text).toContain('Connect Google Calendar, so recruiters can book a meeting.');
 		expect(body).toContain('data-discovery-off');
+		expect(text).toContain('See the jobs proposed to you');
+		// Its consent far from ending: nothing to confirm
+		expect(text).not.toContain('Your consent ends on');
+	});
+
+	it('paused in the consent’s last days, says it ends and asks to confirm it once set', () => {
+		const until = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+		const since = new Date(until);
+		since.setUTCMonth(since.getUTCMonth() - 24);
+		const text = textOf(
+			settings(
+				ready({
+					state: 'paused',
+					enabledAt: since.toISOString(),
+					consentExpiresAt: until.toISOString(),
+					missing: ['calendar']
+				})
+			)
+		);
+		expect(text).toContain('Paused: you are proposed to no recruiter');
+		expect(text).toMatch(
+			/Your consent ends on .+: once what is missing is set, confirm it again to stay visible\./
+		);
+		expect(text).toContain('Confirm my consent again');
 	});
 
 	it('once the consent ended, asks for it again', () => {
@@ -142,7 +185,10 @@ describe('DiscoverySettings', () => {
 		const text = textOf(body);
 		expect(text).toContain('Your consent ended on');
 		expect(text).toContain('Give my consent again');
-		expect(body).not.toContain('data-discovery-off');
+		// Turning it off still drops the answers about them
+		expect(body).toContain('data-discovery-off');
+		expect(body).toMatch(/data-discovery-off[^>]*>\s*(?:<!--[^>]*-->\s*)*Turn it off/);
+		expect(text).not.toContain('See the jobs proposed to you');
 	});
 
 	it('in its last days, asks to confirm the consent again', () => {

@@ -24,7 +24,7 @@
 		type ReadinessFailure
 	} from '#services/candidateSetup.ts';
 	import { networkError } from '#services/recruiter.ts';
-	import { cardExperiences, loadDiscovery, type DiscoveryLoad } from '#services/discovery.ts';
+	import { cardExperiences, loadDiscovery, type DiscoveryKnown } from '#services/discovery.ts';
 	import type { DiscoveryStatus } from '#services/matching.ts';
 	import type { PageData } from './$types';
 	import { m } from './page.messages.ts';
@@ -100,22 +100,26 @@
 
 	// --- Being proposed to recruiters (GET /discovery), for "Get started" and the Perfect job ---
 	/**
-	 * Where the owner stands in discovery (Path 2): null until it was read; `off` while matching is
-	 * off (a 404: nothing of it shows). Read once the owner is known, again each time "Get started"
-	 * or the Perfect job tab is shown, when the page comes back in view, and once the steps or the
-	 * criteria are saved (what discovery asks); a change made in the Perfect job tab gives its own
+	 * Where the owner stands in discovery (Path 2): null until a read answered; `off` while matching
+	 * is off (a 404: nothing of it shows, and nothing asks again for the page's life). Read once the
+	 * owner is known, again each time "Get started" or the Perfect job tab is shown, when the page
+	 * comes back in view, and once the steps or the criteria are saved (what discovery asks); a
+	 * change made in the Perfect job tab gives its own
 	 */
-	let discovery = $state.raw<DiscoveryLoad | null>(null);
+	let discovery = $state.raw<DiscoveryKnown | null>(null);
 	let discoveryRequest: AbortController | undefined;
 
 	async function refreshDiscovery(): Promise<void> {
+		if (discovery?.kind === 'off') return;
 		discoveryRequest?.abort();
 		const request = new AbortController();
 		discoveryRequest = request;
 		const result = await loadDiscovery(request.signal);
 		if (request.signal.aborted) return;
-		// A read that failed keeps the status read before: it is only not up to date
-		if (result.kind === 'failed' && discovery?.kind === 'ready') return;
+		// A read that failed keeps what was read before: the status, only not up to date, or nothing
+		// (matching may be off: nothing of it shows, and the next tab shown or the page back in view
+		// asks again)
+		if (result.kind === 'failed') return;
 		discovery = result;
 	}
 

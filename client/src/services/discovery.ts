@@ -41,6 +41,13 @@ export type DiscoveryLoad =
 	| { kind: 'off' }
 	| { kind: 'failed'; reason: DiscoveryReadFailure };
 
+/**
+ * What the admin page knows of discovery: the status, or matching off (a 404, kept for the page's
+ * life). A read that fails is never kept: until one answers, whether matching is available is not
+ * known, and nothing of it shows (while MATCHING is off, nothing of matching ever may)
+ */
+export type DiscoveryKnown = Exclude<DiscoveryLoad, { kind: 'failed' }>;
+
 /** GET /discovery/card, read */
 export type CardPreviewLoad =
 	| { kind: 'ready'; preview: CardPreview }
@@ -268,6 +275,14 @@ export const consentAction = (status: DiscoveryStatus, now = new Date()): Consen
 /** Whether discovery is on for the candidate (proposed, or paused for something missing) */
 export const discoveryOn = (status: DiscoveryStatus): boolean =>
 	status.state === 'on' || status.state === 'paused';
+
+/**
+ * Whether the candidate can turn discovery off (DELETE /discovery/consent): on, paused, and also
+ * once their consent ended (`lapsed`): proposed to nobody already, its withdrawal still drops the
+ * answers about them no mutual interest came of (the API's dropPendingDecisions), which would
+ * otherwise stay until they expire, and it holds the next opt-in back DISCOVERY_REJOIN_DAYS too
+ */
+export const discoveryWithdrawable = (status: DiscoveryStatus): boolean => status.state !== 'off';
 
 /**
  * What fixes a missing requirement, from the Perfect job tab: the account page (the terms), the

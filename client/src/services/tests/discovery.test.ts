@@ -42,6 +42,7 @@ import {
 	discoveryFailure,
 	discoveryOn,
 	discoverySummary,
+	discoveryWithdrawable,
 	loadCardPreview,
 	loadDiscovery,
 	missingGateSteps,
@@ -235,6 +236,13 @@ describe('where the candidate stands', () => {
 		expect(discoveryOn(status({ state: 'paused' }))).toBe(true);
 		expect(discoveryOn(status())).toBe(false);
 		expect(discoveryOn(status({ state: 'lapsed' }))).toBe(false);
+	});
+
+	it('offers to turn it off on, paused, and once the consent ended (its answers still kept)', () => {
+		expect(discoveryWithdrawable(status({ state: 'on' }))).toBe(true);
+		expect(discoveryWithdrawable(status({ state: 'paused' }))).toBe(true);
+		expect(discoveryWithdrawable(status({ state: 'lapsed' }))).toBe(true);
+		expect(discoveryWithdrawable(status())).toBe(false);
 	});
 
 	it('says when discovery can be turned on again after a withdrawal', () => {

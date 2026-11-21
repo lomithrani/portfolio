@@ -1,4 +1,4 @@
-import { defineMessages } from 'portfolio-common';
+import { defineMessages, plural } from 'portfolio-common';
 
 export const m = defineMessages({
 	loadFailed: {
@@ -73,12 +73,15 @@ export const m = defineMessages({
 	},
 
 	// --- The steps discovery asks for (the Perfect job tab's "Add the missing steps") ---
-	/** `names`: the steps added, as one list ("Share a job and Get the job scored") */
+	/**
+	 * `names`: the steps added, as one list ("Share a job and Get the job scored"); `count`: how
+	 * many (one to three)
+	 */
 	gateAdded: {
-		en: (names: string) =>
-			`Added: ${names}. Check their settings, then save your journey to keep them.`,
-		fr: (names: string) =>
-			`Ajouté : ${names}. Vérifiez leurs réglages, puis enregistrez votre parcours pour les garder.`
+		en: (names: string, count: number) =>
+			`Added: ${names}. Check ${plural(count, 'its', 'their')} settings, then save your journey to keep ${plural(count, 'it', 'them')}.`,
+		fr: (names: string, count: number) =>
+			`${plural(count, 'Étape ajoutée', 'Étapes ajoutées')} : ${names}. Vérifiez ${plural(count, 'ses', 'leurs')} réglages, puis enregistrez votre parcours pour ${plural(count, 'la', 'les')} garder.`
 	},
 	gateNothing: {
 		en: 'Your steps already ask for the job, score it and lead to a meeting: save them if you changed them.',

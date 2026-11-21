@@ -48,7 +48,7 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 		type Readiness,
 		type SetupItem
 	} from '#services/candidateSetup.ts';
-	import { discoverySummary } from '#services/discovery.ts';
+	import { consentAction, discoveryOn, discoverySummary } from '#services/discovery.ts';
 	import type { DiscoveryStatus } from '#services/matching.ts';
 	import { failureText, formatDay, networkError } from '#services/recruiter.ts';
 	import { quotaText, type ImportStatus } from '#services/resumeImport.ts';
@@ -251,7 +251,11 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 		if (summary === 'renew' && status.consentExpiresAt) {
 			return m.discovery.renew(formatDay(status.consentExpiresAt));
 		}
-		if (summary === 'paused') return m.discovery.paused;
+		if (summary === 'paused') {
+			return consentAction(status) === 'renew' && status.consentExpiresAt
+				? m.discovery.pausedRenew(formatDay(status.consentExpiresAt))
+				: m.discovery.paused;
+		}
 		if (summary === 'lapsed') return m.discovery.lapsed;
 		return m.discovery.off;
 	};
@@ -412,10 +416,18 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 						<span class="badge preset-tonal text-xs">{m.discovery.optional}</span>
 					</div>
 					<p class="text-sm text-surface-700-300">{discoveryText(discovery)}</p>
-					<button type="button" class={linkButton} onclick={openDiscovery}>
-						{m.discovery.open}
-						<ArrowRight size="16" aria-hidden="true" />
-					</button>
+					<div class="flex flex-wrap gap-2">
+						<button type="button" class={linkButton} onclick={openDiscovery}>
+							{m.discovery.open}
+							<ArrowRight size="16" aria-hidden="true" />
+						</button>
+						{#if discoveryOn(discovery)}
+							<a class={linkButton} href={resolve('/(app)/opportunities')}>
+								{m.discovery.opportunities}
+								<ArrowRight size="16" aria-hidden="true" />
+							</a>
+						{/if}
+					</div>
 				</div>
 			</section>
 		{/if}

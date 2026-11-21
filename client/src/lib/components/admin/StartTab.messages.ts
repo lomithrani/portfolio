@@ -248,7 +248,7 @@ export const m = defineMessages({
 		},
 		/** `since`: '12 Nov 2026' */
 		on: {
-			en: (since: string) => `Your anonymous card is proposed to recruiters since ${since}.`,
+			en: (since: string) => `Your anonymous card has been proposed to recruiters since ${since}.`,
 			fr: (since: string) => `Votre fiche anonyme est proposée aux recruteurs depuis le ${since}.`
 		},
 		/** `until`: the day the consent ends, within DISCOVERY_CONSENT_RENEWAL_DAYS */
@@ -261,10 +261,22 @@ export const m = defineMessages({
 			en: 'Paused: something it needs is missing, so you are proposed to no recruiter.',
 			fr: "En pause : il manque quelque chose, vous n'êtes donc proposé à aucun recruteur."
 		},
+		/** Paused, and the consent in its last DISCOVERY_CONSENT_RENEWAL_DAYS days: `until` the day */
+		pausedRenew: {
+			en: (until: string) =>
+				`Paused: something it needs is missing, so you are proposed to no recruiter. Your consent also ends on ${until}: confirm it again to stay visible.`,
+			fr: (until: string) =>
+				`En pause : il manque quelque chose, vous n'êtes donc proposé à aucun recruteur. Votre consentement prend aussi fin le ${until} : confirmez-le de nouveau pour rester visible.`
+		},
 		lapsed: {
 			en: 'Your consent ended: give it again to be visible.',
 			fr: 'Votre consentement a pris fin : donnez-le de nouveau pour être visible.'
 		},
-		open: { en: 'Open the settings', fr: 'Ouvrir les réglages' }
+		open: { en: 'Open the settings', fr: 'Ouvrir les réglages' },
+		/** While on or paused. Backed by: routes/(app)/opportunities (the candidate's inbox) */
+		opportunities: {
+			en: 'See the jobs proposed to you',
+			fr: 'Voir les offres qui vous sont proposées'
+		}
 	}
 });

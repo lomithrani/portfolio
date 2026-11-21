@@ -117,7 +117,10 @@ not saved yet (addGateSteps): this tab is the only one that saves the steps the 
 		);
 		// A toast, seen and read out (the region of toasts is a live one)
 		toaster.info({
-			title: refused.length > 0 ? `${m.gateAdded(names)} ${m.gateFull}` : m.gateAdded(names)
+			title:
+				refused.length > 0
+					? `${m.gateAdded(names, added.length)} ${m.gateFull}`
+					: m.gateAdded(names, added.length)
 		});
 		await tick();
 		inStep(added[0].id, '[data-heading]')?.focus();

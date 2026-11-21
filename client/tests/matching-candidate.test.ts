@@ -1,6 +1,6 @@
 import { expect, request as playwrightRequest, test, type Page } from '@playwright/test';
 import { currentDiscoveryConsent } from 'portfolio-common';
-import { stubApi } from './support/api';
+import { calendarConfigured, stubApi } from './support/api';
 import {
 	API_URL,
 	JWT_SECRET,
@@ -106,7 +106,10 @@ test('with matching off, nothing of it shows on the admin page, and nothing erro
 	page
 }) => {
 	// The API's answer while MATCHING is off: its routes are not registered
-	await stubApi(page, 'GET', '/discovery', () => ({ status: 404, text: 'Not Found' }));
+	const reads = await stubApi(page, 'GET', '/discovery', () => ({
+		status: 404,
+		text: 'Not Found'
+	}));
 	await openAdmin(page, 'perfect-job');
 	await expect(page.getByRole('button', { name: 'Save perfect job' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Be found by recruiters' })).toHaveCount(0);
@@ -117,6 +120,45 @@ test('with matching off, nothing of it shows on the admin page, and nothing erro
 	await expect(page.getByRole('list', { name: 'Checklist' })).toBeVisible();
 	await expect(page.locator('[data-item="discovery"]')).toHaveCount(0);
 	await expect(page.getByText('Be found by recruiters')).toHaveCount(0);
+	// Off for the page's life: shown again, or back in view, nothing asks again
+	await page.getByRole('tab', { name: 'Perfect job' }).click();
+	await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+	await expect(page.getByRole('button', { name: 'Save perfect job' })).toBeVisible();
+	expect(reads).toHaveLength(1);
+	await expect(discovery(page)).toHaveCount(0);
+});
+
+test('a read that fails shows nothing of it (matching may be off), and the next one does', async ({
+	page
+}) => {
+	// No answer, then an error (a network drop, a 502 during a deploy), then the status
+	const answers = ['abort', 'error', 'status'];
+	const reads: string[] = [];
+	await page.route(`${API_URL}/discovery`, async (route) => {
+		if (route.request().method() !== 'GET') return route.fallback();
+		const answer = answers[reads.length] ?? 'status';
+		reads.push(answer);
+		if (answer === 'abort') return route.abort();
+		if (answer === 'error') return route.fulfill({ status: 502, body: 'Bad gateway' });
+		return route.fulfill({ json: OFF_STATUS });
+	});
+	await openAdmin(page, 'perfect-job');
+	await expect(page.getByRole('button', { name: 'Save perfect job' })).toBeVisible();
+	await expect.poll(() => reads.length).toBe(1);
+	await expect(discovery(page)).toHaveCount(0);
+	await expect(page.getByRole('alert')).toHaveCount(0);
+
+	// Shown again: asked again, failed again, still nothing
+	await page.getByRole('tab', { name: /^Get started/ }).click();
+	await expect(page.getByRole('list', { name: 'Checklist' })).toBeVisible();
+	await expect.poll(() => reads.length).toBe(2);
+	await expect(page.locator('[data-item="discovery"]')).toHaveCount(0);
+	await expect(page.getByRole('alert')).toHaveCount(0);
+
+	// Answered at last: its settings show
+	await page.getByRole('tab', { name: 'Perfect job' }).click();
+	await expect(discovery(page)).toHaveAttribute('data-state', 'off');
+	expect(reads).toEqual(['abort', 'error', 'status']);
 });
 
 test('what is missing leads to what fixes it, the journey’s steps added and left to save', async ({
@@ -197,15 +239,63 @@ test('a refused opt-in says from when it can be turned on again', async ({ page 
 	expect(optIns).toHaveLength(0);
 
 	await consent.getByRole('checkbox').check();
-	await consent.getByRole('button', { name: 'Make me visible to recruiters' }).click();
+	const turnOn = consent.getByRole('button', { name: 'Make me visible to recruiters' });
+	await turnOn.click();
 	expect(optIns).toHaveLength(1);
 	expect(optIns[0].postDataJSON()).toEqual({
 		consent: { termsVersion: expect.any(String), adultConfirmed: true }
 	});
-	await expect(consent.getByText(/^You can turn it on again from /)).toBeVisible();
-	await expect(
-		consent.getByRole('button', { name: 'Make me visible to recruiters' })
-	).toBeDisabled();
+	// Said beside the button, read out, and the button keeps the focus (it cannot be used now)
+	const wait = consent.getByText(/^You can turn it on again from /);
+	await expect(wait).toBeVisible();
+	await expect(consent.locator('[aria-live="polite"]')).toContainText(
+		'You can turn it on again from'
+	);
+	await expect(turnOn).toBeDisabled();
+	await expect(turnOn).toBeFocused();
+	await expect(turnOn).toHaveAccessibleDescription(/^You can turn it on again from /);
+	// Pressed again: nothing sent
+	await page.keyboard.press('Enter');
+	expect(optIns).toHaveLength(1);
+});
+
+test('the card’s changes not saved hold the opt-in back, and leaving asks first', async ({
+	page
+}) => {
+	await stubApi(page, 'GET', '/discovery', () => ({ json: OFF_STATUS }));
+	const optIns = await stubApi(page, 'POST', '/discovery/consent', () => ({ json: onStatus() }));
+	await openAdmin(page, 'perfect-job');
+	const section = discovery(page);
+	const card = section.locator('[data-discovery-card]');
+	const consent = section.locator('[data-discovery-consent]');
+	const turnOn = consent.getByRole('button', { name: 'Make me visible to recruiters' });
+	await expect(turnOn).not.toBeDisabled();
+
+	// An experience left out, not saved: recruiters would read the card saved
+	await card.getByRole('checkbox').first().uncheck();
+	await expect(turnOn).toBeDisabled();
+	await expect(consent.getByText('Save or undo the changes to your card first.')).toBeVisible();
+	await consent.getByRole('checkbox').check();
+	await turnOn.focus();
+	await page.keyboard.press('Enter');
+	expect(optIns).toHaveLength(0);
+
+	// Leaving the page asks first; staying keeps the change
+	let asked = '';
+	page.once('dialog', (dialog) => {
+		asked = dialog.message();
+		void dialog.dismiss();
+	});
+	const menu = await openAccountMenu(page);
+	await menu.getByRole('menuitem', { name: 'Account & privacy' }).click();
+	await expect
+		.poll(() => asked)
+		.toBe('Leave without saving your anonymous card? Your changes will be lost.');
+	await expect(page).toHaveURL(new RegExp(`/${DOMAIN}/admin`));
+
+	// Undone: it can be turned on again
+	await card.getByRole('button', { name: 'Undo changes' }).click();
+	await expect(turnOn).not.toBeDisabled();
 });
 
 test('with matching off, the inbox is not available and the account menu has no Opportunities', async ({
@@ -281,10 +371,16 @@ test.describe('with matching on', () => {
 			extraHTTPHeaders: { cookie: `auth=${session.token}` }
 		});
 		const status = (await api.get(`${API_URL}/discovery`)).status();
+		// The seeded calendar (a placeholder grant) counts only on a site that takes Google Calendar
+		const calendar = status === 404 || (await calendarConfigured(api));
 		await api.dispose();
 		test.skip(
 			status === 404,
 			'Matching is off in the API under test (GET /discovery answers 404): run it with MATCHING=true'
+		);
+		test.skip(
+			!calendar,
+			'Google Calendar is not configured in the API under test, so the seeded calendar does not count: set GOOGLE_CLIENT_SECRET to any value'
 		);
 	});
 
@@ -292,6 +388,11 @@ test.describe('with matching on', () => {
 		page
 	}) => {
 		const api = await apiAs(session);
+		// The card as seeded, whatever a run before (or its retry) left
+		const cleared = await api.put(`${API_URL}/discovery`, {
+			data: { card: { headline: null, hiddenExperiences: [] } }
+		});
+		expect(cleared.ok(), await cleared.text()).toBe(true);
 		const before = await (await api.get(`${API_URL}/discovery`)).json();
 		// A run before turned it on, and seed:e2e did not run since (it sets it back off)
 		expect(['off', 'on'], 'Run `bun run --cwd server seed:e2e` again').toContain(before.state);
@@ -318,10 +419,13 @@ test.describe('with matching on', () => {
 		await section.getByRole('button', { name: 'Preview my card' }).click();
 		const preview = page.getByRole('dialog', { name: 'Your anonymous card' });
 		await expect(
-			preview.getByRole('heading', { name: 'Backend engineer', level: 3 })
+			preview.getByRole('heading', { name: 'Backend engineer', level: 3, exact: true })
 		).toBeVisible();
 		await expect(preview.locator('[data-preview-outcomes]')).toHaveText(
 			'Beside your card, for their job, recruiters read its outcome on: Work mode, Contract and Pay. Never what you ask for, your commute or where you want to work.'
+		);
+		await expect(preview.locator('[data-preview-also]')).toHaveText(
+			'Recruiters also read that their job reaches your minimum score, and whether you said you are interested in it.'
 		);
 		for (const identity of ['Mia', 'Match', DOMAIN]) {
 			await expect(preview).not.toContainText(identity);
@@ -373,7 +477,11 @@ test.describe('with matching on', () => {
 		const now = await (await api.get(`${API_URL}/discovery`)).json();
 		expect(now.state).toBe('on');
 		await page.getByRole('tab', { name: /^Get started/ }).click();
-		await expect(item).toContainText('Your anonymous card is proposed to recruiters since');
+		await expect(item).toContainText('Your anonymous card has been proposed to recruiters since');
+		await expect(item.getByRole('link', { name: 'See the jobs proposed to you' })).toHaveAttribute(
+			'href',
+			'/opportunities'
+		);
 
 		// Turning it off asks first, and says when it can be turned on again
 		await item.getByRole('button', { name: 'Open the settings' }).click();
