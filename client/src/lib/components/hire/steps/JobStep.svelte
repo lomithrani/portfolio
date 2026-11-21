@@ -14,6 +14,11 @@ the step says when, and, when the posting changed since (its terms are locked on
 description, or a field no criterion reads), offers to share the new version (the same submit). On
 a journey that scores the job, the API counts the shares (429 beyond a day's), but the job kept,
 picked again unchanged.
+A recruiter the owner and they are both interested in one of their jobs (a mutual interest of
+matching) finds that job here (the step's view says `matched`): the version the owner said yes to,
+which the step holds while the mutual interest lasts, with no list to pick another (the API answers
+409 to a share meanwhile) and nothing to share again; while it does not hold, what brings it back
+(the posting open again, the terms in force accepted).
 Not for the portfolio's owner (the API refuses their pick): the page shows them the step's
 description instead.
 -->
@@ -91,8 +96,14 @@ description instead.
 			? $authenticationStore.user
 			: undefined
 	);
-	// Jobs are loaded for an account with a recruiter space
-	let jobsKey = $derived(user?.recruiter ? user._id : null);
+	// The job shared (the version the step keeps), and the one whose new version can be shared
+	let shared = $derived(pickedJob(step.view));
+	let newVersion = $derived(outdatedShare(step.view));
+	// The job of a mutual interest with the owner, which holds the step while it lasts: nothing to pick
+	let matched = $derived(shared?.matched ? shared : undefined);
+
+	// Jobs are loaded for an account with a recruiter space, unless a mutual interest holds the step
+	let jobsKey = $derived(user?.recruiter && !matched ? user._id : null);
 	let jobs = $state.raw<JobsState | null>(null);
 	// The jobs of the current account only
 	let shown = $derived(jobs && jobs.key === jobsKey ? jobs : null);
@@ -100,10 +111,6 @@ description instead.
 	// The job to select first (?job=, back from writing it), and the one the list was loaded for
 	let asked = $derived(requestedJob(address));
 	let listedFor: string | null = null;
-
-	// The job shared (the version the step keeps), and the one whose new version can be shared
-	let shared = $derived(pickedJob(step.view));
-	let newVersion = $derived(outdatedShare(step.view));
 
 	let selected = $state<string | null>(null);
 	let picking = $state(false);
@@ -301,6 +308,12 @@ description instead.
 			pickError = failure.message;
 			if (failure.kind === 'signed-out' || failure.kind === 'locked') locked(failure.kind);
 			if (failure.kind === 'changed') reload();
+			// The job of a mutual interest now holds the step: the journey loaded again shows it in place
+			// of this form, which goes with the message: a toast says it
+			if (failure.kind === 'matched') {
+				toaster.info({ title: failure.message });
+				reload();
+			}
 			if (failure.kind === 'reload-jobs' && jobsKey) await loadJobs(jobsKey);
 			// The terms to accept show in place of the list (their acceptance loads it again)
 			if (failure.kind === 'terms' && jobsKey) jobs = { key: jobsKey, state: 'terms' };
@@ -330,6 +343,39 @@ description instead.
 		<!-- No space chosen: an account keeps the one it had (the portfolio's owner, checking their
 		     page signed out, must not end up in a recruiter space) -->
 		<SignInButton />
+	</div>
+{:else if matched}
+	{@const line = jobLine(matched)}
+	{@const jobHref = resolve('/(app)/recruiter/jobs/[id]', { id: matched._id })}
+	<div class="space-y-3 text-sm" data-matched-job>
+		{#if step.status === 'succeeded'}
+			<div class="space-y-2 rounded-container border border-surface-200-800 p-3">
+				<p>
+					<Rich text={m.job.matched.holds}>
+						{#snippet job()}<a class="font-semibold underline underline-offset-2" href={jobHref}
+								>{line}</a
+							>{/snippet}
+						{#snippet time()}{#if matched.sharedAt}<time datetime={isoDate(matched.sharedAt)}
+									>{formatDay(matched.sharedAt)}</time
+								>{/if}{/snippet}
+						{#snippet owner()}{ownerName}{/snippet}
+					</Rich>
+				</p>
+				<p>{m.job.matched.noOther}</p>
+			</div>
+		{:else if !isPickable(matched)}
+			<p>
+				<Rich text={m.job.matched.notOpen}>
+					{#snippet status(text)}<a class="underline underline-offset-2" href={jobHref}>{text}</a
+						>{/snippet}
+				</Rich>
+			</p>
+		{:else}
+			<!-- Open, yet not held: the terms in force are what is missing (the step holds it again
+			     once they are accepted, and the journey goes on from it) -->
+			<p>{m.job.matched.terms}</p>
+			<TermsAcceptance {user} source="recruiter" required onAccepted={() => reload()} />
+		{/if}
 	</div>
 {:else if !user.recruiter || shown?.state === 'no-space'}
 	<div class="space-y-3">

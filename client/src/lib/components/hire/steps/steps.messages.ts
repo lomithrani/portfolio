@@ -121,6 +121,37 @@ export const m = defineMessages({
 			fr: (ownerName: string) =>
 				`Cette offre a été modifiée depuis que vous l'avez partagée : ${ownerName} lit toujours, et les étapes suivantes utilisent toujours, la version partagée.`
 		},
+		/**
+		 * The job of a mutual interest (matching), which the step holds while it lasts. Where the values
+		 * go, each rendered by its own snippet: `<job></job>` "Senior Engineer · Acme", the version the
+		 * owner said yes to; `<owner></owner>` the portfolio's name; `<time></time>` '20 Nov 2026'.
+		 * Never a bare "match" (it names the score). Backed by: server/services/workflowSteps/job.ts
+		 * (the job of the mutual interest, `matched`; the version said yes to in the invitation,
+		 * mutualInterestLines; 409 JOB_OF_MUTUAL_INTEREST for another job)
+		 */
+		matched: {
+			holds: {
+				en: 'You and <owner></owner> have both been interested in <job></job> since <time></time>: <owner></owner> reads the version they said yes to, linked in the meeting invitation.',
+				fr: "Depuis le <time></time>, l'intérêt est réciproque entre <owner></owner> et vous pour <job></job> : <owner></owner> lit la version sur laquelle il porte, dont le lien figure dans l'invitation au rendez-vous."
+			},
+			noOther: {
+				en: 'This step holds that job while your mutual interest lasts: you cannot share another here.',
+				fr: "Cette étape reprend cette offre tant que l'intérêt réciproque dure : vous ne pouvez pas en partager une autre ici."
+			},
+			/**
+			 * Not open (on hold: filled, closed or back to draft ends the mutual interest), which the line
+			 * above it says (jobStepNote). `<status>`: the link to its page, where its status is changed
+			 */
+			notOpen: {
+				en: 'The steps after this one wait until it is open again. <status>Change its status</status>',
+				fr: "Les étapes suivantes attendent qu'elle soit de nouveau ouverte. <status>Changer son statut</status>"
+			},
+			/** Open, but the recruiter has not accepted the terms of use in force (TermsAcceptance follows) */
+			terms: {
+				en: 'This page holds your job again once you accept the terms of use in force.',
+				fr: "Cette page reprend votre offre dès que vous acceptez les conditions d'utilisation en vigueur."
+			}
+		},
 		shareNewVersion: { en: 'Share the new version', fr: 'Partager la nouvelle version' },
 		sharing: { en: 'Sharing…', fr: 'Partage…' },
 		newVersionShared: { en: 'New version shared', fr: 'Nouvelle version partagée' },
@@ -221,6 +252,26 @@ export const m = defineMessages({
 		pickAnother: {
 			en: 'You can also pick another job in the step above.',
 			fr: "Vous pouvez aussi choisir une autre offre à l'étape ci-dessus."
+		},
+		/**
+		 * The job of a mutual interest (matching): its score is the one it had when both became
+		 * interested (`frozenAt`, '20 Nov 2026' in a <time>), frozen while their mutual interest lasts.
+		 * Backed by: server/services/workflowSteps/jobMatch.ts (`frozen`: the mutual interest's score,
+		 * minimum and outcomes, whatever the owner's criteria became since)
+		 */
+		frozen: {
+			on: {
+				en: (day: string) => `Score when you were both interested, on <time>${day}</time>`,
+				fr: (day: string) => `Note au moment de l'intérêt réciproque, le <time>${day}</time>`
+			},
+			undated: {
+				en: 'Score when you were both interested',
+				fr: "Note au moment de l'intérêt réciproque"
+			},
+			holds: {
+				en: 'This score no longer changes while your mutual interest lasts.',
+				fr: "Cette note ne change plus tant que l'intérêt réciproque dure."
+			}
 		},
 		/** A new job description copied from the one scored (its terms are locked) */
 		duplicate: { en: 'Duplicate this job description', fr: 'Dupliquer cette offre' },

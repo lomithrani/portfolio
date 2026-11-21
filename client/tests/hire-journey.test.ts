@@ -16,6 +16,7 @@ import {
 import { stubAddressSearch } from './support/addresses';
 import { TERMS_REQUIRED, calendarConfigured, stubApi } from './support/api';
 import { createJob, deleteJobs, jobPosting } from './support/jobs';
+import { dayFromToday, meetingType, slotOn, stubAppointments } from './support/appointments';
 import {
 	DEFAULT_WORKFLOW_STEPS,
 	LEGAL_VERSION,
@@ -155,36 +156,7 @@ const preflight = (request: Request) => ({
  * no Google Calendar is connected here, so the API lists none (and the server's render of the Hire
  * page knows nothing can be booked), but the page asks again in the browser
  */
-const stubMeetingType = (page: Page) =>
-	page.route(`${API_URL}/appointments/**`, async (route) => {
-		const request = route.request();
-		if (request.method() === 'OPTIONS') return route.fulfill(preflight(request));
-		const headers = cors(request);
-		const { pathname } = new URL(request.url());
-		if (pathname.endsWith(`/domains/${DOMAIN}/schedules`)) {
-			const meetingType = {
-				id: '65e2e00000000000000000ab',
-				title: 'Intro call',
-				description: null,
-				durationMinutes: 30,
-				minNoticeHours: 0,
-				maxAdvanceDays: 30,
-				timezone: 'Europe/Paris',
-				locationType: 'google_meet',
-				locationDetails: null,
-				availability: [{ dayOfWeek: 1, startTime: '09:00', endTime: '10:00' }]
-			};
-			return route.fulfill({ json: [meetingType], headers });
-		}
-		if (pathname.endsWith('/available-dates')) {
-			const today = new Date().toISOString().slice(0, 10);
-			return route.fulfill({
-				json: { horizon: { first: today, last: today }, dates: [] },
-				headers
-			});
-		}
-		return route.fulfill({ status: 404, body: 'Not stubbed', headers });
-	});
+const stubMeetingType = (page: Page) => stubAppointments(page, DOMAIN);
 
 /** What the page never says of a meeting nobody can book: an invitation, how long it all takes */
 const MEETING_PROMISE =
@@ -1019,52 +991,23 @@ test.describe('the hiring journey', () => {
 	}) => {
 		await setJourney('meeting');
 		// Answered in the browser: no Google Calendar is connected here
-		const day = (offset: number) =>
-			new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
-		const date = day(1);
-		const slot = { start: `${date}T08:00:00.000Z`, end: `${date}T09:00:00.000Z` };
-		const schedule = {
+		const date = dayFromToday(1);
+		const slot = slotOn(date);
+		const schedule = meetingType({
 			id: '65e2e00000000000000000aa',
 			title: `Phone screen ${tag}`,
-			description: null,
 			durationMinutes: 60,
-			minNoticeHours: 0,
-			maxAdvanceDays: 30,
-			timezone: 'Europe/Paris',
 			locationType: 'phone',
 			locationDetails: '+33 1 23 45 67 89',
 			availability: [
 				{ dayOfWeek: new Date(date).getUTCDay(), startTime: '09:00', endTime: '10:00' }
 			]
-		};
-		const booked: Record<string, unknown>[] = [];
-		await page.route(`${API_URL}/appointments/**`, async (route) => {
-			const request = route.request();
-			const headers = cors(request);
-			if (request.method() === 'OPTIONS') return route.fulfill(preflight(request));
-			const { pathname } = new URL(request.url());
-			if (pathname.endsWith(`/domains/${DOMAIN}/schedules`)) {
-				return route.fulfill({ json: [schedule], headers });
-			}
-			if (pathname.endsWith('/available-dates')) {
-				return route.fulfill({
-					json: { horizon: { first: day(0), last: day(30) }, dates: [date] },
-					headers
-				});
-			}
-			if (pathname.endsWith('/available-slots')) return route.fulfill({ json: [slot], headers });
-			if (pathname.endsWith('/book')) {
-				booked.push(request.postDataJSON());
-				const json = {
-					booked: true,
-					start: slot.start,
-					end: slot.end,
-					meetLink: null,
-					eventLink: null
-				};
-				return route.fulfill({ json, headers });
-			}
-			return route.continue();
+		});
+		const booked = await stubAppointments(page, DOMAIN, {
+			schedules: [schedule],
+			dates: [date],
+			horizonDays: 30,
+			slots: [slot]
 		});
 		await signIn(page, recruiter);
 		await gotoHydrated(page, `/${DOMAIN}/hire`);

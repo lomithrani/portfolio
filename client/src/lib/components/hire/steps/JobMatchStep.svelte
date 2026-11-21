@@ -9,14 +9,18 @@ score against the minimum and, when the owner shares them, how the job does on e
 on the job step, or duplicate this one (it was opened to be picked, so its terms are locked) into a
 new one that states more, which comes back here to be opened and picked; Check again reads the
 score again (the owner may have changed their criteria or the minimum).
+The job of a mutual interest of matching (the job step before holds it) is not scored again: its
+score is the one it had when both became interested (`matched`, `frozenAt`), and nothing here
+changes it (no Check again, no duplicate to pick).
 Not for the portfolio's owner: the page shows them the step's description instead.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { ArrowPath, DocumentDuplicate } from 'svelte-heros-v2';
-	import { duplicateJobHref } from '#services/recruiter.ts';
+	import { duplicateJobHref, formatDay, isoDate } from '#services/recruiter.ts';
 	import { JOURNEY_PARAM, jobMatch, jobMatchMinScore, passesJobMatch } from '#services/workflow.ts';
 	import CriterionOutcomes from '#components/matching/CriterionOutcomes.svelte';
+	import Rich from '#lib/i18n/Rich.svelte';
 	import { m } from './steps.messages';
 	import type { StepProps } from './types';
 
@@ -42,6 +46,22 @@ Not for the portfolio's owner: the page shows them the step's description instea
 	</p>
 {:else}
 	<div class="space-y-4">
+		{#if match.matched}
+			<!-- The score of the job of a mutual interest: the one it had then, frozen -->
+			<div class="space-y-1 text-sm" data-frozen-score>
+				<p class="font-semibold">
+					{#if match.frozenAt}
+						{@const frozenAt = match.frozenAt}
+						<Rich text={m.jobMatch.frozen.on(formatDay(frozenAt))}>
+							{#snippet time(day)}<time datetime={isoDate(frozenAt)}>{day}</time>{/snippet}
+						</Rich>
+					{:else}
+						{m.jobMatch.frozen.undated}
+					{/if}
+				</p>
+				<p class="text-surface-700-300">{m.jobMatch.frozen.holds}</p>
+			</div>
+		{/if}
 		<div class="flex flex-wrap items-center gap-x-5 gap-y-3">
 			<p
 				class={[
@@ -109,7 +129,8 @@ Not for the portfolio's owner: the page shows them the step's description instea
 			</section>
 		{/if}
 
-		{#if !passed}
+		<!-- The job of a mutual interest cannot be changed here: nothing to raise its score with -->
+		{#if !passed && !match.matched}
 			<div class="space-y-3">
 				<p class="text-sm">
 					{#if match.criteria && match.criteria.length > 0}

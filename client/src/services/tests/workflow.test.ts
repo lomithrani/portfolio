@@ -35,9 +35,11 @@ import {
 	journeyDescription,
 	journeyEffort,
 	journeyIntro,
+	journeyMatch,
 	journeyReturnDomain,
 	journeySummary,
 	moveStep,
+	mutualInterestNext,
 	noteContent,
 	outdatedShare,
 	passesJobMatch,
@@ -863,5 +865,227 @@ describe('going back to the journey', () => {
 		expect(asksForAnotherJob({ job: JOB }, hire(`?job=${JOB._id}`))).toBe(false);
 		expect(asksForAnotherJob({ job: JOB }, hire())).toBe(false);
 		expect(asksForAnotherJob(undefined, hire('?job=nope'))).toBe(false);
+	});
+
+	it('never shows it for another job while a mutual interest holds the step with its job', () => {
+		const held = { job: { ...JOB, sharedAt: '2026-11-20T10:00:00.000Z' }, matched: true };
+		expect(asksForAnotherJob(held, hire(`?job=${OTHER}`))).toBe(false);
+		expect(asksForAnotherJob(held, hire(`?job=${JOB._id}`))).toBe(false);
+	});
+});
+
+describe('after a mutual interest (matching)', () => {
+	const MATCH = {
+		_id: 'c'.repeat(24),
+		job: { _id: JOB._id, title: 'Staff Engineer', company: 'Acme' },
+		matchedAt: '2026-11-20T10:00:00.000Z'
+	};
+	const matchedAt = MATCH.matchedAt;
+
+	it("reads the journey's mutual interest, and nothing that is not one", () => {
+		expect(journeyMatch(MATCH)).toEqual(MATCH);
+		expect(journeyMatch({ ...MATCH, changed: true, other: 'kept out' })).toEqual({
+			...MATCH,
+			changed: true
+		});
+		expect(journeyMatch({ ...MATCH, changed: 'yes' })).toEqual(MATCH);
+		// A company that is not one is left out; the rest stays
+		expect(journeyMatch({ ...MATCH, job: { ...MATCH.job, company: '' } })).toEqual({
+			...MATCH,
+			job: { _id: JOB._id, title: 'Staff Engineer' }
+		});
+		for (const bad of [
+			undefined,
+			null,
+			'match',
+			{},
+			{ ...MATCH, _id: 'nope' },
+			{ ...MATCH, _id: 42 },
+			{ ...MATCH, job: undefined },
+			{ ...MATCH, job: { ...MATCH.job, _id: 'nope' } },
+			{ ...MATCH, job: { ...MATCH.job, title: ' ' } },
+			{ ...MATCH, job: { ...MATCH.job, title: 7 } },
+			{ ...MATCH, matchedAt: 'yesterday' },
+			{ ...MATCH, matchedAt: Date.parse(MATCH.matchedAt) }
+		]) {
+			expect(journeyMatch(bad)).toBeUndefined();
+		}
+	});
+
+	it('reads the job the step holds for the mutual interest, which is never said changed', () => {
+		const job = { ...JOB, sharedAt: matchedAt };
+		expect(pickedJob({ job, matched: true })).toEqual({ ...job, matched: true });
+		// The version both said yes to is kept: never outdated, nothing new to share
+		const outdated = { job: { ...job, outdated: true }, matched: true };
+		expect(pickedJob(outdated)).toEqual({ ...job, matched: true });
+		expect(outdatedShare(outdated)).toBeUndefined();
+		// `matched` is a flag of the view: anything else is a job shared
+		expect(pickedJob({ job, matched: 'yes' })).toEqual(job);
+		expect(pickedJob({ job: { ...job, matched: true } })).toEqual(job);
+	});
+
+	it('notes the job of the mutual interest, and what brings it back when it does not hold', () => {
+		const job = { ...JOB, sharedAt: matchedAt };
+		expect(jobStepNote({ job, matched: true }, 'done')).toBe(
+			'Staff Engineer · Acme: the job you are both interested in.'
+		);
+		// On hold: open again, never another job
+		expect(jobStepNote({ job: { ...job, status: 'on_hold' }, matched: true }, 'open')).toBe(
+			'Staff Engineer is on hold now: this page holds it again once you open it again.'
+		);
+		// Open, but the terms in force are not accepted
+		expect(jobStepNote({ job, matched: true }, 'open')).toBe(
+			'Accept the terms of use in force to go on with Staff Engineer.'
+		);
+	});
+
+	it('says the 409 of a share while a mutual interest holds the step, and loads the journey', () => {
+		expect(pickJobFailure(409, 'This step holds the job you are both interested in')).toEqual({
+			message:
+				'This step now holds the job you are both interested in: you cannot share another while your mutual interest lasts.',
+			kind: 'matched'
+		});
+	});
+
+	it('reads the frozen score, and when it was frozen, only for the job of a mutual interest', () => {
+		const view = { score: 88, minScore: 70, job: { _id: JOB._id, title: JOB.title } };
+		expect(jobMatch({ ...view, matched: true, frozenAt: matchedAt })).toEqual({
+			...view,
+			matched: true,
+			frozenAt: matchedAt
+		});
+		expect(jobMatch({ ...view, matched: true, frozenAt: 'then' })).toEqual({
+			...view,
+			matched: true
+		});
+		expect(jobMatch({ ...view, frozenAt: matchedAt })).toEqual(view);
+		expect(jobMatch({ ...view, matched: 1, frozenAt: matchedAt })).toEqual(view);
+		expect(jobMatchNote({ view: { ...view, matched: true, frozenAt: matchedAt } })).toBe(
+			'Staff Engineer scored 88 out of 100 when you were both interested.'
+		);
+		// A frozen score under its minimum (never written by a mutual interest) fails closed
+		expect(jobMatchNote({ view: { ...view, score: 40, matched: true } })).toBe(
+			'Staff Engineer scores 40 out of 100: at least 70 is needed.'
+		);
+	});
+
+	describe('what is left before the meeting', () => {
+		const heldJob = (status: WorkflowStepStatus, jobStatus = 'open') => ({
+			id: 'job',
+			type: 'job',
+			status,
+			view: { job: { ...JOB, status: jobStatus, sharedAt: matchedAt }, matched: true }
+		});
+		const frozen = {
+			id: 'job-match',
+			type: 'job-match',
+			status: 'succeeded' as const,
+			view: {
+				score: 90,
+				minScore: 70,
+				job: { _id: JOB._id, title: JOB.title },
+				matched: true,
+				frozenAt: matchedAt
+			}
+		};
+		const gate = (
+			note: WorkflowStepStatus,
+			job: ReturnType<typeof heldJob>,
+			meeting: WorkflowStepStatus = 'pending'
+		): Journey => ({
+			steps: [
+				{ id: 'note', type: 'note', status: note, config: { title: 'Before you book' } },
+				job,
+				frozen,
+				{ id: 'meeting', type: 'meeting', status: meeting }
+			],
+			match: MATCH
+		});
+		const title = (step: { config?: unknown }) => noteContent(step.config).title || undefined;
+
+		it('names the steps still to do, never the job or the score it holds', () => {
+			expect(
+				mutualInterestNext(gate('pending', heldJob('succeeded')), { booking: true, title })
+			).toEqual(['Still to do before the meeting: read a note (“Before you book”).']);
+			expect(mutualInterestNext(gate('pending', heldJob('succeeded')), { booking: true })).toEqual([
+				'Still to do before the meeting: read a note.'
+			]);
+		});
+
+		it('says that nothing else is asked once only the meeting is left, and nothing once booked', () => {
+			expect(
+				mutualInterestNext(gate('succeeded', heldJob('succeeded')), { booking: true })
+			).toEqual(['Nothing else is asked of you: pick a time slot below.']);
+			expect(
+				mutualInterestNext(gate('succeeded', heldJob('succeeded'), 'succeeded'), { booking: true })
+			).toEqual([]);
+		});
+
+		it('says the job step waits for the job while it does not hold, never that the meeting is next', () => {
+			expect(
+				mutualInterestNext(gate('succeeded', heldJob('pending', 'on_hold')), { booking: true })
+			).toEqual([
+				'This page holds your job only while it is open and you have accepted the terms of use in force: the job step below says what is missing.'
+			]);
+			expect(mutualInterestNext(gate('pending', heldJob('pending')), { booking: true })).toEqual([
+				'This page holds your job only while it is open and you have accepted the terms of use in force: the job step below says what is missing.',
+				'Still to do before the meeting: read a note.'
+			]);
+		});
+
+		it('promises no meeting nobody can book, nor one after a step not passed', () => {
+			expect(mutualInterestNext(gate('pending', heldJob('succeeded')), { booking: false })).toEqual(
+				[]
+			);
+			const failed: Journey = {
+				steps: [
+					heldJob('succeeded'),
+					{ ...frozen, status: 'failed', view: { ...frozen.view, score: 40 } },
+					{ id: 'meeting', type: 'meeting', status: 'pending' }
+				]
+			};
+			expect(mutualInterestNext(failed, { booking: true })).toEqual([]);
+		});
+
+		it('says what the steps it holds hold, even while a note before them is to do', () => {
+			const journey = gate('pending', heldJob('succeeded'));
+			const states = stepStates(journey);
+			expect(states).toEqual(['open', 'locked', 'locked', 'locked']);
+			expect(stepNote(journey, 1, states[1], (step, state) => jobStepNote(step.view, state))).toBe(
+				'Staff Engineer · Acme: the job you are both interested in.'
+			);
+			expect(stepNote(journey, 2, states[2], (step) => jobMatchNote(step))).toBe(
+				'Staff Engineer scored 90 out of 100 when you were both interested.'
+			);
+			// A step it holds that does not hold now (the job on hold) says what the steps above ask
+			const waiting = gate('pending', heldJob('pending', 'on_hold'));
+			expect(stepNote(waiting, 1, 'locked', (step, state) => jobStepNote(step.view, state))).toBe(
+				'Complete the step above first.'
+			);
+			expect(stepNote(waiting, 3, 'locked', () => 'Book')).toBe('Complete the steps above first.');
+		});
+
+		it('names the steps left on a journey without a job step (the owner took it out since)', () => {
+			const meetingOnly: Journey = {
+				steps: [
+					{ id: 'note', type: 'note', status: 'pending' },
+					{ id: 'meeting', type: 'meeting', status: 'pending' }
+				],
+				match: MATCH
+			};
+			expect(mutualInterestNext(meetingOnly, { booking: true })).toEqual([
+				'Still to do before the meeting: read a note.'
+			]);
+		});
+
+		it('says it in French', () => {
+			const [line] = withLocale('fr', () =>
+				mutualInterestNext(gate('pending', heldJob('succeeded')), { booking: true, title })
+			);
+			// French typography: the spaces inside the quotes do not break
+			expect(line.replace(/[\u00a0\u202f]/g, ' ')).toBe(
+				'Reste à faire avant le rendez-vous : lire une note (« Before you book »).'
+			);
+		});
 	});
 });

@@ -104,7 +104,9 @@ export const MATCH_NOT_FOUND = 'Match not found'
 /**
  * 409 of the job step's submit (POST /workflow/domains/:domainName/steps/:stepId) by a recruiter
  * whose mutual interest with the owner (matching) fills that step with its job: they cannot share
- * another while it lasts. No screen sends it yet: the page for recruiters will hide the job step's
- * choice for that recruiter (2.13), and match it
+ * another while it lasts. The page for recruiters shows them that job instead of a choice
+ * (client/src/lib/components/hire/steps/JobStep.svelte), so only a page loaded before the mutual
+ * interest was made sends it: `pickJobFailure` of client/src/services/workflow.ts matches it, says
+ * it, and loads the journey again
  */
 export const JOB_OF_MUTUAL_INTEREST = 'This step holds the job you are both interested in'

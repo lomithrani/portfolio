@@ -1,5 +1,7 @@
 import { expect, test, type Page, type Request, type Route } from '@playwright/test';
+import { journeyTemplate } from 'portfolio-common';
 import { calendarConfigured, stubApi } from './support/api';
+import { dayFromToday, meetingType, slotOn, stubAppointments } from './support/appointments';
 import {
 	API_URL,
 	JWT_SECRET,
@@ -26,11 +28,17 @@ import {
 // so the seeded calendar counts and the candidate is proposed) is skipped, saying why, when GET
 // /me/notifications answers 404. What matching off shows (nothing of it), the terms to accept first,
 // and a deck of several cards (the seed proposes one) are answered in the browser: those tests run
-// with or without matching. The mutual interest is made for real, the candidate first (through the
-// API), then the recruiter in the deck, and is ended: a run answers that card, so `seed:e2e` must
-// run again before the next (it removes the matches of the seeded jobs; CI seeds before every run),
-// or that test stops at once saying so; it is never retried (`retries: 0`: a retry would find the
-// card answered by the attempt before it, and hide that attempt's failure). Google is never reached.
+// with or without matching, and so is the candidate's page for recruiters of a mutual interest
+// (the journey answered in the browser): its banner, the job it holds, the frozen score, ending it,
+// and a share refused because a mutual interest holds the job step. The mutual interest is made for
+// real, the candidate first (through the API), then the recruiter in the deck; the recruiter then
+// goes through the candidate's page for recruiters (the banner, the note confirmed, the meeting
+// booked: the booking routes answered in the browser), and ends it from the dashboard, after which
+// that page holds nothing of it: a run answers that card and confirms that note, so `seed:e2e` must
+// run again before the next (it removes the matches of the seeded jobs and the candidates' journey
+// progress; CI seeds before every run), or that test stops at once saying so; it is never retried
+// (`retries: 0`: a retry would find the card answered by the attempt before it, and hide that
+// attempt's failure). Google is never reached.
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e recruiter');
 
@@ -113,6 +121,85 @@ const card = (token: string, title: string, interested = false) => ({
 
 const TOKEN_A = 'a'.repeat(40);
 const TOKEN_B = 'b'.repeat(40);
+
+/** The steps of a page for recruiters, and one of them by its name */
+const journeySteps = (page: Page) => page.getByRole('list', { name: 'Hiring journey' });
+const journeyStep = (page: Page, name: string) =>
+	journeySteps(page)
+		.getByRole('listitem')
+		.filter({ has: page.getByRole('heading', { name }) });
+/** The candidate's journey (the gate, seeded): its note's title */
+const NOTE_TITLE = (journeyTemplate('gate')[0].config as { title: string }).title;
+const JOB_LINE = `${JOB_TITLE} · E2E Matching Corp`;
+
+/** A mutual interest made for these tests' journeys (answered in the browser) */
+const INTEREST = '65e2e00000000000000000e1';
+
+/**
+ * The journey of the candidate's page for recruiters as the API answers it to the recruiter of a
+ * mutual interest on JOB_ID: the note confirmed (or not), the job step holding the job (open, or on
+ * hold: then waiting for it), the score frozen, the meeting to book
+ */
+const matchedJourney = ({
+	note = 'succeeded',
+	jobStatus = 'open',
+	changed = false
+}: { note?: 'pending' | 'succeeded'; jobStatus?: 'open' | 'on_hold'; changed?: boolean } = {}) => {
+	const now = new Date().toISOString();
+	return {
+		steps: [
+			{ id: 'note', type: 'note', status: note, config: { title: NOTE_TITLE, text: 'Hello.' } },
+			{
+				id: 'job',
+				type: 'job',
+				status: jobStatus === 'open' ? 'succeeded' : 'pending',
+				view: {
+					job: {
+						_id: JOB_ID,
+						title: JOB_TITLE,
+						company: 'E2E Matching Corp',
+						status: jobStatus,
+						sharedAt: now
+					},
+					matched: true
+				}
+			},
+			{
+				id: 'job-match',
+				type: 'job-match',
+				status: 'succeeded',
+				config: { minScore: 70 },
+				view: {
+					score: 100,
+					minScore: 70,
+					job: { _id: JOB_ID, title: JOB_TITLE },
+					criteria: [{ criterion: 'pay', outcome: 'match' }],
+					matched: true,
+					frozenAt: now
+				}
+			},
+			{ id: 'meeting', type: 'meeting', status: 'pending' }
+		],
+		match: {
+			_id: INTEREST,
+			job: { _id: JOB_ID, title: JOB_TITLE, company: 'E2E Matching Corp' },
+			matchedAt: now,
+			...(changed ? { changed: true } : {})
+		}
+	};
+};
+
+/** The same journey as anyone gets it: the job step to do (nothing shared) */
+const journeyWithoutMatch = () => {
+	const { steps } = matchedJourney();
+	return {
+		steps: steps.map(({ id, type, status, config }) =>
+			type === 'note'
+				? { id, type, status, config }
+				: { id, type, status: 'pending', ...(config ? { config } : {}) }
+		)
+	};
+};
 
 test('with matching off, nothing of it shows on the recruiter pages, and nothing errors', async ({
 	page
@@ -341,6 +428,188 @@ test('a mutual interest not seen is said new, marked seen once shown, and the me
 	expect(marked).toHaveLength(1);
 });
 
+test.describe("the candidate's page for recruiters of a mutual interest", () => {
+	test('the banner, the job it holds, the frozen score, the address ignored, and ending it, at 390 px', async ({
+		page
+	}) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		let ended = false;
+		const journeyReads = await stubApi(
+			page,
+			'GET',
+			`/workflow/domains/${CANDIDATE_DOMAIN}`,
+			() => ({
+				json: ended ? journeyWithoutMatch() : matchedJourney({ changed: true })
+			})
+		);
+		const seen = await stubApi(page, 'PUT', `/matches/${INTEREST}/seen`, () => ({
+			json: { ok: true }
+		}));
+		const ends = await stubApi(page, 'POST', `/matches/${INTEREST}/end`, () => {
+			ended = true;
+			const now = new Date().toISOString();
+			return {
+				json: {
+					_id: INTEREST,
+					side: 'recruiter',
+					matchedAt: now,
+					changedAt: null,
+					endedAt: now,
+					endReason: 'recruiter',
+					seen: true,
+					job: { _id: JOB_ID, title: JOB_TITLE, company: 'E2E Matching Corp', status: 'open' },
+					candidate: { domain: CANDIDATE_DOMAIN, title: null }
+				}
+			};
+		});
+		await stubAppointments(page, CANDIDATE_DOMAIN);
+		// The address asks for another job: the step holding the job of the mutual interest takes none
+		await openAsRecruiter(page, `/${CANDIDATE_DOMAIN}/hire?job=${'f'.repeat(24)}`);
+
+		const banner = page.locator(`[data-match-banner="${INTEREST}"]`);
+		await expect(banner.getByRole('heading', { name: "You're both interested" })).toBeVisible();
+		await expect(banner).toContainText(
+			`You and ${CANDIDATE_DOMAIN} have both been interested in ${JOB_LINE} since`
+		);
+		await expect(banner.getByRole('link', { name: JOB_LINE })).toHaveAttribute(
+			'href',
+			`/recruiter/jobs/${JOB_ID}`
+		);
+		await expect(banner).toContainText(
+			'This page holds that job for you: you cannot share another here while your mutual interest lasts.'
+		);
+		await expect(banner).toContainText(
+			`The job description was edited since: ${CANDIDATE_DOMAIN} keeps the version they said yes to.`
+		);
+		await expect(banner).toContainText('Nothing else is asked of you: pick a time slot below.');
+		// Never a bare "match" (it names the score), never an email promised: the names aside
+		const said = (await banner.innerText())
+			.replaceAll(CANDIDATE_DOMAIN, '')
+			.replaceAll(JOB_LINE, '');
+		expect(said).not.toMatch(/\bmatch(ed)?\b|e-?mail/i);
+		// It takes the place of what to prepare: the recruiter came through matching
+		await expect(page.getByRole('heading', { name: 'Before you start' })).toHaveCount(0);
+		// Shown, it is marked seen
+		await expect.poll(() => seen.length).toBe(1);
+
+		// The job step is done with that job, and only shows it: no list to pick another, nothing to
+		// change, whatever the address asked
+		const job = journeyStep(page, 'Select or create a job');
+		await expect(job).toContainText(`${JOB_LINE}: the job you are both interested in.`);
+		await expect(page.locator('[data-matched-job]')).toHaveCount(0);
+		await expect(job.getByRole('button', { name: /^Change/ })).toHaveCount(0);
+		await job.getByRole('button', { name: /^Open/ }).click();
+		const held = job.locator('[data-matched-job]');
+		await expect(held).toContainText(
+			'This step holds that job while your mutual interest lasts: you cannot share another here.'
+		);
+		await expect(held.getByRole('link', { name: JOB_LINE })).toHaveAttribute(
+			'href',
+			`/recruiter/jobs/${JOB_ID}`
+		);
+		await expect(job.getByText('Your job descriptions')).toHaveCount(0);
+		await expect(job.getByRole('button', { name: 'Continue with this job' })).toHaveCount(0);
+
+		// The score is the one it had then: nothing to check again or duplicate
+		const score = journeyStep(page, 'Get the job scored');
+		await expect(score).toContainText(
+			`${JOB_TITLE} scored 100 out of 100 when you were both interested.`
+		);
+		await score.getByRole('button', { name: /^Open/ }).click();
+		await expect(score.locator('[data-frozen-score]')).toContainText(
+			'Score when you were both interested, on'
+		);
+		await expect(score.getByRole('button', { name: 'Check again' })).toHaveCount(0);
+		await expect(score.getByRole('link', { name: 'Duplicate this job description' })).toHaveCount(
+			0
+		);
+		expect(await sidewaysScroll(page)).toBe(0);
+
+		// Ended from the banner, asked first: the page holds nothing of it any more, the job step is to
+		// do again, as for anyone
+		await banner.getByRole('button', { name: 'End it' }).click();
+		const confirm = page.getByRole('alertdialog', { name: 'End this mutual interest?' });
+		await expect(confirm).toContainText('This page will no longer hold your job for you');
+		await confirm.getByRole('button', { name: 'End it' }).click();
+		await expect(confirm).toHaveCount(0);
+		await expect(toasts(page)).toContainText('Mutual interest ended');
+		await expect(banner).toHaveCount(0);
+		await expect(job).toContainText('Pick the job you are hiring for, or write it.');
+		await expect(job.getByRole('heading', { name: /Select or create a job/ })).toBeFocused();
+		expect(ends).toHaveLength(1);
+		expect(journeyReads.length).toBeGreaterThanOrEqual(2);
+	});
+
+	test('a job of a mutual interest on hold: the step waits for it, with no other job to pick', async ({
+		page
+	}) => {
+		await stubApi(page, 'GET', `/workflow/domains/${CANDIDATE_DOMAIN}`, () => ({
+			json: matchedJourney({ jobStatus: 'on_hold' })
+		}));
+		await stubApi(page, 'PUT', `/matches/${INTEREST}/seen`, () => ({ json: { ok: true } }));
+		await stubAppointments(page, CANDIDATE_DOMAIN);
+		await openAsRecruiter(page, `/${CANDIDATE_DOMAIN}/hire`);
+
+		const banner = page.locator('[data-match-banner]');
+		await expect(banner).toContainText(
+			'This page holds your job only while it is open and you have accepted the terms of use in force: the job step below says what is missing.'
+		);
+		await expect(banner).not.toContainText('time slot');
+		// The job step, the first to do, says what brings the job back: open it again
+		const job = journeyStep(page, 'Select or create a job');
+		await expect(job).toContainText(
+			`${JOB_TITLE} is on hold now: this page holds it again once you open it again.`
+		);
+		const held = job.locator('[data-matched-job]');
+		await expect(held).toContainText('The steps after this one wait until it is open again.');
+		await expect(held.getByRole('link', { name: 'Change its status' })).toHaveAttribute(
+			'href',
+			`/recruiter/jobs/${JOB_ID}`
+		);
+		await expect(job.getByText('Your job descriptions')).toHaveCount(0);
+		// The meeting waits for it
+		await expect(journeyStep(page, 'Book a meeting')).toContainText(
+			'Complete the steps above first.'
+		);
+	});
+
+	test('a share refused because a mutual interest holds the job step is said, and the page shows that job', async ({
+		page
+	}) => {
+		let matched = false;
+		await stubApi(page, 'GET', `/workflow/domains/${CANDIDATE_DOMAIN}`, () => ({
+			json: matched ? matchedJourney() : journeyWithoutMatch()
+		}));
+		await stubApi(page, 'PUT', `/matches/${INTEREST}/seen`, () => ({ json: { ok: true } }));
+		// The mutual interest was made since the page loaded (the API answers its 409)
+		const shares = await stubApi(
+			page,
+			'POST',
+			`/workflow/domains/${CANDIDATE_DOMAIN}/steps/job`,
+			() => {
+				matched = true;
+				return {
+					status: 409,
+					text: 'This step holds the job you are both interested in'
+				};
+			}
+		);
+		await stubAppointments(page, CANDIDATE_DOMAIN);
+		await openAsRecruiter(page, `/${CANDIDATE_DOMAIN}/hire`);
+
+		// The recruiter's own jobs (read from the API): the seeded job of this file is open
+		const job = journeyStep(page, 'Select or create a job');
+		await job.getByRole('radio', { name: new RegExp(JOB_TITLE.replace(/[()]/g, '\\$&')) }).check();
+		await job.getByRole('button', { name: 'Continue with this job' }).click();
+		await expect(toasts(page)).toContainText(
+			'This step now holds the job you are both interested in: you cannot share another while your mutual interest lasts.'
+		);
+		await expect(page.locator('[data-match-banner]')).toBeVisible();
+		await expect(job).toContainText(`${JOB_LINE}: the job you are both interested in.`);
+		expect(shares).toHaveLength(1);
+	});
+});
+
 test.describe('with matching on', () => {
 	test.beforeAll(async () => {
 		const api = await apiAs(session);
@@ -438,14 +707,66 @@ test.describe('with matching on', () => {
 			.filter({ hasText: JOB_TITLE })
 			.filter({ hasText: CANDIDATE_DOMAIN });
 		await expect(item.locator('[data-interest-state]')).toHaveText('Going on');
-		await expect(
-			item.getByRole('link', { name: 'Go to their page for recruiters' })
-		).toHaveAttribute('href', `/${CANDIDATE_DOMAIN}/hire`);
+		const pageLink = item.getByRole('link', { name: 'Go to their page for recruiters' });
+		await expect(pageLink).toHaveAttribute('href', `/${CANDIDATE_DOMAIN}/hire`);
 		await expect(page.locator(`[data-job-card="${JOB_ID}"] [data-job-matching]`)).toHaveText(
 			'Proposed to candidates'
 		);
 
-		// Ended by the recruiter, asked first
+		// Their page for recruiters holds the job: the banner, the job step done with it, the score
+		// frozen, the note still theirs to confirm, then the meeting. The booking routes are answered
+		// in the browser (Google is never asked)
+		const date = dayFromToday(1);
+		const slot = slotOn(date);
+		const schedule = meetingType({
+			availability: [
+				{ dayOfWeek: new Date(date).getUTCDay(), startTime: '09:00', endTime: '10:00' }
+			]
+		});
+		const booked = await stubAppointments(page, CANDIDATE_DOMAIN, {
+			schedules: [schedule],
+			dates: [date],
+			horizonDays: 30,
+			slots: [slot]
+		});
+		await pageLink.click();
+		await expect(page).toHaveURL(new RegExp(`/${CANDIDATE_DOMAIN}/hire$`));
+		const banner = page.locator('[data-match-banner]');
+		await expect(banner.getByRole('heading', { name: "You're both interested" })).toBeVisible();
+		await expect(banner).toContainText(
+			`You and ${CANDIDATE_DOMAIN} have both been interested in ${JOB_LINE} since`
+		);
+		await expect(banner).toContainText(
+			`Still to do before the meeting: read a note (“${NOTE_TITLE}”).`
+		);
+		await expect(journeyStep(page, 'Select or create a job')).toContainText(
+			`${JOB_LINE}: the job you are both interested in.`
+		);
+		await expect(journeyStep(page, 'Get the job scored')).toContainText(
+			/scored \d+ out of 100 when you were both interested\./
+		);
+		const note = journeyStep(page, NOTE_TITLE);
+		await note.getByRole('button', { name: 'I have read this' }).click();
+		// Only the meeting is left
+		await expect(banner).toContainText('Nothing else is asked of you: pick a time slot below.');
+		// The calendar first (its month is the horizon's first): the date may be in the next one
+		await expect(page.getByRole('application', { name: 'Pick a date' })).toBeVisible();
+		const cell = page.locator(`[role="button"][data-value="${date}"]`);
+		if (!(await cell.isVisible()))
+			await page.getByRole('button', { name: /next/i }).first().click();
+		await cell.click();
+		await page
+			.getByRole('button', { name: /^\d{1,2}:\d{2}/ })
+			.first()
+			.click();
+		await page.getByRole('button', { name: 'Confirm booking' }).click();
+		await expect.poll(() => booked.length).toBe(1);
+		expect(booked[0]).toMatchObject({ scheduleId: schedule.id, startTime: slot.start });
+		await expect(page.getByRole('heading', { name: /You're booked/ })).toBeVisible();
+		expect(booked).toHaveLength(1);
+
+		// Ended by the recruiter from the dashboard, asked first
+		await gotoHydrated(page, '/recruiter');
 		await item.getByRole('button', { name: 'End it' }).click();
 		const confirm = page.getByRole('alertdialog', { name: 'End this mutual interest?' });
 		await expect(confirm).toContainText('You cannot undo this.');
@@ -461,5 +782,14 @@ test.describe('with matching on', () => {
 		await expect(panel.locator('[data-candidates-waiting="none"]')).toContainText(
 			'No candidate to review right now.'
 		);
+
+		// Their page for recruiters holds nothing of it any more: no banner, the job step is to do
+		// again, as for anyone (the note stays confirmed)
+		await gotoHydrated(page, `/${CANDIDATE_DOMAIN}/hire`);
+		await expect(journeyStep(page, 'Select or create a job')).toContainText(
+			'Pick the job you are hiring for, or write it.'
+		);
+		await expect(page.locator('[data-match-banner]')).toHaveCount(0);
+		await expect(journeyStep(page, NOTE_TITLE)).toContainText('You have read this note.');
 	});
 });

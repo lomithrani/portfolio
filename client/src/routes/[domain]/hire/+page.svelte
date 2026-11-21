@@ -19,6 +19,7 @@
 		journeyDescription,
 		journeyEffort,
 		journeyIntro,
+		journeyMatch,
 		stepName,
 		stepNote,
 		stepStates,
@@ -30,6 +31,7 @@
 	import { portfolioName } from '#services/linkPreview.ts';
 	import { clientStep, type ClientStep, type SubmitResult } from '#components/hire/steps/index.ts';
 	import BeforeYouStart from '#components/hire/BeforeYouStart.svelte';
+	import MatchBanner from '#components/hire/MatchBanner.svelte';
 	import CopyLink from '#components/share/CopyLink.svelte';
 	import { m as copyMessages } from '#components/share/CopyLink.messages.ts';
 	import OpenGraph from '#components/OpenGraph.svelte';
@@ -114,6 +116,14 @@
 			journeyEffort(journey?.steps.map((step) => clientStep(step.type)?.effort) ?? []).minutes,
 			{ closed }
 		)
+	);
+	// The visitor (a recruiter) and the owner are both interested in one of the visitor's jobs
+	// (matching): the journey holds that job for them, and the banner says what is left. Only a
+	// journey loaded with the session has one (the server's render is anyone signed out's)
+	let match = $derived(
+		journey && !journey.own && loaded.state === 'ready' && loaded.from === 'browser'
+			? journeyMatch(journey.match)
+			: undefined
 	);
 	// A journey that is only the step it leads to shows that step alone, without the list
 	let bare = $derived(
@@ -308,6 +318,15 @@
 		};
 	}
 
+	/**
+	 * The mutual interest was ended (from the banner, or by the other side meanwhile): the journey
+	 * read again has no banner, its job step is to do as for anyone; the focus goes to the step shown
+	 */
+	async function onMatchEnded() {
+		await loadJourney();
+		await focusStep(expanded);
+	}
+
 	async function onStepLocked(reason: 'signed-out' | 'locked') {
 		if (reason === 'signed-out' && user) {
 			// Reloaded below: the account change must not start a second load
@@ -434,8 +453,23 @@
 	{:else if journey}
 		{#if journey.own}{@render ownerNote()}{/if}
 		{#if loaded.state === 'ready' && loaded.failure}{@render failure(loaded.failure)}{/if}
-		<!-- Nothing to prepare for a meeting nobody can book: the intro says so -->
-		{#if !closed}<BeforeYouStart {journey} {ownerName} />{/if}
+		<!-- The recruiter of a mutual interest: the job it holds and what is left, in place of what to
+		     prepare (they came through matching). Nothing to prepare for a meeting nobody can book:
+		     the intro says so -->
+		{#if match}
+			{#key match._id}
+				<MatchBanner
+					{match}
+					{journey}
+					{ownerName}
+					booking={goal?.booking === true && !closed}
+					onEnded={onMatchEnded}
+					onSignedOut={() => void onStepLocked('signed-out')}
+				/>
+			{/key}
+		{:else if !closed}
+			<BeforeYouStart {journey} {ownerName} />
+		{/if}
 		<!-- What the server rendered is the whole page without JavaScript: it says what each step
 		     asks, but going through them needs the browser. Its own bottom margin: a <noscript> is
 		     inline, the page's spacing does not reach the steps under it -->
@@ -509,7 +543,7 @@
 									void focusStep(index);
 								}}
 							>
-								{(state === 'done' && entry?.reopenLabel) || m.open}
+								{(state === 'done' && entry?.reopenLabel?.(step)) || m.open}
 								<span class="sr-only">{name}</span>
 							</button>
 						{/if}

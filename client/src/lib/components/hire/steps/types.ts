@@ -112,8 +112,8 @@ export interface ClientStep {
 	failedNote?(step: JourneyStep): string;
 	/** The address asks for this step: it shows unfolded even when it is done */
 	wantsOpen?(step: JourneyStep, address: URL): boolean;
-	/** What the button unfolding the step says once it is done; "Open" when unset */
-	reopenLabel?: string;
+	/** What the button unfolding the step says once it is done; "Open" when unset (or undefined) */
+	reopenLabel?(step: JourneyStep): string | undefined;
 	/**
 	 * The owner's preview shows the step itself (its Visitor, with `journey.own` set) instead of
 	 * what it asks of recruiters. Only for a step that then offers the owner nothing to submit:
