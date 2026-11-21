@@ -219,7 +219,10 @@ form instead (`onClaimPortfolio`).
 							<span class="flex items-center gap-2 font-medium">
 								{m.recruiterSpace}
 								{#if recruiterNew}
-									<span class="badge preset-filled-error-500 shrink-0 text-xs" data-recruiter-new>
+									<span
+										class="badge preset-filled-error-700-300 shrink-0 text-xs"
+										data-recruiter-new
+									>
 										<span aria-hidden="true">{m.recruiterNew}</span>
 										<span class="sr-only">{m.recruiterNewLabel}</span>
 									</span>
@@ -251,7 +254,7 @@ form instead (`onClaimPortfolio`).
 								</span>
 								<span class="min-w-0 flex-1 font-medium">{m.opportunities}</span>
 								{#if unseen > 0}
-									<span class="badge preset-filled-error-500 shrink-0 text-xs" data-unseen>
+									<span class="badge preset-filled-error-700-300 shrink-0 text-xs" data-unseen>
 										<span aria-hidden="true">{unseenBadgeText(unseen)}</span>
 										<span class="sr-only">{unseenLabel(unseen)}</span>
 									</span>

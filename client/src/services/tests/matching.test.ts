@@ -433,13 +433,17 @@ describe('mutual interests', () => {
 		expect(mutualInterestChangeText(read({ ...recruiterSide, ...changed }))).toBe(
 			'The job description was edited since: the candidate keeps the version they said yes to.'
 		);
-		expect(matchedOnText('2026-11-20T10:00:00.000Z')).toBe('Both interested on 20 Nov 2026');
+		expect(matchedOnText('2026-11-20T10:00:00.000Z')).toBe(
+			'Both interested on 20\u00a0Nov\u00a02026'
+		);
 		withLocale('fr', () => {
 			expect(mutualInterestStateText(recruiter)).toBe('En cours');
 			expect(
 				mutualInterestStateText(read({ ...recruiterSide, ...ended, endReason: 'candidate' }))
 			).toBe('Le candidat y a mis fin');
-			expect(matchedOnText('2026-11-20T10:00:00.000Z')).toBe('Intérêt réciproque le 20 nov. 2026');
+			expect(matchedOnText('2026-11-20T10:00:00.000Z')).toBe(
+				'Intérêt réciproque le 20\u00a0nov.\u00a02026'
+			);
 		});
 	});
 });

@@ -258,13 +258,13 @@ export const m = defineMessages({
 				`Votre consentement prend fin le ${until} : confirmez-le de nouveau pour rester visible.`
 		},
 		paused: {
-			en: 'Paused: something it needs is missing, so you are proposed to no recruiter.',
+			en: 'Paused: something is missing, so no recruiter sees your card.',
 			fr: 'En pause : il manque quelque chose, aucun recruteur ne voit donc votre fiche.'
 		},
 		/** Paused, and the consent in its last DISCOVERY_CONSENT_RENEWAL_DAYS days: `until` the day */
 		pausedRenew: {
 			en: (until: string) =>
-				`Paused: something it needs is missing, so you are proposed to no recruiter. Your consent also ends on ${until}: confirm it again to stay visible.`,
+				`Paused: something is missing, so no recruiter sees your card. Your consent also ends on ${until}: confirm it again to stay visible.`,
 			fr: (until: string) =>
 				`En pause : il manque quelque chose, aucun recruteur ne voit donc votre fiche. Votre consentement prend aussi fin le ${until} : confirmez-le de nouveau pour rester visible.`
 		},
@@ -273,10 +273,13 @@ export const m = defineMessages({
 			fr: 'Votre consentement a pris fin : donnez-le de nouveau pour que les recruteurs voient votre fiche.'
 		},
 		open: { en: 'Open the settings', fr: 'Ouvrir les réglages' },
-		/** While on or paused. Backed by: routes/(app)/opportunities (the candidate's inbox) */
+		/**
+		 * While on or paused, named as the menu names it. Backed by: routes/(app)/opportunities (the
+		 * candidate's inbox: the jobs proposed or why there are none, the mutual interests)
+		 */
 		opportunities: {
-			en: 'See the jobs proposed to you',
-			fr: 'Voir les offres proposées'
+			en: 'Open your opportunities',
+			fr: 'Ouvrir vos opportunités'
 		}
 	}
 });

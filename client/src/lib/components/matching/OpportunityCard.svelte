@@ -47,7 +47,7 @@ focus when the deck moves to this card (`headingId`, tabindex -1).
 >
 	<header class="space-y-2">
 		{#if opportunity.interested}
-			<p class="badge preset-filled-primary-500 gap-1.5">
+			<p class="badge preset-filled-primary-700-300 gap-1.5">
 				<HandThumbUp size="14" aria-hidden="true" />
 				{m.opportunity.interested}
 			</p>

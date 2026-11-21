@@ -103,8 +103,8 @@
 	 * Where the owner stands in discovery (Path 2): null until a read answered; `off` while matching
 	 * is off (a 404: nothing of it shows, and nothing asks again for the page's life). Read once the
 	 * owner is known, again each time "Get started" or the Perfect job tab is shown, when the page
-	 * comes back in view, and once the steps or the criteria are saved (what discovery asks); a
-	 * change made in the Perfect job tab gives its own
+	 * comes back in view, and once the steps, the criteria or the calendar change (what discovery
+	 * asks); a change made in the Perfect job tab gives its own answer, newer than any read under way
 	 */
 	let discovery = $state.raw<DiscoveryKnown | null>(null);
 	let discoveryRequest: AbortController | undefined;
@@ -123,13 +123,13 @@
 		discovery = result;
 	}
 
-	/** What a change made in the Perfect job tab answered: newer than any read under way */
 	/**
 	 * The owner is visible to recruiters now: the Hiring journey and Appointments tabs say what
 	 * pauses it (the gate's steps, the calendar)
 	 */
 	let discoveryVisible = $derived(discovery?.kind === 'ready' && discovery.status.state === 'on');
 
+	/** What a change made in the Perfect job tab answered: newer than any read under way */
 	function discoveryChanged(status: DiscoveryStatus) {
 		discoveryRequest?.abort();
 		discovery = { kind: 'ready', status };

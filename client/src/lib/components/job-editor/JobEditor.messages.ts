@@ -288,8 +288,8 @@ export const m = defineMessages({
 		},
 		/** The company's hint while "Propose it to candidates" is ticked (in place of `companyHint`) */
 		companyRequired: {
-			en: 'Required to propose it to candidates: they read the company, and decide whether they are interested before they know which recruiter you are.',
-			fr: "Obligatoire pour la proposer aux candidats : ils lisent l'entreprise, et disent s'ils sont intéressés avant de savoir quel recruteur vous êtes."
+			en: "Required to propose it to candidates: they see the company's name and decide whether they are interested before they know which recruiter you are.",
+			fr: "Obligatoire pour la proposer aux candidats : ils voient le nom de l'entreprise et disent s'ils sont intéressés avant de savoir quel recruteur vous êtes."
 		},
 		/** For a job not created open: the choice comes once it is */
 		later: {
@@ -313,8 +313,6 @@ export const m = defineMessages({
 		/** 409 of a creation asked in matching (the jobs a recruiter may propose at once): created without it */
 		withoutIt: { en: 'Create it without proposing it', fr: 'La créer sans la proposer' }
 	},
-	/** After the number of openings */
-	positions: { en: 'positions', fr: 'postes' },
 	descriptionIntro: {
 		en: 'The job, its team and its missions, as candidates will read them.',
 		fr: 'Le poste, son équipe et ses missions, tels que les candidats les liront.'

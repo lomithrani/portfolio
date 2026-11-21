@@ -1132,7 +1132,7 @@ test.describe('the hiring journey', () => {
 		// Each choice shows its pay, and the day it was opened: a duplicate keeps its title
 		const openChoice = jobStep.locator('label', { hasText: `Staff engineer ${tag}` });
 		await expect(openChoice).toContainText('€45,000 – €55,000 gross per year');
-		await expect(openChoice).toContainText(/Opened \d{1,2} \w+ \d{4}/);
+		await expect(openChoice).toContainText(/Opened \d{1,2}\s\w+\s\d{4}/);
 		await expect(jobStep.locator('label', { hasText: `Data engineer ${tag}` })).not.toContainText(
 			'Opened'
 		);
@@ -1192,7 +1192,7 @@ test.describe('the hiring journey', () => {
 		await gotoHydrated(ownerPage, `/opportunities/${job._id}`);
 		await expect(ownerPage.getByText('The version shared first.')).toBeVisible();
 		await expect(ownerPage.getByText('The new version.')).toHaveCount(0);
-		await expect(ownerPage.getByText(/^Shared with you \d{1,2} \w+ \d{4}$/)).toBeVisible();
+		await expect(ownerPage.getByText(/^Shared with you \d{1,2}\s\w+\s\d{4}$/)).toBeVisible();
 
 		// The recruiter: the step says the job changed since it was shared
 		await stubMeetingType(page);
@@ -1204,7 +1204,7 @@ test.describe('the hiring journey', () => {
 		const sharedOn = jobStep.locator('p', { hasText: /^You shared / });
 		await expect(sharedOn).toHaveText(
 			new RegExp(
-				`^You shared Staff <b>engineer</b> ${tag} · E2E Corp on \\d{1,2} \\w+ \\d{4}: ${DOMAIN} reads that version\\.$`
+				`^You shared Staff <b>engineer</b> ${tag} · E2E Corp on \\d{1,2}\\s\\w+\\s\\d{4}: ${DOMAIN} reads that version\\.$`
 			)
 		);
 		await expect(sharedOn.locator('time')).toHaveCount(1);

@@ -86,8 +86,8 @@ export const m = defineMessages({
 	 * (CLAUDE.md "Matching")
 	 */
 	pausesDiscovery: {
-		en: 'You are visible to recruiters: disconnecting your calendar, or leaving no meeting type turned on with hours, pauses that until they are back.',
-		fr: "Vous êtes visible des recruteurs : si vous déconnectez votre agenda, ou ne laissez aucun type de rendez-vous activé avec des horaires, vous ne le serez plus jusqu'à leur retour."
+		en: 'You are visible to recruiters: disconnecting your calendar, or leaving no meeting type turned on with hours, pauses that until your calendar is connected and a meeting type is turned on with hours.',
+		fr: "Vous êtes visible des recruteurs : si vous déconnectez votre agenda, ou ne laissez aucun type de rendez-vous activé avec des horaires, vous ne le serez plus jusqu'à ce que votre agenda soit connecté et qu'un type de rendez-vous soit activé avec des horaires."
 	},
 	accessRefused: {
 		en: "Google no longer accepts this app's access to your calendar: it was revoked or has expired. Visitors cannot book meetings until you reconnect.",

@@ -66,7 +66,7 @@ latest role for screen readers.
 >
 	<header class="space-y-2">
 		{#if interested}
-			<p class="badge preset-filled-primary-500 gap-1.5">
+			<p class="badge preset-filled-primary-700-300 gap-1.5">
 				<HandThumbUp size="14" aria-hidden="true" />
 				{m.candidate.interested}
 			</p>

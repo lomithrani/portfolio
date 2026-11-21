@@ -216,7 +216,7 @@ counted as a second one (`detail` over 1) answers nothing either.
 			{m.heading}
 		</h2>
 		{#if interested}
-			<span class="badge preset-filled-primary-500 gap-1.5">
+			<span class="badge preset-filled-primary-700-300 gap-1.5">
 				<HandThumbUp size="14" aria-hidden="true" />
 				{cards.opportunity.interested}
 			</span>
@@ -285,7 +285,7 @@ counted as a second one (`detail` over 1) answers nothing either.
 				type="button"
 				class={[
 					button,
-					'preset-filled-primary-500',
+					'preset-filled-primary-700-300',
 					decision === 'interested' ? pressed : '',
 					disabled ? 'opacity-60' : ''
 				]}

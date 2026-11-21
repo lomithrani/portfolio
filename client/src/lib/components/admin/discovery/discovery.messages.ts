@@ -41,7 +41,7 @@ export const m = defineMessages({
 	},
 	/** Backed by: services/discovery.ts isProposed (the state on and nothing missing, at every read) */
 	paused: {
-		en: 'Paused: you are proposed to no recruiter until what is missing below is set.',
+		en: 'Paused: no recruiter sees your card until what is missing below is set.',
 		fr: "En pause : aucun recruteur ne voit votre fiche tant que ce qui manque ci-dessous n'est pas réglé."
 	},
 	/** Paused, and the consent in its last DISCOVERY_CONSENT_RENEWAL_DAYS days too */
@@ -76,12 +76,13 @@ export const m = defineMessages({
 			`Une offre ne vous est proposée, et votre fiche à son recruteur, que si elle obtient au moins ${score} sur 100 selon vos critères, sans critère éliminatoire manqué : le minimum de votre parcours de recrutement. <journey>Le modifier</journey>`
 	},
 	/**
-	 * While on or paused: the candidate's inbox. Backed by: routes/(app)/opportunities (the jobs
-	 * proposed, GET /opportunities, or why there are none)
+	 * While on or paused: the candidate's inbox, named as the menu names it (paused, it proposes no
+	 * job but says why, and lists the mutual interests). Backed by: routes/(app)/opportunities (the
+	 * jobs proposed, GET /opportunities, or why there are none; the mutual interests)
 	 */
 	opportunities: {
-		en: 'See the jobs proposed to you',
-		fr: 'Voir les offres proposées'
+		en: 'Open your opportunities',
+		fr: 'Ouvrir vos opportunités'
 	},
 	/** A change answered a 404: matching was turned off meanwhile */
 	unavailable: {
@@ -145,7 +146,7 @@ export const m = defineMessages({
 		experiences: { en: 'Experiences your card reads', fr: 'Expériences lues par votre fiche' },
 		experiencesHint: {
 			en: 'Untick an experience to leave it out of your card: its role, its time and the skills of its projects.',
-			fr: 'Décochez une expérience pour la laisser hors de votre fiche : son poste, son temps et les compétences de ses projets.'
+			fr: 'Décochez une expérience pour la laisser hors de votre fiche : son intitulé de poste, sa durée et les compétences de ses projets.'
 		},
 		noExperience: {
 			en: 'Your portfolio has no experience yet: your card shows your headline alone.',
@@ -161,6 +162,14 @@ export const m = defineMessages({
 		},
 		undo: { en: 'Undo changes', fr: 'Annuler les modifications' },
 		saved: { en: 'Card saved', fr: 'Fiche enregistrée' },
+		/**
+		 * The card's settings changed from another window or device since the form started: read just
+		 * before a save, they are in the form now, under the owner's own changes; nothing was saved
+		 */
+		changedElsewhere: {
+			en: 'Your card was changed from another window or device meanwhile: it is shown here with your changes, nothing was saved. Check it, then save it again.',
+			fr: "Votre fiche a été modifiée entre-temps depuis une autre fenêtre ou un autre appareil : elle est affichée ici avec vos modifications, rien n'a été enregistré. Vérifiez-la, puis enregistrez-la de nouveau."
+		},
 		saveFailed: {
 			en: 'Your card could not be saved. Try again in a moment.',
 			fr: "Votre fiche n'a pas pu être enregistrée. Réessayez dans un instant."
@@ -242,7 +251,7 @@ export const m = defineMessages({
 		 * the opt-in held back DISCOVERY_REJOIN_DAYS after it, which `details` says)
 		 */
 		lapsedDescription: {
-			en: "Your consent ended, so you are already proposed to no recruiter. Turning it off also drops your answers on the jobs proposed to you, and recruiters' answers about you, except where you are both interested: those go on until you or the recruiter ends them.",
+			en: "Your consent ended: your card is no longer proposed to any recruiter. Turning it off also drops your answers on the jobs proposed to you, and recruiters' answers about you, except where you are both interested: those go on until you or the recruiter ends them.",
 			fr: "Votre consentement a pris fin : votre fiche n'est déjà plus proposée à aucun recruteur. Le désactiver efface aussi vos réponses aux offres qui vous ont été proposées, et celles des recruteurs à votre sujet, sauf en cas d'intérêt réciproque : celui-ci continue jusqu'à ce que vous ou le recruteur y mettiez fin."
 		},
 		busy: { en: 'Turning it off…', fr: 'Désactivation…' },
@@ -278,9 +287,9 @@ export const m = defineMessages({
 		 */
 		outcomes: {
 			en: (list: string) =>
-				`Beside your card, for their job, recruiters read its outcome on: ${list}. Never what you ask for, your commute or where you want to work.`,
+				`Beside your card, recruiters read how their job does on: ${list}. Never what you ask for, your commute or where you want to work.`,
 			fr: (list: string) =>
-				`À côté de votre fiche, pour leur offre, les recruteurs lisent son résultat sur : ${list}. Jamais ce que vous demandez, votre trajet ni le lieu où vous voulez travailler.`
+				`À côté de votre fiche, les recruteurs lisent le résultat de leur offre sur : ${list}. Jamais ce que vous demandez, votre trajet ni le lieu où vous voulez travailler.`
 		},
 		noOutcomes: {
 			en: 'Beside your card, recruiters read no outcome per criterion: your hiring journey does not show them how their job does on each.',

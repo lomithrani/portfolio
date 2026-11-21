@@ -8,7 +8,6 @@
 		ArrowPath,
 		ExclamationTriangle,
 		EyeSlash,
-		Inbox,
 		LockClosed,
 		PauseCircle,
 		UserCircle
@@ -439,7 +438,7 @@
 			{#if $notificationsStore.matching === 'off'}
 				<PageNotice
 					title={matchingText.unavailable.title}
-					icon={Inbox}
+					icon={EyeSlash}
 					headingId={unavailableHeading}
 				>
 					<p>{matchingText.unavailable.text}</p>
@@ -458,7 +457,7 @@
 		{:else if load?.kind === 'off'}
 			<PageNotice
 				title={matchingText.unavailable.title}
-				icon={Inbox}
+				icon={EyeSlash}
 				headingId={unavailableHeading}
 			>
 				<p>{matchingText.unavailable.text}</p>
@@ -487,7 +486,7 @@
 						{m.tabs.interests}
 						{#if unseen > 0}
 							<span
-								class="badge preset-filled-error-500 ms-1 min-w-5 px-1.5 text-xs tabular-nums"
+								class="badge preset-filled-error-700-300 ms-1 min-w-5 px-1.5 text-xs tabular-nums"
 								data-unseen
 							>
 								<span aria-hidden="true">{unseen}</span>
@@ -510,7 +509,7 @@
 								<p class="card preset-tonal-warning p-3 text-sm" data-consent-ends>
 									<Rich text={m.review.consentEnds(formatDay(consentEnds))}>
 										{#snippet settings(text)}<a
-												class="anchor font-medium"
+												class="link-text"
 												href="{resolve('/[domain]/admin?tab=perfect-job', {
 													domain: user?.domain ?? ''
 												})}#discovery">{text}</a

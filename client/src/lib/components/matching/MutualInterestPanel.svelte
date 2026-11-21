@@ -57,7 +57,7 @@ takes the focus (`headingId`, tabindex -1), "Keep going" gives it back to the de
 		<div class="flex flex-wrap gap-2">
 			{#if interest.job}
 				<a
-					class="{button} preset-filled-primary-500"
+					class="{button} preset-filled-primary-700-300"
 					href={resolve('/(app)/opportunities/[id]', { id: interest.job._id })}
 				>
 					<DocumentText size="18" class="shrink-0" aria-hidden="true" />
@@ -79,7 +79,7 @@ takes the focus (`headingId`, tabindex -1), "Keep going" gives it back to the de
 			</p>
 			<div class="flex flex-wrap gap-2">
 				<a
-					class="{button} preset-filled-primary-500"
+					class="{button} preset-filled-primary-700-300"
 					href={resolve('/[domain]/hire', { domain: candidate.domain })}
 				>
 					<ArrowRight size="18" class="shrink-0" aria-hidden="true" />

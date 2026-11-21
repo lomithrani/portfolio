@@ -122,7 +122,7 @@ title). A plain group under its heading, not a region: the page lists many jobs.
 					{#if listed.has(job._id)}
 						<a
 							href="#{anchorOf(job._id)}"
-							class="anchor inline-block text-sm"
+							class="link-text inline-block text-sm"
 							aria-label={job.createdAt
 								? m.listedHereNamed(job.title, formatDay(job.createdAt))
 								: m.listedHereTitled(job.title)}

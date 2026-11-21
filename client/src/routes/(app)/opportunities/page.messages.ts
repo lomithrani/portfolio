@@ -107,7 +107,7 @@ export const m = defineMessages({
 		},
 		paused: {
 			title: {
-				en: 'Paused: you are proposed to no recruiter',
+				en: 'Paused: no recruiter sees your card',
 				fr: 'En pause : aucun recruteur ne voit votre fiche'
 			},
 			/** Followed by each requirement missing (`count`: how many) */
@@ -115,8 +115,8 @@ export const m = defineMessages({
 				en: (count: number) =>
 					plural(
 						count,
-						'Since you turned it on, something you need to be visible to recruiters has gone missing:',
-						'Since you turned it on, some things you need to be visible to recruiters have gone missing:'
+						'Something you need to be visible to recruiters has gone missing since you turned visibility on:',
+						'Some things you need to be visible to recruiters have gone missing since you turned visibility on:'
 					),
 				fr: (count: number) =>
 					plural(

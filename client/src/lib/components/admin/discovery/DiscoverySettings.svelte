@@ -42,6 +42,7 @@ turns it on stays focusable when it cannot be used (aria-disabled), and why is r
 		discoveryOn,
 		discoveryWithdrawable,
 		formatMoment,
+		loadDiscovery,
 		rebaseCardForm,
 		rejoinDate,
 		saveDiscoveryCard,
@@ -126,12 +127,15 @@ turns it on stays focusable when it cannot be used (aria-disabled), and why is r
 	let form = $state<CardForm>({ headline: '', hidden: [] });
 	let savingCard = $state(false);
 	let cardError = $state('');
+	/** The settings saved changed elsewhere since the form started: said until the next save */
+	let cardNotice = $state('');
 	/** What the API refused in the headline, and the headline it refused: said until it changes */
 	let refusedHeadline = $state.raw<{ message: string; sent: string } | null>(null);
 
 	// The settings saved changed (read again, or saved here): the form follows them; changes not
 	// saved yet stay, on top of the settings saved now (rebaseCardForm: a save from this tab never
-	// shows again an experience hidden from another since)
+	// shows again an experience hidden from another since; saveCard reads them first too, for a
+	// window that stayed in view)
 	$effect(() => {
 		const card = status?.card;
 		if (!card) return;
@@ -173,6 +177,30 @@ turns it on stays focusable when it cannot be used (aria-disabled), and why is r
 		if (!changed || localProblem || headlineError || savingCard || turningOn) return;
 		savingCard = true;
 		cardError = '';
+		cardNotice = '';
+		// PUT /discovery replaces the whole card: the settings saved now are read first (a window
+		// that stayed in view never read them again). Changed from another window or device since
+		// the form started, the form takes them under its own changes, shown to check before a save:
+		// never an experience hidden from elsewhere shown again unseen
+		const saved = await loadDiscovery();
+		if (saved.kind !== 'ready') {
+			savingCard = false;
+			if (saved.kind === 'off') {
+				cardError = m.unavailable;
+				reload();
+			} else {
+				cardError = failureText({ kind: saved.reason }, m.card.saveFailed);
+			}
+			return;
+		}
+		if (base && cardChanged(cardForm(saved.status.card), base)) {
+			form = rebaseCardForm($state.snapshot(form), base, saved.status.card);
+			base = saved.status.card;
+			onDiscovery(saved.status);
+			savingCard = false;
+			cardNotice = m.card.changedElsewhere;
+			return;
+		}
 		const sent = form.headline;
 		const result = await saveDiscoveryCard(cardSettings($state.snapshot(form)));
 		savingCard = false;
@@ -200,6 +228,7 @@ turns it on stays focusable when it cannot be used (aria-disabled), and why is r
 		form = cardForm(status.card);
 		refusedHeadline = null;
 		cardError = '';
+		cardNotice = '';
 	}
 
 	// --- The preview -------------------------------------------------------------------------
@@ -535,6 +564,11 @@ turns it on stays focusable when it cannot be used (aria-disabled), and why is r
 			{#if cardError}
 				<p class="text-sm text-error-700-300" role="alert">{cardError}</p>
 			{/if}
+			{#if cardNotice}
+				<p class="card preset-tonal-warning p-3 text-sm" role="alert" data-card-changed-elsewhere>
+					{cardNotice}
+				</p>
+			{/if}
 		</section>
 
 		{#if action}
@@ -576,7 +610,7 @@ turns it on stays focusable when it cannot be used (aria-disabled), and why is r
 					<button
 						type="button"
 						class={[
-							'btn preset-filled-primary-700-300 max-w-full whitespace-normal text-center',
+							'btn preset-filled-primary-700-300 max-w-full whitespace-normal text-center leading-5',
 							blockedBy ? 'cursor-not-allowed opacity-50' : ''
 						]}
 						aria-disabled={blockedBy || turningOn ? 'true' : undefined}

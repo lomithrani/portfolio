@@ -31,7 +31,7 @@ const entry = (fields: Record<string, unknown> = {}): ReviewedJob =>
 			_id: JOB_ID,
 			title: 'Staff Platform Engineer',
 			company: 'E2E Review Corp',
-			description: '## The job\n\nRun the platform.',
+			description: '## The job\n\nRun the platform. [Apply](https://t.example/x)',
 			status: 'open',
 			location: { country: 'FR', city: 'Lyon', workMode: 'hybrid', remoteDaysPerWeek: 2 },
 			contract: { type: 'cdi' },
@@ -93,6 +93,11 @@ describe('a job waiting for a review', () => {
 		expect(text).toContain('Staff Platform Engineer');
 		expect(text).toContain('E2E Review Corp');
 		expect(text).toContain('Run the platform.');
+		// Where its links lead, inside them, opened apart without a referrer (JobDetails, linkHosts):
+		// a tracking link behind harmless words is in sight
+		expect(body).toContain(
+			'href="https://t.example/x" target="_blank" rel="noopener noreferrer nofollow"><span class="link-text">Apply</span> <span class="link-host">(t.example)</span>'
+		);
 		expect(text).toContain('Waiting for a review since');
 		// What its recruiter asked for, never "Proposed to candidates" (approved and live)
 		expect(text).toContain('Its recruiter asked to propose it to candidates on');

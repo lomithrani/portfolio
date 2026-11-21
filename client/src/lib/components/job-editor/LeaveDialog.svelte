@@ -38,7 +38,7 @@ backdrop mean "Keep editing".
 		<Dialog.Backdrop class="fixed inset-0 z-50 bg-surface-950/60" />
 		<Dialog.Positioner class="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
 			<Dialog.Content
-				class="w-full max-w-md space-y-4 card bg-surface-50-950 p-5 text-surface-950-50 shadow-xl sm:p-6"
+				class="w-full max-w-md space-y-4 card border border-surface-200-800 bg-surface-50-950 p-5 text-surface-950-50 shadow-xl sm:p-6"
 				data-leave-dialog
 			>
 				<Dialog.Title class="text-lg font-semibold">{m.title}</Dialog.Title>

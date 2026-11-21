@@ -30,7 +30,7 @@ import {
 } from './apiBodies';
 import { isConsentProblem } from './apiErrors';
 import type { JobPostingLike } from './jobPosting';
-import { formatDay, isNetworkFailure, networkError } from './recruiter';
+import { formatDay, isNetworkFailure, keptTogether, networkError } from './recruiter';
 import {
 	isScore,
 	jobMatchCriteria,
@@ -54,13 +54,15 @@ import { m } from './matching.messages';
 
 /** A moment as the screens say it: '28 Nov 2026, 14:05' (in the browser's time zone) */
 export const formatMoment = (date: Date): string =>
-	date.toLocaleString(intlLocale('en-GB'), {
-		day: 'numeric',
-		month: 'short',
-		year: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit'
-	});
+	keptTogether(
+		date.toLocaleString(intlLocale('en-GB'), {
+			day: 'numeric',
+			month: 'short',
+			year: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit'
+		})
+	);
 
 type Fields = Record<string, unknown>;
 

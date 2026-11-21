@@ -141,16 +141,16 @@ export const m = defineMessages({
 		/** `title`: the job's, open. Backed by: isLiveInMatching of server/services/jobMatching.ts */
 		description: {
 			en: (title: string) =>
-				`Once approved, ${title} is proposed to the candidates whose criteria it meets, while it stays open and its recruiter has accepted the terms in force.`,
+				`Once approved, the job description “${title}” is proposed to the candidates whose criteria it meets, while it stays open and its recruiter has accepted the terms in force.`,
 			fr: (title: string) =>
-				`Une fois acceptée, ${title} est proposée aux candidats dont elle remplit les critères, tant qu'elle reste ouverte et que son recruteur a accepté les conditions d'utilisation en vigueur.`
+				`Une fois acceptée, l'offre « ${title} » est proposée aux candidats dont elle remplit les critères, tant qu'elle reste ouverte et que son recruteur a accepté les conditions d'utilisation en vigueur.`
 		},
 		/** A job on hold (it stays in matching) */
 		descriptionOnHold: {
 			en: (title: string) =>
-				`${title} is on hold: once approved, it is proposed to the candidates whose criteria it meets only when its recruiter opens it again, and while they have accepted the terms in force.`,
+				`The job description “${title}” is on hold: once approved, it is proposed to the candidates whose criteria it meets only when its recruiter opens it again, and while they have accepted the terms in force.`,
 			fr: (title: string) =>
-				`${title} est en pause : une fois acceptée, elle n'est proposée aux candidats dont elle remplit les critères qu'une fois que son recruteur la rouvre, et tant qu'il a accepté les conditions d'utilisation en vigueur.`
+				`L'offre « ${title} » est en pause : une fois acceptée, elle n'est proposée aux candidats dont elle remplit les critères qu'une fois que son recruteur la rouvre, et tant qu'il a accepté les conditions d'utilisation en vigueur.`
 		},
 		/**
 		 * Backed by: pendingReviews (pending jobs only) and afterJobEdited of jobMatching.ts (an edit

@@ -19,9 +19,14 @@
 		 * connected with a meeting type that has hours: the tab says that without them it pauses
 		 */
 		visible?: boolean;
-		/** The calendar was disconnected here (what discovery asks may have changed) */
+		/**
+		 * The calendar or a meeting type changed here: connected, disconnected (here, or found
+		 * refused by Google), a meeting type saved or deleted (what discovery asks may have changed)
+		 */
 		onCalendarChanged?: () => void;
 	} = $props();
+
+	const uid = $props.id();
 
 	const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -137,6 +142,7 @@
 			await checkConnectionStatus();
 			if (!connected) {
 				clearCalendarData();
+				onCalendarChanged?.();
 				return '';
 			}
 		}
@@ -228,6 +234,7 @@
 			return;
 		}
 		await checkConnectionStatus();
+		onCalendarChanged?.();
 		await loadAll();
 	}
 
@@ -289,6 +296,7 @@
 			scheduleMessage = m.scheduleSaved;
 			editingSchedule = null;
 			await loadSchedules();
+			onCalendarChanged?.();
 		}
 	}
 
@@ -301,6 +309,7 @@
 			return;
 		}
 		schedules = schedules.filter((s) => s._id !== id);
+		onCalendarChanged?.();
 	}
 
 	async function loadBookings() {
@@ -384,13 +393,18 @@
 			</div>
 			<p class="text-sm opacity-50">{m.permissionsActive}</p>
 			{#if visible}
-				<p class="card preset-tonal-warning p-3 text-sm" data-pauses-discovery>
+				<p
+					id="{uid}-pauses-discovery"
+					class="card preset-tonal-warning p-3 text-sm"
+					data-pauses-discovery
+				>
 					{m.pausesDiscovery}
 				</p>
 			{/if}
 			<button
 				type="button"
 				class="btn preset-outlined-error-500 text-sm"
+				aria-describedby={visible ? `${uid}-pauses-discovery` : undefined}
 				onclick={disconnectCalendar}
 			>
 				{m.disconnect}

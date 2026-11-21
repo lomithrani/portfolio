@@ -1242,7 +1242,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							</select>
 						{/snippet}
 					</Field>
-					<Field field="openings" label={labels.openings} unit={m.positions}>
+					<Field field="openings" label={labels.openings}>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}

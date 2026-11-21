@@ -52,7 +52,7 @@ booked is said once, above the list (the view's intro), and on the job's private
 			{mutualInterestStateText(interest)}
 		</span>
 		{#if fresh}
-			<span class="badge preset-filled-error-500" data-interest-new>{m.new}</span>
+			<span class="badge preset-filled-error-700-300" data-interest-new>{m.new}</span>
 		{/if}
 	</div>
 	<!-- Takes the focus back once "End it" closed its dialog (the button is gone) -->

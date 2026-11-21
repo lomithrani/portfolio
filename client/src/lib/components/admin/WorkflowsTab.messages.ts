@@ -107,7 +107,7 @@ export const m = defineMessages({
 	 */
 	pausesDiscovery: {
 		en: 'Saving this journey pauses being visible to recruiters, until your journey asks for the job, scores it and leads to a meeting again.',
-		fr: "Si vous enregistrez ce parcours, vous ne serez plus visible des recruteurs, jusqu'à ce que votre parcours demande de nouveau l'offre, la note et mène à un rendez-vous."
+		fr: "Si vous enregistrez ce parcours, vous ne serez plus visible des recruteurs, jusqu'à ce que votre parcours demande de nouveau l'offre, la fasse noter et mène à un rendez-vous."
 	},
 	undo: { en: 'Undo changes', fr: 'Annuler les modifications' },
 	seeHirePage: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' }

@@ -142,8 +142,9 @@ whether more candidates come, never how many.
 	let alert = $state('');
 	// What the polite live region says
 	let announcement = $state('');
-	// The same words in sight, beside the answers and Undo (what was recorded, or why not): the live
-	// region is for screen readers only. Cleared once another answer or an undo starts
+	// The same words in sight, under the answers beside Undo, alone once neither is left (what was
+	// recorded, or why not): the live region is for screen readers only. Cleared once another answer
+	// or an undo starts, and once the answer they were said about is settled
 	let said = $state('');
 	// The mutual interest an answer just made, shown until the person goes on
 	let moment = $state.raw<MutualInterest | null>(null);
@@ -308,16 +309,33 @@ whether more candidates come, never how many.
 		await settleFocus();
 	}
 
+	/**
+	 * Reads the feed in place of a control that goes while it reads (the state with no job yet, a
+	 * failed read): the focus on what says the feed is read, then on what the read shows
+	 * (settleFocus), never on the page's body
+	 */
+	async function readReplacing(fromStart: boolean) {
+		// read() marks the deck loading before its first await: the control is gone after a tick
+		const reading = read(fromStart);
+		await focusShown();
+		await reading;
+	}
+
 	/** "Check again" (travel times computed meanwhile): the feed from its start */
 	async function checkAgain() {
 		if (deck.loading || isBlocked()) return;
+		if (pendingEmpty) {
+			// Its block, this button with it, goes while the feed is read
+			await readReplacing(true);
+			return;
+		}
+		// Beside cards it stays while it reads; it goes once nothing is pending anymore
 		await read(true);
-		// Its button goes once nothing is pending anymore
 		await refocusIfLost();
 	}
 
 	function retry() {
-		if (!isBlocked()) read();
+		if (!isBlocked()) readReplacing(false);
 	}
 
 	onMount(() => {
@@ -380,6 +398,9 @@ whether more candidates come, never how many.
 		} catch {
 			result = { ok: false, failure: decisionFailure(undefined, undefined, side, 'decide') };
 		}
+		// Settled: what was said meanwhile (Undo pressed while it was on its way) no longer holds;
+		// what it recorded, or why not, is said below
+		said = '';
 		if (result.ok) {
 			deck = decisionSaved(deck, key, !!result.match);
 			now = Date.now();
@@ -412,8 +433,9 @@ whether more candidates come, never how many.
 
 	async function undoLast() {
 		if (deck.sending?.kind === 'decision' && !stopped && !moment) {
-			// Undo is for that answer once it is saved: said, never a key that does nothing
-			say(m.stillSending);
+			// Said, never a key that does nothing: a first answer can be undone once it is saved, one
+			// given again after an undo never can
+			say(deck.sending.first ? m.stillSending : m.failure.final);
 			return;
 		}
 		const last = deck.last;
@@ -603,7 +625,7 @@ whether more candidates come, never how many.
 							'pointer-events-none absolute -top-3 badge text-base font-bold shadow-lg',
 							// On the edge that stays in sight as the card moves away
 							dragHint === 'interested'
-								? 'preset-filled-primary-500 start-4'
+								? 'preset-filled-primary-700-300 start-4'
 								: 'preset-filled-surface-950-50 end-4'
 						]}
 						aria-hidden="true"
@@ -658,8 +680,8 @@ whether more candidates come, never how many.
 			<p class="mx-auto max-w-md text-surface-700-300">{m.candidate.pendingEmpty}</p>
 			<button
 				type="button"
-				class={['btn preset-tonal min-h-11', deck.loading || blocked ? 'opacity-60' : '']}
-				aria-disabled={deck.loading || blocked}
+				class={['btn preset-tonal min-h-11', blocked ? 'opacity-60' : '']}
+				aria-disabled={blocked}
 				onclick={checkAgain}
 			>
 				<ArrowPath size="18" aria-hidden="true" />
@@ -689,10 +711,13 @@ whether more candidates come, never how many.
 		</p>
 	{/if}
 
-	<!-- The answers: at the bottom of the page while a long card scrolls, safe areas kept -->
-	{#if answering || showUndo}
+	<!-- The answers: at the bottom of the page while a long card scrolls, safe areas kept, on the
+	page's own background (nothing of the card shows through it). Once no card or Undo is left, what
+	the deck said stays in sight alone (why the card answered last went, say) -->
+	{#if answering || showUndo || (said && !stopped && !moment)}
 		<div
-			class="sticky bottom-0 z-10 -mx-1 space-y-2 bg-surface-50-950/95 px-1 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur"
+			class="answer-bar sticky bottom-0 z-10 -mx-1 space-y-2 px-1 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+			data-deck-answers
 		>
 			{#if answering}
 				<div class="grid grid-cols-2 gap-2">
@@ -713,7 +738,7 @@ whether more candidates come, never how many.
 						type="button"
 						class={[
 							answerButton,
-							'preset-filled-primary-500',
+							'preset-filled-primary-700-300',
 							busy || blocked || settling ? 'opacity-60' : ''
 						]}
 						aria-disabled={busy || blocked || settling}
@@ -764,3 +789,10 @@ whether more candidates come, never how many.
 		</div>
 	{/if}
 </section>
+
+<style>
+	/* The page's own background (the html element's, in Skeleton's globals), opaque */
+	.answer-bar {
+		background-color: light-dark(var(--color-root-bg-light), var(--color-root-bg-dark));
+	}
+</style>

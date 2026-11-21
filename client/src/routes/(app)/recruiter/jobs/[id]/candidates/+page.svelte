@@ -16,6 +16,7 @@
 	import { common } from '#lib/i18n/common.messages.ts';
 	import EditorPlaceholder from '#components/job-editor/EditorPlaceholder.svelte';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
+	import { SITE_NAME } from '#components/legal/legalDocuments.ts';
 	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import CandidateCard from '#components/matching/CandidateCard.svelte';
 	import MatchDeck from '#components/matching/MatchDeck.svelte';
@@ -206,10 +207,22 @@
 	const undo = (card: RecruiterCard) => undoCandidateAnswer(jobId, card.token);
 
 	const linkClass = 'btn preset-filled-primary-700-300 min-h-11 max-w-full whitespace-normal';
+
+	/**
+	 * The tab names the page only once the posting says matching is on; matching off, it says what
+	 * every page of matching not available says, never what the page is; the site's name meanwhile
+	 */
+	let pageTitle = $derived(
+		job && matching
+			? m.pageTitle(job.title)
+			: (job && !matching) || loadState.kind === 'off'
+				? matchingText.unavailable.pageTitle
+				: SITE_NAME
+	);
 </script>
 
 <svelte:head>
-	<title>{m.pageTitle(job ? job.title : m.jobDescription)}</title>
+	<title>{pageTitle}</title>
 </svelte:head>
 
 <div class="p-4 md:p-6">
@@ -226,9 +239,7 @@
 			<PageNotice title={matchingText.unavailable.title} icon={EyeSlash}>
 				<p>{matchingText.unavailable.text}</p>
 				{#snippet actions()}
-					<a href={resolve('/(app)/recruiter/jobs/[id]', { id: jobId })} class={linkClass}
-						>{m.backToJob}</a
-					>
+					<a href={resolve('/(site)')} class={linkClass}>{matchingText.unavailable.home}</a>
 				{/snippet}
 			</PageNotice>
 		{:else if job && matching && standing}
@@ -366,9 +377,7 @@
 			<PageNotice title={matchingText.unavailable.title} icon={EyeSlash}>
 				<p>{matchingText.unavailable.text}</p>
 				{#snippet actions()}
-					<a href={resolve('/(app)/recruiter/jobs/[id]', { id: jobId })} class={linkClass}
-						>{m.backToJob}</a
-					>
+					<a href={resolve('/(site)')} class={linkClass}>{matchingText.unavailable.home}</a>
 				{/snippet}
 			</PageNotice>
 		{:else if loadState.kind === 'not-found'}

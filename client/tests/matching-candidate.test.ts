@@ -1,5 +1,9 @@
 import { expect, request as playwrightRequest, test, type Page } from '@playwright/test';
-import { currentDiscoveryConsent, discoveryRequirementMessage } from 'portfolio-common';
+import {
+	currentDiscoveryConsent,
+	discoveryRequirementMessage,
+	journeyTemplate
+} from 'portfolio-common';
 import { NOT_PROPOSED_TO_RECRUITERS } from '../src/services/apiBodies';
 import { calendarConfigured, expectMatchingMode, stubApi, type StubAnswer } from './support/api';
 import { tabIntoDeck } from './support/deck';
@@ -223,6 +227,106 @@ test('what is missing leads to what fixes it, the journey’s steps added and le
 	expect(saves).toHaveLength(0);
 });
 
+test('while visible, the journey and calendar tabs say what pauses it, and read discovery again once changed', async ({
+	page
+}) => {
+	let status: Record<string, unknown> = onStatus();
+	const reads = await stubApi(page, 'GET', '/discovery', () => ({ json: status }));
+	await stubApi(page, 'GET', '/workflow', () => ({
+		json: { steps: journeyTemplate('gate'), saved: true }
+	}));
+	const saves = await stubApi(page, 'PUT', '/workflow', (request) => ({
+		json: { steps: request.postDataJSON().steps, saved: true }
+	}));
+	// The calendar connected with a meeting type that has hours, answered in the browser: neither
+	// the seeded grant nor Google is ever asked
+	const schedule = {
+		_id: '65e2e00000000000000000aa',
+		title: 'Intro call',
+		durationMinutes: 30,
+		bufferMinutes: 0,
+		minNoticeHours: 24,
+		maxAdvanceDays: 30,
+		timezone: 'Europe/Paris',
+		calendarId: 'primary',
+		locationType: 'google_meet',
+		availability: [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' }],
+		enabled: true
+	};
+	await stubApi(page, 'GET', '/appointments/calendar-status', () => ({
+		json: {
+			configured: true,
+			connected: true,
+			connectedAt: new Date().toISOString(),
+			revokedAt: null
+		}
+	}));
+	await stubApi(page, 'GET', '/appointments/schedules', () => ({ json: [schedule] }));
+	const deletes = await stubApi(page, 'DELETE', `/appointments/schedules/${schedule._id}`, () => ({
+		json: { deleted: true }
+	}));
+	const disconnects = await stubApi(page, 'POST', '/appointments/disconnect', () => ({
+		json: { disconnected: true }
+	}));
+	await openAdmin(page, 'workflows');
+	const pausing =
+		'Saving this journey pauses being visible to recruiters, until your journey asks for the job, scores it and leads to a meeting again.';
+	const warning = page.locator('[data-pauses-discovery]').filter({ visible: true });
+	const save = page.getByRole('button', { name: 'Save journey' });
+	const steps = page.getByRole('list', { name: 'Steps' });
+	const removeScore = () =>
+		steps
+			.getByRole('listitem')
+			.filter({ has: page.getByRole('heading', { name: /Get the job scored/ }) })
+			.getByRole('button', { name: 'Remove' })
+			.click();
+	await expect(steps.getByRole('heading', { level: 3 })).toHaveCount(4);
+	await expect(warning).toHaveCount(0);
+
+	// The score taken out: saving would pause it, said beside Save and with it
+	await removeScore();
+	await expect(warning).toHaveText(pausing);
+	await expect(save).toHaveAccessibleDescription(pausing);
+	await page.getByRole('button', { name: 'Undo changes' }).click();
+	await expect(warning).toHaveCount(0);
+	await expect(save).not.toHaveAccessibleDescription(pausing);
+
+	// Saved anyway: discovery is read again (what it asks changed)
+	await removeScore();
+	let before = reads.length;
+	await save.click();
+	await expect.poll(() => saves.length).toBe(1);
+	await expect.poll(() => reads.length).toBeGreaterThan(before);
+
+	// The calendar: what pauses it said with Disconnect; a meeting type deleted, then the calendar
+	// disconnected, each read discovery again
+	await page.getByRole('tab', { name: 'Appointments' }).click();
+	const calendarPausing =
+		'You are visible to recruiters: disconnecting your calendar, or leaving no meeting type turned on with hours, pauses that until your calendar is connected and a meeting type is turned on with hours.';
+	await expect(warning).toHaveText(calendarPausing);
+	const disconnect = page.getByRole('button', { name: 'Disconnect' });
+	await expect(disconnect).toHaveAccessibleDescription(calendarPausing);
+	before = reads.length;
+	await page.getByRole('button', { name: 'Delete', exact: true }).click();
+	await expect.poll(() => deletes.length).toBe(1);
+	await expect.poll(() => reads.length).toBeGreaterThan(before);
+	before = reads.length;
+	await disconnect.click();
+	await expect.poll(() => disconnects.length).toBe(1);
+	await expect.poll(() => reads.length).toBeGreaterThan(before);
+
+	// Not visible (paused already): neither tab warns
+	status = { ...onStatus(), state: 'paused', missing: ['schedule'] };
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=workflows`);
+	await expect(steps.getByRole('heading', { level: 3 })).toHaveCount(4);
+	await removeScore();
+	await expect(save).toBeEnabled();
+	await expect(warning).toHaveCount(0);
+	await page.getByRole('tab', { name: 'Appointments' }).click();
+	await expect(disconnect).toBeVisible();
+	await expect(warning).toHaveCount(0);
+});
+
 test('a refused opt-in says from when it can be turned on again', async ({ page }) => {
 	await stubApi(page, 'GET', '/discovery', () => ({ json: OFF_STATUS }));
 	const optIns = await stubApi(page, 'POST', '/discovery/consent', () => ({
@@ -304,6 +408,45 @@ test('the card’s changes not saved hold the opt-in back, and leaving asks firs
 	// Undone: it can be turned on again
 	await card.getByRole('button', { name: 'Undo changes' }).click();
 	await expect(turnOn).not.toBeDisabled();
+});
+
+test('a save reads the card first: changed from another window meanwhile, nothing is sent unseen', async ({
+	page
+}) => {
+	let saved: { headline: string | null; hiddenExperiences: string[] } = OFF_STATUS.card;
+	await stubApi(page, 'GET', '/discovery', () => ({ json: { ...OFF_STATUS, card: saved } }));
+	const saves = await stubApi(page, 'PUT', '/discovery', (request) => {
+		saved = request.postDataJSON().card;
+		return { json: { ...OFF_STATUS, card: saved } };
+	});
+	await openAdmin(page, 'perfect-job');
+	const card = discovery(page).locator('[data-discovery-card]');
+	const first = card.locator('[data-experience]').first();
+	const experience = (await first.getAttribute('data-experience'))!;
+	await expect(first.getByRole('checkbox')).toBeChecked();
+
+	// The headline changed here; meanwhile, from another device, that experience was left out (this
+	// window stayed in view: nothing read the card again)
+	await card.getByRole('textbox').fill('Platform engineer, distributed systems');
+	saved = { headline: null, hiddenExperiences: [experience] };
+	await card.getByRole('button', { name: 'Save my card' }).click();
+
+	// Read first: nothing sent, the form shows the card saved with this window's change on top
+	await expect(card.locator('[data-card-changed-elsewhere]')).toContainText(
+		'Your card was changed from another window or device meanwhile'
+	);
+	expect(saves).toHaveLength(0);
+	await expect(first.getByRole('checkbox')).not.toBeChecked();
+	await expect(card.getByRole('textbox')).toHaveValue('Platform engineer, distributed systems');
+
+	// Saved once checked: the experience left out elsewhere stays out
+	await card.getByRole('button', { name: 'Save my card' }).click();
+	await expect.poll(() => saves.length).toBe(1);
+	expect(saves[0].postDataJSON().card).toEqual({
+		headline: 'Platform engineer, distributed systems',
+		hiddenExperiences: [experience]
+	});
+	await expect(card.locator('[data-card-changed-elsewhere]')).toHaveCount(0);
 });
 
 test('with matching off, the inbox is not available and the account menu has no Opportunities', async ({
@@ -394,17 +537,26 @@ test('the inbox says why nothing is proposed, when the consent ends, and why a d
 	await stubApi(page, 'GET', '/discovery', () => ({ json: status }));
 	await stubNotifications(page);
 	let feed: StubAnswer = { status: 403, text: 'You are not proposed to recruiters now' };
-	const reads = await stubApi(page, 'GET', '/opportunities', () => feed);
+	// A read is held on its way while the test says so
+	let held: Promise<void> = Promise.resolve();
+	let release = () => {};
+	const hold = () => {
+		held = new Promise((resolve) => (release = resolve));
+	};
+	const reads = await stubApi(page, 'GET', '/opportunities', async () => {
+		await held;
+		return feed;
+	});
 	await blockGoogle(page);
 	await signIn(page, session);
 	await gotoHydrated(page, '/opportunities');
 
 	await expect(
-		page.getByRole('heading', { name: 'Paused: you are proposed to no recruiter' })
+		page.getByRole('heading', { name: 'Paused: no recruiter sees your card' })
 	).toBeVisible();
 	await expect(
 		page.getByText(
-			'Since you turned it on, some things you need to be visible to recruiters have gone missing:'
+			'Some things you need to be visible to recruiters have gone missing since you turned visibility on:'
 		)
 	).toBeVisible();
 	await expect(page.locator('[data-missing] li')).toHaveText([
@@ -490,10 +642,32 @@ test('the inbox says why nothing is proposed, when the consent ends, and why a d
 		page.getByRole('heading', { name: 'Travel times are still being computed' })
 	).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Nothing to review right now' })).toHaveCount(0);
+	// Its block, Check again with it, goes while the feed is read: the focus on what says so,
+	// never on the page's body, then on what the read shows (still computed: said again)
+	hold();
+	await page.getByRole('button', { name: 'Check again' }).click();
+	const loading = page.getByText('Loading the jobs proposed to you…');
+	await expect(loading).toBeFocused();
+	release();
+	await expect(
+		page.getByRole('heading', { name: 'Travel times are still being computed' })
+	).toBeFocused();
 	feed = { json: { jobs: [], more: false, next: null, pending: false } };
 	await page.getByRole('button', { name: 'Check again' }).click();
 	await expect(page.getByRole('heading', { name: 'Nothing to review right now' })).toBeFocused();
 	await expect(page.getByRole('button', { name: 'Check again' })).toHaveCount(0);
+
+	// A read that fails: the deck's Retry goes while it reads again, the focus the same way
+	feed = { status: 503, text: '' };
+	await gotoHydrated(page, '/opportunities');
+	const retry = page.getByRole('button', { name: 'Try again' });
+	await expect(retry).toBeVisible();
+	hold();
+	feed = { json: { jobs: [], more: false, next: null, pending: false } };
+	await retry.click();
+	await expect(loading).toBeFocused();
+	release();
+	await expect(page.getByRole('heading', { name: 'Nothing to review right now' })).toBeFocused();
 });
 
 test('a job’s private page: an answer that replaces another offers no Undo, a refusal says why, an end keeps the focus', async ({
@@ -566,6 +740,14 @@ test('a job’s private page: an answer that replaces another offers no Undo, a 
 	expect(decisions.map((request) => request.postDataJSON())).toEqual([{ decision: 'pass' }]);
 	// Not the first answer on the job: the API would refuse its undo, so none is offered
 	await expect(answer.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+	// The answer given, pressed again once saved: nothing is sent (checked once the next answer
+	// landed, below)
+	await answer.getByRole('button', { name: 'Pass' }).click();
+	await expect(answer.locator('[data-answer]')).toHaveText('You passed this job.');
+	await expect(answer.getByRole('button', { name: 'Pass' })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
 
 	// No longer proposed: the page reads the job again, says why, and takes the focus there
 	decision = { status: 404, text: 'Job posting not found' };
@@ -578,6 +760,11 @@ test('a job’s private page: an answer that replaces another offers no Undo, a 
 	await expect(page.locator('[data-gone-reason]')).toHaveText(
 		'This job is no longer proposed to you.'
 	);
+	// Two answers sent in all: the double click's one, then Interested (never the pressed Pass again)
+	expect(decisions.map((request) => request.postDataJSON())).toEqual([
+		{ decision: 'pass' },
+		{ decision: 'interested' }
+	]);
 	await expect(page.getByRole('link', { name: 'Back to your opportunities' })).toHaveAttribute(
 		'href',
 		'/opportunities'
@@ -667,7 +854,7 @@ test.describe('with matching on', () => {
 			1
 		);
 		await expect(preview.locator('[data-preview-outcomes]')).toHaveText(
-			'Beside your card, for their job, recruiters read its outcome on: Work mode, Contract and Pay. Never what you ask for, your commute or where you want to work.'
+			'Beside your card, recruiters read how their job does on: Work mode, Contract and Pay. Never what you ask for, your commute or where you want to work.'
 		);
 		await expect(preview.locator('[data-preview-also]')).toHaveText(
 			'Recruiters also read that their job reaches your minimum score, and whether you said you are interested in it.'
@@ -731,13 +918,13 @@ test.describe('with matching on', () => {
 		}
 		await expect(section).toHaveAttribute('data-state', 'on');
 		await expect(section.locator('[data-discovery-state]')).toHaveText('On');
-		await expect(section).toContainText(/Visible to recruiters since \d+ \w+ \d{4}\./);
+		await expect(section).toContainText(/Visible to recruiters since \d+\s\w+\s\d{4}\./);
 		await expect(section.locator('[data-discovery-consent]')).toHaveCount(0);
 		const now = await (await api.get(`${API_URL}/discovery`)).json();
 		expect(now.state).toBe('on');
 		await page.getByRole('tab', { name: /^Get started/ }).click();
 		await expect(item).toContainText('Your anonymous card has been proposed to recruiters since');
-		await expect(item.getByRole('link', { name: 'See the jobs proposed to you' })).toHaveAttribute(
+		await expect(item.getByRole('link', { name: 'Open your opportunities' })).toHaveAttribute(
 			'href',
 			'/opportunities'
 		);

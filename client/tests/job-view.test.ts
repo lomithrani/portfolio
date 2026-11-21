@@ -118,7 +118,7 @@ test('the owner reads the job the recruiter picked on their journey, on a page n
 	await expect(page.locator('input[type="password"]')).toHaveCount(0);
 	await expect(page.getByText(RAW_FORM, { exact: false })).toBeVisible();
 	// Dated, and says who else can open it
-	await expect(page.getByText(/^Opened \d+ \w+ \d{4}$/)).toBeVisible();
+	await expect(page.getByText(/^Opened \d+\s\w+\s\d{4}$/)).toBeVisible();
 	await expect(
 		page.getByText(
 			matchingOn

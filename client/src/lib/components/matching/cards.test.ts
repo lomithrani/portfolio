@@ -151,7 +151,8 @@ describe('OpportunityCard', () => {
 			publishedAt: '2026-11-03T09:00:00.000Z',
 			title: 'Staff Platform Engineer',
 			company: 'Acme',
-			description: 'Build the **platform**. <script>alert(1)</script>',
+			description:
+				'Build the **platform**. [About us](https://t.example/j1) <script>alert(1)</script>',
 			location: { country: 'FR', city: 'Lyon', workMode: 'hybrid', remoteDaysPerWeek: 2 },
 			contract: { type: 'cdi' },
 			workingTime: { arrangement: 'annual_days', daysPerYear: 218 },
@@ -188,6 +189,10 @@ describe('OpportunityCard', () => {
 		expect(html).toContain(`href="/opportunities/${JOB_ID}"`);
 		// The recruiter's description, its raw HTML as text
 		expect(html).not.toContain('<script>');
+		// Where its links lead, inside them, opened apart without a referrer (linkHosts)
+		expect(html).toContain(
+			'href="https://t.example/j1" target="_blank" rel="noopener noreferrer nofollow"><span class="link-text">About us</span> <span class="link-host">(t.example)</span>'
+		);
 	});
 
 	it('shows nothing of who posted it', () => {

@@ -128,7 +128,7 @@ describe('DiscoverySettings', () => {
 		expect(text).not.toContain(legalMessages.discoveryConsent);
 		expect(text).not.toContain('Optional, and off until you turn it on.');
 		// Where the jobs proposed are
-		expect(text).toContain('See the jobs proposed to you');
+		expect(text).toContain('Open your opportunities');
 		expect(body).toMatch(/href="\/opportunities"/);
 	});
 
@@ -143,12 +143,12 @@ describe('DiscoverySettings', () => {
 		);
 		const text = textOf(body);
 		expect(text).toContain(
-			'Paused: you are proposed to no recruiter until what is missing below is set.'
+			'Paused: no recruiter sees your card until what is missing below is set.'
 		);
 		expect(text).toContain('What is missing');
 		expect(text).toContain('Connect Google Calendar, so recruiters can book a meeting.');
 		expect(body).toContain('data-discovery-off');
-		expect(text).toContain('See the jobs proposed to you');
+		expect(text).toContain('Open your opportunities');
 		// Its consent far from ending: nothing to confirm
 		expect(text).not.toContain('Your consent ends on');
 	});
@@ -167,7 +167,7 @@ describe('DiscoverySettings', () => {
 				})
 			)
 		);
-		expect(text).toContain('Paused: you are proposed to no recruiter');
+		expect(text).toContain('Paused: no recruiter sees your card');
 		expect(text).toMatch(
 			/Your consent ends on .+: once what is missing is set, confirm it again to stay visible\./
 		);
@@ -188,7 +188,7 @@ describe('DiscoverySettings', () => {
 		// Turning it off still drops the answers about them
 		expect(body).toContain('data-discovery-off');
 		expect(body).toMatch(/data-discovery-off[^>]*>\s*(?:<!--[^>]*-->\s*)*Turn it off/);
-		expect(text).not.toContain('See the jobs proposed to you');
+		expect(text).not.toContain('Open your opportunities');
 	});
 
 	it('in its last days, asks to confirm the consent again', () => {

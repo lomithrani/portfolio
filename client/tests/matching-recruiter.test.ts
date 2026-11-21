@@ -248,6 +248,11 @@ test('with matching off, nothing of it shows on the recruiter pages, and nothing
 	await expect(page.getByText('This page is not available.')).toBeVisible();
 	await expect(page.getByText(/proposing jobs/i)).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Interested' })).toHaveCount(0);
+	// Its tab and its way out too: never "Candidates", and the home page
+	await expect(page).toHaveTitle('Not available | Portfolio');
+	await expect(
+		page.locator('main').getByRole('link', { name: 'Go to the home page' })
+	).toHaveAttribute('href', '/');
 });
 
 test('the deck answers one card at a time with the keyboard, undoes the first answer, at 390 px', async ({
@@ -264,11 +269,18 @@ test('the deck answers one card at a time with the keyboard, undoes the first an
 			? { cards: [card(TOKEN_B, 'Data engineer')], more: false }
 			: { cards: [card(TOKEN_A, 'Platform engineer', true)], more: true }
 	}));
+	// An answer is held on its way while the test says so (Undo pressed meanwhile)
+	let held: Promise<void> = Promise.resolve();
+	let release = () => {};
+	const hold = () => {
+		held = new Promise((resolve) => (release = resolve));
+	};
 	const decisions = await stubApi(
 		page,
 		'PUT',
 		`/recruiter/jobs/${JOB_ID}/candidates/decision`,
-		(request) => {
+		async (request) => {
+			await held;
 			answered = true;
 			return { json: { decision: request.postDataJSON().decision, match: null } };
 		}
@@ -293,10 +305,34 @@ test('the deck answers one card at a time with the keyboard, undoes the first an
 	// Buttons first; the keys while the focus is in the deck, reached with Tab alone (past the back
 	// link, the job's summary and whatever comes before it)
 	await tabIntoDeck(page, deck);
+	// Z while the answer is on its way: said, never a key that does nothing (a first answer can be
+	// undone once it is saved)
+	hold();
 	await page.keyboard.press('ArrowLeft');
+	// What says the next card is coming has the focus (inside the deck: its keys work)
+	await expect(deck.locator('[id$="-waiting"]')).toBeFocused();
+	await page.keyboard.press('z');
 	const said = deck.locator('[aria-live="polite"]');
+	// The same words in sight, under the answers, hidden from screen readers there (they hear the
+	// live region)
+	const inSight = deck.locator('[data-deck-said]');
+	await expect(said).toHaveText('Your answer is still being sent: undo it once it is saved.');
+	await expect(inSight).toHaveText('Your answer is still being sent: undo it once it is saved.');
+	await expect(inSight).toHaveAttribute('aria-hidden', 'true');
+	release();
 	await expect(said).toHaveText('You passed this candidate.');
+	await expect(inSight).toHaveText('You passed this candidate.');
 	await expect(deck.getByRole('heading', { name: 'Data engineer' })).toBeFocused();
+	// The answers on the page's own background, opaque: nothing of the card shows through them
+	expect(
+		await deck
+			.locator('[data-deck-answers]')
+			.evaluate(
+				(bar) =>
+					getComputedStyle(bar).backgroundColor ===
+					getComputedStyle(document.documentElement).backgroundColor
+			)
+	).toBe(true);
 	await expect(deck).toContainText('No other candidate for now.');
 	// The token goes in the body, never in the address
 	expect(decisions.map((request) => request.postDataJSON())).toEqual([
@@ -308,13 +344,21 @@ test('the deck answers one card at a time with the keyboard, undoes the first an
 	// Undo, with the token of the card answered (kept in memory): the card is back on top
 	await page.keyboard.press('z');
 	await expect(said).toHaveText('Undone: the candidate is back.');
+	await expect(inSight).toHaveText('Undone: the candidate is back.');
 	await expect(deck.getByRole('heading', { name: 'Platform engineer' })).toBeFocused();
 	expect(undos.map((request) => request.postDataJSON())).toEqual([{ token: TOKEN_A }]);
 	// Answered again after an undo, it is final: Undo is gone (the card back takes an answer once
 	// it settled: a key pressed twice never answers a card unseen)
 	await answerable(deck);
+	// Z while that answer is on its way says it never can be undone, as it will once saved
+	hold();
 	await page.keyboard.press('ArrowRight');
+	await expect(deck.getByRole('heading', { name: 'Data engineer' })).toBeFocused();
+	await page.keyboard.press('z');
+	await expect(said).toHaveText('This answer can no longer be undone.');
+	release();
 	await expect(said).toHaveText('This candidate interests you: they see it beside your job.');
+	await expect(inSight).toHaveText('This candidate interests you: they see it beside your job.');
 	await expect(deck.getByRole('button', { name: 'Undo' })).toHaveCount(0);
 	expect(await sidewaysScroll(page)).toBe(0);
 	// Nothing of the deck is kept in this browser
@@ -383,6 +427,62 @@ test('a double click or a key pressed twice answers one card, never the next one
 		{ token: TOKEN_A, decision: 'interested' },
 		{ token: TOKEN_B, decision: 'pass' }
 	]);
+});
+
+test('the last card refused once answered goes, and why stays in sight beside the empty deck', async ({
+	page
+}) => {
+	await withMatching(page, `/recruiter/jobs/${JOB_ID}`, (posting) => {
+		posting.matching = approved();
+	});
+	let answered = false;
+	await stubApi(page, 'GET', `/recruiter/jobs/${JOB_ID}/candidates`, () => ({
+		json: answered
+			? { cards: [], more: false }
+			: { cards: [card(TOKEN_A, 'Platform engineer')], more: false }
+	}));
+	// The first answer is held, then lost on its way; the second finds the candidate withdrew
+	// meanwhile: not recorded, the card goes
+	let release = () => {};
+	const held = new Promise<void>((resolve) => (release = resolve));
+	let calls = 0;
+	await stubApi(page, 'PUT', `/recruiter/jobs/${JOB_ID}/candidates/decision`, async () => {
+		calls++;
+		if (calls === 1) {
+			await held;
+			return { status: 503, text: '' };
+		}
+		answered = true;
+		return { status: 409, text: 'This candidate is not proposed for this job now' };
+	});
+	await openAsRecruiter(page, `/recruiter/jobs/${JOB_ID}/candidates`);
+	const deck = page.getByRole('region', { name: 'Candidates to review' });
+	const interested = deck.getByRole('button', { name: 'Interested', exact: true });
+	const inSight = deck.locator('[data-deck-said]');
+	await expect(deck.getByRole('heading', { name: 'Platform engineer' })).toBeVisible();
+	await interested.click();
+	await expect(deck.locator('[id$="-waiting"]')).toBeFocused();
+	await page.keyboard.press('z');
+	await expect(inSight).toHaveText('Your answer is still being sent: undo it once it is saved.');
+	release();
+	// The card back with why; what was said of the answer on its way no longer holds (nothing to
+	// undo)
+	await expect(deck.getByRole('alert')).toContainText('Could not save your answer.');
+	await expect(deck.getByRole('heading', { name: 'Platform engineer' })).toBeFocused();
+	await expect(inSight).toHaveCount(0);
+	await answerable(deck);
+	await interested.click();
+
+	await expect(
+		deck.getByRole('heading', { name: 'No candidate to review right now' })
+	).toBeFocused();
+	await expect(deck.locator('[aria-live="polite"]')).toHaveText(
+		'This candidate is no longer proposed for this job.'
+	);
+	// Not only for screen readers: a sighted recruiter reads why the card went
+	await expect(inSight).toBeVisible();
+	await expect(inSight).toHaveText('This candidate is no longer proposed for this job.');
+	await expect(deck.getByRole('button', { name: 'Undo' })).toHaveCount(0);
 });
 
 test('a recruiter who has not accepted the terms in force accepts them, then the deck starts', async ({
@@ -997,6 +1097,8 @@ test.describe('with matching on', () => {
 		await expect(panel.locator('[data-candidates-waiting="none"]')).toContainText(
 			'No candidate to review right now.'
 		);
+		// No way to an empty deck
+		await expect(panel.getByRole('link', { name: 'Review candidates' })).toHaveCount(0);
 
 		// Their page for recruiters holds nothing of it any more: no banner, the job step is to do
 		// again, as for anyone (the note stays confirmed)

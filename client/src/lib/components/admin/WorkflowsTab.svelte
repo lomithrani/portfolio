@@ -428,16 +428,25 @@ the page reads discovery again (`onSaved`).
 			<p class="text-sm">{journeySummary(steps, ownTitle)}</p>
 		{/if}
 
-		{#if pausesDiscovery}
-			<p class="card preset-tonal-warning p-3 text-sm" data-pauses-discovery>
-				{m.pausesDiscovery}
-			</p>
-		{/if}
+		<!-- Said when it shows (a gate's step removed: it changes only with the gate, never per
+		     keystroke), and read with Save -->
+		<div aria-live="polite">
+			{#if pausesDiscovery}
+				<p
+					id="{uid}-pauses-discovery"
+					class="card preset-tonal-warning p-3 text-sm"
+					data-pauses-discovery
+				>
+					{m.pausesDiscovery}
+				</p>
+			{/if}
+		</div>
 		<div class="flex flex-wrap items-center gap-3">
 			<button
 				type="button"
 				class="btn preset-filled-primary-700-300"
 				disabled={!changed || !!problem || saving}
+				aria-describedby={pausesDiscovery ? `${uid}-pauses-discovery` : undefined}
 				onclick={save}
 			>
 				{saving ? m.saving : m.save}

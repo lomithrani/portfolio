@@ -10,8 +10,6 @@ export const m = defineMessages({
 		en: (title: string) => `Candidates: ${title} | Recruiter`,
 		fr: (title: string) => `Candidats : ${title} | Recruteur`
 	},
-	/** In the page title until the posting is loaded */
-	jobDescription: { en: 'Job description', fr: "Offre d'emploi" },
 	/** The link back to the job */
 	backToJob: { en: 'Back to the job description', fr: "Retour à l'offre" },
 	heading: { en: 'Candidates to review', fr: 'Candidats à examiner' },

@@ -66,9 +66,11 @@ Variables), in the three dashboards.
 - **`unmatched` 404s are not all scanners.** While `MATCHING` is off its routes are not registered,
   and the web client still asks once whether matching is available: `GET /me/notifications` from
   the header of every signed-in page load (never again in that page once it answered 404), `GET
-  /discovery` from the admin page, and `GET /me/notifications` from the private page of a job and
-  the inbox (`/opportunities`) read signed out. Those count as `route="unmatched"`, `status="404"` (the API cannot tell them from a
-  route that never existed).
+  /discovery` from the admin page and from the inbox (`/opportunities`) read signed in, `GET
+  /me/notifications` from the private page of a job and the inbox read signed out, and `GET
+  /matching/reviews` from the reviewers' page (`/recruiter/reviews`), whose address only a reviewer
+  types. Those count as `route="unmatched"`, `status="404"` (the API cannot tell them from a route
+  that never existed).
 
 ## Changing a dashboard
 

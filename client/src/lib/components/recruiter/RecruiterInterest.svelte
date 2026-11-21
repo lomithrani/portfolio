@@ -53,8 +53,15 @@ seen before this showing (the list marks it seen as it shows it). Never a bare "
 	let held = $derived(interest.job.status === OPEN_JOB_STATUS);
 	let change = $derived(mutualInterestChangeText(interest));
 	let titleTag = $derived(`h${headingLevel}`);
-	/** A button's label wraps rather than run past it on a narrow phone (in French) */
-	const button = 'btn min-h-11 max-w-full whitespace-normal text-center leading-5';
+	/**
+	 * A button's label wraps rather than run past it on a narrow phone (in French). In the job's own
+	 * panel, a narrow column, the actions are one column of one width, each icon beside its label
+	 * (a label that wraps stays left of it, never centred away from it)
+	 */
+	const buttonBase = 'btn min-h-11 max-w-full whitespace-normal leading-5';
+	let button = $derived(
+		showJob ? `${buttonBase} text-center` : `${buttonBase} w-full justify-start text-start`
+	);
 </script>
 
 <article
@@ -71,7 +78,7 @@ seen before this showing (the list marks it seen as it shows it). Never a bare "
 			{mutualInterestStateText(interest)}
 		</span>
 		{#if fresh}
-			<span class="badge preset-filled-error-500" data-interest-new>{m.item.new}</span>
+			<span class="badge preset-filled-error-700-300" data-interest-new>{m.item.new}</span>
 		{/if}
 	</div>
 	<!-- Takes the focus back once "End it" closed its dialog (the button is gone) -->
@@ -110,10 +117,13 @@ seen before this showing (the list marks it seen as it shows it). Never a bare "
 		</p>
 	{/if}
 	{#if candidate || going}
-		<div class="flex flex-wrap gap-2 pt-1">
+		<div
+			class={['flex gap-2 pt-1', showJob ? 'flex-wrap' : 'flex-col items-stretch']}
+			data-interest-actions
+		>
 			{#if candidate && going && held}
 				<a
-					class="{button} preset-filled-primary-500"
+					class="{button} preset-filled-primary-700-300"
 					href={resolve('/[domain]/hire', { domain: candidate.domain })}
 				>
 					<ArrowRight size="18" class="shrink-0" aria-hidden="true" />

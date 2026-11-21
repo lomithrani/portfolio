@@ -26,6 +26,7 @@
 	import xml from 'highlight.js/lib/languages/xml';
 	import yaml from 'highlight.js/lib/languages/yaml';
 	import DOMPurify from 'isomorphic-dompurify';
+	import { m } from './Markdown.messages.ts';
 	import 'highlight.js/styles/github.css';
 
 	const languages = {
@@ -66,19 +67,55 @@
 
 	/**
 	 * Where a link of markdown anyone can publish leads, shown beside it: the host of an http(s)
-	 * link (its punycode for a lookalike name). null for anything else (a relative link stays as
-	 * markdown makes it; DOMPurify drops what is not safe)
+	 * link (its punycode for a lookalike name), the href without what precedes an `@` (a name
+	 * there reads as the host: `https://acme.example@t.example` leads to t.example, which `userinfo`
+	 * says). A link without a scheme still leads elsewhere when it names a host (`//t.example`,
+	 * `///t.example`, `/\\/t.example`, inline or by reference): read as a browser reads it, it
+	 * is one. null for anything else: a path of this site stays as markdown makes it, a link of
+	 * another scheme too (DOMPurify drops what is not safe)
 	 */
-	const linkTarget = (href: string): { href: string; host: string } | null => {
+	const linkTarget = (href: string): { href: string; host: string; userinfo: boolean } | null => {
 		let url: URL;
 		try {
 			url = new URL(href);
 		} catch {
-			return null;
+			// No scheme: a path of this site resolves to whichever site it is read on, a host named
+			// leads there whatever the site
+			try {
+				const here = new URL(href, 'https://a.invalid/');
+				const there = new URL(href, 'https://b.invalid/');
+				if (here.host === 'a.invalid' && there.host === 'b.invalid') return null;
+				url = here;
+			} catch {
+				return null;
+			}
 		}
-		return url.protocol === 'http:' || url.protocol === 'https:'
-			? { href: url.href, host: url.host }
-			: null;
+		if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+		return {
+			// Written again without what precedes an `@`
+			href: `${url.protocol}//${url.host}${url.pathname}${url.search}${url.hash}`,
+			host: url.host,
+			userinfo: url.username !== '' || url.password !== ''
+		};
+	};
+
+	/**
+	 * A link's text is itself its address (a bare or www link: `https://acme.example/jobs`,
+	 * `www.acme.example`): its host, then nothing or a path, query or fragment. Read as written,
+	 * tags dropped, ASCII letters lowercased only (a lookalike written in another alphabet is not
+	 * the punycode host it leads to); anything else, the host's name somewhere in a sentence or a
+	 * query included, says nothing of where it leads
+	 */
+	const textIsAddress = (html: string, host: string) => {
+		const plain = html
+			.replace(/<[^>]*>/g, '')
+			.trim()
+			.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+		return [host, `http://${host}`, `https://${host}`].some((start) => {
+			if (!plain.startsWith(start)) return false;
+			const rest = plain.slice(start.length);
+			return rest === '' || /^[/?#]/.test(rest);
+		});
 	};
 
 	const createParser = (headingOffset: number, html: boolean, linkHosts: boolean) => {
@@ -106,9 +143,10 @@
 			});
 		}
 		if (linkHosts) {
-			// A link's text may say anything: where it leads is shown beside it, and it opens apart,
-			// sending no referrer (a per-reader address behind harmless words would tell its author who
-			// clicked, from where, before anything else is shared)
+			// A link's text may say anything: where it leads is shown beside it, inside the link (its
+			// name says it to a screen reader, with the new tab), and it opens apart, sending no
+			// referrer (a per-reader address behind harmless words would tell its author who clicked,
+			// from where, before anything else is shared)
 			parser.use({
 				renderer: {
 					link({ href, title, tokens }) {
@@ -116,10 +154,13 @@
 						if (!target) return false;
 						const text = this.parser.parseInline(tokens);
 						const titled = title ? ` title="${escapeHtml(title)}"` : '';
-						const host = text.includes(target.host)
-							? ''
-							: ` <span class="link-host">(${escapeHtml(target.host)})</span>`;
-						return `<a href="${escapeHtml(target.href)}"${titled} target="_blank" rel="noopener noreferrer nofollow">${text}</a>${host}`;
+						const host =
+							!target.userinfo && textIsAddress(text, target.host)
+								? ''
+								: ` <span class="link-host">(${escapeHtml(target.host)})</span>`;
+						// Read here, at each parse: the parser is shared by every page and language
+						const newTab = `<span class="sr-only"> ${escapeHtml(m.newTab)}</span>`;
+						return `<a class="link-apart" href="${escapeHtml(target.href)}"${titled} target="_blank" rel="noopener noreferrer nofollow"><span class="link-text">${text}</span>${host}${newTab}</a>`;
 					}
 				}
 			});
@@ -307,6 +348,18 @@
 		font-size: 0.875em;
 		color: var(--color-surface-700-300);
 		overflow-wrap: anywhere;
+	}
+	/* A link opened apart (linkHosts): its text underlined, the host beside it not */
+	.markdown :global(a.link-apart) {
+		text-decoration: none;
+	}
+	.markdown :global(a.link-apart .link-text) {
+		text-decoration: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 2px;
+	}
+	.markdown :global(a.link-apart:hover .link-text) {
+		text-decoration-thickness: 2px;
 	}
 
 	.markdown :global(a) {

@@ -311,7 +311,7 @@ test('a job on hold is approved without a promise that it reaches candidates now
 	await section.getByRole('button', { name: 'Approve' }).click();
 	const dialog = page.getByRole('alertdialog', { name: 'Approve this job description?' });
 	await expect(dialog).toContainText(
-		'Stubbed platform mission is on hold: once approved, it is proposed to the candidates whose criteria it meets only when its recruiter opens it again'
+		'The job description “Stubbed platform mission” is on hold: once approved, it is proposed to the candidates whose criteria it meets only when its recruiter opens it again'
 	);
 	await expect(dialog).toContainText('You cannot take this back on this page');
 	await dialog.getByRole('button', { name: 'Approve' }).click();
@@ -421,7 +421,7 @@ test.describe('with matching on and the reviewer listed', () => {
 		await section.getByRole('button', { name: 'Approve' }).click();
 		const dialog = page.getByRole('alertdialog', { name: 'Approve this job description?' });
 		await expect(dialog).toContainText(
-			`Once approved, ${title} is proposed to the candidates whose criteria it meets, while it stays open and its recruiter has accepted the terms in force.`
+			`Once approved, the job description “${title}” is proposed to the candidates whose criteria it meets, while it stays open and its recruiter has accepted the terms in force.`
 		);
 		await dialog.getByRole('button', { name: 'Approve' }).click();
 		await expect(dialog).toHaveCount(0);

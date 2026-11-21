@@ -26,7 +26,7 @@ loses the focus).
 		CheckCircle,
 		Clock,
 		ExclamationTriangle,
-		HandThumbUp,
+		InboxStack,
 		InformationCircle,
 		PauseCircle,
 		UserGroup
@@ -284,7 +284,8 @@ loses the focus).
 			<div class="space-y-2" data-candidates-waiting={waiting ?? 'unknown'}>
 				{#if waiting === 'some'}
 					<p class="flex items-center gap-2 text-sm font-medium">
-						<HandThumbUp size="16" class="shrink-0" aria-hidden="true" />
+						<!-- Neutral: candidates wait for an answer, which says nothing of their interest -->
+						<InboxStack size="16" class="shrink-0" aria-hidden="true" />
 						{m.candidates.some}
 					</p>
 				{:else if waiting === 'none'}
@@ -295,7 +296,7 @@ loses the focus).
 				{#if waiting !== 'none'}
 					<a
 						href={resolve('/(app)/recruiter/jobs/[id]/candidates', { id: job._id })}
-						class={[button, waiting === 'some' ? 'preset-filled-primary-500' : 'preset-tonal']}
+						class={[button, waiting === 'some' ? 'preset-filled-primary-700-300' : 'preset-tonal']}
 					>
 						<UserGroup size="18" class="shrink-0" aria-hidden="true" />
 						{m.candidates.review}
