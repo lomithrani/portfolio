@@ -129,8 +129,11 @@ Not for the portfolio's owner: the page shows them the step's description instea
 			</section>
 		{/if}
 
-		<!-- The job of a mutual interest cannot be changed here: nothing to raise its score with -->
-		{#if !passed && !match.matched}
+		<!-- The job of a mutual interest cannot be changed here: nothing to raise its score with, only
+		     the mutual interest to end (its score under the minimum fails closed) -->
+		{#if !passed && match.matched}
+			<p class="text-sm" data-frozen-under>{m.jobMatch.frozen.under}</p>
+		{:else if !passed}
 			<div class="space-y-3">
 				<p class="text-sm">
 					{#if match.criteria && match.criteria.length > 0}

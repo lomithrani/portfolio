@@ -182,7 +182,7 @@ export const m = defineMessages({
 			en: (title: string, status: string) =>
 				`${title} is ${status.toLowerCase()} now: this page holds it again once you open it again.`,
 			fr: (title: string, status: string) =>
-				`${title} a maintenant le statut « ${status} » : cette page la reprend dès que vous la rouvrez.`
+				`${title} a maintenant le statut « ${status} » : cette page la retient de nouveau dès que vous la rouvrez.`
 		},
 		/** Shared and open, but the recruiter has not accepted the terms of use in force */
 		acceptTerms: {
@@ -217,7 +217,7 @@ export const m = defineMessages({
 			 */
 			mutualInterest: {
 				en: 'This step now holds the job you are both interested in: you cannot share another while your mutual interest lasts.',
-				fr: "Cette étape reprend désormais l'offre de votre intérêt réciproque : vous ne pouvez pas en partager une autre tant qu'il dure."
+				fr: "Cette étape retient désormais l'offre de votre intérêt réciproque : vous ne pouvez pas en partager une autre tant qu'il dure."
 			},
 			journeyChanged: {
 				en: 'This hiring journey changed: it no longer asks for a job here.',
@@ -244,13 +244,24 @@ export const m = defineMessages({
 	 */
 	match: {
 		/**
-		 * The job step waits for the job of the mutual interest. Backed by:
+		 * The job step waits for the job of the mutual interest, not open (on hold: filled, closed or
+		 * back to draft ends the mutual interest). `status`: its label ("On hold"). Backed by:
 		 * server/services/workflowSteps/job.ts matchedJob (it holds while the posting is open and the
-		 * recruiter accepted the terms in force)
+		 * recruiter accepted the terms in force; 409 JOB_OF_MUTUAL_INTEREST for another job)
 		 */
-		jobWaits: {
-			en: 'This page holds your job only while it is open and you have accepted the terms of use in force: the job step below says what is missing.',
-			fr: "Cette page ne reprend votre offre que tant qu'elle est ouverte et que vous avez accepté les conditions d'utilisation en vigueur : l'étape de l'offre ci-dessous indique ce qui manque."
+		jobNotOpen: {
+			en: (status: string) =>
+				`Your job is ${status.toLowerCase()} now: this page holds it again once you open it again from its page, and takes no other job meanwhile.`,
+			fr: (status: string) =>
+				`Votre offre a maintenant le statut « ${status} » : cette page la retient de nouveau dès que vous la rouvrez depuis sa page, et n'en prend pas d'autre d'ici là.`
+		},
+		/**
+		 * The job step waits for the job of the mutual interest, open: the recruiter has not accepted
+		 * the terms of use in force. Backed by: server/services/workflowSteps/job.ts matchedJob
+		 */
+		jobTerms: {
+			en: 'Accept the terms of use in force: this page holds your job again once you do, and takes no other job meanwhile.',
+			fr: "Acceptez les conditions d'utilisation en vigueur : cette page retient de nouveau votre offre dès que c'est fait, et n'en prend pas d'autre d'ici là."
 		},
 		/** `phrases`: the steps still to do before the meeting, lowercased, in order (one at least) */
 		left: {

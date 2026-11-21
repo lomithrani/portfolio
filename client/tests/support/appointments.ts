@@ -56,9 +56,11 @@ const cors = (request: Request) => ({
  * Answers the browser's calls to the appointment routes of `domainName`'s booking: its meeting types
  * (`schedules`, one by default), their free `dates` (none by default: the calendar shows no day to
  * pick) within a horizon from today to `horizonDays` later (today alone by default), the free slots
- * of a date (`slots`), and the booking, which answers booked with the first slot. Any other
- * appointment route answers 404: nothing reaches the API, nor Google. Returns the bookings sent, the
- * body of each POST /appointments/book as the browser sent it
+ * of a date (`slots`), and the booking, which answers booked with the first slot: none of them
+ * reaches the API, nor Google. Any other appointment route (the recruiter dashboard's meetings
+ * booked, another portfolio's meeting types: database only) goes on to the API, or to a route
+ * registered before this one, so a page that leaves the booking for another reads its real answers.
+ * Returns the bookings sent, the body of each POST /appointments/book as the browser sent it
  */
 export const stubAppointments = async (
 	page: Page,
@@ -79,6 +81,13 @@ export const stubAppointments = async (
 	await page.route(`${API_URL}/appointments/**`, async (route) => {
 		const request = route.request();
 		const headers = cors(request);
+		const { pathname } = new URL(request.url());
+		const booking =
+			pathname.endsWith(`/domains/${domainName}/schedules`) ||
+			pathname.endsWith('/available-dates') ||
+			pathname.endsWith('/available-slots') ||
+			pathname.endsWith('/book');
+		if (!booking) return route.fallback();
 		if (request.method() === 'OPTIONS') {
 			return route.fulfill({
 				status: 204,
@@ -89,7 +98,6 @@ export const stubAppointments = async (
 				}
 			});
 		}
-		const { pathname } = new URL(request.url());
 		if (pathname.endsWith(`/domains/${domainName}/schedules`)) {
 			return route.fulfill({ json: schedules, headers });
 		}
@@ -110,7 +118,8 @@ export const stubAppointments = async (
 			};
 			return route.fulfill({ json, headers });
 		}
-		return route.fulfill({ status: 404, body: 'Not stubbed', headers });
+		// A GET of the booking route: never the API's
+		return route.fulfill({ status: 405, body: 'Not stubbed', headers });
 	});
 	return booked;
 };

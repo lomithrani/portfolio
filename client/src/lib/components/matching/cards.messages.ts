@@ -103,7 +103,7 @@ export const m = defineMessages({
 			en: (title: string) =>
 				`This candidate is interested in ${title} too. Their portfolio is now shown to you: go through the steps of their page for recruiters, which holds your job, to book a meeting.`,
 			fr: (title: string) =>
-				`Ce candidat s'intéresse aussi à l'offre ${title}. Son portfolio vous est maintenant ouvert : passez par les étapes de sa page recruteurs, qui reprend votre offre, pour réserver un rendez-vous.`
+				`Ce candidat s'intéresse aussi à l'offre ${title}. Son portfolio vous est maintenant ouvert : passez par les étapes de sa page recruteurs, qui retient votre offre, pour réserver un rendez-vous.`
 		},
 		/** The mutual interest leads nowhere yet (its portfolio is not revealed, or gone) */
 		notRevealed: {

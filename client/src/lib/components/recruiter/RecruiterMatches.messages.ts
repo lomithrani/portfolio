@@ -11,7 +11,7 @@ export const m = defineMessages({
 	/** Backed by: server/services/matches.ts (the portfolio revealed), workflows.ts (the journey holds the job) */
 	intro: {
 		en: 'Candidates who are interested in your job as you are in them: their portfolio is shown to you, and their page for recruiters holds your job while it is open.',
-		fr: "Les candidats qui s'intéressent à votre offre comme vous vous intéressez à eux : leur portfolio vous est ouvert, et leur page recruteurs reprend votre offre tant qu'elle est ouverte."
+		fr: "Les candidats qui s'intéressent à votre offre comme vous vous intéressez à eux : leur portfolio vous est ouvert, et leur page recruteurs retient votre offre tant qu'elle est ouverte."
 	},
 	/** One job's, in its matching panel */
 	jobTitle: { en: 'Mutual interests on this job', fr: 'Intérêts réciproques sur cette offre' },
@@ -38,7 +38,7 @@ export const m = defineMessages({
 		/** While it lasts, revealed: how a meeting is booked (no email is sent) */
 		next: {
 			en: 'To book a meeting, go through the steps of their page for recruiters: it holds your job.',
-			fr: 'Pour réserver un rendez-vous, passez par les étapes de sa page recruteurs : elle reprend votre offre.'
+			fr: 'Pour réserver un rendez-vous, passez par les étapes de sa page recruteurs : elle retient votre offre.'
 		},
 		/**
 		 * While it lasts, revealed, its job on hold. Backed by: server/services/workflowSteps/job.ts
@@ -46,7 +46,7 @@ export const m = defineMessages({
 		 */
 		onHold: {
 			en: 'Your job is on hold: their page for recruiters holds it again once you open it again, and a meeting is booked from there.',
-			fr: 'Votre offre est en pause : sa page recruteurs la reprend dès que vous la rouvrez, et un rendez-vous se réserve de là.'
+			fr: 'Votre offre est en pause : sa page recruteurs la retient de nouveau dès que vous la rouvrez, et un rendez-vous se réserve de là.'
 		},
 		pageForRecruiters: { en: 'Go to their page for recruiters', fr: 'Aller à sa page recruteurs' },
 		portfolio: { en: 'See their portfolio', fr: 'Voir son portfolio' },

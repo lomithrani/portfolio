@@ -135,6 +135,9 @@ const JOB_LINE = `${JOB_TITLE} · E2E Matching Corp`;
 /** A mutual interest made for these tests' journeys (answered in the browser) */
 const INTEREST = '65e2e00000000000000000e1';
 
+/** What the meeting says happens once it is booked (as "Before you start" says it) */
+const AFTER_BOOKING = `Once you book, you receive a calendar invitation by email, and the meeting goes into ${CANDIDATE_DOMAIN}'s calendar: only then do they get your name and email address.`;
+
 /**
  * The journey of the candidate's page for recruiters as the API answers it to the recruiter of a
  * mutual interest on JOB_ID: the note confirmed (or not), the job step holding the job (open, or on
@@ -482,8 +485,12 @@ test.describe("the candidate's page for recruiters of a mutual interest", () => 
 			`The job description was edited since: ${CANDIDATE_DOMAIN} keeps the version they said yes to.`
 		);
 		await expect(banner).toContainText('Nothing else is asked of you: pick a time slot below.');
-		// Never a bare "match" (it names the score), never an email promised: the names aside
+		// What happens once booked: only then does the owner get the recruiter's name and address
+		await expect(banner.locator('[data-match-after-booking]')).toHaveText(AFTER_BOOKING);
+		// Never a bare "match" (it names the score), never an email promised but the calendar's
+		// invitation: the names aside
 		const said = (await banner.innerText())
+			.replaceAll(AFTER_BOOKING, '')
 			.replaceAll(CANDIDATE_DOMAIN, '')
 			.replaceAll(JOB_LINE, '');
 		expect(said).not.toMatch(/\bmatch(ed)?\b|e-?mail/i);
@@ -543,17 +550,20 @@ test.describe("the candidate's page for recruiters of a mutual interest", () => 
 	test('a job of a mutual interest on hold: the step waits for it, with no other job to pick', async ({
 		page
 	}) => {
+		let note: 'pending' | 'succeeded' = 'succeeded';
 		await stubApi(page, 'GET', `/workflow/domains/${CANDIDATE_DOMAIN}`, () => ({
-			json: matchedJourney({ jobStatus: 'on_hold' })
+			json: matchedJourney({ jobStatus: 'on_hold', note })
 		}));
 		await stubApi(page, 'PUT', `/matches/${INTEREST}/seen`, () => ({ json: { ok: true } }));
 		await stubAppointments(page, CANDIDATE_DOMAIN);
 		await openAsRecruiter(page, `/${CANDIDATE_DOMAIN}/hire`);
 
+		// The banner never says the page holds the job while its step does not: what brings it back
 		const banner = page.locator('[data-match-banner]');
-		await expect(banner).toContainText(
-			'This page holds your job only while it is open and you have accepted the terms of use in force: the job step below says what is missing.'
-		);
+		const reopen =
+			'Your job is on hold now: this page holds it again once you open it again from its page, and takes no other job meanwhile.';
+		await expect(banner).toContainText(reopen);
+		await expect(banner).not.toContainText('This page holds that job for you');
 		await expect(banner).not.toContainText('time slot');
 		// The job step, the first to do, says what brings the job back: open it again
 		const job = journeyStep(page, 'Select or create a job');
@@ -571,6 +581,18 @@ test.describe("the candidate's page for recruiters of a mutual interest", () => 
 		await expect(journeyStep(page, 'Book a meeting')).toContainText(
 			'Complete the steps above first.'
 		);
+
+		// Behind the note still to read (the gate journey's first step), the job step says it too
+		note = 'pending';
+		await gotoHydrated(page, `/${CANDIDATE_DOMAIN}/hire`);
+		await expect(banner).toContainText(reopen);
+		await expect(banner).toContainText(
+			`Still to do before the meeting: read a note (“${NOTE_TITLE}”).`
+		);
+		await expect(job).toContainText(
+			`${JOB_TITLE} is on hold now: this page holds it again once you open it again.`
+		);
+		await expect(job).not.toContainText('Complete the step above first.');
 	});
 
 	test('a share refused because a mutual interest holds the job step is said, and the page shows that job', async ({
@@ -606,7 +628,129 @@ test.describe("the candidate's page for recruiters of a mutual interest", () => 
 		);
 		await expect(page.locator('[data-match-banner]')).toBeVisible();
 		await expect(job).toContainText(`${JOB_LINE}: the job you are both interested in.`);
+		// The form that had the focus went with the step it folded: the step shown has it
+		await expect(
+			journeyStep(page, 'Book a meeting').getByRole('heading', { name: /Book a meeting/ })
+		).toBeFocused();
 		expect(shares).toHaveLength(1);
+	});
+
+	test('on a journey that is the meeting alone, the invitation names the job, and ending it keeps the focus on the page', async ({
+		page
+	}) => {
+		let ended = false;
+		const meeting = { id: 'meeting', type: 'meeting', status: 'pending' };
+		await stubApi(page, 'GET', `/workflow/domains/${CANDIDATE_DOMAIN}`, () => ({
+			json: ended ? { steps: [meeting] } : { steps: [meeting], match: matchedJourney().match }
+		}));
+		await stubApi(page, 'PUT', `/matches/${INTEREST}/seen`, () => ({ json: { ok: true } }));
+		await stubApi(page, 'POST', `/matches/${INTEREST}/end`, () => {
+			ended = true;
+			const now = new Date().toISOString();
+			return {
+				json: {
+					_id: INTEREST,
+					side: 'recruiter',
+					matchedAt: now,
+					changedAt: null,
+					endedAt: now,
+					endReason: 'recruiter',
+					seen: true,
+					job: { _id: JOB_ID, title: JOB_TITLE, company: 'E2E Matching Corp', status: 'open' },
+					candidate: { domain: CANDIDATE_DOMAIN, title: null }
+				}
+			};
+		});
+		await stubAppointments(page, CANDIDATE_DOMAIN);
+		await openAsRecruiter(page, `/${CANDIDATE_DOMAIN}/hire`);
+
+		const banner = page.locator(`[data-match-banner="${INTEREST}"]`);
+		await expect(banner).toContainText('The meeting invitation names that job.');
+		await expect(banner).not.toContainText('This page holds that job for you');
+		await banner.getByRole('button', { name: 'End it' }).click();
+		await page
+			.getByRole('alertdialog', { name: 'End this mutual interest?' })
+			.getByRole('button', { name: 'End it' })
+			.click();
+		await expect(banner).toHaveCount(0);
+		// No step heading on the booking page: the page's own takes the focus
+		await expect(
+			page.getByRole('heading', { level: 1, name: `Propose a role to ${CANDIDATE_DOMAIN}` })
+		).toBeFocused();
+	});
+
+	test('ended by the other side while the page is open: said once, the page no longer holds the job', async ({
+		page
+	}) => {
+		let ended = false;
+		await stubApi(page, 'GET', `/workflow/domains/${CANDIDATE_DOMAIN}`, () => ({
+			json: ended ? journeyWithoutMatch() : matchedJourney()
+		}));
+		await stubApi(page, 'PUT', `/matches/${INTEREST}/seen`, () => ({ json: { ok: true } }));
+		await stubAppointments(page, CANDIDATE_DOMAIN);
+		// The candidate ended it meanwhile: the meeting's dates are refused (403, the steps before it
+		// no longer hold), which reads the journey again
+		await stubApi(page, 'GET', '/appointments/available-dates**', () => {
+			ended = true;
+			return { status: 403, text: 'Forbidden' };
+		});
+		await openAsRecruiter(page, `/${CANDIDATE_DOMAIN}/hire`);
+
+		const notice = toasts(page);
+		await expect(notice).toContainText('This page no longer holds your job');
+		await expect(notice).toContainText(
+			`Your mutual interest with ${CANDIDATE_DOMAIN} no longer leads here: you go through the steps as anyone does.`
+		);
+		// Not the toast of steps the visitor skipped: that is not why
+		await expect(notice).not.toContainText('Complete the steps first');
+		await expect(page.locator('[data-match-banner]')).toHaveCount(0);
+		const job = journeyStep(page, 'Select or create a job');
+		await expect(job).toContainText('Pick the job you are hiring for, or write it.');
+		await expect(job.getByRole('heading', { name: /Select or create a job/ })).toBeFocused();
+	});
+
+	test('ending it refused for the terms in force asks for them in the banner, then it can be ended', async ({
+		page
+	}) => {
+		let accepted = false;
+		await stubApi(page, 'GET', `/workflow/domains/${CANDIDATE_DOMAIN}`, () => ({
+			json: matchedJourney()
+		}));
+		await stubApi(page, 'PUT', `/matches/${INTEREST}/seen`, () => ({ json: { ok: true } }));
+		const ends = await stubApi(page, 'POST', `/matches/${INTEREST}/end`, () => ({
+			status: 422,
+			json: {
+				type: 'validation',
+				on: 'body',
+				property: 'consent',
+				message: 'Accept the terms of use in force to use your recruiter space.'
+			}
+		}));
+		await stubApi(page, 'PUT', '/me/consent', (request: Request) => {
+			accepted = true;
+			return {
+				json: { user: { _id: session.ownerId, recruiter: true, ...request.postDataJSON() } }
+			};
+		});
+		await stubAppointments(page, CANDIDATE_DOMAIN);
+		await openAsRecruiter(page, `/${CANDIDATE_DOMAIN}/hire`);
+
+		const banner = page.locator(`[data-match-banner="${INTEREST}"]`);
+		await banner.getByRole('button', { name: 'End it' }).click();
+		const confirm = page.getByRole('alertdialog', { name: 'End this mutual interest?' });
+		await confirm.getByRole('button', { name: 'End it' }).click();
+		// Never "try again": the terms are asked where the recruiter acted, with the focus there
+		await expect(confirm).toHaveCount(0);
+		const terms = banner.locator('[data-match-end-terms]');
+		const why = terms.getByText('To end it, accept the terms of use in force first.');
+		await expect(why).toBeFocused();
+		await expect(page.getByText('Could not end it')).toHaveCount(0);
+		await terms.getByRole('checkbox', { name: /at least 16 years old/ }).check();
+		await terms.getByRole('button', { name: 'Accept the terms' }).click();
+		await expect(terms).toHaveCount(0);
+		await expect(banner.getByRole('button', { name: 'End it' })).toBeFocused();
+		expect(accepted).toBe(true);
+		expect(ends).toHaveLength(1);
 	});
 });
 

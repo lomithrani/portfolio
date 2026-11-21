@@ -4,32 +4,35 @@ Above the steps of the Hire page, for the recruiter of a mutual interest (the jo
 the owner and they are both interested in one of their jobs, matching): the job they met over (as
 the owner said yes to it, a link to its page in their recruiter space), since when, whether the job
 description was edited since (the owner keeps the version they said yes to), whether this page holds
-that job (its job step: no other job meanwhile) or the invitation names it (a journey without one),
-what is left before the meeting (mutualInterestNext: the notes still to confirm, or nothing but the
-meeting, never one nobody can book), and "End it" (asked first: the page then reads the journey
-again, where the job step is to do as for anyone). Shown, the mutual interest is marked seen (the
-account menu's mark). Headed "You're both interested", never a bare "match" (decision 11), and no
-email promised (decision 10).
+that job now (its job step succeeded: no other job meanwhile), or the invitation names it (a journey
+without one), what is left before the meeting (mutualInterestNext: what brings back a job the step
+does not hold now, the notes still to confirm, or nothing but the meeting, never one nobody can
+book), what happens once it is booked (the goal's `next`, as "Before you start" says it), and "End
+it" (asked first, saying that a meeting booked stays booked; a refusal for the terms in force asks for
+them here: the page then reads the journey again, where the job step is to do as for anyone). Shown,
+the mutual interest is marked seen (the account menu's mark: one request each time it shows, whatever
+the counts the header read). Headed "You're both interested", never a bare "match" (decision 11), and
+no promise of an email from Portfolio (decision 10: the meeting's invitation is the calendar's).
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { get } from 'svelte/store';
+	import { onMount, tick } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { HandThumbUp, XMark } from 'svelte-heros-v2';
-	import {
-		markMutualInterestsSeen,
-		notificationsStore,
-		refreshNotifications
-	} from '#services/notifications.ts';
+	import { isSessionValid } from '#services/authentication.ts';
+	import { markMutualInterestsSeen, refreshNotifications } from '#services/notifications.ts';
 	import { formatDay, isoDate, networkError } from '#services/recruiter.ts';
 	import { endRecruiterInterest } from '#services/recruiterMatching.ts';
+	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
+		goalStepIndex,
 		jobLine,
+		mutualInterestJob,
 		mutualInterestNext,
 		type Journey,
 		type JourneyMatch
 	} from '#services/workflow.ts';
+	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import { clientStep } from '#components/hire/steps/index.ts';
 	import { m as cards } from '#components/matching/cards.messages.ts';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
@@ -43,7 +46,8 @@ email promised (decision 10).
 		ownerName,
 		booking,
 		onEnded,
-		onSignedOut
+		onSignedOut,
+		onTermsAccepted
 	}: {
 		match: JourneyMatch;
 		journey: Journey;
@@ -54,28 +58,53 @@ email promised (decision 10).
 		onEnded: () => void;
 		/** The session ended */
 		onSignedOut: () => void;
+		/** The terms in force were accepted here: the page reads the journey again (the job may hold) */
+		onTermsAccepted: () => void;
 	} = $props();
 
 	const uid = $props.id();
+	let user = $derived(
+		$sessionCheckedStore && isSessionValid($authenticationStore)
+			? $authenticationStore.user
+			: undefined
+	);
 	let line = $derived(jobLine(match.job));
-	// Its job step holds the job; without one (taken out since), the invitation names it
-	let held = $derived(journey.steps.some((step) => step.type === 'job'));
+	// Its job step holds the job now (succeeded); while it does not, `next` says what brings it back.
+	// Without a job step (taken out since), the invitation names it
+	let held = $derived(mutualInterestJob(journey)?.holds === true);
+	let hasJobStep = $derived(journey.steps.some((step) => step.type === 'job'));
 	let next = $derived(
 		mutualInterestNext(journey, {
 			booking,
 			title: (step) => clientStep(step.type)?.title?.(step)
 		})
 	);
+	// The step the journey leads to (the meeting): what happens once it is done, as "Before you
+	// start" says it, while it is not done yet; and whether a meeting was booked (ending it keeps it)
+	let goal = $derived.by(() => {
+		const index = goalStepIndex(journey.steps);
+		const step = index === -1 ? undefined : journey.steps[index];
+		const texts = step && clientStep(step.type)?.goal;
+		return step && texts ? { step, texts } : undefined;
+	});
+	let afterBooking = $derived(
+		booking && goal && goal.step.status !== 'succeeded' ? goal.texts.next(ownerName) : undefined
+	);
+	let booked = $derived(goal?.texts.booking === true && goal.step.status === 'succeeded');
 
 	onMount(() => {
-		// Shown: no longer counted as not seen (unless nothing is counted: no request)
-		const { matching, unseen } = get(notificationsStore);
-		if (matching !== 'on' || unseen.recruiter > 0) void markMutualInterestsSeen([match._id]);
+		// Shown: no longer counted as not seen. Whatever the counts the header read (they may be
+		// older than this mutual interest): one request each time the banner shows
+		void markMutualInterestsSeen([match._id]);
 	});
 
 	let confirming = $state(false);
 	let busy = $state(false);
 	let error = $state('');
+	/** Ending it was refused for the terms in force: they are asked here */
+	let termsAsked = $state(false);
+	let termsNote: HTMLElement | undefined = $state();
+	let endButton: HTMLButtonElement | undefined = $state();
 
 	async function end() {
 		if (busy) return;
@@ -102,9 +131,24 @@ email promised (decision 10).
 				toaster.info({ title: list.endDialog.gone });
 				onEnded();
 				return;
+			case 'terms':
+				// Never fixed by trying again: the terms are asked in the banner, which takes the focus
+				// once the dialog closes
+				termsAsked = true;
+				await tick();
+				confirming = false;
+				return;
 			default:
 				error = result.failure === 'network' ? networkError() : list.endDialog.failed;
 		}
+	}
+
+	async function termsAccepted() {
+		termsAsked = false;
+		onTermsAccepted();
+		// "End it" again: the form that had the focus went
+		await tick();
+		endButton?.focus();
 	}
 </script>
 
@@ -130,7 +174,7 @@ email promised (decision 10).
 	</p>
 	{#if held}
 		<p class="text-sm">{m.holds}</p>
-	{:else if booking}
+	{:else if !hasJobStep && booking}
 		<p class="text-sm">{m.inInvitation}</p>
 	{/if}
 	{#if match.changed}
@@ -139,9 +183,21 @@ email promised (decision 10).
 	{#each next as text (text)}
 		<p class="text-sm font-medium" data-match-next>{text}</p>
 	{/each}
+	{#if afterBooking}
+		<p class="text-sm" data-match-after-booking>{afterBooking}</p>
+	{/if}
+	{#if termsAsked && user}
+		<div class="space-y-3" data-match-end-terms>
+			<p class="text-sm font-medium outline-none" tabindex="-1" bind:this={termsNote}>
+				{m.endTerms}
+			</p>
+			<TermsAcceptance {user} source="recruiter" required onAccepted={termsAccepted} />
+		</div>
+	{/if}
 	<button
 		type="button"
 		class="btn preset-tonal-error min-h-11 max-w-full whitespace-normal"
+		bind:this={endButton}
 		onclick={() => {
 			error = '';
 			confirming = true;
@@ -156,6 +212,7 @@ email promised (decision 10).
 	open={confirming}
 	title={list.endDialog.title}
 	description={m.endDialog.description}
+	details={booked ? m.endDialog.booked : ''}
 	confirmLabel={list.endDialog.confirm}
 	busyLabel={list.endDialog.busy}
 	{busy}
@@ -164,4 +221,5 @@ email promised (decision 10).
 	onCancel={() => {
 		if (!busy) confirming = false;
 	}}
+	finalFocusEl={() => (termsAsked ? (termsNote ?? null) : null)}
 />

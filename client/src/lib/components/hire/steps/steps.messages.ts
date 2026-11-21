@@ -134,9 +134,14 @@ export const m = defineMessages({
 				en: 'You and <owner></owner> have both been interested in <job></job> since <time></time>: <owner></owner> reads the version they said yes to, linked in the meeting invitation.',
 				fr: "Depuis le <time></time>, l'intérêt est réciproque entre <owner></owner> et vous pour <job></job> : <owner></owner> lit la version sur laquelle il porte, dont le lien figure dans l'invitation au rendez-vous."
 			},
+			/** The same, when the day both became interested is not known (a date that does not read) */
+			holdsUndated: {
+				en: 'You and <owner></owner> are both interested in <job></job>: <owner></owner> reads the version they said yes to, linked in the meeting invitation.',
+				fr: "L'intérêt est réciproque entre <owner></owner> et vous pour <job></job> : <owner></owner> lit la version sur laquelle il porte, dont le lien figure dans l'invitation au rendez-vous."
+			},
 			noOther: {
 				en: 'This step holds that job while your mutual interest lasts: you cannot share another here.',
-				fr: "Cette étape reprend cette offre tant que l'intérêt réciproque dure : vous ne pouvez pas en partager une autre ici."
+				fr: "Cette étape retient cette offre tant que l'intérêt réciproque dure : vous ne pouvez pas en partager une autre ici."
 			},
 			/**
 			 * Not open (on hold: filled, closed or back to draft ends the mutual interest), which the line
@@ -149,7 +154,7 @@ export const m = defineMessages({
 			/** Open, but the recruiter has not accepted the terms of use in force (TermsAcceptance follows) */
 			terms: {
 				en: 'This page holds your job again once you accept the terms of use in force.',
-				fr: "Cette page reprend votre offre dès que vous acceptez les conditions d'utilisation en vigueur."
+				fr: "Cette page retient de nouveau votre offre dès que vous acceptez les conditions d'utilisation en vigueur."
 			}
 		},
 		shareNewVersion: { en: 'Share the new version', fr: 'Partager la nouvelle version' },
@@ -271,6 +276,16 @@ export const m = defineMessages({
 			holds: {
 				en: 'This score no longer changes while your mutual interest lasts.',
 				fr: "Cette note ne change plus tant que l'intérêt réciproque dure."
+			},
+			/**
+			 * A frozen score under its minimum (only a record not written by a mutual interest can hold
+			 * one: the step fails closed): nothing here changes it. Backed by:
+			 * server/services/workflowSteps/jobMatch.ts (`failed` under the frozen minimum),
+			 * server/services/matches.ts endMatch (the job step is then to do, as anyone's)
+			 */
+			under: {
+				en: 'This score, kept from when you were both interested, is under the minimum: to share another job here, end your mutual interest first.',
+				fr: "Cette note, gardée depuis l'intérêt réciproque, est sous le minimum : pour partager une autre offre ici, mettez d'abord fin à l'intérêt réciproque."
 			}
 		},
 		/** A new job description copied from the one scored (its terms are locked) */

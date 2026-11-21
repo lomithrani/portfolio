@@ -351,7 +351,8 @@ description instead.
 		{#if step.status === 'succeeded'}
 			<div class="space-y-2 rounded-container border border-surface-200-800 p-3">
 				<p>
-					<Rich text={m.job.matched.holds}>
+					<!-- Undated when the day both became interested does not read (pickedJob drops it) -->
+					<Rich text={matched.sharedAt ? m.job.matched.holds : m.job.matched.holdsUndated}>
 						{#snippet job()}<a class="font-semibold underline underline-offset-2" href={jobHref}
 								>{line}</a
 							>{/snippet}

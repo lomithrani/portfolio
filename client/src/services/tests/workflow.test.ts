@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import {
 	DEFAULT_JOB_MATCH_MIN_SCORE,
@@ -16,6 +17,7 @@ import {
 } from 'portfolio-common';
 import { networkError } from '../recruiter';
 import {
+	JOB_OF_MUTUAL_INTEREST,
 	activeStepIndex,
 	addStep,
 	addStepProblem,
@@ -39,6 +41,7 @@ import {
 	journeyReturnDomain,
 	journeySummary,
 	moveStep,
+	mutualInterestJob,
 	mutualInterestNext,
 	noteContent,
 	outdatedShare,
@@ -933,18 +936,33 @@ describe('after a mutual interest (matching)', () => {
 		expect(jobStepNote({ job: { ...job, status: 'on_hold' }, matched: true }, 'open')).toBe(
 			'Staff Engineer is on hold now: this page holds it again once you open it again.'
 		);
-		// Open, but the terms in force are not accepted
+		// Open, but the terms in force are not accepted: never to share it again, even undated
 		expect(jobStepNote({ job, matched: true }, 'open')).toBe(
+			'Accept the terms of use in force to go on with Staff Engineer.'
+		);
+		expect(jobStepNote({ job: JOB, matched: true }, 'open')).toBe(
 			'Accept the terms of use in force to go on with Staff Engineer.'
 		);
 	});
 
+	it('keeps the API’s body of a share refused for a mutual interest the same as server/protocol.ts', () => {
+		const protocol = readFileSync(
+			new URL('../../../../server/protocol.ts', import.meta.url),
+			'utf8'
+		);
+		expect(protocol).toContain(`export const JOB_OF_MUTUAL_INTEREST = '${JOB_OF_MUTUAL_INTEREST}'`);
+	});
+
 	it('says the 409 of a share while a mutual interest holds the step, and loads the journey', () => {
-		expect(pickJobFailure(409, 'This step holds the job you are both interested in')).toEqual({
+		const said = {
 			message:
 				'This step now holds the job you are both interested in: you cannot share another while your mutual interest lasts.',
 			kind: 'matched'
-		});
+		};
+		expect(pickJobFailure(409, JOB_OF_MUTUAL_INTEREST)).toEqual(said);
+		expect(pickJobFailure(409, ` ${JOB_OF_MUTUAL_INTEREST}\n`)).toEqual(said);
+		// Another 409 is never read as it
+		expect(pickJobFailure(409, 'Something else').kind).toBe('changed');
 	});
 
 	it('reads the frozen score, and when it was frozen, only for the job of a mutual interest', () => {
@@ -1021,16 +1039,40 @@ describe('after a mutual interest (matching)', () => {
 			).toEqual([]);
 		});
 
-		it('says the job step waits for the job while it does not hold, never that the meeting is next', () => {
+		it('says what brings back a job the step does not hold, never that the meeting is next', () => {
+			// On hold: open it again
 			expect(
 				mutualInterestNext(gate('succeeded', heldJob('pending', 'on_hold')), { booking: true })
 			).toEqual([
-				'This page holds your job only while it is open and you have accepted the terms of use in force: the job step below says what is missing.'
+				'Your job is on hold now: this page holds it again once you open it again from its page, and takes no other job meanwhile.'
 			]);
+			// Open: the terms in force are what is missing; the note before it is still to do
 			expect(mutualInterestNext(gate('pending', heldJob('pending')), { booking: true })).toEqual([
-				'This page holds your job only while it is open and you have accepted the terms of use in force: the job step below says what is missing.',
+				'Accept the terms of use in force: this page holds your job again once you do, and takes no other job meanwhile.',
 				'Still to do before the meeting: read a note.'
 			]);
+			// Said whether or not the meeting can be booked
+			expect(
+				mutualInterestNext(gate('pending', heldJob('pending', 'on_hold')), { booking: false })
+			).toEqual([
+				'Your job is on hold now: this page holds it again once you open it again from its page, and takes no other job meanwhile.'
+			]);
+		});
+
+		it('finds the job the step shows for the mutual interest, and whether it holds it now', () => {
+			expect(mutualInterestJob(gate('pending', heldJob('succeeded')))).toEqual({
+				job: { ...JOB, sharedAt: matchedAt, matched: true },
+				holds: true
+			});
+			expect(mutualInterestJob(gate('pending', heldJob('pending', 'on_hold')))?.holds).toBe(false);
+			// A job shared as anyone's, or no job step: none
+			const shared: Journey = {
+				steps: [{ id: 'job', type: 'job', status: 'succeeded', view: { job: JOB } }]
+			};
+			expect(mutualInterestJob(shared)).toBeUndefined();
+			expect(
+				mutualInterestJob({ steps: [{ id: 'meeting', type: 'meeting', status: 'pending' }] })
+			).toBeUndefined();
 		});
 
 		it('promises no meeting nobody can book, nor one after a step not passed', () => {
@@ -1057,10 +1099,14 @@ describe('after a mutual interest (matching)', () => {
 			expect(stepNote(journey, 2, states[2], (step) => jobMatchNote(step))).toBe(
 				'Staff Engineer scored 90 out of 100 when you were both interested.'
 			);
-			// A step it holds that does not hold now (the job on hold) says what the steps above ask
+			// A job it holds that does not hold now says what brings it back, even behind the note
 			const waiting = gate('pending', heldJob('pending', 'on_hold'));
 			expect(stepNote(waiting, 1, 'locked', (step, state) => jobStepNote(step.view, state))).toBe(
-				'Complete the step above first.'
+				'Staff Engineer is on hold now: this page holds it again once you open it again.'
+			);
+			const terms = gate('pending', heldJob('pending'));
+			expect(stepNote(terms, 1, 'locked', (step, state) => jobStepNote(step.view, state))).toBe(
+				'Accept the terms of use in force to go on with Staff Engineer.'
 			);
 			expect(stepNote(waiting, 3, 'locked', () => 'Book')).toBe('Complete the steps above first.');
 		});
@@ -1085,6 +1131,12 @@ describe('after a mutual interest (matching)', () => {
 			// French typography: the spaces inside the quotes do not break
 			expect(line.replace(/[\u00a0\u202f]/g, ' ')).toBe(
 				'Reste à faire avant le rendez-vous : lire une note (« Before you book »).'
+			);
+			const [onHold] = withLocale('fr', () =>
+				mutualInterestNext(gate('succeeded', heldJob('pending', 'on_hold')), { booking: true })
+			);
+			expect(onHold.replace(/[\u00a0\u202f]/g, ' ')).toBe(
+				"Votre offre a maintenant le statut « En pause » : cette page la retient de nouveau dès que vous la rouvrez depuis sa page, et n'en prend pas d'autre d'ici là."
 			);
 		});
 	});

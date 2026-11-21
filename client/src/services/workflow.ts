@@ -361,7 +361,9 @@ export const journeyDescription = (
  * to (what it asks, or what they did there); undefined for a type this version does not show.
  * `describeFailed`: what it says to a visitor who did not pass it, when it says more than that.
  * A step a mutual interest of matching holds (the job step's job, the frozen score) says what it
- * holds even while a step before it is to do (a note): it is done for the visitor, only not open yet
+ * holds even while a step before it is to do (a note): it is done for the visitor, only not open yet;
+ * the job step whose job does not hold now (on hold, or the terms in force not accepted) says what
+ * brings it back, as it does once open
  */
 export const stepNote = (
 	journey: Journey,
@@ -374,8 +376,8 @@ export const stepNote = (
 	if (!describe) return m.stepUnavailable;
 	// The owner reads what the step asks of recruiters
 	if (journey.own) return stepManifest(step.type)?.description ?? '';
-	if (state === 'locked' && step.status === 'succeeded' && heldByMutualInterest(step.view)) {
-		return describe(step, 'done');
+	if (state === 'locked' && heldByMutualInterest(step.view)) {
+		return describe(step, step.status === 'succeeded' ? 'done' : 'open');
 	}
 	if (state === 'locked') return index === 1 ? m.completeStepAbove : m.completeStepsAbove;
 	if (state === 'failed') return describeFailed?.(step) ?? m.notPassed;
@@ -538,15 +540,16 @@ export const jobStepNote = (view: unknown, state: 'open' | 'done'): string => {
 		const status = JOB_STATUS_LABELS[job.status];
 		return job.matched ? m.job.matchedNotOpen(job.title, status) : m.job.notOpen(job.title, status);
 	}
-	return job.sharedAt ? m.job.acceptTerms(job.title) : m.job.shareAgain(job.title);
+	// The job of a mutual interest is never shared again: open, only the terms are missing
+	return job.sharedAt || job.matched ? m.job.acceptTerms(job.title) : m.job.shareAgain(job.title);
 };
 
 /**
  * The 409 of the job step's submit while a mutual interest of matching with the owner holds the
- * step with its job (JOB_OF_MUTUAL_INTEREST of server/protocol.ts): an English constant, whatever
- * the visitor's language
+ * step with its job (JOB_OF_MUTUAL_INTEREST of server/protocol.ts, which a test keeps the same): an
+ * English constant, whatever the visitor's language
  */
-const JOB_OF_MUTUAL_INTEREST = 'This step holds the job you are both interested in';
+export const JOB_OF_MUTUAL_INTEREST = 'This step holds the job you are both interested in';
 
 /**
  * What a failed pick (or share of a new version) means. `reload-jobs`: the recruiter's jobs are
@@ -631,13 +634,29 @@ export const asksForAnotherJob = (view: unknown, address: URL): boolean => {
 // --- After a mutual interest (matching) -------------------------------------------------
 
 /**
+ * The job of the mutual interest as the journey's job step shows it (`view.matched`), and whether
+ * the step holds it now (succeeded: the posting open, the terms in force accepted); undefined on a
+ * journey whose job step does not show it (or that has none: the invitation names the job)
+ */
+export const mutualInterestJob = (
+	journey: Journey
+): { job: JourneyJob; holds: boolean } | undefined => {
+	for (const step of journey.steps) {
+		if (step.type !== 'job') continue;
+		const job = pickedJob(step.view);
+		if (job?.matched) return { job, holds: step.status === 'succeeded' };
+	}
+	return undefined;
+};
+
+/**
  * What is left of the journey for the recruiter of a mutual interest (the Hire page's banner), in
- * the order to read: while the job step does not hold the job of the mutual interest (on hold, or
- * the terms in force not accepted), that it waits for it; then, on a journey that leads to a meeting
- * they can book (`booking`: not when nobody can book, which the page says itself), the steps still to
- * do before it, by their type's phrase and the name of their own a step has (`title`: a note's), or
- * that nothing else is asked. Nothing once the meeting is booked: its step says so. The steps the
- * mutual interest holds (the job, the frozen score) are never counted as to do
+ * the order to read: while the job step does not hold the job of the mutual interest, what brings it
+ * back (the posting open again, or the terms in force accepted); then, on a journey that leads to a
+ * meeting they can book (`booking`: not when nobody can book, which the page says itself), the steps
+ * still to do before it, by their type's phrase and the name of their own a step has (`title`: a
+ * note's), or that nothing else is asked. Nothing once the meeting is booked: its step says so. The
+ * steps the mutual interest holds (the job, the frozen score) are never counted as to do
  */
 export const mutualInterestNext = (
 	journey: Journey,
@@ -649,10 +668,15 @@ export const mutualInterestNext = (
 	const goal = goalStepIndex(journey.steps);
 	const before = goal === -1 ? journey.steps : journey.steps.slice(0, goal);
 	const lines: string[] = [];
-	const jobWaits = before.some(
-		(step) => step.status !== 'succeeded' && pickedJob(step.view)?.matched === true
-	);
-	if (jobWaits) lines.push(m.match.jobWaits);
+	const held = mutualInterestJob({ steps: before });
+	const jobWaits = held !== undefined && !held.holds;
+	if (held && jobWaits) {
+		lines.push(
+			isPickable(held.job)
+				? m.match.jobTerms
+				: m.match.jobNotOpen(JOB_STATUS_LABELS[held.job.status])
+		);
+	}
 	if (!booking || goal === -1 || journey.steps[goal].status === 'succeeded') return lines;
 	// A step not passed stops the journey there: that step says why
 	if (before.some((step) => step.status === 'failed')) return lines;

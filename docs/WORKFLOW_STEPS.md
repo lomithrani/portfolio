@@ -542,21 +542,30 @@ anyone's), only from a journey loaded with the session (the server's render is a
 and shows `client/src/lib/components/hire/MatchBanner.svelte` above the steps in place of "Before you
 start" (the recruiter came through matching): "You're both interested", the job they met over (a link
 to its page in their recruiter space), since when, edited since (`changed`), that this page holds that
-job (its job step) or that the invitation names it (a journey without one), what is left before the
-meeting (`mutualInterestNext`: the steps not done, by their type's phrase, or that nothing else is
-asked; never a meeting nobody can book; that the job step waits for the job while it does not hold),
-and "End it" (asked first; the page then reads the journey again, where the job step is to do as for
-anyone). Shown, the mutual interest is marked seen. The job step's `view.matched` is read by
+job (only while its job step succeeded with it: `mutualInterestJob`) or that the invitation names it
+(a journey without one), what is left before the meeting (`mutualInterestNext`: what brings back a job
+the step does not hold now, the posting open again or the terms in force accepted; then the steps not
+done, by their type's phrase, or that nothing else is asked; never a meeting nobody can book), what
+happens once it is booked (the goal's `next`, as "Before you start" says it), and "End it" (asked
+first, saying that a meeting already booked stays booked; a refusal for the terms in force asks for
+them in the banner; the page then reads the journey again, where the job step is to do as for anyone,
+and a read that fails puts the server's journey, anyone's, in place of the steps it held). Shown, the
+mutual interest is marked seen, each time the banner shows. When a later read of the journey (a step
+refused, a note confirmed) no longer has the mutual interest the page showed, the page says so in a
+toast, rather than "Complete the steps first", and the focus goes to the step shown. The job step's
+`view.matched` is read by
 `pickedJob` (`matched`, never `outdated`): `JobStep.svelte` shows that job, with no list to pick
 another, nothing to share again and no "Change" (`reopenLabel` is a function of the step), and while
 it does not hold, what brings it back (the posting open again, with a link to its page, or the terms
 in force, `TermsAcceptance`); `asksForAnotherJob` ignores `?job=` while it holds; the 409
 `JOB_OF_MUTUAL_INTEREST` of a share from a page loaded before the mutual interest is said in words
-(`pickJobFailure`, `matched`: a toast, and the journey loaded again). The job match's
-`view.matched` and `frozenAt` are read by `jobMatch`: `JobMatchStep.svelte` says "Score when you were
-both interested, on <day>", that it no longer changes, and offers neither "Check again" nor a
-duplicate. A step a mutual interest holds says what it holds even while a step before it is to do
-(`stepNote`: the note first, the job and its score after it).
+(`pickJobFailure`, `matched`: a toast, and the journey loaded again, the focus on the step shown). The
+job match's `view.matched` and `frozenAt` are read by `jobMatch`: `JobMatchStep.svelte` says "Score
+when you were both interested, on <day>", that it no longer changes, and offers neither "Check again"
+nor a duplicate (a frozen score under its minimum says that ending the mutual interest is the way to
+share another job). A step a mutual interest holds says what it holds even while a step before it is
+to do (`stepNote`: the note first, the job and its score after it), and a job it does not hold now
+what brings it back.
 
 ## Steps with routes of their own
 
