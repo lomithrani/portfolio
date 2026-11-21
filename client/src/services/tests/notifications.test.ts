@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { withLocale } from 'portfolio-common';
 import {
+	NOTIFICATIONS_RETRY_MS,
 	initialNotifications,
 	nextNotifications,
 	notificationsAnswer,
+	notificationsRetryDelay,
 	notificationsWanted,
 	unseenBadgeText,
 	unseenLabel,
@@ -46,6 +48,28 @@ describe('notificationsAnswer', () => {
 		).toEqual({ kind: 'failed' });
 		expect(notificationsAnswer(null, 'not json')).toEqual({ kind: 'failed' });
 		expect(notificationsAnswer(null, null)).toEqual({ kind: 'failed' });
+	});
+});
+
+describe('notificationsRetryDelay', () => {
+	it('asks again a little later, twice, while a first read got nothing usable', () => {
+		// Until it answers, nothing of matching shows: a page left in view would never ask again
+		expect(notificationsRetryDelay(initialNotifications, 'failed', 0)).toBe(
+			NOTIFICATIONS_RETRY_MS[0]
+		);
+		expect(notificationsRetryDelay(initialNotifications, 'failed', 1)).toBe(
+			NOTIFICATIONS_RETRY_MS[1]
+		);
+		expect(notificationsRetryDelay(initialNotifications, 'failed', 2)).toBeNull();
+	});
+
+	it('never once an answer said whether matching is available, nor for a read dropped', () => {
+		const on: NotificationsState = { matching: 'on', unseen: { candidate: 0, recruiter: 0 } };
+		const off: NotificationsState = { matching: 'off', unseen: { candidate: 0, recruiter: 0 } };
+		expect(notificationsRetryDelay(on, 'failed', 0)).toBeNull();
+		expect(notificationsRetryDelay(off, 'off', 0)).toBeNull();
+		expect(notificationsRetryDelay(on, 'counts', 0)).toBeNull();
+		expect(notificationsRetryDelay(initialNotifications, null, 0)).toBeNull();
 	});
 });
 

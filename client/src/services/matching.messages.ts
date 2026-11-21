@@ -93,6 +93,22 @@ export const m = defineMessages({
 	/** No card left while the answer on its way is saved (and none to read after it) */
 	sending: { en: 'Sending your answer…', fr: 'Envoi de votre réponse…' },
 	/**
+	 * A page of matching that is not available to its reader (matching off, or a page that is not
+	 * theirs: the reviewers'): the same words on every such page (the inbox, the reviewers' page, the
+	 * candidates of a job), never what the page is, nor that signing in would open it
+	 */
+	unavailable: {
+		title: { en: 'Not available', fr: 'Indisponible' },
+		text: { en: 'This page is not available.', fr: "Cette page n'est pas disponible." },
+		/** The browser tab's title meanwhile */
+		pageTitle: { en: 'Not available | Portfolio', fr: 'Indisponible | Portfolio' }
+	},
+	/** Undo (Z) pressed while the answer is still on its way: said, never a key that does nothing */
+	stillSending: {
+		en: 'Your answer is still being sent: undo it once it is saved.',
+		fr: "Votre réponse est encore en cours d'envoi : annulez-la une fois enregistrée."
+	},
+	/**
 	 * Where a mutual interest stands (the lists of each side: mutualInterestStateText,
 	 * mutualInterestChangeText, matchedOnText). Never a bare "match" (it names the score)
 	 */

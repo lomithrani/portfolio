@@ -20,6 +20,12 @@ matching.ts, what it shows: deckView) and:
   the page never scrolls sideways (overflow-x: clip);
 - one answer at a time, the card leaving at once and coming back on top when its answer failed; a
   429 says from when (its Retry-After), and no answer or read goes until then;
+- an answer only for the card the person saw: none within ANSWER_SETTLE_MS of the card on top
+  changing after something they did (the second click of a double click, a second tap, a key
+  pressed twice: the buttons stay where they are, the card under them changed), the buttons
+  aria-disabled meanwhile; a click counted as a second one (`detail` over 1) answers nothing; a drag
+  answers the card it started on; Undo takes back the latest answer attempted only, and pressed
+  while that answer is on its way says so;
 - a recruiter's next card read once the one held is answered, a candidate's next page read early.
 What stops it (signed out, not proposed, the job not proposed, the terms, no recruiter space,
 matching off) goes to `onStop`: the deck then shows nothing more (no card, no buttons, no empty
@@ -36,8 +42,10 @@ whether more candidates come, never how many.
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import {
+		ANSWER_SETTLE_MS,
 		DRAG_LOCK_PX,
 		UNDO_WINDOW_MS,
+		answerSettled,
 		appendPage,
 		canDecide,
 		canUndo,
@@ -142,6 +150,13 @@ whether more candidates come, never how many.
 	let blockedUntil = $state(0);
 	// The focus goes to what the deck shows next once it is there (the next card, once read)
 	let focusPending = false;
+	// When the person last acted on the deck (an answer, an undo, going on after a mutual interest):
+	// 0 before anything (the first card shown takes an answer at once)
+	let actedAt = 0;
+	// When the card on top was shown (answering), and whether it still takes no answer: it changed
+	// after something the person did, less than ANSWER_SETTLE_MS ago
+	let shownAt = 0;
+	let settling = $state(false);
 
 	let top = $derived(topCard(deck));
 	let busy = $derived(!!deck.sending);
@@ -150,6 +165,20 @@ whether more candidates come, never how many.
 		deckView({ deck, side, started, stopped, moment: !!moment, readError: !!readError })
 	);
 	let answering = $derived(view === 'card');
+	// The card the buttons answer (null: none shown)
+	let shown = $derived(answering && top ? key(top) : null);
+	// A card shown on top after something the person did takes no answer for a moment
+	$effect(() => {
+		if (shown === null) return;
+		shownAt = Date.now();
+		if (actedAt === 0) return;
+		settling = true;
+		const timer = setTimeout(() => (settling = false), ANSWER_SETTLE_MS);
+		return () => clearTimeout(timer);
+	});
+	/** The card on top changed after the person's last action, a moment ago: no answer yet */
+	const settlingNow = () =>
+		actedAt > 0 && shownAt >= actedAt && !answerSettled(shownAt, Date.now());
 	let undoing = $derived(deck.sending?.kind === 'undo');
 	// Undo stays while its own request is on its way (the focus on it stays too)
 	let showUndo = $derived(!stopped && !moment && (undoing || canUndo(deck, now)));
@@ -322,9 +351,15 @@ whether more candidates come, never how many.
 
 	// --- Answering -------------------------------------------------------------------------
 
-	async function answer(decision: MatchDecision) {
+	/**
+	 * Answers the card on top with `decision`; `on`: the card the gesture started on (a drag), which
+	 * must still be the one on top
+	 */
+	async function answer(decision: MatchDecision, on?: string) {
 		if (stopped || moment || isBlocked() || !canDecide(deck)) return;
 		const answered = topCard(deck)!;
+		if ((on !== undefined && key(answered) !== on) || settlingNow()) return;
+		actedAt = Date.now();
 		deck = startDecision(deck, decision, key, Date.now());
 		alert = '';
 		// The next card's heading, or what shows while none is there
@@ -366,6 +401,11 @@ whether more candidates come, never how many.
 	}
 
 	async function undoLast() {
+		if (deck.sending?.kind === 'decision' && !stopped && !moment) {
+			// Undo is for that answer once it is saved: said, never a key that does nothing
+			say(m.stillSending);
+			return;
+		}
 		const last = deck.last;
 		if (stopped || moment || !last || deck.sending || deck.loading || isBlocked()) return;
 		if (!canUndo(deck, Date.now())) {
@@ -374,6 +414,7 @@ whether more candidates come, never how many.
 			windowEnded();
 			return;
 		}
+		actedAt = Date.now();
 		deck = startUndo(deck, Date.now());
 		alert = '';
 		let result: Answered;
@@ -407,6 +448,7 @@ whether more candidates come, never how many.
 	}
 
 	function keepGoing() {
+		actedAt = Date.now();
 		moment = null;
 		focusShown();
 	}
@@ -432,6 +474,8 @@ whether more candidates come, never how many.
 		dy: number;
 		axis: 'x' | 'y' | null;
 		width: number;
+		/** The card it started on: it answers that one only */
+		card: string;
 	}
 
 	let drag = $state<Drag | null>(null);
@@ -440,6 +484,7 @@ whether more candidates come, never how many.
 
 	function pointerDown(event: PointerEvent) {
 		if (busy || stopped || moment || isBlocked() || event.button !== 0 || !event.isPrimary) return;
+		if (shown === null || settlingNow()) return;
 		// A finger or a pen, never on a control or the description: dragStarts
 		if (!dragStarts(event.pointerType, event.target as Element | null)) return;
 		if (window.getSelection()?.toString()) return;
@@ -452,7 +497,8 @@ whether more candidates come, never how many.
 			dx: 0,
 			dy: 0,
 			axis: null,
-			width: (event.currentTarget as HTMLElement).offsetWidth
+			width: (event.currentTarget as HTMLElement).offsetWidth,
+			card: shown
 		};
 	}
 
@@ -474,11 +520,11 @@ whether more candidates come, never how many.
 
 	function pointerUp(event: PointerEvent) {
 		if (!drag || event.pointerId !== drag.pointer) return;
-		const { dx, dy, width, at, axis } = drag;
+		const { dx, dy, width, at, axis, card } = drag;
 		drag = null;
 		if (axis !== 'x') return;
 		const result = dragDecision({ dx, dy, width, ms: event.timeStamp - at });
-		if (result !== 'cancel') answer(result);
+		if (result !== 'cancel') answer(result, card);
 	}
 
 	let dragging = $derived(drag?.axis === 'x');
@@ -617,20 +663,29 @@ whether more candidates come, never how many.
 				<div class="grid grid-cols-2 gap-2">
 					<button
 						type="button"
-						class={[answerButton, 'preset-tonal', busy || blocked ? 'opacity-60' : '']}
-						aria-disabled={busy || blocked}
+						class={[answerButton, 'preset-tonal', busy || blocked || settling ? 'opacity-60' : '']}
+						aria-disabled={busy || blocked || settling}
 						aria-keyshortcuts="ArrowLeft"
-						onclick={() => answer('pass')}
+						onclick={(event) => {
+							// The second click of a double click answers nothing
+							if (event.detail <= 1) answer('pass');
+						}}
 					>
 						<XMark size="20" class="shrink-0" aria-hidden="true" />
 						{decisionLabel('pass')}
 					</button>
 					<button
 						type="button"
-						class={[answerButton, 'preset-filled-primary-500', busy || blocked ? 'opacity-60' : '']}
-						aria-disabled={busy || blocked}
+						class={[
+							answerButton,
+							'preset-filled-primary-500',
+							busy || blocked || settling ? 'opacity-60' : ''
+						]}
+						aria-disabled={busy || blocked || settling}
 						aria-keyshortcuts="ArrowRight"
-						onclick={() => answer('interested')}
+						onclick={(event) => {
+							if (event.detail <= 1) answer('interested');
+						}}
 					>
 						<HandThumbUp size="20" class="shrink-0" aria-hidden="true" />
 						{decisionLabel('interested')}

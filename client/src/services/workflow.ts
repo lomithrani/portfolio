@@ -19,6 +19,7 @@ import {
 	type WorkflowStepManifest,
 	type WorkflowStepStatus
 } from 'portfolio-common';
+import { JOB_OF_MUTUAL_INTEREST } from './apiBodies';
 import { isConsentProblem } from './apiErrors';
 import { isNetworkFailure, networkError } from './recruiter';
 import { m } from './workflow.messages';
@@ -543,13 +544,6 @@ export const jobStepNote = (view: unknown, state: 'open' | 'done'): string => {
 	// The job of a mutual interest is never shared again: open, only the terms are missing
 	return job.sharedAt || job.matched ? m.job.acceptTerms(job.title) : m.job.shareAgain(job.title);
 };
-
-/**
- * The 409 of the job step's submit while a mutual interest of matching with the owner holds the
- * step with its job (JOB_OF_MUTUAL_INTEREST of server/protocol.ts, which a test keeps the same): an
- * English constant, whatever the visitor's language
- */
-export const JOB_OF_MUTUAL_INTEREST = 'This step holds the job you are both interested in';
 
 /**
  * What a failed pick (or share of a new version) means. `reload-jobs`: the recruiter's jobs are

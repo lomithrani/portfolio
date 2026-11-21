@@ -9,13 +9,9 @@ import { defineMessages, plural } from 'portfolio-common';
 export const m = defineMessages({
 	/** The page's title once the list is read */
 	pageTitle: { en: 'Jobs to review | Portfolio', fr: 'Offres à relire | Portfolio' },
-	/** The page's title for anyone else (signed out, not a reviewer, matching off) */
-	unavailableTitle: { en: 'Not available | Portfolio', fr: 'Indisponible | Portfolio' },
-	/** For anyone but a reviewer, signed out too, and while matching is off: never what the page is */
-	unavailable: {
-		title: { en: 'Not available', fr: 'Indisponible' },
-		text: { en: 'This page is not available.', fr: "Cette page n'est pas disponible." }
-	},
+	// For anyone else (signed out, not a reviewer, matching off), its title, heading and text are
+	// those of every page of matching not available (`unavailable` of matching.messages.ts): never
+	// what the page is
 	/** Before the list is read, so it says nothing of what the page is */
 	loadFailed: {
 		title: { en: 'This page could not be loaded', fr: "Cette page n'a pas pu être chargée" },

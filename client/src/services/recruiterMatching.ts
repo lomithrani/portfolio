@@ -12,6 +12,13 @@ import {
 	type MatchingReviewStatus
 } from 'portfolio-common';
 import { portfolioApi, portfolioTextApi } from '#services';
+import {
+	JOB_CHANGED,
+	JOB_NOT_FOUND,
+	MATCHING_NEEDS_OPEN_JOB,
+	MATCH_NOT_FOUND,
+	RECRUITER_REQUIRED
+} from './apiBodies';
 import { bodyProperty, errorStatus, isConsentProblem } from './apiErrors';
 import type { JobForm, JobFormField } from './jobPosting';
 import {
@@ -182,14 +189,6 @@ export interface SwitchFailure {
 	kind: SwitchFailureKind;
 	message: string;
 }
-
-// Bodies of the API matched (server/protocol.ts, services/jobPostings.ts, services/recruiters.ts):
-// English constants whatever the visitor's language
-const MATCHING_NEEDS_OPEN_JOB = 'Only an open job description can be proposed to candidates';
-const JOB_CHANGED = 'This job posting was changed since you opened it';
-const JOB_NOT_FOUND = 'Job posting not found';
-const RECRUITER_REQUIRED = 'Create your recruiter space first';
-const MATCH_NOT_FOUND = 'Match not found';
 
 const bodyText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 

@@ -10,6 +10,19 @@
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { m } from './AppointmentsTab.messages.ts';
 
+	let {
+		visible = false,
+		onCalendarChanged
+	}: {
+		/**
+		 * The owner is visible to recruiters now (discovery, Path 2), which asks for the calendar
+		 * connected with a meeting type that has hours: the tab says that without them it pauses
+		 */
+		visible?: boolean;
+		/** The calendar was disconnected here (what discovery asks may have changed) */
+		onCalendarChanged?: () => void;
+	} = $props();
+
 	const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 
@@ -228,6 +241,7 @@
 		connectedAt = null;
 		revokedAt = null;
 		clearCalendarData();
+		onCalendarChanged?.();
 	}
 
 	async function loadSchedules() {
@@ -369,6 +383,11 @@
 				{/if}
 			</div>
 			<p class="text-sm opacity-50">{m.permissionsActive}</p>
+			{#if visible}
+				<p class="card preset-tonal-warning p-3 text-sm" data-pauses-discovery>
+					{m.pausesDiscovery}
+				</p>
+			{/if}
 			<button
 				type="button"
 				class="btn preset-outlined-error-500 text-sm"

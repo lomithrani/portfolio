@@ -124,6 +124,12 @@
 	}
 
 	/** What a change made in the Perfect job tab answered: newer than any read under way */
+	/**
+	 * The owner is visible to recruiters now: the Hiring journey and Appointments tabs say what
+	 * pauses it (the gate's steps, the calendar)
+	 */
+	let discoveryVisible = $derived(discovery?.kind === 'ready' && discovery.status.state === 'on');
+
 	function discoveryChanged(status: DiscoveryStatus) {
 		discoveryRequest?.abort();
 		discovery = { kind: 'ready', status };
@@ -361,7 +367,12 @@
 				</Tabs.Content>
 				<Tabs.Content value="workflows">
 					{#key journeyRevision}
-						<WorkflowsTab domainName={data.domainName} bind:this={workflowsTab} />
+						<WorkflowsTab
+							domainName={data.domainName}
+							bind:this={workflowsTab}
+							visible={discoveryVisible}
+							onSaved={refreshDiscovery}
+						/>
 					{/key}
 				</Tabs.Content>
 				<Tabs.Content value="perfect-job">
@@ -376,7 +387,7 @@
 					/>
 				</Tabs.Content>
 				<Tabs.Content value="appointments">
-					<AppointmentsTab />
+					<AppointmentsTab visible={discoveryVisible} onCalendarChanged={refreshDiscovery} />
 				</Tabs.Content>
 				<Tabs.Content value="share">
 					<ShareTab

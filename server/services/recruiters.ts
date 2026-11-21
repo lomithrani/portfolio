@@ -22,8 +22,10 @@ export interface RecruiterSpace {
 }
 
 // Not a message: the client tells this 403 from its text (/recruiter space/ in pickJobFailure of
-// client/src/services/workflow.ts, decisionFailure and feedFailure of matching.ts) and says it in
-// its own words: it stays in English (protocol.ts)
+// client/src/services/workflow.ts; RECRUITER_REQUIRED of client/src/services/apiBodies.ts, which a
+// test keeps the same, in decisionFailure and feedFailure of matching.ts, switchFailure and
+// recruiterInterestFailure of recruiterMatching.ts, and the job editor) and says it in its own
+// words: it stays in English (protocol.ts)
 const RECRUITER_REQUIRED = 'Create your recruiter space first';
 
 /** The account's recruiter space; null without one (or when the account is gone) */

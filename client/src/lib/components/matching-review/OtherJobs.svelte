@@ -17,6 +17,7 @@ title). A plain group under its heading, not a region: the page lists many jobs.
 		REVIEW_HISTORY_DAYS,
 		REVIEW_HISTORY_JOBS,
 		differsInText,
+		nearDuplicateCount,
 		reviewStatusText,
 		scrollBehavior,
 		type ReviewOtherJob
@@ -40,7 +41,7 @@ title). A plain group under its heading, not a region: the page lists many jobs.
 
 	const uid = $props.id();
 	let headingTag = $derived(`h${headingLevel}`);
-	let copies = $derived(jobs.filter((job) => job.nearDuplicate).length);
+	let copies = $derived(nearDuplicateCount(jobs));
 </script>
 
 <div class="space-y-3" data-other-jobs>

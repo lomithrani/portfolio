@@ -18,6 +18,16 @@ import {
 	type MatchSide,
 	type PerfectJobCriterion
 } from 'portfolio-common';
+import {
+	CANDIDATE_UNAVAILABLE,
+	DECISION_FINAL,
+	DECISION_NOT_FOUND,
+	JOB_NOT_FOUND,
+	JOB_NOT_PROPOSED,
+	MUTUAL_INTEREST_EXISTS,
+	NOT_PROPOSED_TO_RECRUITERS,
+	RECRUITER_REQUIRED
+} from './apiBodies';
 import { isConsentProblem } from './apiErrors';
 import type { JobPostingLike } from './jobPosting';
 import { formatDay, isNetworkFailure, networkError } from './recruiter';
@@ -668,7 +678,9 @@ export const canDecide = <T>(deck: Deck<T>): boolean => !deck.sending && deck.ca
 
 /**
  * The top card is answered with `decision` at `at`: it leaves the deck at once (the next shows)
- * while the answer is on its way. Unchanged when the deck takes no answer now
+ * while the answer is on its way. Undo is for the latest answer attempted only: the one before goes
+ * (should this one fail, Undo never takes back an earlier card than the one just acted on).
+ * Unchanged when the deck takes no answer now
  */
 export const startDecision = <T>(
 	deck: Deck<T>,
@@ -681,9 +693,23 @@ export const startDecision = <T>(
 	return {
 		...deck,
 		cards: deck.cards.slice(1),
+		last: null,
 		sending: { kind: 'decision', card, decision, at, first: !deck.answered.includes(key(card)) }
 	};
 };
+
+/**
+ * How long a card shown takes no answer (milliseconds): the second click of a double click, a
+ * second tap or a key pressed twice would otherwise answer the next card, which the person never
+ * saw (and could make a mutual interest, which reveals a portfolio). Counted from the moment the
+ * card on top changed, for whatever reason (an answer, its failure, an undo, the moment both are
+ * interested closed, the next card read)
+ */
+export const ANSWER_SETTLE_MS = 500;
+
+/** Whether a card shown on top since `shownAt` takes an answer at `now` */
+export const answerSettled = (shownAt: number, now: number): boolean =>
+	now - shownAt >= ANSWER_SETTLE_MS;
 
 /**
  * The answer on its way was saved. It can be undone unless it made a mutual interest (`mutual`:
@@ -977,17 +1003,6 @@ const STOPPING: readonly DecisionFailureKind[] = [
 ];
 
 export const stopsDeck = (failure: DecisionFailure): boolean => STOPPING.includes(failure.kind);
-
-// Bodies of the API the deck matches (server/protocol.ts, services/jobPostings.ts and
-// services/recruiters.ts): English constants whatever the visitor's language
-const NOT_PROPOSED_TO_RECRUITERS = 'You are not proposed to recruiters now';
-const JOB_NOT_PROPOSED = 'This job description is not proposed to candidates now';
-const MUTUAL_INTEREST_EXISTS = 'You are both interested already';
-const CANDIDATE_UNAVAILABLE = 'This candidate is not proposed for this job now';
-const DECISION_NOT_FOUND = 'There is no decision to undo';
-const DECISION_FINAL = 'This decision can no longer be undone';
-const JOB_NOT_FOUND = 'Job posting not found';
-const RECRUITER_REQUIRED = 'Create your recruiter space first';
 
 /** A 429's Retry-After (seconds, from the answer's headers); undefined without a usable one */
 export const retryAfterSeconds = (headers: unknown): number | undefined => {

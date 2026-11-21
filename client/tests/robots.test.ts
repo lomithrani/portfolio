@@ -335,8 +335,12 @@ test('the private pages are not listed', async ({ page }) => {
 		'/account',
 		'/recruiter/jobs/new',
 		'/recruiter/jobs/65e2e00000000000000000aa',
+		// The candidates of a job, proposed by matching (an anonymous card at a time)
+		'/recruiter/jobs/65e2e00000000000000000aa/candidates',
 		// The reviewers' page of matching (not available to anyone else)
 		'/recruiter/reviews',
+		// The candidate's inbox of matching, and the private page of a job description
+		'/opportunities',
 		'/opportunities/65e2e00000000000000000aa'
 	]) {
 		const response = await page.goto(path);

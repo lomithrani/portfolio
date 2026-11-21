@@ -97,6 +97,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	import { portfolioApi } from '#services';
 	import { clearAuthentication } from '#services/authentication.ts';
 	import { errorStatus } from '#services/apiErrors.ts';
+	import { JOB_CHANGED, JOB_TERMS_LOCKED, RECRUITER_REQUIRED } from '#services/apiBodies.ts';
 	import {
 		JOB_FIELD_LABELS,
 		JOB_STATUS_DESCRIPTIONS,
@@ -231,13 +232,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 	// How each field is named: its label here, and in the error summary
 	const labels = JOB_FIELD_LABELS;
-	// The API's 403 of an account without a recruiter space: matched, not shown (the API sends it
-	// in English whatever the language)
-	const RECRUITER_SPACE_REQUIRED = 'Create your recruiter space first';
-	/** The API's 409 when the posting changed since the editor loaded it (PUT /jobs/:id) */
-	const JOB_CHANGED = 'This job posting was changed since you opened it';
-	/** The API's 409 when an edit changes the terms of a posting opened before (PUT /jobs/:id) */
-	const JOB_TERMS_LOCKED = 'The terms of an opened job posting cannot be changed';
+	// The API's bodies matched, not shown (English whatever the language, #services/apiBodies.ts):
+	// the 403 of an account without a recruiter space, the 409 of a posting changed since the editor
+	// loaded it, and of an edit that changes the terms of a posting opened before (PUT /jobs/:id)
 
 	// The editor works on the props as they were when it was mounted
 	const initialJob = untrack(() => job);
@@ -547,7 +544,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		}
 		if (code === 403) {
 			return showSubmitError(
-				text === RECRUITER_SPACE_REQUIRED
+				text === RECRUITER_REQUIRED
 					? {
 							message: m.noRecruiterSpace,
 							link: { href: recruiterHref, label: m.openRecruiterSpace }

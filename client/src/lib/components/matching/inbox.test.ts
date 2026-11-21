@@ -149,34 +149,31 @@ describe('FeedAnswer', () => {
 		).toMatch(/<h2 id="feed-heading" tabindex="-1"/);
 	});
 
-	it('says the answer given, and offers the other to change it', () => {
-		const interested = textOf(
+	it('says the answer given, pressed, and keeps both answers where they are to change it', () => {
+		const rendered = (decision: 'interested' | 'pass' | null) =>
 			render(FeedAnswer, {
-				props: {
-					jobId: JOB_ID,
-					score: null,
-					interested: false,
-					decision: 'interested',
-					onChange: () => {}
-				}
-			}).body
-		);
-		expect(interested).toContain('This job interests you: its recruiter sees it.');
-		expect(interested).toContain('Pass');
-		expect(interested).not.toContain('Interested Undo');
-		const passed = textOf(
-			render(FeedAnswer, {
-				props: {
-					jobId: JOB_ID,
-					score: null,
-					interested: false,
-					decision: 'pass',
-					onChange: () => {}
-				}
-			}).body
-		);
-		expect(passed).toContain('You passed this job.');
-		expect(passed).toContain('Interested');
+				props: { jobId: JOB_ID, score: null, interested: false, decision, onChange: () => {} }
+			}).body;
+		/** The buttons' texts in order, and the one pressed */
+		const buttons = (html: string) =>
+			[...html.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)].map(([, attributes, body]) => ({
+				text: textOf(body),
+				pressed: /aria-pressed="true"/.test(attributes)
+			}));
+		const interested = rendered('interested');
+		expect(textOf(interested)).toContain('This job interests you: its recruiter sees it.');
+		// The second click of a double click lands on the answer just given, never on the other
+		expect(buttons(interested)).toEqual([
+			{ text: 'Pass', pressed: false },
+			{ text: 'Interested', pressed: true }
+		]);
+		const passed = rendered('pass');
+		expect(textOf(passed)).toContain('You passed this job.');
+		expect(buttons(passed)).toEqual([
+			{ text: 'Pass', pressed: true },
+			{ text: 'Interested', pressed: false }
+		]);
+		expect(buttons(rendered(null)).map((button) => button.pressed)).toEqual([false, false]);
 	});
 
 	it('reads in French', () => {

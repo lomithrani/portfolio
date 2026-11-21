@@ -39,6 +39,7 @@
 	import { toaster } from '#services/toaster.ts';
 	import { m as jobPage } from '../page.messages.ts';
 	import { m } from './page.messages.ts';
+	import { m as matchingText } from '#services/matching.messages.ts';
 
 	// The candidates proposed for one of the recruiter's job descriptions (matching, Path 2,
 	// CLAUDE.md "Matching"): their anonymous cards (CandidateCard), one at a time (GET
@@ -222,7 +223,7 @@
 		</a>
 
 		{#if job && !matching}
-			<PageNotice title={m.unavailable.title} icon={EyeSlash}>
+			<PageNotice title={matchingText.unavailable.title} icon={EyeSlash}>
 				<p>{m.unavailable.text}</p>
 				{#snippet actions()}
 					<a href={resolve('/(app)/recruiter/jobs/[id]', { id: jobId })} class={linkClass}
@@ -362,7 +363,7 @@
 				}}
 			/>
 		{:else if loadState.kind === 'off'}
-			<PageNotice title={m.unavailable.title} icon={EyeSlash}>
+			<PageNotice title={matchingText.unavailable.title} icon={EyeSlash}>
 				<p>{m.unavailable.text}</p>
 				{#snippet actions()}
 					<a href={resolve('/(app)/recruiter/jobs/[id]', { id: jobId })} class={linkClass}

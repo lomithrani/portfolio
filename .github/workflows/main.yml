@@ -81,9 +81,20 @@ jobs:
         run: bun run --cwd client test:unit
 
   e2e:
-    name: Playwright end-to-end tests
+    name: Playwright end-to-end tests (matching ${{ matrix.matching }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The whole suite passes with the API run either way (CLAUDE.md, Testing), and each leg
+        # proves one: `on` as on staging (MATCHING=true, a placeholder Google Calendar secret, the
+        # e2e reviewer), where the files of matching (client/tests/matching-*.test.ts) run for real;
+        # `off` as production until matching is released (no MATCHING) and without Google Calendar,
+        # where they skip and what shows nothing of matching meets the API's real 404s. Each leg
+        # tells Playwright which it is (E2E_MATCHING): a test finding the API in the other mode
+        # fails rather than skip. The two names are required checks (.github/rulesets/)
+        matching: ['on', 'off']
     services:
       mongodb:
         image: mongo:7
@@ -114,14 +125,15 @@ jobs:
           PORT: 3000
           # Playwright serves the production build on :4173 (client/playwright.config.ts)
           ALLOWED_DOMAINS: '["http://localhost:4173"]'
-          # Matching (Path 2) on, as on staging: its e2e files (client/tests/matching-*.test.ts)
-          # skip themselves without it. A placeholder secret makes Google Calendar count as
-          # configured, so the seeded candidates' calendars do (seed:e2e): nothing ever sends it to
-          # Google, the tests answer in the browser every request that would. The e2e reviewer
-          # (seed:e2e) reviews the jobs put into matching (client/tests/matching-review.test.ts)
-          MATCHING: 'true'
-          GOOGLE_CLIENT_SECRET: e2e-placeholder-never-sent
-          MATCHING_REVIEWERS: e2e.reviewer@example.com
+          # The `on` leg: matching (Path 2) on, as on staging. A placeholder secret makes Google
+          # Calendar count as configured, so the seeded candidates' calendars do (seed:e2e):
+          # nothing ever sends it to Google, the tests answer in the browser every request that
+          # would. The e2e reviewer (seed:e2e) reviews the jobs put into matching
+          # (client/tests/matching-review.test.ts). The `off` leg sets none of them (an empty
+          # value is unset for server/env.ts)
+          MATCHING: ${{ matrix.matching == 'on' && 'true' || '' }}
+          GOOGLE_CLIENT_SECRET: ${{ matrix.matching == 'on' && 'e2e-placeholder-never-sent' || '' }}
+          MATCHING_REVIEWERS: ${{ matrix.matching == 'on' && 'e2e.reviewer@example.com' || '' }}
       - name: Wait for the API health check
         run: >-
           curl --fail --silent --show-error --max-time 5
@@ -137,11 +149,13 @@ jobs:
         run: bun run --cwd client test:e2e --reporter=list,html --trace=retain-on-failure
         env:
           PUBLIC_PORTFOLIO_API_URL: http://localhost:3000
+          # How this leg runs the API: the files of matching check it (client/tests/support/api.ts)
+          E2E_MATCHING: ${{ matrix.matching }}
       - name: Upload Playwright report and API log
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-matching-${{ matrix.matching }}
           path: |
             client/playwright-report/
             client/test-results/

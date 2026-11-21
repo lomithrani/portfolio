@@ -26,15 +26,11 @@ export const m = defineMessages({
 			fr: 'Cette page est privée : vous seul pouvez la voir, une fois connecté.'
 		}
 	},
-	/** Matching is off (the API's routes answer 404): nothing of it is said */
+	/**
+	 * Matching is off (the API's routes answer 404): nothing of it is said (the words of every page
+	 * of matching not available, `unavailable` of matching.messages.ts), and the way home
+	 */
 	unavailable: {
-		title: { en: 'This page is not available', fr: "Cette page n'est pas disponible" },
-		/** The browser tab's title meanwhile: nothing names the page */
-		pageTitle: { en: 'Page not available | Portfolio', fr: 'Page non disponible | Portfolio' },
-		text: {
-			en: 'There is nothing to see here for now.',
-			fr: "Il n'y a rien à voir ici pour le moment."
-		},
 		home: { en: 'Go to the home page', fr: "Aller à la page d'accueil" }
 	},
 	loadFailed: {

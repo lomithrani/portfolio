@@ -6,9 +6,14 @@ import { defineMessages, plural } from 'portfolio-common';
 // counts candidates (no digit but the jobs they may propose at once: their own limit), never names
 // a reviewer, and never calls a mutual interest a bare "match" (decision 11 of the founder).
 export const m = defineMessages({
-	/** A job's line on the dashboard (no count: where it stands) */
+	/**
+	 * A job's line on the dashboard (no count: where it stands with the reviewers, read from the
+	 * posting alone). `live` says accepted, not proposed: the dashboard cannot read each job's feed,
+	 * and a job accepted but saved under rules made tighter since is proposed to nobody, which only
+	 * its own page (the matching panel, from the feed) can tell
+	 */
 	label: {
-		live: { en: 'Proposed to candidates', fr: 'Proposée aux candidats' },
+		live: { en: 'Accepted for candidates', fr: 'Acceptée pour les candidats' },
 		pending: { en: 'In review for candidates', fr: 'En relecture pour les candidats' },
 		rejected: { en: 'Not accepted for candidates', fr: 'Pas acceptée pour les candidats' },
 		/** On hold: proposed to nobody until it is open again */

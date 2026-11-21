@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Request, type Route } from '@playwright/test';
 import { journeyTemplate } from 'portfolio-common';
-import { calendarConfigured, stubApi } from './support/api';
+import { calendarConfigured, expectMatchingMode, stubApi } from './support/api';
+import { answerable, tabIntoDeck } from './support/deck';
 import { dayFromToday, meetingType, slotOn, stubAppointments } from './support/appointments';
 import {
 	API_URL,
@@ -26,7 +27,8 @@ import {
 //
 // What needs matching on (the API run with MATCHING=true, and GOOGLE_CLIENT_SECRET set to any value
 // so the seeded calendar counts and the candidate is proposed) is skipped, saying why, when GET
-// /me/notifications answers 404. What matching off shows (nothing of it), the terms to accept first,
+// /me/notifications answers 404 (in CI, where each leg says how it runs the API, E2E_MATCHING, an
+// API in the other mode fails rather than skip: expectMatchingMode of support/api.ts). What matching off shows (nothing of it), the terms to accept first,
 // and a deck of several cards (the seed proposes one) are answered in the browser: those tests run
 // with or without matching, and so is the candidate's page for recruiters of a mutual interest
 // (the journey answered in the browser): its banner, the job it holds, the frozen score, ending it,
@@ -121,6 +123,7 @@ const card = (token: string, title: string, interested = false) => ({
 
 const TOKEN_A = 'a'.repeat(40);
 const TOKEN_B = 'b'.repeat(40);
+const TOKEN_C = 'c'.repeat(40);
 
 /** The steps of a page for recruiters, and one of them by its name */
 const journeySteps = (page: Page) => page.getByRole('list', { name: 'Hiring journey' });
@@ -284,8 +287,9 @@ test('the deck answers one card at a time with the keyboard, undoes the first an
 	await expect(deck).toContainText('More candidates after this one.');
 	expect(await sidewaysScroll(page)).toBe(0);
 
-	// Buttons first; the keys while the focus is in the deck
-	await deck.getByRole('button', { name: 'Pass' }).focus();
+	// Buttons first; the keys while the focus is in the deck, reached with Tab alone (past the back
+	// link, the job's summary and whatever comes before it)
+	await tabIntoDeck(page, deck);
 	await page.keyboard.press('ArrowLeft');
 	const said = deck.locator('[aria-live="polite"]');
 	await expect(said).toHaveText('You passed this candidate.');
@@ -303,7 +307,9 @@ test('the deck answers one card at a time with the keyboard, undoes the first an
 	await expect(said).toHaveText('Undone: the candidate is back.');
 	await expect(deck.getByRole('heading', { name: 'Platform engineer' })).toBeFocused();
 	expect(undos.map((request) => request.postDataJSON())).toEqual([{ token: TOKEN_A }]);
-	// Answered again after an undo, it is final: Undo is gone
+	// Answered again after an undo, it is final: Undo is gone (the card back takes an answer once
+	// it settled: a key pressed twice never answers a card unseen)
+	await answerable(deck);
 	await page.keyboard.press('ArrowRight');
 	await expect(said).toHaveText('This candidate interests you: they see it beside your job.');
 	await expect(deck.getByRole('button', { name: 'Undo' })).toHaveCount(0);
@@ -314,6 +320,66 @@ test('the deck answers one card at a time with the keyboard, undoes the first an
 			Object.keys(localStorage).filter((key) => /token|candidate|decision/i.test(key))
 		)
 	).toEqual([]);
+});
+
+test('a double click or a key pressed twice answers one card, never the next one unseen', async ({
+	page
+}) => {
+	await withMatching(page, `/recruiter/jobs/${JOB_ID}`, (posting) => {
+		posting.matching = approved();
+	});
+	// One card per read, the next once the one shown is answered
+	const queue = [
+		card(TOKEN_A, 'Platform engineer'),
+		card(TOKEN_B, 'Data engineer'),
+		card(TOKEN_C, 'Site reliability engineer')
+	];
+	let answered = 0;
+	await stubApi(page, 'GET', `/recruiter/jobs/${JOB_ID}/candidates`, () => ({
+		json: { cards: queue.slice(answered, answered + 1), more: answered < queue.length - 1 }
+	}));
+	const decisions = await stubApi(
+		page,
+		'PUT',
+		`/recruiter/jobs/${JOB_ID}/candidates/decision`,
+		(request) => {
+			answered++;
+			return { json: { decision: request.postDataJSON().decision, match: null } };
+		}
+	);
+	// The page's clock, to hold time still: a card shown after an answer takes none for a moment
+	// (ANSWER_SETTLE_MS of #services/matching.ts), however slow the machine running the test
+	await page.clock.install();
+	await openAsRecruiter(page, `/recruiter/jobs/${JOB_ID}/candidates`);
+	const deck = page.getByRole('region', { name: 'Candidates to review' });
+	const interested = deck.getByRole('button', { name: 'Interested', exact: true });
+	await expect(deck.getByRole('heading', { name: 'Platform engineer' })).toBeVisible();
+	await page.clock.pauseAt(Date.now() + 60_000);
+
+	// A double click on Interested: the card shown only (forced: the actionability checks wait for
+	// animation frames, which the paused clock holds)
+	await interested.dblclick({ force: true });
+	await expect(deck.getByRole('heading', { name: 'Data engineer' })).toBeFocused();
+	// A click, or a key, landing once that answer was saved never answers the next card unseen
+	await interested.click({ force: true });
+	await page.keyboard.press('ArrowLeft');
+	await expect(interested).toHaveAttribute('aria-disabled', 'true');
+	expect(decisions.map((request) => request.postDataJSON())).toEqual([
+		{ token: TOKEN_A, decision: 'interested' }
+	]);
+	// A moment later, it takes an answer: ← pressed twice at once answers it alone
+	await page.clock.runFor(1000);
+	await answerable(deck);
+	await page.keyboard.press('ArrowLeft');
+	await page.keyboard.press('ArrowLeft');
+	await expect(deck.getByRole('heading', { name: 'Site reliability engineer' })).toBeFocused();
+	await page.keyboard.press('ArrowLeft');
+	await expect(deck.getByRole('heading', { name: 'Site reliability engineer' })).toBeVisible();
+	await expect(interested).toHaveAttribute('aria-disabled', 'true');
+	expect(decisions.map((request) => request.postDataJSON())).toEqual([
+		{ token: TOKEN_A, decision: 'interested' },
+		{ token: TOKEN_B, decision: 'pass' }
+	]);
 });
 
 test('a recruiter who has not accepted the terms in force accepts them, then the deck starts', async ({
@@ -767,6 +833,8 @@ test.describe('with matching on', () => {
 		const calendar = status === 404 || (await calendarConfigured(candidate));
 		await api.dispose();
 		await candidate.dispose();
+		// In CI, the leg's mode: a skip there would hide that matching was never tested
+		expectMatchingMode({ matching: status !== 404, calendar });
 		test.skip(
 			status === 404,
 			'Matching is off in the API under test (GET /me/notifications answers 404): run it with MATCHING=true'
@@ -854,7 +922,7 @@ test.describe('with matching on', () => {
 		const pageLink = item.getByRole('link', { name: 'Go to their page for recruiters' });
 		await expect(pageLink).toHaveAttribute('href', `/${CANDIDATE_DOMAIN}/hire`);
 		await expect(page.locator(`[data-job-card="${JOB_ID}"] [data-job-matching]`)).toHaveText(
-			'Proposed to candidates'
+			'Accepted for candidates'
 		);
 
 		// Their page for recruiters holds the job: the banner, the job step done with it, the score

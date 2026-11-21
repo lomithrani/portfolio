@@ -1,10 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { JOB_CHANGED, JOB_NOT_FOUND } from '../apiBodies';
 import { describe, expect, it } from 'vitest';
 import { MATCHING_LIMITS, withLocale } from 'portfolio-common';
 import { networkError } from '../recruiter';
 import {
-	JOB_CHANGED,
-	JOB_NOT_FOUND,
 	REVIEW_HISTORY_DAYS,
 	REVIEW_HISTORY_JOBS,
 	decideReview,
@@ -152,7 +151,7 @@ describe('readReviewList', () => {
 			[true, ['pay.min', 'location.city']],
 			[false, []]
 		]);
-		expect(nearDuplicateCount(entry)).toBe(1);
+		expect(nearDuplicateCount(entry.otherJobs)).toBe(1);
 	});
 
 	it('reads at most as many other jobs as the API lists, and a decision taken on an earlier version', () => {
@@ -224,14 +223,8 @@ describe('reconcileReviews', () => {
 });
 
 describe('failures', () => {
-	it('keeps the API’s bodies and the server’s constants the same', () => {
+	it('keeps the server’s constants the same (its bodies: apiBodies.test.ts)', () => {
 		const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
-		expect(read('../../../../server/protocol.ts')).toContain(
-			`export const JOB_CHANGED = '${JOB_CHANGED}'`
-		);
-		expect(read('../../../../server/services/jobPostings.ts')).toContain(
-			`export const JOB_NOT_FOUND = '${JOB_NOT_FOUND}'`
-		);
 		const reviews = read('../../../../server/services/matchingReviews.ts');
 		expect(reviews).toContain(`export const REVIEW_HISTORY_DAYS = ${REVIEW_HISTORY_DAYS};`);
 		expect(reviews).toContain(`export const REVIEW_HISTORY_JOBS = ${REVIEW_HISTORY_JOBS};`);

@@ -88,9 +88,9 @@ let countedFor: string | undefined;
 /**
  * Reads GET /me/notifications, signed in or not (a signed-out read only says whether matching is
  * available), and keeps its answer in notificationsStore. Never fails: a read that got no usable
- * answer keeps what was known
+ * answer keeps what was known. Returns what it answered (null: an older read, dropped)
  */
-export const refreshNotifications = async (): Promise<void> => {
+export const refreshNotifications = async (): Promise<NotificationsAnswer['kind'] | null> => {
 	const id = ++latest;
 	let answer: NotificationsAnswer;
 	try {
@@ -99,9 +99,28 @@ export const refreshNotifications = async (): Promise<void> => {
 	} catch {
 		answer = { kind: 'failed' };
 	}
-	if (id !== latest) return;
+	if (id !== latest) return null;
 	notificationsStore.update((state) => nextNotifications(state, answer));
+	return answer.kind;
 };
+
+/** How long the header waits before asking again after a first read got no usable answer */
+export const NOTIFICATIONS_RETRY_MS = [5_000, 30_000] as const;
+
+/**
+ * When to ask again after the read numbered `attempt` (0: the first) answered `answer`, in
+ * milliseconds; null: not again (until the page comes back in view). Only while whether matching is
+ * available is still unknown: until then nothing of matching shows (the recruiter's mutual
+ * interests, the job editor's "Propose it to candidates"), and a page left in view would never ask
+ */
+export const notificationsRetryDelay = (
+	state: NotificationsState,
+	answer: NotificationsAnswer['kind'] | null,
+	attempt: number
+): number | null =>
+	answer === 'failed' && state.matching === 'unknown'
+		? (NOTIFICATIONS_RETRY_MS[attempt] ?? null)
+		: null;
 
 /**
  * Signed out: nothing is unseen anymore (whether matching is available stays known), and the
@@ -133,13 +152,26 @@ export const startNotifications = (userId: string): (() => void) => {
 		countedFor = userId;
 	}
 	if (!notificationsWanted(get(notificationsStore))) return () => {};
-	void refreshNotifications();
+	let stopped = false;
+	let retry: ReturnType<typeof setTimeout> | undefined;
+	// A first read with no usable answer (no answer, a 5xx) is asked again a little later, twice
+	const read = async (attempt: number) => {
+		const answer = await refreshNotifications();
+		const delay = notificationsRetryDelay(get(notificationsStore), answer, attempt);
+		if (stopped || delay === null) return;
+		retry = setTimeout(() => void read(attempt + 1), delay);
+	};
+	void read(0);
 	const onVisible = () => {
 		if (document.visibilityState !== 'visible') return;
 		if (notificationsWanted(get(notificationsStore))) void refreshNotifications();
 	};
 	document.addEventListener('visibilitychange', onVisible);
-	return () => document.removeEventListener('visibilitychange', onVisible);
+	return () => {
+		stopped = true;
+		clearTimeout(retry);
+		document.removeEventListener('visibilitychange', onVisible);
+	};
 };
 
 /**

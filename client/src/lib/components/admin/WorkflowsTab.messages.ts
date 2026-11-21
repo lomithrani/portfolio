@@ -100,6 +100,15 @@ export const m = defineMessages({
 	},
 	saving: { en: 'Saving...', fr: 'Enregistrement…' },
 	save: { en: 'Save journey', fr: 'Enregistrer le parcours' },
+	/**
+	 * Before a save, while the owner is visible to recruiters (discovery, Path 2), for a journey
+	 * that lacks the gate (a job step, then a job match, then a meeting): it is a requirement of
+	 * discovery, which pauses without it (CLAUDE.md "Matching")
+	 */
+	pausesDiscovery: {
+		en: 'Saving this journey pauses being visible to recruiters, until your journey asks for the job, scores it and leads to a meeting again.',
+		fr: "Si vous enregistrez ce parcours, vous ne serez plus visible des recruteurs, jusqu'à ce que votre parcours demande de nouveau l'offre, la note et mène à un rendez-vous."
+	},
 	undo: { en: 'Undo changes', fr: 'Annuler les modifications' },
 	seeHirePage: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' }
 });

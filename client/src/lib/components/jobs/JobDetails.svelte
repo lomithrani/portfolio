@@ -1,7 +1,8 @@
 <!--
 @component
 A job posting as candidates and its recruiter read it: status, title, company, the facts
-(JobFacts) and the Markdown description, rendered without raw HTML. Used by the recruiter's job
+(JobFacts) and the Markdown description, rendered without raw HTML, each link with the host it
+leads to beside it (Markdown's linkHosts: what a link's text hides, a reviewer sees). Used by the recruiter's job
 page and by the private page of a job shared with a candidate (/opportunities/:id): it has no
 controls of its own. Pass them as snippets: `actions` (next to the title: Edit...), `meta` (under
 the company: dates...) and `children` (after the description). `headingId` names the title, for a
@@ -94,7 +95,7 @@ postings (that list: landmarks repeated per job would make landmark navigation u
 		{#if description}
 			<!-- Written by any recruiter: its raw HTML shows as text. Its headings rank right under
 			     "About the job", whichever level the description starts with -->
-			<Markdown content={description} topHeadingLevel={headingLevel + 2} html={false} />
+			<Markdown content={description} topHeadingLevel={headingLevel + 2} html={false} linkHosts />
 		{:else}
 			<p class="text-surface-700-300">{m.noDescription}</p>
 		{/if}

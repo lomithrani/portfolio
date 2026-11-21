@@ -10,6 +10,7 @@ import {
 	type MatchingReviewStatus
 } from 'portfolio-common';
 import { portfolioTextApi } from '#services';
+import { JOB_CHANGED, JOB_NOT_FOUND } from './apiBodies';
 import { bodyProperty, errorStatus } from './apiErrors';
 import { JOB_FIELD_LABELS, jobFormFieldOf, type JobPostingLike } from './jobPosting';
 import { readJobVersion, type JobVersion } from './matching';
@@ -207,11 +208,6 @@ export const readReviewList = (value: unknown): ReviewList | undefined => {
 
 // --- Failures -------------------------------------------------------------------------------
 
-// Bodies of the API matched (server/protocol.ts, services/jobPostings.ts): English constants
-// whatever the visitor's language
-export const JOB_CHANGED = 'This job posting was changed since you opened it';
-export const JOB_NOT_FOUND = 'Job posting not found';
-
 const bodyText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
 /** The validation message of a 422's body, as the API wrote it (in the visitor's language) */
@@ -369,6 +365,7 @@ export const differsInText = (paths: readonly JobFieldPath[]): string => {
 	return new Intl.ListFormat(intlLocale(), { type: 'conjunction' }).format(labels);
 };
 
-/** How many of a job's other jobs are copies of it */
-export const nearDuplicateCount = (job: Pick<ReviewedJob, 'otherJobs'>): number =>
-	job.otherJobs.filter((other) => other.nearDuplicate).length;
+/** How many of a job's other jobs (`ReviewedJob.otherJobs`) are copies of it */
+export const nearDuplicateCount = (
+	jobs: readonly Pick<ReviewOtherJob, 'nearDuplicate'>[]
+): number => jobs.filter((other) => other.nearDuplicate).length;

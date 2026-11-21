@@ -64,7 +64,24 @@
 			.replace(/"/g, '&quot;')
 			.replace(/'/g, '&#39;');
 
-	const createParser = (headingOffset: number, html: boolean) => {
+	/**
+	 * Where a link of markdown anyone can publish leads, shown beside it: the host of an http(s)
+	 * link (its punycode for a lookalike name). null for anything else (a relative link stays as
+	 * markdown makes it; DOMPurify drops what is not safe)
+	 */
+	const linkTarget = (href: string): { href: string; host: string } | null => {
+		let url: URL;
+		try {
+			url = new URL(href);
+		} catch {
+			return null;
+		}
+		return url.protocol === 'http:' || url.protocol === 'https:'
+			? { href: url.href, host: url.host }
+			: null;
+	};
+
+	const createParser = (headingOffset: number, html: boolean, linkHosts: boolean) => {
 		const parser = new Marked(
 			markedHighlight({
 				langPrefix: 'hljs language-',
@@ -88,6 +105,25 @@
 				}
 			});
 		}
+		if (linkHosts) {
+			// A link's text may say anything: where it leads is shown beside it, and it opens apart,
+			// sending no referrer (a per-reader address behind harmless words would tell its author who
+			// clicked, from where, before anything else is shared)
+			parser.use({
+				renderer: {
+					link({ href, title, tokens }) {
+						const target = linkTarget(href);
+						if (!target) return false;
+						const text = this.parser.parseInline(tokens);
+						const titled = title ? ` title="${escapeHtml(title)}"` : '';
+						const host = text.includes(target.host)
+							? ''
+							: ` <span class="link-host">(${escapeHtml(target.host)})</span>`;
+						return `<a href="${escapeHtml(target.href)}"${titled} target="_blank" rel="noopener noreferrer nofollow">${text}</a>${host}`;
+					}
+				}
+			});
+		}
 		if (!html) {
 			// Raw HTML (a block or an inline tag) is shown as the text it is
 			parser.use({
@@ -101,13 +137,13 @@
 		return parser;
 	};
 
-	// One shared parser per heading offset and HTML mode, for every Markdown instance (one per
-	// experience and per project)
+	// One shared parser per heading offset, HTML mode and way of showing links, for every Markdown
+	// instance (one per experience and per project)
 	const parsers: Record<string, Marked> = {};
-	const parserFor = (headingOffset: number, html: boolean) => {
+	const parserFor = (headingOffset: number, html: boolean, linkHosts = false) => {
 		const offset = Math.max(0, Math.min(5, Math.trunc(headingOffset) || 0));
-		const key = `${offset}:${html}`;
-		parsers[key] ??= createParser(offset, html);
+		const key = `${offset}:${html}:${linkHosts}`;
+		parsers[key] ??= createParser(offset, html, linkHosts);
 		return parsers[key];
 	};
 
@@ -154,7 +190,8 @@
 			'th',
 			'td'
 		],
-		ALLOWED_ATTR: ['href', 'title', 'class', 'start', 'align'],
+		// target and rel: the links linkHosts opens apart (raw HTML is text by then)
+		ALLOWED_ATTR: ['href', 'title', 'class', 'start', 'align', 'target', 'rel'],
 		ALLOW_DATA_ATTR: false
 	};
 </script>
@@ -165,6 +202,7 @@
 		headingOffset = 0,
 		topHeadingLevel,
 		html = true,
+		linkHosts = false,
 		compact = false
 	}: {
 		content: string;
@@ -181,6 +219,12 @@
 		 * what markdown makes: for markdown anyone can publish (job descriptions)
 		 */
 		html?: boolean;
+		/**
+		 * With html false: each http(s) link shows the host it leads to beside its text, opens in a
+		 * new tab and sends no referrer (job descriptions: a recruiter's link read by candidates
+		 * matching proposes the job to, and by the reviewers who read it as they will)
+		 */
+		linkHosts?: boolean;
 		/** Small headings without underline, for markdown inside cards */
 		compact?: boolean;
 	} = $props();
@@ -191,7 +235,7 @@
 			: topHeadingLevel - (topHeadingDepth(content ?? '') ?? topHeadingLevel)
 	);
 	let rendered = $derived.by(() => {
-		const markup = parserFor(offset, html).parse(content ?? '') as string;
+		const markup = parserFor(offset, html, linkHosts).parse(content ?? '') as string;
 		return html ? DOMPurify.sanitize(markup) : DOMPurify.sanitize(markup, STRICT);
 	});
 </script>
@@ -259,6 +303,12 @@
 	}
 
 	/* Links */
+	.markdown :global(.link-host) {
+		font-size: 0.875em;
+		color: var(--color-surface-700-300);
+		overflow-wrap: anywhere;
+	}
+
 	.markdown :global(a) {
 		color: var(--color-primary-700-300);
 		text-decoration: underline;

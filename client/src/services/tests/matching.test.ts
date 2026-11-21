@@ -8,7 +8,9 @@ import {
 } from 'portfolio-common';
 import { networkError } from '../recruiter';
 import {
+	ANSWER_SETTLE_MS,
 	UNDO_WINDOW_MS,
+	answerSettled,
 	appendPage,
 	canDecide,
 	canUndo,
@@ -586,6 +588,31 @@ describe('the deck', () => {
 		expect(ids(decisionFailed(sent, 'drop'))).toEqual(['b']);
 		expect(decisionFailed(sent, 'drop').sending).toBeNull();
 		expect(decisionFailed(sent, 'drop').last).toBeNull();
+	});
+
+	it('offers Undo for the latest answer attempted only, never an earlier card once it failed', () => {
+		const first = answered(deckOf('a', 'b', 'c'));
+		expect(canUndo(first, NOW)).toBe(true);
+		// B is answered: A's Undo goes at once, whatever becomes of B's answer
+		const sent = startDecision(first, 'interested', key, NOW + 1000);
+		expect(sent.last).toBeNull();
+		for (const outcome of ['drop', 'restore'] as const) {
+			const failed = decisionFailed(sent, outcome);
+			expect(failed.last).toBeNull();
+			expect(canUndo(failed, NOW + 1000)).toBe(false);
+			expect(startUndo(failed, NOW + 1000)).toBe(failed);
+		}
+		// Saved, B's answer is the one Undo takes back
+		expect(decisionSaved(sent, key, false).last?.card).toEqual({ id: 'b' });
+	});
+
+	it('takes no answer for a moment once the card on top changed (a double click, a second tap)', () => {
+		expect(answerSettled(NOW, NOW)).toBe(false);
+		expect(answerSettled(NOW, NOW + ANSWER_SETTLE_MS - 1)).toBe(false);
+		expect(answerSettled(NOW, NOW + ANSWER_SETTLE_MS)).toBe(true);
+		// Long enough for the second click of a double click, short enough to read nothing in it
+		expect(ANSWER_SETTLE_MS).toBeGreaterThanOrEqual(400);
+		expect(ANSWER_SETTLE_MS).toBeLessThanOrEqual(1000);
 	});
 
 	it('undoes the latest answer within the window the API allows', () => {

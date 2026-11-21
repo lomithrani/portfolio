@@ -375,6 +375,31 @@ export const cardForm = (card: DiscoveryStatus['card']): CardForm => ({
 	hidden: [...card.hiddenExperiences]
 });
 
+/**
+ * The form holding changes not saved yet, once the settings saved changed under it (saved in
+ * another tab, read again when the page came back in view): the person's own changes from `base`
+ * (the settings it started from) kept on top of `card` (the settings saved now). The headline they
+ * edited stays theirs, else it is the one saved; an experience they hid or showed stays so, the
+ * others as saved now. So a save from a tab left open never shows again an experience hidden
+ * elsewhere since (PUT /discovery replaces the whole card)
+ */
+export const rebaseCardForm = (
+	form: CardForm,
+	base: DiscoveryStatus['card'],
+	card: DiscoveryStatus['card']
+): CardForm => {
+	const before = new Set(base.hiddenExperiences);
+	const now = new Set(form.hidden);
+	const hiddenHere = form.hidden.filter((id) => !before.has(id));
+	const shownHere = new Set(base.hiddenExperiences.filter((id) => !now.has(id)));
+	return {
+		headline: form.headline !== (base.headline ?? '') ? form.headline : (card.headline ?? ''),
+		hidden: [
+			...new Set([...card.hiddenExperiences.filter((id) => !shownHere.has(id)), ...hiddenHere])
+		]
+	};
+};
+
 /** What PUT /discovery is sent (the API cleans the headline again, and keeps its own ids only) */
 export const cardSettings = (form: CardForm): DiscoveryCardSettings => ({
 	headline: form.headline.trim() ? form.headline : null,

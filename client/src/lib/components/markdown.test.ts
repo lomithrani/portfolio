@@ -49,6 +49,34 @@ describe('Markdown', () => {
 			expect(body).toContain('<td align="right">2</td>');
 		});
 
+		it('shows where each link leads beside its text, opened apart without a referrer (linkHosts)', () => {
+			const body = rendered({
+				content:
+					'Read [About us](https://t.example/j123 "Us") or https://acme.example/jobs, or [home](/acme).',
+				html: false,
+				linkHosts: true
+			});
+			// The host a harmless text hides is shown: a reviewer can refuse a tracking link
+			expect(body).toContain(
+				'<a href="https://t.example/j123" title="Us" target="_blank" rel="noopener noreferrer nofollow">About us</a> <span class="link-host">(t.example)</span>'
+			);
+			// A bare address says its host already
+			expect(body).toContain(
+				'<a href="https://acme.example/jobs" target="_blank" rel="noopener noreferrer nofollow">https://acme.example/jobs</a>'
+			);
+			expect(body).not.toContain('(acme.example)');
+			// A relative link stays as markdown makes it
+			expect(body).toContain('<a href="/acme">home</a>');
+			// A lookalike name shows as what it is
+			expect(
+				rendered({ content: '[Apply](https://аcme.example/x)', html: false, linkHosts: true })
+			).toMatch(/<span class="link-host">\(xn--[a-z0-9-]+\.example\)<\/span>/);
+			// Without it, links are as markdown makes them
+			expect(
+				rendered({ content: '[About us](https://t.example/j123)', html: false })
+			).not.toContain('link-host');
+		});
+
 		it('drops javascript: links', () => {
 			const body = rendered({ content: '[click](javascript:alert(1))', html: false });
 			expect(body).not.toContain('javascript:');

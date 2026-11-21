@@ -1,5 +1,6 @@
 import { discoveryConsentRenewable, type MatchDecision } from 'portfolio-common';
 import { portfolioTextApi } from '#services';
+import { MATCH_NOT_FOUND } from './apiBodies';
 import { errorStatus } from './apiErrors';
 import {
 	decisionFailure,
@@ -214,11 +215,6 @@ export const undoableHere = (loaded: MatchDecision | null, answeredHere: boolean
  * turned off (the 404 of a route that does not exist), no answer, or another failure
  */
 export type MutualInterestFailure = 'signed-out' | 'off' | 'gone' | 'network' | 'error';
-
-// The API's 404 of a mutual interest the caller is not a side of, or that was taken back
-// (server/protocol.ts, which opportunities.test.ts reads to keep them the same): an English
-// constant whatever the visitor's language
-export const MATCH_NOT_FOUND = 'Match not found';
 
 export const interestFailure = (error: {
 	status: unknown;

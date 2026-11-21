@@ -121,7 +121,7 @@ focus when the deck moves to this card (`headingId`, tabindex -1).
 		<div class="border-t border-surface-200-800 px-3 py-3">
 			{#if description}
 				<!-- Written by a recruiter: its raw HTML shows as text -->
-				<Markdown content={description} topHeadingLevel={headingLevel + 2} html={false} />
+				<Markdown content={description} topHeadingLevel={headingLevel + 2} html={false} linkHosts />
 			{:else}
 				<p class="text-sm text-surface-700-300">{m.opportunity.noDescription}</p>
 			{/if}

@@ -42,6 +42,7 @@ turns it on stays focusable when it cannot be used (aria-disabled), and why is r
 		discoveryOn,
 		discoveryWithdrawable,
 		formatMoment,
+		rebaseCardForm,
 		rejoinDate,
 		saveDiscoveryCard,
 		turnDiscoveryOff,
@@ -128,15 +129,15 @@ turns it on stays focusable when it cannot be used (aria-disabled), and why is r
 	/** What the API refused in the headline, and the headline it refused: said until it changes */
 	let refusedHeadline = $state.raw<{ message: string; sent: string } | null>(null);
 
-	// The settings saved changed (read again, or saved here): the form follows them, unless it holds
-	// changes not saved yet
+	// The settings saved changed (read again, or saved here): the form follows them; changes not
+	// saved yet stay, on top of the settings saved now (rebaseCardForm: a save from this tab never
+	// shows again an experience hidden from another since)
 	$effect(() => {
 		const card = status?.card;
 		if (!card) return;
 		untrack(() => {
-			if (base && cardChanged(form, base)) return;
+			form = base && cardChanged(form, base) ? rebaseCardForm(form, base, card) : cardForm(card);
 			base = card;
-			form = cardForm(card);
 		});
 	});
 

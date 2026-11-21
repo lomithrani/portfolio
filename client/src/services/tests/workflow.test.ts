@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { JOB_OF_MUTUAL_INTEREST } from '../apiBodies';
 import { describe, it, expect } from 'vitest';
 import {
 	DEFAULT_JOB_MATCH_MIN_SCORE,
@@ -17,7 +17,6 @@ import {
 } from 'portfolio-common';
 import { networkError } from '../recruiter';
 import {
-	JOB_OF_MUTUAL_INTEREST,
 	activeStepIndex,
 	addStep,
 	addStepProblem,
@@ -943,14 +942,6 @@ describe('after a mutual interest (matching)', () => {
 		expect(jobStepNote({ job: JOB, matched: true }, 'open')).toBe(
 			'Accept the terms of use in force to go on with Staff Engineer.'
 		);
-	});
-
-	it('keeps the API’s body of a share refused for a mutual interest the same as server/protocol.ts', () => {
-		const protocol = readFileSync(
-			new URL('../../../../server/protocol.ts', import.meta.url),
-			'utf8'
-		);
-		expect(protocol).toContain(`export const JOB_OF_MUTUAL_INTEREST = '${JOB_OF_MUTUAL_INTEREST}'`);
 	});
 
 	it('says the 409 of a share while a mutual interest holds the step, and loads the journey', () => {

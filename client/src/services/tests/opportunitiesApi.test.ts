@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MATCH_NOT_FOUND } from '../apiBodies';
 
 // The candidate's calls of matching (services/opportunities.ts), with the API answered here: how
 // each answer of the inbox's and the job page's routes is read, a refused body included
@@ -26,7 +27,6 @@ import {
 	answerOpportunity,
 	endMutualInterest,
 	loadMutualInterests,
-	MATCH_NOT_FOUND,
 	readOpportunities,
 	undoOpportunityAnswer
 } from '../opportunities';

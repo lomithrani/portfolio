@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { MATCH_NOT_FOUND } from '../apiBodies';
 import { describe, expect, it } from 'vitest';
 import {
 	DISCOVERY_CONSENT_MONTHS,
@@ -9,7 +9,6 @@ import {
 	appendInterests,
 	consentEndsSoon,
 	interestFailure,
-	MATCH_NOT_FOUND,
 	opportunitiesView,
 	opportunitiesViewSearch,
 	reviewState,
@@ -125,14 +124,6 @@ describe('undoableHere', () => {
 });
 
 describe('interestFailure', () => {
-	it('keeps the API’s body of a mutual interest gone the same as server/protocol.ts', () => {
-		const protocol = readFileSync(
-			new URL('../../../../server/protocol.ts', import.meta.url),
-			'utf8'
-		);
-		expect(protocol).toContain(`export const MATCH_NOT_FOUND = '${MATCH_NOT_FOUND}'`);
-	});
-
 	it('reads the API’s answers: gone, matching off, signed out, no answer, another failure', () => {
 		expect(interestFailure({ status: 404, value: MATCH_NOT_FOUND })).toBe('gone');
 		expect(interestFailure({ status: 404, value: ` ${MATCH_NOT_FOUND}\n` })).toBe('gone');

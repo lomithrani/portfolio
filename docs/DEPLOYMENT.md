@@ -1032,7 +1032,8 @@ the old one). Each ruleset:
 - requires a pull request (no approval: the repository has one maintainer), merged by squash into
   `develop`, by merge commit into `main`;
 - requires the CI jobs to pass (`Lint, type-check, build`, both `Server and client unit tests`,
-  `Playwright end-to-end tests`), and on `main` also `Only develop merges into main`;
+  both `Playwright end-to-end tests`: `(matching on)` and `(matching off)`), and on `main` also
+  `Only develop merges into main`;
 - on `develop` only, requires the pull request to be up to date with `develop`: after another
   merge, press **Update branch** and let CI run again, so what is merged is what was tested. Not
   on `main`: a release leaves a merge commit there that `develop` never gets, so a release PR is
@@ -1229,12 +1230,15 @@ An empty array (`[]`) from each query means nothing to do. Otherwise, rename the
 
 Portfolios are public to anyone with their address but are not listed by search engines
 (CLAUDE.md, "Search engines"): every page of a portfolio, the 404 of a name nobody claimed,
-`/account`, `/recruiter/jobs/*` and `/opportunities/*` (the private page of a job description
-shared with a candidate) answer with `x-robots-tag: noindex, nofollow, noarchive`, and the API
-sends the same header on every answer. The pages rendered on the server (a portfolio's pages,
-`/account`) also carry a robots meta in their HTML; the 404 of a name nobody claimed has the
-header alone; `/recruiter/jobs/*` and `/opportunities/*` are rendered in the browser, so their
-meta is only written once their script ran (`curl` never sees it). The landing page, the legal
+`/account`, `/recruiter/jobs/*` (with a job's candidates of matching,
+`/recruiter/jobs/<id>/candidates`), `/recruiter/reviews` (the reviewers' page of matching),
+`/opportunities` (the candidate's inbox of matching) and `/opportunities/*` (the private page of
+a job description shared with a candidate) answer with `x-robots-tag: noindex, nofollow,
+noarchive`, and the API sends the same header on every answer. The pages rendered on the server (a
+portfolio's pages, `/account`) also carry a robots meta in their HTML; the 404 of a name nobody
+claimed has the header alone; `/recruiter/jobs/*`, `/recruiter/reviews`, `/opportunities` and
+`/opportunities/*` are rendered in the browser, so their meta is only written once their script
+ran (`curl` never sees it). The landing page, the legal
 pages and `/recruiter` stay listed, with their canonical links (the one of `/recruiter`, rendered
 in the browser too, is written by its script). The job board is gone: `/jobs` answers `410 Gone`,
 which tells search engines to drop it, `/jobs/<id>` answers `308` to `/opportunities/<id>` (the
@@ -1272,6 +1276,9 @@ headers https://example.com/legal/privacy | grep -ci '^x-robots-tag'            
 curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs               # 410: the job board is gone
 curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://example.com/jobs/65e2e00000000000000000aa   # 308 .../opportunities/65e2e00000000000000000aa
 headers https://example.com/opportunities/65e2e00000000000000000aa | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+headers https://example.com/opportunities | grep -i '^x-robots-tag'             # the same (the inbox of matching)
+headers https://example.com/recruiter/reviews | grep -i '^x-robots-tag'         # the same (the reviewers' page)
+headers https://example.com/recruiter/jobs/65e2e00000000000000000aa/candidates | grep -i '^x-robots-tag'   # the same
 curl -s -o /dev/null -w '%{http_code}\n' https://api.example.com/jobs           # 404
 curl -s https://example.com/robots.txt | grep -iE '^(user-agent|allow|disallow)'   # each group with its user agents
 LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'

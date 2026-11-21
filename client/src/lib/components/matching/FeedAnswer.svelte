@@ -11,10 +11,13 @@ answer given and undone in the deck before the page read the job) is said, in si
 makes a mutual interest, or that finds the job no longer proposed (with why), asks the page to read
 the job again (`onChange`): the page keeps this section meanwhile and moves the focus once read.
 What happened is said in a polite live region (inside the page, main#page); a failure in an alert.
+Both answers stay where they are, the one given pressed (aria-pressed), so that the second click of
+a double click lands on the answer just given, which does nothing, never on the other one; a click
+counted as a second one (`detail` over 1) answers nothing either.
 -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { ArrowUturnLeft, HandThumbUp, XMark } from 'svelte-heros-v2';
+	import { ArrowUturnLeft, Check, HandThumbUp, XMark } from 'svelte-heros-v2';
 	import type { MatchDecision } from 'portfolio-common';
 	import { m as cards } from './cards.messages.ts';
 	import CriterionOutcomes from './CriterionOutcomes.svelte';
@@ -138,6 +141,12 @@ What happened is said in a polite live region (inside the page, main#page); a fa
 		}
 	}
 
+	/** An answer's button pressed: the answer given already, or a second click, does nothing */
+	function press(next: MatchDecision, event: MouseEvent) {
+		if (event.detail > 1 || decision === next) return;
+		void answer(next);
+	}
+
 	async function answer(next: MatchDecision) {
 		if (disabled) return;
 		busy = true;
@@ -160,7 +169,7 @@ What happened is said in a polite live region (inside the page, main#page); a fa
 		answeredAt = undoable ? Date.now() : null;
 		now = Date.now();
 		void say(result.decision === 'interested' ? m.saidInterested : m.saidPass);
-		// The button pressed is gone: the answer's sentence takes the focus
+		// The answer's sentence takes the focus: it says what is given now
 		await tick();
 		focusAnswer();
 	}
@@ -188,6 +197,8 @@ What happened is said in a polite live region (inside the page, main#page); a fa
 
 	/** A button's label wraps rather than run past it on a narrow phone (in French) */
 	const button = 'btn min-h-12 max-w-full whitespace-normal text-center leading-5';
+	/** The answer given: pressed, ringed, a check in place of its icon */
+	const pressed = 'ring-2 ring-primary-500 ring-offset-2 ring-offset-surface-50-950';
 </script>
 
 <section
@@ -251,28 +262,44 @@ What happened is said in a polite live region (inside the page, main#page); a fa
 			{decision === 'interested' ? m.interested : decision === 'pass' ? m.passed : m.ask}
 		</p>
 		<div class="flex flex-wrap items-center gap-2">
-			{#if decision !== 'pass'}
-				<button
-					type="button"
-					class={[button, 'preset-tonal', disabled ? 'opacity-60' : '']}
-					aria-disabled={disabled}
-					onclick={() => answer('pass')}
-				>
+			<button
+				type="button"
+				class={[
+					button,
+					'preset-tonal',
+					decision === 'pass' ? pressed : '',
+					disabled ? 'opacity-60' : ''
+				]}
+				aria-pressed={decision === 'pass'}
+				aria-disabled={disabled}
+				onclick={(event) => press('pass', event)}
+			>
+				{#if decision === 'pass'}
+					<Check size="20" class="shrink-0" aria-hidden="true" />
+				{:else}
 					<XMark size="20" class="shrink-0" aria-hidden="true" />
-					{decisionLabel('pass')}
-				</button>
-			{/if}
-			{#if decision !== 'interested'}
-				<button
-					type="button"
-					class={[button, 'preset-filled-primary-500', disabled ? 'opacity-60' : '']}
-					aria-disabled={disabled}
-					onclick={() => answer('interested')}
-				>
+				{/if}
+				{decisionLabel('pass')}
+			</button>
+			<button
+				type="button"
+				class={[
+					button,
+					'preset-filled-primary-500',
+					decision === 'interested' ? pressed : '',
+					disabled ? 'opacity-60' : ''
+				]}
+				aria-pressed={decision === 'interested'}
+				aria-disabled={disabled}
+				onclick={(event) => press('interested', event)}
+			>
+				{#if decision === 'interested'}
+					<Check size="20" class="shrink-0" aria-hidden="true" />
+				{:else}
 					<HandThumbUp size="20" class="shrink-0" aria-hidden="true" />
-					{decisionLabel('interested')}
-				</button>
-			{/if}
+				{/if}
+				{decisionLabel('interested')}
+			</button>
 			{#if showUndo}
 				<button
 					id={undoId}

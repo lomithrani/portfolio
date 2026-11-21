@@ -202,7 +202,7 @@
 		{
 			"type": "stat",
 			"title": "Requests for unknown addresses",
-			"description": "Requests no route answers: mostly scanners looking for `/wp-login.php` and the like.",
+			"description": "Requests no route answers: scanners looking for `/wp-login.php` and the like, and, while MATCHING is off, one GET /me/notifications per signed-in page load and GET /discovery from the admin page (docs/grafana/README.md).",
 			"datasource": {
 				"type": "prometheus",
 				"uid": "grafanacloud-prom"

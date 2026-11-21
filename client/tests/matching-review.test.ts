@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { stubApi } from './support/api';
+import { E2E_MATCHING, expectMatchingMode, stubApi } from './support/api';
 import { createJob, deleteJobs, jobPosting } from './support/jobs';
 import {
 	API_URL,
@@ -27,8 +27,10 @@ import {
 // the page is not available: those tests run with or without matching (matching off is answered in
 // the browser), and so do the page's states answered in the browser (a failed read, nothing
 // waiting, a decision refused, a session expired). What needs matching on and the reviewer listed
-// (the API run with MATCHING=true and MATCHING_REVIEWERS=e2e.reviewer@example.com, as CI's e2e job
-// runs it) is skipped, saying why, otherwise (in CI a reviewer refused fails: it must run there).
+// (the API run with MATCHING=true and MATCHING_REVIEWERS=e2e.reviewer@example.com, as the `on` leg
+// of CI's e2e job runs it) is skipped, saying why, otherwise; in CI, matching off or the reviewer
+// refused under the `on` leg, or matching answering under the `off` leg, fails rather than skip
+// (E2E_MATCHING, expectMatchingMode of support/api.ts).
 // Google is never reached.
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e reviewer');
@@ -332,12 +334,16 @@ test.describe('with matching on and the reviewer listed', () => {
 		const reviewerApi = await apiAs(reviewer);
 		const status = (await reviewerApi.get(`${API_URL}/matching/reviews`)).status();
 		await reviewerApi.dispose();
+		// In CI, the leg's mode: matching off under `on` (a 404), or the e2e reviewer refused (a 403),
+		// is a failure there, never a skip
+		expectMatchingMode({ matching: status !== 404 });
+		if (E2E_MATCHING === 'on') {
+			expect(status, 'GET /matching/reviews as the e2e reviewer').toBe(200);
+		}
 		test.skip(
 			status === 404,
 			'Matching is off in the API under test (GET /matching/reviews answers 404): run it with MATCHING=true'
 		);
-		// CI runs the API with the e2e reviewer listed: a refusal there is a failure, never a skip
-		if (process.env.CI) expect(status, 'GET /matching/reviews as the e2e reviewer').toBe(200);
 		test.skip(
 			status === 403,
 			'The e2e reviewer is not a reviewer of the API under test: run it with MATCHING_REVIEWERS=e2e.reviewer@example.com, after `bun run --cwd server seed:e2e` (which seeds that account)'

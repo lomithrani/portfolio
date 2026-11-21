@@ -46,6 +46,7 @@ import {
 	loadCardPreview,
 	loadDiscovery,
 	missingGateSteps,
+	rebaseCardForm,
 	rejoinDate,
 	requirementAction,
 	saveDiscoveryCard,
@@ -338,6 +339,32 @@ describe('the card’s settings', () => {
 		expect(cardChanged({ headline: '  Backend   engineer ', hidden: [] }, card)).toBe(false);
 		expect(cardChanged({ headline: 'Data engineer', hidden: [] }, card)).toBe(true);
 		expect(cardChanged({ headline: 'Backend engineer', hidden: [EXPERIENCE_ID] }, card)).toBe(true);
+	});
+
+	it('keeps changes not saved yet on top of settings saved meanwhile in another tab', () => {
+		const A = '65e2e0000000000000000201';
+		const B = '65e2e0000000000000000202';
+		const C = '65e2e0000000000000000203';
+		const base = { headline: 'Backend engineer', hiddenExperiences: [A] };
+		// Another tab hid B (their current employer) and saved
+		const saved = { headline: 'Backend engineer', hiddenExperiences: [A, B] };
+		// This tab only edited the headline: B stays hidden, the headline stays theirs
+		expect(rebaseCardForm({ headline: 'Data engineer', hidden: [A] }, base, saved)).toEqual({
+			headline: 'Data engineer',
+			hidden: [A, B]
+		});
+		// This tab showed A and hid C: both stay so, and B hidden elsewhere too
+		expect(rebaseCardForm({ headline: 'Backend engineer', hidden: [C] }, base, saved)).toEqual({
+			headline: 'Backend engineer',
+			hidden: [B, C]
+		});
+		// A headline not edited here follows the one saved since
+		expect(
+			rebaseCardForm({ headline: 'Backend engineer', hidden: [A, C] }, base, {
+				headline: 'Platform engineer',
+				hiddenExperiences: [A]
+			})
+		).toEqual({ headline: 'Platform engineer', hidden: [A, C] });
 	});
 
 	it('says what portfolio-common’s rules refuse before anything is sent, in both languages', () => {

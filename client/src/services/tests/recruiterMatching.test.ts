@@ -110,8 +110,10 @@ describe('where a job stands in matching', () => {
 		expect(
 			jobMatchingLabel({ status: 'open', matching: { enabledAt: null, review: null } })
 		).toBeNull();
+		// Accepted, not "proposed": the dashboard reads no feed (a job saved under rules made tighter
+		// since is proposed to nobody, which only its page can tell)
 		expect(jobMatchingLabel({ status: 'open', matching: on('approved') })).toBe(
-			'Proposed to candidates'
+			'Accepted for candidates'
 		);
 		expect(jobMatchingLabel({ status: 'open', matching: on('pending') })).toBe(
 			'In review for candidates'
@@ -124,7 +126,7 @@ describe('where a job stands in matching', () => {
 		);
 		withLocale('fr', () => {
 			expect(jobMatchingLabel({ status: 'open', matching: on('approved') })).toBe(
-				'Proposée aux candidats'
+				'Acceptée pour les candidats'
 			);
 		});
 	});

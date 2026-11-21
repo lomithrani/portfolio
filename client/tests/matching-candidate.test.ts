@@ -1,6 +1,8 @@
 import { expect, request as playwrightRequest, test, type Page } from '@playwright/test';
 import { currentDiscoveryConsent, discoveryRequirementMessage } from 'portfolio-common';
-import { calendarConfigured, stubApi, type StubAnswer } from './support/api';
+import { NOT_PROPOSED_TO_RECRUITERS } from '../src/services/apiBodies';
+import { calendarConfigured, expectMatchingMode, stubApi, type StubAnswer } from './support/api';
+import { tabIntoDeck } from './support/deck';
 import { jobPosting } from './support/jobs';
 import {
 	API_URL,
@@ -21,12 +23,13 @@ import {
 // for, and discovery off), this file's own candidate: no other file reads or changes it.
 //
 // What needs matching on (the API run with MATCHING=true, and GOOGLE_CLIENT_SECRET set to any value
-// so the seeded calendar counts) is skipped, saying why, when GET /discovery answers 404. Turning
-// discovery on goes to the API; turning it off is answered in the browser (DELETE
-// /discovery/consent): a real withdrawal would hold the next opt-in back DISCOVERY_REJOIN_DAYS,
-// which only `seed:e2e` clears. So a run leaves the candidate on: a run after it without `seed:e2e`
-// (which sets it back off; CI seeds before every run) finds it on, and checks all but the opt-in
-// itself. What matching off shows, and the states the
+// so the seeded calendar counts) is skipped, saying why, when GET /discovery answers 404; in CI each
+// leg says how it runs the API (E2E_MATCHING), and an API in the other mode fails rather than skip
+// (expectMatchingMode of support/api.ts). Turning discovery on goes to the API; turning it off is
+// answered in the browser (DELETE /discovery/consent) until the deck test, which ends with a real
+// withdrawal: it holds the next opt-in back DISCOVERY_REJOIN_DAYS, which only `seed:e2e` clears (it
+// empties the consents; CI seeds before every run). So a run ends with the candidate off, and a
+// run after it without `seed:e2e` stops at the opt-in, saying so. What matching off shows, and the states the
 // seed cannot give (what is missing, a refused opt-in), are answered in the browser: those tests run
 // with or without matching. The admin page's calendar requests that would reach Google are answered
 // in the browser too (the seeded grant is a placeholder nothing sends to Google).
@@ -245,7 +248,8 @@ test('a refused opt-in says from when it can be turned on again', async ({ page 
 	await consent.getByRole('checkbox').check();
 	const turnOn = consent.getByRole('button', { name: 'Make me visible to recruiters' });
 	await turnOn.click();
-	expect(optIns).toHaveLength(1);
+	// The request reaches its stub a moment after the click
+	await expect.poll(() => optIns.length).toBe(1);
 	expect(optIns[0].postDataJSON()).toEqual({
 		consent: { termsVersion: expect.any(String), adultConfirmed: true }
 	});
@@ -312,11 +316,12 @@ test('with matching off, the inbox is not available and the account menu has no 
 	await signIn(page, session);
 	await gotoHydrated(page, '/opportunities');
 
-	await expect(page.getByRole('heading', { name: 'This page is not available' })).toBeVisible();
-	await expect(page.getByText('There is nothing to see here for now.')).toBeVisible();
+	// The words of every page of matching not available (the reviewers' page, a job's candidates)
+	await expect(page.getByRole('heading', { name: 'Not available' })).toBeVisible();
+	await expect(page.getByText('This page is not available.')).toBeVisible();
 	// The header and the tab name nothing of matching either
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Portfolio');
-	await expect(page).toHaveTitle('Page not available | Portfolio');
+	await expect(page).toHaveTitle('Not available | Portfolio');
 	await expect(page.getByRole('tab')).toHaveCount(0);
 	await expect(page.getByRole('alert')).toHaveCount(0);
 	// Nothing of matching in the account menu either: no item, no badge
@@ -532,10 +537,20 @@ test('a job’s private page: an answer that replaces another offers no Undo, a 
 	await expect(answer.locator('[data-answer]')).toHaveText(
 		'This job interests you: its recruiter sees it.'
 	);
-	await answer.getByRole('button', { name: 'Pass' }).click();
+	// A double click: one answer, Pass (both answers stay where they are, the one given pressed, so
+	// the second click never lands on Interested)
+	await answer.getByRole('button', { name: 'Pass' }).dblclick();
 	await expect(answer.locator('[data-answer]')).toHaveText('You passed this job.');
 	await expect(answer.locator('[data-answer]')).toBeFocused();
-	expect(decisions).toHaveLength(1);
+	await expect(answer.getByRole('button', { name: 'Pass' })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await expect(answer.getByRole('button', { name: 'Interested' })).toHaveAttribute(
+		'aria-pressed',
+		'false'
+	);
+	expect(decisions.map((request) => request.postDataJSON())).toEqual([{ decision: 'pass' }]);
 	// Not the first answer on the job: the API would refuse its undo, so none is offered
 	await expect(answer.getByRole('button', { name: 'Undo' })).toHaveCount(0);
 
@@ -581,6 +596,8 @@ test.describe('with matching on', () => {
 		// The seeded calendar (a placeholder grant) counts only on a site that takes Google Calendar
 		const calendar = status === 404 || (await calendarConfigured(api));
 		await api.dispose();
+		// In CI, the leg's mode: a skip there would hide that matching was never tested
+		expectMatchingMode({ matching: status !== 404, calendar });
 		test.skip(
 			status === 404,
 			'Matching is off in the API under test (GET /discovery answers 404): run it with MATCHING=true'
@@ -674,8 +691,22 @@ test.describe('with matching on', () => {
 			await expect(section).toHaveAttribute('data-state', 'off');
 			const consent = section.locator('[data-discovery-consent]');
 			await consent.getByRole('checkbox').check();
+			const optIn = page.waitForResponse(
+				(response) =>
+					response.url() === `${API_URL}/discovery/consent` &&
+					response.request().method() === 'POST'
+			);
 			await consent.getByRole('button', { name: 'Make me visible to recruiters' }).click();
-			await expect(toasts(page)).toContainText('You are visible to recruiters');
+			expect(
+				(await optIn).status(),
+				'A run before withdrew for real (held back DISCOVERY_REJOIN_DAYS): run `bun run --cwd server seed:e2e` again'
+			).not.toBe(429);
+			// Its toast may wait behind the card's (three at most on screen, each for 5 s, held while
+			// the pointer rests on them)
+			await page.mouse.move(0, 0);
+			await expect(toasts(page)).toContainText('You are visible to recruiters', {
+				timeout: 15_000
+			});
 		}
 		await expect(section).toHaveAttribute('data-state', 'on');
 		await expect(section.locator('[data-discovery-state]')).toHaveText('On');
@@ -726,7 +757,10 @@ test.describe('with matching on', () => {
 				const optIn = await api.post(`${API_URL}/discovery/consent`, {
 					data: { consent: currentDiscoveryConsent() }
 				});
-				expect(optIn.ok(), await optIn.text()).toBe(true);
+				expect(
+					optIn.ok(),
+					`A run before withdrew for real (held back DISCOVERY_REJOIN_DAYS): run \`bun run --cwd server seed:e2e\` again. ${await optIn.text()}`
+				).toBe(true);
 			}
 			const feed = await (await api.get(`${API_URL}/opportunities`)).json();
 			expect(
@@ -746,13 +780,7 @@ test.describe('with matching on', () => {
 			expect(await sidewaysScroll(page)).toBe(0);
 
 			// The keyboard alone: into the deck, then its shortcuts
-			const intoDeck = async () => {
-				for (let presses = 0; presses < 40; presses++) {
-					if (await deck.evaluate((element) => element.contains(document.activeElement))) return;
-					await page.keyboard.press('Tab');
-				}
-				throw new Error('The deck could not be reached with Tab');
-			};
+			const intoDeck = () => tabIntoDeck(page, deck);
 			const said = deck.locator('[aria-live="polite"]');
 			await intoDeck();
 			await page.keyboard.press('ArrowLeft');
@@ -852,6 +880,27 @@ test.describe('with matching on', () => {
 			await expect(shared.getByRole('heading', { name: 'Mutual interest ended' })).toBeVisible();
 			await expect(shared.locator('[data-interest-state]')).toHaveText('You ended it');
 			await expect(page.locator('[data-feed-answer]')).toHaveCount(0);
+
+			// Stop being visible, for real: out of every list at once (the API answers the feed 403),
+			// and the inbox says why. A run so ends with the candidate off (`seed:e2e` sets it back)
+			await stubCalendar(page);
+			await gotoHydrated(page, `/${DOMAIN}/admin?tab=perfect-job`);
+			const settings = discovery(page);
+			await expect(settings).toHaveAttribute('data-state', 'on');
+			await settings.getByRole('button', { name: 'Stop being visible' }).click();
+			await page
+				.getByRole('alertdialog', { name: 'Stop being visible to recruiters?' })
+				.getByRole('button', { name: 'Stop being visible' })
+				.click();
+			await expect(toasts(page)).toContainText('You are no longer visible to recruiters');
+			await expect(settings).toHaveAttribute('data-state', 'off');
+			const feedAfter = await api.get(`${API_URL}/opportunities`);
+			expect(feedAfter.status()).toBe(403);
+			expect((await feedAfter.text()).trim()).toBe(NOT_PROPOSED_TO_RECRUITERS);
+			await gotoHydrated(page, '/opportunities');
+			await expect(
+				page.getByRole('heading', { name: 'You are not visible to recruiters' })
+			).toBeVisible();
 			await api.dispose();
 		});
 	});

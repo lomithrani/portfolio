@@ -157,6 +157,8 @@ describe('pages search engines are asked not to list', () => {
 			'/(app)/recruiter/jobs/[id]/candidates',
 			// The jobs waiting for a reviewer of matching
 			'/(app)/recruiter/reviews',
+			// The candidate's inbox of matching
+			'/(app)/opportunities',
 			'/(app)/opportunities/[id]'
 		]) {
 			expect({ route, noindex: isNoindexRoute(route) }).toEqual({ route, noindex: true });

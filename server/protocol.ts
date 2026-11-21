@@ -1,6 +1,8 @@
 // Bodies of the API the client matches, not shows: they stay in English whatever the request's
 // language (docs/I18N.md: "texts that code compares"), and the client says it in its own words,
-// in the visitor's language. Changing one means changing what the client matches with it.
+// in the visitor's language. Changing one means changing what the client matches with it: those
+// of the recruiter space and of matching are mirrored once in client/src/services/apiBodies.ts,
+// whose test (client/src/services/tests/apiBodies.test.ts) reads this file and fails on a change.
 //
 // Others, kept where they were declared: JOB_NOT_FOUND (services/jobPostings.ts),
 // RECRUITER_REQUIRED (services/recruiters.ts), JOB_NOT_OPEN (services/workflowSteps/job.ts),

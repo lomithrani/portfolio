@@ -23,6 +23,7 @@
 	} from '#services/matchingReviews.ts';
 	import { m as reviewText } from '#services/matchingReviews.messages.ts';
 	import { m } from './page.messages.ts';
+	import { m as matchingText } from '#services/matching.messages.ts';
 
 	// The reviewers' page of matching (Path 2, CLAUDE.md "Matching", "Review"): the job descriptions
 	// recruiters ask to propose to candidates wait here for one of the operator's reviewers
@@ -326,7 +327,7 @@
 		list
 			? m.pageTitle
 			: loadState.kind === 'unavailable' || ($sessionCheckedStore && !user)
-				? m.unavailableTitle
+				? matchingText.unavailable.pageTitle
 				: SITE_NAME
 	);
 	const actionClass = 'btn preset-filled-primary-700-300 min-h-11 max-w-full whitespace-normal';
@@ -425,12 +426,16 @@
 			<EditorPlaceholder />
 		{:else if !user}
 			<!-- Signed out: the same words as for anyone else (nothing says signing in would open it) -->
-			<PageNotice title={m.unavailable.title} icon={EyeSlash}>
-				<p>{m.unavailable.text}</p>
+			<PageNotice title={matchingText.unavailable.title} icon={EyeSlash}>
+				<p>{matchingText.unavailable.text}</p>
 			</PageNotice>
 		{:else if loadState.kind === 'unavailable'}
-			<PageNotice title={m.unavailable.title} icon={EyeSlash} headingId={unavailableHeadingId}>
-				<p>{m.unavailable.text}</p>
+			<PageNotice
+				title={matchingText.unavailable.title}
+				icon={EyeSlash}
+				headingId={unavailableHeadingId}
+			>
+				<p>{matchingText.unavailable.text}</p>
 			</PageNotice>
 		{:else}
 			<PageNotice

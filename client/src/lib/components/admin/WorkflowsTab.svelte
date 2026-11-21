@@ -8,6 +8,9 @@ The journey is checked on every change with the rules the API enforces (parseWor
 wrong is said at the step and the setting it is about, and the journey cannot be saved until it
 is fixed. Discovery's checklist (the Perfect job tab) adds the steps it asks for here, as changes
 not saved yet (addGateSteps): this tab is the only one that saves the steps the owner edits.
+While the owner is visible to recruiters (`visible`), a journey that no longer asks for the job,
+scores it and leads to a meeting says, before it is saved, that saving it pauses that; once saved,
+the page reads discovery again (`onSaved`).
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
@@ -28,7 +31,7 @@ not saved yet (addGateSteps): this tab is the only one that saves the steps the 
 	import { accountMessages } from '#services/account.messages.ts';
 	import { networkError, failureText } from '#services/recruiter.ts';
 	import { toaster } from '#services/toaster.ts';
-	import { withGateSteps } from '#services/discovery.ts';
+	import { missingGateSteps, withGateSteps } from '#services/discovery.ts';
 	import {
 		addStep,
 		addStepProblem,
@@ -45,7 +48,17 @@ not saved yet (addGateSteps): this tab is the only one that saves the steps the 
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { m } from './WorkflowsTab.messages.ts';
 
-	let { domainName }: { domainName: string } = $props();
+	let {
+		domainName,
+		visible = false,
+		onSaved
+	}: {
+		domainName: string;
+		/** The owner is visible to recruiters now (discovery on): a journey without the gate pauses it */
+		visible?: boolean;
+		/** The journey was saved here (what discovery asks may have changed) */
+		onSaved?: () => void;
+	} = $props();
 
 	const uid = $props.id();
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -72,6 +85,8 @@ not saved yet (addGateSteps): this tab is the only one that saves the steps the 
 		problem?.stepId === undefined ? -1 : steps.findIndex((step) => step.id === problem.stepId)
 	);
 	let changed = $derived(!sameSteps(steps, saved));
+	// Saving these steps would pause being visible to recruiters: the gate is a requirement of it
+	let pausesDiscovery = $derived(visible && changed && missingGateSteps(steps).length > 0);
 
 	/**
 	 * Whether the owner saved a journey (GET /workflow's `saved`; false: the default one, never
@@ -247,6 +262,7 @@ not saved yet (addGateSteps): this tab is the only one that saves the steps the 
 			saved = data.steps;
 			steps = saved;
 			journeySaved = true;
+			onSaved?.();
 			toaster.success({
 				title: m.saved,
 				description: journeySummary(saved, ownTitle)
@@ -412,6 +428,11 @@ not saved yet (addGateSteps): this tab is the only one that saves the steps the 
 			<p class="text-sm">{journeySummary(steps, ownTitle)}</p>
 		{/if}
 
+		{#if pausesDiscovery}
+			<p class="card preset-tonal-warning p-3 text-sm" data-pauses-discovery>
+				{m.pausesDiscovery}
+			</p>
+		{/if}
 		<div class="flex flex-wrap items-center gap-3">
 			<button
 				type="button"

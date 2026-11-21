@@ -56,6 +56,7 @@
 	import { formatDay, networkError } from '#services/recruiter.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { m } from './page.messages.ts';
+	import { m as matchingText } from '#services/matching.messages.ts';
 
 	const endTexts = interestTexts.endDialog;
 
@@ -399,7 +400,7 @@
 	);
 	let pageTitle = $derived(
 		unavailable
-			? m.unavailable.pageTitle
+			? matchingText.unavailable.pageTitle
 			: $notificationsStore.matching === 'on'
 				? m.pageTitle
 				: SITE_NAME
@@ -436,8 +437,12 @@
 			</div>
 		{:else if !user}
 			{#if $notificationsStore.matching === 'off'}
-				<PageNotice title={m.unavailable.title} icon={Inbox} headingId={unavailableHeading}>
-					<p>{m.unavailable.text}</p>
+				<PageNotice
+					title={matchingText.unavailable.title}
+					icon={Inbox}
+					headingId={unavailableHeading}
+				>
+					<p>{matchingText.unavailable.text}</p>
 					{#snippet actions()}
 						<a href={resolve('/(site)')} class={linkClass}>{m.unavailable.home}</a>
 					{/snippet}
@@ -451,8 +456,12 @@
 				</PageNotice>
 			{/if}
 		{:else if load?.kind === 'off'}
-			<PageNotice title={m.unavailable.title} icon={Inbox} headingId={unavailableHeading}>
-				<p>{m.unavailable.text}</p>
+			<PageNotice
+				title={matchingText.unavailable.title}
+				icon={Inbox}
+				headingId={unavailableHeading}
+			>
+				<p>{matchingText.unavailable.text}</p>
 				{#snippet actions()}
 					<a href={resolve('/(site)')} class={linkClass}>{m.unavailable.home}</a>
 				{/snippet}
