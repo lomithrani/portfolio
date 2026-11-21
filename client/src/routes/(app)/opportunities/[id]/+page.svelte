@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -10,6 +10,8 @@
 	import EditorPlaceholder from '#components/job-editor/EditorPlaceholder.svelte';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
 	import SignInButton from '#components/hire/SignInButton.svelte';
+	import FeedAnswer from '#components/matching/FeedAnswer.svelte';
+	import SharedInterest from '#components/matching/SharedInterest.svelte';
 	import { portfolioTextApi } from '#services';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
@@ -20,22 +22,30 @@
 		isJobPostingId,
 		jobViewFailure,
 		jobViewTitle,
+		readJobViewAccess,
+		type JobViewAccess,
 		type SharedJob
 	} from '#services/jobView.ts';
+	import { matchingAvailability, notificationsStore } from '#services/notifications.ts';
 	import { m } from './page.messages.ts';
 
 	// A job description shared with the signed-in account (GET /opportunities/jobs/:id): the page
 	// the meeting invitation of a hiring journey links (the API's job step). Its readers are the
 	// portfolio owners on whose journey the recruiter picked it, who read the version the recruiter
-	// shared there (dated with when they shared it); its recruiter, who opens the same link, is sent
-	// on to their page of it in the recruiter space. Anyone else reads that it is not
-	// shared with them (the API answers them as for an unknown id). Private: rendered in the
-	// browser only (opportunities/+layout.ts) and not listed by search engines (#lib/robots.ts).
+	// shared there (dated with when they shared it); with matching (Path 2), a candidate it is
+	// proposed to, who reads their score of it and answers it there (FeedAnswer: Interested or
+	// Pass, undone within its minutes), and the candidate of a mutual interest on it, who reads the
+	// version they said yes to, where it stands, and can end it (SharedInterest); its recruiter,
+	// who opens the same link, is sent on to their page of it in the recruiter space. Anyone else
+	// reads that it is not shared with them (the API answers them as for an unknown id). Who may
+	// read it is said with matching's readers only while matching is available (nothing of it shows
+	// otherwise). Private: rendered in the browser only (opportunities/+layout.ts) and not listed by
+	// search engines (#lib/robots.ts).
 
 	type LoadState =
 		| { kind: 'idle' }
 		| { kind: 'loading'; key: string }
-		| { kind: 'loaded'; key: string; userId: string; shared: SharedJob }
+		| { kind: 'loaded'; key: string; userId: string; shared: SharedJob; access: JobViewAccess }
 		| { kind: 'redirecting' }
 		| { kind: 'not-shared' }
 		| { kind: 'error' };
@@ -88,11 +98,41 @@
 				await goto(resolve('/(app)/recruiter/jobs/[id]', { id }), { replaceState: true });
 				return;
 			}
-			loadState = { kind: 'loaded', key, userId, shared: data };
+			const access = readJobViewAccess(data);
+			loadState = access
+				? { kind: 'loaded', key, userId, shared: data, access }
+				: { kind: 'error' };
+			if (focusInterest && access?.kind === 'match') {
+				focusInterest = false;
+				await tick();
+				document.getElementById(INTEREST_HEADING)?.focus({ preventScroll: true });
+			}
 		} catch {
 			if (requested === key) loadState = { kind: 'error' };
 		}
 	}
+
+	const INTEREST_HEADING = 'shared-interest-heading';
+	// Both just became interested here: the mutual interest, once read, takes the focus
+	let focusInterest = false;
+
+	/** An answer or an end changed why the account reads the job: read it again */
+	function changed(why: 'mutual' | 'gone' | 'ended' | 'signed-out') {
+		if (why === 'signed-out') {
+			clearAuthentication();
+			return;
+		}
+		focusInterest = why === 'mutual';
+		if (user?._id) load(user._id, jobId);
+	}
+
+	// Signed out: whether matching is available decides who the page says may read it
+	$effect(() => {
+		if ($sessionCheckedStore && !user && $notificationsStore.matching === 'unknown') {
+			void matchingAvailability();
+		}
+	});
+	let withMatching = $derived($notificationsStore.matching === 'on');
 
 	$effect(() => {
 		const userId = user?._id;
@@ -118,11 +158,10 @@
 	let job = $derived(
 		loadState.kind === 'loaded' && loadState.userId === user?._id ? loadState.shared.job : null
 	);
+	let access = $derived(job && loadState.kind === 'loaded' ? loadState.access : null);
 	// The version shared on the owner's journey: when the recruiter shared it (unset: the posting
 	// as it is now, a pick from before versions were kept)
-	let sharedAt = $derived(
-		job && loadState.kind === 'loaded' ? loadState.shared.sharedAt : undefined
-	);
+	let sharedAt = $derived(access?.kind === 'journey' ? access.sharedAt : undefined);
 	let waiting = $derived(
 		!$sessionCheckedStore ||
 			loadState.kind === 'loading' ||
@@ -137,7 +176,24 @@
 
 <div class="p-4 md:p-6">
 	<div class="mx-auto w-full max-w-4xl space-y-6">
-		{#if job}
+		{#if job && access}
+			{#key loadState}
+				{#if access.kind === 'feed'}
+					<FeedAnswer
+						jobId={job._id}
+						score={access.score}
+						interested={access.interested}
+						decision={access.decision}
+						onChange={changed}
+					/>
+				{:else if access.kind === 'match'}
+					<SharedInterest
+						interest={access.interest}
+						headingId={INTEREST_HEADING}
+						onChange={changed}
+					/>
+				{/if}
+			{/key}
 			<JobDetails {job} headingLevel={2}>
 				{#snippet meta()}
 					<p class="flex flex-wrap gap-x-4 gap-y-1">
@@ -166,21 +222,21 @@
 					class="flex items-start gap-2 border-t border-surface-200-800 pt-4 text-sm text-surface-700-300"
 				>
 					<LockClosed size="16" class="mt-0.5 shrink-0" aria-hidden="true" />
-					<span>{m.private}</span>
+					<span>{withMatching ? m.privateWithMatching : m.private}</span>
 				</p>
 			</JobDetails>
 		{:else if waiting}
 			<EditorPlaceholder />
 		{:else if !user}
 			<PageNotice title={m.signedOut.title} icon={LockClosed}>
-				<p>{m.signedOut.text}</p>
+				<p>{withMatching ? m.signedOut.textWithMatching : m.signedOut.text}</p>
 				{#snippet actions()}
 					<SignInButton />
 				{/snippet}
 			</PageNotice>
 		{:else if loadState.kind === 'not-shared'}
 			<PageNotice title={m.notShared.title} icon={DocumentMagnifyingGlass}>
-				<p>{m.notShared.text}</p>
+				<p>{withMatching ? m.notShared.textWithMatching : m.notShared.text}</p>
 				{#if user.email}
 					<p>
 						<Rich text={m.notShared.signedInAs(user.email)}>

@@ -29,7 +29,8 @@
 // discovery off: the test turns it on; a withdrawal holds the next opt-in back
 // DISCOVERY_REJOIN_DAYS (429), which only this seed clears, as it empties the profile's consents:
 // that file answers DELETE /discovery/consent in the browser, or this seed runs again before each
-// of its runs) and 'e2e-match-card' (fixed id
+// of its runs; its deck answers the job seeded for it, which only this seed proposes to it again)
+// and 'e2e-match-card' (fixed id
 // 65e2e0000000000000000004, client/tests/matching-recruiter.test.ts, seeded on: the e2e recruiter
 // reads its anonymous card).
 // Each has everything discovery asks for, set back on every run: the terms in force, a perfect job

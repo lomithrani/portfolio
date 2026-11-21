@@ -1,12 +1,21 @@
+import {
+	MATCH_DECISIONS,
+	MATCH_END_REASONS,
+	type MatchDecision,
+	type MatchEndReason
+} from 'portfolio-common';
 import type { portfolioTextApi } from '#services';
+import { readOpportunityScore, type OpportunityScore } from './matching';
 import { isNetworkFailure } from './recruiter';
 import { m } from './jobView.messages';
 
 // Pure helpers of the private page of a job description (/opportunities/:id, the page the meeting
 // invitation of a hiring journey links): GET /opportunities/jobs/:id answers its recruiter
-// (`access: 'recruiter'`, sent on to their page of it in the recruiter space) and each portfolio
-// owner on whose journey they picked it (`access: 'journey'`); anyone else gets the 404 of an
-// unknown id. The API call stays in the page; nothing here knows the UI.
+// (`access: 'recruiter'`, sent on to their page of it in the recruiter space), each portfolio
+// owner on whose journey they picked it (`access: 'journey'`), and with matching (Path 2) the
+// candidate of a mutual interest on it (`access: 'match'`) and a candidate it is proposed to
+// (`access: 'feed'`); anyone else gets the 404 of an unknown id. The API call stays in the page;
+// nothing here knows the UI.
 
 /** GET /opportunities/jobs/:id: the posting, and why the caller reads it */
 export type SharedJob = NonNullable<
@@ -43,3 +52,95 @@ export const jobViewFailure = (status: number | undefined, value: unknown): JobV
 /** The browser tab's title: the posting's title once loaded */
 export const jobViewTitle = (title?: string | null): string =>
 	m.pageTitle(title?.trim() || m.jobDescription);
+
+// --- Why the caller reads it -----------------------------------------------------------------
+
+/** A mutual interest on the job, as its candidate reads it on the private page */
+export interface SharedMutualInterest {
+	side: 'candidate';
+	_id: string;
+	matchedAt: string;
+	/** The posting was edited since (the page shows the version they said yes to) */
+	changedAt: string | null;
+	endedAt: string | null;
+	endReason: MatchEndReason | null;
+}
+
+/**
+ * What the page shows beside the job, by why the caller reads it: the version shared on their
+ * journey (`journey`, when it was shared: unset for the posting as it is now), a job proposed to
+ * them (`feed`: their score of it, null when it does not read, whether its recruiter is interested
+ * in them, what they answered), or their mutual interest on it (`match`)
+ */
+export type JobViewAccess =
+	| { kind: 'journey'; sharedAt?: string }
+	| {
+			kind: 'feed';
+			score: OpportunityScore | null;
+			interested: boolean;
+			decision: MatchDecision | null;
+	  }
+	| { kind: 'match'; interest: SharedMutualInterest };
+
+const instant = (value: unknown): string | null => {
+	if (!(typeof value === 'string' || value instanceof Date)) return null;
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
+
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
+
+/**
+ * Why the caller reads the job (GET /opportunities/jobs/:id's `access` and what goes with it),
+ * read defensively; undefined for a mutual interest that does not read (the page says it could
+ * not load the job rather than show it without what it holds). `recruiter` is the page's own
+ * (sent on), never shown here
+ */
+export const readJobViewAccess = (shared: {
+	access: string;
+	sharedAt?: unknown;
+	jobMatch?: unknown;
+	interested?: unknown;
+	decision?: unknown;
+	match?: unknown;
+}): JobViewAccess | undefined => {
+	switch (shared.access) {
+		case 'feed': {
+			const decision = MATCH_DECISIONS.find((entry) => entry === shared.decision) ?? null;
+			return {
+				kind: 'feed',
+				score: readOpportunityScore(shared.jobMatch) ?? null,
+				interested: shared.interested === true,
+				decision
+			};
+		}
+		case 'match': {
+			const match =
+				shared.match && typeof shared.match === 'object'
+					? (shared.match as Record<string, unknown>)
+					: {};
+			const matchedAt = instant(match.matchedAt);
+			if (typeof match._id !== 'string' || !OBJECT_ID.test(match._id) || !matchedAt) {
+				return undefined;
+			}
+			const endedAt = instant(match.endedAt);
+			return {
+				kind: 'match',
+				interest: {
+					side: 'candidate',
+					_id: match._id,
+					matchedAt,
+					changedAt: instant(match.changedAt),
+					endedAt,
+					endReason: endedAt
+						? (MATCH_END_REASONS.find((reason) => reason === match.endReason) ?? null)
+						: null
+				}
+			};
+		}
+		default: {
+			const sharedAt = instant(shared.sharedAt);
+			return { kind: 'journey', ...(sharedAt ? { sharedAt } : {}) };
+		}
+	}
+};

@@ -1,19 +1,32 @@
-import { defineMessages } from 'portfolio-common';
+import { defineMessages, plural } from 'portfolio-common';
+
+/** ', 1 new mutual interest' after the trigger's name, while some are not seen yet */
+const unseenEn = (unseen: number) =>
+	unseen > 0 ? `, ${unseen} new ${plural(unseen, 'mutual interest', 'mutual interests')}` : '';
+const unseenFr = (unseen: number) =>
+	unseen > 0
+		? `, ${plural(unseen, `${unseen} nouvel intérêt réciproque`, `${unseen} nouveaux intérêts réciproques`)}`
+		: '';
 
 export const m = defineMessages({
-	/** The trigger's accessible name: who is signed in, and the space in use once one was chosen */
+	/**
+	 * The trigger's accessible name: who is signed in, the space in use once one was chosen, and the
+	 * mutual interests not seen yet (`unseen`, matching: the menu's Opportunities shows them)
+	 */
 	trigger: {
 		none: {
-			en: (name: string) => `Account menu: ${name}`,
-			fr: (name: string) => `Menu du compte : ${name}`
+			en: (name: string, unseen = 0) => `Account menu: ${name}${unseenEn(unseen)}`,
+			fr: (name: string, unseen = 0) => `Menu du compte : ${name}${unseenFr(unseen)}`
 		},
 		candidate: {
-			en: (name: string) => `Account menu: ${name}, Candidate space`,
-			fr: (name: string) => `Menu du compte : ${name}, espace candidat`
+			en: (name: string, unseen = 0) => `Account menu: ${name}, Candidate space${unseenEn(unseen)}`,
+			fr: (name: string, unseen = 0) =>
+				`Menu du compte : ${name}, espace candidat${unseenFr(unseen)}`
 		},
 		recruiter: {
-			en: (name: string) => `Account menu: ${name}, Recruiter space`,
-			fr: (name: string) => `Menu du compte : ${name}, espace recruteur`
+			en: (name: string, unseen = 0) => `Account menu: ${name}, Recruiter space${unseenEn(unseen)}`,
+			fr: (name: string, unseen = 0) =>
+				`Menu du compte : ${name}, espace recruteur${unseenFr(unseen)}`
 		}
 	},
 	spaces: { en: 'Spaces', fr: 'Espaces' },
@@ -26,6 +39,11 @@ export const m = defineMessages({
 	recruiterSpace: { en: 'Recruiter space', fr: 'Espace recruteur' },
 	yourJobs: { en: 'Your job descriptions', fr: "Vos offres d'emploi" },
 	postJobs: { en: 'Write job descriptions', fr: "Rédiger des offres d'emploi" },
+	/**
+	 * For a portfolio owner while matching is available: the jobs proposed to them and their mutual
+	 * interests (/opportunities)
+	 */
+	opportunities: { en: 'Opportunities', fr: 'Opportunités' },
 	/** For a portfolio owner: the admin's Share tab */
 	shareLink: { en: 'Share your link', fr: 'Partager votre lien' },
 	sendFeedback: { en: 'Send feedback', fr: 'Donner votre avis' },

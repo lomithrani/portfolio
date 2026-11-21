@@ -91,8 +91,9 @@ export const DECISION_FINAL = 'This decision can no longer be undone'
 
 /**
  * 404 of the routes of one mutual interest (GET /matches/:id, POST /matches/:id/end, PUT
- * /matches/:id/seen) for one the caller is not a side of, or that does not exist. No screen calls
- * them yet: the lists of mutual interests will match it
+ * /matches/:id/seen) for one the caller is not a side of, or that does not exist.
+ * `endMutualInterest` of client/src/services/opportunities.ts matches it: the candidate's list says
+ * the mutual interest is gone and is read again
  */
 export const MATCH_NOT_FOUND = 'Match not found'
 

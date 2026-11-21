@@ -277,8 +277,12 @@ export interface CandidateFeed {
 	pending: boolean;
 }
 
-/** A score against the candidate's criteria; undefined for anything that is not one */
-const readScore = (source: Fields): OpportunityScore | undefined => {
+/**
+ * A score against the candidate's criteria (a feed's job, a mutual interest's score then, the
+ * private page's `jobMatch`); undefined for anything that is not one
+ */
+export const readOpportunityScore = (value: unknown): OpportunityScore | undefined => {
+	const source = fields(value);
 	if (!isScore(source.score) || !isScore(source.minScore)) return undefined;
 	const transit = transitProvider(source.transit);
 	return {
@@ -295,7 +299,7 @@ export const readOpportunity = (value: unknown): Opportunity | undefined => {
 	const version = readJobVersion(raw);
 	const _id = objectId(raw._id);
 	const publishedAt = instant(raw.publishedAt);
-	const score = readScore(entry);
+	const score = readOpportunityScore(entry);
 	if (!version || !_id || !publishedAt || !score) return undefined;
 	return { job: { ...version, _id, publishedAt }, ...score, interested: entry.interested === true };
 };
@@ -368,7 +372,7 @@ export const readMutualInterest = (
 		seen: entry.seen === true
 	};
 	if (entry.side === 'candidate') {
-		const score = readScore(entry);
+		const score = readOpportunityScore(entry);
 		if (!score) return undefined;
 		const raw = fields(entry.job);
 		const version = readJobVersion(raw);
@@ -1123,7 +1127,9 @@ export const recruiterQueueText = (more: boolean): string =>
  * Where a mutual interest stands, as `interest.side` reads it: going on, or ended (by them, by the
  * other side, or because the job is no longer open). Never a bare "match" (decision 11)
  */
-export const mutualInterestStateText = (interest: MutualInterest): string => {
+export const mutualInterestStateText = (
+	interest: Pick<MutualInterestBase, 'endedAt' | 'endReason'> & { side: MatchSide }
+): string => {
 	if (!interest.endedAt) return m.mutualInterest.ongoing;
 	switch (interest.endReason) {
 		case null:
@@ -1139,8 +1145,9 @@ export const mutualInterestStateText = (interest: MutualInterest): string => {
 };
 
 /** That the job description was edited since both were interested; null while it was not */
-export const mutualInterestChangeText = (interest: MutualInterest): string | null =>
-	interest.changedAt ? m.mutualInterest.changed[interest.side] : null;
+export const mutualInterestChangeText = (
+	interest: Pick<MutualInterestBase, 'changedAt'> & { side: MatchSide }
+): string | null => (interest.changedAt ? m.mutualInterest.changed[interest.side] : null);
 
 /** The day both became interested: 'Both interested on 20 Nov 2026' */
 export const matchedOnText = (matchedAt: string): string =>

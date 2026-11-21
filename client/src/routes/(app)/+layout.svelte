@@ -19,15 +19,20 @@
 	import { NOINDEX, isNoindexRoute } from '#lib/robots.ts';
 	import { m } from './layout.messages.ts';
 
-	// Pages that belong to no portfolio: the recruiter space (/recruiter), and the private page of a
-	// job description shared with a candidate (/opportunities/:id, the link of a meeting
-	// invitation). Same header and toasts as a portfolio, without its rail: the account menu leads
-	// from one space to the other, the header's logo to the landing page, and the language and
-	// light/dark switches close the page, next to the legal links.
+	// Pages that belong to no portfolio: the recruiter space (/recruiter), the private page of a job
+	// description shared with a candidate (/opportunities/:id, the link of a meeting invitation),
+	// and the candidate's opportunities (/opportunities: matching's jobs proposed to them and their
+	// mutual interests). Same header and toasts as a portfolio, without its rail: the account menu
+	// leads from one space to the other, the header's logo to the landing page, and the language
+	// and light/dark switches close the page, next to the legal links.
 	let { children }: { children: Snippet } = $props();
 
 	let header = $derived(
-		isCurrentSection(page.url.pathname, '/opportunities') ? m.opportunity : m.recruiter
+		page.route.id === '/(app)/opportunities'
+			? m.opportunities
+			: isCurrentSection(page.url.pathname, '/opportunities')
+				? m.opportunity
+				: m.recruiter
 	);
 
 	$effect(() => {
@@ -36,7 +41,7 @@
 	});
 
 	// A page of the recruiter space records it as the account's active space (recordSpaceShown;
-	// /opportunities, read by a portfolio owner, the candidate space), so the account menu names
+	// /opportunities and its pages, read by a portfolio owner, the candidate space), so the account menu names
 	// the space shown: after each navigation (a link, a bookmark, the menu, which only navigates),
 	// and once the session is known for the page the visit began on. A navigation the page kept
 	// (unsaved changes) records nothing.

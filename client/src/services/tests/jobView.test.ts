@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { opportunityPath } from 'portfolio-common';
-import { isJobPostingId, jobViewFailure, jobViewTitle } from '../jobView';
+import { isJobPostingId, jobViewFailure, jobViewTitle, readJobViewAccess } from '../jobView';
 
 // The private page of a job description (/opportunities/:id): what its address may hold, and
 // what the page says when GET /opportunities/jobs/:id gives no posting
@@ -58,5 +58,74 @@ describe('jobViewTitle', () => {
 		expect(jobViewTitle()).toBe('Job description | Portfolio');
 		expect(jobViewTitle(null)).toBe('Job description | Portfolio');
 		expect(jobViewTitle('   ')).toBe('Job description | Portfolio');
+	});
+});
+
+describe('readJobViewAccess', () => {
+	const MATCH_ID = '65e2e00000000000000000c1';
+
+	it('keeps the day a version was shared on a journey, and nothing without one', () => {
+		expect(readJobViewAccess({ access: 'journey', sharedAt: '2026-11-12T09:00:00.000Z' })).toEqual({
+			kind: 'journey',
+			sharedAt: '2026-11-12T09:00:00.000Z'
+		});
+		expect(readJobViewAccess({ access: 'journey' })).toEqual({ kind: 'journey' });
+		expect(readJobViewAccess({ access: 'journey', sharedAt: 'not a date' })).toEqual({
+			kind: 'journey'
+		});
+	});
+
+	it('reads a job proposed to the candidate: their score, the recruiter’s interest, their answer', () => {
+		expect(
+			readJobViewAccess({
+				access: 'feed',
+				jobMatch: { score: 86, minScore: 70, criteria: [{ criterion: 'pay', outcome: 'match' }] },
+				interested: true,
+				decision: 'pass'
+			})
+		).toMatchObject({
+			kind: 'feed',
+			score: { score: 86, minScore: 70, criteria: [{ criterion: 'pay', outcome: 'match' }] },
+			interested: true,
+			decision: 'pass'
+		});
+		// No answer yet, a score that is not one: nothing made up
+		expect(
+			readJobViewAccess({ access: 'feed', jobMatch: { score: 120 }, decision: 'maybe' })
+		).toEqual({ kind: 'feed', score: null, interested: false, decision: null });
+	});
+
+	it('reads a mutual interest, and fails closed on one that does not read', () => {
+		expect(
+			readJobViewAccess({
+				access: 'match',
+				match: {
+					_id: MATCH_ID,
+					matchedAt: '2026-11-20T10:00:00.000Z',
+					changedAt: null,
+					endedAt: '2026-11-21T10:00:00.000Z',
+					endReason: 'recruiter'
+				}
+			})
+		).toEqual({
+			kind: 'match',
+			interest: {
+				side: 'candidate',
+				_id: MATCH_ID,
+				matchedAt: '2026-11-20T10:00:00.000Z',
+				changedAt: null,
+				endedAt: '2026-11-21T10:00:00.000Z',
+				endReason: 'recruiter'
+			}
+		});
+		// An end reason without an end is none
+		expect(
+			readJobViewAccess({
+				access: 'match',
+				match: { _id: MATCH_ID, matchedAt: '2026-11-20T10:00:00.000Z', endReason: 'candidate' }
+			})
+		).toMatchObject({ kind: 'match', interest: { endedAt: null, endReason: null } });
+		expect(readJobViewAccess({ access: 'match', match: { _id: 'nope' } })).toBeUndefined();
+		expect(readJobViewAccess({ access: 'match' })).toBeUndefined();
 	});
 });

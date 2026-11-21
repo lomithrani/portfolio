@@ -1,7 +1,10 @@
 <!--
 @component
 The signed-in account's menu in the header: its initials and current space on the trigger, then
-the two spaces (radio items: the active one is checked), Share your link for a portfolio owner
+the two spaces (radio items: the active one is checked), Opportunities for a portfolio owner
+while matching is available (/opportunities: the jobs proposed to them and their mutual interests,
+with a badge of the mutual interests not seen yet, also said in the trigger's name and marked on
+its initials: notificationsStore), Share your link for a portfolio owner
 (the admin's Share tab: /<domain>/admin?tab=share), Account & privacy (/account:
 the account's data, the terms it accepted, deleting it), Send feedback (the page's feedback dialog,
 when the server takes feedback) and Log out. Choosing a space
@@ -28,6 +31,7 @@ form instead (`onClaimPortfolio`).
 		ChatBubbleLeftEllipsis,
 		Check,
 		ChevronDown,
+		Inbox,
 		Share,
 		ShieldCheck,
 		UserCircle
@@ -44,6 +48,7 @@ form instead (`onClaimPortfolio`).
 	import type { AuthUser } from '#services/stores/index.ts';
 	import { accountMessages } from '#services/account.messages.ts';
 	import { feedbackAvailability, openFeedback } from '#services/feedback.ts';
+	import { notificationsStore, unseenBadgeText, unseenLabel } from '#services/notifications.ts';
 	import { m } from './AccountMenu.messages.ts';
 
 	let {
@@ -63,7 +68,11 @@ form instead (`onClaimPortfolio`).
 	let name = $derived(userDisplayName(user));
 	let initials = $derived(userInitials(user));
 	let currentLabel = $derived(spaceLabel(user.activeMode));
-	let triggerLabel = $derived(m.trigger[user.activeMode ?? 'none'](name));
+	// Opportunities, for a portfolio owner while matching is available, and its mutual interests
+	// not seen yet (none counted for anyone else)
+	let opportunities = $derived(!!user.domain && $notificationsStore.matching === 'on');
+	let unseen = $derived(opportunities ? $notificationsStore.unseen.candidate : 0);
+	let triggerLabel = $derived(m.trigger[user.activeMode ?? 'none'](name, unseen));
 	let statusText = $derived(pending ? accountMessages.opening[pending] : '');
 
 	/** Whether the server takes feedback: "Send feedback" shows once it says so */
@@ -114,7 +123,7 @@ form instead (`onClaimPortfolio`).
 		// The menu gives the focus back to its trigger as it closes: the dialog's too, once closed
 		else if (value === 'feedback')
 			openFeedback(() => document.getElementById(ACCOUNT_MENU_TRIGGER_ID));
-		// 'share' and 'account' are links: the browser follows them
+		// 'opportunities', 'share' and 'account' are links: the browser follows them
 	}
 
 	const itemClass = 'gap-3 py-2 cursor-pointer data-[state=checked]:bg-primary-500/10';
@@ -136,10 +145,17 @@ form instead (`onClaimPortfolio`).
 		data-account-menu
 	>
 		<span
-			class="grid size-8 shrink-0 place-items-center rounded-full preset-filled-primary-700-300 text-xs font-bold"
+			class="relative grid size-8 shrink-0 place-items-center rounded-full preset-filled-primary-700-300 text-xs font-bold"
 			aria-hidden="true"
 		>
 			{initials}
+			{#if unseen > 0}
+				<!-- Something not seen yet: the trigger's name says what -->
+				<span
+					class="absolute -end-0.5 -top-0.5 size-3 rounded-full border-2 border-surface-50-950 bg-error-500"
+					data-unseen-dot
+				></span>
+			{/if}
 		</span>
 		{#if currentLabel}
 			<span class="text-xs font-medium sm:text-sm">{currentLabel}</span>
@@ -204,6 +220,28 @@ form instead (`onClaimPortfolio`).
 					</Menu.OptionItem>
 				</Menu.ItemGroup>
 				<Menu.Separator />
+				{#if opportunities}
+					<Menu.Item value="opportunities" valueText={m.opportunities}>
+						{#snippet element(attributes)}
+							<a
+								{...attributes as HTMLAttributes<HTMLAnchorElement>}
+								href={resolve('/(app)/opportunities')}
+								class="{itemClass} justify-start"
+							>
+								<span class="{iconClass} preset-tonal-primary" aria-hidden="true">
+									<Inbox size="18" />
+								</span>
+								<span class="min-w-0 flex-1 font-medium">{m.opportunities}</span>
+								{#if unseen > 0}
+									<span class="badge preset-filled-error-500 shrink-0 text-xs" data-unseen>
+										<span aria-hidden="true">{unseenBadgeText(unseen)}</span>
+										<span class="sr-only">{unseenLabel(unseen)}</span>
+									</span>
+								{/if}
+							</a>
+						{/snippet}
+					</Menu.Item>
+				{/if}
 				{#if user.domain}
 					<Menu.Item value="share" valueText={m.shareLink}>
 						{#snippet element(attributes)}

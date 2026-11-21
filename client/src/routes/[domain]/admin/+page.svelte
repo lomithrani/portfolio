@@ -203,6 +203,18 @@
 		heading?.focus({ preventScroll: true });
 	}
 
+	// A link to discovery's settings (`?tab=perfect-job#discovery`, from /opportunities): they show
+	// once discovery was read, and their heading takes the focus, as from "Get started"
+	let discoveryLinked = $state(false);
+	afterNavigate(() => {
+		if (location.hash === '#discovery') discoveryLinked = true;
+	});
+	$effect(() => {
+		if (!discoveryLinked || tab !== 'perfect-job' || discovery?.kind !== 'ready') return;
+		discoveryLinked = false;
+		untrack(openDiscovery);
+	});
+
 	// A link to this page naming another tab (the page stays: follow its address)
 	afterNavigate(({ type }) => {
 		if (type === 'enter') return;

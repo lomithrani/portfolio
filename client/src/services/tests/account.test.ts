@@ -222,6 +222,8 @@ describe('spaceToRecord', () => {
 	it('records the candidate space on a job description shared with a portfolio owner', () => {
 		const both = { recruiter: true, domain: 'bo.both', activeMode: 'recruiter' as const };
 		expect(spaceToRecord(both, '/opportunities/65e2e00000000000000000aa')).toBe('candidate');
+		// The inbox of matching: the jobs proposed to the owner, their mutual interests
+		expect(spaceToRecord(both, '/opportunities')).toBe('candidate');
 		expect(spaceToRecord({ domain: 'bo.both' }, '/opportunities/1')).toBe('candidate');
 		// Already active, an account without a portfolio, or a page that only starts like it
 		expect(spaceToRecord({ ...both, activeMode: 'candidate' }, '/opportunities/1')).toBeNull();
