@@ -1,6 +1,7 @@
 import { expect, request as playwrightRequest, test, type Page } from '@playwright/test';
-import { currentDiscoveryConsent } from 'portfolio-common';
-import { calendarConfigured, stubApi } from './support/api';
+import { currentDiscoveryConsent, discoveryRequirementMessage } from 'portfolio-common';
+import { calendarConfigured, stubApi, type StubAnswer } from './support/api';
+import { jobPosting } from './support/jobs';
 import {
 	API_URL,
 	JWT_SECRET,
@@ -30,12 +31,15 @@ import {
 // with or without matching. The admin page's calendar requests that would reach Google are answered
 // in the browser too (the seeded grant is a placeholder nothing sends to Google).
 //
-// The inbox (/opportunities): what matching off shows (nothing but "not available") and turning
-// discovery off are answered in the browser; the deck, with matching on, answers the job seeded for
-// this candidate for real ('Senior Data Engineer (e2e matching)', a CDD), the e2e recruiter (through
-// the API) answers its card, and the mutual interest they make is ended. A run answers that job:
-// `seed:e2e` must run again before the next (it removes the matches of the seeded jobs; CI seeds
-// before every run), or that test stops at once saying so.
+// The inbox (/opportunities): what matching off shows (nothing but "not available"), turning
+// discovery off, the states that say why nothing is proposed (paused, consent ended, no portfolio,
+// a deck that stops) and the answers of a job's private page are answered in the browser; the deck,
+// with matching on, answers the job seeded for this candidate for real ('Senior Data Engineer (e2e
+// matching)', a CDD), the e2e recruiter (through the API) answers its card, and the mutual interest
+// they make is ended. A run answers that job: `seed:e2e` must run again before the next (it removes
+// the matches of the seeded jobs; CI seeds before every run), or that test stops at once saying so.
+// So that test is not retried (a retry would find the job answered by the attempt before it, and
+// hide that attempt's failure behind a message about the seed): its first failure is the one to read.
 
 const DOMAIN = 'e2e-match';
 
@@ -310,6 +314,9 @@ test('with matching off, the inbox is not available and the account menu has no 
 
 	await expect(page.getByRole('heading', { name: 'This page is not available' })).toBeVisible();
 	await expect(page.getByText('There is nothing to see here for now.')).toBeVisible();
+	// The header and the tab name nothing of matching either
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Portfolio');
+	await expect(page).toHaveTitle('Page not available | Portfolio');
 	await expect(page.getByRole('tab')).toHaveCount(0);
 	await expect(page.getByRole('alert')).toHaveCount(0);
 	// Nothing of matching in the account menu either: no item, no badge
@@ -363,6 +370,206 @@ test('turned off, the inbox says the candidate is not visible and leads to the s
 	await expect(
 		discovery(page).getByRole('heading', { name: 'Be found by recruiters', level: 3 })
 	).toBeFocused();
+});
+
+/** Matching on, nothing unseen, as GET /me/notifications answers it */
+const stubNotifications = (page: Page) =>
+	stubApi(page, 'GET', '/me/notifications', () => ({
+		json: { mutualInterests: { candidate: 0, recruiter: 0 } }
+	}));
+
+const DAY = 24 * 60 * 60_000;
+
+test('the inbox says why nothing is proposed, when the consent ends, and why a deck stopped', async ({
+	page
+}) => {
+	const settings = `/${DOMAIN}/admin?tab=perfect-job#discovery`;
+	// Paused: two requirements went missing since it was turned on
+	let status: Record<string, unknown> = { ...onStatus(), missing: ['calendar', 'schedule'] };
+	await stubApi(page, 'GET', '/discovery', () => ({ json: status }));
+	await stubNotifications(page);
+	let feed: StubAnswer = { status: 403, text: 'You are not proposed to recruiters now' };
+	const reads = await stubApi(page, 'GET', '/opportunities', () => feed);
+	await blockGoogle(page);
+	await signIn(page, session);
+	await gotoHydrated(page, '/opportunities');
+
+	await expect(
+		page.getByRole('heading', { name: 'Paused: you are proposed to no recruiter' })
+	).toBeVisible();
+	await expect(
+		page.getByText(
+			'Being visible to recruiters needs something that has gone missing since you turned it on:'
+		)
+	).toBeVisible();
+	await expect(page.locator('[data-missing] li')).toHaveText([
+		discoveryRequirementMessage('calendar'),
+		discoveryRequirementMessage('schedule')
+	]);
+	await expect(page.getByRole('link', { name: 'Open the settings' })).toHaveAttribute(
+		'href',
+		settings
+	);
+	await expect(page.getByText(/email/i)).toHaveCount(0);
+	// No deck: nothing proposed is read
+	expect(reads).toHaveLength(0);
+
+	// The consent ended
+	status = {
+		...OFF_STATUS,
+		state: 'lapsed',
+		enabledAt: new Date(Date.now() - 740 * DAY).toISOString(),
+		consentExpiresAt: new Date(Date.now() - 10 * DAY).toISOString()
+	};
+	await gotoHydrated(page, '/opportunities');
+	await expect(
+		page.getByRole('heading', { name: 'Your consent to be visible to recruiters has ended' })
+	).toBeVisible();
+	await expect(
+		page.getByText(
+			'Give it again to be proposed to recruiters and to see the jobs that meet your criteria here.'
+		)
+	).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Open the settings' })).toHaveAttribute(
+		'href',
+		settings
+	);
+
+	// Without a portfolio, discovery asks for one first
+	status = { ...OFF_STATUS, missing: ['portfolio', 'terms'] };
+	await gotoHydrated(page, '/opportunities');
+	await expect(page.getByRole('heading', { name: 'Create your portfolio first' })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Create your portfolio' })).toHaveAttribute(
+		'href',
+		'/#create'
+	);
+	expect(reads).toHaveLength(0);
+
+	// On, its consent in its last days (no email says it: the inbox does), and the deck stops: the
+	// API no longer proposes the candidate, though discovery still says on
+	const expires = new Date(Date.now() + 10 * DAY);
+	const enabled = new Date(expires);
+	enabled.setUTCMonth(enabled.getUTCMonth() - 24);
+	status = {
+		...onStatus(),
+		enabledAt: enabled.toISOString(),
+		consentExpiresAt: expires.toISOString()
+	};
+	await gotoHydrated(page, '/opportunities');
+	const ends = page.locator('[data-consent-ends]');
+	await expect(ends).toContainText('Your consent to be visible to recruiters ends on');
+	await expect(ends.getByRole('link', { name: 'its settings' })).toHaveAttribute('href', settings);
+	const stopped = page.getByRole('heading', { name: 'Could not go on' });
+	await expect(stopped).toBeFocused();
+	await expect(
+		page.getByText('You are not proposed to recruiters right now, so no job is proposed to you.')
+	).toBeVisible();
+
+	// Try again: the deck reads again, and what it shows takes the focus the Retry had
+	feed = { json: { jobs: [], more: false, next: null, pending: false } };
+	await page.getByRole('button', { name: 'Try again' }).click();
+	await expect(page.getByRole('heading', { name: 'Nothing to review right now' })).toBeFocused();
+	await expect(
+		page.getByText(
+			'No open job that meets your criteria and your minimum score is waiting for your answer right now.',
+			{ exact: false }
+		)
+	).toBeVisible();
+	await expect(page.getByText(/email/i)).toHaveCount(0);
+});
+
+test('a job’s private page: an answer that replaces another offers no Undo, a refusal says why, an end keeps the focus', async ({
+	page
+}) => {
+	const JOB = '65e2e00000000000000000f1';
+	const MATCH = '65e2e00000000000000000f2';
+	const job = {
+		_id: JOB,
+		...jobPosting({ title: 'Platform Engineer (stubbed)', status: 'open' }),
+		publishedAt: '2026-11-02T09:00:00.000Z',
+		createdAt: '2026-11-01T09:00:00.000Z',
+		updatedAt: '2026-11-02T09:00:00.000Z'
+	};
+	const interest = {
+		_id: MATCH,
+		matchedAt: '2026-11-20T10:00:00.000Z',
+		changedAt: null,
+		endedAt: null,
+		endReason: null
+	};
+	const ended = { ...interest, endedAt: new Date().toISOString(), endReason: 'candidate' };
+	let shared: StubAnswer = {
+		json: {
+			job,
+			access: 'feed',
+			jobMatch: { score: 86, minScore: 70, criteria: [] },
+			interested: false,
+			// Answered in the deck before: an answer here replaces it, it is never the first
+			decision: 'interested'
+		}
+	};
+	await stubApi(page, 'GET', '/opportunities/jobs/*', () => shared);
+	let decision: StubAnswer = { json: { decision: 'pass', match: null } };
+	const decisions = await stubApi(page, 'PUT', '/opportunities/jobs/*/decision', () => decision);
+	await stubNotifications(page);
+	await stubApi(page, 'PUT', '/matches/*/seen', () => ({ json: {} }));
+	const ends = await stubApi(page, 'POST', '/matches/*/end', () => ({
+		json: {
+			...ended,
+			side: 'candidate',
+			seen: true,
+			job: null,
+			score: 86,
+			minScore: 70,
+			criteria: []
+		}
+	}));
+	await blockGoogle(page);
+	await signIn(page, session);
+	await gotoHydrated(page, `/opportunities/${JOB}`);
+
+	const answer = page.locator('[data-feed-answer]');
+	await expect(answer.locator('[data-answer]')).toHaveText(
+		'This job interests you: its recruiter sees it.'
+	);
+	await answer.getByRole('button', { name: 'Pass' }).click();
+	await expect(answer.locator('[data-answer]')).toHaveText('You passed this job.');
+	await expect(answer.locator('[data-answer]')).toBeFocused();
+	expect(decisions).toHaveLength(1);
+	// Not the first answer on the job: the API would refuse its undo, so none is offered
+	await expect(answer.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+
+	// No longer proposed: the page reads the job again, says why, and takes the focus there
+	decision = { status: 404, text: 'Job posting not found' };
+	shared = { status: 404, text: 'Job posting not found' };
+	await answer.getByRole('button', { name: 'Interested' }).click();
+	const notShared = page.getByRole('heading', {
+		name: 'This job description is not shared with you'
+	});
+	await expect(notShared).toBeFocused();
+	await expect(page.locator('[data-gone-reason]')).toHaveText(
+		'This job is no longer proposed to you.'
+	);
+	await expect(page.getByRole('link', { name: 'Back to your opportunities' })).toHaveAttribute(
+		'href',
+		'/opportunities'
+	);
+
+	// A mutual interest going on, ended here: what it shows next keeps the focus
+	shared = { json: { job, access: 'match', match: interest } };
+	await gotoHydrated(page, `/opportunities/${JOB}`);
+	const panel = page.locator('[data-shared-interest]');
+	await expect(panel.getByRole('heading', { name: "You're both interested" })).toBeVisible();
+	await panel.getByRole('button', { name: 'End it' }).click();
+	shared = { json: { job, access: 'match', match: ended } };
+	await page
+		.getByRole('alertdialog', { name: 'End this mutual interest?' })
+		.getByRole('button', { name: 'End it' })
+		.click();
+	await expect(page.getByRole('heading', { name: 'Mutual interest ended' })).toBeFocused();
+	await expect(panel.locator('[data-interest-state]')).toHaveText('You ended it');
+	await expect(panel.getByRole('button', { name: 'End it' })).toHaveCount(0);
+	expect(ends).toHaveLength(1);
 });
 
 test.describe('with matching on', () => {
@@ -503,135 +710,149 @@ test.describe('with matching on', () => {
 		await api.dispose();
 	});
 
-	test('the deck at 390 px with the keyboard, the private page, then a mutual interest, ended', async ({
-		page
-	}) => {
-		test.setTimeout(120_000);
-		const api = await apiAs(session);
-		// Proposed to recruiters: turned on by the test above, or here when it ran alone
-		const before = await (await api.get(`${API_URL}/discovery`)).json();
-		if (before.state === 'off') {
-			const optIn = await api.post(`${API_URL}/discovery/consent`, {
-				data: { consent: currentDiscoveryConsent() }
-			});
-			expect(optIn.ok(), await optIn.text()).toBe(true);
-		}
-		const feed = await (await api.get(`${API_URL}/opportunities`)).json();
-		expect(
-			feed.jobs.map((entry: { job: { _id: string } }) => entry.job._id),
-			'A run before answered the seeded job: run `bun run --cwd server seed:e2e` again'
-		).toContain(MATCH_JOB_ID);
+	test.describe('the deck, for real', () => {
+		// The seeded job answered by an attempt stays answered (only seed:e2e sets it back): a retry
+		// could never pass, and would hide this attempt's failure
+		test.describe.configure({ retries: 0 });
 
-		await page.setViewportSize({ width: 390, height: 844 });
-		await blockGoogle(page);
-		await signIn(page, session);
-		await gotoHydrated(page, '/opportunities');
-		const deck = page.getByRole('region', { name: 'Jobs proposed to you' });
-		const cardHeading = deck.getByRole('heading', { level: 2, name: MATCH_JOB_TITLE });
-		await expect(cardHeading).toBeVisible();
-		await expect(deck.getByRole('button', { name: 'Pass' })).toBeVisible();
-		await expect(deck.getByRole('button', { name: 'Interested' })).toBeVisible();
-		expect(await sidewaysScroll(page)).toBe(0);
-
-		// The keyboard alone: into the deck, then its shortcuts
-		const intoDeck = async () => {
-			for (let presses = 0; presses < 40; presses++) {
-				if (await deck.evaluate((element) => element.contains(document.activeElement))) return;
-				await page.keyboard.press('Tab');
+		test('the deck at 390 px with the keyboard, the private page, then a mutual interest, ended', async ({
+			page
+		}) => {
+			test.setTimeout(120_000);
+			const api = await apiAs(session);
+			// Proposed to recruiters: turned on by the test above, or here when it ran alone
+			const before = await (await api.get(`${API_URL}/discovery`)).json();
+			if (before.state === 'off') {
+				const optIn = await api.post(`${API_URL}/discovery/consent`, {
+					data: { consent: currentDiscoveryConsent() }
+				});
+				expect(optIn.ok(), await optIn.text()).toBe(true);
 			}
-			throw new Error('The deck could not be reached with Tab');
-		};
-		const said = deck.locator('[aria-live="polite"]');
-		await intoDeck();
-		await page.keyboard.press('ArrowLeft');
-		await expect(said).toHaveText(`You passed ${MATCH_JOB_TITLE}.`);
-		const empty = deck.getByRole('heading', { name: 'Nothing to review right now' });
-		await expect(empty).toBeFocused();
-		await expect(deck.getByRole('button', { name: 'Undo' })).toBeVisible();
-		await page.keyboard.press('z');
-		await expect(said).toHaveText(`Undone: ${MATCH_JOB_TITLE} is back.`);
-		await expect(cardHeading).toBeFocused();
-		expect(await sidewaysScroll(page)).toBe(0);
+			const feed = await (await api.get(`${API_URL}/opportunities`)).json();
+			expect(
+				feed.jobs.map((entry: { job: { _id: string } }) => entry.job._id),
+				'A run before answered the seeded job (this test is never retried): run `bun run --cwd server seed:e2e` again'
+			).toContain(MATCH_JOB_ID);
 
-		// The private page from the card: the score, nothing answered yet
-		await deck.getByRole('link', { name: 'Open the job' }).click();
-		await expect(page).toHaveURL(new RegExp(`/opportunities/${MATCH_JOB_ID}$`));
-		const answer = page.locator('[data-feed-answer]');
-		await expect(answer.getByRole('heading', { name: 'Proposed to you' })).toBeVisible();
-		await expect(answer).toContainText('Your minimum score: 70');
-		await expect(answer.locator('[data-answer]')).toHaveText(/^Does this job interest you\?/);
-		await expect(page.getByRole('heading', { level: 2, name: MATCH_JOB_TITLE })).toBeVisible();
-		await expect(page.getByText(/the candidates it is proposed to/)).toBeVisible();
-		expect(await sidewaysScroll(page)).toBe(0);
+			await page.setViewportSize({ width: 390, height: 844 });
+			await blockGoogle(page);
+			await signIn(page, session);
+			await gotoHydrated(page, '/opportunities');
+			const deck = page.getByRole('region', { name: 'Jobs proposed to you' });
+			const cardHeading = deck.getByRole('heading', { level: 2, name: MATCH_JOB_TITLE });
+			await expect(cardHeading).toBeVisible();
+			await expect(deck.getByRole('button', { name: 'Pass' })).toBeVisible();
+			await expect(deck.getByRole('button', { name: 'Interested' })).toBeVisible();
+			expect(await sidewaysScroll(page)).toBe(0);
 
-		// Back to the deck: Interested, with the keyboard. Answered again after an undo, it is final
-		await page.goBack();
-		await expect(cardHeading).toBeVisible();
-		await intoDeck();
-		await page.keyboard.press('ArrowRight');
-		await expect(said).toHaveText(`${MATCH_JOB_TITLE} interests you: its recruiter sees it.`);
-		await expect(empty).toBeFocused();
-		await page.keyboard.press('z');
-		await expect(said).toHaveText('This answer can no longer be undone.');
-		await expect(deck.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+			// The keyboard alone: into the deck, then its shortcuts
+			const intoDeck = async () => {
+				for (let presses = 0; presses < 40; presses++) {
+					if (await deck.evaluate((element) => element.contains(document.activeElement))) return;
+					await page.keyboard.press('Tab');
+				}
+				throw new Error('The deck could not be reached with Tab');
+			};
+			const said = deck.locator('[aria-live="polite"]');
+			await intoDeck();
+			await page.keyboard.press('ArrowLeft');
+			await expect(said).toHaveText(`You passed ${MATCH_JOB_TITLE}.`);
+			const empty = deck.getByRole('heading', { name: 'Nothing to review right now' });
+			await expect(empty).toBeFocused();
+			await expect(deck.getByRole('button', { name: 'Undo' })).toBeVisible();
+			await page.keyboard.press('z');
+			await expect(said).toHaveText(`Undone: ${MATCH_JOB_TITLE} is back.`);
+			await expect(cardHeading).toBeFocused();
+			expect(await sidewaysScroll(page)).toBe(0);
 
-		// The private page says the answer given, and offers to change it
-		await gotoHydrated(page, `/opportunities/${MATCH_JOB_ID}`);
-		await expect(answer.locator('[data-answer]')).toHaveText(
-			'This job interests you: its recruiter sees it.'
-		);
-		await expect(answer.getByRole('button', { name: 'Pass' })).toBeVisible();
+			// The private page from the card: the score, nothing answered yet
+			await deck.getByRole('link', { name: 'Open the job' }).click();
+			await expect(page).toHaveURL(new RegExp(`/opportunities/${MATCH_JOB_ID}$`));
+			const answer = page.locator('[data-feed-answer]');
+			await expect(answer.getByRole('heading', { name: 'Proposed to you' })).toBeVisible();
+			await expect(answer).toContainText('Your minimum score: 70');
+			await expect(answer.locator('[data-answer]')).toHaveText(/^Does this job interest you\?/);
+			await expect(page.getByRole('heading', { level: 2, name: MATCH_JOB_TITLE })).toBeVisible();
+			await expect(page.getByText(/the candidates it is proposed to/)).toBeVisible();
+			expect(await sidewaysScroll(page)).toBe(0);
 
-		// The recruiter is interested in the candidate of the card: both are interested now
-		const recruiter = await apiAs(await recruiterSession());
-		const cards = await (
-			await recruiter.get(`${API_URL}/recruiter/jobs/${MATCH_JOB_ID}/candidates`)
-		).json();
-		expect(cards.cards, 'The candidate is proposed for the seeded job').toHaveLength(1);
-		expect(cards.cards[0].interested).toBe(true);
-		const decided = await recruiter.put(
-			`${API_URL}/recruiter/jobs/${MATCH_JOB_ID}/candidates/decision`,
-			{ data: { token: cards.cards[0].token, decision: 'interested' } }
-		);
-		expect(decided.ok(), await decided.text()).toBe(true);
-		expect((await decided.json()).match).not.toBeNull();
-		await recruiter.dispose();
+			// Back to the deck: Interested, with the keyboard. Answered again after an undo, it is final
+			await page.goBack();
+			await expect(cardHeading).toBeVisible();
+			await intoDeck();
+			await page.keyboard.press('ArrowRight');
+			await expect(said).toHaveText(`${MATCH_JOB_TITLE} interests you: its recruiter sees it.`);
+			await expect(empty).toBeFocused();
+			await page.keyboard.press('z');
+			await expect(said).toHaveText('This answer can no longer be undone.');
+			await expect(deck.getByRole('button', { name: 'Undo' })).toHaveCount(0);
 
-		// The account menu says it, and so does the view of mutual interests
-		await gotoHydrated(page, '/opportunities');
-		const trigger = page.locator('[data-account-menu]');
-		await expect(trigger).toHaveAccessibleName(/, 1 new mutual interest$/);
-		await expect(page.locator('[data-unseen-dot]')).toBeVisible();
-		const interestsTab = page.getByRole('tab', { name: /^Mutual interests/ });
-		await expect(interestsTab).toContainText('1 new');
-		await interestsTab.click();
-		await expect(page).toHaveURL(/\/opportunities\?view=interests$/);
-		const item = page.locator('[data-interest]').first();
-		await expect(item.getByRole('heading', { name: MATCH_JOB_TITLE })).toBeVisible();
-		await expect(item.locator('[data-interest-state]')).toHaveText('Going on');
-		await expect(item.locator('[data-interest-new]')).toHaveText('New');
-		// Shown: seen, so no longer counted
-		await expect(trigger).not.toHaveAccessibleName(/new mutual interest/);
-		await expect(interestsTab).not.toContainText('1 new');
-		expect(await sidewaysScroll(page)).toBe(0);
+			// The private page says the answer given, and offers to change it
+			await gotoHydrated(page, `/opportunities/${MATCH_JOB_ID}`);
+			await expect(answer.locator('[data-answer]')).toHaveText(
+				'This job interests you: its recruiter sees it.'
+			);
+			await expect(answer.getByRole('button', { name: 'Pass' })).toBeVisible();
 
-		// Ended by the candidate, asked first
-		await item.getByRole('button', { name: 'End it' }).click();
-		const confirm = page.getByRole('alertdialog', { name: 'End this mutual interest?' });
-		await expect(confirm).toContainText('You cannot undo this.');
-		await confirm.getByRole('button', { name: 'End it' }).click();
-		await expect(confirm).toHaveCount(0);
-		await expect(toasts(page)).toContainText('Mutual interest ended');
-		await expect(item.locator('[data-interest-state]')).toHaveText('You ended it');
-		await expect(item.getByRole('button', { name: 'End it' })).toHaveCount(0);
-		await expect(item.getByRole('heading', { name: MATCH_JOB_TITLE })).toBeFocused();
+			// The recruiter is interested in the candidate of the card: both are interested now
+			const recruiter = await apiAs(await recruiterSession());
+			const cards = await (
+				await recruiter.get(`${API_URL}/recruiter/jobs/${MATCH_JOB_ID}/candidates`)
+			).json();
+			expect(cards.cards, 'The candidate is proposed for the seeded job').toHaveLength(1);
+			expect(cards.cards[0].interested).toBe(true);
+			const decided = await recruiter.put(
+				`${API_URL}/recruiter/jobs/${MATCH_JOB_ID}/candidates/decision`,
+				{ data: { token: cards.cards[0].token, decision: 'interested' } }
+			);
+			expect(decided.ok(), await decided.text()).toBe(true);
+			expect((await decided.json()).match).not.toBeNull();
+			await recruiter.dispose();
 
-		// Its private page: the version they said yes to, and that it ended
-		await item.getByRole('link', { name: 'Open the job' }).click();
-		const shared = page.locator('[data-shared-interest]');
-		await expect(shared.getByRole('heading', { name: "You're both interested" })).toBeVisible();
-		await expect(shared.locator('[data-interest-state]')).toHaveText('You ended it');
-		await expect(page.locator('[data-feed-answer]')).toHaveCount(0);
-		await api.dispose();
+			// The account menu says it, and so does the view of mutual interests
+			await gotoHydrated(page, '/opportunities');
+			const trigger = page.locator('[data-account-menu]');
+			await expect(trigger).toHaveAccessibleName(/, 1 new mutual interest$/);
+			await expect(page.locator('[data-unseen-dot]')).toBeVisible();
+			// The menu's Opportunities leads to the view that shows what its badge counts
+			const menu = await openAccountMenu(page);
+			await expect(menu.getByRole('menuitem', { name: /^Opportunities/ })).toHaveAttribute(
+				'href',
+				'/opportunities?view=interests'
+			);
+			await page.keyboard.press('Escape');
+			await expect(menu).toBeHidden();
+			const interestsTab = page.getByRole('tab', { name: /^Mutual interests/ });
+			await expect(interestsTab).toContainText('1 new');
+			await interestsTab.click();
+			await expect(page).toHaveURL(/\/opportunities\?view=interests$/);
+			const item = page.locator('[data-interest]').first();
+			await expect(item.getByRole('heading', { name: MATCH_JOB_TITLE })).toBeVisible();
+			await expect(item.locator('[data-interest-state]')).toHaveText('Going on');
+			await expect(item.locator('[data-interest-new]')).toHaveText('New');
+			// Shown: seen, so no longer counted
+			await expect(trigger).not.toHaveAccessibleName(/new mutual interest/);
+			await expect(interestsTab).not.toContainText('1 new');
+			expect(await sidewaysScroll(page)).toBe(0);
+
+			// Ended by the candidate, asked first
+			await item.getByRole('button', { name: 'End it' }).click();
+			const confirm = page.getByRole('alertdialog', { name: 'End this mutual interest?' });
+			await expect(confirm).toContainText('You cannot undo this.');
+			await confirm.getByRole('button', { name: 'End it' }).click();
+			await expect(confirm).toHaveCount(0);
+			await expect(toasts(page)).toContainText('Mutual interest ended');
+			await expect(item.locator('[data-interest-state]')).toHaveText('You ended it');
+			await expect(item.getByRole('button', { name: 'End it' })).toHaveCount(0);
+			await expect(item.getByRole('heading', { name: MATCH_JOB_TITLE })).toBeFocused();
+
+			// Its private page: the version they said yes to, and that it ended
+			await item.getByRole('link', { name: 'Open the job' }).click();
+			const shared = page.locator('[data-shared-interest]');
+			await expect(shared.getByRole('heading', { name: 'Mutual interest ended' })).toBeVisible();
+			await expect(shared.locator('[data-interest-state]')).toHaveText('You ended it');
+			await expect(page.locator('[data-feed-answer]')).toHaveCount(0);
+			await api.dispose();
+		});
 	});
 });

@@ -21,12 +21,19 @@
 	import {
 		isJobPostingId,
 		jobViewFailure,
+		jobViewLimitText,
+		jobViewRetryAt,
 		jobViewTitle,
 		readJobViewAccess,
 		type JobViewAccess,
 		type SharedJob
 	} from '#services/jobView.ts';
-	import { matchingAvailability, notificationsStore } from '#services/notifications.ts';
+	import {
+		matchingAvailability,
+		notificationsStore,
+		refreshNotifications
+	} from '#services/notifications.ts';
+	import { toaster } from '#services/toaster.ts';
 	import { m } from './page.messages.ts';
 
 	// A job description shared with the signed-in account (GET /opportunities/jobs/:id): the page
@@ -39,8 +46,11 @@
 	// who opens the same link, is sent on to their page of it in the recruiter space. Anyone else
 	// reads that it is not shared with them (the API answers them as for an unknown id). Who may
 	// read it is said with matching's readers only while matching is available (nothing of it shows
-	// otherwise). Private: rendered in the browser only (opportunities/+layout.ts) and not listed by
-	// search engines (#lib/robots.ts).
+	// otherwise). After an answer or an end changed why the account reads it, the page reads it
+	// again keeping what it shows until the answer comes, then moves the focus to the heading of
+	// what it shows (and says why the job is no longer theirs to answer, when it is not). Private:
+	// rendered in the browser only (opportunities/+layout.ts) and not listed by search engines
+	// (#lib/robots.ts).
 
 	type LoadState =
 		| { kind: 'idle' }
@@ -48,7 +58,14 @@
 		| { kind: 'loaded'; key: string; userId: string; shared: SharedJob; access: JobViewAccess }
 		| { kind: 'redirecting' }
 		| { kind: 'not-shared' }
+		/** A read refused for now (429): from when it can read again (null: not said) */
+		| { kind: 'limited'; until: number | null }
 		| { kind: 'error' };
+
+	const FEED_HEADING = 'feed-answer-heading';
+	const INTEREST_HEADING = 'shared-interest-heading';
+	const NOT_SHARED_HEADING = 'job-not-shared-heading';
+	const FAILED_HEADING = 'job-failed-heading';
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 
@@ -62,20 +79,30 @@
 	);
 
 	let loadState = $state.raw<LoadState>({ kind: 'idle' });
+	/** Why the job is no longer the account's to answer (an answer refused), said by the page */
+	let goneReason = $state('');
 	// What was asked for last (account and posting): an older answer is ignored
 	let requested: string | null = null;
 
-	async function load(userId: string, id: string) {
+	/**
+	 * Reads the job for the account `userId`. `again`: an answer or an end changed why the account
+	 * reads it: what is shown stays until the answer comes (nothing unmounts meanwhile), and the
+	 * focus then goes to the heading of what the page shows
+	 */
+	async function load(userId: string, id: string, again = false) {
 		const key = `${userId}:${id}`;
 		requested = key;
+		if (!again) goneReason = '';
 		if (!isJobPostingId(id)) {
 			// Not a posting's id: shared with nobody
 			loadState = { kind: 'not-shared' };
 			return;
 		}
-		loadState = { kind: 'loading', key };
+		if (!(again && loadState.kind === 'loaded' && loadState.key === key)) {
+			loadState = { kind: 'loading', key };
+		}
 		try {
-			const { data, error } = await portfolioTextApi.opportunities
+			const { data, error, response } = await portfolioTextApi.opportunities
 				.jobs({ id })
 				.get(withCredentials);
 			if (requested !== key) return;
@@ -86,44 +113,69 @@
 					requested = null;
 					loadState = { kind: 'idle' };
 					clearAuthentication();
-				} else {
-					loadState = { kind: failure };
+					return;
 				}
-				return;
-			}
-			if (data.access === 'recruiter') {
+				loadState =
+					failure === 'limited'
+						? { kind: 'limited', until: jobViewRetryAt(response?.headers) }
+						: { kind: failure };
+			} else if (data.access === 'recruiter') {
 				// The posting's own recruiter: their page of it, which this one does not stay under in
 				// the history (Back leaves both)
 				loadState = { kind: 'redirecting' };
 				await goto(resolve('/(app)/recruiter/jobs/[id]', { id }), { replaceState: true });
 				return;
-			}
-			const access = readJobViewAccess(data);
-			loadState = access
-				? { kind: 'loaded', key, userId, shared: data, access }
-				: { kind: 'error' };
-			if (focusInterest && access?.kind === 'match') {
-				focusInterest = false;
-				await tick();
-				document.getElementById(INTEREST_HEADING)?.focus({ preventScroll: true });
+			} else {
+				const access = readJobViewAccess(data);
+				loadState = access
+					? { kind: 'loaded', key, userId, shared: data, access }
+					: { kind: 'error' };
 			}
 		} catch {
-			if (requested === key) loadState = { kind: 'error' };
+			if (requested !== key) return;
+			loadState = { kind: 'error' };
 		}
+		if (again) await settleAfterChange();
 	}
 
-	const INTEREST_HEADING = 'shared-interest-heading';
-	// Both just became interested here: the mutual interest, once read, takes the focus
-	let focusInterest = false;
+	/**
+	 * Read again after a change: the focus on the heading of what the page shows now (what had it,
+	 * a button or a dialog's, is gone), and why the job is no longer theirs to answer said where the
+	 * page shows something else than "not shared"
+	 */
+	async function settleAfterChange() {
+		await tick();
+		const state = loadState;
+		let target: string | null = null;
+		if (state.kind === 'loaded') {
+			target =
+				state.access.kind === 'match'
+					? INTEREST_HEADING
+					: state.access.kind === 'feed'
+						? FEED_HEADING
+						: null;
+			if (goneReason) toaster.info({ title: goneReason });
+			goneReason = '';
+		} else if (state.kind === 'not-shared') {
+			target = NOT_SHARED_HEADING;
+		} else if (state.kind === 'error' || state.kind === 'limited') {
+			target = FAILED_HEADING;
+		}
+		if (target) document.getElementById(target)?.focus({ preventScroll: true });
+	}
 
 	/** An answer or an end changed why the account reads the job: read it again */
-	function changed(why: 'mutual' | 'gone' | 'ended' | 'signed-out') {
+	function changed(why: 'mutual' | 'gone' | 'ended' | 'signed-out', reason?: string) {
 		if (why === 'signed-out') {
 			clearAuthentication();
 			return;
 		}
-		focusInterest = why === 'mutual';
-		if (user?._id) load(user._id, jobId);
+		if (why === 'gone') {
+			goneReason = reason ?? '';
+			// Matching may have been turned off: the account menu follows
+			void refreshNotifications();
+		}
+		if (user?._id) load(user._id, jobId, true);
 	}
 
 	// Signed out: whether matching is available decides who the page says may read it
@@ -150,7 +202,20 @@
 		untrack(() => load(userId, id));
 	});
 
+	// A read refused for now: Retry waits until its Retry-After has passed
+	let now = $state(Date.now());
+	let limitedUntil = $derived(loadState.kind === 'limited' ? loadState.until : null);
+	let retryHeld = $derived(limitedUntil !== null && now < limitedUntil);
+	$effect(() => {
+		if (limitedUntil === null) return;
+		const left = limitedUntil - Date.now();
+		if (left <= 0) return;
+		const timer = setTimeout(() => (now = Date.now()), Math.min(left + 100, 2 ** 31 - 1));
+		return () => clearTimeout(timer);
+	});
+
 	const retry = () => {
+		if (retryHeld) return;
 		if (user?._id) load(user._id, jobId);
 	};
 
@@ -184,6 +249,7 @@
 						score={access.score}
 						interested={access.interested}
 						decision={access.decision}
+						headingId={FEED_HEADING}
 						onChange={changed}
 					/>
 				{:else if access.kind === 'match'}
@@ -235,7 +301,15 @@
 				{/snippet}
 			</PageNotice>
 		{:else if loadState.kind === 'not-shared'}
-			<PageNotice title={m.notShared.title} icon={DocumentMagnifyingGlass}>
+			<PageNotice
+				title={m.notShared.title}
+				icon={DocumentMagnifyingGlass}
+				headingId={NOT_SHARED_HEADING}
+			>
+				{#if goneReason}
+					<!-- An answer given here was refused: why, before what the page says of who reads it -->
+					<p class="font-medium text-surface-950-50" data-gone-reason>{goneReason}</p>
+				{/if}
 				<p>{withMatching ? m.notShared.textWithMatching : m.notShared.text}</p>
 				{#if user.email}
 					<p>
@@ -245,16 +319,39 @@
 					</p>
 				{/if}
 				{#snippet actions()}
-					<a href={resolve('/(site)')} class="btn preset-filled-primary-700-300 min-h-11">
-						{m.notShared.home}
-					</a>
+					{#if goneReason && withMatching}
+						<a
+							href={resolve('/(app)/opportunities')}
+							class="btn preset-filled-primary-700-300 min-h-11"
+						>
+							{m.notShared.opportunities}
+						</a>
+					{:else}
+						<a href={resolve('/(site)')} class="btn preset-filled-primary-700-300 min-h-11">
+							{m.notShared.home}
+						</a>
+					{/if}
 				{/snippet}
 			</PageNotice>
 		{:else}
-			<PageNotice title={m.loadFailed.title} icon={ExclamationTriangle} tone="error">
-				<p>{recruiterMessages.loadFailed}</p>
+			<PageNotice
+				title={m.loadFailed.title}
+				icon={ExclamationTriangle}
+				tone="error"
+				headingId={FAILED_HEADING}
+			>
+				<p>
+					{loadState.kind === 'limited'
+						? jobViewLimitText(loadState.until)
+						: recruiterMessages.loadFailed}
+				</p>
 				{#snippet actions()}
-					<button type="button" class="btn preset-filled-primary-700-300 min-h-11" onclick={retry}>
+					<button
+						type="button"
+						class={['btn preset-filled-primary-700-300 min-h-11', retryHeld ? 'opacity-60' : '']}
+						aria-disabled={retryHeld}
+						onclick={retry}
+					>
 						{common.retry}
 					</button>
 				{/snippet}

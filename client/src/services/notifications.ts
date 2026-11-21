@@ -114,19 +114,29 @@ export const resetNotifications = (): void => {
 };
 
 /**
+ * Whether the header asks for the counts: not once an answer said matching is off, for the rest
+ * of the page's life (a reload asks again). Each read would be another 404 of a route that does not
+ * exist in the API's metrics (`route: unmatched`), on every page of every signed-in account while
+ * MATCHING is off
+ */
+export const notificationsWanted = (state: NotificationsState): boolean => state.matching !== 'off';
+
+/**
  * Reads the counts of the account `userId` now, and again each time the page comes back in view
- * (the other side may have answered meanwhile, in another tab or on another device). Returns what
- * stops it. Each page's header starts it: the counts known stay meanwhile, unless they are another
- * account's
+ * (the other side may have answered meanwhile, in another tab or on another device), unless
+ * matching was found off. Returns what stops it. Each page's header starts it: the counts known
+ * stay meanwhile, unless they are another account's
  */
 export const startNotifications = (userId: string): (() => void) => {
 	if (countedFor !== userId) {
 		resetNotifications();
 		countedFor = userId;
 	}
+	if (!notificationsWanted(get(notificationsStore))) return () => {};
 	void refreshNotifications();
 	const onVisible = () => {
-		if (document.visibilityState === 'visible') void refreshNotifications();
+		if (document.visibilityState !== 'visible') return;
+		if (notificationsWanted(get(notificationsStore))) void refreshNotifications();
 	};
 	document.addEventListener('visibilitychange', onVisible);
 	return () => document.removeEventListener('visibilitychange', onVisible);

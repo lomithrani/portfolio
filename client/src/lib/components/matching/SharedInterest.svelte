@@ -4,8 +4,9 @@ On the private page of a job the candidate and its recruiter are both interested
 'match'` of GET /opportunities/jobs/:id: the page shows the version they said yes to): the day
 both became interested, where it stands (going on, ended by them, by the recruiter, or the job no
 longer open), whether the job description was edited since, how a meeting is booked while it
-lasts, and "End it" (asked first). Shown, a mutual interest going on is marked seen (the account
-menu's badge). Never a bare "match" (decision 11), no email promised (decision 10).
+lasts, and "End it" (asked first). Headed "You're both interested" while it lasts, "Mutual interest
+ended" once it ended. Shown, a mutual interest going on is marked seen (the account menu's badge).
+Never a bare "match" (decision 11), no email promised (decision 10).
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -24,6 +25,7 @@ menu's badge). Never a bare "match" (decision 11), no email promised (decision 1
 	import { toaster } from '#services/toaster.ts';
 	import { m as cards } from './cards.messages.ts';
 	import { m as list } from './CandidateInterest.messages.ts';
+	import { m } from './SharedInterest.messages.ts';
 
 	let {
 		interest,
@@ -33,8 +35,8 @@ menu's badge). Never a bare "match" (decision 11), no email promised (decision 1
 		interest: SharedMutualInterest;
 		/** Its heading's id: the page moves the focus to it once both became interested */
 		headingId?: string;
-		/** The job is to be read again: ended here, gone, or signed out */
-		onChange: (why: 'ended' | 'gone' | 'signed-out') => void;
+		/** The job is to be read again: ended here, gone (`reason` says it), or signed out */
+		onChange: (why: 'ended' | 'gone' | 'signed-out', reason?: string) => void;
 	} = $props();
 
 	const uid = $props.id();
@@ -73,7 +75,7 @@ menu's badge). Never a bare "match" (decision 11), no email promised (decision 1
 		}
 		if (result.failure === 'gone' || result.failure === 'off') {
 			confirming = false;
-			onChange('gone');
+			onChange('gone', list.endDialog.gone);
 			return;
 		}
 		error = result.failure === 'network' ? networkError() : list.endDialog.failed;
@@ -90,8 +92,8 @@ menu's badge). Never a bare "match" (decision 11), no email promised (decision 1
 		tabindex="-1"
 		class="flex items-center gap-2 rounded-base text-lg font-bold outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
 	>
-		<HandThumbUp size="20" class="shrink-0" aria-hidden="true" />
-		{cards.mutual.heading}
+		{#if going}<HandThumbUp size="20" class="shrink-0" aria-hidden="true" />{/if}
+		{going ? cards.mutual.heading : m.endedHeading}
 	</h2>
 	<p class="flex flex-wrap items-center gap-2 text-sm">
 		<span class="badge preset-filled-surface-50-950" data-interest-state>

@@ -6,7 +6,7 @@ import { defineMessages } from 'portfolio-common';
 // only, no text promises an email. Decision 17: nothing of who a recruiter is before both are
 // interested. Neutral: having a portfolio says nothing of looking for a job
 export const m = defineMessages({
-	/** The browser tab's title */
+	/** The browser tab's title (while matching answers: "Portfolio" until it does) */
 	pageTitle: { en: 'Opportunities | Portfolio', fr: 'Opportunités | Portfolio' },
 	/** The row of views */
 	views: { en: 'Your opportunities', fr: 'Vos opportunités' },
@@ -29,6 +29,8 @@ export const m = defineMessages({
 	/** Matching is off (the API's routes answer 404): nothing of it is said */
 	unavailable: {
 		title: { en: 'This page is not available', fr: "Cette page n'est pas disponible" },
+		/** The browser tab's title meanwhile: nothing names the page */
+		pageTitle: { en: 'Page not available | Portfolio', fr: 'Page non disponible | Portfolio' },
 		text: {
 			en: 'There is nothing to see here for now.',
 			fr: "Il n'y a rien à voir ici pour le moment."
@@ -40,9 +42,10 @@ export const m = defineMessages({
 			en: 'Could not load your opportunities',
 			fr: 'Impossible de charger vos opportunités'
 		},
+		/** Not the network (that one says so): the API answered with an error, or something unreadable */
 		text: {
-			en: 'Check your connection, then try again.',
-			fr: 'Vérifiez votre connexion, puis réessayez.'
+			en: 'Something went wrong on our side. Try again in a moment.',
+			fr: 'Un problème est survenu de notre côté. Réessayez dans un instant.'
 		}
 	},
 	sessionExpired: {
@@ -70,13 +73,27 @@ export const m = defineMessages({
 			en: 'The open jobs that meet your criteria and your minimum score, with no deal-breaker missed. If a job interests you, its recruiter sees it; your name and your portfolio stay hidden until you are both interested.',
 			fr: "Les offres ouvertes qui répondent à vos critères et à votre note minimale, sans critère éliminatoire manqué. Si une offre vous intéresse, son recruteur le voit ; votre nom et votre portfolio restent masqués jusqu'à un intérêt réciproque."
 		},
-		/** Nothing to answer (no email is sent: the account menu says when both are interested) */
+		/**
+		 * Nothing to answer, true whether or not they answered jobs already (the feed leaves out what
+		 * they answered). No email is sent: the account menu says when both are interested
+		 */
 		empty: {
 			title: { en: 'Nothing to review right now', fr: 'Rien à examiner pour le moment' },
 			text: {
-				en: 'No open job meets your criteria and your minimum score right now. New jobs that meet them show up here: come back to see them. When the recruiter of a job that interests you is interested in you too, your account menu says so.',
-				fr: "Aucune offre ouverte ne répond à vos critères et à votre note minimale pour le moment. Les nouvelles offres qui y répondent apparaissent ici : revenez les voir. Quand le recruteur d'une offre qui vous intéresse s'intéresse aussi à vous, le menu de votre compte l'indique."
+				en: 'No open job that meets your criteria and your minimum score is waiting for your answer right now. New ones show up here: come back to see them. When the recruiter of a job that interests you is interested in you too, your account menu says so.',
+				fr: "Aucune offre ouverte répondant à vos critères et à votre note minimale n'attend votre réponse pour le moment. Les nouvelles apparaissent ici : revenez les voir. Quand le recruteur d'une offre qui vous intéresse s'intéresse aussi à vous, le menu de votre compte l'indique."
 			}
+		},
+		/**
+		 * Above the deck, in the consent's last DISCOVERY_CONSENT_RENEWAL_DAYS days (`day`: when it
+		 * ends; no email says it, decision 10); <settings> links discovery's settings, where it is
+		 * confirmed again. Backed by: portfolio-common's discoveryConsentRenewable
+		 */
+		consentEnds: {
+			en: (day: string) =>
+				`Your consent to be visible to recruiters ends on ${day}. Confirm it again in <settings>its settings</settings> to stay visible.`,
+			fr: (day: string) =>
+				`Votre consentement à être visible des recruteurs prend fin le ${day}. Confirmez-le de nouveau dans <settings>ses réglages</settings> pour rester visible.`
 		},
 		criteria: { en: 'Review my criteria', fr: 'Revoir mes critères' },
 		/** Discovery needs a portfolio */
@@ -96,7 +113,7 @@ export const m = defineMessages({
 			},
 			text: {
 				en: 'Make yourself visible to recruiters, and the open jobs that meet your criteria show up here for you to answer. Their recruiters read an anonymous card: your name and your portfolio stay hidden until you are both interested.',
-				fr: "Rendez-vous visible des recruteurs, et les offres ouvertes qui répondent à vos critères apparaissent ici pour que vous y répondiez. Leurs recruteurs lisent une fiche anonyme : votre nom et votre portfolio restent masqués jusqu'à un intérêt réciproque."
+				fr: "Devenez visible des recruteurs : les offres ouvertes qui répondent à vos critères apparaissent alors ici pour que vous y répondiez. Leurs recruteurs lisent une fiche anonyme : votre nom et votre portfolio restent masqués jusqu'à un intérêt réciproque."
 			}
 		},
 		paused: {
@@ -104,16 +121,20 @@ export const m = defineMessages({
 				en: 'Paused: you are proposed to no recruiter',
 				fr: "En pause : vous n'êtes proposé à aucun recruteur"
 			},
+			/** Followed by each requirement missing */
 			text: {
-				en: 'Something it needs is missing since you turned it on:',
-				fr: "Il manque quelque chose depuis que vous l'avez activé :"
+				en: 'Being visible to recruiters needs something that has gone missing since you turned it on:',
+				fr: 'Il manque une condition depuis que vous êtes devenu visible des recruteurs :'
 			}
 		},
 		lapsed: {
-			title: { en: 'Your consent ended', fr: 'Votre consentement a pris fin' },
+			title: {
+				en: 'Your consent to be visible to recruiters has ended',
+				fr: 'Votre consentement à être visible des recruteurs a expiré'
+			},
 			text: {
-				en: 'Give it again to be proposed to recruiters, and to see here the jobs that meet your criteria.',
-				fr: 'Donnez-le de nouveau pour être proposé aux recruteurs, et voir ici les offres qui répondent à vos critères.'
+				en: 'Give it again to be proposed to recruiters and to see the jobs that meet your criteria here.',
+				fr: 'Donnez-le de nouveau pour être proposé aux recruteurs et voir ici les offres qui répondent à vos critères.'
 			}
 		},
 		/** To discovery's settings, at the end of the admin's Perfect job tab */
@@ -124,10 +145,13 @@ export const m = defineMessages({
 
 	// --- Mutual interests -------------------------------------------------------------------
 	interests: {
-		/** Backed by: server/services/mutualInterests.ts (it leads into the candidate's own journey) */
+		/**
+		 * Backed by: server/services/mutualInterests.ts (it leads into the candidate's own journey,
+		 * whether or not that journey still has a job step)
+		 */
 		intro: {
-			en: 'When you and a recruiter are both interested in one of their jobs, it shows here. To book a meeting with you, the recruiter goes through the steps of your page for recruiters, which holds that job.',
-			fr: "Quand un recruteur et vous avez un intérêt réciproque pour l'une de ses offres, elle apparaît ici. Pour réserver un rendez-vous avec vous, le recruteur passe par les étapes de votre page recruteurs, qui reprend cette offre."
+			en: 'When you and a recruiter are both interested in one of their jobs, it shows here. To book a meeting with you, the recruiter goes through the steps of your page for recruiters.',
+			fr: "Quand un recruteur et vous avez un intérêt réciproque pour l'une de ses offres, elle apparaît ici. Pour réserver un rendez-vous avec vous, le recruteur passe par les étapes de votre page recruteurs."
 		},
 		empty: {
 			title: { en: 'No mutual interest yet', fr: 'Aucun intérêt réciproque pour le moment' },

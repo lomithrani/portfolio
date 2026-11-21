@@ -77,6 +77,9 @@ describe('CandidateInterest', () => {
 		expect(shown).toContain('End it');
 		const html = render(CandidateInterest, { props: { interest, onEnd: () => {} } }).body;
 		expect(html).toContain(`href="/opportunities/${JOB_ID}"`);
+		// Each item's link and button named with its job: told apart in a list of links, by voice
+		expect(html).toContain('aria-label="Open the job: Senior Data Engineer"');
+		expect(html).toContain('aria-label="End it: Senior Data Engineer"');
 		for (const word of NEVER) expect(html).not.toContain(word);
 		expect(shown).not.toMatch(/\bemail\b/i);
 	});
@@ -131,6 +134,19 @@ describe('FeedAnswer', () => {
 		// Nothing to undo before an answer given here
 		expect(shown).not.toContain('Undo');
 		expect(html).toContain('aria-live="polite"');
+		// Its heading takes the focus once the page read the job again (headingId)
+		expect(
+			render(FeedAnswer, {
+				props: {
+					jobId: JOB_ID,
+					score,
+					interested: false,
+					decision: null,
+					headingId: 'feed-heading',
+					onChange: () => {}
+				}
+			}).body
+		).toMatch(/<h2 id="feed-heading" tabindex="-1"/);
 	});
 
 	it('says the answer given, and offers the other to change it', () => {
@@ -191,6 +207,7 @@ describe('SharedInterest', () => {
 			}).body
 		);
 		expect(shown).toContain("You're both interested");
+		expect(shown).not.toContain('Mutual interest ended');
 		expect(shown).toContain('Going on');
 		expect(shown).toContain('Both interested on 20 Nov 2026');
 		expect(shown).toContain('To book a meeting with you, its recruiter goes through the steps');
@@ -214,5 +231,25 @@ describe('SharedInterest', () => {
 		);
 		expect(shown).toContain('Ended: the job is no longer open');
 		expect(shown).not.toContain('End it');
+		// Headed as what it is now, never "You're both interested" above an ended state
+		expect(shown).toContain('Mutual interest ended');
+		expect(shown).not.toContain("You're both interested");
+		expect(
+			withLocale('fr', () =>
+				textOf(
+					render(SharedInterest, {
+						props: {
+							interest: read({
+								_id: answer._id,
+								matchedAt: answer.matchedAt,
+								endedAt: '2026-11-21T10:00:00.000Z',
+								endReason: 'candidate'
+							}),
+							onChange: () => {}
+						}
+					}).body
+				)
+			)
+		).toContain('Intérêt réciproque terminé');
 	});
 });

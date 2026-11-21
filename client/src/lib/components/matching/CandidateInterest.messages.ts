@@ -24,6 +24,18 @@ export const m = defineMessages({
 	},
 	open: { en: 'Open the job', fr: "Voir l'offre" },
 	end: { en: 'End it', fr: 'Y mettre fin' },
+	/**
+	 * The names of those two controls (`title`: the job's): the visible label first, then the job,
+	 * so that each item's link and button tell apart in a list of links or by voice
+	 */
+	openNamed: {
+		en: (title: string) => `Open the job: ${title}`,
+		fr: (title: string) => `Voir l'offre : ${title}`
+	},
+	endNamed: {
+		en: (title: string) => `End it: ${title}`,
+		fr: (title: string) => `Y mettre fin : ${title}`
+	},
 	/** Ending one (the list of /opportunities, the job's private page): asked first */
 	endDialog: {
 		title: { en: 'End this mutual interest?', fr: 'Mettre fin à cet intérêt réciproque ?' },

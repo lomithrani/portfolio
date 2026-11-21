@@ -122,7 +122,7 @@ test('the owner reads the job the recruiter picked on their journey, on a page n
 	await expect(
 		page.getByText(
 			matchingOn
-				? "This page is private: only this job description's recruiter can open it, with the portfolio owners on whose hiring journey it was picked, the candidates it is proposed to and those who are both interested with its recruiter."
+				? "This page is private: only this job description's recruiter, the portfolio owners on whose hiring journey it was picked, the candidates it is proposed to and those who have or had a mutual interest in it with its recruiter can open it."
 				: "This page is private: only this job description's recruiter and the portfolio owners on whose hiring journey it was picked can open it."
 		)
 	).toBeVisible();

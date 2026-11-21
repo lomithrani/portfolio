@@ -1,4 +1,4 @@
-import type { MatchDecision } from 'portfolio-common';
+import { discoveryConsentRenewable, type MatchDecision } from 'portfolio-common';
 import { portfolioTextApi } from '#services';
 import { errorStatus } from './apiErrors';
 import {
@@ -70,6 +70,18 @@ export const reviewState = (status: DiscoveryStatus, hasPortfolio: boolean): Rev
 	if (status.state === 'on' && status.missing.length > 0) return 'paused';
 	return status.state;
 };
+
+/**
+ * When the consent of a candidate proposed now ends, in its last DISCOVERY_CONSENT_RENEWAL_DAYS
+ * days (when it can be confirmed again: discoveryConsentRenewable, as discovery's settings offer
+ * it); null otherwise. No email says it (decision 10): the inbox does, above the deck
+ */
+export const consentEndsSoon = (status: DiscoveryStatus, now = new Date()): string | null =>
+	reviewState(status, true) === 'on' &&
+	status.consentExpiresAt &&
+	discoveryConsentRenewable(status.enabledAt, now)
+		? status.consentExpiresAt
+		: null;
 
 // --- The deck: reading what is proposed, answering it ----------------------------------------
 
@@ -179,22 +191,39 @@ export const undoOpportunityAnswer = async (jobId: string): Promise<OpportunityA
 
 /**
  * Whether an answer given at `at` (milliseconds) on a page can still be undone at `now`: within
- * MATCHING_LIMITS.undoMinutes. The API decides the rest (the latest answer, the first on that job:
- * 409 otherwise, which the page says)
+ * MATCHING_LIMITS.undoMinutes (the page offers Undo only for an answer `undoableHere` allows)
  */
 export const undoOpen = (at: number | null, now: number): boolean =>
 	at !== null && now - at <= UNDO_WINDOW_MS;
 
+/**
+ * Whether the answer a job's private page gives now is one it can offer to undo: the API undoes
+ * only the candidate's first answer on the job (409 DECISION_FINAL otherwise, kept through an
+ * undo), so only on a page that read no answer (`loaded` null) and gave none before
+ * (`answeredHere`: an answer, or an undo, given there). What the page cannot know (an answer given
+ * and undone in the deck before it read the job) is the API's to refuse, which the page says
+ */
+export const undoableHere = (loaded: MatchDecision | null, answeredHere: boolean): boolean =>
+	loaded === null && !answeredHere;
+
 // --- Mutual interests ------------------------------------------------------------------------
 
-/** Why the mutual interests could not be read or changed */
+/**
+ * Why the mutual interests could not be read or changed: the session ended (401), the mutual
+ * interest is gone (the API's 404 MATCH_NOT_FOUND: not a side of it, or taken back), matching was
+ * turned off (the 404 of a route that does not exist), no answer, or another failure
+ */
 export type MutualInterestFailure = 'signed-out' | 'off' | 'gone' | 'network' | 'error';
 
 // The API's 404 of a mutual interest the caller is not a side of, or that was taken back
-// (server/protocol.ts): an English constant whatever the visitor's language
-const MATCH_NOT_FOUND = 'Match not found';
+// (server/protocol.ts, which opportunities.test.ts reads to keep them the same): an English
+// constant whatever the visitor's language
+export const MATCH_NOT_FOUND = 'Match not found';
 
-const interestFailure = (error: { status: unknown; value?: unknown }): MutualInterestFailure => {
+export const interestFailure = (error: {
+	status: unknown;
+	value?: unknown;
+}): MutualInterestFailure => {
 	if (isNetworkFailure(error.value)) return 'network';
 	const status = errorStatus(error);
 	if (status === 401) return 'signed-out';

@@ -29,8 +29,6 @@ export const m = defineMessages({
 		fr: 'Enregistré : vous avez passé votre tour sur cette offre.'
 	},
 	undone: { en: 'Your answer was undone.', fr: 'Votre réponse a été annulée.' },
-	/** A mutual interest was made: the page shows it next */
-	mutual: { en: "You're both interested.", fr: 'Intérêt réciproque.' },
 	/** A request on its way */
 	sending: { en: 'Sending your answer…', fr: 'Envoi de votre réponse…' }
 });

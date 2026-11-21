@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { opportunityPath } from 'portfolio-common';
-import { isJobPostingId, jobViewFailure, jobViewTitle, readJobViewAccess } from '../jobView';
+import { withLocale } from 'portfolio-common';
+import {
+	isJobPostingId,
+	jobViewFailure,
+	jobViewLimitText,
+	jobViewRetryAt,
+	jobViewTitle,
+	readJobViewAccess
+} from '../jobView';
 
 // The private page of a job description (/opportunities/:id): what its address may hold, and
 // what the page says when GET /opportunities/jobs/:id gives no posting
@@ -39,12 +47,44 @@ describe('jobViewFailure', () => {
 		expect(jobViewFailure(422, { type: 'validation', property: '/id' })).toBe('not-shared');
 	});
 
+	it('says a read refused for now (429: matching’s reads of an hour), never a connection to check', () => {
+		expect(jobViewFailure(429, 'Too many reads')).toBe('limited');
+	});
+
 	it('offers to try again when the API could not answer', () => {
 		// A 404 that is not the API's (a route it does not have, a proxy), a failure, no answer
 		expect(jobViewFailure(404, 'NOT_FOUND')).toBe('error');
 		expect(jobViewFailure(500, 'Internal Server Error')).toBe('error');
 		expect(jobViewFailure(503, new TypeError('Failed to fetch'))).toBe('error');
 		expect(jobViewFailure(undefined, null)).toBe('error');
+	});
+});
+
+describe('a read refused for now', () => {
+	const now = Date.UTC(2026, 10, 21, 10, 0);
+
+	it('can go again once its Retry-After has passed', () => {
+		expect(jobViewRetryAt(new Headers({ 'Retry-After': '120' }), now)).toBe(now + 120_000);
+		expect(jobViewRetryAt({ 'retry-after': '60' }, now)).toBe(now + 60_000);
+		// None, or one that is not a number of seconds: not said
+		expect(jobViewRetryAt(new Headers(), now)).toBeNull();
+		expect(jobViewRetryAt(new Headers({ 'Retry-After': 'soon' }), now)).toBeNull();
+		expect(jobViewRetryAt(undefined, now)).toBeNull();
+	});
+
+	it('says from when it can read again, or later when that is not known', () => {
+		expect(jobViewLimitText(now + 3_600_000)).toMatch(
+			/^You have read jobs as often as an hour allows\. Try again from .*2026.*\.$/
+		);
+		expect(jobViewLimitText(null)).toBe(
+			'You have read jobs as often as an hour allows. Try again later.'
+		);
+		expect(withLocale('fr', () => jobViewLimitText(null))).toBe(
+			"Vous avez consulté des offres aussi souvent qu'une heure le permet. Réessayez plus tard."
+		);
+		for (const text of [jobViewLimitText(now), jobViewLimitText(null)]) {
+			expect(text).not.toMatch(/connection/i);
+		}
 	});
 });
 

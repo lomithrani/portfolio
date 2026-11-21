@@ -33,6 +33,7 @@ page asks first). `fresh`: not seen before this showing (the page marks it seen 
 	let job = $derived(interest.job);
 	let going = $derived(!interest.endedAt);
 	let change = $derived(mutualInterestChangeText(interest));
+	let title = $derived(job ? job.title : m.untitled);
 	/** A button's label wraps rather than run past it on a narrow phone (in French) */
 	const button = 'btn min-h-11 max-w-full whitespace-normal text-center leading-5';
 </script>
@@ -60,7 +61,7 @@ page asks first). `fresh`: not seen before this showing (the page marks it seen 
 		tabindex="-1"
 		class="rounded-base text-lg font-bold break-words outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
 	>
-		{job ? job.title : m.untitled}
+		{title}
 	</h3>
 	{#if job?.company}
 		<p class="flex items-center gap-1.5 text-surface-700-300">
@@ -82,13 +83,19 @@ page asks first). `fresh`: not seen before this showing (the page marks it seen 
 				<a
 					class="{button} preset-tonal"
 					href={resolve('/(app)/opportunities/[id]', { id: job._id })}
+					aria-label={m.openNamed(title)}
 				>
 					<DocumentText size="18" class="shrink-0" aria-hidden="true" />
 					{m.open}
 				</a>
 			{/if}
 			{#if going}
-				<button type="button" class="{button} preset-tonal-error" onclick={() => onEnd(interest)}>
+				<button
+					type="button"
+					class="{button} preset-tonal-error"
+					aria-label={m.endNamed(title)}
+					onclick={() => onEnd(interest)}
+				>
 					<XMark size="18" class="shrink-0" aria-hidden="true" />
 					{m.end}
 				</button>

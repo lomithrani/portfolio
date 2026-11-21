@@ -238,9 +238,12 @@ form instead (`onClaimPortfolio`).
 				{#if opportunities}
 					<Menu.Item value="opportunities" valueText={m.opportunities}>
 						{#snippet element(attributes)}
+							<!-- With mutual interests not seen yet, to the view that shows them (and marks them seen) -->
 							<a
 								{...attributes as HTMLAttributes<HTMLAnchorElement>}
-								href={resolve('/(app)/opportunities')}
+								href={unseen > 0
+									? resolve('/(app)/opportunities?view=interests')
+									: resolve('/(app)/opportunities')}
 								class="{itemClass} justify-start"
 							>
 								<span class="{iconClass} preset-tonal-primary" aria-hidden="true">

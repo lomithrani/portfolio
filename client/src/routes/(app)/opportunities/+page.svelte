@@ -15,6 +15,8 @@
 	} from 'svelte-heros-v2';
 	import { discoveryRequirementMessage, type MatchDecision } from 'portfolio-common';
 	import { common } from '#lib/i18n/common.messages.ts';
+	import Rich from '#lib/i18n/Rich.svelte';
+	import { SITE_NAME } from '#components/legal/legalDocuments.ts';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
 	import SignInButton from '#components/hire/SignInButton.svelte';
 	import MatchDeck from '#components/matching/MatchDeck.svelte';
@@ -35,6 +37,7 @@
 	import {
 		answerOpportunity,
 		appendInterests,
+		consentEndsSoon,
 		endMutualInterest,
 		loadMutualInterests,
 		opportunitiesView,
@@ -50,7 +53,7 @@
 		DecisionFailure,
 		Opportunity
 	} from '#services/matching.ts';
-	import { networkError } from '#services/recruiter.ts';
+	import { formatDay, networkError } from '#services/recruiter.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { m } from './page.messages.ts';
 
@@ -121,6 +124,34 @@
 	let load = $derived(discovery && discovery.userId === user?._id ? discovery.load : null);
 	let status = $derived(load?.kind === 'ready' ? load.status : null);
 	let review = $derived(status ? reviewState(status, !!user?.domain) : null);
+	// Its consent ends soon (no email says it): when, above the deck
+	let consentEnds = $derived(status ? consentEndsSoon(status) : null);
+
+	/** Matching was found off while the page was open: the account menu follows (no item, no badge) */
+	function matchingTurnedOff(userId: string) {
+		discovery = { userId, load: { kind: 'off' } };
+		void refreshNotifications();
+		void focusHeading(unavailableHeading);
+	}
+
+	/** "Try again" after GET /discovery failed: the focus on what shows in its place once read */
+	async function retryDiscovery() {
+		const userId = user?._id;
+		if (!userId) return;
+		await readDiscovery(userId);
+		if (requested !== userId || load?.kind === 'failed') return;
+		if (load?.kind === 'off') {
+			await focusHeading(unavailableHeading);
+		} else if (view === 'interests') {
+			// Read as the view shows: its first item takes the focus once there
+			focusInterestsOnRead = true;
+		} else if (review === 'on') {
+			// The deck mounts: what it shows first takes the focus
+			focusDeck = true;
+		} else {
+			await focusHeading(stateHeading);
+		}
+	}
 
 	// --- The view shown ---------------------------------------------------------------------
 	let view = $state<OpportunitiesView>(opportunitiesView(page.url.searchParams.get('view')));
@@ -154,6 +185,9 @@
 	let stopped = $state.raw<DecisionFailure | null>(null);
 	const stopHeading = 'opportunities-stopped';
 	const stateHeading = 'opportunities-state';
+	const unavailableHeading = 'opportunities-unavailable';
+	/** The deck mounts in place of the Retry pressed: what it shows first takes the focus */
+	let focusDeck = $state(false);
 
 	async function focusHeading(id: string) {
 		await tick();
@@ -169,7 +203,7 @@
 			return;
 		}
 		if (failure.kind === 'off') {
-			discovery = { userId, load: { kind: 'off' } };
+			matchingTurnedOff(userId);
 			return;
 		}
 		if (failure.kind === 'not-proposed') {
@@ -186,6 +220,8 @@
 
 	function startAgain() {
 		stopped = null;
+		// The Retry pressed is gone: the deck's first card (or what shows) takes the focus
+		focusDeck = true;
 		deckRun++;
 	}
 
@@ -218,6 +254,25 @@
 	/** Not seen before this showing: marked seen as shown, still said new until read again */
 	let fresh = $state.raw<ReadonlySet<string>>(new Set());
 	let interestsRead = 0;
+	/** The next read's result takes the focus (it replaces the Retry pressed) */
+	let focusInterestsOnRead = false;
+	const interestsRetry = 'opportunities-interests-retry';
+
+	/** The focus on an interest's heading */
+	const focusInterest = (id: string) =>
+		document
+			.querySelector<HTMLElement>(`[data-interest="${id}"] h3`)
+			?.focus({ preventScroll: true });
+
+	/** The focus on what the view of mutual interests shows: its first item, its empty state, Retry */
+	async function focusInterests() {
+		await tick();
+		const target =
+			document.querySelector<HTMLElement>('[data-interest] h3') ??
+			document.querySelector<HTMLElement>('[data-interests-empty] h3') ??
+			document.getElementById(interestsRetry);
+		target?.focus({ preventScroll: true });
+	}
 
 	/** The mutual interests shown are seen: they no longer count in the account menu's badge */
 	function markShown(list: readonly CandidateMutualInterest[]) {
@@ -227,8 +282,10 @@
 		void markMutualInterestsSeen(ids);
 	}
 
-	async function readInterests() {
+	async function readInterests(focusAfter = false) {
 		const read = ++interestsRead;
+		const focus = focusAfter || focusInterestsOnRead;
+		focusInterestsOnRead = false;
 		if (interests.kind !== 'ready') interests = { kind: 'loading' };
 		const result = await loadMutualInterests(null);
 		if (read !== interestsRead) return;
@@ -236,21 +293,20 @@
 			fresh = new Set();
 			interests = { kind: 'ready', list: result.interests, next: result.next, more: 'idle' };
 			markShown(result.interests);
-			return;
-		}
-		if (result.failure === 'signed-out') {
+		} else if (result.failure === 'signed-out') {
 			toaster.error({ title: m.sessionExpired });
 			clearAuthentication();
 			return;
-		}
-		if (result.failure === 'off' && user) {
-			discovery = { userId: user._id, load: { kind: 'off' } };
+		} else if (result.failure === 'off' && user) {
+			matchingTurnedOff(user._id);
 			return;
+		} else {
+			interests = {
+				kind: 'error',
+				message: result.failure === 'network' ? networkError() : m.interests.loadFailed
+			};
 		}
-		interests = {
-			kind: 'error',
-			message: result.failure === 'network' ? networkError() : m.interests.loadFailed
-		};
+		if (focus) await focusInterests();
 	}
 
 	async function showMore() {
@@ -260,24 +316,29 @@
 		interests = { ...current, more: 'loading' };
 		const result = await loadMutualInterests(current.next);
 		if (read !== interestsRead) return;
-		if (result.ok) {
-			interests = {
-				kind: 'ready',
-				list: appendInterests(current.list, result.interests),
-				next: result.next,
-				more: 'idle'
-			};
-			markShown(result.interests);
-		} else {
-			interests = { ...current, more: 'failed' };
+		// The list as it stands now (one ended meanwhile stays ended), not as it was asked
+		const latest = interests;
+		if (latest.kind !== 'ready') return;
+		if (!result.ok) {
+			interests = { ...latest, more: 'failed' };
+			return;
 		}
+		const shown = new Set(latest.list.map(({ _id }) => _id));
+		const list = appendInterests(latest.list, result.interests);
+		interests = { ...latest, list, next: result.next, more: 'idle' };
+		markShown(result.interests);
+		// The first one added takes the focus ("Show more" goes once the last page is read)
+		const added = list.find(({ _id }) => !shown.has(_id));
+		await tick();
+		if (added) focusInterest(added._id);
+		else if (!result.next && list.length > 0) focusInterest(list[list.length - 1]._id);
 	}
 
 	// Read each time the view is shown (a mutual interest made meanwhile shows), once discovery
 	// answered (matching on)
 	let interestsShown = $derived(view === 'interests' && !!status);
 	$effect(() => {
-		if (interestsShown) untrack(readInterests);
+		if (interestsShown) untrack(() => readInterests());
 	});
 
 	// Ending one: asked first; the focus then goes to its heading (its button is gone once ended)
@@ -332,6 +393,17 @@
 	let unseen = $derived(
 		$notificationsStore.matching === 'on' ? $notificationsStore.unseen.candidate : 0
 	);
+	// The tab's title names the page only while matching answers (nothing of it shows otherwise)
+	let unavailable = $derived(
+		load?.kind === 'off' || (!user && $notificationsStore.matching === 'off')
+	);
+	let pageTitle = $derived(
+		unavailable
+			? m.unavailable.pageTitle
+			: $notificationsStore.matching === 'on'
+				? m.pageTitle
+				: SITE_NAME
+	);
 
 	const linkClass = 'btn preset-filled-primary-700-300 min-h-11 max-w-full whitespace-normal';
 	/** A view's tab: compact on a phone, so both fit one row */
@@ -340,7 +412,7 @@
 </script>
 
 <svelte:head>
-	<title>{m.pageTitle}</title>
+	<title>{pageTitle}</title>
 </svelte:head>
 
 {#snippet settingsAction()}
@@ -364,7 +436,7 @@
 			</div>
 		{:else if !user}
 			{#if $notificationsStore.matching === 'off'}
-				<PageNotice title={m.unavailable.title} icon={Inbox}>
+				<PageNotice title={m.unavailable.title} icon={Inbox} headingId={unavailableHeading}>
 					<p>{m.unavailable.text}</p>
 					{#snippet actions()}
 						<a href={resolve('/(site)')} class={linkClass}>{m.unavailable.home}</a>
@@ -379,7 +451,7 @@
 				</PageNotice>
 			{/if}
 		{:else if load?.kind === 'off'}
-			<PageNotice title={m.unavailable.title} icon={Inbox}>
+			<PageNotice title={m.unavailable.title} icon={Inbox} headingId={unavailableHeading}>
 				<p>{m.unavailable.text}</p>
 				{#snippet actions()}
 					<a href={resolve('/(site)')} class={linkClass}>{m.unavailable.home}</a>
@@ -389,7 +461,7 @@
 			<PageNotice title={m.loadFailed.title} icon={ExclamationTriangle} tone="error">
 				<p>{load.reason === 'network' ? networkError() : m.loadFailed.text}</p>
 				{#snippet actions()}
-					<button type="button" class={linkClass} onclick={() => user && readDiscovery(user._id)}>
+					<button type="button" class={linkClass} onclick={retryDiscovery}>
 						<ArrowPath size="18" aria-hidden="true" />
 						{common.retry}
 					</button>
@@ -425,6 +497,18 @@
 									? m.review.intro(status.minScore)
 									: m.review.introNoMinimum}
 							</p>
+							{#if consentEnds && user?.domain}
+								<p class="card preset-tonal-warning p-3 text-sm" data-consent-ends>
+									<Rich text={m.review.consentEnds(formatDay(consentEnds))}>
+										{#snippet settings(text)}<a
+												class="anchor font-medium"
+												href="{resolve('/[domain]/admin?tab=perfect-job', {
+													domain: user?.domain ?? ''
+												})}#discovery">{text}</a
+											>{/snippet}
+									</Rich>
+								</p>
+							{/if}
 							{#if stopped}
 								<PageNotice
 									title={m.review.stopped}
@@ -445,6 +529,7 @@
 									<MatchDeck
 										side="candidate"
 										label={m.review.deck}
+										focusFirst={focusDeck}
 										key={(card: Opportunity) => card.job._id}
 										title={(card: Opportunity) => card.job.title}
 										load={loadJobs}
@@ -551,6 +636,9 @@
 							</ul>
 							{#if interests.next}
 								<div class="flex flex-wrap items-center gap-3">
+									<p class="sr-only" role="status">
+										{interests.more === 'loading' ? m.interests.loading : ''}
+									</p>
 									<button
 										type="button"
 										class={[
@@ -572,16 +660,22 @@
 								class="card preset-outlined-surface-200-800 space-y-2 bg-surface-50-950 p-6 text-center"
 								data-interests-empty
 							>
-								<h3 class="text-lg font-bold">{m.interests.empty.title}</h3>
+								<h3
+									tabindex="-1"
+									class="rounded-base text-lg font-bold outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+								>
+									{m.interests.empty.title}
+								</h3>
 								<p class="mx-auto max-w-md text-surface-700-300">{m.interests.empty.text}</p>
 							</div>
 						{:else if interests.kind === 'error'}
 							<div class="card preset-tonal-error space-y-3 p-4" role="alert">
 								<p class="text-sm">{interests.message}</p>
 								<button
+									id={interestsRetry}
 									type="button"
 									class="btn preset-filled-error-500 min-h-11"
-									onclick={readInterests}
+									onclick={() => readInterests(true)}
 								>
 									<ArrowPath size="18" aria-hidden="true" />
 									{common.retry}

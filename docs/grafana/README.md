@@ -63,6 +63,12 @@ Variables), in the three dashboards.
   `GET /domain/:name`, scans for `/domain/wp-login.php` included.
 - **"What the site holds"** is empty for a stage until its API runs a version with
   `portfolio.records`, and while `OTEL_METRICS_EXPORTER=none`.
+- **`unmatched` 404s are not all scanners.** While `MATCHING` is off its routes are not registered,
+  and the web client still asks once whether matching is available: `GET /me/notifications` from
+  the header of every signed-in page load (never again in that page once it answered 404), `GET
+  /discovery` from the admin page, and `GET /me/notifications` from the private page of a job and
+  the inbox (`/opportunities`) read signed out. Those count as `route="unmatched"`, `status="404"` (the API cannot tell them from a
+  route that never existed).
 
 ## Changing a dashboard
 

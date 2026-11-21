@@ -4,11 +4,13 @@ On the private page of a job proposed to the candidate (`access: 'feed'` of GET
 /opportunities/jobs/:id): their score of it against their own criteria, their minimum, how it does
 on each criterion (the travel times credited), whether its recruiter is interested in them (never
 who they are: decision 17), and their answer (decision 11: Interested or Pass), given here or in
-the deck of /opportunities and changed by answering again until both are interested; an answer
-given here can be undone within MATCHING_LIMITS.undoMinutes (the API says when it no longer can:
-the latest answer, the first on that job). An answer that makes a mutual interest, or that finds
-the job no longer proposed, asks the page to read the job again (`onChange`). What happened is said
-in a polite live region (inside the page, main#page); a failure in an alert.
+the deck of /opportunities and changed by answering again until both are interested. Undo is
+offered within MATCHING_LIMITS.undoMinutes only for the first answer on that job given here, on a
+page that read none (`undoableHere`: the API undoes no other); one it refuses all the same (an
+answer given and undone in the deck before the page read the job) is said, in sight. An answer that
+makes a mutual interest, or that finds the job no longer proposed (with why), asks the page to read
+the job again (`onChange`): the page keeps this section meanwhile and moves the focus once read.
+What happened is said in a polite live region (inside the page, main#page); a failure in an alert.
 -->
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
@@ -22,7 +24,12 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 		type DecisionFailure,
 		type OpportunityScore
 	} from '#services/matching.ts';
-	import { answerOpportunity, undoOpen, undoOpportunityAnswer } from '#services/opportunities.ts';
+	import {
+		answerOpportunity,
+		undoableHere,
+		undoOpen,
+		undoOpportunityAnswer
+	} from '#services/opportunities.ts';
 	import { refreshNotifications } from '#services/notifications.ts';
 	import { m } from './FeedAnswer.messages.ts';
 
@@ -31,6 +38,7 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 		score,
 		interested,
 		decision: initial,
+		headingId,
 		onChange
 	}: {
 		jobId: string;
@@ -40,31 +48,51 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 		interested: boolean;
 		/** What they answered so far (null: nothing yet) */
 		decision: MatchDecision | null;
+		/** Its heading's id: the page moves the focus to it once it read the job again */
+		headingId?: string;
 		/**
 		 * The job is to be read again: `mutual` (both are interested now), `gone` (no longer
-		 * proposed, or the answer cannot be given anymore), `signed-out`
+		 * proposed, or the answer cannot be given anymore: `reason` says why), `signed-out`
 		 */
-		onChange: (why: 'mutual' | 'gone' | 'signed-out') => void;
+		onChange: (why: 'mutual' | 'gone' | 'signed-out', reason?: string) => void;
 	} = $props();
 
 	const uid = $props.id();
+	let titleId = $derived(headingId ?? `${uid}-heading`);
 	const undoId = `${uid}-undo`;
-	// What the page read, changed here from then on (the page mounts it again for each read)
-	let decision = $state<MatchDecision | null>(untrack(() => initial));
-	/** When an answer was given here (milliseconds): Undo is offered within its window */
+	const answerId = `${uid}-answer`;
+	// What the page read (the page mounts this again for each read)
+	const loaded = untrack(() => initial);
+	// Changed here from then on
+	let decision = $state<MatchDecision | null>(loaded);
+	/** An answer, or an undo, was given here: no later answer is the first on the job */
+	let answeredHere = false;
+	/** When an answer that can be undone was given here (milliseconds): Undo within its window */
 	let answeredAt = $state<number | null>(null);
 	let now = $state(Date.now());
 	let busy = $state(false);
+	/** The page reads the job again (onChange): nothing more is sent from here */
+	let handedOff = $state(false);
 	let alert = $state('');
 	let announcement = $state('');
 	let passed = $derived(!!score && score.score >= score.minScore);
 	let showUndo = $derived(undoOpen(answeredAt, now));
+	let disabled = $derived(busy || handedOff);
 
-	// Undo goes once its window ends
+	const focusAnswer = () => document.getElementById(answerId)?.focus({ preventScroll: true });
+
+	// Undo goes once its window ends; the focus it had goes to the answer's sentence
 	$effect(() => {
 		if (answeredAt === null) return;
 		const left = answeredAt + UNDO_WINDOW_MS - Date.now();
-		const timer = setTimeout(() => (now = Date.now()), Math.max(left + 100, 0));
+		const timer = setTimeout(
+			() => {
+				const hadFocus = document.activeElement?.id === undoId;
+				now = Date.now();
+				if (hadFocus) void tick().then(focusAnswer);
+			},
+			Math.max(left + 100, 0)
+		);
 		return () => clearTimeout(timer);
 	});
 
@@ -74,25 +102,35 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 		announcement = text;
 	}
 
+	/** The page reads the job again: what is shown stays meanwhile, and takes no answer */
+	function handOff(why: 'mutual' | 'gone' | 'signed-out', reason?: string) {
+		handedOff = true;
+		answeredAt = null;
+		onChange(why, reason);
+	}
+
 	/** What a failure does here: the page reads the job again, or it is said */
-	function failed(failure: DecisionFailure, action: 'decide' | 'undo') {
+	async function failed(failure: DecisionFailure, action: 'decide' | 'undo') {
 		switch (failure.kind) {
 			case 'signed-out':
-				onChange('signed-out');
+				handOff('signed-out');
 				return;
 			case 'mutual':
-				onChange('mutual');
+				handOff('mutual');
 				return;
 			case 'gone':
 			case 'not-proposed':
 			case 'off':
 			case 'job-gone':
-				onChange('gone');
+				handOff('gone', failure.message);
 				return;
 			case 'final':
+				// What the page could not know (an answer undone elsewhere before): said in sight, Undo
+				// gone, the focus on the answer's sentence
 				answeredAt = null;
-				void say(failure.message);
-				document.getElementById(`${uid}-answer`)?.focus({ preventScroll: true });
+				alert = failure.message;
+				await tick();
+				focusAnswer();
 				return;
 			default:
 				alert = failure.message;
@@ -101,32 +139,34 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 	}
 
 	async function answer(next: MatchDecision) {
-		if (busy) return;
+		if (disabled) return;
 		busy = true;
 		alert = '';
 		const result = await answerOpportunity(jobId, next);
 		busy = false;
 		void refreshNotifications();
 		if (!result.ok) {
-			failed(result.failure, 'decide');
+			await failed(result.failure, 'decide');
 			return;
 		}
 		if (result.match) {
-			void say(m.mutual);
-			onChange('mutual');
+			// The page reads the job again and shows the mutual interest, its heading focused
+			handOff('mutual');
 			return;
 		}
+		const undoable = undoableHere(loaded, answeredHere);
+		answeredHere = true;
 		decision = result.decision;
-		answeredAt = Date.now();
-		now = answeredAt;
+		answeredAt = undoable ? Date.now() : null;
+		now = Date.now();
 		void say(result.decision === 'interested' ? m.saidInterested : m.saidPass);
 		// The button pressed is gone: the answer's sentence takes the focus
 		await tick();
-		document.getElementById(`${uid}-answer`)?.focus({ preventScroll: true });
+		focusAnswer();
 	}
 
 	async function undoAnswer() {
-		if (busy) return;
+		if (disabled) return;
 		if (!undoOpen(answeredAt, Date.now())) {
 			now = Date.now();
 			return;
@@ -136,14 +176,14 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 		const result = await undoOpportunityAnswer(jobId);
 		busy = false;
 		if (!result.ok) {
-			failed(result.failure, 'undo');
+			await failed(result.failure, 'undo');
 			return;
 		}
 		decision = result.decision;
 		answeredAt = null;
 		void say(m.undone);
 		await tick();
-		document.getElementById(`${uid}-answer`)?.focus({ preventScroll: true });
+		focusAnswer();
 	}
 
 	/** A button's label wraps rather than run past it on a narrow phone (in French) */
@@ -152,12 +192,18 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 
 <section
 	class="card preset-outlined-surface-200-800 space-y-4 bg-surface-50-950 p-4 sm:p-6"
-	aria-labelledby="{uid}-heading"
+	aria-labelledby={titleId}
 	data-feed-answer={decision ?? 'none'}
 >
 	<p class="sr-only" aria-live="polite">{announcement}</p>
 	<div class="flex flex-wrap items-center gap-2">
-		<h2 id="{uid}-heading" class="text-lg font-bold">{m.heading}</h2>
+		<h2
+			id={titleId}
+			tabindex="-1"
+			class="rounded-base text-lg font-bold outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+		>
+			{m.heading}
+		</h2>
 		{#if interested}
 			<span class="badge preset-filled-primary-500 gap-1.5">
 				<HandThumbUp size="14" aria-hidden="true" />
@@ -197,7 +243,7 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 			<p class="card preset-tonal-error p-3 text-sm" role="alert">{alert}</p>
 		{/if}
 		<p
-			id="{uid}-answer"
+			id={answerId}
 			tabindex="-1"
 			class="rounded-base outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
 			data-answer
@@ -208,8 +254,8 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 			{#if decision !== 'pass'}
 				<button
 					type="button"
-					class={[button, 'preset-tonal', busy ? 'opacity-60' : '']}
-					aria-disabled={busy}
+					class={[button, 'preset-tonal', disabled ? 'opacity-60' : '']}
+					aria-disabled={disabled}
 					onclick={() => answer('pass')}
 				>
 					<XMark size="20" class="shrink-0" aria-hidden="true" />
@@ -219,8 +265,8 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 			{#if decision !== 'interested'}
 				<button
 					type="button"
-					class={[button, 'preset-filled-primary-500', busy ? 'opacity-60' : '']}
-					aria-disabled={busy}
+					class={[button, 'preset-filled-primary-500', disabled ? 'opacity-60' : '']}
+					aria-disabled={disabled}
 					onclick={() => answer('interested')}
 				>
 					<HandThumbUp size="20" class="shrink-0" aria-hidden="true" />
@@ -231,8 +277,8 @@ in a polite live region (inside the page, main#page); a failure in an alert.
 				<button
 					id={undoId}
 					type="button"
-					class={['btn preset-tonal min-h-11 ms-auto', busy ? 'opacity-60' : '']}
-					aria-disabled={busy}
+					class={['btn preset-tonal min-h-11 ms-auto', disabled ? 'opacity-60' : '']}
+					aria-disabled={disabled}
 					onclick={undoAnswer}
 				>
 					<ArrowUturnLeft size="16" class="shrink-0" aria-hidden="true" />

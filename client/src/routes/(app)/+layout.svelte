@@ -8,7 +8,9 @@
 	import { toaster } from '#services/toaster.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { isCurrentSection, recordSpaceShown } from '#services/account.ts';
+	import { notificationsStore } from '#services/notifications.ts';
 	import { sessionCheckedStore } from '#services/stores/index.ts';
+	import { SITE_NAME } from '#components/legal/legalDocuments.ts';
 	import { untrack, type Snippet } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/env';
@@ -27,9 +29,13 @@
 	// and light/dark switches close the page, next to the legal links.
 	let { children }: { children: Snippet } = $props();
 
+	// The inbox is named only while matching answers (GET /me/notifications): before, and while it
+	// is off (the page then says only that it is not available), the site's name alone
 	let header = $derived(
 		page.route.id === '/(app)/opportunities'
-			? m.opportunities
+			? $notificationsStore.matching === 'on'
+				? m.opportunities
+				: { title: SITE_NAME, subtitle: undefined }
 			: isCurrentSection(page.url.pathname, '/opportunities')
 				? m.opportunity
 				: m.recruiter

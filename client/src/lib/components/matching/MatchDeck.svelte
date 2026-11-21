@@ -86,7 +86,8 @@ whether more candidates come, never how many.
 		undo,
 		card,
 		empty,
-		onStop
+		onStop,
+		focusFirst = false
 	}: {
 		side: MatchSide;
 		/** The deck's accessible name */
@@ -108,6 +109,11 @@ whether more candidates come, never how many.
 		 * focus there
 		 */
 		onStop?: (failure: DecisionFailure) => void;
+		/**
+		 * Mounted in place of a control that went (the page's Retry): what it shows first takes the
+		 * focus once read (read at mount only)
+		 */
+		focusFirst?: boolean;
 	} = $props();
 
 	const uid = $props.id();
@@ -277,6 +283,7 @@ whether more candidates come, never how many.
 	}
 
 	onMount(() => {
+		focusPending = untrack(() => focusFirst);
 		read(true);
 	});
 

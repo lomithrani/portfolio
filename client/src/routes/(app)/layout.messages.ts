@@ -14,7 +14,10 @@ export const m = defineMessages({
 			fr: 'Privée, pour les personnes concernées'
 		}
 	},
-	/** The inbox (matching): neutral, said the same while matching is off (the page says nothing more) */
+	/**
+	 * The inbox (matching), while matching answers: neutral (while it is off, or before it answers,
+	 * the header is the site's name alone and the page says only that it is not available)
+	 */
 	opportunities: {
 		title: { en: 'Opportunities', fr: 'Opportunités' },
 		subtitle: {

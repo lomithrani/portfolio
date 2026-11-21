@@ -1,10 +1,19 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { MATCHING_LIMITS } from 'portfolio-common';
+import {
+	DISCOVERY_CONSENT_MONTHS,
+	DISCOVERY_CONSENT_RENEWAL_DAYS,
+	MATCHING_LIMITS
+} from 'portfolio-common';
 import {
 	appendInterests,
+	consentEndsSoon,
+	interestFailure,
+	MATCH_NOT_FOUND,
 	opportunitiesView,
 	opportunitiesViewSearch,
 	reviewState,
+	undoableHere,
 	undoOpen,
 	unseenInterests
 } from '../opportunities';
@@ -62,6 +71,80 @@ describe('reviewState', () => {
 		expect(reviewState(status(), false)).toBe('no-portfolio');
 		expect(reviewState(status({ state: 'off', missing: ['portfolio', 'terms'] }), true)).toBe(
 			'no-portfolio'
+		);
+	});
+});
+
+describe('consentEndsSoon', () => {
+	const DAY = 24 * 60 * 60_000;
+	const now = new Date('2026-11-21T10:00:00.000Z');
+	/** Given `daysLeft` days before it lapses (DISCOVERY_CONSENT_MONTHS after it was given) */
+	const givenWith = (daysLeft: number): DiscoveryStatus => {
+		const expires = new Date(now.getTime() + daysLeft * DAY);
+		const enabled = new Date(expires);
+		enabled.setUTCMonth(enabled.getUTCMonth() - DISCOVERY_CONSENT_MONTHS);
+		return {
+			state: 'on',
+			enabledAt: enabled.toISOString(),
+			consentExpiresAt: expires.toISOString(),
+			missing: [],
+			minScore: 70,
+			card: { headline: null, hiddenExperiences: [] }
+		};
+	};
+
+	it('says when the consent ends in its last days, when it can be confirmed again', () => {
+		const soon = givenWith(DISCOVERY_CONSENT_RENEWAL_DAYS - 2);
+		expect(consentEndsSoon(soon, now)).toBe(soon.consentExpiresAt);
+	});
+
+	it('says nothing while it holds for a while yet, nor where the inbox shows no deck', () => {
+		expect(consentEndsSoon(givenWith(DISCOVERY_CONSENT_RENEWAL_DAYS + 5), now)).toBeNull();
+		const soon = givenWith(3);
+		// Paused or ended: the inbox says why there is no deck instead
+		expect(consentEndsSoon({ ...soon, missing: ['schedule'] }, now)).toBeNull();
+		expect(consentEndsSoon({ ...soon, state: 'lapsed' }, now)).toBeNull();
+		expect(consentEndsSoon({ ...soon, state: 'off', enabledAt: null }, now)).toBeNull();
+		expect(consentEndsSoon({ ...soon, consentExpiresAt: null }, now)).toBeNull();
+	});
+});
+
+describe('undoableHere', () => {
+	it('offers Undo on a job’s page only for the first answer on the job, given there', () => {
+		// The page read no answer, and gave none: this one is the first
+		expect(undoableHere(null, false)).toBe(true);
+	});
+
+	it('never for an answer that replaces another (the API undoes only the first: DECISION_FINAL)', () => {
+		// The page read an answer given in the deck: answering again here changes it, never undone
+		expect(undoableHere('interested', false)).toBe(false);
+		expect(undoableHere('pass', false)).toBe(false);
+		// An answer (or its undo) was given here before
+		expect(undoableHere(null, true)).toBe(false);
+	});
+});
+
+describe('interestFailure', () => {
+	it('keeps the API’s body of a mutual interest gone the same as server/protocol.ts', () => {
+		const protocol = readFileSync(
+			new URL('../../../../server/protocol.ts', import.meta.url),
+			'utf8'
+		);
+		expect(protocol).toContain(`export const MATCH_NOT_FOUND = '${MATCH_NOT_FOUND}'`);
+	});
+
+	it('reads the API’s answers: gone, matching off, signed out, no answer, another failure', () => {
+		expect(interestFailure({ status: 404, value: MATCH_NOT_FOUND })).toBe('gone');
+		expect(interestFailure({ status: 404, value: ` ${MATCH_NOT_FOUND}\n` })).toBe('gone');
+		// The 404 of a route that does not exist: matching was turned off
+		expect(interestFailure({ status: 404, value: 'NOT_FOUND' })).toBe('off');
+		expect(interestFailure({ status: 401, value: 'Unauthorized' })).toBe('signed-out');
+		expect(interestFailure({ status: 503, value: new TypeError('Failed to fetch') })).toBe(
+			'network'
+		);
+		expect(interestFailure({ status: 500, value: 'Internal Server Error' })).toBe('error');
+		expect(interestFailure({ status: 403, value: 'Create your recruiter space first' })).toBe(
+			'error'
 		);
 	});
 });

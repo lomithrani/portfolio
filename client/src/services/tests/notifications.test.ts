@@ -4,6 +4,7 @@ import {
 	initialNotifications,
 	nextNotifications,
 	notificationsAnswer,
+	notificationsWanted,
 	unseenBadgeText,
 	unseenLabel,
 	type NotificationsState
@@ -45,6 +46,19 @@ describe('notificationsAnswer', () => {
 		).toEqual({ kind: 'failed' });
 		expect(notificationsAnswer(null, 'not json')).toEqual({ kind: 'failed' });
 		expect(notificationsAnswer(null, null)).toEqual({ kind: 'failed' });
+	});
+});
+
+describe('notificationsWanted', () => {
+	it('asks while matching answers or before it did, never again once it was found off', () => {
+		expect(notificationsWanted(initialNotifications)).toBe(true);
+		expect(notificationsWanted({ matching: 'on', unseen: { candidate: 1, recruiter: 0 } })).toBe(
+			true
+		);
+		// Each read would be one more 404 of a route that does not exist, on every page
+		expect(notificationsWanted({ matching: 'off', unseen: { candidate: 0, recruiter: 0 } })).toBe(
+			false
+		);
 	});
 });
 
