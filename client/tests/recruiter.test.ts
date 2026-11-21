@@ -28,7 +28,7 @@ import {
 	matchingMessages,
 	withLocale
 } from 'portfolio-common';
-import { TERMS_REQUIRED, inAnHour, stubApi } from './support/api';
+import { TERMS_REQUIRED, expectMatchingMode, inAnHour, stubApi } from './support/api';
 import { stubGoogle } from './support/google';
 import { jobFormFieldOf } from '../src/services/jobPosting';
 import { stubAddressSearch } from './support/addresses';
@@ -1612,8 +1612,11 @@ test.describe('proposing a job to candidates (matching)', () => {
 	test('a job created open is proposed from the editor, sent for review, then stopped from its page', async ({
 		page
 	}) => {
+		const matching = await matchingIsOn();
+		// In CI, the leg's mode (E2E_MATCHING): a skip there would hide that matching was never tested
+		expectMatchingMode({ matching });
 		test.skip(
-			!(await matchingIsOn()),
+			!matching,
 			'Matching is off in the API under test (GET /me/notifications answers 404): run it with MATCHING=true'
 		);
 		const title = `Matching engineer ${tag}`;
