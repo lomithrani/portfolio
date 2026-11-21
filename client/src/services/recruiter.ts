@@ -32,18 +32,26 @@ const asDate = (value: Date | string | null | undefined): Date | undefined => {
 };
 
 /**
- * '3 Nov 2026' (in the browser's time zone by default); '' when missing or invalid. Eden
+ * A date written in a sentence, kept on one line (French typography keeps the day, the month and
+ * the year together, and so does English): its spaces become no-break spaces
+ */
+export const keptTogether = (text: string): string => text.replace(/ /g, '\u00a0');
+
+/**
+ * '3 Nov 2026', kept on one line (in the browser's time zone by default); '' when missing or invalid. Eden
  * Treaty turns the API's ISO strings into Dates: both are accepted.
  */
 export const formatDay = (value: Date | string | null | undefined, timeZone?: string): string => {
 	const date = asDate(value);
 	if (!date) return '';
-	return date.toLocaleDateString(intlLocale(LOCALE), {
-		day: 'numeric',
-		month: 'short',
-		year: 'numeric',
-		...(timeZone ? { timeZone } : {})
-	});
+	return keptTogether(
+		date.toLocaleDateString(intlLocale(LOCALE), {
+			day: 'numeric',
+			month: 'short',
+			year: 'numeric',
+			...(timeZone ? { timeZone } : {})
+		})
+	);
 };
 
 /** The ISO string of a date, for <time datetime>; '' when missing or invalid */

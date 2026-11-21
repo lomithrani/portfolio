@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { JobStatus } from 'portfolio-common';
+import { withLocale, type JobStatus } from 'portfolio-common';
 import {
 	DUPLICATE_PARAM,
 	countByStatus,
@@ -19,9 +19,13 @@ import { m } from '../recruiter.messages';
 const jobs = (...statuses: JobStatus[]) => statuses.map((status, index) => ({ id: index, status }));
 
 describe('dates', () => {
-	it('formats a day, from a Date or an ISO string', () => {
-		expect(formatDay(new Date('2026-11-03T10:00:00Z'), 'UTC')).toBe('3 Nov 2026');
-		expect(formatDay('2026-11-03T23:30:00Z', 'Europe/Paris')).toBe('4 Nov 2026');
+	it('formats a day, from a Date or an ISO string, kept on one line in a sentence', () => {
+		// No-break spaces: the day, the month and the year never break apart at a line's end
+		expect(formatDay(new Date('2026-11-03T10:00:00Z'), 'UTC')).toBe('3\u00a0Nov\u00a02026');
+		expect(formatDay('2026-11-03T23:30:00Z', 'Europe/Paris')).toBe('4\u00a0Nov\u00a02026');
+		expect(withLocale('fr', () => formatDay('2028-11-21T10:00:00Z', 'UTC'))).toBe(
+			'21\u00a0nov.\u00a02028'
+		);
 	});
 
 	it('gives nothing for a missing or invalid date', () => {

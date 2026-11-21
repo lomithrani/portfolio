@@ -31,6 +31,25 @@ export const m = defineMessages({
 				`${ownerName} demande aux recruteurs de terminer d'abord les étapes précédentes.`
 		}
 	},
+	/**
+	 * A toast for the recruiter of a mutual interest of matching, when the journey read again no
+	 * longer leads it here (the owner ended it, its job did, or matching was turned off) while the
+	 * page showed it: instead of the toasts above. Never a bare "match". Backed by:
+	 * server/services/mutualInterests.ts activeMutualInterest (none once ended or with MATCHING off),
+	 * server/services/workflowSteps/job.ts (the job step then to do, as anyone's)
+	 */
+	matchEnded: {
+		title: {
+			en: 'This page no longer holds your job',
+			fr: 'Cette page ne retient plus votre offre'
+		},
+		text: {
+			en: (ownerName: string) =>
+				`Your mutual interest with ${ownerName} no longer leads here: you go through the steps as anyone does.`,
+			fr: (ownerName: string) =>
+				`Votre intérêt réciproque avec ${ownerName} ne mène plus ici : vous passez par les étapes comme n'importe qui.`
+		}
+	},
 	/** The owner's preview */
 	own: {
 		en: 'This is your page for recruiters, as they see it. Its steps never stop you. <admin>Change the steps</admin>',

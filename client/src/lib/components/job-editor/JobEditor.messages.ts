@@ -271,8 +271,48 @@ export const m = defineMessages({
 		en: 'Leave it empty to keep the company anonymous.',
 		fr: "Laissez vide pour ne pas nommer l'entreprise."
 	},
-	/** After the number of openings */
-	positions: { en: 'positions', fr: 'postes' },
+
+	// --- Matching (Path 2): a job created open, proposed to candidates --------------------------
+
+	matching: {
+		/** The choice, for a job created open (POST /jobs's `matching`) */
+		label: { en: 'Propose it to candidates', fr: 'La proposer aux candidats' },
+		/**
+		 * Backed by: server/services/jobMatching.ts entersMatchingAtCreation (the company and a
+		 * description required, sent for review) and matchFeeds.ts (the candidates whose own criteria
+		 * it meets)
+		 */
+		hint: {
+			en: 'Candidates whose own criteria it meets see it, and you see their anonymous cards. A reviewer reads it first. It needs the company and a description.',
+			fr: "Les candidats dont elle remplit les critères la voient, et vous voyez leur fiche anonyme. Elle est d'abord relue. Elle doit indiquer l'entreprise et comporter une description."
+		},
+		/** The company's hint while "Propose it to candidates" is ticked (in place of `companyHint`) */
+		companyRequired: {
+			en: "Required to propose it to candidates: they see the company's name and decide whether they are interested before they know which recruiter you are.",
+			fr: "Obligatoire pour la proposer aux candidats : ils voient le nom de l'entreprise et disent s'ils sont intéressés avant de savoir quel recruteur vous êtes."
+		},
+		/** For a job not created open: the choice comes once it is */
+		later: {
+			en: 'Once it is open, you can propose it to candidates from its page.',
+			fr: 'Une fois ouverte, vous pourrez la proposer aux candidats depuis sa page.'
+		},
+		/**
+		 * The editor of a job description proposed to candidates now (open and accepted), kept open:
+		 * its terms are locked, what an edit changes is read again. Backed by:
+		 * server/services/matchingReviews.ts reviewSavedWithEdit
+		 */
+		inMatching: {
+			en: 'This job description is proposed to candidates: a change you save sends it back for review before they read it. Their answers and your mutual interests stay.',
+			fr: "Cette offre est proposée aux candidats : une modification enregistrée la renvoie en relecture avant qu'ils ne la lisent. Leurs réponses et vos intérêts réciproques restent."
+		},
+		/** The same, for a job put into matching that is not proposed now (in review, not accepted, on hold) */
+		inMatchingWaiting: {
+			en: 'You propose this job description to candidates: a change you save is read by a reviewer before any candidate sees it. Their answers and your mutual interests stay.',
+			fr: "Vous proposez cette offre aux candidats : une modification enregistrée est relue avant qu'un candidat ne la voie. Leurs réponses et vos intérêts réciproques restent."
+		},
+		/** 409 of a creation asked in matching (the jobs a recruiter may propose at once): created without it */
+		withoutIt: { en: 'Create it without proposing it', fr: 'La créer sans la proposer' }
+	},
 	descriptionIntro: {
 		en: 'The job, its team and its missions, as candidates will read them.',
 		fr: 'Le poste, son équipe et ses missions, tels que les candidats les liront.'

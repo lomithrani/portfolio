@@ -31,7 +31,8 @@
           { "context": "Lint, type-check, build" },
           { "context": "Server and client unit tests (MongoDB 7)" },
           { "context": "Server and client unit tests (MongoDB 9)" },
-          { "context": "Playwright end-to-end tests" }
+          { "context": "Playwright end-to-end tests (matching on)" },
+          { "context": "Playwright end-to-end tests (matching off)" }
         ]
       }
     }

@@ -121,6 +121,42 @@ export const m = defineMessages({
 			fr: (ownerName: string) =>
 				`Cette offre a été modifiée depuis que vous l'avez partagée : ${ownerName} lit toujours, et les étapes suivantes utilisent toujours, la version partagée.`
 		},
+		/**
+		 * The job of a mutual interest (matching), which the step holds while it lasts. Where the values
+		 * go, each rendered by its own snippet: `<job></job>` "Senior Engineer · Acme", the version the
+		 * owner said yes to; `<owner></owner>` the portfolio's name; `<time></time>` '20 Nov 2026'.
+		 * Never a bare "match" (it names the score). Backed by: server/services/workflowSteps/job.ts
+		 * (the job of the mutual interest, `matched`; the version said yes to in the invitation,
+		 * mutualInterestLines; 409 JOB_OF_MUTUAL_INTEREST for another job)
+		 */
+		matched: {
+			holds: {
+				en: 'You and <owner></owner> are both interested in <job></job> (since <time></time>): <owner></owner> reads the version they said yes to, linked in the meeting invitation.',
+				fr: "Depuis le <time></time>, l'intérêt est réciproque entre <owner></owner> et vous pour <job></job> : <owner></owner> lit la version sur laquelle il porte, dont le lien figure dans l'invitation au rendez-vous."
+			},
+			/** The same, when the day both became interested is not known (a date that does not read) */
+			holdsUndated: {
+				en: 'You and <owner></owner> are both interested in <job></job>: <owner></owner> reads the version they said yes to, linked in the meeting invitation.',
+				fr: "L'intérêt est réciproque entre <owner></owner> et vous pour <job></job> : <owner></owner> lit la version sur laquelle il porte, dont le lien figure dans l'invitation au rendez-vous."
+			},
+			noOther: {
+				en: 'This step holds that job while your mutual interest lasts: you cannot share another here.',
+				fr: "Cette étape retient cette offre tant que l'intérêt réciproque dure : vous ne pouvez pas en partager une autre ici."
+			},
+			/**
+			 * Not open (on hold: filled, closed or back to draft ends the mutual interest), which the line
+			 * above it says (jobStepNote). `<status>`: the link to its page, where its status is changed
+			 */
+			notOpen: {
+				en: 'The steps after this one wait until it is open again. <status>Change its status</status>',
+				fr: "Les étapes suivantes attendent qu'elle soit de nouveau ouverte. <status>Changer son statut</status>"
+			},
+			/** Open, but the recruiter has not accepted the terms of use in force (TermsAcceptance follows) */
+			terms: {
+				en: 'This page holds your job again once you accept the terms of use in force.',
+				fr: "Cette page retient de nouveau votre offre dès que vous acceptez les conditions d'utilisation en vigueur."
+			}
+		},
 		shareNewVersion: { en: 'Share the new version', fr: 'Partager la nouvelle version' },
 		sharing: { en: 'Sharing…', fr: 'Partage…' },
 		newVersionShared: { en: 'New version shared', fr: 'Nouvelle version partagée' },
@@ -197,28 +233,6 @@ export const m = defineMessages({
 			en: (ownerName: string) => `How your job does on what matters to ${ownerName}`,
 			fr: (ownerName: string) => `Votre offre face à ce qui compte pour ${ownerName}`
 		},
-		dealBreaker: { en: 'Deal-breaker', fr: 'Éliminatoire' },
-		commute: {
-			en: (ownerName: string) =>
-				`The commute is ${ownerName}'s travel time to your job's address, there and back, over a week.`,
-			fr: (ownerName: string) =>
-				`Le trajet est le temps que met ${ownerName} pour aller à l'adresse de votre offre et en revenir, sur une semaine.`
-		},
-		/** Who the travel times come from: on a site without public transport, then with each service it can ask */
-		commuteSources: {
-			none: {
-				en: 'Travel times: <ign>Géoplateforme (IGN)</ign>.',
-				fr: 'Temps de trajet : <ign>Géoplateforme (IGN)</ign>.'
-			},
-			here: {
-				en: 'Travel times: <ign>Géoplateforme (IGN)</ign> and, by public transport, <here>HERE</here>.',
-				fr: 'Temps de trajet : <ign>Géoplateforme (IGN)</ign> et, en transports en commun, <here>HERE</here>.'
-			},
-			transitous: {
-				en: 'Travel times: <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> and <osm>OpenStreetMap contributors</osm>.',
-				fr: "Temps de trajet : <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> et <osm>les contributeurs d'OpenStreetMap</osm>."
-			}
-		},
 		dealBreakerMissed: {
 			en: (ownerName: string) =>
 				`A job that does not match a deal-breaker of ${ownerName}'s scores 0, whatever the rest.`,
@@ -243,6 +257,36 @@ export const m = defineMessages({
 		pickAnother: {
 			en: 'You can also pick another job in the step above.',
 			fr: "Vous pouvez aussi choisir une autre offre à l'étape ci-dessus."
+		},
+		/**
+		 * The job of a mutual interest (matching): its score is the one it had when both became
+		 * interested (`frozenAt`, '20 Nov 2026' in a <time>), frozen while their mutual interest lasts.
+		 * Backed by: server/services/workflowSteps/jobMatch.ts (`frozen`: the mutual interest's score,
+		 * minimum and outcomes, whatever the owner's criteria became since)
+		 */
+		frozen: {
+			on: {
+				en: (day: string) => `Score when you were both interested, on <time>${day}</time>`,
+				fr: (day: string) => `Note au moment de l'intérêt réciproque, le <time>${day}</time>`
+			},
+			undated: {
+				en: 'Score when you were both interested',
+				fr: "Note au moment de l'intérêt réciproque"
+			},
+			holds: {
+				en: 'This score no longer changes while your mutual interest lasts.',
+				fr: "Cette note ne change plus tant que l'intérêt réciproque dure."
+			},
+			/**
+			 * A frozen score under its minimum (only a record not written by a mutual interest can hold
+			 * one: the step fails closed): nothing here changes it. Backed by:
+			 * server/services/workflowSteps/jobMatch.ts (`failed` under the frozen minimum),
+			 * server/services/matches.ts endMatch (the job step is then to do, as anyone's)
+			 */
+			under: {
+				en: 'This score, kept from when you were both interested, is under the minimum: to share another job here, end your mutual interest first.',
+				fr: "Cette note, gardée depuis l'intérêt réciproque, est sous le minimum : pour partager une autre offre ici, mettez d'abord fin à l'intérêt réciproque."
+			}
 		},
 		/** A new job description copied from the one scored (its terms are locked) */
 		duplicate: { en: 'Duplicate this job description', fr: 'Dupliquer cette offre' },

@@ -80,6 +80,15 @@ export const m = defineMessages({
 		fr: "L'accès à votre agenda est actif. Les visiteurs peuvent réserver les créneaux disponibles et les événements sont ajoutés à votre Google Agenda."
 	},
 	disconnect: { en: 'Disconnect', fr: 'Déconnecter' },
+	/**
+	 * While the owner is visible to recruiters (discovery, Path 2): the calendar connected with a
+	 * meeting type recruiters can book is a requirement of it, which pauses without them
+	 * (CLAUDE.md "Matching")
+	 */
+	pausesDiscovery: {
+		en: 'You are visible to recruiters: disconnecting your calendar, or leaving no meeting type turned on with hours, pauses that until your calendar is connected and a meeting type is turned on with hours.',
+		fr: "Vous êtes visible des recruteurs : si vous déconnectez votre agenda, ou ne laissez aucun type de rendez-vous activé avec des horaires, vous ne le serez plus jusqu'à ce que votre agenda soit connecté et qu'un type de rendez-vous soit activé avec des horaires."
+	},
 	accessRefused: {
 		en: "Google no longer accepts this app's access to your calendar: it was revoked or has expired. Visitors cannot book meetings until you reconnect.",
 		fr: "Google n'accepte plus l'accès de cette application à votre agenda : il a été révoqué ou a expiré. Les visiteurs ne peuvent plus réserver de rendez-vous tant que vous ne l'avez pas reconnecté."
