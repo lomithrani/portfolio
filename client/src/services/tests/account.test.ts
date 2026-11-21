@@ -232,6 +232,14 @@ describe('spaceToRecord', () => {
 		).toBeNull();
 		expect(spaceToRecord(both, '/opportunitiesboard')).toBeNull();
 	});
+
+	it("records no space on the reviewers' page of matching, under /recruiter", () => {
+		const user = { recruiter: true, domain: 'bo.both', activeMode: 'candidate' as const };
+		expect(spaceToRecord(user, '/recruiter/reviews')).toBeNull();
+		expect(spaceToRecord(user, '/recruiter/reviews/')).toBeNull();
+		// A page that only starts like it is the recruiter space's
+		expect(spaceToRecord(user, '/recruiter/reviewsboard')).toBe('recruiter');
+	});
 });
 
 describe('recordSpaceShown', () => {

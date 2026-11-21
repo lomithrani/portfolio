@@ -46,7 +46,10 @@
 // booked), and the counters of the day's discovery opt-ins, of the hour's feed reads and of the
 // day's decisions. They are proposed only by an API run with MATCHING=true, and with
 // GOOGLE_CLIENT_SECRET set (any value: Calendar counts as configured; nothing asks Google unless a
-// page books or lists slots, which the tests answer in the browser).
+// page books or lists slots, which the tests answer in the browser). The reviewer
+// 'e2e.reviewer@example.com' (fixed id 65e2e0000000000000000005, no portfolio, no recruiter space)
+// reviews the jobs put into matching for client/tests/matching-review.test.ts, on an API whose
+// MATCHING_REVIEWERS lists it: that file decides on the jobs it tags alone.
 // This file loads nothing that imports server/env.ts (CI seeds with MONGO_URL and JWT_SECRET only):
 // the review version of the jobs in matching comes from server/services/jobVersion.ts, never from
 // jobMatching.ts.
@@ -200,6 +203,22 @@ await User.findOneAndUpdate(
       _id: new Types.ObjectId('65e2e0000000000000000002'),
       name: 'E2E',
       surname: 'Candidate'
+    }
+  },
+  { upsert: true }
+);
+
+// A reviewer of matching: no portfolio, no recruiter space. Its id is fixed (E2E_REVIEWER_ID of
+// client/tests/support/owner.ts signs its session); the API under test lists its email in
+// MATCHING_REVIEWERS (CI's e2e job does) for client/tests/matching-review.test.ts, which reads the
+// jobs waiting for a review and decides on its own tagged jobs only
+await User.findOneAndUpdate(
+  { email: 'e2e.reviewer@example.com' },
+  {
+    $setOnInsert: {
+      _id: new Types.ObjectId('65e2e0000000000000000005'),
+      name: 'Remy',
+      surname: 'Reviewer'
     }
   },
   { upsert: true }
@@ -394,8 +413,9 @@ await RateLimitCounter.deleteMany({ _id: /^(job-share|discovery-grant|matching-f
 
 console.log(
   `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate, ` +
-    `and for matching: ${matchCandidates.map((candidate) => candidate.domain).join(', ')} and the jobs ` +
-    matchingJobs.map((job) => `"${job.title}"`).join(', ')
+    `and for matching: ${matchCandidates.map((candidate) => candidate.domain).join(', ')}, the jobs ` +
+    matchingJobs.map((job) => `"${job.title}"`).join(', ') +
+    ' and the e2e reviewer'
 );
 await mongoose.disconnect();
 process.exit(0);

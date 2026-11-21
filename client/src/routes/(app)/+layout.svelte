@@ -30,15 +30,19 @@
 	let { children }: { children: Snippet } = $props();
 
 	// The inbox is named only while matching answers (GET /me/notifications): before, and while it
-	// is off (the page then says only that it is not available), the site's name alone
+	// is off (the page then says only that it is not available), the site's name alone. The
+	// reviewers' page of matching (/recruiter/reviews) has the site's name alone too, whoever reads
+	// it: the page says what it is only to a reviewer, and is no space of theirs
 	let header = $derived(
 		page.route.id === '/(app)/opportunities'
 			? $notificationsStore.matching === 'on'
 				? m.opportunities
 				: { title: SITE_NAME, subtitle: undefined }
-			: isCurrentSection(page.url.pathname, '/opportunities')
-				? m.opportunity
-				: m.recruiter
+			: page.route.id === '/(app)/recruiter/reviews'
+				? { title: SITE_NAME, subtitle: undefined }
+				: isCurrentSection(page.url.pathname, '/opportunities')
+					? m.opportunity
+					: m.recruiter
 	);
 
 	$effect(() => {

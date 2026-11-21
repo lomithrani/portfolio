@@ -19,7 +19,7 @@ export const SLOT_UNAVAILABLE = 'This slot is no longer available'
 /** 409 of a claim by an account that has a portfolio: /already own/ in client/src/services/account.ts */
 export const ALREADY_OWNS_DOMAIN = 'You already own a domain'
 
-/** 409 of an edit that started from an older version of a posting: `JOB_CHANGED` of client/src/lib/components/job-editor/JobEditor.svelte, which then offers to reload; also of PUT /jobs/:id/matching for a posting edited meanwhile, which `switchFailure` of client/src/services/recruiterMatching.ts matches (its panel offers to reload) */
+/** 409 of an edit that started from an older version of a posting: `JOB_CHANGED` of client/src/lib/components/job-editor/JobEditor.svelte, which then offers to reload; also of PUT /jobs/:id/matching for a posting edited meanwhile, which `switchFailure` of client/src/services/recruiterMatching.ts matches (its panel offers to reload), and of PUT /matching/reviews/:id on a version no longer the posting's, which `reviewFailure` of client/src/services/matchingReviews.ts matches (the reviewers' page reads the list again) */
 export const JOB_CHANGED = 'This job posting was changed since you opened it'
 
 /** 409 of an edit that changes the terms (the fields the perfect job scores) of a posting opened before: `JOB_TERMS_LOCKED` of client/src/lib/components/job-editor/JobEditor.svelte, which then offers to reload it or to duplicate it */
@@ -34,8 +34,11 @@ export const MATCHING_NEEDS_OPEN_JOB = 'Only an open job description can be prop
 
 /**
  * 403 of the reviewers' routes of matching (GET /matching/reviews, PUT /matching/reviews/:id) for
- * an account that is not one of MATCHING_REVIEWERS. No screen calls them yet: the review screen
- * will match it. The 409 of a review of a version that is no longer the posting's is JOB_CHANGED
+ * an account that is not one of MATCHING_REVIEWERS. The reviewers' page
+ * (client/src/routes/(app)/recruiter/reviews, client/src/services/matchingReviews.ts) reads any
+ * 403 there, as the 404 of matching off, as "not available", without matching the body. The 409 of
+ * a review of a version that is no longer the posting's is JOB_CHANGED, which that page matches
+ * (it reads the list again)
  */
 export const NOT_A_MATCHING_REVIEWER = 'Only the reviewers of matching can do this'
 

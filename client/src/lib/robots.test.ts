@@ -155,6 +155,8 @@ describe('pages search engines are asked not to list', () => {
 			'/(app)/recruiter/jobs/[id]/edit',
 			// The anonymous cards of the candidates proposed for a job (matching)
 			'/(app)/recruiter/jobs/[id]/candidates',
+			// The jobs waiting for a reviewer of matching
+			'/(app)/recruiter/reviews',
 			'/(app)/opportunities/[id]'
 		]) {
 			expect({ route, noindex: isNoindexRoute(route) }).toEqual({ route, noindex: true });
@@ -165,6 +167,7 @@ describe('pages search engines are asked not to list', () => {
 		expect(NOINDEX_ROUTES.every((route) => isNoindexRoute(route))).toBe(true);
 		expect(isNoindexRoute('/[domain]x')).toBe(false);
 		expect(isNoindexRoute('/(app)/recruiter/jobsboard')).toBe(false);
+		expect(isNoindexRoute('/(app)/recruiter/reviewsboard')).toBe(false);
 		expect(isNoindexRoute('/(site)/accounts')).toBe(false);
 		expect(isNoindexRoute('/(app)/opportunitiesboard')).toBe(false);
 		expect(isNoindexRoute('/')).toBe(false);

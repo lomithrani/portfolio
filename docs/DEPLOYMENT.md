@@ -699,8 +699,9 @@ matches, or sends an edited job back for review. The flag is read when the API s
 takes effect at its next deploy. The startup line `Running at ...` says
 `"matching":"on (1 job reviewer)"` (how many reviewers, never who) or why it is off.
 
-- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
-  calls its routes yet: they are for the screens that come next, and for the tests.
+- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land (its
+  screens read its routes; with it unset they show nothing of it), and `MATCHING_REVIEWERS` to the
+  accounts that review the jobs put into matching there.
 - **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
   and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
   assessment is signed: a candidate's consent must point to published texts. Public transport
@@ -721,9 +722,12 @@ candidate) and decides with `PUT /matching/reviews/:id`
 `{ decision: 'approve' | 'reject', reason?, version }`, on the version read (an edit since: 409).
 Refuse copies of a job that differ in one term, the pay or the office: each copy's cards would
 tell its recruiter the candidates' floors or areas.
-No screen does it yet: until the review screen ships, a reviewer calls the API signed in (the
-`auth` cookie of their session). The `matching_job_reviews` metric counts the jobs waiting: nothing
-else tells the reviewers (no email is sent). An approved job its recruiter edits (its description,
+A reviewer does it on the web at **`/recruiter/reviews`** (signed in with the account whose email
+is listed; bookmark it: no menu leads there, so nothing anyone else sees says who reviews or that
+the page exists, and anyone else reads "Not available"): the jobs waiting, each with who is behind
+it and the recruiter's other jobs, copies flagged with the terms they differ in, then Approve
+(asked first) or Reject with the reason the recruiter reads. The `matching_job_reviews` metric
+counts the jobs waiting: nothing else tells the reviewers (no email is sent). An approved job its recruiter edits (its description,
 or another field no criterion reads: its terms are locked) waits for a review again; an edit
 saved while a review was decided (or matching switched) is refused with a 409, and the recruiter's
 editor reloads the posting. A job is

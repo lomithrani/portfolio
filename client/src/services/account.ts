@@ -177,14 +177,15 @@ const portfolioOfPath = (pathname: string): string => {
  * The space to record (PUT /me/mode) for the page shown, so the account menu names it: 'recruiter'
  * on a /recruiter page for an account that has a recruiter space, 'candidate' on the account's
  * own portfolio and on /opportunities (a job description shared with a portfolio owner) for an
- * account that has a portfolio, when another space is active; null otherwise. An account without
+ * account that has a portfolio, when another space is active; null otherwise, and on the
+ * reviewers' page of matching (/recruiter/reviews: no space of the account's). An account without
  * a recruiter space creates it from the page instead.
  */
 export const spaceToRecord = (
 	user: Pick<AuthUser, 'activeMode' | 'recruiter' | 'domain'> | null | undefined,
 	pathname: string
 ): UserMode | null => {
-	if (!user) return null;
+	if (!user || isCurrentSection(pathname, '/recruiter/reviews')) return null;
 	if (isCurrentSection(pathname, '/recruiter')) {
 		return user.recruiter && user.activeMode !== 'recruiter' ? 'recruiter' : null;
 	}

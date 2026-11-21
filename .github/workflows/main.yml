@@ -117,9 +117,11 @@ jobs:
           # Matching (Path 2) on, as on staging: its e2e files (client/tests/matching-*.test.ts)
           # skip themselves without it. A placeholder secret makes Google Calendar count as
           # configured, so the seeded candidates' calendars do (seed:e2e): nothing ever sends it to
-          # Google, the tests answer in the browser every request that would
+          # Google, the tests answer in the browser every request that would. The e2e reviewer
+          # (seed:e2e) reviews the jobs put into matching (client/tests/matching-review.test.ts)
           MATCHING: 'true'
           GOOGLE_CLIENT_SECRET: e2e-placeholder-never-sent
+          MATCHING_REVIEWERS: e2e.reviewer@example.com
       - name: Wait for the API health check
         run: >-
           curl --fail --silent --show-error --max-time 5

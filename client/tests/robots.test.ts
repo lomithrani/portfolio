@@ -335,6 +335,8 @@ test('the private pages are not listed', async ({ page }) => {
 		'/account',
 		'/recruiter/jobs/new',
 		'/recruiter/jobs/65e2e00000000000000000aa',
+		// The reviewers' page of matching (not available to anyone else)
+		'/recruiter/reviews',
 		'/opportunities/65e2e00000000000000000aa'
 	]) {
 		const response = await page.goto(path);
