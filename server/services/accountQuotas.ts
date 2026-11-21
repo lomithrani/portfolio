@@ -1,6 +1,7 @@
-import { RateLimitCounter, User } from '../models/database'
+import { RateLimitCounter } from '../models/database'
 import { FEEDBACK_ATTEMPTS_PER_ACCOUNT, FEEDBACK_PER_ACCOUNT, feedbackAccountKey, feedbackAttemptsKey } from './feedback'
 import { JOB_IMPORT_DAILY_WINDOW_MS, jobImportAttemptsKey } from './jobImport'
+import { CARRIED_PLAN_IMPORTS_MS, carriedPlanImportsKey } from './planImports'
 import { carryRateLimit, rateLimitKey } from './rateLimit'
 import type { RateLimit } from './rateLimit'
 import {
@@ -33,8 +34,9 @@ interface CarriedQuota {
   windowMs: RateLimit['windowMs']
 }
 
-// A function, not a constant: recruiters.ts imports this module and jobImport.ts
-// imports recruiters.ts, so the key functions may not be defined yet when it loads
+// A function, not a constant: jobImport.ts imports recruiters.ts, which an
+// account's services load, so the key functions may not be defined yet when
+// this module loads
 const carriedQuotas = (): readonly CarriedQuota[] => [
   { name: 'resume-import:user', accountKey: resumeImportUserKey, windowMs: RESUME_IMPORT_MONTHLY_WINDOW_MS },
   { name: 'resume-import:attempts', accountKey: resumeImportAttemptsKey, windowMs: RESUME_IMPORT_DAILY_WINDOW_MS },
@@ -49,13 +51,7 @@ const carriedQuotas = (): readonly CarriedQuota[] => [
   { name: 'feedback:attempts', accountKey: feedbackAttemptsKey, windowMs: FEEDBACK_ATTEMPTS_PER_ACCOUNT.windowMs }
 ]
 
-/** How long the job imports a deleted recruiter space used are remembered (the plan's allowance is for the account's lifetime) */
-export const CARRIED_PLAN_IMPORTS_MS = 30 * 24 * 60 * 60_000
-
 const carriedKey = (name: string, googleId: string) => rateLimitKey(`carried:${name}`, googleId)
-
-/** Key of the job imports of the plan a deleted account of `googleId` used */
-export const carriedPlanImportsKey = (googleId: string) => carriedKey('job-imports-used', googleId)
 
 /**
  * Before an account is deleted: carries the quotas it used (current windows,
@@ -86,20 +82,5 @@ export async function carryOverAccountQuotas(
 export async function restoreAccountQuotas(userId: string, googleId: string) {
   await Promise.all(
     carriedQuotas().map((quota) => carryRateLimit(carriedKey(quota.name, googleId), quota.accountKey(userId), quota))
-  )
-}
-
-/**
- * When a recruiter space is created: starts its plan's job imports from what
- * a deleted account of the same Google identity used
- */
-export async function restorePlanImports(userId: string) {
-  const user = await User.findById(userId, { googleId: 1 }).lean()
-  if (!user?.googleId) return
-  const carried = await RateLimitCounter.findById(carriedPlanImportsKey(user.googleId)).lean()
-  if (!carried || carried.count <= 0) return
-  await User.updateOne(
-    { _id: userId, recruiter: { $exists: true } },
-    { $max: { 'recruiter.jobImportsUsed': carried.count } }
   )
 }

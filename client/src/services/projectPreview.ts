@@ -1,16 +1,15 @@
+import { projectUsesSkill, skillDisplayName, skillMonths as monthsOfSkill } from 'portfolio-common';
 import {
 	experiencePeriod,
 	formatDuration,
 	formatMonthCount,
 	formatMonthRange,
 	formatProjectMonths,
-	monthIndex,
 	projectEnd
 } from '#services/experienceDates.ts';
-import { normalizeSkill, projectMatchesFilters, skillOptions } from '#services/filters.ts';
+import { normalizeSkill, skillOptions } from '#services/filters.ts';
 import {
 	buildTimeline,
-	projectMonthSpan,
 	timelineAxis,
 	type MonthSpan,
 	type TimelineYear
@@ -94,12 +93,7 @@ const joined = (...parts: (string | undefined | null)[]) =>
 		.join(SEPARATOR);
 
 const skillNames = (entries: SkillEntry[] | null | undefined): string[] =>
-	(entries ?? []).flatMap((entry) => {
-		const skill = entry.skill;
-		if (!skill || typeof skill !== 'object' || !('displayName' in skill)) return [];
-		const name = (skill as { displayName?: unknown }).displayName;
-		return typeof name === 'string' && name.trim() ? [name.trim()] : [];
-	});
+	(entries ?? []).flatMap((entry) => skillDisplayName(entry) ?? []);
 
 const experienceContext = (experience: PreviewedExperience) =>
 	joined(experience.title, experience.company?.name);
@@ -117,41 +111,23 @@ const projectMonths = (project: PreviewedProject, experience: PreviewedExperienc
 const noSkills = () => ({ hard: [], soft: [] });
 
 /**
- * The months a skill (by key) was used in all: the calendar months of the projects using it, as
- * the timeline places them (see projectMonthSpan), each counted once however many of them ran
- * that month, up to the current month (a project planned later, or to a later end, was not used
- * yet). Projects of an experience without dates count for nothing.
+ * The months a skill (by key) was used in all, as portfolio-common's skillMonths counts them
+ * (common/models/experienceMonths.ts, shared with the API): the calendar months of the
+ * projects using it (projectUsesSkill), as the timeline places them (see projectMonthSpan), each
+ * counted once however many of them ran that month, up to the current month (a project planned
+ * later, or to a later end, was not used yet). Projects of an experience without dates count for
+ * nothing.
  */
-export function skillMonths(
+export const skillMonths = (
 	experiences: PreviewedExperience[],
 	key: string,
 	now: Date = new Date()
-): number {
-	const filters = { skills: [normalizeSkill(key)] };
-	// The month after the current one: nothing is counted from there on
-	const until = monthIndex(now) + 1;
-	const spans: MonthSpan[] = [];
-	for (const experience of experiences) {
-		for (const project of experience.projects ?? []) {
-			if (!projectMatchesFilters(project, filters)) continue;
-			const span = projectMonthSpan(project, experience, now);
-			if (span && span.start < until) {
-				spans.push({ start: span.start, end: Math.min(span.end, until) });
-			}
-		}
-	}
-	spans.sort((a, b) => a.start - b.start);
-	let months = 0;
-	let counted = -Infinity;
-	for (const span of spans) {
-		const from = Math.max(span.start, counted);
-		if (span.end > from) months += span.end - from;
-		counted = Math.max(counted, span.end);
-	}
-	return months;
-}
+): number => monthsOfSkill(experiences, (project) => projectUsesSkill(project, key), now);
 
-/** The projects using a skill (by key, see normalizeSkill), in the experiences' order */
+/**
+ * The projects using a skill (by key, see normalizeSkill), in the experiences' order: those
+ * skillMonths counts the months of (projectUsesSkill)
+ */
 export function skillPreview(
 	experiences: PreviewedExperience[],
 	key: string,
@@ -161,7 +137,7 @@ export function skillPreview(
 	const entries: PreviewEntry[] = [];
 	for (const experience of experiences) {
 		for (const project of experience.projects ?? []) {
-			if (!projectMatchesFilters(project, { skills: [skill] })) continue;
+			if (!projectUsesSkill(project, skill)) continue;
 			entries.push({
 				name: project.name?.trim() ?? '',
 				context: experienceContext(experience),
@@ -196,11 +172,10 @@ export function skillTimeline(
 	key: string,
 	now: Date = new Date()
 ): PreviewTimeline | undefined {
-	const filters = { skills: [normalizeSkill(key)] };
 	const timeline = buildTimeline(experiences, now);
 	const bars: PreviewBar[] = timeline.items.flatMap((item) =>
 		item.projects
-			.filter((entry) => projectMatchesFilters(entry.project, filters))
+			.filter((entry) => projectUsesSkill(entry.project, key))
 			.map((entry) => ({
 				name: entry.project.name?.trim() ?? '',
 				context: experienceContext(item.experience),
@@ -214,7 +189,7 @@ export function skillTimeline(
 	bars.sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end);
 	const undated: PreviewEntry[] = timeline.undated.flatMap((experience) =>
 		(experience.projects ?? [])
-			.filter((project) => projectMatchesFilters(project, filters))
+			.filter((project) => projectUsesSkill(project, key))
 			.map((project) => ({
 				name: project.name?.trim() ?? '',
 				context: experienceContext(experience),

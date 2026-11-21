@@ -39,6 +39,7 @@ import {
 	journeySummary,
 	moveStep,
 	noteContent,
+	outdatedShare,
 	passesJobMatch,
 	pickJobFailure,
 	pickedJob,
@@ -564,6 +565,30 @@ describe('the job step', () => {
 		expect(pickedJob('job')).toBeUndefined();
 	});
 
+	it('reads when the version was shared, and whether the job changed since', () => {
+		const sharedAt = '2026-11-12T09:30:00.000Z';
+		expect(pickedJob({ job: { ...JOB, sharedAt } })).toEqual({ ...JOB, sharedAt });
+		expect(pickedJob({ job: { ...JOB, sharedAt, outdated: true } })).toEqual({
+			...JOB,
+			sharedAt,
+			outdated: true
+		});
+		// Not a date, or changed without a version shared: neither is told
+		expect(pickedJob({ job: { ...JOB, sharedAt: 'yesterday', outdated: true } })).toEqual(JOB);
+		expect(pickedJob({ job: { ...JOB, outdated: true } })).toEqual(JOB);
+		expect(pickedJob({ job: { ...JOB, sharedAt, outdated: 'yes' } })).toEqual({ ...JOB, sharedAt });
+
+		// Its new version can be shared while the posting is open
+		expect(outdatedShare({ job: { ...JOB, sharedAt, outdated: true } })).toMatchObject({
+			_id: JOB._id
+		});
+		expect(outdatedShare({ job: { ...JOB, sharedAt } })).toBeUndefined();
+		expect(
+			outdatedShare({ job: { ...JOB, status: 'on_hold', sharedAt, outdated: true } })
+		).toBeUndefined();
+		expect(outdatedShare(undefined)).toBeUndefined();
+	});
+
 	it('lists the open postings first, keeping the order of the API', () => {
 		expect(sortJobChoices(jobs).map((job) => job._id)).toEqual(['2', '4', '1', '3']);
 		expect(isPickable({ status: 'open' })).toBe(true);
@@ -583,11 +608,22 @@ describe('the job step', () => {
 		expect(jobLine({ title: 'Staff Engineer' })).toBe('Staff Engineer');
 	});
 
-	it('notes what the step asks, the job picked, or that it is not open anymore', () => {
+	it('notes what the step asks, the job shared, or why it does not hold', () => {
+		const sharedAt = '2026-11-12T09:30:00.000Z';
 		expect(jobStepNote(undefined, 'open')).toBe('Pick the job you are hiring for, or write it.');
-		expect(jobStepNote({ job: JOB }, 'done')).toBe('Staff Engineer · Acme');
-		expect(jobStepNote({ job: { ...JOB, status: 'filled' } }, 'open')).toBe(
+		expect(jobStepNote({ job: { ...JOB, sharedAt } }, 'done')).toBe('Staff Engineer · Acme');
+		expect(jobStepNote({ job: { ...JOB, sharedAt, outdated: true } }, 'done')).toBe(
+			'Staff Engineer · Acme: changed since you shared it.'
+		);
+		expect(jobStepNote({ job: { ...JOB, status: 'filled', sharedAt } }, 'open')).toBe(
 			'Staff Engineer is filled now: pick an open job description.'
+		);
+		// Open but not held: picked before versions were kept, or the terms in force not accepted
+		expect(jobStepNote({ job: JOB }, 'open')).toBe(
+			'Pick Staff Engineer again to share it and go on.'
+		);
+		expect(jobStepNote({ job: { ...JOB, sharedAt } }, 'open')).toBe(
+			'Accept the terms of use in force to go on with Staff Engineer.'
 		);
 	});
 
@@ -622,7 +658,24 @@ describe('the job step', () => {
 		expect(pickJobFailure(422, { type: 'validation', property: 'consentSource' }).kind).toBe(
 			'error'
 		);
-		expect(pickJobFailure(422, { type: 'validation', property: 'input.jobId' }).kind).toBe('error');
+		expect(pickJobFailure(422, { type: 'validation', property: 'input.jobId' })).toEqual({
+			message: 'Could not pick this job. Try again in a moment.',
+			kind: 'error'
+		});
+		// A job saved under older rules: the API says what to do, in the visitor's language
+		expect(
+			pickJobFailure(422, {
+				type: 'validation',
+				property: 'input.jobId',
+				message: 'This job description cannot be shared as it is'
+			})
+		).toEqual({ message: 'This job description cannot be shared as it is', kind: 'error' });
+		// The journey scores the jobs shared: as many as a day allows
+		expect(pickJobFailure(429, 'You can share at most 5 jobs a day on this page')).toEqual({
+			message:
+				'Each job shared here is scored, so you can share at most 5 a day on this page. Try again tomorrow.',
+			kind: 'error'
+		});
 		expect(pickJobFailure(503, new TypeError('Failed to fetch'))).toEqual({
 			message: networkError(),
 			kind: 'error'

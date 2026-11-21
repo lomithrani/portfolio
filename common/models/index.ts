@@ -1,6 +1,30 @@
 export { ExperienceType } from './experienceType';
 export { EXPERIENCE_LIMITS } from './experienceLimits';
 export {
+	toDate,
+	monthIndex,
+	experiencePeriod,
+	projectEnd,
+	monthCount,
+	sortExperiences,
+	periodMonths,
+	placeProject,
+	projectMonthSpan,
+	skillMonths,
+	skillUsesByKey,
+	professionalMonths,
+	normalizeSkill,
+	skillDisplayName,
+	projectUsesSkill
+} from './experienceMonths';
+export type {
+	DateInput,
+	ExperiencePeriod,
+	MonthSpan,
+	PlacedMonths,
+	SkillUse
+} from './experienceMonths';
+export {
 	DOMAIN_NAME_PATTERN,
 	RESERVED_DOMAIN_NAMES,
 	isValidDomainName,
@@ -68,14 +92,17 @@ export type {
 	NumberRange,
 	JobPostingInput,
 	JobPostingProblem,
-	JobFieldPath
+	JobFieldPath,
+	JobSnapshot
 } from './jobPosting';
 export { jobPostingMessages } from './jobPosting.messages';
 export {
 	LOCKED_JOB_FIELDS,
 	jobTermsLocked,
 	locksJobTerms,
-	changedLockedFields
+	changedLockedFields,
+	jobSnapshotsDiffer,
+	canonicalJobSnapshot
 } from './jobTerms';
 export {
 	USER_MODES,
@@ -112,6 +139,7 @@ export type {
 export { workflowMessages } from './workflow.messages';
 export {
 	NOTE_STEP_LIMITS,
+	JOB_STEP_LIMITS,
 	JOB_MATCH_STEP_LIMITS,
 	DEFAULT_JOB_MATCH_MIN_SCORE
 } from './workflowSteps';
@@ -138,6 +166,7 @@ export {
 	criterionJobFields,
 	officeAddress,
 	officeDaysPerWeek,
+	commuteMinutesPerWeek,
 	parsePerfectJob,
 	storedPerfectJob,
 	ratedCriteria,
@@ -202,8 +231,78 @@ export {
 	isCurrentTermsVersion,
 	parseConsent,
 	consentProblem,
-	currentConsent
+	currentConsent,
+	MINIMUM_DISCOVERY_AGE,
+	DISCOVERY_CONSENT_KEYS,
+	discoveryConsentKey,
+	parseDiscoveryConsent,
+	currentDiscoveryConsent
 } from './legal';
-export type { ConsentInput, ConsentSource, ConsentProblemProperty, ConsentResult } from './legal';
+export type {
+	ConsentInput,
+	ConsentSource,
+	ConsentProblemProperty,
+	ConsentResult,
+	DiscoveryConsentInput,
+	DiscoveryConsentProblemProperty,
+	DiscoveryConsentResult
+} from './legal';
 export { legalMessages } from './legal.messages';
+export type { CandidateReadiness } from './readiness';
+export {
+	DISCOVERY_MIN_CRITERIA,
+	DISCOVERY_INACTIVITY_DAYS,
+	DISCOVERY_CONSENT_MONTHS,
+	DISCOVERY_CONSENT_RENEWAL_DAYS,
+	DISCOVERY_REJOIN_DAYS,
+	DISCOVERY_LIMITS,
+	MATCHING_LIMITS,
+	DISCOVERY_REQUIREMENTS,
+	DISCOVERY_STATES,
+	discoveryInactive,
+	discoveryRequirements,
+	discoveryRequirementMessage,
+	discoveryConsentExpiry,
+	discoveryConsentCutoff,
+	discoveryRenewalCutoff,
+	discoveryConsentRenewable,
+	discoveryState,
+	cleanHeadline,
+	headlineNames,
+	parseDiscoveryCard,
+	CARD_WITHHELD_CRITERIA,
+	cardOutcomeCriteria,
+	cardIdentityNames,
+	cardTextIdentifies,
+	MATCHING_JOB_STATUSES,
+	keepsMatching,
+	matchingJobProblem,
+	MATCHING_REVIEW_STATUSES,
+	MATCHING_REVIEW_DECISIONS,
+	jobLiveInMatching,
+	parseReviewReason,
+	MATCH_DECISIONS,
+	MATCH_SIDES,
+	MATCH_END_REASONS,
+	MATCH_RETENTION,
+	matchDecisionExpiry,
+	endedMatchExpiry,
+	emailDomainOf
+} from './matching';
+export type {
+	DiscoveryRequirement,
+	DiscoveryFacts,
+	DiscoveryState,
+	DiscoveryCardSettings,
+	DiscoveryCardField,
+	DiscoveryCardResult,
+	CardIdentity,
+	MatchingJobField,
+	MatchingReviewStatus,
+	MatchingReviewDecision,
+	MatchDecision,
+	MatchSide,
+	MatchEndReason
+} from './matching';
+export { matchingMessages } from './matching.messages';
 export { ROBOTS_NOINDEX } from './robots';

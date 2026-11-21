@@ -642,6 +642,14 @@ export const officeDaysPerWeek = (location: ScoredJob['location']): number => {
 };
 
 /**
+ * The minutes a week a commute of `minutes` one way takes to the job at `location`: there and
+ * back, each day at the office (officeDaysPerWeek). What the commute criterion compares with the
+ * time a week the candidate accepts
+ */
+export const commuteMinutesPerWeek = (minutes: number, location: ScoredJob['location']): number =>
+	minutes * 2 * officeDaysPerWeek(location);
+
+/**
  * What the job pays at the bottom and at the top of its range, converted to a year or a day. The
  * top is the one scored: at most the highest maximum its bottom allows (highestPayMax, in cents,
  * as validateJobPosting counts it), so a range saved wider than that before the cap scores as the
@@ -717,7 +725,7 @@ const SCORERS: {
 		if (days === 0) return 1;
 		if (commute === undefined) return 'unavailable';
 		if (!('minutes' in commute)) return NOT_STATED;
-		const perWeek = commute.minutes * 2 * days;
+		const perWeek = commuteMinutesPerWeek(commute.minutes, job.location);
 		if (perWeek <= maxMinutesPerWeek) return 1;
 		return clamp(1 - (perWeek - maxMinutesPerWeek) / (maxMinutesPerWeek * COMMUTE_TOLERANCE));
 	},

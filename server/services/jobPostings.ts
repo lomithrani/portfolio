@@ -1,6 +1,9 @@
+import { Value } from '@sinclair/typebox/value';
 import {
   JOB_LIMITS,
+  OPEN_JOB_STATUS,
   changedLockedFields,
+  highestPayMax,
   jobTermsLocked,
   locksJobTerms,
   normalizeJobPosting,
@@ -12,6 +15,7 @@ import type {
   EducationLevel,
   JobCountry,
   JobPostingInput,
+  JobSnapshot,
   JobStatus,
   PayCurrency,
   PayPeriod,
@@ -22,6 +26,7 @@ import type {
 } from 'portfolio-common';
 import { JobPosting } from '../models/database';
 import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
+import { jobPostingRequest } from '../models/elysia/jobPostingRequest.models';
 import { ConflictError, FieldValidationError, ResourceNotFoundError } from '../errors';
 import { m } from './jobPostings.messages';
 import { JOB_TERMS_LOCKED } from '../protocol';
@@ -130,6 +135,47 @@ export function toJobPostingDto(job: StoredJobPosting): JobPostingDto {
   });
 }
 
+// ── Versions shared ─────────────────────────────────────────
+
+/** A posting's fields without its status (a JobSnapshot) */
+const withoutStatus = ({ status: _status, ...snapshot }: JobPostingInput): JobSnapshot => snapshot;
+
+/**
+ * The version of a stored posting a recruiter shares (the job step of a hiring journey): its fields
+ * normalised, without its id, status or dates, its pay range brought down to the top it is scored
+ * with (at most JOB_LIMITS.pay.maxRangeRatio times its bottom, as the editor of an opened posting
+ * shows a range saved wider before the cap). Never who posted it, like the DTO
+ */
+export function toJobSnapshot(stored: StoredJobPosting): JobSnapshot {
+  const { _id, createdAt, updatedAt, publishedAt, ...fields } = toJobPostingDto(stored);
+  const snapshot = withoutStatus(normalizeJobPosting(fields));
+  const { min, max } = snapshot.pay;
+  return Number.isFinite(min) && Number.isFinite(max)
+    ? { ...snapshot, pay: { ...snapshot.pay, max: Math.min(max, highestPayMax(min)) } }
+    : snapshot;
+}
+
+/**
+ * A version shared as it was stored (a job step's `data`, written by this or an older version of
+ * the API), when it still is a posting this version would save: the request schema's types and
+ * lengths, then normalised and checked by portfolio-common's rules like a posting a recruiter
+ * saves (as an open one). Undefined for anything else, so what reads it fails closed: a step
+ * without a valid version is to do again.
+ *
+ * So a rule made tighter (in jobPostingRequest, normalizeJobPosting or validateJobPosting: a new
+ * required field, a shorter length, a narrower range) sends every version kept that breaks it
+ * back to pending, the steps after it locked, until its recruiter shares the job again: count
+ * those job steps before such a release and say so in its deployment notes (docs/DEPLOYMENT.md,
+ * "Versions of shared jobs"), or rewrite the versions kept
+ */
+export function storedJobSnapshot(value: unknown): JobSnapshot | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const posting = { ...(value as Record<string, unknown>), status: OPEN_JOB_STATUS };
+  if (!Value.Check(jobPostingRequest, posting)) return undefined;
+  const normalized = normalizeJobPosting(posting as JobPostingInput);
+  return validateJobPosting(normalized).length === 0 ? withoutStatus(normalized) : undefined;
+}
+
 // ── Postings ────────────────────────────────────────────────
 
 /**
@@ -202,16 +248,23 @@ const tooManyJobs = () => m.tooManyJobs(JOB_LIMITS.jobsPerRecruiter);
  * refusal, nothing written) and again after the insert: creations that
  * arrive at once and together go over the limit take theirs back, so it
  * holds whatever the number of parallel requests (at the boundary they may
- * all be refused; a retry then gets the place)
+ * all be refused; a retry then gets the place). In matching with `matching`
+ * when given (POST /jobs's `matching`, checked and built by
+ * services/jobMatching.ts: newJobMatching)
  */
-export async function createJobPosting(recruiterId: string, fields: JobPostingInput) {
+export async function createJobPosting(
+  recruiterId: string,
+  fields: JobPostingInput,
+  matching?: { enabledAt: Date; review: { status: 'pending'; requestedAt: Date } }
+) {
   if ((await JobPosting.countDocuments({ recruiter: recruiterId })) >= JOB_LIMITS.jobsPerRecruiter) {
     throw new ConflictError(tooManyJobs);
   }
   const job = await JobPosting.create({
     ...jobPostingFields(fields),
     recruiter: recruiterId,
-    publishedAt: publishedAtFor(fields.status, undefined)
+    publishedAt: publishedAtFor(fields.status, undefined),
+    ...(matching ? { matching } : {})
   });
   if ((await JobPosting.countDocuments({ recruiter: recruiterId })) > JOB_LIMITS.jobsPerRecruiter) {
     await JobPosting.deleteOne({ _id: job._id });

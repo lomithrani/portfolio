@@ -225,6 +225,15 @@ export interface JobPostingInput {
 	travel?: TravelFrequency;
 }
 
+/**
+ * The version of a job posting a recruiter shared with a candidate: the posting without its
+ * status, which is the live posting's (a version shared stays shared when the posting is closed,
+ * and holds only while it is open). The job step of a hiring journey keeps the version picked
+ * (normalised, its pay range brought down to the top it is scored with): what the owner reads and
+ * the job match scores, until the recruiter shares the posting again.
+ */
+export type JobSnapshot = Omit<JobPostingInput, 'status'>;
+
 /** The dotted paths of an object's fields, down to the values (a list is a value) */
 type FieldPaths<T> = {
 	[K in keyof T & string]-?: NonNullable<T[K]> extends readonly unknown[]

@@ -15,5 +15,9 @@ delete process.env.ANTHROPIC_API_KEY;
 delete process.env.GITHUB_ISSUES_TOKEN;
 delete process.env.GITHUB_ISSUES_REPO;
 
+// Matching (Path 2) starts off, as in production: the tests that need it
+// turn env.matchingEnabled on and back off themselves
+delete process.env.MATCHING;
+
 // TEST_MONGO_URL, when set, is the database the tests use instead of MONGO_URL
 if (process.env.TEST_MONGO_URL) process.env.MONGO_URL = process.env.TEST_MONGO_URL;

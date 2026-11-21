@@ -5,7 +5,7 @@
 // opening a posting is confirmed first).
 import { highestPayMax } from './jobPosting';
 import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS } from './perfectJob';
-import type { JobFieldPath, JobPostingInput, JobStatus } from './jobPosting';
+import type { JobFieldPath, JobSnapshot, JobStatus } from './jobPosting';
 
 /**
  * The fields of a posting locked once it is opened: every field a criterion of the perfect job
@@ -34,7 +34,7 @@ export const locksJobTerms = (status: JobStatus, job?: Published | null): boolea
 	status !== 'draft' && !jobTermsLocked(job);
 
 /** The value of a field (its dotted path) in a posting; undefined when it is not set */
-const fieldValue = (job: JobPostingInput, path: JobFieldPath): unknown =>
+const fieldValue = (job: JobSnapshot, path: JobFieldPath): unknown =>
 	path
 		.split('.')
 		.reduce<unknown>(
@@ -50,7 +50,7 @@ const fieldValue = (job: JobPostingInput, path: JobFieldPath): unknown =>
  * its terms take (validateJobPosting refuses anything wider): nothing a candidate's match reads
  * changes.
  */
-const lockedValue = (job: JobPostingInput, path: JobFieldPath): unknown => {
+const lockedValue = (job: JobSnapshot, path: JobFieldPath): unknown => {
 	if (path === 'pay.max') {
 		const { min, max } = job.pay;
 		return Number.isFinite(min) && Number.isFinite(max) ? Math.min(max, highestPayMax(min)) : max;
@@ -63,11 +63,37 @@ const lockedValue = (job: JobPostingInput, path: JobFieldPath): unknown => {
  * (normalizeJobPosting), in the order of the posting: what an edit of an opened posting may not
  * change. An edit sends the whole posting: locked fields it leaves as they are pass.
  */
-export const changedLockedFields = (
-	stored: JobPostingInput,
-	next: JobPostingInput
-): JobFieldPath[] =>
+export const changedLockedFields = (stored: JobSnapshot, next: JobSnapshot): JobFieldPath[] =>
 	LOCKED_JOB_FIELDS.filter(
 		(path) =>
 			JSON.stringify(lockedValue(stored, path)) !== JSON.stringify(lockedValue(next, path))
 	);
+
+/** `value` as JSON, the keys of each object sorted: the same text for the same content */
+const canonicalJson = (value: unknown): string =>
+	JSON.stringify(value, (_key, item: unknown) =>
+		item && typeof item === 'object' && !Array.isArray(item)
+			? Object.fromEntries(
+					Object.entries(item as Record<string, unknown>).sort(([a], [b]) =>
+						a < b ? -1 : a > b ? 1 : 0
+					)
+				)
+			: item
+	);
+
+/**
+ * A version of a posting (normalised, without its status: a JobSnapshot) as one text, the same for
+ * the same content whatever the order of its keys: what jobSnapshotsDiffer compares, and what the
+ * API hashes to know which version a review of a job in matching was of
+ */
+export const canonicalJobSnapshot = (snapshot: JobSnapshot): string => canonicalJson(snapshot);
+
+/**
+ * Whether two versions of a posting (normalised, without their status: a JobSnapshot) differ at
+ * all, in anything a candidate reads of them. The job step tells a recruiter that a posting changed
+ * since they shared it with this (a posting shared was opened, so its terms are locked: in practice
+ * its description, or a field no criterion reads, changed), and shares an unchanged one again as
+ * nothing new.
+ */
+export const jobSnapshotsDiffer = (a: JobSnapshot, b: JobSnapshot): boolean =>
+	canonicalJson(a) !== canonicalJson(b);

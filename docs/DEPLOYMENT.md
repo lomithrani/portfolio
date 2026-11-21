@@ -185,7 +185,9 @@ local development.
 | `COMMUTE_TRANSIT`              | for public transport | `here` or `transitous`: the service asked for public transport times (see [Travel times](#travel-times)) |
 | `HERE_API_KEY`                 | with `COMMUTE_TRANSIT=here` | API key of an app of your HERE platform account; sealed. Billed per journey asked beyond the free monthly allowance |
 | `COMMUTE_CONTACT`              | with `COMMUTE_TRANSIT=transitous` | An email address or a web page, sent as the User-Agent of the requests to Transitous |
-| `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off |
+| `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off; matching's warm-ups use half of it at most |
+| `MATCHING`                     | no       | `true` on staging only, for now: turns matching (Path 2) on (see [Matching](#matching)); leave unset in production until its legal texts ship |
+| `MATCHING_REVIEWERS`           | no       | The emails of the accounts that review each job put into matching before it reaches a candidate, separated by commas (never logged); without one, no job is ever proposed (see [Matching](#matching)) |
 | `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions and feedback are filed in, `owner/name`; leave unset (`lomithrani/portfolio`) |
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
 | `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
@@ -678,6 +680,110 @@ never followed, and the token never appears in a response or a log line. Claude 
 silent (Elysia's `idleTimeout`; Bun does not apply it while it handles a request with a body, as
 this one has, see [Résumé import](#résumé-import), but the budget does not count on that).
 
+## Matching
+
+Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=true`**: its routes
+(`GET`/`PUT /discovery`, `GET /discovery/card`, `POST`/`DELETE /discovery/consent`,
+`PUT /jobs/:id/matching`, `GET /matching/reviews`, `PUT /matching/reviews/:id`, the feeds
+`GET /opportunities` and `GET /recruiter/jobs/:id/candidates`, the decisions
+`PUT`/`DELETE /opportunities/jobs/:id/decision` and
+`PUT`/`DELETE /recruiter/jobs/:id/candidates/decision`, and the mutual interests `GET /matches`,
+`GET /matches/:id`, `PUT /matches/:id/seen`, `POST /matches/:id/end` and `GET /me/notifications`)
+are not registered, so they answer 404 as routes that do not exist whatever the request (`/swagger`
+does not list them), `POST /jobs` ignores its `matching`, no matching route answers and nothing is
+proposed, the hiring journeys read no mutual interest (what one stored in a journey holds nothing:
+its recruiter shares a job as anyone does), and the metrics `discoverable_candidates`,
+`matching_job_postings`, `matching_job_reviews` and `active_matches` are 0. What a job's changes do
+to its matches (closed, deleted, edited) runs whatever the flag: it only ends, drops or deletes
+matches, or sends an edited job back for review. The flag is read when the API starts: a change
+takes effect at its next deploy. The startup line `Running at ...` says
+`"matching":"on (1 job reviewer)"` (how many reviewers, never who) or why it is off.
+
+- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
+  calls its routes yet: they are for the screens that come next, and for the tests.
+- **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
+  and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
+  assessment is signed: a candidate's consent must point to published texts. Public transport
+  times then come from HERE or from nowhere, never from Transitous (see
+  [Travel times](#travel-times), "Matching").
+
+**Reviewers.** Every job a recruiter puts into matching is read by hand before it reaches any
+candidate: it starts pending, and only a reviewer's approval proposes it (a rejection carries a
+reason the recruiter reads). The reviewers are the accounts whose email is in
+`MATCHING_REVIEWERS` (comma-separated, compared without case; never logged: a wrong entry stops the
+API naming its place in the list, not its value). Without one, the API warns at startup
+(`MATCHING=true without MATCHING_REVIEWERS`) and no job is ever proposed. A reviewer reads the jobs
+waiting with `GET /matching/reviews` (the oldest first: the posting, the domain of its
+recruiter's email and a key standing for that recruiter, the same for all their jobs, and their
+other jobs in matching now or in the last 90 days, those that are copies of it, the same company
+and title or the same description, flagged with the terms they differ in; nothing of any
+candidate) and decides with `PUT /matching/reviews/:id`
+`{ decision: 'approve' | 'reject', reason?, version }`, on the version read (an edit since: 409).
+Refuse copies of a job that differ in one term, the pay or the office: each copy's cards would
+tell its recruiter the candidates' floors or areas.
+No screen does it yet: until the review screen ships, a reviewer calls the API signed in (the
+`auth` cookie of their session). The `matching_job_reviews` metric counts the jobs waiting: nothing
+else tells the reviewers (no email is sent). An approved job its recruiter edits (its description,
+or another field no criterion reads: its terms are locked) waits for a review again; an edit
+saved while a review was decided (or matching switched) is refused with a 409, and the recruiter's
+editor reloads the posting. A job is
+proposed only while its recruiter has accepted the terms in force: after a `LEGAL_VERSION` bump,
+their approved jobs leave every feed, and `matching_job_postings`, until they accept the new terms
+(nothing to do on the operator's side; the review stays). A posting opened before the pay range cap
+with a wider range cannot be put into matching (422 on `pay.max`) until its recruiter saves it
+again.
+
+**Feeds.** The jobs proposed to a candidate and the anonymous cards of the candidates proposed for
+a recruiter's job are computed when they are read, from what is stored: no background job, no
+collection of their own. Each read is counted, both feeds together, against **120 reads per
+account per hour** (`MATCHING_FEED_READS` of `server/services/matchFeeds.ts`; 429 with
+`Retry-After`, counters `matching-feed:<hash>`), and asks no outside service: travel times come from
+the cache, the missing ones are asked in the background within matching's share of
+`COMMUTE_DAILY_LIMIT` (see [Travel times](#travel-times)). The private page of a job proposed to
+a candidate counts as a read too. A recruiter reads one card at a time, the next once it is
+answered, and whether there are more, never how many (nor whether candidates wait for a travel
+time). A recruiter's cards stand for their candidates by tokens sealed with a key derived from `JWT_SECRET` (AES-256-GCM, bound to the
+recruiter and the job, a week at most): changing `JWT_SECRET` makes the cards already shown
+unreadable, and recruiters read their feed again.
+
+**Decisions and mutual interests.** A candidate says whether a job proposed to them interests
+them, a recruiter whether a card's candidate does (the card's token in the body); either undoes
+theirs within 10 minutes, and only their latest decision when it is their first answer on the
+pair (a decision taken again is changed, never undone), until both are interested (the recruiter
+with the token of the card they decided on, which their screen keeps: their feed never shows a
+candidate they answered again; a token older than a week and those 10 minutes is refused). When
+each side first answered a pair is kept with it, through an undo and through the job leaving
+matching (switched off, filled, closed or back to draft: its decisions go, that date stays until
+the match expires), so that the other side's pass after it never shows. A candidate who withdraws
+cannot turn discovery on again for 7 days (`DISCOVERY_REJOIN_DAYS`; 429 with `Retry-After`). A decision
+holds for the version of the job it was given on: a candidate's interest in a version since edited
+(and reviewed again) is not made into a mutual interest by the recruiter's; the job is proposed to
+them again instead. Each decision or undo is counted against **300 per account per
+UTC day**, both sides together (`MATCHING_DECISIONS` of `server/services/matches.ts`, from
+`MATCHING_LIMITS.decisionsPerDay`; 429 with `Retry-After`, counters `matching-decision:<hash>`), and
+asks no outside service (travel times from the cache, as the feeds read them). Both interested is a
+mutual interest: one per job and candidate, made by one conditioned write, whatever the order or
+the moment of the two decisions; once read again (a withdrawal or the job leaving matching that
+landed meanwhile takes it back first) it reveals the candidate's portfolio address to the recruiter and
+leads into the candidate's own hiring journey (its job step holds the job, its job match is frozen
+at the score then, its notes are still the recruiter's to confirm before the meeting opens). Either
+side ends it (`POST /matches/:id/end`). No email is sent: each side sees how many mutual interests
+it has not seen yet (`GET /me/notifications`), for the account menu's badge of the screens to come.
+
+The first opt-in creates the `discoveryprofiles` collection (one document per account that turned
+discovery on or off or set its anonymous card), the first decision the `matches` collection (one
+per job and candidate, removed by MongoDB once its `expiresAt` is past: a decision no mutual
+interest came of 6 months after it at most, a mutual interest 3 months after it ended,
+`MATCH_RETENTION` of `common/models/matching.ts`, which the privacy policy will state), and a job
+put into matching gets a `matching` field: no migration. Mongoose adds the new indexes at startup
+(`status_1_matching.enabledAt_1_publishedAt_-1` and the partial one on the reviews waiting on
+`jobpostings`, the unique one and the TTL on `matches`); the index it replaces,
+`status_1_publishedAt_-1`, stays until it is dropped by hand, harmless meanwhile:
+`db.jobpostings.dropIndex('status_1_publishedAt_-1')`. Turning `MATCHING` off again proposes
+nobody to anyone, and keeps those documents as they are: candidates find their choice again when
+it is turned back on (paused until they sign in, if that was over 180 days before), and account
+deletion removes them whatever the flag.
+
 ## Travel times
 
 The perfect job has a "Commute" criterion: the travel time an owner accepts a week, from an
@@ -739,6 +845,49 @@ lower it to stay within the free allowance whatever happens, e.g. `160`); over i
 service does not answer, the commute is left out of the scores (recruiters see "Could not be
 computed right now: not counted") instead of blocking anyone. The API logs `Travel times: no
 answer` at warn level with the kind of request and the reason, never the address.
+
+**Matching.** Matching on open jobs (Path 2, see [Matching](#matching), off until `MATCHING=true`)
+scores the jobs open to it against the candidates who opted in: many pairs in one read, where a
+journey's job match step scores one, and a pair never asked can take some 20 seconds (a place
+looked up, then its ways), in a request Bun cuts after 30 seconds without data. So its reads never
+ask a service: they read only the travel times kept (`cachedCommuteContext` of
+`server/services/commute.ts`, which also says whether what is missing can still be found), and
+what a pair still needs is asked in the background (`warmCommute`; `warmOffice` looks a job's
+office up when matching is turned on for it, so that each candidate then needs only the ways). A
+warm-up reads the candidate's address when it runs, not when it was asked for, and asks nothing
+once they withdrew their consent to matching, let it lapse or deleted their account. Warm-ups run
+one at a time, with a pause of 400 ms after each that asked something (the Géoplateforme takes 5
+route requests a second from one address, and a pair asks up to two at once). A pair already
+waiting takes no second place; at most 100 wait, 20 of them for one account: beyond, a warm-up is
+dropped (a later read asks for it again) and the API logs `Travel times: warm-up dropped` with the
+reason (`queue full` or `account share`) and how many were dropped, one line a minute at most. A
+warm-up that fails (the database did not answer) logs `Travel times: warm-up failed` with the
+error's name only, and the next warm-up goes on.
+
+Each request a warm-up sends counts against three caps: 100 a day for the account whose read
+wanted it (`discovery-commute` counters, keyed by a hash of the account, so that one account
+cannot use up matching's day), half of `COMMUTE_DAILY_LIMIT` for all warm-ups together
+(`MATCHING_COMMUTE_SHARE`, the `discovery-commute-site` counter), and `COMMUTE_DAILY_LIMIT`
+itself. The other half is kept for the job match steps of journeys: however busy matching is, a
+page for recruiters keeps its travel times, and a candidate's commute deal-breaker keeps counting
+there, until journeys alone reach the limit. Once matching's half is used, warm-ups wait for the
+next UTC day, and matching shows the commutes it has not kept as unknown (a recruiter's feed holds
+back a candidate whose deal-breaker commute is unknown). A pair costs up to three requests (car,
+on foot, public transport), an office one or two the first time: size `COMMUTE_DAILY_LIMIT` for
+twice the new pairs a day brings (each is then kept 30 days), and with HERE, for its monthly
+allowance. The failure memo applies too: a service that did not answer is left alone for 10
+minutes by warm-ups as by journeys.
+
+Matching never asks Transitous, nor reads what it answered a journey: its usage policy is for
+open-source, non-commercial projects, which a site that matches candidates with recruiters'
+jobs may not stay. With `COMMUTE_TRANSIT=transitous`, matching computes the commute by the other
+modes a candidate accepts, whose time is then the most the way can take: it is used only when the
+commute matches with it. Otherwise (and for a candidate who accepts public transport alone)
+matching cannot tell, and treats that commute as unknown, never as not counted, so a candidate
+with a commute deal-breaker is held back from recruiters' feeds for those jobs instead of being
+proposed for jobs anywhere. The API warns at startup when `MATCHING=true` is set with it. Before
+matching is turned on in production, choose HERE (`COMMUTE_TRANSIT=here` with its key, priced
+above) or no public transport (`COMMUTE_TRANSIT` unset).
 
 **Address search.** The two forms that take an address (the commute of the perfect job, the
 office of a job posting) search it as it is typed: `POST /addresses/search` answers with the
@@ -965,8 +1114,10 @@ From the release that brings them, a job description's terms (the fields the per
 (`publishedAt` set, whatever its status since), and the top of a pay range is at most 1.5 times its
 bottom (`JOB_LIMITS.pay.maxRangeRatio`). Nothing is migrated: the postings already opened become
 locked as they are, and one saved wider than 1.5 times its bottom before the cap is scored as if its
-top were that (its editor shows that top, which its next save stores; until then a candidate reading
-it on `/opportunities/:id` still sees the top it was saved with). Such a posting cannot be saved
+top were that (its editor shows that top, which its next save stores; until then its page in the
+recruiter space still shows the top it was saved with, and so does `/opportunities/:id` for a pick
+made before the job step kept the version shared, see below: a version shared carries the capped
+top). Such a posting cannot be saved
 again with its wider top, nor opened from its status if it never was, until it is narrowed. Before
 deploying that release on each stage (staging, then production), count them (counts only: no
 posting, recruiter or pay):
@@ -986,6 +1137,53 @@ postings, with the `LEGAL_VERSION` notice (see "Tell the accounts before a bump 
 production") or on their own, that each must be narrowed (its editor) or, once opened, duplicated
 into a new job description with the range they mean: an opened one is matched with a top of 1.5
 times its bottom from the deploy.
+
+### Versions of shared jobs (one-off)
+
+From the release that brings them, the job step of a hiring journey keeps the version of the job
+description the recruiter shared (`data.posting` of the step in `workflowinstances`:
+`server/services/workflowSteps/job.ts`), and holds only with one. A pick stored before has none,
+and nothing is migrated (the version shared then is not known): from the deploy, that job step is
+to do again for its recruiter (pending, "Pick <job> again to share it and go on"), the steps after
+it lock, booking included, until they pick the job again, and its owner reads the job description
+as it is now on `/opportunities/:id` (which invitations already sent link) until then. Before
+deploying that release on each stage (staging, then production), count those picks (counts only:
+no recruiter, owner or job):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  const legacy = { $expr: { $gt: [{ $size: { $filter: {
+    input: { $objectToArray: { $ifNull: ["$steps", {}] } },
+    cond: { $and: [
+      { $ne: [{ $type: "$$this.v.data.job" }, "missing"] },
+      { $eq: [{ $type: "$$this.v.data.posting" }, "missing"] }
+    ] }
+  } } }, 0] } };
+  printjson({
+    journeys: db.workflowinstances.countDocuments(legacy),
+    recruiters: db.workflowinstances.distinct("visitor", legacy).length
+  })'
+```
+
+Write the counts in the release's pull request. When `recruiters` is not 0, tell those recruiters
+before production gets the release (`distinct("visitor", legacy)` gives their account ids, whose
+email is in `users`: never in the pull request) that they must pick their job again on each
+candidate's page for recruiters where they had picked it, and that the meeting stays locked until
+they do. Once production counts 0, a later release removes the fallback for those picks
+(`legacyPick` of the job step, read by `server/services/jobAccess.ts`).
+
+A rule of job descriptions made tighter in a later release (a new required field, a shorter
+length, a narrower range) sends the versions kept that break it back to pending in the same way
+(`storedJobSnapshot` of `server/services/jobPostings.ts` checks every version kept with today's
+rules): count them before deploying it with a query of the same shape, its `cond` testing the rule
+on `$$this.v.data.posting`, and tell their recruiters likewise. Matching keeps versions too, read
+back the same way: count the mutual interests going on whose version breaks the rule (in
+`matches`, `{ matchedAt: { $exists: true }, endedAt: { $exists: false } }` and the rule tested on
+`snapshot.posting`: from the deploy they lead nowhere, their recruiter shares a job on the
+candidate's page as anyone does, and the candidate reads them without the job) and the jobs in
+matching that break it (in `jobpostings`, `{ 'matching.enabledAt': { $exists: true } }` and the
+rule: proposed to nobody from the deploy, until their recruiter duplicates them with what the rule
+asks), and write those counts in the release's pull request too.
 
 ### Reserved portfolio names
 

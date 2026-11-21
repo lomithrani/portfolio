@@ -94,11 +94,36 @@ export const m = defineMessages({
 			en: 'Only an open job description can be picked. <status>Change its status</status>',
 			fr: 'Seule une offre ouverte peut être choisie. <status>Changer son statut</status>'
 		},
+		/** Under the jobs to pick: the owner reads the version shared, not later edits */
 		ownerSees: {
-			en: (ownerName: string) => `${ownerName} sees the job you pick in the meeting invitation.`,
+			en: (ownerName: string) =>
+				`${ownerName} reads the job as you share it now, linked in the meeting invitation. If you edit it later, you can share the new version here.`,
 			fr: (ownerName: string) =>
-				`${ownerName} voit l'offre que vous choisissez dans l'invitation au rendez-vous.`
+				`${ownerName} lit l'offre telle que vous la partagez maintenant, dont le lien figure dans l'invitation au rendez-vous. Si vous la modifiez ensuite, vous pourrez partager la nouvelle version ici.`
 		},
+		/**
+		 * Above the jobs to pick, once one is shared. Where the values go, each rendered by its own
+		 * snippet (what a person typed never goes through the tag parser): `<job></job>` "Senior
+		 * Engineer · Acme", the version shared; `<time></time>` '3 Nov 2026'; `<owner></owner>` the
+		 * portfolio's name
+		 */
+		sharedOn: {
+			en: 'You shared <job></job> on <time></time>: <owner></owner> reads that version.',
+			fr: 'Vous avez partagé <job></job> le <time></time> : <owner></owner> lit cette version.'
+		},
+		/**
+		 * The posting differs from the version shared. A posting shared was opened, so its terms are
+		 * locked: what changes is its description, or a field no criterion reads
+		 */
+		changedSince: {
+			en: (ownerName: string) =>
+				`This job description changed since you shared it: ${ownerName} still reads, and the steps after this one still use, the version shared.`,
+			fr: (ownerName: string) =>
+				`Cette offre a été modifiée depuis que vous l'avez partagée : ${ownerName} lit toujours, et les étapes suivantes utilisent toujours, la version partagée.`
+		},
+		shareNewVersion: { en: 'Share the new version', fr: 'Partager la nouvelle version' },
+		sharing: { en: 'Sharing…', fr: 'Partage…' },
+		newVersionShared: { en: 'New version shared', fr: 'Nouvelle version partagée' },
 		continueWith: { en: 'Continue with this job', fr: 'Continuer avec cette offre' },
 		write: { en: 'Write a new job description', fr: 'Rédiger une nouvelle offre' },
 		importPdf: { en: 'Import from PDF', fr: 'Importer un PDF' },

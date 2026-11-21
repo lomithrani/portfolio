@@ -17,7 +17,7 @@ export const opportunities = new Elysia()
       params: objectIdParams,
       detail: {
         summary:
-          "A job posting shared with you: one a recruiter picked on your hiring journey, or your own (`access: 'recruiter'`)"
+          "A job posting shared with you (`access`): one a recruiter picked on your hiring journey ('journey'), one you and its recruiter are both interested in ('match'), one proposed to you through matching ('feed'), or your own ('recruiter'); 404 for any other id; 429 over the feeds' reads of an hour"
       }
     }
   );

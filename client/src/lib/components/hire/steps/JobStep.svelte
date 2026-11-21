@@ -9,6 +9,11 @@ when it has not accepted the terms in force (the API records them from the sourc
 recruiter who has not accepted the terms in force (the API answers 422 on `consent`, and a job
 picked before stops counting) accepts them here (TermsAcceptance) before picking.
 The pick is submitted to the step (`{ jobId }`); the job picked comes back as the step's view.
+The step keeps the version shared: what the owner reads and the steps after it use. Once shared,
+the step says when, and, when the posting changed since (its terms are locked once opened: its
+description, or a field no criterion reads), offers to share the new version (the same submit). On
+a journey that scores the job, the API counts the shares (429 beyond a day's), but the job kept,
+picked again unchanged.
 Not for the portfolio's owner (the API refuses their pick): the page shows them the step's
 description instead.
 -->
@@ -16,7 +21,7 @@ description instead.
 	import { tick, untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { Briefcase, DocumentArrowUp, PlusCircle } from 'svelte-heros-v2';
+	import { ArrowPath, Briefcase, DocumentArrowUp, PlusCircle } from 'svelte-heros-v2';
 	import { currentConsent, type JobStatus } from 'portfolio-common';
 	import { portfolioApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
@@ -38,6 +43,8 @@ description instead.
 		JOURNEY_PARAM,
 		initialJobChoice,
 		isPickable,
+		jobLine,
+		outdatedShare,
 		pickJobFailure,
 		pickedJob,
 		requestedJob,
@@ -93,6 +100,10 @@ description instead.
 	// The job to select first (?job=, back from writing it), and the one the list was loaded for
 	let asked = $derived(requestedJob(address));
 	let listedFor: string | null = null;
+
+	// The job shared (the version the step keeps), and the one whose new version can be shared
+	let shared = $derived(pickedJob(step.view));
+	let newVersion = $derived(outdatedShare(step.view));
 
 	let selected = $state<string | null>(null);
 	let picking = $state(false);
@@ -275,10 +286,15 @@ description instead.
 
 	async function pick(event: SubmitEvent) {
 		event.preventDefault();
-		if (!selected || picking) return;
+		if (selected) await share(selected, m.job.picked);
+	}
+
+	/** Shares the posting `jobId` (a pick, or the new version of the one shared): `done` on success */
+	async function share(jobId: string, done: string) {
+		if (picking) return;
 		picking = true;
 		pickError = '';
-		const result = await submit({ jobId: selected });
+		const result = await submit({ jobId });
 		picking = false;
 		if (!result.ok) {
 			const failure = pickJobFailure(result.status, result.value);
@@ -290,7 +306,7 @@ description instead.
 			if (failure.kind === 'terms' && jobsKey) jobs = { key: jobsKey, state: 'terms' };
 			return;
 		}
-		toaster.success({ title: m.job.picked });
+		toaster.success({ title: done });
 		// The pick settles what the address asked for: it selects nothing any more. The browser's
 		// address: page.url still has ?job= after an earlier shallow goto
 		if (new URLSearchParams(location.search).has(JOB_PARAM)) {
@@ -376,6 +392,33 @@ description instead.
 	</div>
 {:else if shown.state === 'loaded'}
 	<form class="space-y-4" onsubmit={pick}>
+		{#if shared?.sharedAt}
+			{@const sharedAt = shared.sharedAt}
+			{@const sharedLine = jobLine(shared)}
+			<div class="space-y-2 rounded-container border border-surface-200-800 p-3 text-sm">
+				<p>
+					<Rich text={m.job.sharedOn}>
+						{#snippet job()}{sharedLine}{/snippet}
+						{#snippet time()}<time datetime={isoDate(sharedAt)}>{formatDay(sharedAt)}</time
+							>{/snippet}
+						{#snippet owner()}{ownerName}{/snippet}
+					</Rich>
+				</p>
+				{#if newVersion}
+					{@const outdated = newVersion}
+					<p>{m.job.changedSince(ownerName)}</p>
+					<button
+						type="button"
+						class="btn preset-filled-primary-700-300 min-h-11"
+						disabled={picking}
+						onclick={() => share(outdated._id, m.job.newVersionShared)}
+					>
+						<ArrowPath size="18" aria-hidden="true" />
+						{picking ? m.job.sharing : m.job.shareNewVersion}
+					</button>
+				{/if}
+			</div>
+		{/if}
 		{#if shown.jobs.length === 0}
 			<p class="text-sm">{m.job.noJob}</p>
 		{:else}

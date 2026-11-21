@@ -19,8 +19,6 @@ export const transitProvider = (): TransitProvider | undefined => {
   return undefined;
 };
 
-export const transitEnabled = () => transitProvider() !== undefined;
-
 /**
  * The shortest journey by public transport between two points, door to door,
  * arriving for a morning at work, in minutes; null when no journey is found.

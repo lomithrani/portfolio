@@ -1,3 +1,10 @@
+import { normalizeSkill, projectUsesSkill, skillDisplayName } from 'portfolio-common';
+
+// How a skill is named and matched (normalizeSkill, skillDisplayName, and projectUsesSkill, which
+// projectMatchesFilters asks) is portfolio-common's (common/models/experienceMonths.ts), so the
+// API counts a skill on the same projects as the page
+export { normalizeSkill };
+
 /**
  * Filters of an experience list: `skills` holds normalized keys (see normalizeSkill), in the
  * order they were selected
@@ -21,20 +28,7 @@ export type SkillOption = { key: string; label: string };
 
 export const emptyFilters = (): ExperienceFilters => ({ skills: [] });
 
-/** Key of a skill name: skills match ignoring case and surrounding spaces ('TypeScript ' = 'typescript') */
-export function normalizeSkill(name: string): string {
-	return name.trim().toLowerCase();
-}
-
 const unique = <T>(values: T[]): T[] => [...new Set(values)];
-
-/** Display name of a populated skill entry (undefined when not populated or blank) */
-const displayNameOf = (entry: SkillEntry): string | undefined => {
-	const skill = entry.skill;
-	if (!skill || typeof skill !== 'object' || !('displayName' in skill)) return undefined;
-	const name = (skill as { displayName?: unknown }).displayName;
-	return typeof name === 'string' && name.trim() ? name.trim() : undefined;
-};
 
 const skillEntriesOf = (experience: FilterableExperience, kind: 'hardSkills' | 'softSkills') =>
 	(experience.projects ?? []).flatMap((project) => project[kind] ?? []);
@@ -46,7 +40,7 @@ function experienceSkillKeys(experience: FilterableExperience): Set<string> {
 		...skillEntriesOf(experience, 'hardSkills'),
 		...skillEntriesOf(experience, 'softSkills')
 	]) {
-		const name = displayNameOf(entry);
+		const name = skillDisplayName(entry);
 		if (name) keys.add(normalizeSkill(name));
 	}
 	return keys;
@@ -92,16 +86,16 @@ export function isSkillHighlighted(filters: ExperienceFilters, displayName: stri
 	return filters.skills.includes(normalizeSkill(displayName));
 }
 
-/** Whether a project uses any of the selected skills (never when none is selected) */
+/**
+ * Whether a project uses any of the selected skills (never when none is selected), as
+ * portfolio-common's projectUsesSkill says
+ */
 export function projectMatchesFilters(
 	project: FilterableProject,
 	filters: ExperienceFilters
 ): boolean {
 	if (filters.skills.length === 0) return false;
-	return [...(project.hardSkills ?? []), ...(project.softSkills ?? [])].some((entry) => {
-		const name = displayNameOf(entry);
-		return name !== undefined && filters.skills.includes(normalizeSkill(name));
-	});
+	return filters.skills.some((key) => projectUsesSkill(project, key));
 }
 
 /** Whether a project of the experience uses the skill (by key, see normalizeSkill) */
@@ -123,7 +117,7 @@ export function skillOptions(experiences: FilterableExperience[]): {
 	for (const experience of experiences) {
 		for (const kind of ['hardSkills', 'softSkills'] as const) {
 			for (const entry of skillEntriesOf(experience, kind)) {
-				const name = displayNameOf(entry);
+				const name = skillDisplayName(entry);
 				if (!name) continue;
 				const key = normalizeSkill(name);
 				const group = groups.get(key) ?? { spellings: new Map(), hard: 0, soft: 0 };

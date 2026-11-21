@@ -80,6 +80,16 @@ export const jobPostingRequest = t.Object({
 });
 
 /**
+ * Body of POST /jobs: the posting, and whether to propose it to candidates through matching once
+ * created (`matching`, Path 2: off unless true, and ignored while MATCHING is off). Not a field of
+ * the posting: PUT /jobs/:id never takes it (PUT /jobs/:id/matching turns it on or off)
+ */
+export const jobPostingCreateRequest = t.Object({
+  ...jobPostingRequest.properties,
+  matching: t.Optional(t.Boolean())
+});
+
+/**
  * Body of PUT /jobs/:id: the posting, and the `updatedAt` of the version the edit started from
  * (as the API returned it). With it, the edit is refused (409) when the posting changed since
  */

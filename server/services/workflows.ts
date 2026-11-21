@@ -17,8 +17,11 @@ import {
   JourneyStepLockedError,
   MissingAuthCookieError
 } from '../errors';
+import { activeMutualInterest } from './mutualInterests';
+import type { MutualInterest } from './mutualInterests';
 import { serverStep } from './workflowSteps';
 import type { ServerStep, StepContext } from './workflowSteps';
+import { jobStep, mutualInterestLines } from './workflowSteps/job';
 import { DOMAIN_NOT_FOUND } from '../protocol';
 import { m } from './workflows.messages';
 
@@ -30,6 +33,14 @@ import { m } from './workflows.messages';
 // step before it succeeded; the routes behind a step (the submit route, the
 // booking routes of plugins/appointments.ts) check it here. The owner is
 // never stopped by their own journey.
+//
+// A visitor can also arrive through matching (Path 2): a mutual interest
+// between the owner and them leads into this journey (services/matches.ts
+// fills its job step and freezes its job match: seedVisitorProgress). The
+// engine reads that mutual interest once per journey, like the progress, and
+// hands it to the steps (StepContext.mutualInterest), which decide what it
+// means for each of them; the meeting invitation names its job through the
+// job step, or here when the journey has no job step before the meeting.
 
 type Id = Types.ObjectId | string;
 
@@ -46,12 +57,30 @@ export interface JourneyStepDto {
   view?: unknown;
 }
 
+/**
+ * The mutual interest (matching, Path 2) between the portfolio's owner and the signed-in visitor
+ * that leads into the journey: the job they are both interested in (as the owner said yes to it),
+ * when they both became interested, and whether the posting changed since
+ */
+export interface JourneyMatchDto {
+  _id: string;
+  job: { _id: string; title: string; company?: string };
+  matchedAt: Date;
+  /** The posting was edited since (what no criterion reads: its terms are locked); the journey keeps the version matched */
+  changed?: true;
+}
+
 /** GET /workflow/domains/:domainName: a portfolio's journey, as the caller stands in it */
 export interface JourneyDto {
   /** The steps, in order */
   steps: JourneyStepDto[];
   /** The caller owns the portfolio: they preview their journey, which never stops them */
   own?: true;
+  /**
+   * The visitor (a recruiter) and the owner are both interested in one of the visitor's jobs
+   * (matching, while MATCHING is on): the journey's job step holds it, its job match the score then
+   */
+  match?: JourneyMatchDto;
 }
 
 // ── The owner's journey ─────────────────────────────────────
@@ -84,11 +113,20 @@ export interface OwnerJourney {
  * what its owner asked for
  */
 export async function ownerJourney(ownerId: Id): Promise<OwnerJourney> {
-  const workflow = await Workflow.findOne({ user: ownerId }, { steps: 1 }).lean();
+  return storedJourney(await Workflow.findOne({ user: ownerId }, { steps: 1 }).lean());
+}
+
+/**
+ * The journey a stored Workflow (its `steps`, as read with lean()) holds, as ownerJourney reads it;
+ * DEFAULT_WORKFLOW_STEPS without one. For what reads the journeys of many owners at once (the
+ * recruiter feed of matching)
+ */
+export function storedJourney(workflow: { steps?: unknown } | null | undefined): OwnerJourney {
   if (!workflow) {
     return { steps: DEFAULT_WORKFLOW_STEPS.map((step) => ({ ...step, config: { ...step.config } })), saved: false };
   }
-  const steps = (workflow.steps ?? []).map((step, index) => {
+  const stored = Array.isArray(workflow.steps) ? (workflow.steps as { id?: unknown; type?: unknown; config?: unknown }[]) : [];
+  const steps = stored.map((step, index) => {
     const id = typeof step?.id === 'string' && isStepId(step.id) ? step.id : undefined;
     // Not a step as PUT /workflow stores them (written by hand, or by an older version): kept
     // under an id and a type nothing has, so it blocks the journey like a step of a removed type
@@ -155,6 +193,26 @@ export async function saveJourneySteps(ownerId: string, input: readonly Workflow
   return steps;
 }
 
+/**
+ * Drops what the steps stored for `visitorId`, in every journey they went through, where
+ * `stored(data)` says so: for a step type whose data must not outlive what it names (the job step:
+ * the version of a posting its recruiter deletes, plugins/jobs.ts). An entry is removed only while
+ * it is the one read (same `updatedAt`): a submit made meanwhile stays
+ */
+export async function dropVisitorProgress(visitorId: Id, stored: (data: unknown) => boolean): Promise<void> {
+  const instances = await WorkflowInstance.find({ visitor: visitorId }, { steps: 1 }).lean();
+  for (const instance of instances) {
+    for (const [stepId, entry] of Object.entries(instance.steps ?? {})) {
+      if (!isStepId(stepId) || !stored(entry?.data)) continue;
+      const path = progressPath(stepId);
+      await WorkflowInstance.updateOne(
+        { _id: instance._id, [`${path}.updatedAt`]: entry?.updatedAt ?? null },
+        { $unset: { [path]: '' } }
+      );
+    }
+  }
+}
+
 /** The owner of the portfolio `domainName`; 404 when there is none */
 export async function portfolioOwner(domainName: string): Promise<string> {
   const domain = await Domain.findOne({ name: normalizeDomainName(domainName) }, { admin: 1 }).lean();
@@ -178,6 +236,8 @@ interface Journey {
   visitor?: string;
   /** What each step stored for the visitor, by step id */
   progress: Map<string, unknown>;
+  /** The mutual interest of matching between the owner and the visitor that leads here, if any */
+  mutualInterest?: MutualInterest;
 }
 
 /** What the steps stored for `visitor` in the owner's journey, by step id */
@@ -195,22 +255,28 @@ async function loadJourney(owner: Id, visitorId: string | undefined): Promise<Jo
   const caller = knownVisitor(visitorId);
   const own = caller === ownerId;
   const visitor = own ? undefined : caller;
-  const [steps, progress] = await Promise.all([
+  const [steps, progress, mutualInterest] = await Promise.all([
     journeySteps(ownerId),
-    visitor ? visitorProgress(ownerId, visitor) : new Map<string, unknown>()
+    visitor ? visitorProgress(ownerId, visitor) : new Map<string, unknown>(),
+    visitor ? activeMutualInterest(ownerId, visitor) : undefined
   ]);
-  return { ownerId, steps, own, ...(visitor ? { visitor } : {}), progress };
+  return { ownerId, steps, own, ...(visitor ? { visitor } : {}), progress, ...(mutualInterest ? { mutualInterest } : {}) };
 }
 
-const stepContext = (journey: Journey, visitor: string, step: WorkflowStep): StepContext<object, unknown> => ({
-  ownerId: journey.ownerId,
-  visitorId: visitor,
-  config: step.config,
-  data: journey.progress.get(step.id),
-  earlier: journey.steps
-    .slice(0, Math.max(0, journey.steps.indexOf(step)))
-    .map(({ id, type }) => ({ id, type, data: journey.progress.get(id) }))
-});
+const stepContext = (journey: Journey, visitor: string, step: WorkflowStep): StepContext<object, unknown> => {
+  const index = journey.steps.indexOf(step);
+  return {
+    ownerId: journey.ownerId,
+    visitorId: visitor,
+    config: step.config,
+    data: journey.progress.get(step.id),
+    earlier: journey.steps
+      .slice(0, Math.max(0, index))
+      .map(({ id, type }) => ({ id, type, data: journey.progress.get(id) })),
+    later: index === -1 ? [] : journey.steps.slice(index + 1).map(({ id, type }) => ({ id, type })),
+    ...(journey.mutualInterest ? { mutualInterest: journey.mutualInterest } : {})
+  };
+};
 
 interface StepStanding {
   status: WorkflowStepStatus;
@@ -234,16 +300,30 @@ async function standings(journey: Journey, steps: readonly WorkflowStep[]): Prom
   );
 }
 
+/** A mutual interest as the journey's answer says it (its job as the owner said yes to it) */
+const journeyMatch = (interest: MutualInterest): JourneyMatchDto | undefined => {
+  if (!interest.posting) return undefined;
+  const { title, company } = interest.posting;
+  return {
+    _id: interest._id,
+    job: { _id: interest.job, title, ...(company ? { company } : {}) },
+    matchedAt: interest.matchedAt,
+    ...(interest.changedAt ? { changed: true as const } : {})
+  };
+};
+
 /** The owner's journey as `visitorId` (undefined: not signed in) stands in it */
 export async function journeyFor(ownerId: string, visitorId: string | undefined): Promise<JourneyDto> {
   const journey = await loadJourney(ownerId, visitorId);
   const standing = await standings(journey, journey.steps);
+  const match = journey.mutualInterest && journeyMatch(journey.mutualInterest);
   return {
     steps: journey.steps.map((step, index) => {
       const config = stepBehaviour(step.type)?.visitorConfig?.(step.config);
       return { id: step.id, type: step.type, ...standing[index], ...(config === undefined ? {} : { config }) };
     }),
-    ...(journey.own ? { own: true as const } : {})
+    ...(journey.own ? { own: true as const } : {}),
+    ...(match ? { match } : {})
   };
 }
 
@@ -332,6 +412,12 @@ export async function openStepOfType(
         if (!describe || before[position].status !== 'succeeded') continue;
         lines.push(...(await describe({ ...stepContext(journey, visitor, step), ...(webOrigin ? { webOrigin } : {}) })));
       }
+      // The job a mutual interest of matching is about, which the job step says before the
+      // meeting: said here when the journey has none there (its owner removed it since)
+      const { mutualInterest } = journey;
+      if (mutualInterest && !journey.steps.slice(0, index).some((step) => step.type === jobStep.type)) {
+        lines.push(...mutualInterestLines(mutualInterest, webOrigin));
+      }
       return lines;
     }
   };
@@ -373,6 +459,30 @@ export async function submitStep(
     { upsert: true }
   );
   return journeyFor(ownerId, visitor);
+}
+
+/**
+ * Stores, for `visitorId` in the owner's journey, what steps hold without the visitor having
+ * submitted them (`entries`: a step id and its data each), creating their progress when they have
+ * none: what a mutual interest of matching leads to (services/matches.ts: the job step holds its
+ * job, the job match is frozen; on a journey without a job step, the progress alone, so that the
+ * meeting booked is recorded: recordStepData). Replaces what those steps stored; the other steps
+ * keep theirs (a note still to confirm, a meeting booked)
+ */
+export async function seedVisitorProgress(
+  ownerId: Id,
+  visitorId: Id,
+  entries: readonly { stepId: string; data: unknown }[]
+): Promise<void> {
+  const updatedAt = new Date();
+  // Unique (owner, visitor): MongoDB retries the upsert itself when two of them race
+  await WorkflowInstance.updateOne(
+    { owner: ownerId, visitor: visitorId },
+    entries.length > 0
+      ? { $set: Object.fromEntries(entries.map(({ stepId, data }) => [progressPath(stepId), { data, updatedAt }])) }
+      : { $setOnInsert: { steps: {} } },
+    { upsert: true }
+  );
 }
 
 /**

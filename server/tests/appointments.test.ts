@@ -8,15 +8,17 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import type { Mock } from 'bun:test';
 import mongoose from 'mongoose';
-import { MAX_AVAILABLE_DATES_RANGE, addDays, bookingHorizon } from 'portfolio-common';
+import { MAX_AVAILABLE_DATES_RANGE, addDays, bookingHorizon, currentDiscoveryConsent, journeyTemplate } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import {
   AppointmentBooking,
   AppointmentSchedule,
+  DiscoveryProfile,
   Domain,
   Experience,
   JobPosting,
+  Match,
   RateLimitCounter,
   Skill,
   User,
@@ -24,6 +26,7 @@ import {
   WorkflowInstance,
   PerfectJob
 } from '../models/database';
+import type { JobPosting as StoredJobPosting } from '../models/database/jobPosting';
 import {
   AVAILABILITY_REQUESTS_PER_IP,
   BOOKING_REQUESTS_PER_EMAIL,
@@ -38,6 +41,12 @@ import { logger } from '../services/logger';
 import { rateLimitKey } from '../services/rateLimit';
 import { jobImportAttemptsKey, jobImportCounters } from '../services/jobImport';
 import { stepSuggestionAttemptsKey, stepSuggestionCounters, stepSuggestionOwnerKey } from '../services/stepSuggestions';
+import { discoveryGrantsKey } from '../services/discovery';
+import { matchingFeedKey } from '../services/matchFeeds';
+import { handOffToJourney, matchingDecisionsKey } from '../services/matches';
+import { activeMutualInterest } from '../services/mutualInterests';
+import { toJobSnapshot } from '../services/jobPostings';
+import { reviewedVersion } from '../services/jobVersion';
 import { feedbackAccountKey, feedbackAttemptsKey, feedbackCounters } from '../services/feedback';
 import { resumeImportAttemptsKey, resumeImportCounters, resumeImportUserKey } from '../services/resumeImport';
 import { wallClockToUTC } from '../services/slotComputation';
@@ -393,7 +402,9 @@ const removeTestData = async (suffix: string) => {
   await Workflow.deleteMany({ user: { $in: userIds } });
   await PerfectJob.deleteMany({ user: { $in: userIds } });
   await WorkflowInstance.deleteMany({ $or: [{ owner: { $in: userIds } }, { visitor: { $in: userIds } }] });
+  await Match.deleteMany({ $or: [{ candidate: { $in: userIds } }, { recruiter: { $in: userIds } }] });
   await JobPosting.deleteMany({ recruiter: { $in: userIds } });
+  await DiscoveryProfile.deleteMany({ user: { $in: userIds } });
   await Skill.deleteMany({ displayName: named });
   await User.deleteMany({ _id: { $in: userIds } });
 };
@@ -404,6 +415,7 @@ let testResponses = 0;
 let owner: { cookie: string; userId: string };
 let other: { cookie: string; userId: string };
 const savedSecret = env.GOOGLE_CLIENT_SECRET;
+const savedMatching = env.matchingEnabled;
 // Set once beforeAll has connected. Teardown then always runs: after a dropped
 // connection Mongoose waits for it to come back, or the hook fails (never skipped)
 let connected = false;
@@ -440,6 +452,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   mock.restore();
+  env.matchingEnabled = savedMatching;
   // No Google token in any body or header this test received, whichever order the tests run in
   const leaks = tokenLeaks(responses.slice(testResponses));
   if (connected) await removeTestData(t.suffix);
@@ -1350,6 +1363,95 @@ describe('hiring journey gate', () => {
     );
   });
 
+  it('opens the meeting after a mutual interest of matching once the note is confirmed, and says how they met', async () => {
+    env.matchingEnabled = true;
+    const steps = [
+      { id: 'note', type: 'note', config: { title: 'Before you book', text: 'Remote only.' } },
+      { id: 'job', type: 'job', config: {} },
+      { id: 'job-match', type: 'job-match', config: { minScore: 70, showDetails: false } },
+      { id: 'meeting', type: 'meeting', config: {} }
+    ];
+    expect((await call('PUT', '/workflow', { body: { steps }, cookie: owner.cookie })).status).toBe(200);
+    const jobId = await recruiterJob('open');
+    // Both interested in it, as services/matches.ts records it and leads into the journey
+    // (tests/matches.test.ts makes it through the decisions)
+    const posting = (await JobPosting.findById(jobId).lean<StoredJobPosting>())!;
+    const matchedAt = new Date();
+    await Match.create({
+      job: jobId,
+      recruiter: other.userId,
+      candidate: owner.userId,
+      candidateDecision: { value: 'interested', at: matchedAt },
+      recruiterDecision: { value: 'interested', at: matchedAt },
+      matchedAt,
+      revealedAt: matchedAt,
+      snapshot: { posting: toJobSnapshot(posting), version: posting.updatedAt, score: 92, minScore: 70, criteria: [] }
+    });
+    await handOffToJourney((await activeMutualInterest(owner.userId, other.userId))!);
+    const visitor = meetingRoutes(other.cookie);
+
+    // The note before the job is still the recruiter's to confirm
+    for (const request of [visitor.dates, visitor.slots, () => visitor.book()]) {
+      const answer = await request();
+      expect(answer.status).toBe(403);
+      expect(answer.text).toBe('Complete the earlier steps of the hiring journey first');
+    }
+    expect((await submitStep('note', { acknowledged: true })).status).toBe(200);
+
+    expect((await visitor.slots()).status).toBe(200);
+    expect((await visitor.book()).status).toBe(200);
+    const [event] = [...google.state.events.values()];
+    expect(event.description).toBe(
+      [
+        `Booked via Portfolio by Jane Recruiter (${t.email('jane')})`,
+        'Job: Staff Engineer — Acme',
+        'Mutual interest on Portfolio',
+        `${WEB_ORIGIN}/opportunities/${jobId}`,
+        'Job match: 92/100'
+      ].join('\n')
+    );
+    const instance = await WorkflowInstance.findOne({ owner: owner.userId, visitor: other.userId }).lean();
+    expect(instance?.steps?.meeting.data).toEqual({ bookedAt: expect.any(Date) });
+    expect(instance?.steps?.job.data).toMatchObject({ job: jobId });
+  });
+
+  it('names the job of a mutual interest in the invitation once the owner kept the meeting alone, and records the booking', async () => {
+    env.matchingEnabled = true;
+    // "Keep the meeting alone" since the mutual interest was made: no job step, nothing to confirm
+    const steps = [{ id: 'meeting', type: 'meeting', config: {} }];
+    expect((await call('PUT', '/workflow', { body: { steps }, cookie: owner.cookie })).status).toBe(200);
+    const jobId = await recruiterJob('open');
+    const posting = (await JobPosting.findById(jobId).lean<StoredJobPosting>())!;
+    const matchedAt = new Date();
+    await Match.create({
+      job: jobId,
+      recruiter: other.userId,
+      candidate: owner.userId,
+      candidateDecision: { value: 'interested', at: matchedAt },
+      recruiterDecision: { value: 'interested', at: matchedAt },
+      matchedAt,
+      revealedAt: matchedAt,
+      snapshot: { posting: toJobSnapshot(posting), version: posting.updatedAt, score: 92, minScore: 70, criteria: [] }
+    });
+    await handOffToJourney((await activeMutualInterest(owner.userId, other.userId))!);
+    const visitor = meetingRoutes(other.cookie);
+
+    expect((await visitor.book()).status).toBe(200);
+
+    const [event] = [...google.state.events.values()];
+    expect(event.description).toBe(
+      [
+        `Booked via Portfolio by Jane Recruiter (${t.email('jane')})`,
+        'Job: Staff Engineer — Acme',
+        'Mutual interest on Portfolio',
+        `${WEB_ORIGIN}/opportunities/${jobId}`
+      ].join('\n')
+    );
+    // On their progress, which the mutual interest started: an open booking page keeps none otherwise
+    const instance = await WorkflowInstance.findOne({ owner: owner.userId, visitor: other.userId }).lean();
+    expect(instance?.steps?.meeting.data).toEqual({ bookedAt: expect.any(Date) });
+  });
+
   it('never stops the owner on their own journey', async () => {
     await setJourney('job', 'meeting');
     const routes = meetingRoutes(owner.cookie);
@@ -1841,6 +1943,10 @@ describe('a grant Google refuses', () => {
 
 describe('no Google token in any API response', () => {
   it('calls every route with valid input and finds the tokens in none of the responses', async () => {
+    // Matching on (Path 2) before the app is built: its routes are registered
+    // only then, and every one of them is swept too
+    env.matchingEnabled = true;
+    app = createApp();
     const first = responses.length;
     const sweepDomain = t.id('domain-sweep');
     const sweep = await login('sweep');
@@ -2015,6 +2121,7 @@ describe('no Google token in any API response', () => {
     const jobBody = {
       title: 'Backend engineer',
       description: 'Build the billing service',
+      company: 'Sweep Corp',
       status: 'open',
       location: { country: 'FR', city: 'Lyon', workMode: 'on_site' },
       contract: { type: 'cdi' },
@@ -2029,6 +2136,22 @@ describe('no Google token in any API response', () => {
     expect((await call('PUT', `/jobs/${jobId}/status`, { ...auth, body: { status: 'open' } })).status).toBe(200);
     expect((await call('GET', '/recruiter/jobs', auth)).status).toBe(200);
     expect((await call('GET', `/recruiter/jobs/${jobId}`, auth)).status).toBe(200);
+    // Matching (tests/matches.test.ts covers it): proposed to candidates, reviewed by the account
+    // made a reviewer for the sweep, then out of matching
+    const savedReviewers = env.matchingReviewers;
+    env.matchingReviewers = new Set([t.email('sweep')]);
+    try {
+      expect((await call('PUT', `/jobs/${jobId}/matching`, { ...auth, body: { enabled: true } })).status).toBe(200);
+      const pending = (await call('GET', '/matching/reviews', auth)).json().jobs.find((entry: any) => entry.job._id === jobId);
+      const review = { decision: 'approve', version: pending.version };
+      expect((await call('PUT', `/matching/reviews/${jobId}`, { ...auth, body: review })).status).toBe(200);
+      // Proposed to candidates: its feed (tests/matchFeeds.test.ts covers it)
+      rateLimitKeys.add(matchingFeedKey(sweep.userId));
+      expect((await call('GET', `/recruiter/jobs/${jobId}/candidates`, auth)).status).toBe(200);
+      expect((await call('PUT', `/jobs/${jobId}/matching`, { ...auth, body: { enabled: false } })).status).toBe(200);
+    } finally {
+      env.matchingReviewers = savedReviewers;
+    }
     // The job step of the owner's hiring journey (tests/workflows.test.ts covers it)
     expect((await call('PUT', '/workflow', { cookie: owner.cookie, body: workflowRequestBody })).status).toBe(200);
     expect(
@@ -2049,6 +2172,81 @@ describe('no Google token in any API response', () => {
     expect((await call('GET', '/appointments/schedules', auth)).status).toBe(200);
     // What the account still has to set up, its calendar included (tests/candidateReadiness.test.ts covers it)
     expect((await call('GET', '/me/readiness', auth)).json().calendar).toMatchObject({ connected: true });
+
+    // Discovery (tests/discovery.test.ts covers it): the account set up as it
+    // asks (the criteria, the gate, the calendar and meeting type above), then
+    // back to a meeting alone for the booking below
+    rateLimitKeys.add(discoveryGrantsKey(sweep.userId));
+    const criteria = {
+      pay: { importance: 5, perYear: 60_000 },
+      workMode: { importance: 4, modes: ['remote'] },
+      contractTypes: { importance: 3, types: ['cdi'] }
+    };
+    expect((await call('PUT', '/perfect-job', { ...auth, body: { criteria } })).status).toBe(200);
+    expect((await call('PUT', '/workflow', { ...auth, body: { steps: journeyTemplate('gate') } })).status).toBe(200);
+    expect((await call('GET', '/discovery', auth)).status).toBe(200);
+    expect((await call('PUT', '/discovery', { ...auth, body: { card: { headline: 'Backend engineer, payments' } } })).status).toBe(200);
+    expect((await call('GET', '/discovery/card', auth)).json().card.headline).toBe('Backend engineer, payments');
+    const consent = { consent: currentDiscoveryConsent() };
+    expect((await call('POST', '/discovery/consent', { ...auth, body: consent })).json().state).toBe('on');
+    // The jobs proposed to the account (tests/matchFeeds.test.ts covers it)
+    expect((await call('GET', '/opportunities', auth)).status).toBe(200);
+    // Decisions and mutual interests (tests/matches.test.ts covers them): a job of the other
+    // account, live in matching (stored so), proposed to this one, which says it is interested,
+    // undoes it and says it again; the other account passes its card, undoes it, then is
+    // interested: both are, and each reads, sees and ends it
+    expect((await call('PUT', '/me/mode', { cookie: other.cookie, body: { mode: 'recruiter', consent: CONSENT } })).status).toBe(200);
+    const [liveJob] = await JobPosting.insertMany([
+      {
+        recruiter: other.userId,
+        title: 'Remote platform engineer',
+        description: 'Run the platform.',
+        company: 'Other Corp',
+        status: 'open',
+        publishedAt: new Date(),
+        location: { country: 'FR', city: 'Lyon', workMode: 'remote' },
+        contract: { type: 'cdi' },
+        workingTime: { arrangement: 'weekly_hours', hoursPerWeek: 35 },
+        pay: { min: 60_000, max: 70_000, currency: 'EUR', period: 'year' }
+      }
+    ]);
+    const liveVersion = reviewedVersion((await JobPosting.findById(liveJob._id).lean<StoredJobPosting>())!);
+    await JobPosting.updateOne(
+      { _id: liveJob._id },
+      {
+        $set: {
+          matching: {
+            enabledAt: new Date(),
+            review: { status: 'approved', requestedAt: new Date(), reviewedAt: new Date(), version: liveVersion }
+          }
+        }
+      },
+      { timestamps: false }
+    );
+    for (const user of [sweep, other]) rateLimitKeys.add(matchingDecisionsKey(user.userId));
+    rateLimitKeys.add(matchingFeedKey(other.userId));
+    const decision = `/opportunities/jobs/${liveJob._id}/decision`;
+    expect((await call('PUT', decision, { ...auth, body: { decision: 'interested' } })).status).toBe(200);
+    expect((await call('DELETE', decision, auth)).status).toBe(200);
+    expect((await call('PUT', decision, { ...auth, body: { decision: 'interested' } })).json().match).toBeNull();
+    const [card] = (await call('GET', `/recruiter/jobs/${liveJob._id}/candidates`, { cookie: other.cookie })).json().cards;
+    const onCard = `/recruiter/jobs/${liveJob._id}/candidates/decision`;
+    const asOther = { cookie: other.cookie };
+    expect((await call('PUT', onCard, { ...asOther, body: { token: card.token, decision: 'pass' } })).status).toBe(200);
+    expect((await call('DELETE', onCard, { ...asOther, body: { token: card.token } })).status).toBe(200);
+    const mutual = await call('PUT', onCard, { ...asOther, body: { token: card.token, decision: 'interested' } });
+    expect(mutual.json().match.candidate.domain).toBe(sweepDomain);
+    const matchId = mutual.json().match._id as string;
+    expect((await call('GET', '/me/notifications', auth)).json().mutualInterests.candidate).toBe(1);
+    expect((await call('GET', '/matches?side=candidate', auth)).json().matches).toHaveLength(1);
+    expect((await call('GET', `/matches/${matchId}`, auth)).status).toBe(200);
+    expect((await call('PUT', `/matches/${matchId}/seen`, auth)).status).toBe(200);
+    expect((await call('GET', `/opportunities/jobs/${liveJob._id}`, auth)).json().access).toBe('match');
+    expect((await call('POST', `/matches/${matchId}/end`, auth)).status).toBe(200);
+    expect((await call('DELETE', '/discovery/consent', auth)).status).toBe(200);
+    expect(
+      (await call('PUT', '/workflow', { ...auth, body: { steps: [{ id: 'meeting', type: 'meeting', config: {} }] } })).status
+    ).toBe(200);
 
     google.state.busy = [];
     expect((await call('GET', `/appointments/domains/${sweepDomain}/schedules`)).status).toBe(200);
@@ -2089,7 +2287,7 @@ describe('no Google token in any API response', () => {
     const swept = responses.slice(first);
 
     // Every API route answered at least once with a 2xx: a new route fails
-    // this test until it is added above
+    // this test until it is added above (matching's too: the flag is on)
     const routes = createApp()
       .routes.filter((route) => route.method !== 'OPTIONS' && !route.path.startsWith('/swagger'))
       .map((route) => ({

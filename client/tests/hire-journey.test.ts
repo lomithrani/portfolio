@@ -15,7 +15,7 @@ import {
 } from './support/owner';
 import { stubAddressSearch } from './support/addresses';
 import { TERMS_REQUIRED, stubApi } from './support/api';
-import { createJob, deleteJobs } from './support/jobs';
+import { createJob, deleteJobs, jobPosting } from './support/jobs';
 import {
 	DEFAULT_WORKFLOW_STEPS,
 	LEGAL_VERSION,
@@ -35,6 +35,10 @@ import {
 // test names its postings with its own tag and removes them afterwards. The e2e candidate (no
 // recruiter space, no acceptance of the terms) opens a recruiter space from the job step, with the
 // requests that would change it answered in the browser, so it stays that way.
+// One test shares jobs, through the API, on the journey with a job match: each such share counts
+// against JOB_STEP_LIMITS.scoredSharesPerDay for the e2e recruiter on 'e2e-journey', two a run.
+// `seed:e2e` clears those counters (CI and the local recipe run it before every run): run it again
+// before a third run on the same UTC day.
 
 test.skip(
 	!JWT_SECRET,
@@ -1203,6 +1207,83 @@ test.describe('the hiring journey', () => {
 		).toBeChecked();
 	});
 
+	test('a job edited since it was shared: the owner reads the version shared until the recruiter shares the new one', async ({
+		page,
+		browser
+	}) => {
+		await setJourney('job', 'meeting');
+		// Angle brackets typed in a title stay text where a message has passages of its own
+		const title = `Staff <b>engineer</b> ${tag}`;
+		const job = await createJob(recruiterApi, {
+			title,
+			status: 'open',
+			description: '## The job\n\nThe version shared first.'
+		});
+		await submitStep('job', { jobId: job._id });
+		// Edited since: its description (opened, its terms are locked)
+		const edited = await recruiterApi.put(`${API_URL}/jobs/${job._id}`, {
+			data: jobPosting({ title, status: 'open', description: '## The job\n\nThe new version.' })
+		});
+		expect(edited.ok(), await edited.text()).toBe(true);
+
+		// The owner, in a browser of their own, reads the version shared on their journey
+		const context = await browser.newContext();
+		const ownerPage = await context.newPage();
+		await blockGoogle(ownerPage);
+		await signIn(ownerPage, owner);
+		await gotoHydrated(ownerPage, `/opportunities/${job._id}`);
+		await expect(ownerPage.getByText('The version shared first.')).toBeVisible();
+		await expect(ownerPage.getByText('The new version.')).toHaveCount(0);
+		await expect(ownerPage.getByText(/^Shared with you \d{1,2} \w+ \d{4}$/)).toBeVisible();
+
+		// The recruiter: the step says the job changed since it was shared
+		await stubMeetingType(page);
+		await signIn(page, recruiter);
+		await gotoHydrated(page, `/${DOMAIN}/hire`);
+		const jobStep = step(page, 'Step 1: Select or create a job');
+		await expect(jobStep).toContainText(`${title} · E2E Corp: changed since you shared it.`);
+		await jobStep.getByRole('button', { name: 'Change' }).click();
+		const sharedOn = jobStep.locator('p', { hasText: /^You shared / });
+		await expect(sharedOn).toHaveText(
+			new RegExp(
+				`^You shared Staff <b>engineer</b> ${tag} · E2E Corp on \\d{1,2} \\w+ \\d{4}: ${DOMAIN} reads that version\\.$`
+			)
+		);
+		await expect(sharedOn.locator('time')).toHaveCount(1);
+		await expect(sharedOn.locator('b')).toHaveCount(0);
+		await expect(jobStep).toContainText(
+			`This job description changed since you shared it: ${DOMAIN} still reads, and the steps after this one still use, the version shared.`
+		);
+
+		// A refusal (a journey that scores the jobs shared, as many as a day allows: answered in the
+		// browser) is said at the step, and shares nothing
+		await stubApi(page, 'POST', `/workflow/domains/${DOMAIN}/steps/job`, (_request, index) =>
+			index === 0
+				? {
+						status: 429,
+						text: 'You can share at most 5 jobs a day on this page, where each one is scored: try again tomorrow',
+						headers: { 'retry-after': '3600' }
+					}
+				: undefined
+		);
+		const share = jobStep.getByRole('button', { name: 'Share the new version' });
+		await share.click();
+		await expect(jobStep.getByRole('alert')).toHaveText(
+			'Each job shared here is scored, so you can share at most 5 a day on this page. Try again tomorrow.'
+		);
+
+		await share.click();
+		await expect(toasts(page).getByText('New version shared')).toBeVisible();
+		await expect(jobStep).toContainText(`${title} · E2E Corp`);
+		await expect(jobStep).not.toContainText('changed since');
+
+		// Shared again: the owner reads the new version
+		await ownerPage.reload();
+		await expect(ownerPage.getByText('The new version.')).toBeVisible();
+		await expect(ownerPage.getByText('The version shared first.')).toHaveCount(0);
+		await context.close();
+	});
+
 	test('an account without a recruiter space ticks the age and terms box to create it from the job step', async ({
 		page
 	}) => {
@@ -1851,7 +1932,9 @@ test.describe('the hiring journey', () => {
 		const meetingStep = step(page, 'Step 3: Book a meeting');
 		await expect(matchStep).toContainText('Complete the step above first.');
 
-		// A CDI on site, with no seniority stated: only the contract matches (3 of 10)
+		// A CDI on site, with no seniority stated: only the contract matches (3 of 10). Each share on
+		// this journey, which scores it, counts against the recruiter's shares of the day (see the top
+		// of this file: reseed before a third run on a day)
 		await jobStep.getByRole('radio', { name: new RegExp(`On site engineer ${tag}`) }).check();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
 		await expect(matchStep).toContainText(
@@ -1879,7 +1962,8 @@ test.describe('the hiring journey', () => {
 		await expect(meetingStep).toContainText('Complete the steps above first.');
 		await expect(meetingStep.getByRole('button')).toHaveCount(0);
 
-		// Another job of theirs, which matches everything: the meeting step opens
+		// Another job of theirs, which matches everything: the meeting step opens (a second share
+		// counted)
 		await jobStep.getByRole('button', { name: 'Change' }).click();
 		await jobStep.getByRole('radio', { name: new RegExp(`Remote engineer ${tag}`) }).check();
 		await jobStep.getByRole('button', { name: 'Continue with this job' }).click();
