@@ -582,45 +582,58 @@ export interface JobMatch {
 export const TRANSIT_PROVIDERS = ['here', 'transitous'] as const;
 export type TransitProvider = (typeof TRANSIT_PROVIDERS)[number];
 
-const isScore = (value: unknown): value is number => {
+/** The public transport service of an answer, when it is one this client knows */
+export const transitProvider = (value: unknown): TransitProvider | undefined =>
+	TRANSIT_PROVIDERS.find((name) => name === value);
+
+/** A score out of 100, as the API gives it (a whole number from 0 to 100) */
+export const isScore = (value: unknown): value is number => {
 	const { min, max } = JOB_MATCH_STEP_LIMITS.minScore;
 	return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
 };
 
 const OUTCOMES: readonly JobMatchCriterion['outcome'][] = ['match', 'partial', 'miss', 'unknown'];
 
+/**
+ * The outcome of each criterion, from a list the API gave (a job match step's `view`, an anonymous
+ * card's outcomes, a job proposed to the candidate): an entry that is not one is left out, as is a
+ * criterion given twice (the first stays)
+ */
+export const jobMatchCriteria = (value: unknown): JobMatchCriterion[] => {
+	if (!Array.isArray(value)) return [];
+	const seen = new Set<string>();
+	return value.flatMap((entry): JobMatchCriterion[] => {
+		const { criterion, outcome, notStated, dealBreaker } = (
+			entry && typeof entry === 'object' ? entry : {}
+		) as Record<string, unknown>;
+		const known = PERFECT_JOB_CRITERIA.find((name) => name === criterion);
+		const result = OUTCOMES.find((name) => name === outcome);
+		if (!known || !result || seen.has(known)) return [];
+		seen.add(known);
+		return [
+			{
+				criterion: known,
+				outcome: result,
+				notStated: notStated === true,
+				dealBreaker: dealBreaker === true
+			}
+		];
+	});
+};
+
 /** The score, from a job match step's `view`; undefined when there is none (or it is not one) */
 export const jobMatch = (view: unknown): JobMatch | undefined => {
 	if (!view || typeof view !== 'object') return undefined;
 	const { score, minScore, job, criteria, transit } = view as Record<string, unknown>;
-	const provider = TRANSIT_PROVIDERS.find((name) => name === transit);
+	const provider = transitProvider(transit);
 	const { _id, title } = (job && typeof job === 'object' ? job : {}) as Record<string, unknown>;
 	if (!isScore(score) || !isScore(minScore)) return undefined;
 	if (typeof _id !== 'string' || typeof title !== 'string') return undefined;
-	const listed = Array.isArray(criteria)
-		? criteria.flatMap((entry): JobMatchCriterion[] => {
-				const { criterion, outcome, notStated, dealBreaker } = (entry ?? {}) as Record<
-					string,
-					unknown
-				>;
-				const known = PERFECT_JOB_CRITERIA.find((name) => name === criterion);
-				const result = OUTCOMES.find((name) => name === outcome);
-				if (!known || !result) return [];
-				return [
-					{
-						criterion: known,
-						outcome: result,
-						notStated: notStated === true,
-						dealBreaker: dealBreaker === true
-					}
-				];
-			})
-		: undefined;
 	return {
 		score,
 		minScore,
 		job: { _id, title },
-		...(listed ? { criteria: listed } : {}),
+		...(Array.isArray(criteria) ? { criteria: jobMatchCriteria(criteria) } : {}),
 		...(provider ? { transit: provider } : {})
 	};
 };
@@ -655,9 +668,22 @@ export const jobMatchNote = (step: { config?: unknown; view?: unknown }): string
 	return minScore === undefined ? m.jobMatch.ask : m.jobMatch.askMin(minScore);
 };
 
-/** How a criterion's outcome reads in the details of a score */
-export const jobMatchOutcomeText = (entry: JobMatchCriterion): string => {
+/**
+ * Who reads how a job does on a candidate's criteria: the recruiter whose job it is (on the
+ * candidate's page for recruiters, beside an anonymous card), or the candidate themselves
+ */
+export type OutcomeAudience = 'recruiter' | 'candidate';
+
+/** How a criterion's outcome reads in the details of a score, for `audience` */
+export const jobMatchOutcomeText = (
+	entry: JobMatchCriterion,
+	audience: OutcomeAudience = 'recruiter'
+): string => {
 	if (entry.outcome === 'unknown') return m.jobMatch.outcome.unknown;
-	if (entry.notStated) return m.jobMatch.outcome.notStated;
+	if (entry.notStated) {
+		return audience === 'recruiter'
+			? m.jobMatch.outcome.notStated
+			: m.jobMatch.outcome.notStatedForCandidate;
+	}
 	return m.jobMatch.outcome[entry.outcome];
 };

@@ -241,6 +241,11 @@ export const m = defineMessages({
 				en: 'Not stated in your job description',
 				fr: 'Non précisé dans votre offre'
 			},
+			/** The same, read by the candidate (a job proposed to them) */
+			notStatedForCandidate: {
+				en: 'Not stated in the job description',
+				fr: "Non précisé dans l'offre"
+			},
 			match: { en: 'Matches', fr: 'Correspond' },
 			partial: { en: 'Partly matches', fr: 'Correspond en partie' },
 			miss: { en: 'Does not match', fr: 'Ne correspond pas' }

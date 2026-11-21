@@ -54,7 +54,8 @@ export interface JobPostingDto extends JobPostingInput {
 /**
  * 404 for a posting that does not exist or is not the caller's (or, on its private page, not
  * shared with them: services/jobAccess.ts). Not a message: the client matches it (pickJobFailure
- * of workflow.ts, jobViewFailure of jobView.ts), so it stays in English (see protocol.ts)
+ * of workflow.ts, jobViewFailure of jobView.ts, decisionFailure and feedFailure of matching.ts),
+ * so it stays in English (see protocol.ts)
  */
 export const JOB_NOT_FOUND = 'Job posting not found';
 

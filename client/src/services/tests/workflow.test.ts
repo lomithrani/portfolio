@@ -787,6 +787,18 @@ describe('the job match step', () => {
 		expect(jobMatchOutcomeText({ ...entry, outcome: 'miss', notStated: true })).toBe(
 			'Not stated in your job description'
 		);
+		// Read by the candidate (a job proposed to them): the job description is not theirs
+		expect(jobMatchOutcomeText({ ...entry, outcome: 'miss', notStated: true }, 'candidate')).toBe(
+			'Not stated in the job description'
+		);
+		expect(jobMatchOutcomeText({ ...entry, outcome: 'partial' }, 'candidate')).toBe(
+			'Partly matches'
+		);
+		withLocale('fr', () =>
+			expect(jobMatchOutcomeText({ ...entry, outcome: 'miss', notStated: true }, 'candidate')).toBe(
+				"Non précisé dans l'offre"
+			)
+		);
 		// A travel time that could not be computed: the criterion is left out of the score
 		expect(jobMatchOutcomeText({ ...entry, criterion: 'commute', outcome: 'unknown' })).toBe(
 			'Could not be computed right now: not counted'

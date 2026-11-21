@@ -197,28 +197,6 @@ export const m = defineMessages({
 			en: (ownerName: string) => `How your job does on what matters to ${ownerName}`,
 			fr: (ownerName: string) => `Votre offre face à ce qui compte pour ${ownerName}`
 		},
-		dealBreaker: { en: 'Deal-breaker', fr: 'Éliminatoire' },
-		commute: {
-			en: (ownerName: string) =>
-				`The commute is ${ownerName}'s travel time to your job's address, there and back, over a week.`,
-			fr: (ownerName: string) =>
-				`Le trajet est le temps que met ${ownerName} pour aller à l'adresse de votre offre et en revenir, sur une semaine.`
-		},
-		/** Who the travel times come from: on a site without public transport, then with each service it can ask */
-		commuteSources: {
-			none: {
-				en: 'Travel times: <ign>Géoplateforme (IGN)</ign>.',
-				fr: 'Temps de trajet : <ign>Géoplateforme (IGN)</ign>.'
-			},
-			here: {
-				en: 'Travel times: <ign>Géoplateforme (IGN)</ign> and, by public transport, <here>HERE</here>.',
-				fr: 'Temps de trajet : <ign>Géoplateforme (IGN)</ign> et, en transports en commun, <here>HERE</here>.'
-			},
-			transitous: {
-				en: 'Travel times: <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> and <osm>OpenStreetMap contributors</osm>.',
-				fr: "Temps de trajet : <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> et <osm>les contributeurs d'OpenStreetMap</osm>."
-			}
-		},
 		dealBreakerMissed: {
 			en: (ownerName: string) =>
 				`A job that does not match a deal-breaker of ${ownerName}'s scores 0, whatever the rest.`,
