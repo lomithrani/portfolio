@@ -42,7 +42,7 @@ export const m = defineMessages({
 	/** Backed by: services/discovery.ts isProposed (the state on and nothing missing, at every read) */
 	paused: {
 		en: 'Paused: you are proposed to no recruiter until what is missing below is set.',
-		fr: "En pause : vous n'êtes proposé à aucun recruteur tant que ce qui manque ci-dessous n'est pas réglé."
+		fr: "En pause : aucun recruteur ne voit votre fiche tant que ce qui manque ci-dessous n'est pas réglé."
 	},
 	/** Paused, and the consent in its last DISCOVERY_CONSENT_RENEWAL_DAYS days too */
 	pausedRenew: {
@@ -60,9 +60,9 @@ export const m = defineMessages({
 	},
 	lapsed: {
 		en: (ended: string) =>
-			`Your consent ended on ${ended}: you are proposed to no recruiter. Give it again to be visible again.`,
+			`Your consent ended on ${ended}: no recruiter sees your card. Give your consent again to be proposed to recruiters.`,
 		fr: (ended: string) =>
-			`Votre consentement a pris fin le ${ended} : vous n'êtes proposé à aucun recruteur. Donnez-le de nouveau pour être de nouveau visible.`
+			`Votre consentement a pris fin le ${ended} : aucun recruteur ne voit votre fiche. Donnez de nouveau votre consentement pour qu'elle leur soit proposée.`
 	},
 	/**
 	 * The one bar a job is held to, the journey's job match minimum. Backed by:
@@ -81,7 +81,7 @@ export const m = defineMessages({
 	 */
 	opportunities: {
 		en: 'See the jobs proposed to you',
-		fr: 'Voir les offres qui vous sont proposées'
+		fr: 'Voir les offres proposées'
 	},
 	/** A change answered a 404: matching was turned off meanwhile */
 	unavailable: {
@@ -243,7 +243,7 @@ export const m = defineMessages({
 		 */
 		lapsedDescription: {
 			en: "Your consent ended, so you are already proposed to no recruiter. Turning it off also drops your answers on the jobs proposed to you, and recruiters' answers about you, except where you are both interested: those go on until you or the recruiter ends them.",
-			fr: "Votre consentement a pris fin : vous n'êtes déjà proposé à aucun recruteur. Le désactiver efface aussi vos réponses aux offres qui vous ont été proposées, et celles des recruteurs à votre sujet, sauf en cas d'intérêt réciproque : celui-ci continue jusqu'à ce que vous ou le recruteur y mettiez fin."
+			fr: "Votre consentement a pris fin : votre fiche n'est déjà plus proposée à aucun recruteur. Le désactiver efface aussi vos réponses aux offres qui vous ont été proposées, et celles des recruteurs à votre sujet, sauf en cas d'intérêt réciproque : celui-ci continue jusqu'à ce que vous ou le recruteur y mettiez fin."
 		},
 		busy: { en: 'Turning it off…', fr: 'Désactivation…' },
 		done: {

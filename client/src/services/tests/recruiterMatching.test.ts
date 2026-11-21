@@ -14,7 +14,9 @@ import {
 	deleteMatchingDetails,
 	everInMatching,
 	isMatchingLimitBody,
+	jobMatchingBadge,
 	jobMatchingLabel,
+	MATCHING_STATE_TONE,
 	jobMatchingState,
 	leavingMatchingText,
 	matchingFormErrors,
@@ -129,6 +131,23 @@ describe('where a job stands in matching', () => {
 				'Acceptée pour les candidats'
 			);
 		});
+	});
+
+	it('colours each state as the matching panel does, so they read apart at a glance', () => {
+		expect(jobMatchingBadge({ status: 'open' })).toBeNull();
+		expect(jobMatchingBadge({ status: 'open', matching: on('approved') })?.tone).toBe(
+			'preset-tonal-success'
+		);
+		expect(jobMatchingBadge({ status: 'open', matching: on('rejected') })?.tone).toBe(
+			'preset-tonal-error'
+		);
+		expect(jobMatchingBadge({ status: 'open', matching: on('pending') })?.tone).toBe(
+			'preset-tonal-warning'
+		);
+		expect(jobMatchingBadge({ status: 'on_hold', matching: on('approved') })?.tone).toBe(
+			'preset-tonal-warning'
+		);
+		expect(MATCHING_STATE_TONE.live).not.toBe(MATCHING_STATE_TONE.pending);
 	});
 });
 

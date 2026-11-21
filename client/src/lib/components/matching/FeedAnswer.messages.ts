@@ -4,7 +4,7 @@ import { defineMessages } from 'portfolio-common';
 // and their answer, given or changed there. Decision 11: "Interested" and "Pass" (the buttons:
 // matching.messages.ts), never a bare "match"
 export const m = defineMessages({
-	heading: { en: 'Proposed to you', fr: 'Proposée pour vous' },
+	heading: { en: 'Proposed to you', fr: 'Une offre qui vous est proposée' },
 	/**
 	 * Before an answer. Backed by: the discovery consent and the recruiter's feed (`interested`):
 	 * the candidate's interest is what the recruiter sees

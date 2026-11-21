@@ -224,7 +224,7 @@
 
 		{#if job && !matching}
 			<PageNotice title={matchingText.unavailable.title} icon={EyeSlash}>
-				<p>{m.unavailable.text}</p>
+				<p>{matchingText.unavailable.text}</p>
 				{#snippet actions()}
 					<a href={resolve('/(app)/recruiter/jobs/[id]', { id: jobId })} class={linkClass}
 						>{m.backToJob}</a
@@ -364,7 +364,7 @@
 			/>
 		{:else if loadState.kind === 'off'}
 			<PageNotice title={matchingText.unavailable.title} icon={EyeSlash}>
-				<p>{m.unavailable.text}</p>
+				<p>{matchingText.unavailable.text}</p>
 				{#snippet actions()}
 					<a href={resolve('/(app)/recruiter/jobs/[id]', { id: jobId })} class={linkClass}
 						>{m.backToJob}</a

@@ -69,9 +69,9 @@ export const m = defineMessages({
 		/** `max`: MATCHING_LIMITS.reviewReason. parseReviewReason keeps it on one line */
 		reasonHint: {
 			en: (max: number) =>
-				`Required to reject. Its recruiter reads it in your words, on one line (line breaks are not kept): ${max} characters at most.`,
+				`Required to reject. Its recruiter reads it in your words, as one paragraph (line breaks become spaces): ${max} characters at most.`,
 			fr: (max: number) =>
-				`Obligatoire pour refuser. Son recruteur la lit avec vos mots, sur une ligne (les retours à la ligne ne sont pas gardés) : ${max} caractères au plus.`
+				`Obligatoire pour refuser. Son recruteur la lit avec vos mots, en un seul paragraphe (les retours à la ligne deviennent des espaces) : ${max} caractères au plus.`
 		},
 		reject: { en: 'Reject', fr: 'Refuser' },
 		/** Reject's name for screen readers (`title`: the job's) */

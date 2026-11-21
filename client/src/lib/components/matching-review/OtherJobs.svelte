@@ -2,8 +2,8 @@
 @component
 The other jobs of the recruiter of a job waiting for a review (matching, Path 2), as the reviewer
 compares them with it (GET /matching/reviews's `otherJobs`): each with its status, its one-line
-summary (place, work mode, contract, pay), when it was created, whether it is proposed to
-candidates now and where its review stands. A copy of the job under review (the same company and
+summary (place, work mode, contract, pay), when it was created, where its review stands (a badge)
+and, when its recruiter no longer asks to propose it, a badge saying so (the list's exception). A copy of the job under review (the same company and
 title, or the same description) is marked, with the terms it differs in: copies that differ in one
 term would tell their recruiter what candidates ask or where they live. A job that waits on the
 same page links to it (`listed`), named with its title and when it was created (copies share a
@@ -91,15 +91,23 @@ title). A plain group under its heading, not a region: the page lists many jobs.
 							{/each}
 						</p>
 					{/if}
-					<p class="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-surface-700-300">
+					<!-- Its review as one badge; that its recruiter no longer asks to propose it, the
+					     exception in this list, as another -->
+					<p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-surface-700-300">
 						{#if job.createdAt}
 							<span
 								><time datetime={isoDate(job.createdAt)}>{m.created(formatDay(job.createdAt))}</time
 								></span
 							>
 						{/if}
-						<span>{job.inMatching ? m.inMatching : m.notInMatching}</span>
-						<span><span class="sr-only">{m.review}</span> {reviewStatusText(job.review)}</span>
+						<span class="badge preset-tonal [--badge-size:var(--text-xs)]" data-other-review
+							><span class="sr-only">{m.review}</span> {reviewStatusText(job.review)}</span
+						>
+						{#if !job.inMatching}
+							<span class="badge preset-outlined-surface-300-700 [--badge-size:var(--text-xs)]"
+								>{m.notInMatching}</span
+							>
+						{/if}
 					</p>
 					{#if job.nearDuplicate}
 						<p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">

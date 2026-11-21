@@ -111,7 +111,7 @@ describe('a job waiting for a review', () => {
 		// The reason is required and kept on one line
 		expect(body).toContain('aria-required="true"');
 		expect(text).toContain('Required to reject.');
-		expect(text).toContain('on one line (line breaks are not kept)');
+		expect(text).toContain('as one paragraph (line breaks become spaces)');
 	});
 
 	it('names its controls with its title (the page lists many jobs), and is one named region', () => {
@@ -168,8 +168,10 @@ describe('a job waiting for a review', () => {
 		expect(text).toContain('Differs in: Minimum pay and Maximum pay');
 		expect(text).toContain('Waiting for a review');
 		expect(text).toContain('Rejected');
+		// Only the exception is said: the recruiter no longer asks to propose one of them
 		expect(text).toContain('Its recruiter no longer asks to propose it');
-		expect(text).toContain('Its recruiter asks to propose it to candidates');
+		expect(body.match(/Its recruiter no longer asks to propose it/g)).toHaveLength(1);
+		expect(text).not.toContain('Its recruiter asks to propose it to candidates');
 		expect(body).toContain(`href="#review-${COPY_ID}"`);
 		// Named with the copy's title and day: copies share a title
 		expect(body).toMatch(

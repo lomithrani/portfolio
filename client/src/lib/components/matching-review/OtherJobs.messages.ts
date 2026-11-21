@@ -47,13 +47,10 @@ export const m = defineMessages({
 		fr: (day: string) => `Créée le ${day}`
 	},
 	/**
-	 * Its recruiter's switch, what they ask for (whether reviewed or not: its review follows); never
-	 * "Proposed to candidates", the recruiter's word for a job approved and live (docs/I18N.md)
+	 * Its recruiter's switch turned off since (the jobs listed are those they ask to propose, or
+	 * asked to lately: only this exception is said); never "Proposed to candidates", the recruiter's
+	 * word for a job approved and live (docs/I18N.md)
 	 */
-	inMatching: {
-		en: 'Its recruiter asks to propose it to candidates',
-		fr: 'Son recruteur demande à la proposer aux candidats'
-	},
 	notInMatching: {
 		en: 'Its recruiter no longer asks to propose it',
 		fr: 'Son recruteur ne demande plus à la proposer'

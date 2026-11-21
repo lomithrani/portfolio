@@ -57,7 +57,7 @@
 		type StatusFilter
 	} from '#services/recruiter.ts';
 	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
-	import { deleteMatchingDetails, jobMatchingLabel } from '#services/recruiterMatching.ts';
+	import { deleteMatchingDetails, jobMatchingBadge } from '#services/recruiterMatching.ts';
 	import { notificationsStore } from '#services/notifications.ts';
 	import { m } from './page.messages.ts';
 
@@ -550,7 +550,7 @@
 						<li data-job-card={job._id}>
 							<JobCard {job} href={jobHref(job._id)} showStatus>
 								{#snippet meta()}
-									{@const matchingLabel = jobMatchingLabel(job)}
+									{@const matchingBadge = jobMatchingBadge(job)}
 									<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 										<p class="flex flex-wrap items-center gap-x-4 gap-y-1">
 											<span>
@@ -560,9 +560,9 @@
 													{/snippet}
 												</Rich>
 											</span>
-											{#if matchingLabel}
-												<span class="badge preset-tonal-primary" data-job-matching>
-													{matchingLabel}
+											{#if matchingBadge}
+												<span class="badge {matchingBadge.tone}" data-job-matching>
+													{matchingBadge.text}
 												</span>
 											{/if}
 										</p>

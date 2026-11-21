@@ -1218,6 +1218,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					field="company"
 					label={labels.company}
 					hint={matchingShown && proposed ? m.matching.companyRequired : m.companyHint}
+					required={matchingShown && proposed}
 				>
 					{#snippet control(attributes)}
 						<input

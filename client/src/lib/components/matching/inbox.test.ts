@@ -72,7 +72,8 @@ describe('CandidateInterest', () => {
 		expect(shown).toContain(
 			'The job description was edited since: you keep the version you said yes to.'
 		);
-		expect(shown).toContain('To book a meeting with you, its recruiter goes through the steps');
+		// Said once above the list (the view's intro), never again on each of them
+		expect(shown).not.toContain('To book a meeting with you');
 		expect(shown).toContain('Open the job');
 		expect(shown).toContain('End it');
 		const html = render(CandidateInterest, { props: { interest, onEnd: () => {} } }).body;
@@ -184,7 +185,7 @@ describe('FeedAnswer', () => {
 				}).body
 			)
 		);
-		expect(shown).toContain('Proposée pour vous');
+		expect(shown).toContain('Une offre qui vous est proposée');
 		expect(shown).toContain("Ça m'intéresse");
 		expect(shown).toContain('Passer');
 	});

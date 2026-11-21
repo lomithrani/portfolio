@@ -11,9 +11,13 @@ export const m = defineMessages({
 		fr: "Modifier l'offre d'emploi | Recruteur"
 	},
 	heading: { en: 'Edit job description', fr: "Modifier l'offre d'emploi" },
+	/**
+	 * Backed by: server/services/workflowSteps/job.ts (the version shared is kept: an edit reaches no
+	 * journey until it is shared again, `outdated` and "Share the new version")
+	 */
 	intro: {
-		en: "Your changes apply as soon as you save them, also where you picked this job description on a candidate's page for recruiters.",
-		fr: "Vos modifications s'appliquent dès que vous les enregistrez, y compris là où vous avez choisi cette offre sur la page recruteurs d'un candidat."
+		en: "Your changes are saved at once. Where you shared this job description on a candidate's page for recruiters, the candidate keeps the version you shared until you share it again.",
+		fr: "Vos modifications sont enregistrées aussitôt. Là où vous avez partagé cette offre sur la page recruteurs d'un candidat, il garde la version partagée jusqu'à ce que vous la partagiez de nouveau."
 	},
 	signInText: {
 		en: 'Sign in to edit your job descriptions.',

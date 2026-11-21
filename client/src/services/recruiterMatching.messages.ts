@@ -28,8 +28,8 @@ export const m = defineMessages({
 		},
 		/** 422 on `company`: candidates decide before they know who the recruiter is */
 		company: {
-			en: 'Name the company first: candidates say whether they are interested before they know who you are. Edit the job description to add it.',
-			fr: "Indiquez d'abord l'entreprise : les candidats disent s'ils sont intéressés avant de savoir qui vous êtes. Modifiez l'offre pour l'ajouter."
+			en: 'Name the company first: candidates say whether they are interested before they know which recruiter you are. Edit the job description to add it.',
+			fr: "Indiquez d'abord l'entreprise : les candidats disent s'ils sont intéressés avant de savoir quel recruteur vous êtes. Modifiez l'offre pour l'ajouter."
 		},
 		description: {
 			en: 'Describe the job first: candidates read the description before they say whether they are interested. Edit the job description to add it.',
@@ -121,8 +121,8 @@ export const m = defineMessages({
 	 */
 	formErrors: {
 		company: {
-			en: 'Name the company: candidates decide whether they are interested before they know who you are. Or untick “Propose it to candidates”.',
-			fr: "Indiquez l'entreprise : les candidats disent s'ils sont intéressés avant de savoir qui vous êtes. Ou décochez « La proposer aux candidats »."
+			en: 'Name the company: candidates decide whether they are interested before they know which recruiter you are. Or untick “Propose it to candidates”.',
+			fr: "Indiquez l'entreprise : les candidats disent s'ils sont intéressés avant de savoir quel recruteur vous êtes. Ou décochez « La proposer aux candidats »."
 		},
 		description: {
 			en: 'Describe the job: candidates read it before they say whether they are interested. Or untick “Propose it to candidates”.',

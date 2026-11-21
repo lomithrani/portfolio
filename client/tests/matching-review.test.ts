@@ -84,6 +84,10 @@ const sidewaysScroll = (page: Page) =>
 const expectNotAvailable = async (page: Page) => {
 	await expect(page.getByRole('heading', { level: 2, name: 'Not available' })).toBeVisible();
 	await expect(page.locator('main')).toContainText('This page is not available.');
+	// The way out every page of matching not available offers, never a dead end
+	await expect(
+		page.locator('main').getByRole('link', { name: 'Go to the home page' })
+	).toHaveAttribute('href', '/');
 	// Nothing says signing in would open it
 	await expect(page.locator('main')).not.toContainText(/sign(ing)? in/i);
 	await expect(page).toHaveTitle('Not available | Portfolio');

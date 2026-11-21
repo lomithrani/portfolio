@@ -142,6 +142,9 @@ whether more candidates come, never how many.
 	let alert = $state('');
 	// What the polite live region says
 	let announcement = $state('');
+	// The same words in sight, beside the answers and Undo (what was recorded, or why not): the live
+	// region is for screen readers only. Cleared once another answer or an undo starts
+	let said = $state('');
 	// The mutual interest an answer just made, shown until the person goes on
 	let moment = $state.raw<MutualInterest | null>(null);
 	let stopped = $state(false);
@@ -165,6 +168,11 @@ whether more candidates come, never how many.
 		deckView({ deck, side, started, stopped, moment: !!moment, readError: !!readError })
 	);
 	let answering = $derived(view === 'card');
+	// A candidate's feed with travel times still being computed and no job yet: said in place of the
+	// empty state, which a job may come to contradict in a moment
+	let pendingEmpty = $derived(
+		view === 'empty' && side === 'candidate' && deck.pending && started && !stopped && !moment
+	);
 	// The card the buttons answer (null: none shown)
 	let shown = $derived(answering && top ? key(top) : null);
 	// A card shown on top after something the person did takes no answer for a moment
@@ -246,6 +254,7 @@ whether more candidates come, never how many.
 	}
 
 	async function say(text: string) {
+		said = text;
 		// Emptied first, so that the same words are said again
 		announcement = '';
 		await tick();
@@ -362,6 +371,7 @@ whether more candidates come, never how many.
 		actedAt = Date.now();
 		deck = startDecision(deck, decision, key, Date.now());
 		alert = '';
+		said = '';
 		// The next card's heading, or what shows while none is there
 		await focusShown();
 		let result: Answered;
@@ -417,6 +427,7 @@ whether more candidates come, never how many.
 		actedAt = Date.now();
 		deck = startUndo(deck, Date.now());
 		alert = '';
+		said = '';
 		let result: Answered;
 		try {
 			result = await undo(last.card);
@@ -631,6 +642,30 @@ whether more candidates come, never how many.
 				{common.retry}
 			</button>
 		</div>
+	{:else if pendingEmpty}
+		<section
+			class="card preset-outlined-surface-200-800 space-y-3 bg-surface-50-950 p-6 text-center"
+			aria-labelledby={emptyHeading}
+			data-deck-pending
+		>
+			<h2
+				id={emptyHeading}
+				tabindex="-1"
+				class="rounded-base text-xl font-bold outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+			>
+				{m.candidate.pendingTitle}
+			</h2>
+			<p class="mx-auto max-w-md text-surface-700-300">{m.candidate.pendingEmpty}</p>
+			<button
+				type="button"
+				class={['btn preset-tonal min-h-11', deck.loading || blocked ? 'opacity-60' : '']}
+				aria-disabled={deck.loading || blocked}
+				onclick={checkAgain}
+			>
+				<ArrowPath size="18" aria-hidden="true" />
+				{m.candidate.checkAgain}
+			</button>
+		</section>
 	{:else if view === 'empty'}
 		{@render empty(emptyHeading)}
 	{/if}
@@ -639,7 +674,7 @@ whether more candidates come, never how many.
 	{#if answering && side === 'recruiter'}
 		<p class="text-sm text-surface-700-300">{recruiterQueueText(moreAfterTop(deck))}</p>
 	{/if}
-	{#if deck.pending && side === 'candidate' && started && !stopped && !moment}
+	{#if deck.pending && side === 'candidate' && started && !stopped && !moment && !pendingEmpty}
 		<p class="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-surface-700-300">
 			<span>{m.candidate.pending}</span>
 			<button
@@ -693,6 +728,12 @@ whether more candidates come, never how many.
 				</div>
 			{/if}
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+				{#if said}
+					<!-- What the live region said, in sight (it reads it already: hidden from it here) -->
+					<p class="min-w-0 text-sm text-surface-800-200" aria-hidden="true" data-deck-said>
+						{said}
+					</p>
+				{/if}
 				{#if answering}
 					<p class="text-xs text-surface-700-300 pointer-coarse:hidden">
 						<Rich text={m.shortcuts}>

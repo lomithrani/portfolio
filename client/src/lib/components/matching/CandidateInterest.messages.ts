@@ -17,7 +17,10 @@ export const m = defineMessages({
 		fr: (score: number, minScore: number) =>
 			`Notée ${score} sur 100 selon vos critères à ce moment-là (votre note minimale : ${minScore})`
 	},
-	/** While it lasts: how a meeting is booked (no email: none is sent) */
+	/**
+	 * While it lasts: how a meeting is booked (no email: none is sent). On the job's private page
+	 * (SharedInterest); the list says it once, in its intro
+	 */
 	next: {
 		en: 'To book a meeting with you, its recruiter goes through the steps of your page for recruiters.',
 		fr: 'Pour réserver un rendez-vous avec vous, son recruteur passe par les étapes de votre page recruteurs.'

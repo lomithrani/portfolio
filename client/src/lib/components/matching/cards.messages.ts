@@ -8,8 +8,16 @@ import { defineMessages } from 'portfolio-common';
 // score or a count.
 export const m = defineMessages({
 	candidate: {
-		/** The heading of a card without a headline or a role */
+		/** The heading of a card without a headline */
 		anonymous: { en: 'Anonymous candidate', fr: 'Candidat anonyme' },
+		/**
+		 * After it, for screen readers only: the latest role (`title`), which tells one card from the
+		 * next as the deck moves the focus to its heading
+		 */
+		latestRole: {
+			en: (title: string) => `(${title})`,
+			fr: (title: string) => `(${title})`
+		},
 		/** `duration`: '6 years 3 months' (formatMonthCount) */
 		experience: {
 			en: (duration: string) => `${duration} of professional experience`,

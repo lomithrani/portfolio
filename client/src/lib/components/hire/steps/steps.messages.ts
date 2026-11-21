@@ -131,7 +131,7 @@ export const m = defineMessages({
 		 */
 		matched: {
 			holds: {
-				en: 'You and <owner></owner> have both been interested in <job></job> since <time></time>: <owner></owner> reads the version they said yes to, linked in the meeting invitation.',
+				en: 'You and <owner></owner> are both interested in <job></job> (since <time></time>): <owner></owner> reads the version they said yes to, linked in the meeting invitation.',
 				fr: "Depuis le <time></time>, l'intérêt est réciproque entre <owner></owner> et vous pour <job></job> : <owner></owner> lit la version sur laquelle il porte, dont le lien figure dans l'invitation au rendez-vous."
 			},
 			/** The same, when the day both became interested is not known (a date that does not read) */

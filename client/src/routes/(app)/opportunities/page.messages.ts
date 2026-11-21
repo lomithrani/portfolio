@@ -1,4 +1,4 @@
-import { defineMessages } from 'portfolio-common';
+import { defineMessages, plural } from 'portfolio-common';
 
 // The candidate's inbox of matching (Path 2): the open jobs proposed to them, answered one at a
 // time ("To review"), and their mutual interests. Decision 11 of the founder: "Interested" and
@@ -25,13 +25,6 @@ export const m = defineMessages({
 			en: 'This page is private: only you can see it, once signed in.',
 			fr: 'Cette page est privée : vous seul pouvez la voir, une fois connecté.'
 		}
-	},
-	/**
-	 * Matching is off (the API's routes answer 404): nothing of it is said (the words of every page
-	 * of matching not available, `unavailable` of matching.messages.ts), and the way home
-	 */
-	unavailable: {
-		home: { en: 'Go to the home page', fr: "Aller à la page d'accueil" }
 	},
 	loadFailed: {
 		title: {
@@ -115,12 +108,22 @@ export const m = defineMessages({
 		paused: {
 			title: {
 				en: 'Paused: you are proposed to no recruiter',
-				fr: "En pause : vous n'êtes proposé à aucun recruteur"
+				fr: 'En pause : aucun recruteur ne voit votre fiche'
 			},
-			/** Followed by each requirement missing */
+			/** Followed by each requirement missing (`count`: how many) */
 			text: {
-				en: 'Being visible to recruiters needs something that has gone missing since you turned it on:',
-				fr: 'Il manque une condition depuis que vous êtes devenu visible des recruteurs :'
+				en: (count: number) =>
+					plural(
+						count,
+						'Since you turned it on, something you need to be visible to recruiters has gone missing:',
+						'Since you turned it on, some things you need to be visible to recruiters have gone missing:'
+					),
+				fr: (count: number) =>
+					plural(
+						count,
+						"Depuis l'activation, il manque une condition pour être visible des recruteurs :",
+						"Depuis l'activation, il manque des conditions pour être visible des recruteurs :"
+					)
 			}
 		},
 		lapsed: {
@@ -130,7 +133,7 @@ export const m = defineMessages({
 			},
 			text: {
 				en: 'Give it again to be proposed to recruiters and to see the jobs that meet your criteria here.',
-				fr: 'Donnez-le de nouveau pour être proposé aux recruteurs et voir ici les offres qui répondent à vos critères.'
+				fr: "Donnez-le de nouveau : votre fiche est alors proposée aux recruteurs, et les offres qui répondent à vos critères s'affichent ici."
 			}
 		},
 		/** To discovery's settings, at the end of the admin's Perfect job tab */

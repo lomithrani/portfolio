@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
+	import { resolve } from '$app/paths';
 	import { ArrowPath, CheckBadge, ExclamationTriangle, EyeSlash } from 'svelte-heros-v2';
 	import type { MatchingReviewDecision } from 'portfolio-common';
 	import { common } from '#lib/i18n/common.messages.ts';
@@ -331,6 +332,8 @@
 				: SITE_NAME
 	);
 	const actionClass = 'btn preset-filled-primary-700-300 min-h-11 max-w-full whitespace-normal';
+	/** The way out of "Not available", as on every page of matching not available */
+	const homeLink = 'btn preset-filled-primary-700-300 min-h-11 max-w-full whitespace-normal';
 </script>
 
 <svelte:head>
@@ -428,6 +431,9 @@
 			<!-- Signed out: the same words as for anyone else (nothing says signing in would open it) -->
 			<PageNotice title={matchingText.unavailable.title} icon={EyeSlash}>
 				<p>{matchingText.unavailable.text}</p>
+				{#snippet actions()}
+					<a href={resolve('/(site)')} class={homeLink}>{matchingText.unavailable.home}</a>
+				{/snippet}
 			</PageNotice>
 		{:else if loadState.kind === 'unavailable'}
 			<PageNotice
@@ -436,6 +442,9 @@
 				headingId={unavailableHeadingId}
 			>
 				<p>{matchingText.unavailable.text}</p>
+				{#snippet actions()}
+					<a href={resolve('/(site)')} class={homeLink}>{matchingText.unavailable.home}</a>
+				{/snippet}
 			</PageNotice>
 		{:else}
 			<PageNotice

@@ -3,9 +3,9 @@
 A mutual interest as its candidate reads it in their list of /opportunities (readMutualInterest of
 #services/matching.ts): the job they said yes to (the version they read then: never who posted it),
 the day both became interested, where it stands (going on, ended by them, by the recruiter, or the
-job no longer open), whether the job description was edited since, their score of it then, how a
-meeting is booked while it lasts, and what they can do: open the job's private page, end it (the
-page asks first). `fresh`: not seen before this showing (the page marks it seen as it shows it).
+job no longer open), whether the job description was edited since, their score of it then, and
+what they can do: open the job's private page, end it (the page asks first). How a meeting is
+booked is said once, above the list (the view's intro), and on the job's private page. `fresh`: not seen before this showing (the page marks it seen as it shows it).
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -73,9 +73,6 @@ page asks first). `fresh`: not seen before this showing (the page marks it seen 
 	<p class="text-sm">{m.scoreThen(interest.score, interest.minScore)}</p>
 	{#if change}
 		<p class="text-sm text-surface-700-300" data-interest-changed>{change}</p>
-	{/if}
-	{#if going}
-		<p class="text-sm">{m.next}</p>
 	{/if}
 	{#if job || going}
 		<div class="flex flex-wrap gap-2 pt-1">

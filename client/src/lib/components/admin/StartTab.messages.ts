@@ -259,24 +259,24 @@ export const m = defineMessages({
 		},
 		paused: {
 			en: 'Paused: something it needs is missing, so you are proposed to no recruiter.',
-			fr: "En pause : il manque quelque chose, vous n'êtes donc proposé à aucun recruteur."
+			fr: 'En pause : il manque quelque chose, aucun recruteur ne voit donc votre fiche.'
 		},
 		/** Paused, and the consent in its last DISCOVERY_CONSENT_RENEWAL_DAYS days: `until` the day */
 		pausedRenew: {
 			en: (until: string) =>
 				`Paused: something it needs is missing, so you are proposed to no recruiter. Your consent also ends on ${until}: confirm it again to stay visible.`,
 			fr: (until: string) =>
-				`En pause : il manque quelque chose, vous n'êtes donc proposé à aucun recruteur. Votre consentement prend aussi fin le ${until} : confirmez-le de nouveau pour rester visible.`
+				`En pause : il manque quelque chose, aucun recruteur ne voit donc votre fiche. Votre consentement prend aussi fin le ${until} : confirmez-le de nouveau pour rester visible.`
 		},
 		lapsed: {
-			en: 'Your consent ended: give it again to be visible.',
-			fr: 'Votre consentement a pris fin : donnez-le de nouveau pour être visible.'
+			en: 'Your consent ended: give it again so that recruiters see your card.',
+			fr: 'Votre consentement a pris fin : donnez-le de nouveau pour que les recruteurs voient votre fiche.'
 		},
 		open: { en: 'Open the settings', fr: 'Ouvrir les réglages' },
 		/** While on or paused. Backed by: routes/(app)/opportunities (the candidate's inbox) */
 		opportunities: {
 			en: 'See the jobs proposed to you',
-			fr: 'Voir les offres qui vous sont proposées'
+			fr: 'Voir les offres proposées'
 		}
 	}
 });

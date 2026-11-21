@@ -444,7 +444,7 @@
 				>
 					<p>{matchingText.unavailable.text}</p>
 					{#snippet actions()}
-						<a href={resolve('/(site)')} class={linkClass}>{m.unavailable.home}</a>
+						<a href={resolve('/(site)')} class={linkClass}>{matchingText.unavailable.home}</a>
 					{/snippet}
 				</PageNotice>
 			{:else}
@@ -463,7 +463,7 @@
 			>
 				<p>{matchingText.unavailable.text}</p>
 				{#snippet actions()}
-					<a href={resolve('/(site)')} class={linkClass}>{m.unavailable.home}</a>
+					<a href={resolve('/(site)')} class={linkClass}>{matchingText.unavailable.home}</a>
 				{/snippet}
 			</PageNotice>
 		{:else if load?.kind === 'failed'}
@@ -602,7 +602,7 @@
 							</PageNotice>
 						{:else if review === 'paused'}
 							<PageNotice title={m.review.paused.title} icon={PauseCircle} headingId={stateHeading}>
-								<p>{m.review.paused.text}</p>
+								<p>{m.review.paused.text(status.missing.length)}</p>
 								<ul class="list-disc space-y-1 ps-5 text-start" data-missing>
 									{#each status.missing as requirement (requirement)}
 										<li>{discoveryRequirementMessage(requirement)}</li>

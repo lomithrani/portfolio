@@ -411,7 +411,11 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 					<MagnifyingGlass size="16" />
 				</span>
 				<div class="min-w-0 flex-1 space-y-3">
-					<div class="flex flex-wrap items-center gap-2">
+					<!-- On a phone the badge goes under the title, in every language: never alone on a
+					     line of its own in one and beside the title in another -->
+					<div
+						class="flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2"
+					>
 						<h3 class="font-semibold" id="{uid}-discovery">{m.discovery.title}</h3>
 						<span class="badge preset-tonal text-xs">{m.discovery.optional}</span>
 					</div>

@@ -93,7 +93,10 @@ describe('MatchingPanel', () => {
 		expect(shown).toContain('In review');
 		expect(shown).toContain('Until then it is proposed to nobody.');
 		expect(shown).toContain('Filled, closed or back to draft, it stops being proposed');
-		expect(html).toContain('data-recruiter-matches');
+		// Its mutual interests show only when it has some (made while it was accepted): none is said
+		// of a job in review, nor read yet in a render
+		expect(html).not.toContain('data-recruiter-matches');
+		expect(shown).not.toContain('No mutual interest on this job yet');
 		expect(shown).not.toContain('Review candidates');
 	});
 

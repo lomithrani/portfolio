@@ -244,6 +244,9 @@ test('with matching off, nothing of it shows on the recruiter pages, and nothing
 	// The candidates page says only that it is not available
 	await gotoHydrated(page, `/recruiter/jobs/${JOB_ID}/candidates`);
 	await expect(page.getByRole('heading', { name: 'Not available' })).toBeVisible();
+	// The same words as every page of matching not available: nothing names what it would be
+	await expect(page.getByText('This page is not available.')).toBeVisible();
+	await expect(page.getByText(/proposing jobs/i)).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Interested' })).toHaveCount(0);
 });
 
@@ -538,7 +541,7 @@ test.describe("the candidate's page for recruiters of a mutual interest", () => 
 		const banner = page.locator(`[data-match-banner="${INTEREST}"]`);
 		await expect(banner.getByRole('heading', { name: "You're both interested" })).toBeVisible();
 		await expect(banner).toContainText(
-			`You and ${CANDIDATE_DOMAIN} have both been interested in ${JOB_LINE} since`
+			`You and ${CANDIDATE_DOMAIN} are both interested in ${JOB_LINE} (since`
 		);
 		await expect(banner.getByRole('link', { name: JOB_LINE })).toHaveAttribute(
 			'href',
@@ -946,7 +949,7 @@ test.describe('with matching on', () => {
 		const banner = page.locator('[data-match-banner]');
 		await expect(banner.getByRole('heading', { name: "You're both interested" })).toBeVisible();
 		await expect(banner).toContainText(
-			`You and ${CANDIDATE_DOMAIN} have both been interested in ${JOB_LINE} since`
+			`You and ${CANDIDATE_DOMAIN} are both interested in ${JOB_LINE} (since`
 		);
 		await expect(banner).toContainText(
 			`Still to do before the meeting: read a note (“${NOTE_TITLE}”).`

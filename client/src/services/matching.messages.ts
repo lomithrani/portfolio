@@ -53,6 +53,15 @@ export const m = defineMessages({
 			fr: "Certains temps de trajet sont encore en cours de calcul : d'autres offres peuvent vous être proposées dans un instant."
 		},
 		checkAgain: { en: 'Check again', fr: 'Vérifier de nouveau' },
+		/** The same, no job proposed yet: in place of "nothing to review" */
+		pendingTitle: {
+			en: 'Travel times are still being computed',
+			fr: 'Des temps de trajet sont encore en cours de calcul'
+		},
+		pendingEmpty: {
+			en: 'No job is waiting for your answer yet: jobs whose travel time is still being computed may be proposed to you in a moment.',
+			fr: "Aucune offre n'attend encore votre réponse : celles dont le temps de trajet est encore en cours de calcul peuvent vous être proposées dans un instant."
+		},
 		loadFailed: {
 			en: 'Could not load the jobs proposed to you. Try again in a moment.',
 			fr: 'Impossible de charger les offres qui vous sont proposées. Réessayez dans un instant.'
@@ -100,6 +109,8 @@ export const m = defineMessages({
 	unavailable: {
 		title: { en: 'Not available', fr: 'Indisponible' },
 		text: { en: 'This page is not available.', fr: "Cette page n'est pas disponible." },
+		/** The way out, the same on every such page */
+		home: { en: 'Go to the home page', fr: "Aller à la page d'accueil" },
 		/** The browser tab's title meanwhile */
 		pageTitle: { en: 'Not available | Portfolio', fr: 'Indisponible | Portfolio' }
 	},

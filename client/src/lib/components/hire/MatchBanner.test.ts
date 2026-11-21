@@ -19,8 +19,8 @@ const readable = (html: string) =>
 		.replace(/&#39;/g, "'")
 		.replace(/&amp;/g, '&')
 		.replace(/\s+/g, ' ')
-		// A tag closed before a full stop or a comma left a space there
-		.replace(/ ([.,])/g, '$1')
+		// A tag closed before a full stop, a comma or a closing parenthesis left a space there
+		.replace(/ ([.,)])/g, '$1')
 		.trim();
 
 const JOB_ID = 'a'.repeat(24);
@@ -100,7 +100,7 @@ describe('MatchBanner', () => {
 		const text = readable(html);
 		expect(text).toContain("You're both interested");
 		expect(text).toContain(
-			'You and Louis have both been interested in Staff Engineer · Acme since 20 Nov 2026.'
+			'You and Louis are both interested in Staff Engineer · Acme (since 20 Nov 2026).'
 		);
 		expect(text).toContain(
 			'This page holds that job for you: you cannot share another here while your mutual interest lasts.'
@@ -275,7 +275,7 @@ describe('the job step holding the job of a mutual interest', () => {
 
 	it('says since when both are interested, and only that they are when the day does not read', () => {
 		expect(jobStep(heldJob.view as object)).toContain(
-			'You and Louis have both been interested in Staff Engineer · Acme since 20 Nov 2026: Louis reads the version they said yes to'
+			'You and Louis are both interested in Staff Engineer · Acme (since 20 Nov 2026): Louis reads the version they said yes to'
 		);
 		const view = heldJob.view as { job: object };
 		const undated = jobStep({ ...view, job: { ...view.job, sharedAt: 'then' } });

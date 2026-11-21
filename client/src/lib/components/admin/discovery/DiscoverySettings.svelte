@@ -347,20 +347,30 @@ turns it on stays focusable when it cannot be used (aria-disabled), and why is r
 		data-state={status.state}
 	>
 		<div class="space-y-2">
-			<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-				<MagnifyingGlass size="20" class="shrink-0 text-primary-700-300" aria-hidden="true" />
-				<h3
-					id="{uid}-title"
-					class="h4 outline-none"
-					tabindex="-1"
-					data-discovery-title
-					bind:this={heading}
+			<!-- On a phone the state goes under the title, whatever the state and the language: the
+			     header never jumps from one to the next -->
+			<div class="flex items-start gap-x-3">
+				<MagnifyingGlass
+					size="20"
+					class="mt-1 shrink-0 text-primary-700-300 sm:mt-1.5"
+					aria-hidden="true"
+				/>
+				<div
+					class="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3"
 				>
-					{m.title}
-				</h3>
-				<span class="badge {stateBadge[status.state]}" data-discovery-state>
-					{m.state[status.state]}
-				</span>
+					<h3
+						id="{uid}-title"
+						class="h4 outline-none"
+						tabindex="-1"
+						data-discovery-title
+						bind:this={heading}
+					>
+						{m.title}
+					</h3>
+					<span class="badge {stateBadge[status.state]}" data-discovery-state>
+						{m.state[status.state]}
+					</span>
+				</div>
 			</div>
 			<p class="text-sm text-surface-700-300">
 				{#if status.state === 'off'}{m.optional}{/if}

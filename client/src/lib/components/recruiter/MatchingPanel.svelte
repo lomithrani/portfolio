@@ -6,9 +6,9 @@ that names its company and has a description; turning it off is asked first, sin
 mutual interest came of go), where it stands with the reviewers ("In review", "Not accepted" with
 the reviewer's reason as they wrote it, "Proposed to candidates", "On hold"), whether candidates
 wait for an answer once it is proposed (a read of the feed: never how many) with the way to their
-anonymous cards (/recruiter/jobs/:id/candidates), and the job's mutual interests
-(RecruiterMatches.svelte, read again once its status or the switch changed: a job filled, closed
-or back to draft ends them). Shown only while the posting carries `matching` (MATCHING on): absent,
+anonymous cards (/recruiter/jobs/:id/candidates; none while none waits), and the job's mutual
+interests (RecruiterMatches.svelte, read again once its status or the switch changed: a job filled,
+closed or back to draft ends them; in review or not accepted, only when it has some). Shown only while the posting carries `matching` (MATCHING on): absent,
 nothing of matching shows. What the switch was refused for is said in words, with the way to fix
 it (the editor, a reload); what the page handles (signed out, the job gone, the terms, no recruiter
 space) goes to it. A job not accepted says what can be done about it (an edit of what is not
@@ -36,6 +36,7 @@ loses the focus).
 	import RecruiterMatches from './RecruiterMatches.svelte';
 	import { duplicateJobHref, type RecruiterJobDetail } from '#services/recruiter.ts';
 	import {
+		MATCHING_STATE_TONE,
 		canProposeJob,
 		candidatesWaiting,
 		jobMatchingState,
@@ -240,16 +241,7 @@ loses the focus).
 		{:else if standing !== 'off'}
 			{@const shown = m.state[standing]}
 			<div class="space-y-2" data-matching-state>
-				<p
-					class={[
-						'badge gap-1.5',
-						standing === 'live'
-							? 'preset-tonal-success'
-							: standing === 'rejected'
-								? 'preset-tonal-error'
-								: 'preset-tonal-warning'
-					]}
-				>
+				<p class="badge gap-1.5 {MATCHING_STATE_TONE[standing]}">
 					{#if standing === 'live'}
 						<CheckCircle size="14" aria-hidden="true" />
 					{:else if standing === 'paused'}
@@ -298,13 +290,17 @@ loses the focus).
 				{:else if waiting === 'none'}
 					<p class="text-sm text-surface-700-300">{m.candidates.none}</p>
 				{/if}
-				<a
-					href={resolve('/(app)/recruiter/jobs/[id]/candidates', { id: job._id })}
-					class={[button, waiting === 'some' ? 'preset-filled-primary-500' : 'preset-tonal']}
-				>
-					<UserGroup size="18" class="shrink-0" aria-hidden="true" />
-					{m.candidates.review}
-				</a>
+				<!-- None to review now: no way to an empty deck (the page, read again, says when some
+				     wait) -->
+				{#if waiting !== 'none'}
+					<a
+						href={resolve('/(app)/recruiter/jobs/[id]/candidates', { id: job._id })}
+						class={[button, waiting === 'some' ? 'preset-filled-primary-500' : 'preset-tonal']}
+					>
+						<UserGroup size="18" class="shrink-0" aria-hidden="true" />
+						{m.candidates.review}
+					</a>
+				{/if}
 			</div>
 		{/if}
 
@@ -319,7 +315,12 @@ loses the focus).
 		     filled, closed or back to draft ends them) -->
 		{#if on || matching.review}
 			{#key `${job.status}:${matching.enabledAt}`}
-				<RecruiterMatches {userId} jobId={job._id} fallbackFocus={() => title ?? null} />
+				<RecruiterMatches
+					{userId}
+					jobId={job._id}
+					quietWhenEmpty={standing !== 'live' && standing !== 'paused'}
+					fallbackFocus={() => title ?? null}
+				/>
 			{/key}
 		{/if}
 	</section>

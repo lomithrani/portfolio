@@ -110,10 +110,10 @@ describe('CandidateCard', () => {
 		expect(preview).not.toContain('Interested in your job');
 	});
 
-	it('is headed by the latest role, or says it is anonymous, without a headline', () => {
+	it('says it is anonymous without a headline, its latest role for screen readers only', () => {
 		const untitled = { ...card, headline: null };
 		expect(render(CandidateCard, { props: { card: untitled } }).body).toMatch(
-			/<h2[^>]*>\s*Staff engineer\s*(<!---->)?<\/h2>/
+			/<h2[^>]*>\s*Anonymous candidate\s*(<!--[^>]*-->)*<span class="sr-only">\(Staff engineer\)<\/span>/
 		);
 		const bare = { headline: null, experienceMonths: 0, roles: [], skills: [] };
 		const shown = textOf(render(CandidateCard, { props: { card: bare } }).body);

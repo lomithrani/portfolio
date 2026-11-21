@@ -38,12 +38,18 @@ promised.
 	let {
 		userId,
 		jobId,
+		quietWhenEmpty = false,
 		fallbackFocus
 	}: {
 		/** The signed-in account: read again for another one */
 		userId: string;
 		/** One job's mutual interests (its matching panel); all of them without it (the dashboard) */
 		jobId?: string;
+		/**
+		 * Nothing at all while it reads and when there is none (a job in review or not accepted: its
+		 * mutual interests, made while it was accepted, are shown; "none yet" would be no news)
+		 */
+		quietWhenEmpty?: boolean;
 		/** Where the focus goes once a dialog closed on a list that went (matching turned off) */
 		fallbackFocus?: () => HTMLElement | null;
 	} = $props();
@@ -189,10 +195,14 @@ promised.
 	}
 
 	let inJob = $derived(!!jobId);
+	let quiet = $derived(
+		quietWhenEmpty &&
+			(shown.kind === 'loading' || (shown.kind === 'ready' && shown.list.length === 0))
+	);
 	const placeholderBlock = 'placeholder w-full animate-pulse motion-reduce:animate-none';
 </script>
 
-{#if shown.kind !== 'hidden'}
+{#if shown.kind !== 'hidden' && !quiet}
 	<section
 		class={inJob ? 'space-y-3 border-t border-surface-200-800 pt-4' : 'space-y-3'}
 		aria-labelledby="{uid}-title"

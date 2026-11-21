@@ -7,7 +7,8 @@ else: never a name, an address, a company, a place or a score. Beside it, for a 
 the outcomes the candidate's journey shows (`outcomes`: never the commute or the places, never a
 score), and whether the candidate said they are interested in the job. Without `outcomes` (the
 candidate's own preview) that section is left out. The heading takes the focus when the deck
-moves to this card (`headingId`, tabindex -1).
+moves to this card (`headingId`, tabindex -1): the headline, or "Anonymous candidate" with its
+latest role for screen readers.
 -->
 <script lang="ts">
 	import { Briefcase, CheckCircle, EyeSlash, HandThumbUp, Sparkles } from 'svelte-heros-v2';
@@ -38,7 +39,10 @@ moves to this card (`headingId`, tabindex -1).
 	let titleId = $derived(headingId ?? `${uid}-title`);
 	let titleTag = $derived(`h${headingLevel}`);
 	let sectionTag = $derived(`h${headingLevel + 1}`);
-	let heading = $derived(card.headline ?? card.roles[0]?.title ?? m.candidate.anonymous);
+	// Without a headline, "Anonymous candidate" (the roles list carries the titles, never twice in
+	// sight); its latest role, for screen readers only, tells one card from the next as the deck
+	// moves the focus to its heading
+	let latestRole = $derived(card.headline ? null : (card.roles[0]?.title ?? null));
 	// Roles without dates count no month: the total is then left unsaid, never "none listed"
 	let experience = $derived(
 		card.experienceMonths >= 1
@@ -73,7 +77,8 @@ moves to this card (`headingId`, tabindex -1).
 			tabindex="-1"
 			class="text-xl font-bold break-words outline-none focus-visible:ring-2 focus-visible:ring-primary-500 md:text-2xl"
 		>
-			{heading}
+			{card.headline ?? m.candidate.anonymous}
+			{#if latestRole}<span class="sr-only">{m.candidate.latestRole(latestRole)}</span>{/if}
 		</svelte:element>
 		{#if experience}
 			<p class="text-surface-700-300">{experience}</p>

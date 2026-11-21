@@ -404,7 +404,7 @@ test('the inbox says why nothing is proposed, when the consent ends, and why a d
 	).toBeVisible();
 	await expect(
 		page.getByText(
-			'Being visible to recruiters needs something that has gone missing since you turned it on:'
+			'Since you turned it on, some things you need to be visible to recruiters have gone missing:'
 		)
 	).toBeVisible();
 	await expect(page.locator('[data-missing] li')).toHaveText([
@@ -481,6 +481,19 @@ test('the inbox says why nothing is proposed, when the consent ends, and why a d
 		)
 	).toBeVisible();
 	await expect(page.getByText(/email/i)).toHaveCount(0);
+
+	// Travel times still being computed, no job yet: said in place of "nothing to review", which a
+	// job may contradict in a moment; Check again reads from the start, the focus on what it shows
+	feed = { json: { jobs: [], more: false, next: null, pending: true } };
+	await gotoHydrated(page, '/opportunities');
+	await expect(
+		page.getByRole('heading', { name: 'Travel times are still being computed' })
+	).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Nothing to review right now' })).toHaveCount(0);
+	feed = { json: { jobs: [], more: false, next: null, pending: false } };
+	await page.getByRole('button', { name: 'Check again' }).click();
+	await expect(page.getByRole('heading', { name: 'Nothing to review right now' })).toBeFocused();
+	await expect(page.getByRole('button', { name: 'Check again' })).toHaveCount(0);
 });
 
 test('a job’s private page: an answer that replaces another offers no Undo, a refusal says why, an end keeps the focus', async ({
@@ -639,12 +652,20 @@ test.describe('with matching on', () => {
 			'only when it scores at least 70 out of 100 against your criteria, with no deal-breaker missed'
 		);
 
-		// The card as recruiters read it: the role, never the name or the portfolio
+		// The card as recruiters read it: anonymous without a headline, the role, never the name or
+		// the portfolio
 		await section.getByRole('button', { name: 'Preview my card' }).click();
 		const preview = page.getByRole('dialog', { name: 'Your anonymous card' });
 		await expect(
-			preview.getByRole('heading', { name: 'Backend engineer', level: 3, exact: true })
+			preview.getByRole('heading', {
+				name: 'Anonymous candidate (Backend engineer)',
+				level: 3,
+				exact: true
+			})
 		).toBeVisible();
+		await expect(preview.getByRole('listitem').filter({ hasText: 'Backend engineer' })).toHaveCount(
+			1
+		);
 		await expect(preview.locator('[data-preview-outcomes]')).toHaveText(
 			'Beside your card, for their job, recruiters read its outcome on: Work mode, Contract and Pay. Never what you ask for, your commute or where you want to work.'
 		);

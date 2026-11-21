@@ -153,15 +153,33 @@ export const deleteMatchingDetails = (matching: unknown): string =>
 	everInMatching(readJobMatching(matching)) ? m.deleteDetails : '';
 
 /**
- * The line of a job of the dashboard: where it stands in matching, or null (matching off, or the
- * job not proposed). Never a count
+ * The colour of where a job stands in matching, the same on its panel and on the dashboard: accepted
+ * and open, success; not accepted, error; in review or on hold, warning
  */
-export const jobMatchingLabel = (job: { status: JobStatus; matching?: unknown }): string | null => {
+export const MATCHING_STATE_TONE = {
+	live: 'preset-tonal-success',
+	rejected: 'preset-tonal-error',
+	pending: 'preset-tonal-warning',
+	paused: 'preset-tonal-warning'
+} as const satisfies Record<Exclude<JobMatchingState, 'off'>, string>;
+
+/**
+ * The badge of a job of the dashboard: where it stands in matching and its colour, or null
+ * (matching off, or the job not proposed). Never a count
+ */
+export const jobMatchingBadge = (job: {
+	status: JobStatus;
+	matching?: unknown;
+}): { text: string; tone: string } | null => {
 	const matching = readJobMatching(job.matching);
 	if (!matching) return null;
 	const state = jobMatchingState(job.status, matching);
-	return state === 'off' ? null : m.label[state];
+	return state === 'off' ? null : { text: m.label[state], tone: MATCHING_STATE_TONE[state] };
 };
+
+/** The text of that badge alone */
+export const jobMatchingLabel = (job: { status: JobStatus; matching?: unknown }): string | null =>
+	jobMatchingBadge(job)?.text ?? null;
 
 // --- Turning it on or off -----------------------------------------------------------------
 

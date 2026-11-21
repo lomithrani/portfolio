@@ -288,8 +288,8 @@ export const m = defineMessages({
 		},
 		/** The company's hint while "Propose it to candidates" is ticked (in place of `companyHint`) */
 		companyRequired: {
-			en: 'Required to propose it to candidates: they decide whether they are interested before they know who you are.',
-			fr: "Obligatoire pour la proposer aux candidats : ils disent s'ils sont intéressés avant de savoir qui vous êtes."
+			en: 'Required to propose it to candidates: they read the company, and decide whether they are interested before they know which recruiter you are.',
+			fr: "Obligatoire pour la proposer aux candidats : ils lisent l'entreprise, et disent s'ils sont intéressés avant de savoir quel recruteur vous êtes."
 		},
 		/** For a job not created open: the choice comes once it is */
 		later: {

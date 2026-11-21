@@ -13,7 +13,7 @@ export const m = defineMessages({
 	 * server/services/workflows.ts (`match`: the job of the mutual interest and when it was made)
 	 */
 	together: {
-		en: 'You and <owner></owner> have both been interested in <job></job> since <time></time>.',
+		en: 'You and <owner></owner> are both interested in <job></job> (since <time></time>).',
 		fr: "Depuis le <time></time>, l'intérêt est réciproque entre <owner></owner> et vous pour <job></job>."
 	},
 	/**

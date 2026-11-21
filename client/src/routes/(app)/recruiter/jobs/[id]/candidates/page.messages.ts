@@ -77,17 +77,6 @@ export const m = defineMessages({
 		/** The way out of `stale` */
 		edit: { en: 'Edit the job description', fr: "Modifier l'offre" }
 	},
-	/**
-	 * Matching is off in the API (the posting carries no `matching`, or a route answered its 404):
-	 * headed as every page of matching not available (`unavailable` of matching.messages.ts), then
-	 * this sentence
-	 */
-	unavailable: {
-		text: {
-			en: 'Proposing jobs to candidates is not available right now.',
-			fr: "Proposer des offres aux candidats n'est pas disponible pour le moment."
-		}
-	},
 	/** The deck stopped (its failure says why) */
 	stopped: { en: 'The candidates cannot be shown', fr: "Les candidats ne peuvent pas s'afficher" }
 });
