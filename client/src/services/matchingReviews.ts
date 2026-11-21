@@ -164,6 +164,39 @@ export const readReviewedJob = (value: unknown): ReviewedJob | undefined => {
 	};
 };
 
+/** A decision saved on the reviewers' page: the version decided on and the review it gave */
+export interface SavedDecision {
+	version: string;
+	status: Exclude<MatchingReviewStatus, 'pending'>;
+	/** When it was saved, on the page's own clock (a counter it also stamps each read with) */
+	at: number;
+}
+
+/**
+ * `list` as the page shows it once the decisions saved on it (`decided`, by job id) are counted: a
+ * job decided on as the version decided leaves it (a read the API answered before the decision
+ * was written would bring it back as waiting), and the other jobs of each entry read the review
+ * that the decisions saved after the read started (`startedAt`, on the same clock) gave them (a
+ * read answered before them says the review before). A job edited since its decision (another
+ * version) stays: it waits again
+ */
+export const reconcileReviews = (
+	list: ReviewList,
+	decided: ReadonlyMap<string, SavedDecision>,
+	startedAt: number
+): ReviewList => ({
+	...list,
+	jobs: list.jobs
+		.filter((entry) => decided.get(entry.job._id)?.version !== entry.version)
+		.map((entry) => ({
+			...entry,
+			otherJobs: entry.otherJobs.map((other) => {
+				const saved = decided.get(other._id);
+				return saved && saved.at > startedAt ? { ...other, review: saved.status } : other;
+			})
+		}))
+});
+
 /** GET /matching/reviews's answer; undefined when it is not what the API promises */
 export const readReviewList = (value: unknown): ReviewList | undefined => {
 	const raw = fields(value).jobs;
@@ -306,6 +339,15 @@ export const decideReview = async (
 };
 
 // --- Texts ----------------------------------------------------------------------------------
+
+/**
+ * How the page scrolls a job into view in main#page (whose own scroll is smooth): at once under
+ * "reduce motion"
+ */
+export const scrollBehavior = (): ScrollBehavior =>
+	typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+		? 'instant'
+		: 'smooth';
 
 /** Where another job's review stands, in words */
 export const reviewStatusText = (review: MatchingReviewStatus | null): string =>

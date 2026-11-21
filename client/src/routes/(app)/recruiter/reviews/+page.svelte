@@ -13,28 +13,32 @@
 	import {
 		decideReview,
 		loadReviews,
+		reconcileReviews,
+		scrollBehavior,
 		type ReviewFailure,
 		type ReviewList,
-		type ReviewedJob
+		type ReviewedJob,
+		type ReviewsRead,
+		type SavedDecision
 	} from '#services/matchingReviews.ts';
-	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
-	import { toaster } from '#services/toaster.ts';
+	import { m as reviewText } from '#services/matchingReviews.messages.ts';
 	import { m } from './page.messages.ts';
 
 	// The reviewers' page of matching (Path 2, CLAUDE.md "Matching", "Review"): the job descriptions
-	// recruiters propose to candidates wait here for one of the operator's reviewers
+	// recruiters ask to propose to candidates wait here for one of the operator's reviewers
 	// (MATCHING_REVIEWERS), who reads each before it reaches any candidate (GET /matching/reviews:
 	// the oldest request first, the posting as candidates would read it, who is behind it by the
 	// domain of their email address and a key standing for them, their other jobs with the copies
-	// of this one flagged and the terms they differ in), then approves it (asked first: it reaches
-	// candidates at once) or rejects it with a reason its recruiter reads (PUT
-	// /matching/reviews/:id, on the version read: changed since, the list is read again and the
-	// page says so). Anyone else (403), and everyone while MATCHING is off (404), reads only that
-	// the page is not available: its title, heading and texts say what it is only once the list is
-	// read. No menu leads here (a reviewer keeps its address): nothing in what the API answers to
-	// everyone says who reviews. No candidate's data: the API gives none. Rendered in the browser
-	// only (recruiter/+layout.ts), not listed by search engines (#lib/robots.ts), and recorded as no
-	// space (spaceToRecord of #services/account.ts).
+	// of this one flagged and the terms they differ in), then approves it (asked first) or rejects it
+	// with a reason its recruiter reads (PUT /matching/reviews/:id, on the version read: changed
+	// since, the list is read again and the page says so where the reviewer acted). Anyone else
+	// (403), everyone while MATCHING is off (404), and anyone signed out read only that the page is
+	// not available: its title, heading and texts say what it is only once the list is read. No menu
+	// leads here (a reviewer keeps its address): nothing in what the API answers to everyone says
+	// who reviews. No candidate's data: the API gives none. A session that expires once the list is
+	// shown never signs the page out (what a reviewer typed would go): it is said where they acted.
+	// Rendered in the browser only (recruiter/+layout.ts), not listed by search engines
+	// (#lib/robots.ts), and recorded as no space (spaceToRecord of #services/account.ts).
 
 	type LoadState =
 		| { kind: 'idle' }
@@ -52,58 +56,103 @@
 
 	let loadState = $state.raw<LoadState>({ kind: 'idle' });
 	let requested: string | null = null;
-	/** Read again (Check again, after a refusal) while a list is shown */
+	/** Read again (Check again, after a refusal, the next ones) while a list is shown */
 	let checking = $state(false);
 	/** What the page last said (a decision saved, the list read again): a polite live region */
 	let notice = $state('');
+	/**
+	 * What the page says to everyone at its top: the live region's words (`focus` false: hidden from
+	 * screen readers, who heard them), or a refusal whose job left the list, which takes the focus
+	 */
+	let banner = $state.raw<{ text: string; focus: boolean } | null>(null);
+	/** Why a decision on a job was refused, shown under its title (by job id) until its next one */
+	let jobNotices = $state.raw<Record<string, string>>({});
 
 	const headingId = 'reviews-heading';
 	const emptyHeadingId = 'reviews-empty';
 	const unavailableHeadingId = 'reviews-unavailable';
+	const loadFailedHeadingId = 'reviews-load-failed';
+	const bannerId = 'reviews-notice';
 	const jobHeadingId = (jobId: string) => `review-${jobId}`;
+
+	// The page's clock: each read and each decision saved takes the next tick, so that a read
+	// answered after a decision, though the API answered it before, never shows that decision undone
+	let clock = 0;
+	/** The decisions saved on this page, by job id (reconcileReviews): read, never rendered */
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- not state: read when a list comes
+	const decided = new Map<string, SavedDecision>();
+	/** The reads started, and the latest one shown: an older read answered later is not shown */
+	let reads = 0;
+	let shownRead = 0;
 
 	/** Moves the focus to `id` once the page shows it, else to the list's heading */
 	async function focus(id: string) {
 		await tick();
 		const element = document.getElementById(id) ?? document.getElementById(headingId);
 		element?.focus({ preventScroll: true });
-		element?.scrollIntoView({ block: 'nearest' });
+		element?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
 	}
 
-	/** Says `text` in the live region, also when it is what it said last */
-	async function say(text: string) {
+	/** Says `text` in the live region, also when it is what it said last; shown at the top too */
+	async function say(text: string, { shown = true } = {}) {
 		notice = '';
+		banner = shown ? { text, focus: false } : null;
 		await tick();
 		notice = text;
 	}
 
-	/** Reads the list; `again`: a list is shown, and stays while it is read (and if that fails) */
-	async function load(userId: string, again = false): Promise<ReviewList | null> {
+	/** Shows `text` at the top and moves the focus there (read on focus, not in the live region) */
+	function show(text: string) {
+		notice = '';
+		banner = { text, focus: true };
+		focusAfter = bannerId;
+		void focus(bannerId);
+	}
+
+	function clearNotice(jobId: string) {
+		if (!(jobId in jobNotices)) return;
+		jobNotices = Object.fromEntries(Object.entries(jobNotices).filter(([id]) => id !== jobId));
+	}
+
+	/**
+	 * Reads the list; `again`: a list is shown, and stays while it is read and if that fails (a
+	 * session expired then never signs the page out: the caller says it). Null when another account
+	 * signed in meanwhile; a read answered after a later one was shown gives the list shown
+	 */
+	async function load(userId: string, again = false): Promise<ReviewsRead | null> {
+		const read = ++reads;
+		const startedAt = ++clock;
 		requested = userId;
-		const shown = loadState.kind === 'loaded' && loadState.userId === userId;
-		if (again && shown) checking = true;
+		const keep = again && loadState.kind === 'loaded' && loadState.userId === userId;
+		if (keep) checking = true;
 		else loadState = { kind: 'loading', userId };
 		const result = await loadReviews();
 		if (requested !== userId) return null;
-		checking = false;
-		if (result.ok) {
-			loadState = { kind: 'loaded', userId, list: result.list };
-			return result.list;
+		if (read === reads) checking = false;
+		if (read < shownRead) {
+			return loadState.kind === 'loaded' && loadState.userId === userId
+				? { ok: true, list: loadState.list }
+				: result;
 		}
-		switch (result.failure) {
-			case 'signed-out':
+		if (result.ok) {
+			shownRead = read;
+			const list = reconcileReviews(result.list, decided, startedAt);
+			loadState = { kind: 'loaded', userId, list };
+			return { ok: true, list };
+		}
+		if (result.failure === 'unavailable') {
+			shownRead = read;
+			loadState = { kind: 'unavailable', userId };
+		} else if (!keep) {
+			if (result.failure === 'signed-out') {
 				requested = null;
 				loadState = { kind: 'idle' };
 				clearAuthentication();
-				break;
-			case 'unavailable':
-				loadState = { kind: 'unavailable', userId };
-				break;
-			default:
-				if (again && shown) void say(m.checkFailed);
-				else loadState = { kind: 'error', userId };
+			} else {
+				loadState = { kind: 'error', userId };
+			}
 		}
-		return null;
+		return result;
 	}
 
 	$effect(() => {
@@ -118,13 +167,22 @@
 
 	async function checkAgain() {
 		if (!user?._id || checking) return;
-		const list = await load(user._id, true);
-		if (list) void say(m.checked(list.jobs.length));
+		const read = await load(user._id, true);
+		if (!read) return;
+		if (read.ok) void say(m.checked(read.list.jobs.length, read.list.full));
+		else if (read.failure === 'signed-out') void say(m.checkSignedOut);
+		else if (read.failure === 'unavailable') void focus(unavailableHeadingId);
+		else void say(m.checkFailed);
 	}
 
-	const retry = () => {
-		if (user?._id) void load(user._id);
-	};
+	async function retry() {
+		if (!user?._id) return;
+		const read = await load(user._id);
+		// The focus on what replaces Try again: the list, or the failure again
+		if (read?.ok) void focus(headingId);
+		else if (read && read.failure === 'retry') void focus(loadFailedHeadingId);
+		else if (read?.failure === 'unavailable') void focus(unavailableHeadingId);
+	}
 
 	let list = $derived(
 		loadState.kind === 'loaded' && loadState.userId === user?._id ? loadState.list : null
@@ -143,9 +201,23 @@
 	let focusAfter: string | null = null;
 
 	/**
-	 * Runs a decision on `entry`: saved, the job leaves the list and the page says so; the job
-	 * changed since it was read or is gone, the list is read again; the session, not available. The
-	 * reason refused and Try again are for the form (or the dialog) to say: returned
+	 * Reads the next jobs once every job of a read that listed MATCHING_LIMITS.reviewsPerRead is
+	 * decided (more wait after them), the focus on the first (else on what says there is none)
+	 */
+	async function readNext(userId: string) {
+		const read = await load(userId, true);
+		const first = read?.ok ? read.list.jobs[0] : undefined;
+		focusAfter = first ? jobHeadingId(first.job._id) : emptyHeadingId;
+		void focus(focusAfter);
+	}
+
+	/**
+	 * Runs a decision on `entry`: saved, the job leaves the list (the other jobs naming it read its
+	 * new review) and the page says so; the job changed since it was read or is gone, the list is
+	 * read again and the page says why where the reviewer acted (under the job's title, or at the top
+	 * once it left the list). The reason refused, the session expired, Try again, and a refusal whose
+	 * list could not be read again are for the form (or the dialog) to say next to its button:
+	 * returned
 	 */
 	async function decide(
 		entry: ReviewedJob,
@@ -154,32 +226,40 @@
 	): Promise<ReviewFailure | null> {
 		const userId = user?._id;
 		if (!userId) return null;
-		const result = await decideReview(entry.job._id, decision, reason, entry.version);
+		const jobId = entry.job._id;
+		clearNotice(jobId);
+		const result = await decideReview(jobId, decision, reason, entry.version);
 		if (result.ok) {
-			const current = list?.jobs ?? [];
-			focusAfter = nextFocus(current, entry.job._id);
+			const saved: SavedDecision = {
+				version: entry.version,
+				status: decision === 'approve' ? 'approved' : 'rejected',
+				at: ++clock
+			};
+			decided.set(jobId, saved);
+			focusAfter = nextFocus(list?.jobs ?? [], jobId);
+			let more = false;
 			if (loadState.kind === 'loaded' && loadState.userId === userId) {
-				loadState = {
-					...loadState,
-					list: {
-						...loadState.list,
-						jobs: loadState.list.jobs.filter((job) => job.job._id !== entry.job._id)
-					}
-				};
+				const next = reconcileReviews(loadState.list, new Map([[jobId, saved]]), saved.at - 1);
+				loadState = { ...loadState, list: next };
+				more = next.full && next.jobs.length === 0;
 			}
-			void say(decision === 'approve' ? m.approved(entry.job.title) : m.rejected(entry.job.title));
+			void say(
+				decision === 'reject'
+					? m.rejected(entry.job.title)
+					: entry.job.status === 'open'
+						? m.approved(entry.job.title)
+						: m.approvedOnHold(entry.job.title)
+			);
 			void focus(focusAfter);
+			if (more) void readNext(userId);
 			return null;
 		}
 		const { failure } = result;
 		switch (failure.kind) {
 			case 'reason':
 			case 'retry':
-				return failure;
 			case 'signed-out':
-				toaster.error({ title: recruiterMessages.sessionExpired });
-				clearAuthentication();
-				return null;
+				return failure;
 			case 'unavailable':
 				loadState = { kind: 'unavailable', userId };
 				focusAfter = unavailableHeadingId;
@@ -187,21 +267,38 @@
 				return null;
 			case 'changed':
 			case 'gone': {
-				// Read again: a job changed since comes back as it is now, one gone leaves the list (a
-				// read that fails keeps the list shown, and says so)
-				const before = list?.jobs ?? [];
-				const fresh = await load(userId, true);
-				if (!fresh) return null;
-				const stillListed = fresh.jobs.some((job) => job.job._id === entry.job._id);
-				focusAfter = stillListed ? jobHeadingId(entry.job._id) : nextFocus(before, entry.job._id);
-				void say(failure.message);
-				void focus(focusAfter);
+				// Read again: a job changed since comes back as it is now, one gone leaves the list. A
+				// read that fails keeps the list shown: the form says both (not saved, not read again)
+				const read = await load(userId, true);
+				if (!read) return null;
+				if (!read.ok) {
+					if (read.failure === 'unavailable') {
+						focusAfter = unavailableHeadingId;
+						void focus(unavailableHeadingId);
+						return null;
+					}
+					const then = read.failure === 'signed-out' ? m.checkSignedOut : m.refused.notRead;
+					return { kind: 'retry', message: `${failure.message} ${then}` };
+				}
+				if (read.list.jobs.some((job) => job.job._id === jobId)) {
+					const text = `${reviewText.failure.changed} ${m.refused.shownNow}`;
+					jobNotices = { ...jobNotices, [jobId]: text };
+					void say(text, { shown: false });
+					focusAfter = jobHeadingId(jobId);
+					void focus(focusAfter);
+				} else {
+					show(
+						failure.kind === 'gone'
+							? failure.message
+							: `${reviewText.failure.changed} ${m.refused.left}`
+					);
+				}
 				return null;
 			}
 		}
 	}
 
-	// The approval asks first: it reaches candidates at once
+	// The approval asks first
 	let approving = $state.raw<ReviewedJob | null>(null);
 	let approveBusy = $state(false);
 	let approveError = $state('');
@@ -257,8 +354,7 @@
 					<p class="text-surface-700-300">{m.intro}</p>
 					{#if list.jobs.length > 0}
 						<p class="font-medium" data-reviews-count>
-							{m.waiting(list.jobs.length)}
-							{#if list.full}{m.full}{/if}
+							{list.full ? m.waitingMore(list.jobs.length) : m.waiting(list.jobs.length)}
 						</p>
 					{/if}
 				</div>
@@ -273,14 +369,37 @@
 				</button>
 			</div>
 
-			{#if notice}
-				<!-- The same words, for everyone (the live region above is read by screen readers) -->
+			{#if banner?.focus}
+				<!-- A refusal whose job left the list: it takes the focus, and is read then -->
+				<p
+					id={bannerId}
+					class="card preset-tonal-warning rounded-base p-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+					tabindex="-1"
+					data-reviews-notice
+				>
+					{banner.text}
+				</p>
+			{:else if banner}
+				<!-- The live region's words, for everyone (hidden from screen readers, who heard them) -->
 				<p class="card preset-tonal p-3 text-sm" aria-hidden="true" data-reviews-notice>
-					{notice}
+					{banner.text}
 				</p>
 			{/if}
 
-			{#if list.jobs.length === 0}
+			{#if list.jobs.length === 0 && list.full}
+				<!-- Every job of a read that listed as many as one read lists is decided: more wait -->
+				<PageNotice title={m.decidedAll.title} icon={CheckBadge} headingId={emptyHeadingId}>
+					<p>{m.decidedAll.text}</p>
+					{#snippet actions()}
+						<button
+							type="button"
+							class={actionClass}
+							aria-disabled={checking ? 'true' : undefined}
+							onclick={checkAgain}>{checking ? m.checking : m.checkAgain}</button
+						>
+					{/snippet}
+				</PageNotice>
+			{:else if list.jobs.length === 0}
 				<PageNotice title={m.empty.title} icon={CheckBadge} headingId={emptyHeadingId}>
 					<p>{m.empty.text}</p>
 				</PageNotice>
@@ -294,6 +413,7 @@
 								{listed}
 								anchorOf={jobHeadingId}
 								busy={approving?.job._id === entry.job._id && approveBusy}
+								notice={jobNotices[entry.job._id] ?? ''}
 								onApprove={(trigger) => askApproval(entry, trigger)}
 								onReject={(reason) => decide(entry, 'reject', reason)}
 							/>
@@ -304,15 +424,21 @@
 		{:else if !$sessionCheckedStore || loadState.kind === 'loading' || (user && loadState.kind === 'idle')}
 			<EditorPlaceholder />
 		{:else if !user}
+			<!-- Signed out: the same words as for anyone else (nothing says signing in would open it) -->
 			<PageNotice title={m.unavailable.title} icon={EyeSlash}>
-				<p>{m.unavailable.signedOut}</p>
+				<p>{m.unavailable.text}</p>
 			</PageNotice>
 		{:else if loadState.kind === 'unavailable'}
 			<PageNotice title={m.unavailable.title} icon={EyeSlash} headingId={unavailableHeadingId}>
 				<p>{m.unavailable.text}</p>
 			</PageNotice>
 		{:else}
-			<PageNotice title={m.loadFailed.title} icon={ExclamationTriangle} tone="error">
+			<PageNotice
+				title={m.loadFailed.title}
+				icon={ExclamationTriangle}
+				tone="error"
+				headingId={loadFailedHeadingId}
+			>
 				<p>{m.loadFailed.text}</p>
 				{#snippet actions()}
 					<button type="button" class={actionClass} onclick={retry}>{common.retry}</button>
@@ -326,7 +452,12 @@
 	open={approving !== null}
 	tone="primary"
 	title={m.approveDialog.title}
-	description={approving ? m.approveDialog.description(approving.job.title) : ''}
+	description={approving
+		? approving.job.status === 'open'
+			? m.approveDialog.description(approving.job.title)
+			: m.approveDialog.descriptionOnHold(approving.job.title)
+		: ''}
+	details={m.approveDialog.details}
 	confirmLabel={m.approveDialog.confirm}
 	busyLabel={m.approveDialog.busy}
 	busy={approveBusy}

@@ -7,19 +7,23 @@ import { defineMessages } from 'portfolio-common';
 export const m = defineMessages({
 	/** Why PUT /matching/reviews/:id did not go through (the reason's own refusals are the API's) */
 	failure: {
-		/** 409: the posting is no longer the version read; the page reads the list again */
+		/**
+		 * 409: the posting is no longer the version read; the page reads the list again and says
+		 * what it found (the job as it is now, or no longer waiting)
+		 */
 		changed: {
-			en: 'This job description changed since you read it. Here it is as it is now: read it again before you decide.',
-			fr: "Cette offre a changé depuis que vous l'avez lue. La voici telle qu'elle est maintenant : relisez-la avant de décider."
+			en: 'Your decision was not saved: this job description changed since you read it.',
+			fr: "Votre décision n'a pas été enregistrée : cette offre a changé depuis que vous l'avez lue."
 		},
-		/** 404 of the job: taken out of matching by its recruiter, or deleted */
+		/** 404 of the job: taken out of matching by its recruiter (a status too), or deleted */
 		gone: {
-			en: 'This job description no longer waits for a review: its recruiter stopped proposing it to candidates, or deleted it.',
-			fr: "Cette offre n'attend plus de relecture : son recruteur a cessé de la proposer aux candidats, ou l'a supprimée."
+			en: 'Your decision was not saved: this job description no longer waits for a review. Its recruiter no longer asks to propose it to candidates, or deleted it.',
+			fr: "Votre décision n'a pas été enregistrée : cette offre n'attend plus de relecture. Son recruteur ne demande plus à la proposer aux candidats, ou l'a supprimée."
 		},
+		/** 401: said next to the button, the session and what was typed kept */
 		signedOut: {
-			en: 'Your session has ended. Sign in again to go on.',
-			fr: 'Votre session a expiré. Reconnectez-vous pour continuer.'
+			en: 'Your session expired: your decision was not saved. What you wrote is still here: sign in again in another tab, then try again.',
+			fr: "Votre session a expiré : votre décision n'a pas été enregistrée. Ce que vous avez écrit est toujours là : reconnectez-vous dans un autre onglet, puis réessayez."
 		},
 		unavailable: {
 			en: 'This page is not available.',

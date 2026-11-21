@@ -5,7 +5,9 @@ A job posting as candidates and its recruiter read it: status, title, company, t
 page and by the private page of a job shared with a candidate (/opportunities/:id): it has no
 controls of its own. Pass them as snippets: `actions` (next to the title: Edit...), `meta` (under
 the company: dates...) and `children` (after the description). `headingId` names the title, for a
-page that moves the focus to it (it then takes it: the reviewers' list of jobs in matching).
+page that moves the focus to it (it then takes it: the reviewers' list of jobs in matching), and
+`regions={false}` keeps its two sections from being named regions, for a page that lists many
+postings (that list: landmarks repeated per job would make landmark navigation useless).
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -20,6 +22,7 @@ page that moves the focus to it (it then takes it: the reviewers' list of jobs i
 		job,
 		headingLevel = 2,
 		headingId,
+		regions = true,
 		actions,
 		meta,
 		children
@@ -29,6 +32,8 @@ page that moves the focus to it (it then takes it: the reviewers' list of jobs i
 		headingLevel?: 1 | 2 | 3;
 		/** The title's id, for a page that moves the focus to it (it takes it: tabindex -1) */
 		headingId?: string;
+		/** Whether its sections are named regions (landmarks): false on a page listing many */
+		regions?: boolean;
 		/** Controls next to the title (they wrap under it on small screens) */
 		actions?: Snippet;
 		/** Under the company: dates... */
@@ -76,13 +81,13 @@ page that moves the focus to it (it then takes it: the reviewers' list of jobs i
 
 	<section
 		class="card preset-outlined-surface-200-800 bg-surface-50-950 p-4 sm:p-6"
-		aria-labelledby="{uid}-facts"
+		aria-labelledby={regions ? `${uid}-facts` : undefined}
 	>
 		<svelte:element this={sectionTag} id="{uid}-facts" class="sr-only">{m.keyFacts}</svelte:element>
 		<JobFacts {job} />
 	</section>
 
-	<section class="space-y-3" aria-labelledby="{uid}-about">
+	<section class="space-y-3" aria-labelledby={regions ? `${uid}-about` : undefined}>
 		<svelte:element this={sectionTag} id="{uid}-about" class="text-lg font-semibold">
 			{m.about}
 		</svelte:element>

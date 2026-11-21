@@ -12,6 +12,7 @@ import {
 	nearDuplicateCount,
 	readReviewList,
 	readReviewedJob,
+	reconcileReviews,
 	reviewFailure,
 	reviewStatusText,
 	reviewsReadFailure
@@ -176,6 +177,52 @@ describe('readReviewList', () => {
 	});
 });
 
+describe('reconcileReviews', () => {
+	const COPY_ID = '65e2e0000000000000000203';
+	const list = () =>
+		readReviewList({
+			jobs: [
+				reviewed({ otherJobs: [otherJob({ _id: COPY_ID })] }),
+				reviewed({
+					job: posting({ _id: COPY_ID }),
+					otherJobs: [otherJob({ _id: JOB_ID })],
+					version: 'c'.repeat(64)
+				})
+			]
+		})!;
+
+	it('takes a job decided on off the list, and the other jobs naming it read its new review', () => {
+		const decided = new Map([
+			[JOB_ID, { version: 'f'.repeat(64), status: 'approved' as const, at: 2 }]
+		]);
+		const next = reconcileReviews(list(), decided, 1);
+		expect(next.jobs.map((entry) => entry.job._id)).toEqual([COPY_ID]);
+		expect(next.jobs[0].otherJobs[0]).toMatchObject({ _id: JOB_ID, review: 'approved' });
+	});
+
+	it('keeps a read answered after a decision from bringing it back as waiting', () => {
+		// The read started before the decision was saved, and was answered after it
+		const decided = new Map([
+			[JOB_ID, { version: 'f'.repeat(64), status: 'rejected' as const, at: 5 }]
+		]);
+		const next = reconcileReviews(list(), decided, 4);
+		expect(next.jobs.map((entry) => entry.job._id)).toEqual([COPY_ID]);
+		expect(next.jobs[0].otherJobs[0].review).toBe('rejected');
+	});
+
+	it('trusts a read started after a decision for the other jobs, and keeps a job edited since', () => {
+		// Decided at 2, read at 3: the API answered the review as it is now (pending again,
+		// another version: its recruiter edited it)
+		const decided = new Map([
+			[JOB_ID, { version: 'e'.repeat(64), status: 'approved' as const, at: 2 }]
+		]);
+		const next = reconcileReviews(list(), decided, 3);
+		expect(next.jobs.map((entry) => entry.job._id)).toEqual([JOB_ID, COPY_ID]);
+		expect(next.jobs[1].otherJobs[0].review).toBe('pending');
+		expect(next.full).toBe(false);
+	});
+});
+
 describe('failures', () => {
 	it('keeps the API’s bodies and the server’s constants the same', () => {
 		const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -210,6 +257,16 @@ describe('failures', () => {
 			'unavailable'
 		);
 		expect(reviewFailure(401, 'Unauthorized').kind).toBe('signed-out');
+		// Said next to the button: the decision was not saved, what was typed stays
+		expect(reviewFailure(401, 'Unauthorized').message).toMatch(
+			/^Your session expired: your decision was not saved\. What you wrote is still here/
+		);
+		expect(reviewFailure(409, JOB_CHANGED).message).toBe(
+			'Your decision was not saved: this job description changed since you read it.'
+		);
+		expect(reviewFailure(404, JOB_NOT_FOUND).message).toMatch(
+			/^Your decision was not saved: this job description no longer waits for a review\./
+		);
 		expect(reviewFailure(500, 'Oops')).toEqual({
 			kind: 'retry',
 			message: 'Your decision could not be saved. Try again.'
@@ -233,7 +290,9 @@ describe('failures', () => {
 
 	it('says each failure in French too', () => {
 		withLocale('fr', () => {
-			expect(reviewFailure(409, JOB_CHANGED).message).toMatch(/^Cette offre a changé/);
+			expect(reviewFailure(409, JOB_CHANGED).message).toMatch(
+				/^Votre décision n'a pas été enregistrée\s:\scette offre a changé depuis/
+			);
 			expect(reviewFailure(403, '').message).toBe("Cette page n'est pas disponible.");
 		});
 	});

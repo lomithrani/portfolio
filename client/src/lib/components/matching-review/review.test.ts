@@ -72,13 +72,14 @@ const entry = (fields: Record<string, unknown> = {}): ReviewedJob =>
 	})!;
 
 const noop = () => {};
-const review = (job: ReviewedJob, listed: string[] = []) =>
+const review = (job: ReviewedJob, listed: string[] = [], notice = '') =>
 	render(JobReview, {
 		props: {
 			entry: job,
 			headingId: `review-${job.job._id}`,
 			listed: new Set(listed),
 			anchorOf: (id: string) => `review-${id}`,
+			notice,
 			onApprove: noop,
 			onReject: async () => null
 		}
@@ -93,12 +94,69 @@ describe('a job waiting for a review', () => {
 		expect(text).toContain('E2E Review Corp');
 		expect(text).toContain('Run the platform.');
 		expect(text).toContain('Waiting for a review since');
-		expect(text).toContain('Proposed to candidates by its recruiter on');
+		// What its recruiter asked for, never "Proposed to candidates" (approved and live)
+		expect(text).toContain('Its recruiter asked to propose it to candidates on');
+		expect(text).not.toContain('Proposed to candidates');
 		expect(text).toContain('Email domain example.com');
 		expect(text).toContain('Recruiter key a1b2c3d4e5f6');
 		expect(text).toContain('Your decision');
 		expect(text).toMatch(/Approve.*Why you reject it.*Reject/);
 		expect(text).not.toContain('An earlier version was reviewed');
+		// Never a promise that it reaches candidates at once: open, and its recruiter's terms
+		expect(text).toContain(
+			'Approved, it is proposed to the candidates whose criteria it meets, while it is open and its recruiter has accepted the terms in force.'
+		);
+		expect(text).not.toMatch(/at once/);
+		expect(body).not.toContain('data-review-on-hold');
+		// The reason is required and kept on one line
+		expect(body).toContain('aria-required="true"');
+		expect(text).toContain('Required to reject.');
+		expect(text).toContain('on one line (line breaks are not kept)');
+	});
+
+	it('names its controls with its title (the page lists many jobs), and is one named region', () => {
+		const body = review(entry());
+		expect(body).toContain('aria-label="Approve: Staff Platform Engineer"');
+		expect(body).toContain('aria-label="Reject: Staff Platform Engineer"');
+		expect(body).toContain('aria-label="Why you reject it: Staff Platform Engineer"');
+		// One region per job: the posting's article, named by its title; no named section
+		expect(body.match(/aria-labelledby=/g)).toHaveLength(1);
+		expect(body).toContain(
+			`<article class="relative space-y-6" aria-labelledby="review-${JOB_ID}"`
+		);
+		expect(body).not.toMatch(/<section[^>]*aria-labelledby/);
+	});
+
+	it('says, for a job on hold, that it is proposed only once its recruiter opens it again', () => {
+		const onHold = entry({
+			job: {
+				_id: JOB_ID,
+				title: 'Staff Platform Engineer',
+				company: 'E2E Review Corp',
+				description: '## The job\n\nRun the platform.',
+				status: 'on_hold',
+				contract: { type: 'cdi' }
+			}
+		});
+		const body = review(onHold);
+		expect(textOf(body)).toContain(
+			'This job is on hold: approved, it is proposed to candidates only once its recruiter opens it again.'
+		);
+		expect(body).toContain('data-review-on-hold');
+		withLocale('fr', () => {
+			expect(textOf(review(onHold))).toContain(
+				"Cette offre est en pause : acceptée, elle n'est proposée aux candidats qu'une fois que son recruteur la rouvre."
+			);
+		});
+	});
+
+	it('says under its title why a decision on it was refused', () => {
+		const body = review(entry(), [], 'Your decision was not saved: this job description changed.');
+		expect(body).toContain('data-review-notice');
+		expect(textOf(body)).toMatch(
+			/Staff Platform Engineer.*Your decision was not saved: this job description changed\..*Waiting for a review since/
+		);
+		expect(review(entry())).not.toContain('data-review-notice');
 	});
 
 	it('flags the copies of it with the terms they differ in, and links one waiting on the page', () => {
@@ -110,8 +168,13 @@ describe('a job waiting for a review', () => {
 		expect(text).toContain('Differs in: Minimum pay and Maximum pay');
 		expect(text).toContain('Waiting for a review');
 		expect(text).toContain('Rejected');
-		expect(text).toContain('Its recruiter no longer proposes it');
+		expect(text).toContain('Its recruiter no longer asks to propose it');
+		expect(text).toContain('Its recruiter asks to propose it to candidates');
 		expect(body).toContain(`href="#review-${COPY_ID}"`);
+		// Named with the copy's title and day: copies share a title
+		expect(body).toMatch(
+			/aria-label="Waiting on this page: Staff Platform Engineer, created on [^"]+"/
+		);
 		expect(body).not.toContain(`href="#review-${OTHER_ID}"`);
 		expect(body.match(/data-near-duplicate/g)).toHaveLength(1);
 	});
@@ -148,7 +211,7 @@ describe("a recruiter's other jobs", () => {
 			props: { jobs: [], listed: new Set<string>(), anchorOf: (id: string) => id }
 		}).body;
 		expect(textOf(body)).toContain(
-			'None: this recruiter proposed no other job to candidates lately.'
+			'None: this recruiter asked to propose no other job to candidates lately.'
 		);
 		expect(body).not.toContain('data-copies-warning');
 	});

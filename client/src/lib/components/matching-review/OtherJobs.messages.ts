@@ -12,17 +12,18 @@ export const m = defineMessages({
 	},
 	/**
 	 * Backed by: recruitersJobs of server/services/matchingReviews.ts (REVIEW_HISTORY_DAYS,
-	 * REVIEW_HISTORY_JOBS; only the jobs still stored, of that account)
+	 * REVIEW_HISTORY_JOBS; only the jobs still stored, of that account). What the recruiter asked
+	 * for, not what reached candidates: only an approved job is proposed
 	 */
 	scope: {
 		en: (days: number, most: number) =>
-			`Of the jobs this recruiter ever proposed to candidates: those proposed now, and those created or sent for review in the last ${days} days, the ${most} latest at most. A job deleted, or posted from another account, is not shown.`,
+			`Of the jobs this recruiter ever asked to propose to candidates: those they ask to propose now, and those created or sent for review in the last ${days} days, the ${most} latest at most. A job deleted, or posted from another account, is not shown.`,
 		fr: (days: number, most: number) =>
-			`Parmi les offres que ce recruteur a déjà proposées aux candidats : celles proposées maintenant, et celles créées ou envoyées en relecture ces ${days} derniers jours, les ${most} plus récentes au plus. Une offre supprimée, ou publiée depuis un autre compte, n'apparaît pas.`
+			`Parmi les offres que ce recruteur a déjà demandé à proposer aux candidats : celles qu'il demande à proposer maintenant, et celles créées ou envoyées en relecture ces ${days} derniers jours, les ${most} plus récentes au plus. Une offre supprimée, ou publiée depuis un autre compte, n'apparaît pas.`
 	},
 	none: {
-		en: 'None: this recruiter proposed no other job to candidates lately.',
-		fr: "Aucune : ce recruteur n'a proposé aucune autre offre aux candidats ces derniers temps."
+		en: 'None: this recruiter asked to propose no other job to candidates lately.',
+		fr: "Aucune : ce recruteur n'a demandé à proposer aucune autre offre aux candidats ces derniers temps."
 	},
 	/** `count`: how many are copies of the job under review */
 	copies: {
@@ -45,17 +46,30 @@ export const m = defineMessages({
 		en: (day: string) => `Created on ${day}`,
 		fr: (day: string) => `Créée le ${day}`
 	},
-	/** Its recruiter's switch (whether reviewed or not: its review follows) */
+	/**
+	 * Its recruiter's switch, what they ask for (whether reviewed or not: its review follows); never
+	 * "Proposed to candidates", the recruiter's word for a job approved and live (docs/I18N.md)
+	 */
 	inMatching: {
-		en: 'Its recruiter proposes it to candidates',
-		fr: 'Son recruteur la propose aux candidats'
+		en: 'Its recruiter asks to propose it to candidates',
+		fr: 'Son recruteur demande à la proposer aux candidats'
 	},
 	notInMatching: {
-		en: 'Its recruiter no longer proposes it',
-		fr: 'Son recruteur ne la propose plus'
+		en: 'Its recruiter no longer asks to propose it',
+		fr: 'Son recruteur ne demande plus à la proposer'
 	},
 	/** Its review, for screen readers before the label */
 	review: { en: 'Review:', fr: 'Relecture :' },
 	/** It waits on this page too: a link to it */
-	listedHere: { en: 'Waiting on this page', fr: 'En attente sur cette page' }
+	listedHere: { en: 'Waiting on this page', fr: 'En attente sur cette page' },
+	/** The link's name for screen readers: its title, and when it was created (copies share a title) */
+	listedHereNamed: {
+		en: (title: string, day: string) => `Waiting on this page: ${title}, created on ${day}`,
+		fr: (title: string, day: string) => `En attente sur cette page : ${title}, créée le ${day}`
+	},
+	/** The same without a creation day */
+	listedHereTitled: {
+		en: (title: string) => `Waiting on this page: ${title}`,
+		fr: (title: string) => `En attente sur cette page : ${title}`
+	}
 });

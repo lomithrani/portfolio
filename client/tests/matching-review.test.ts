@@ -23,11 +23,13 @@ import {
 // candidate of matching accepts (their contract is a deal-breaker): approved, they are proposed to
 // nobody the other files read.
 //
-// Anyone but a reviewer, and everyone while matching is off, reads only that the page is not
-// available: those tests run with or without matching (matching off is answered in the browser).
-// What needs matching on and the reviewer listed (the API run with MATCHING=true and
-// MATCHING_REVIEWERS=e2e.reviewer@example.com, as CI's e2e job runs it) is skipped, saying why,
-// otherwise. Google is never reached.
+// Anyone but a reviewer, anyone signed out, and everyone while matching is off, reads only that
+// the page is not available: those tests run with or without matching (matching off is answered in
+// the browser), and so do the page's states answered in the browser (a failed read, nothing
+// waiting, a decision refused, a session expired). What needs matching on and the reviewer listed
+// (the API run with MATCHING=true and MATCHING_REVIEWERS=e2e.reviewer@example.com, as CI's e2e job
+// runs it) is skipped, saying why, otherwise (in CI a reviewer refused fails: it must run there).
+// Google is never reached.
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e reviewer');
 
@@ -77,9 +79,11 @@ const sidewaysScroll = (page: Page) =>
 	});
 
 /** What the page shows anyone but a reviewer: not available, and nothing of what it is */
-const expectNotAvailable = async (page: Page, text = 'This page is not available.') => {
+const expectNotAvailable = async (page: Page) => {
 	await expect(page.getByRole('heading', { level: 2, name: 'Not available' })).toBeVisible();
-	await expect(page.locator('main')).toContainText(text);
+	await expect(page.locator('main')).toContainText('This page is not available.');
+	// Nothing says signing in would open it
+	await expect(page.locator('main')).not.toContainText(/sign(ing)? in/i);
 	await expect(page).toHaveTitle('Not available | Portfolio');
 	await expect(page.getByRole('heading', { name: 'Jobs to review' })).toHaveCount(0);
 	await expect(page.locator('main')).not.toContainText(/review|matching|candidate/i);
@@ -112,8 +116,215 @@ test('signed out, the page is not available, and nothing is asked', async ({ pag
 		if (request.url().startsWith(`${API_URL}/matching/`)) reads.push(request.url());
 	});
 	await open(page, null);
-	await expectNotAvailable(page, 'This page is not available without signing in.');
+	await expectNotAvailable(page);
 	expect(reads).toEqual([]);
+});
+
+// --- The page's states, the API answered in the browser (with or without matching) ------------
+
+const STUB_ID = '65e2e0000000000000000301';
+const STUB_COPY_ID = '65e2e0000000000000000302';
+const AT = '2026-11-20T10:00:00.000Z';
+
+/** A job waiting for a review, as GET /matching/reviews lists it */
+const stubEntry = (
+	_id: string,
+	fields: { title?: string; status?: string; description?: string; version?: string } = {}
+) => ({
+	job: {
+		_id,
+		title: fields.title ?? 'Stubbed platform mission',
+		company: 'E2E Review Corp',
+		description: fields.description ?? '## The mission\n\nAnswered in the browser.',
+		status: fields.status ?? 'open',
+		createdAt: AT,
+		updatedAt: AT,
+		publishedAt: AT,
+		location: { country: 'FR', city: 'Lyon', workMode: 'hybrid', remoteDaysPerWeek: 2 },
+		contract: { type: 'freelance' },
+		pay: { min: 500, max: 600, currency: 'EUR', period: 'day' }
+	},
+	recruiter: { emailDomain: 'example.com', key: 'a1b2c3d4e5f6' },
+	otherJobs: [],
+	matchingSince: AT,
+	review: { status: 'pending', requestedAt: AT, reviewedAt: null, reason: null },
+	version: fields.version ?? 'v1'
+});
+
+test('a failed first read says only that the page could not be loaded, and Try again reads it', async ({
+	page
+}) => {
+	const reads = await stubApi(page, 'GET', '/matching/reviews', (_request, index) =>
+		index === 0 ? { status: 500, text: 'Oops' } : { json: { jobs: [stubEntry(STUB_ID)] } }
+	);
+	await open(page, reviewer);
+	await expect(
+		page.getByRole('heading', { level: 2, name: 'This page could not be loaded' })
+	).toBeVisible();
+	await expect(page.locator('main')).not.toContainText(/review|matching|candidate/i);
+	await page.getByRole('button', { name: 'Try again' }).click();
+	await expect(page.getByRole('heading', { level: 2, name: 'Jobs to review' })).toBeFocused();
+	await expect(page.locator(`[data-review="${STUB_ID}"]`)).toContainText('Answered in the browser');
+	expect(reads).toHaveLength(2);
+});
+
+test('nothing waiting: the page says so, with no count and no email promised', async ({ page }) => {
+	await stubApi(page, 'GET', '/matching/reviews', () => ({ json: { jobs: [] } }));
+	await open(page, reviewer);
+	await expect(page.getByRole('heading', { level: 2, name: 'Nothing to review' })).toBeVisible();
+	await expect(page.locator('main')).toContainText('No email tells you: check again later.');
+	await expect(page.locator('[data-reviews-count]')).toHaveCount(0);
+	await expect(page.locator('[data-review]')).toHaveCount(0);
+});
+
+test('a decision on a job no longer waiting says so, the focus on it, and the list is read again', async ({
+	page
+}) => {
+	const reads = await stubApi(page, 'GET', '/matching/reviews', (_request, index) => ({
+		json: { jobs: index === 0 ? [stubEntry(STUB_ID)] : [] }
+	}));
+	const decisions = await stubApi(page, 'PUT', `/matching/reviews/${STUB_ID}`, () => ({
+		status: 404,
+		text: 'Job posting not found'
+	}));
+	await open(page, reviewer);
+	const section = page.locator(`[data-review="${STUB_ID}"]`);
+	await section.getByRole('button', { name: 'Approve' }).click();
+	const dialog = page.getByRole('alertdialog', { name: 'Approve this job description?' });
+	await dialog.getByRole('button', { name: 'Approve' }).click();
+	await expect(dialog).toHaveCount(0);
+	const notice = page.locator('[data-reviews-notice]');
+	await expect(notice).toHaveText(
+		'Your decision was not saved: this job description no longer waits for a review. Its recruiter no longer asks to propose it to candidates, or deleted it.'
+	);
+	await expect(notice).toBeFocused();
+	await expect(section).toHaveCount(0);
+	await expect(page.getByRole('heading', { level: 2, name: 'Nothing to review' })).toBeVisible();
+	expect(decisions).toHaveLength(1);
+	expect(reads).toHaveLength(2);
+});
+
+test('a decision refused as changed whose list cannot be read again says both next to the button, the list and the reason kept', async ({
+	page
+}) => {
+	await stubApi(page, 'GET', '/matching/reviews', (_request, index) =>
+		index === 0 ? { json: { jobs: [stubEntry(STUB_ID)] } } : { status: 500, text: 'Oops' }
+	);
+	await stubApi(page, 'PUT', `/matching/reviews/${STUB_ID}`, () => ({
+		status: 409,
+		text: 'This job posting was changed since you opened it'
+	}));
+	await open(page, reviewer);
+	const section = page.locator(`[data-review="${STUB_ID}"]`);
+	const reason = 'Copies of one job with another pay.';
+	await section.getByLabel('Why you reject it').fill(reason);
+	await section.getByRole('button', { name: 'Reject' }).click();
+	await expect(section.getByRole('alert')).toHaveText(
+		'Your decision was not saved: this job description changed since you read it. The list could not be read again: check again, then read the job as it is now before you decide.'
+	);
+	await expect(section.getByLabel('Why you reject it')).toHaveValue(reason);
+	await expect(section).toContainText('Answered in the browser');
+});
+
+test('a job changed since it was read is shown as it is now, said under its title', async ({
+	page
+}) => {
+	await stubApi(page, 'GET', '/matching/reviews', (_request, index) => ({
+		json: {
+			jobs: [
+				stubEntry(STUB_COPY_ID, { title: 'Another mission' }),
+				index === 0
+					? stubEntry(STUB_ID)
+					: stubEntry(STUB_ID, { description: 'Edited meanwhile.', version: 'v2' })
+			]
+		}
+	}));
+	await stubApi(page, 'PUT', `/matching/reviews/${STUB_ID}`, () => ({
+		status: 409,
+		text: 'This job posting was changed since you opened it'
+	}));
+	await open(page, reviewer);
+	const section = page.locator(`[data-review="${STUB_ID}"]`);
+	await section.getByLabel('Why you reject it').fill('Another pay.');
+	await section.getByRole('button', { name: 'Reject' }).click();
+	const said =
+		'Your decision was not saved: this job description changed since you read it. Here it is as it is now: read it again before you decide.';
+	await expect(section.locator('[data-review-notice]')).toHaveText(said);
+	await expect(page.locator('[data-reviews-said]')).toHaveText(said);
+	await expect(section).toContainText('Edited meanwhile.');
+	await expect(
+		section.getByRole('heading', { level: 3, name: 'Stubbed platform mission' })
+	).toBeFocused();
+	// What the reviewer typed stays; the notice goes with their next decision
+	await expect(section.getByLabel('Why you reject it')).toHaveValue('Another pay.');
+});
+
+test('a session that expires keeps the page and what was typed, and says so next to the button', async ({
+	page
+}) => {
+	await stubApi(page, 'GET', '/matching/reviews', () => ({ json: { jobs: [stubEntry(STUB_ID)] } }));
+	await stubApi(page, 'PUT', `/matching/reviews/${STUB_ID}`, () => ({
+		status: 401,
+		text: 'Unauthorized'
+	}));
+	await open(page, reviewer);
+	const section = page.locator(`[data-review="${STUB_ID}"]`);
+	await section.getByLabel('Why you reject it').fill('A copy of another job.');
+	await section.getByRole('button', { name: 'Reject' }).click();
+	await expect(section.getByRole('alert')).toHaveText(
+		'Your session expired: your decision was not saved. What you wrote is still here: sign in again in another tab, then try again.'
+	);
+	await expect(section.getByLabel('Why you reject it')).toHaveValue('A copy of another job.');
+	await expect(page.getByRole('heading', { level: 2, name: 'Jobs to review' })).toBeVisible();
+});
+
+test('Check again that fails keeps the list and says so', async ({ page }) => {
+	await stubApi(page, 'GET', '/matching/reviews', (_request, index) =>
+		index === 0 ? { json: { jobs: [stubEntry(STUB_ID)] } } : { status: 500, text: 'Oops' }
+	);
+	await open(page, reviewer);
+	await page.getByRole('button', { name: 'Check again' }).click();
+	await expect(page.locator('[data-reviews-said]')).toHaveText(
+		'The list could not be checked again: it is the one read before. Try again.'
+	);
+	await expect(page.locator(`[data-review="${STUB_ID}"]`)).toBeVisible();
+});
+
+test('a job on hold is approved without a promise that it reaches candidates now', async ({
+	page
+}) => {
+	await stubApi(page, 'GET', '/matching/reviews', (_request, index) => ({
+		json: { jobs: index === 0 ? [stubEntry(STUB_ID, { status: 'on_hold' })] : [] }
+	}));
+	await stubApi(page, 'PUT', `/matching/reviews/${STUB_ID}`, () => ({
+		json: stubEntry(STUB_ID, { status: 'on_hold' })
+	}));
+	await open(page, reviewer);
+	const section = page.locator(`[data-review="${STUB_ID}"]`);
+	await expect(section.locator('[data-review-on-hold]')).toBeVisible();
+	await section.getByRole('button', { name: 'Approve' }).click();
+	const dialog = page.getByRole('alertdialog', { name: 'Approve this job description?' });
+	await expect(dialog).toContainText(
+		'Stubbed platform mission is on hold: once approved, it is proposed to the candidates whose criteria it meets only when its recruiter opens it again'
+	);
+	await expect(dialog).toContainText('You cannot take this back on this page');
+	await dialog.getByRole('button', { name: 'Approve' }).click();
+	await expect(page.locator('[data-reviews-said]')).toHaveText(
+		'Approved: Stubbed platform mission. It is on hold: it can be proposed to candidates once its recruiter opens it again.'
+	);
+	await expect(page.getByRole('heading', { level: 2, name: 'Nothing to review' })).toBeFocused();
+});
+
+test('a full read says more wait after the jobs shown', async ({ page }) => {
+	// As many as one read lists (MATCHING_LIMITS.reviewsPerRead)
+	const jobs = Array.from({ length: 100 }, (_, index) =>
+		stubEntry(`65e2e0000000000000${String(400000 + index)}`, { title: `Mission ${index}` })
+	);
+	await stubApi(page, 'GET', '/matching/reviews', () => ({ json: { jobs } }));
+	await open(page, reviewer);
+	await expect(page.locator('[data-reviews-count]')).toHaveText(
+		'These 100 job descriptions have waited longest, the oldest first, and more wait after them: they show here when the list is read again, once you decide these or when you check again.'
+	);
 });
 
 test.describe('with matching on and the reviewer listed', () => {
@@ -125,9 +336,11 @@ test.describe('with matching on and the reviewer listed', () => {
 			status === 404,
 			'Matching is off in the API under test (GET /matching/reviews answers 404): run it with MATCHING=true'
 		);
+		// CI runs the API with the e2e reviewer listed: a refusal there is a failure, never a skip
+		if (process.env.CI) expect(status, 'GET /matching/reviews as the e2e reviewer').toBe(200);
 		test.skip(
 			status === 403,
-			'The e2e reviewer is not a reviewer of the API under test: run it with MATCHING_REVIEWERS=e2e.reviewer@example.com'
+			'The e2e reviewer is not a reviewer of the API under test: run it with MATCHING_REVIEWERS=e2e.reviewer@example.com, after `bun run --cwd server seed:e2e` (which seeds that account)'
 		);
 	});
 
@@ -197,16 +410,26 @@ test.describe('with matching on and the reviewer listed', () => {
 		// Approve, asked first
 		await section.getByRole('button', { name: 'Approve' }).click();
 		const dialog = page.getByRole('alertdialog', { name: 'Approve this job description?' });
-		await expect(dialog).toContainText('is proposed at once to the candidates');
+		await expect(dialog).toContainText(
+			`Once approved, ${title} is proposed to the candidates whose criteria it meets, while it stays open and its recruiter has accepted the terms in force.`
+		);
 		await dialog.getByRole('button', { name: 'Approve' }).click();
 		await expect(dialog).toHaveCount(0);
 		await expect(section).toHaveCount(0);
 		await expect(page.locator('[data-reviews-said]')).toHaveText(
-			`Approved: ${title}. It is proposed to the candidates whose criteria it meets.`
+			`Approved: ${title}. It can now be proposed to the candidates whose criteria it meets.`
 		);
-		await expect(page.locator(':focus')).toHaveAttribute('id', /^review/);
+		// The focus on the next job's title (another job's, not a fallback of the page)
+		const focused = page.locator(':focus');
+		await expect(focused).toHaveAttribute('id', /^review-[0-9a-f]{24}$/);
+		await expect(focused).not.toHaveAttribute('id', `review-${first._id}`);
+		await expect(page.locator('[data-review] h3:focus')).toHaveCount(1);
 		const approved = await reviewOf(first._id);
 		expect(approved.status).toBe('approved');
+		// The copy's list of other jobs reads the approval just saved
+		await expect(
+			page.locator(`[data-review="${copy._id}"] [data-other-job="${first._id}"]`)
+		).toContainText('Approved');
 
 		// Reject the copy: a reason first (nothing is sent without one), then in the reviewer's words
 		const copySection = page.locator(`[data-review="${copy._id}"]`);
@@ -261,9 +484,10 @@ test.describe('with matching on and the reviewer listed', () => {
 		const dialog = page.getByRole('alertdialog', { name: 'Approve this job description?' });
 		await dialog.getByRole('button', { name: 'Approve' }).click();
 		await expect(dialog).toHaveCount(0);
-		await expect(page.locator('[data-reviews-said]')).toHaveText(
-			'This job description changed since you read it. Here it is as it is now: read it again before you decide.'
-		);
+		const said =
+			'Your decision was not saved: this job description changed since you read it. Here it is as it is now: read it again before you decide.';
+		await expect(page.locator('[data-reviews-said]')).toHaveText(said);
+		await expect(section.locator('[data-review-notice]')).toHaveText(said);
 		await expect(section).toContainText('Edited by an end-to-end test');
 		await expect(section.getByRole('heading', { level: 3, name: title })).toBeFocused();
 		expect((await reviewOf(job._id)).status).toBe('pending');

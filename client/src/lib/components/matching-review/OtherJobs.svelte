@@ -6,7 +6,8 @@ summary (place, work mode, contract, pay), when it was created, whether it is pr
 candidates now and where its review stands. A copy of the job under review (the same company and
 title, or the same description) is marked, with the terms it differs in: copies that differ in one
 term would tell their recruiter what candidates ask or where they live. A job that waits on the
-same page links to it (`listed`).
+same page links to it (`listed`), named with its title and when it was created (copies share a
+title). A plain group under its heading, not a region: the page lists many jobs.
 -->
 <script lang="ts">
 	import { ExclamationTriangle } from 'svelte-heros-v2';
@@ -17,6 +18,7 @@ same page links to it (`listed`).
 		REVIEW_HISTORY_JOBS,
 		differsInText,
 		reviewStatusText,
+		scrollBehavior,
 		type ReviewOtherJob
 	} from '#services/matchingReviews.ts';
 	import { formatDay, isoDate } from '#services/recruiter.ts';
@@ -41,7 +43,7 @@ same page links to it (`listed`).
 	let copies = $derived(jobs.filter((job) => job.nearDuplicate).length);
 </script>
 
-<section class="space-y-3" aria-labelledby="{uid}-heading" data-other-jobs>
+<div class="space-y-3" data-other-jobs>
 	<svelte:element this={headingTag} id="{uid}-heading" class="text-lg font-semibold break-words">
 		{m.heading(jobs.length)}
 	</svelte:element>
@@ -112,14 +114,17 @@ same page links to it (`listed`).
 						<a
 							href="#{anchorOf(job._id)}"
 							class="anchor inline-block text-sm"
+							aria-label={job.createdAt
+								? m.listedHereNamed(job.title, formatDay(job.createdAt))
+								: m.listedHereTitled(job.title)}
 							onclick={(event) => {
 								// The job's heading takes the focus, and is scrolled into view in main#page
-								// (with the page's own scroll behaviour)
+								// (smoothly, but at once under "reduce motion")
 								const target = document.getElementById(anchorOf(job._id));
 								if (!target) return;
 								event.preventDefault();
 								target.focus({ preventScroll: true });
-								target.scrollIntoView({ block: 'start' });
+								target.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
 							}}>{m.listedHere}</a
 						>
 					{/if}
@@ -127,4 +132,4 @@ same page links to it (`listed`).
 			{/each}
 		</ul>
 	{/if}
-</section>
+</div>
