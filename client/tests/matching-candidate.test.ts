@@ -1,0 +1,292 @@
+import { expect, request as playwrightRequest, test, type Page } from '@playwright/test';
+import { stubApi } from './support/api';
+import {
+	API_URL,
+	JWT_SECRET,
+	apiAs,
+	blockGoogle,
+	gotoHydrated,
+	ownerSession,
+	signIn,
+	toasts,
+	type OwnerSession
+} from './support/owner';
+
+// Matching (Path 2), the candidate's side: being proposed to recruiters as an anonymous card, set at
+// the end of the admin's Perfect job tab (#discovery) and mentioned by "Get started". Signed in as
+// the owner of 'e2e-match' (seeded by `bun run --cwd server seed:e2e` with everything discovery asks
+// for, and discovery off), this file's own candidate: no other file reads or changes it.
+//
+// What needs matching on (the API run with MATCHING=true, and GOOGLE_CLIENT_SECRET set to any value
+// so the seeded calendar counts) is skipped, saying why, when GET /discovery answers 404. Turning
+// discovery on goes to the API; turning it off is answered in the browser (DELETE
+// /discovery/consent): a real withdrawal would hold the next opt-in back DISCOVERY_REJOIN_DAYS,
+// which only `seed:e2e` clears. So a run leaves the candidate on: a run after it without `seed:e2e`
+// (which sets it back off; CI seeds before every run) finds it on, and checks all but the opt-in
+// itself. What matching off shows, and the states the
+// seed cannot give (what is missing, a refused opt-in), are answered in the browser: those tests run
+// with or without matching. The admin page's calendar requests that would reach Google are answered
+// in the browser too (the seeded grant is a placeholder nothing sends to Google).
+
+const DOMAIN = 'e2e-match';
+
+test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e candidate');
+
+let session: OwnerSession;
+
+test.beforeAll(async () => {
+	session = await ownerSession(DOMAIN);
+});
+
+/** GET /discovery of a candidate who never turned it on, as the API answers it */
+const OFF_STATUS = {
+	state: 'off',
+	enabledAt: null,
+	consentExpiresAt: null,
+	missing: [],
+	minScore: 70,
+	card: { headline: null, hiddenExperiences: [] }
+};
+
+/** The admin page's calendar requests that would ask Google, answered with nothing */
+const stubCalendar = async (page: Page) => {
+	await stubApi(page, 'GET', '/appointments/calendars', () => ({ json: [] }));
+	await stubApi(page, 'GET', '/appointments/upcoming', () => ({ json: [] }));
+};
+
+const openAdmin = async (page: Page, tab: string) => {
+	await blockGoogle(page);
+	await stubCalendar(page);
+	await signIn(page, session);
+	await gotoHydrated(page, `/${DOMAIN}/admin?tab=${tab}`);
+};
+
+const selectedTab = (page: Page) => page.getByRole('tab', { selected: true });
+const discovery = (page: Page) => page.locator('[data-discovery]');
+
+test('with matching off, nothing of it shows on the admin page, and nothing errors', async ({
+	page
+}) => {
+	// The API's answer while MATCHING is off: its routes are not registered
+	await stubApi(page, 'GET', '/discovery', () => ({ status: 404, text: 'Not Found' }));
+	await openAdmin(page, 'perfect-job');
+	await expect(page.getByRole('button', { name: 'Save perfect job' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Be found by recruiters' })).toHaveCount(0);
+	await expect(discovery(page)).toHaveCount(0);
+	await expect(page.getByRole('alert')).toHaveCount(0);
+
+	await page.getByRole('tab', { name: /^Get started/ }).click();
+	await expect(page.getByRole('list', { name: 'Checklist' })).toBeVisible();
+	await expect(page.locator('[data-item="discovery"]')).toHaveCount(0);
+	await expect(page.getByText('Be found by recruiters')).toHaveCount(0);
+});
+
+test('what is missing leads to what fixes it, the journey’s steps added and left to save', async ({
+	page
+}) => {
+	await stubApi(page, 'GET', '/discovery', () => ({
+		json: { ...OFF_STATUS, minScore: null, missing: ['journey', 'calendar'] }
+	}));
+	// A journey never saved: the meeting alone
+	await stubApi(page, 'GET', '/workflow', () => ({
+		json: { steps: [{ id: 'meeting', type: 'meeting', config: {} }], saved: false }
+	}));
+	const saves = await stubApi(page, 'PUT', '/workflow', () => ({ status: 500, text: 'Not here' }));
+	await page.setViewportSize({ width: 390, height: 844 });
+	await openAdmin(page, 'perfect-job');
+
+	const section = discovery(page);
+	await expect(section).toHaveAttribute('data-state', 'off');
+	const checklist = section.locator('[data-discovery-checklist]');
+	await expect(checklist.getByRole('heading', { name: 'Before you turn it on' })).toBeVisible();
+	await expect(checklist.locator('[data-requirement]')).toHaveText([
+		/Your hiring journey must ask for the job, get it scored, then lead to a meeting\./,
+		/Connect Google Calendar, so recruiters can book a meeting\./
+	]);
+	// Nothing can be turned on while something is missing, and it says why
+	const turnOn = section.getByRole('button', { name: 'Make me visible to recruiters' });
+	await expect(turnOn).toBeDisabled();
+	await expect(section.getByText('Set what is missing above first.')).toBeVisible();
+	// At 390 px nothing runs past the page
+	const overflow = await page.evaluate(() => {
+		const main = document.getElementById('page');
+		return main ? main.scrollWidth - main.clientWidth : 0;
+	});
+	expect(overflow).toBe(0);
+
+	// The calendar's settings: the Appointments tab
+	await checklist.getByRole('button', { name: 'Open my calendar settings' }).click();
+	await expect(selectedTab(page)).toHaveText('Appointments');
+
+	// The journey's missing steps: added in the Hiring journey tab, as changes to save
+	await page.getByRole('tab', { name: 'Perfect job' }).click();
+	await checklist.getByRole('button', { name: 'Add the missing steps' }).click();
+	await expect(selectedTab(page)).toHaveText('Hiring journey');
+	const steps = page.getByRole('list', { name: 'Steps' });
+	await expect(steps.getByRole('heading', { level: 3 })).toHaveText([
+		/Select or create a job$/,
+		/Get the job scored$/,
+		/Book a meeting$/
+	]);
+	await expect(steps.getByRole('heading', { name: /Select or create a job/ })).toBeFocused();
+	await expect(toasts(page)).toContainText(
+		'Added: Select or create a job and Get the job scored. Check their settings, then save your journey to keep them.'
+	);
+	await expect(page.getByRole('button', { name: 'Save journey' })).toBeEnabled();
+	expect(saves).toHaveLength(0);
+});
+
+test('a refused opt-in says from when it can be turned on again', async ({ page }) => {
+	await stubApi(page, 'GET', '/discovery', () => ({ json: OFF_STATUS }));
+	const optIns = await stubApi(page, 'POST', '/discovery/consent', () => ({
+		status: 429,
+		text: 'You can make yourself visible to recruiters again 7 days after you stopped.',
+		headers: {
+			'retry-after': String(3 * 24 * 60 * 60),
+			'access-control-expose-headers': 'Retry-After'
+		}
+	}));
+	await openAdmin(page, 'perfect-job');
+	const section = discovery(page);
+	const consent = section.locator('[data-discovery-consent]');
+
+	// Not ticked: said at the box, nothing sent
+	await consent.getByRole('button', { name: 'Make me visible to recruiters' }).click();
+	await expect(
+		consent.getByText('Confirm that you are at least 18 and want to be proposed to recruiters.')
+	).toBeVisible();
+	await expect(consent.getByRole('checkbox')).toBeFocused();
+	expect(optIns).toHaveLength(0);
+
+	await consent.getByRole('checkbox').check();
+	await consent.getByRole('button', { name: 'Make me visible to recruiters' }).click();
+	expect(optIns).toHaveLength(1);
+	expect(optIns[0].postDataJSON()).toEqual({
+		consent: { termsVersion: expect.any(String), adultConfirmed: true }
+	});
+	await expect(consent.getByText(/^You can turn it on again from /)).toBeVisible();
+	await expect(
+		consent.getByRole('button', { name: 'Make me visible to recruiters' })
+	).toBeDisabled();
+});
+
+test.describe('with matching on', () => {
+	test.beforeAll(async () => {
+		const api = await playwrightRequest.newContext({
+			extraHTTPHeaders: { cookie: `auth=${session.token}` }
+		});
+		const status = (await api.get(`${API_URL}/discovery`)).status();
+		await api.dispose();
+		test.skip(
+			status === 404,
+			'Matching is off in the API under test (GET /discovery answers 404): run it with MATCHING=true'
+		);
+	});
+
+	test('the candidate previews their card, sets it, turns discovery on, then off', async ({
+		page
+	}) => {
+		const api = await apiAs(session);
+		const before = await (await api.get(`${API_URL}/discovery`)).json();
+		// A run before turned it on, and seed:e2e did not run since (it sets it back off)
+		expect(['off', 'on'], 'Run `bun run --cwd server seed:e2e` again').toContain(before.state);
+		expect(before.missing, 'e2e-match has all discovery asks for (seed:e2e)').toEqual([]);
+		// Turning it off is answered in the browser: no withdrawal holds the next opt-in back
+		await stubApi(page, 'DELETE', '/discovery/consent', () => ({ json: OFF_STATUS }));
+
+		// "Get started" mentions it, apart from the checklist, and leads to its settings
+		await openAdmin(page, 'start');
+		const item = page.locator('[data-item="discovery"]');
+		await expect(item.getByRole('heading', { name: 'Be found by recruiters' })).toBeVisible();
+		await expect(item).toContainText('Optional');
+		await item.getByRole('button', { name: 'Open the settings' }).click();
+		await expect(selectedTab(page)).toHaveText('Perfect job');
+		const section = discovery(page);
+		await expect(
+			section.getByRole('heading', { name: 'Be found by recruiters', level: 3 })
+		).toBeFocused();
+		await expect(section).toContainText(
+			'only when it scores at least 70 out of 100 against your criteria, with no deal-breaker missed'
+		);
+
+		// The card as recruiters read it: the role, never the name or the portfolio
+		await section.getByRole('button', { name: 'Preview my card' }).click();
+		const preview = page.getByRole('dialog', { name: 'Your anonymous card' });
+		await expect(
+			preview.getByRole('heading', { name: 'Backend engineer', level: 3 })
+		).toBeVisible();
+		await expect(preview.locator('[data-preview-outcomes]')).toHaveText(
+			'Beside your card, for their job, recruiters read its outcome on: Work mode, Contract and Pay. Never what you ask for, your commute or where you want to work.'
+		);
+		for (const identity of ['Mia', 'Match', DOMAIN]) {
+			await expect(preview).not.toContainText(identity);
+		}
+		await preview.getByRole('button', { name: 'Close' }).click();
+		await expect(preview).toHaveCount(0);
+
+		// A headline that says who they are: refused by the API, said on the field
+		const card = section.locator('[data-discovery-card]');
+		const headline = card.getByLabel(/^Headline/);
+		await headline.fill('Mia Match, backend engineer');
+		await card.getByRole('button', { name: 'Save my card' }).click();
+		await expect(headline).toHaveAttribute('aria-invalid', 'true');
+		await expect(card).toContainText('Leave your name, the title and address of your portfolio');
+		await expect(card.getByRole('button', { name: 'Save my card' })).toBeDisabled();
+		await headline.fill('Backend engineer, data platforms');
+		await card.getByRole('button', { name: 'Save my card' }).click();
+		await expect(toasts(page)).toContainText('Card saved');
+		await expect(headline).not.toHaveAttribute('aria-invalid');
+
+		// An experience left out: the preview says so, and the card no longer shows it
+		await card.getByRole('checkbox', { name: /Backend engineer/ }).uncheck();
+		await card.getByRole('button', { name: 'Save my card' }).click();
+		await expect(card.getByRole('button', { name: 'Save my card' })).toBeDisabled();
+		await section.getByRole('button', { name: 'Preview my card' }).click();
+		await expect(preview.getByRole('heading', { level: 3 }).first()).toHaveText(
+			'Backend engineer, data platforms'
+		);
+		await expect(preview.locator('[data-withheld]')).toContainText(
+			'Backend engineer: you left it out.'
+		);
+		await preview.getByRole('button', { name: 'Close' }).click();
+		await card.getByRole('checkbox', { name: /Backend engineer/ }).check();
+		await card.getByRole('button', { name: 'Save my card' }).click();
+		await expect(card.getByRole('button', { name: 'Save my card' })).toBeDisabled();
+
+		// Turning it on: the box of its own, then the API
+		if (before.state === 'off') {
+			await expect(section).toHaveAttribute('data-state', 'off');
+			const consent = section.locator('[data-discovery-consent]');
+			await consent.getByRole('checkbox').check();
+			await consent.getByRole('button', { name: 'Make me visible to recruiters' }).click();
+			await expect(toasts(page)).toContainText('You are visible to recruiters');
+		}
+		await expect(section).toHaveAttribute('data-state', 'on');
+		await expect(section.locator('[data-discovery-state]')).toHaveText('On');
+		await expect(section).toContainText(/Visible to recruiters since \d+ \w+ \d{4}\./);
+		await expect(section.locator('[data-discovery-consent]')).toHaveCount(0);
+		const now = await (await api.get(`${API_URL}/discovery`)).json();
+		expect(now.state).toBe('on');
+		await page.getByRole('tab', { name: /^Get started/ }).click();
+		await expect(item).toContainText('Your anonymous card is proposed to recruiters since');
+
+		// Turning it off asks first, and says when it can be turned on again
+		await item.getByRole('button', { name: 'Open the settings' }).click();
+		await section.getByRole('button', { name: 'Stop being visible' }).click();
+		const confirm = page.getByRole('alertdialog', { name: 'Stop being visible to recruiters?' });
+		await expect(confirm).toContainText('You can turn it on again 7 days after you turn it off.');
+		await expect(confirm).toContainText('except where you are both interested');
+		await confirm.getByRole('button', { name: 'Stop being visible' }).click();
+		await expect(confirm).toHaveCount(0);
+		await expect(toasts(page)).toContainText('You are no longer visible to recruiters');
+		await expect(section).toHaveAttribute('data-state', 'off');
+		await expect(section).toContainText(/You can turn it on again from /);
+
+		// The card's headline set back
+		const reset = await api.put(`${API_URL}/discovery`, {
+			data: { card: { headline: null, hiddenExperiences: [] } }
+		});
+		expect(reset.ok(), await reset.text()).toBe(true);
+		await api.dispose();
+	});
+});

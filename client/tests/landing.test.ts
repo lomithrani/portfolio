@@ -9,7 +9,7 @@ import {
 	ownerSession,
 	signIn
 } from './support/owner';
-import { stubApi } from './support/api';
+import { calendarConfigured, stubApi } from './support/api';
 import { stubGoogle } from './support/google';
 
 // The landing page (/) and its onboarding card. Google is never reached: its script is stubbed
@@ -845,13 +845,16 @@ test.describe('landing page, portfolio owner', () => {
 	});
 });
 
-// The whole chain with the real API, nothing answered in the browser but Google's sign-in script:
-// what the owner saves in the admin's tabs (the gate journey from "Get started", the perfect job's
-// essentials) is what GET /me/readiness reads, and what moves the landing card to "Your link is
-// ready". On 'e2e-ready' (seed:e2e), this test's own owner: it sets back what it changes at its
-// start (a journey that leads to no meeting, a perfect job without criteria, one experience). The
-// e2e API has no Google Calendar (no GOOGLE_CLIENT_SECRET): the calendar item is not counted, and
-// no travel time service is asked (no COMMUTE_TIMES: the cities say where the office is).
+// The whole chain with the real API, nothing answered in the browser but what would ask Google
+// (its sign-in script, and the admin page's calendar requests that list the owner's calendars and
+// events): what the owner saves in the admin's tabs (the gate journey from "Get started", the
+// perfect job's essentials) is what GET /me/readiness reads, and what moves the landing card to
+// "Your link is ready". On 'e2e-ready' (seed:e2e), this test's own owner: it sets back what it
+// changes at its start (a journey that leads to no meeting, a perfect job without criteria, one
+// experience). Its calendar is seeded (a placeholder grant, a meeting type with hours): on an API
+// that takes Google Calendar (GOOGLE_CLIENT_SECRET set, as CI's for matching) the calendar item is
+// counted, and done; on one that does not, it is not counted. No travel time service is asked (no
+// COMMUTE_TIMES: the cities say where the office is).
 test.describe('landing page, a portfolio set up for real', () => {
 	test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e owner');
 
@@ -884,11 +887,15 @@ test.describe('landing page, a portfolio set up for real', () => {
 			expect(created.ok(), await created.text()).toBe(true);
 		}
 
+		const calendar = await calendarConfigured(api);
+
 		await stubGoogle(page);
+		await stubApi(page, 'GET', '/appointments/calendars', () => ({ json: [] }));
+		await stubApi(page, 'GET', '/appointments/upcoming', () => ({ json: [] }));
 		await signIn(page, session);
 		await gotoHydrated(page, '/');
 		await expect(currentStep(page)).toContainText('Set your terms');
-		await expect(currentStep(page)).toContainText('0 of 2 set');
+		await expect(currentStep(page)).toContainText(calendar ? '1 of 3 set' : '0 of 2 set');
 
 		// "Get started": the gate in one click, in place of steps that lead to no meeting
 		await card(page).getByRole('link', { name: 'Set my terms' }).click();
@@ -926,7 +933,9 @@ test.describe('landing page, a portfolio set up for real', () => {
 			domain: DOMAIN,
 			perfectJob: { essentials: { pay: true, workMode: true, place: true, contractTypes: true } },
 			journey: { saved: true, gate: true, meeting: true, blocked: false },
-			calendar: { configured: false }
+			calendar: calendar
+				? { configured: true, connected: true, reconnect: false, enabledSchedules: 1 }
+				: { configured: false }
 		});
 
 		// Back on the landing page: the link is ready

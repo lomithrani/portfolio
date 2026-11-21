@@ -72,6 +72,23 @@ export const m = defineMessages({
 		fr: (name: string) => `Étape retirée : ${name}.`
 	},
 
+	// --- The steps discovery asks for (the Perfect job tab's "Add the missing steps") ---
+	/** `names`: the steps added, as one list ("Share a job and Get the job scored") */
+	gateAdded: {
+		en: (names: string) =>
+			`Added: ${names}. Check their settings, then save your journey to keep them.`,
+		fr: (names: string) =>
+			`Ajouté : ${names}. Vérifiez leurs réglages, puis enregistrez votre parcours pour les garder.`
+	},
+	gateNothing: {
+		en: 'Your steps already ask for the job, score it and lead to a meeting: save them if you changed them.',
+		fr: "Vos étapes demandent déjà l'offre, la font noter et mènent à un rendez-vous : enregistrez-les si vous les avez modifiées."
+	},
+	gateFull: {
+		en: 'Your journey has no room for the steps it lacks: remove one, then add the job, its score or the meeting below.',
+		fr: "Votre parcours n'a plus de place pour les étapes qui lui manquent : retirez-en une, puis ajoutez l'offre, sa notation ou le rendez-vous ci-dessous."
+	},
+
 	// --- Saving ---
 	/** Before what is wrong with a step */
 	problemAt: {

@@ -114,6 +114,12 @@ jobs:
           PORT: 3000
           # Playwright serves the production build on :4173 (client/playwright.config.ts)
           ALLOWED_DOMAINS: '["http://localhost:4173"]'
+          # Matching (Path 2) on, as on staging: its e2e files (client/tests/matching-*.test.ts)
+          # skip themselves without it. A placeholder secret makes Google Calendar count as
+          # configured, so the seeded candidates' calendars do (seed:e2e): nothing ever sends it to
+          # Google, the tests answer in the browser every request that would
+          MATCHING: 'true'
+          GOOGLE_CLIENT_SECRET: e2e-placeholder-never-sent
       - name: Wait for the API health check
         run: >-
           curl --fail --silent --show-error --max-time 5

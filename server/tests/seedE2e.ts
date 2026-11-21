@@ -13,9 +13,11 @@
 // job they need in the browser, so it stays that way). 'e2e-preview' is read, never changed, by
 // client/tests/robots.test.ts: its title and tagline, set here on every run, are the preview of a
 // shared link, with characters the HTML must escape. 'e2e-ready' is the owner of the one test of
-// client/tests/landing.test.ts that sets a portfolio up with nothing answered in the browser (the
-// gate from "Get started", the perfect job's essentials, the landing card then ready): it sets back
-// what it changes at its start, so a run never depends on the one before. The candidate 'e2e.candidate@example.com' (no domain, no
+// client/tests/landing.test.ts that sets a portfolio up with nothing answered in the browser but
+// what would ask Google (the gate from "Get started", the perfect job's essentials, the landing card then ready): it sets back
+// what it changes at its start, so a run never depends on the one before; it has a calendar
+// (a placeholder grant, a meeting type with hours), which counts on a site that takes Google
+// Calendar. The candidate 'e2e.candidate@example.com' (no domain, no
 // recruiter space, no acceptance of the terms) is signed in as by client/tests/account.test.ts,
 // claim-consent.test.ts, feedback.test.ts, recruiter.test.ts, hire-journey.test.ts, job-view.test.ts
 // and the signed-in steps of landing.test.ts; the tests that would change it (accepting the terms,
@@ -121,6 +123,32 @@ for (const owner of owners) {
     },
     { upsert: true }
   );
+
+  // A calendar recruiters can book in, on a site that takes Google Calendar (GOOGLE_CLIENT_SECRET
+  // set, as CI's API is for the files of matching): the landing page's ready state then counts it
+  // done. A grant as the API stores it once connected, a placeholder nothing ever sends to Google
+  // (client/tests/landing.test.ts answers in the browser the admin page's calendar requests that
+  // would), and a meeting type with hours; set on every run
+  if (owner.domain === 'e2e-ready') {
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: { 'googleCalendar.refreshToken': 'e2e-placeholder', 'googleCalendar.connectedAt': new Date() },
+        $unset: { 'googleCalendar.revokedAt': 1 }
+      }
+    );
+    await AppointmentSchedule.findOneAndUpdate(
+      { user: user._id, title: 'E2E intro call' },
+      {
+        $set: {
+          timezone: 'Europe/Paris',
+          enabled: true,
+          availability: [1, 2, 3, 4, 5].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '17:00' }))
+        }
+      },
+      { upsert: true }
+    );
+  }
 
   // A job to pick before the meeting: the e2e recruiter's pick links the job's private page
   // (/opportunities/:id), which its owner reads. Set on every run (a database seeded before has

@@ -1,4 +1,4 @@
-import type { Page, Request, Route } from '@playwright/test';
+import type { APIRequestContext, Page, Request, Route } from '@playwright/test';
 import { API_URL } from './owner';
 
 // Routes of the API answered in the browser (page.route): what a test must not change for real
@@ -68,4 +68,16 @@ export const TERMS_REQUIRED = {
 		property: 'consent',
 		message: 'Accept the terms of use in force to use your recruiter space.'
 	}
+};
+
+/**
+ * Whether the API under test takes Google Calendar connections (GOOGLE_CLIENT_SECRET set, any
+ * value: CI sets a placeholder for the files of matching, whose candidates' calendar must count),
+ * read as the account `api` signs in with (GET /appointments/calendar-status, which asks Google
+ * nothing). The "Get started" checklist then counts the calendar: what a test expects of it
+ * depends on it
+ */
+export const calendarConfigured = async (api: APIRequestContext): Promise<boolean> => {
+	const response = await api.get(`${API_URL}/appointments/calendar-status`);
+	return response.ok() && (await response.json()).configured === true;
 };

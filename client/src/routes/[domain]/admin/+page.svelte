@@ -24,6 +24,8 @@
 		type ReadinessFailure
 	} from '#services/candidateSetup.ts';
 	import { networkError } from '#services/recruiter.ts';
+	import { cardExperiences, loadDiscovery, type DiscoveryLoad } from '#services/discovery.ts';
+	import type { DiscoveryStatus } from '#services/matching.ts';
 	import type { PageData } from './$types';
 	import { m } from './page.messages.ts';
 
@@ -96,6 +98,58 @@
 		untrack(refreshReadiness);
 	});
 
+	// --- Being proposed to recruiters (GET /discovery), for "Get started" and the Perfect job ---
+	/**
+	 * Where the owner stands in discovery (Path 2): null until it was read; `off` while matching is
+	 * off (a 404: nothing of it shows). Read once the owner is known, again each time "Get started"
+	 * or the Perfect job tab is shown, when the page comes back in view, and once the steps or the
+	 * criteria are saved (what discovery asks); a change made in the Perfect job tab gives its own
+	 */
+	let discovery = $state.raw<DiscoveryLoad | null>(null);
+	let discoveryRequest: AbortController | undefined;
+
+	async function refreshDiscovery(): Promise<void> {
+		discoveryRequest?.abort();
+		const request = new AbortController();
+		discoveryRequest = request;
+		const result = await loadDiscovery(request.signal);
+		if (request.signal.aborted) return;
+		// A read that failed keeps the status read before: it is only not up to date
+		if (result.kind === 'failed' && discovery?.kind === 'ready') return;
+		discovery = result;
+	}
+
+	/** What a change made in the Perfect job tab answered: newer than any read under way */
+	function discoveryChanged(status: DiscoveryStatus) {
+		discoveryRequest?.abort();
+		discovery = { kind: 'ready', status };
+	}
+
+	let discoveryAsked = false;
+	$effect(() => {
+		if (!isAdmin || discoveryAsked) return;
+		discoveryAsked = true;
+		untrack(refreshDiscovery);
+	});
+
+	/** The tabs that show where the owner stands in discovery */
+	const READS_DISCOVERY = new Set<AdminTab>(['start', 'perfect-job']);
+
+	// Back in view (another tab of the browser connected the calendar, saved elsewhere): read again
+	$effect(() => {
+		if (!isAdmin) return;
+		const onVisible = () => {
+			if (document.visibilityState === 'visible' && tab && READS_DISCOVERY.has(tab)) {
+				void refreshDiscovery();
+			}
+		};
+		document.addEventListener('visibilitychange', onVisible);
+		return () => document.removeEventListener('visibilitychange', onVisible);
+	});
+
+	/** The portfolio's experiences, as the anonymous card's settings list them */
+	let experiences = $derived(cardExperiences(data.domain.experiences));
+
 	// --- The tab shown -----------------------------------------------------------------------
 	/** The tabs that show what the readiness says */
 	const READS_READINESS = new Set<AdminTab>(['start', 'share']);
@@ -106,6 +160,8 @@
 		tab = next;
 		if (READS_READINESS.has(next) && previous !== null && previous !== next)
 			void refreshReadiness();
+		if (READS_DISCOVERY.has(next) && previous !== null && previous !== next)
+			void refreshDiscovery();
 		const search = adminTabSearch(location.search, next);
 		if (search === null) return;
 		replaceState(
@@ -129,6 +185,24 @@
 			?.focus({ preventScroll: true });
 	}
 
+	/**
+	 * The Perfect job tab's "Add the missing steps": the Hiring journey tab, with the steps discovery
+	 * asks for added there as changes not saved yet (the focus then goes to the first one added)
+	 */
+	async function openJourney(add?: 'gate') {
+		await openTab('workflows');
+		if (add === 'gate') await workflowsTab?.addGateSteps();
+	}
+
+	/** "Get started"'s link to discovery: the Perfect job tab, its settings (#discovery) in view */
+	async function openDiscovery() {
+		show('perfect-job');
+		await tick();
+		const heading = document.querySelector<HTMLElement>('[data-discovery-title]');
+		heading?.scrollIntoView({ block: 'start' });
+		heading?.focus({ preventScroll: true });
+	}
+
 	// A link to this page naming another tab (the page stays: follow its address)
 	afterNavigate(({ type }) => {
 		if (type === 'enter') return;
@@ -143,6 +217,7 @@
 
 	function journeySaved(): Promise<void> {
 		journeyRevision++;
+		void refreshDiscovery();
 		return refreshReadiness();
 	}
 
@@ -261,6 +336,8 @@
 						journeyChanged={() => workflowsTab?.hasChanges() ?? false}
 						journeySaved={() => workflowsTab?.hasSavedJourney()}
 						onJourneySaved={journeySaved}
+						discovery={discovery?.kind === 'ready' ? discovery.status : null}
+						{openDiscovery}
 					/>
 				</Tabs.Content>
 				<Tabs.Content value="appearance">
@@ -272,7 +349,15 @@
 					{/key}
 				</Tabs.Content>
 				<Tabs.Content value="perfect-job">
-					<PerfectJobTab openJourney={() => openTab('workflows')} />
+					<PerfectJobTab
+						{openJourney}
+						{openTab}
+						active={tab === 'perfect-job'}
+						{discovery}
+						onDiscovery={discoveryChanged}
+						reloadDiscovery={refreshDiscovery}
+						{experiences}
+					/>
 				</Tabs.Content>
 				<Tabs.Content value="appointments">
 					<AppointmentsTab />

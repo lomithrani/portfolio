@@ -6,7 +6,8 @@ page, in the order chosen here. Steps are added from the step types of portfolio
 components/hire/steps/). A step that does not exist yet can be suggested (StepSuggestion.svelte).
 The journey is checked on every change with the rules the API enforces (parseWorkflow): what is
 wrong is said at the step and the setting it is about, and the journey cannot be saved until it
-is fixed.
+is fixed. Discovery's checklist (the Perfect job tab) adds the steps it asks for here, as changes
+not saved yet (addGateSteps): this tab is the only one that saves the steps the owner edits.
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
@@ -14,6 +15,7 @@ is fixed.
 	import { resolve } from '$app/paths';
 	import { ChevronDown, ChevronUp, Eye, PlusCircle, Trash } from 'svelte-heros-v2';
 	import {
+		intlLocale,
 		parseWorkflow,
 		stepManifest,
 		stepManifests,
@@ -26,6 +28,7 @@ is fixed.
 	import { accountMessages } from '#services/account.messages.ts';
 	import { networkError, failureText } from '#services/recruiter.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { withGateSteps } from '#services/discovery.ts';
 	import {
 		addStep,
 		addStepProblem,
@@ -89,6 +92,37 @@ is fixed.
 		return journeySaved;
 	}
 
+	/** Asked before the journey was read: done once it is */
+	let gateAsked = false;
+
+	/**
+	 * Adds the steps discovery asks of a journey that it lacks (a job step, then a job match, then a
+	 * meeting: withGateSteps), as changes not saved yet, the way the Add buttons add a step: the
+	 * owner checks them and saves, nothing else writes the journey. The focus goes to the first step
+	 * added, and a toast says what was added (or that nothing was, or could be)
+	 */
+	export async function addGateSteps(): Promise<void> {
+		if (status !== 'ready') {
+			gateAsked = true;
+			return;
+		}
+		const { steps: next, added, refused } = withGateSteps(steps, saved);
+		if (added.length === 0) {
+			toaster.info({ title: refused.length > 0 ? m.gateFull : m.gateNothing });
+			return;
+		}
+		edit(next);
+		const names = new Intl.ListFormat(intlLocale(), { type: 'conjunction' }).format(
+			added.map((step) => stepName(step))
+		);
+		// A toast, seen and read out (the region of toasts is a live one)
+		toaster.info({
+			title: refused.length > 0 ? `${m.gateAdded(names)} ${m.gateFull}` : m.gateAdded(names)
+		});
+		await tick();
+		inStep(added[0].id, '[data-heading]')?.focus();
+	}
+
 	// Unsaved steps hold text the owner wrote (a note): leaving the page asks first. A reload or
 	// a closed tab gets the browser's own prompt (confirm() cannot show there); every link
 	// ("See your page for recruiters"...), this one, also a link that reloads the page (the
@@ -139,6 +173,10 @@ is fixed.
 			journeySaved = data.saved;
 			refused = null;
 			status = 'ready';
+			if (gateAsked) {
+				gateAsked = false;
+				void tick().then(addGateSteps);
+			}
 		} catch {
 			loadError = networkError();
 			status = 'error';

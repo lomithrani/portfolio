@@ -14,7 +14,7 @@ import {
 	type OwnerSession
 } from './support/owner';
 import { stubAddressSearch } from './support/addresses';
-import { TERMS_REQUIRED, stubApi } from './support/api';
+import { TERMS_REQUIRED, calendarConfigured, stubApi } from './support/api';
 import { createJob, deleteJobs, jobPosting } from './support/jobs';
 import {
 	DEFAULT_WORKFLOW_STEPS,
@@ -285,11 +285,21 @@ test.describe('the admin page', () => {
 		// A journey saved (the meeting alone) is one the owner chose
 		await expect(item('journey')).toHaveAttribute('data-state', 'done');
 		await expect(item('journey')).toContainText(
-			'Your page for recruiters asks nothing before the meeting. To ask for the job first:'
+			'Your page for recruiters asks nothing before the meeting.'
 		);
-		// Nobody can book on this site (no Google Calendar): the item does not say they can
-		await expect(item('calendar')).toHaveAttribute('data-state', 'unavailable');
-		await expect(item('journey')).not.toContainText('can book');
+		await expect(item('journey')).toContainText('To ask for the job first:');
+		if (await calendarConfigured(ownerApi)) {
+			// A site that takes Google Calendar (CI's, for matching): the calendar is to do, and
+			// nobody books before it is open
+			await expect(item('calendar')).toHaveAttribute('data-state', 'toDo');
+			await expect(item('journey')).toContainText(
+				'Recruiters can book once your calendar is open.'
+			);
+		} else {
+			// Nobody can book on this site (no Google Calendar): the item does not say they can
+			await expect(item('calendar')).toHaveAttribute('data-state', 'unavailable');
+			await expect(item('journey')).not.toContainText('can book');
+		}
 		await expect(item('share').getByRole('textbox', { name: 'Your link' })).toHaveValue(
 			`http://localhost:4173/${DOMAIN}`
 		);
@@ -758,12 +768,17 @@ test.describe('the hiring journey', () => {
 		await change.click();
 		await expect(page.getByRole('tab', { name: 'Hiring journey', selected: true })).toBeVisible();
 		await expect(editorSteps(page)).toHaveCount(2);
-		// A job asked for, but not scored before the meeting: "Get started" says so
+		// A job asked for, but not scored before the meeting: "Get started" says so (after the
+		// sentence on the calendar, on a site that takes it)
 		await page.getByRole('tab', { name: /^Get started/ }).click();
-		await expect(
-			page.getByRole('list', { name: 'Checklist' }).locator('[data-item="journey"]')
-		).toContainText(
-			'Recruiters select or create a job, then book a meeting. A job is asked for, but it is not scored against what you want before the meeting. To score it first:'
+		const journeyItem = page
+			.getByRole('list', { name: 'Checklist' })
+			.locator('[data-item="journey"]');
+		await expect(journeyItem).toContainText(
+			'Recruiters select or create a job, then book a meeting.'
+		);
+		await expect(journeyItem).toContainText(
+			'A job is asked for, but it is not scored against what you want before the meeting. To score it first:'
 		);
 	});
 

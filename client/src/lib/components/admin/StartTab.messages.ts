@@ -227,5 +227,44 @@ export const m = defineMessages({
 		see: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' },
 		/** The Share tab: a reply to recruiters, a LinkedIn text (as the page for recruiters calls it) */
 		more: { en: 'More ways to share', fr: 'Plus de façons de partager' }
+	},
+
+	/**
+	 * Being proposed to recruiters (Path 2), shown only while matching is available (GET /discovery
+	 * answered): optional, never counted in the checklist the link needs. Its settings are in the
+	 * Perfect job tab (#discovery)
+	 */
+	discovery: {
+		title: { en: 'Be found by recruiters', fr: 'Être visible des recruteurs' },
+		optional: { en: 'Optional', fr: 'Facultatif' },
+		/**
+		 * Backed by: server/services/matchFeeds.ts (the anonymous card proposed for the open jobs that
+		 * meet the candidate's criteria), server/services/matches.ts (the portfolio revealed once both
+		 * are interested)
+		 */
+		off: {
+			en: 'Let Portfolio propose your anonymous card to the recruiters whose open jobs meet your criteria. Your name and your portfolio stay hidden until you are both interested.',
+			fr: "Laissez Portfolio proposer votre fiche anonyme aux recruteurs dont les offres ouvertes répondent à vos critères. Votre nom et votre portfolio restent masqués jusqu'à un intérêt réciproque."
+		},
+		/** `since`: '12 Nov 2026' */
+		on: {
+			en: (since: string) => `Your anonymous card is proposed to recruiters since ${since}.`,
+			fr: (since: string) => `Votre fiche anonyme est proposée aux recruteurs depuis le ${since}.`
+		},
+		/** `until`: the day the consent ends, within DISCOVERY_CONSENT_RENEWAL_DAYS */
+		renew: {
+			en: (until: string) => `Your consent ends on ${until}: confirm it again to stay visible.`,
+			fr: (until: string) =>
+				`Votre consentement prend fin le ${until} : confirmez-le de nouveau pour rester visible.`
+		},
+		paused: {
+			en: 'Paused: something it needs is missing, so you are proposed to no recruiter.',
+			fr: "En pause : il manque quelque chose, vous n'êtes donc proposé à aucun recruteur."
+		},
+		lapsed: {
+			en: 'Your consent ended: give it again to be visible.',
+			fr: 'Votre consentement a pris fin : donnez-le de nouveau pour être visible.'
+		},
+		open: { en: 'Open the settings', fr: 'Ouvrir les réglages' }
 	}
 });
