@@ -255,10 +255,10 @@ export const endMutualInterest = async (id: string): Promise<MutualInterestEnd> 
  * The mutual interests read so far with a page added (each once: a mutual interest made between
  * two reads moves the later pages, which may list one already shown)
  */
-export const appendInterests = (
-	shown: readonly CandidateMutualInterest[],
-	page: readonly CandidateMutualInterest[]
-): CandidateMutualInterest[] => {
+export const appendInterests = <T extends { _id: string }>(
+	shown: readonly T[],
+	page: readonly T[]
+): T[] => {
 	const ids = new Set(shown.map((interest) => interest._id));
 	return [...shown, ...page.filter((interest) => !ids.has(interest._id))];
 };

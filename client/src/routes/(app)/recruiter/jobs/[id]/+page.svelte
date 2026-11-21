@@ -29,6 +29,7 @@
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
 	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
+	import MatchingPanel from '#components/recruiter/MatchingPanel.svelte';
 	import OpenJobDialog from '#components/recruiter/OpenJobDialog.svelte';
 	import StatusControl from '#components/recruiter/StatusControl.svelte';
 	import { portfolioApi } from '#services';
@@ -55,8 +56,10 @@
 	// read it, its status (PUT /jobs/:id/status, confirmed first when it opens the posting: its
 	// terms lock, OpenJobDialog), its copy (Duplicate: /recruiter/jobs/new?duplicate=<id>) and its
 	// deletion. It is never public: the recruiter shows it to a candidate by picking it on their
-	// Hire page. A recruiter who has not accepted the terms in force (422 on `consent`) accepts
-	// them first (TermsAcceptance). Rendered in the browser only (recruiter/+layout.ts).
+	// Hire page, or proposes it to the candidates whose criteria it meets (matching, while the
+	// posting carries `matching`: MatchingPanel, under its status). A recruiter who has not
+	// accepted the terms in force (422 on `consent`) accepts them first (TermsAcceptance). Rendered
+	// in the browser only (recruiter/+layout.ts).
 
 	type LoadState =
 		| { kind: 'idle' }
@@ -137,6 +140,7 @@
 	let job = $derived(
 		loadState.kind === 'loaded' && loadState.userId === user?._id ? loadState.job : null
 	);
+	let loadedFor = $derived(loadState.kind === 'loaded' ? loadState.userId : '');
 	const recruiterHref = resolve('/(app)/recruiter');
 
 	/** Updates the loaded posting (still the same one) */
@@ -343,6 +347,16 @@
 
 				<aside id="manage" class="space-y-4" aria-label={m.manage}>
 					<StatusControl status={job.status} busy={changingStatus} onChange={chooseStatus} />
+					<MatchingPanel
+						{job}
+						userId={loadedFor}
+						onChange={(updated) => updateJob((current) => ({ ...current, ...updated }))}
+						onReload={retry}
+						onSessionExpired={sessionExpired}
+						onTerms={() => (loadState = { kind: 'terms' })}
+						onGone={() => (loadState = { kind: 'not-found' })}
+						onNoSpace={() => (loadState = { kind: 'no-space' })}
+					/>
 				</aside>
 			</div>
 		{:else if !$sessionCheckedStore || loadState.kind === 'loading' || (user && loadState.kind === 'idle' && user.recruiter !== false)}

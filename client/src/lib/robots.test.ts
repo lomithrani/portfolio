@@ -153,6 +153,8 @@ describe('pages search engines are asked not to list', () => {
 			'/(app)/recruiter/jobs/new',
 			'/(app)/recruiter/jobs/[id]',
 			'/(app)/recruiter/jobs/[id]/edit',
+			// The anonymous cards of the candidates proposed for a job (matching)
+			'/(app)/recruiter/jobs/[id]/candidates',
 			'/(app)/opportunities/[id]'
 		]) {
 			expect({ route, noindex: isNoindexRoute(route) }).toEqual({ route, noindex: true });

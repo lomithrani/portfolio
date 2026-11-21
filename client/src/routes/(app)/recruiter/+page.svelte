@@ -25,6 +25,7 @@
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
 	import RecruiterLanding from '#components/recruiter/RecruiterLanding.svelte';
+	import RecruiterMatches from '#components/recruiter/RecruiterMatches.svelte';
 	import UpcomingMeetings from '#components/recruiter/UpcomingMeetings.svelte';
 	import { portfolioApi } from '#services';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
@@ -56,10 +57,13 @@
 		type StatusFilter
 	} from '#services/recruiter.ts';
 	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
+	import { jobMatchingLabel } from '#services/recruiterMatching.ts';
 	import { m } from './page.messages.ts';
 
 	// The recruiter's dashboard: the meetings they booked on candidates' Hire pages
-	// (UpcomingMeetings, GET /appointments/booked), their job descriptions (GET /recruiter/jobs), with the PDF import
+	// (UpcomingMeetings, GET /appointments/booked), their mutual interests of matching while it is
+	// on (RecruiterMatches, GET /matches?side=recruiter: nothing of it while it is off), their job
+	// descriptions (GET /recruiter/jobs, each with where it stands in matching), with the PDF import
 	// (GET / POST /jobs/import) and deletion. Signed out: what the space does and a sign-in (the
 	// age and terms box first); signed in without a recruiter space: a button to create it, after
 	// the age and terms box for an account that has not accepted the terms in force (the one place,
@@ -430,6 +434,8 @@
 		{:else}
 			<!-- First: a meeting may be about to start -->
 			<UpcomingMeetings userId={user._id} />
+			<!-- Then the candidates both interested (matching: nothing of it while it is off) -->
+			<RecruiterMatches userId={user._id} />
 
 			<div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
 				<div class="min-w-0 space-y-1">
@@ -534,6 +540,7 @@
 						<li data-job-card={job._id}>
 							<JobCard {job} href={jobHref(job._id)} showStatus>
 								{#snippet meta()}
+									{@const matchingLabel = jobMatchingLabel(job)}
 									<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 										<p class="flex flex-wrap items-center gap-x-4 gap-y-1">
 											<span>
@@ -543,6 +550,11 @@
 													{/snippet}
 												</Rich>
 											</span>
+											{#if matchingLabel}
+												<span class="badge preset-tonal-primary" data-job-matching>
+													{matchingLabel}
+												</span>
+											{/if}
 										</p>
 										<div class="flex flex-wrap gap-1">
 											<a

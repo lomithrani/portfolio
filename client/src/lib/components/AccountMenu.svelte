@@ -1,7 +1,8 @@
 <!--
 @component
 The signed-in account's menu in the header: its initials and current space on the trigger, then
-the two spaces (radio items: the active one is checked), Opportunities for a portfolio owner
+the two spaces (radio items: the active one is checked; the recruiter space marked "New", without a
+number, while mutual interests of matching are not seen there: notificationsStore), Opportunities for a portfolio owner
 while matching is available (/opportunities: the jobs proposed to them and their mutual interests,
 with a badge of the mutual interests not seen yet, also said in the trigger's name and marked on
 its initials: notificationsStore), Share your link for a portfolio owner
@@ -72,7 +73,13 @@ form instead (`onClaimPortfolio`).
 	// not seen yet (none counted for anyone else)
 	let opportunities = $derived(!!user.domain && $notificationsStore.matching === 'on');
 	let unseen = $derived(opportunities ? $notificationsStore.unseen.candidate : 0);
-	let triggerLabel = $derived(m.trigger[user.activeMode ?? 'none'](name, unseen));
+	// The recruiter's mutual interests not seen yet: said without a number (the dashboard lists them)
+	let recruiterNew = $derived(
+		!!user.recruiter &&
+			$notificationsStore.matching === 'on' &&
+			$notificationsStore.unseen.recruiter > 0
+	);
+	let triggerLabel = $derived(m.trigger[user.activeMode ?? 'none'](name, unseen, recruiterNew));
 	let statusText = $derived(pending ? accountMessages.opening[pending] : '');
 
 	/** Whether the server takes feedback: "Send feedback" shows once it says so */
@@ -149,7 +156,7 @@ form instead (`onClaimPortfolio`).
 			aria-hidden="true"
 		>
 			{initials}
-			{#if unseen > 0}
+			{#if unseen > 0 || recruiterNew}
 				<!-- Something not seen yet: the trigger's name says what -->
 				<span
 					class="absolute -end-0.5 -top-0.5 size-3 rounded-full border-2 border-surface-50-950 bg-error-500"
@@ -209,7 +216,15 @@ form instead (`onClaimPortfolio`).
 							<Briefcase size="18" />
 						</span>
 						<Menu.ItemText class="min-w-0 flex-1">
-							<span class="block font-medium">{m.recruiterSpace}</span>
+							<span class="flex items-center gap-2 font-medium">
+								{m.recruiterSpace}
+								{#if recruiterNew}
+									<span class="badge preset-filled-error-500 shrink-0 text-xs" data-recruiter-new>
+										<span aria-hidden="true">{m.recruiterNew}</span>
+										<span class="sr-only">{m.recruiterNewLabel}</span>
+									</span>
+								{/if}
+							</span>
 							<span class="block truncate text-xs text-surface-700-300">
 								{user.recruiter ? m.yourJobs : m.postJobs}
 							</span>

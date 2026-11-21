@@ -271,6 +271,34 @@ export const m = defineMessages({
 		en: 'Leave it empty to keep the company anonymous.',
 		fr: "Laissez vide pour ne pas nommer l'entreprise."
 	},
+
+	// --- Matching (Path 2): a job created open, proposed to candidates --------------------------
+
+	matching: {
+		/** The choice, for a job created open (POST /jobs's `matching`) */
+		label: { en: 'Propose it to candidates', fr: 'La proposer aux candidats' },
+		/**
+		 * Backed by: server/services/jobMatching.ts entersMatchingAtCreation (the company and a
+		 * description required, sent for review) and matchFeeds.ts (the candidates whose own criteria
+		 * it meets)
+		 */
+		hint: {
+			en: 'Candidates whose own criteria it meets see it, and you see their anonymous cards. A reviewer reads it first. It needs the company and a description.',
+			fr: "Les candidats dont elle remplit les propres critères la voient, et vous voyez leur fiche anonyme. Elle est d'abord relue. Elle doit indiquer l'entreprise et comporter une description."
+		},
+		/** For a job not created open: the choice comes once it is */
+		later: {
+			en: 'Once it is open, you can propose it to candidates from its page.',
+			fr: 'Une fois ouverte, vous pourrez la proposer aux candidats depuis sa page.'
+		},
+		/** The editor of a job description proposed to candidates (its terms are locked: what an edit changes) */
+		inMatching: {
+			en: 'This job description is proposed to candidates: a change you save sends it back for review before they read it. Their answers and your mutual interests stay.',
+			fr: "Cette offre est proposée aux candidats : une modification enregistrée la renvoie en relecture avant qu'ils ne la lisent. Leurs réponses et vos intérêts réciproques restent."
+		},
+		/** 409 of a creation asked in matching (the jobs a recruiter may propose at once): created without it */
+		withoutIt: { en: 'Create it without proposing it', fr: 'La créer sans la proposer' }
+	},
 	/** After the number of openings */
 	positions: { en: 'positions', fr: 'postes' },
 	descriptionIntro: {

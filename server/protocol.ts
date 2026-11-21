@@ -19,7 +19,7 @@ export const SLOT_UNAVAILABLE = 'This slot is no longer available'
 /** 409 of a claim by an account that has a portfolio: /already own/ in client/src/services/account.ts */
 export const ALREADY_OWNS_DOMAIN = 'You already own a domain'
 
-/** 409 of an edit that started from an older version of a posting: `JOB_CHANGED` of client/src/lib/components/job-editor/JobEditor.svelte, which then offers to reload */
+/** 409 of an edit that started from an older version of a posting: `JOB_CHANGED` of client/src/lib/components/job-editor/JobEditor.svelte, which then offers to reload; also of PUT /jobs/:id/matching for a posting edited meanwhile, which `switchFailure` of client/src/services/recruiterMatching.ts matches (its panel offers to reload) */
 export const JOB_CHANGED = 'This job posting was changed since you opened it'
 
 /** 409 of an edit that changes the terms (the fields the perfect job scores) of a posting opened before: `JOB_TERMS_LOCKED` of client/src/lib/components/job-editor/JobEditor.svelte, which then offers to reload it or to duplicate it */
@@ -27,8 +27,8 @@ export const JOB_TERMS_LOCKED = 'The terms of an opened job posting cannot be ch
 
 /**
  * 409 of PUT /jobs/:id/matching turning matching on for a job that is not open (put on hold,
- * filled or back to draft meanwhile). No screen calls the route yet: the recruiter's matching
- * panel will match it, and say it in its own words
+ * filled or back to draft meanwhile). `switchFailure` of client/src/services/recruiterMatching.ts
+ * matches it: the recruiter's matching panel says it in its own words
  */
 export const MATCHING_NEEDS_OPEN_JOB = 'Only an open job description can be proposed to candidates'
 
@@ -92,8 +92,9 @@ export const DECISION_FINAL = 'This decision can no longer be undone'
 /**
  * 404 of the routes of one mutual interest (GET /matches/:id, POST /matches/:id/end, PUT
  * /matches/:id/seen) for one the caller is not a side of, or that does not exist.
- * `endMutualInterest` of client/src/services/opportunities.ts matches it: the candidate's list says
- * the mutual interest is gone and is read again
+ * `endMutualInterest` of client/src/services/opportunities.ts and `recruiterInterestFailure` of
+ * client/src/services/recruiterMatching.ts match it: each side's list says the mutual interest is
+ * gone and is read again
  */
 export const MATCH_NOT_FOUND = 'Match not found'
 

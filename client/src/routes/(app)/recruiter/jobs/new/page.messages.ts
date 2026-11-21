@@ -89,6 +89,11 @@ export const m = defineMessages({
 		en: "Pick it on a candidate's page for recruiters to show it to them: only an open job description can be picked.",
 		fr: "Choisissez-la sur la page recruteurs d'un candidat pour la lui présenter : seule une offre d'emploi ouverte peut être choisie."
 	},
+	/** Created open and proposed to candidates (matching): sent for review first */
+	createdInMatching: {
+		en: 'Sent for review: a reviewer reads it before it is proposed to candidates. Its page says where it stands.',
+		fr: "Envoyée en relecture : elle est relue avant d'être proposée aux candidats. Sa page indique où elle en est."
+	},
 	openIt: { en: 'Open it', fr: "Ouvrir l'offre" },
 	/** Created from a hiring journey, with the status Open */
 	pickIt: {

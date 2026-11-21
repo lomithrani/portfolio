@@ -1576,3 +1576,152 @@ test.describe('job description import', () => {
 		await expect(page.getByRole('button', { name: 'Import from PDF' })).toBeDisabled();
 	});
 });
+
+// --- Matching (Path 2): proposing a job to candidates --------------------------------------
+
+/** The API's 404 of a route that does not exist: matching is off (MATCHING unset) */
+const matchingIsOn = async () => (await api.get(`${API_URL}/me/notifications`)).status() !== 404;
+
+/** The editor's required fields, for a job created open in Lyon */
+const fillOpenJob = async (page: Page, title: string) => {
+	await page.getByRole('textbox', { name: 'Job title' }).fill(title);
+	await page
+		.getByRole('textbox', { name: 'Job description' })
+		.fill('## The job\n\nRun the platform.');
+	await page.getByRole('textbox', { name: 'City', exact: true }).fill('Lyon');
+	await page.getByRole('textbox', { name: 'Minimum pay' }).fill('50 000');
+	await page.getByRole('textbox', { name: 'Maximum pay' }).fill('60 000');
+	await page.getByLabel('Status', { exact: true }).selectOption('open');
+};
+
+test.describe('proposing a job to candidates (matching)', () => {
+	test('a job created open is proposed from the editor, sent for review, then stopped from its page', async ({
+		page
+	}) => {
+		test.skip(
+			!(await matchingIsOn()),
+			'Matching is off in the API under test (GET /me/notifications answers 404): run it with MATCHING=true'
+		);
+		const title = `Matching engineer ${tag}`;
+		await openAsRecruiter(page, '/recruiter/jobs/new');
+		await fillOpenJob(page, title);
+
+		// Ticked for a job created open; the choice is kept with the draft
+		const choice = page.getByRole('checkbox', { name: 'Propose it to candidates' });
+		await expect(choice).toBeChecked();
+		await expect(page.locator('[data-matching-choice]')).toContainText(
+			'A reviewer reads it first.'
+		);
+		await choice.uncheck();
+		page.on('dialog', (leave) => leave.accept());
+		await page.reload();
+		await expect(page.getByText('Restored your unsaved changes from this browser.')).toBeVisible();
+		await expect(choice).not.toBeChecked();
+		await choice.check();
+
+		// Proposed, it names its company: asked before anything is sent
+		await page.getByRole('button', { name: 'Create job description' }).click();
+		await expect(
+			page.getByRole('link', { name: /^Company: Name the company: candidates decide/ })
+		).toBeVisible();
+		await page.getByRole('textbox', { name: 'Company' }).fill('E2E Corp');
+		await page.getByRole('button', { name: 'Create job description' }).click();
+		await page
+			.getByRole('alertdialog', { name: 'Open this job description?' })
+			.getByRole('button', { name: 'Open', exact: true })
+			.click();
+		await expect(page).toHaveURL(JOB_PAGE);
+		await expect(toasts(page)).toContainText(
+			'Sent for review: a reviewer reads it before it is proposed to candidates.'
+		);
+		const id = JOB_PAGE.exec(new URL(page.url()).pathname)![1];
+		const stored = await (await api.get(`${API_URL}/recruiter/jobs/${id}`)).json();
+		expect(stored.matching.enabledAt).toBeTruthy();
+		expect(stored.matching.review.status).toBe('pending');
+
+		// Its page: in review, proposed to nobody until then
+		const panel = page.locator('[data-matching-panel]');
+		const toggle = panel.getByRole('checkbox', { name: /Propose this job to candidates/ });
+		const flip = () => panel.getByText('Propose this job to candidates', { exact: true }).click();
+		await expect(toggle).toBeChecked();
+		await expect(panel.locator('[data-matching-state]')).toContainText('In review');
+		await expect(panel).toContainText('Until then it is proposed to nobody.');
+		await expect(panel.getByRole('link', { name: 'Review candidates' })).toHaveCount(0);
+
+		// Stopped, asked first: cancelled, it stays proposed
+		await flip();
+		const stop = page.getByRole('alertdialog', { name: 'Stop proposing this job?' });
+		await expect(stop).toContainText("It leaves every candidate's list at once.");
+		await stop.getByRole('button', { name: 'Cancel' }).click();
+		await expect(stop).toBeHidden();
+		await expect(toggle).toBeChecked();
+		await flip();
+		await stop.getByRole('button', { name: 'Stop proposing' }).click();
+		await expect(toasts(page)).toContainText('No longer proposed to candidates');
+		await expect(toggle).not.toBeChecked();
+		await expect(panel.locator('[data-matching-state]')).toHaveCount(0);
+		expect(
+			(await (await api.get(`${API_URL}/recruiter/jobs/${id}`)).json()).matching.enabledAt
+		).toBe(null);
+
+		// Turned on again from its page: unchanged since, it goes back to review as it was
+		await flip();
+		await expect(toasts(page)).toContainText('Sent for review');
+		await expect(panel.locator('[data-matching-state]')).toContainText('In review');
+	});
+
+	test('the switch says in words why it was refused, with the way to fix it', async ({ page }) => {
+		const title = `Refused matching ${tag}`;
+		const { _id: id } = await createJob(api, { title, status: 'open' });
+		// Matching on or off in the API: the posting is answered as it is while on
+		await page.route(`${API_URL}/recruiter/jobs/${id}`, async (route: Route) => {
+			if (route.request().method() !== 'GET') return route.fallback();
+			const response = await route.fetch();
+			await route.fulfill({
+				response,
+				json: { ...(await response.json()), matching: { enabledAt: null, review: null } }
+			});
+		});
+		const refusals = [
+			{
+				status: 422,
+				json: { type: 'validation', on: 'body', property: 'company', message: 'Name the company' }
+			},
+			{ status: 409, text: 'You can propose 10 jobs to candidates at once' },
+			{ status: 409, text: 'Only an open job description can be proposed to candidates' }
+		];
+		const asked = await stubApi(
+			page,
+			'PUT',
+			`/jobs/${id}/matching`,
+			(_request, index) => refusals[index]
+		);
+		await openAsRecruiter(page, `/recruiter/jobs/${id}`);
+
+		const panel = page.locator('[data-matching-panel]');
+		const toggle = panel.getByRole('checkbox', { name: /Propose this job to candidates/ });
+		const flip = () => panel.getByText('Propose this job to candidates', { exact: true }).click();
+		await expect(panel).toContainText('A reviewer reads it before any candidate sees it.');
+		await flip();
+		const refused = panel.getByRole('alert');
+		await expect(refused).toContainText('Name the company first');
+		await expect(refused.getByRole('link', { name: 'Edit the job description' })).toHaveAttribute(
+			'href',
+			`/recruiter/jobs/${id}/edit`
+		);
+		await expect(toggle).not.toBeChecked();
+		await flip();
+		await expect(refused).toContainText(
+			'You can propose 10 job descriptions to candidates at once: stop proposing one to propose this one.'
+		);
+		await flip();
+		await expect(refused).toContainText(
+			'Only an open job description can be proposed to candidates: open it first.'
+		);
+		expect(asked.map((request) => request.postDataJSON())).toEqual([
+			{ enabled: true },
+			{ enabled: true },
+			{ enabled: true }
+		]);
+	});
+});

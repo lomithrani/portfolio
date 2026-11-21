@@ -23,7 +23,7 @@
 // and the signed-in steps of landing.test.ts; the tests that would change it (accepting the terms,
 // claiming, opening a recruiter space or recording a space: PUT /me/mode, deleting the account)
 // answer those requests in the browser, so it stays that way.
-// Matching (Path 2), for the test files of its screens to come, one candidate and one job for each
+// Matching (Path 2), for the test files of its screens, one candidate and one job for each
 // file, so that the two files, which run in parallel, never read what the other decides: 'e2e-match'
 // (fixed id 65e2e0000000000000000003, client/tests/matching-candidate.test.ts, seeded with
 // discovery off: the test turns it on; a withdrawal holds the next opt-in back
@@ -32,7 +32,8 @@
 // of its runs; its deck answers the job seeded for it, which only this seed proposes to it again)
 // and 'e2e-match-card' (fixed id
 // 65e2e0000000000000000004, client/tests/matching-recruiter.test.ts, seeded on: the e2e recruiter
-// reads its anonymous card).
+// reads its anonymous card, and answers it in the deck once the candidate said through the API
+// that the job interests them; that mutual interest is the run's, which only this seed removes).
 // Each has everything discovery asks for, set back on every run: the terms in force, a perfect job
 // of three criteria with the pay, the gate journey, a Google Calendar grant (a placeholder: nothing
 // ever asks Google with it) and a meeting type with hours, an experience. The e2e recruiter has two

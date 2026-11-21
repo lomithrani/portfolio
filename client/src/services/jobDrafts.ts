@@ -27,7 +27,8 @@ import {
 } from './jobPosting';
 
 // What the job editor keeps in this browser:
-// - its unsaved state, per user and posting, restored when the recruiter comes back:
+// - its unsaved state, per user and posting, restored when the recruiter comes back (with, for a
+//   new posting, whether it is to be proposed to candidates: matching, POST /jobs's `matching`):
 //   `jobDraft:<userId>:<jobId>` (editing), `jobDraft:<userId>:new` (adding, from a blank form),
 //   `jobDraft:<userId>:import` (adding, from the import below; it goes with that import),
 //   `jobDraft:<userId>:copy:<jobId>` (adding, from a copy of the posting `jobId`: Duplicate);
@@ -142,10 +143,16 @@ export const hasPendingText = (pending: PendingListText | undefined): boolean =>
 	!!pending && Object.values(pending).some((text) => text.trim() !== '');
 
 /**
- * A stored editor draft: the form, the signature of the form it started from, and the text typed
- * in the lists and not added yet
+ * A stored editor draft: the form, the signature of the form it started from, the text typed in
+ * the lists and not added yet, and, for a new posting, whether it is to be proposed to candidates
+ * once created open (matching: not part of the posting, POST /jobs's `matching`)
  */
-export type StoredJobDraft = { form: JobForm; basis?: string; pending?: PendingListText };
+export type StoredJobDraft = {
+	form: JobForm;
+	basis?: string;
+	pending?: PendingListText;
+	matching?: boolean;
+};
 
 const TEXT_FIELDS = [
 	'title',
@@ -231,7 +238,8 @@ export function loadJobDraft(
 	return {
 		form,
 		basis: typeof stored.basis === 'string' ? stored.basis : undefined,
-		...(hasPendingText(pending) ? { pending } : {})
+		...(hasPendingText(pending) ? { pending } : {}),
+		...(typeof stored.matching === 'boolean' ? { matching: stored.matching } : {})
 	};
 }
 
@@ -271,19 +279,26 @@ export function clearJobDraft(
  * from now on: the baseline's, except for a stale draft, which keeps its own so that the warning
  * stays until the recruiter saves or discards it. `pending` is the text typed in the lists and not
  * added yet: the restored draft's (a draft of such text alone is restored too), else none.
+ *
+ * `matching` (a new posting, while matching is offered): whether it is to be proposed to candidates
+ * by default. The draft's own choice comes back with it (`matching` of the answer), and a draft that
+ * changed only that choice is restored too; without a choice offered, none is read.
  */
 export function startingJobForms(
 	{
 		job,
 		imported,
 		duplicate,
-		locked = false
+		locked = false,
+		matching
 	}: {
 		job?: JobPostingLike | null;
 		imported?: JobPostingLike | null;
 		/** With the day it was opened, if it was: a copy of an opened posting starts capped */
 		duplicate?: (JobPostingLike & { publishedAt?: Date | string | null }) | null;
 		locked?: boolean;
+		/** A new posting, while matching is offered: whether it is proposed to candidates by default */
+		matching?: boolean;
 	},
 	readDraft: () => StoredJobDraft | undefined
 ): {
@@ -297,6 +312,8 @@ export function startingJobForms(
 	capped: boolean;
 	droppedTerms: JobFormField[];
 	typedDraft?: StoredJobDraft;
+	/** Whether it is proposed to candidates (the draft's choice, else `matching`); undefined when not offered */
+	matching?: boolean;
 } {
 	const opened = job && locked ? openedJobForm(job) : undefined;
 	const capped = opened?.capped ?? false;
@@ -313,9 +330,15 @@ export function startingJobForms(
 	const droppedTerms = stored && opened ? droppedTermsOf(stored, baseline) : [];
 	const dropped = droppedTerms.length > 0 ? { droppedTerms, typedDraft: stored } : { droppedTerms };
 	const sameStart = !!job || !imported || draft?.basis === basis;
+	// The choice of matching is a new posting's, when one is offered
+	const offered = !job && matching !== undefined;
+	const draftMatching =
+		offered && typeof draft?.matching === 'boolean' ? draft.matching : undefined;
 	const changed =
 		!!draft &&
-		(jobFormSignature(draft.form) !== jobFormSignature(baseline) || hasPendingText(draft.pending));
+		(jobFormSignature(draft.form) !== jobFormSignature(baseline) ||
+			hasPendingText(draft.pending) ||
+			(draftMatching !== undefined && draftMatching !== matching));
 	if (draft && sameStart && changed) {
 		// A posting saved since the draft started (e.g. in another tab): the draft is older
 		const stale = !!job && !!draft.basis && draft.basis !== basis;
@@ -328,7 +351,8 @@ export function startingJobForms(
 			draftBasis: stale && draft.basis ? draft.basis : basis,
 			pending: { ...emptyPendingText(), ...draft.pending },
 			capped,
-			...dropped
+			...dropped,
+			...(offered ? { matching: draftMatching ?? matching } : {})
 		};
 	}
 	return {
@@ -340,7 +364,8 @@ export function startingJobForms(
 		draftBasis: basis,
 		pending: emptyPendingText(),
 		capped,
-		...dropped
+		...dropped,
+		...(offered ? { matching } : {})
 	};
 }
 

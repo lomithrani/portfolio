@@ -385,6 +385,60 @@ describe('startingJobForms', () => {
 	});
 });
 
+describe('startingJobForms of a new posting proposed to candidates (matching)', () => {
+	const blank = emptyJobForm();
+
+	it('keeps the choice with the draft, and reads back only a yes or a no', () => {
+		const storage = new MemoryStorage();
+		const key = jobDraftStorageKey('u1');
+		saveJobDraft(key, { form: filledForm(), matching: false }, storage);
+		expect(loadJobDraft(key, storage)?.matching).toBe(false);
+		storage.setItem(key, JSON.stringify({ form: filledForm(), matching: 'yes' }));
+		expect(loadJobDraft(key, storage)).not.toHaveProperty('matching');
+	});
+
+	it('starts from the choice by default, and from the draft’s own once restored', () => {
+		expect(startingJobForms({ matching: true }, () => undefined).matching).toBe(true);
+		expect(startingJobForms({ matching: false }, () => undefined).matching).toBe(false);
+		const restored = startingJobForms({ matching: true }, () => ({
+			form: filledForm(),
+			matching: false
+		}));
+		expect([restored.restored, restored.matching]).toEqual([true, false]);
+		// A draft kept before the choice existed: the default
+		expect(startingJobForms({ matching: true }, () => ({ form: filledForm() })).matching).toBe(
+			true
+		);
+	});
+
+	it('restores a draft that changed the choice alone', () => {
+		const start = startingJobForms({ matching: true }, () => ({
+			form: emptyJobForm(),
+			basis: draftBasis(blank),
+			matching: false
+		}));
+		expect([start.restored, start.matching]).toEqual([true, false]);
+		// The same choice as the default is no change
+		expect(
+			startingJobForms({ matching: true }, () => ({ form: emptyJobForm(), matching: true }))
+				.restored
+		).toBe(false);
+	});
+
+	it('reads no choice where none is offered: a posting being edited, or matching off', () => {
+		expect(
+			startingJobForms({}, () => ({ form: filledForm(), matching: false }))
+		).not.toHaveProperty('matching');
+		const job = { title: 'Backend engineer', status: 'open' as const };
+		const edited = startingJobForms({ job, matching: true }, () => ({
+			form: jobToForm(job),
+			matching: false
+		}));
+		expect(edited.restored).toBe(false);
+		expect(edited).not.toHaveProperty('matching');
+	});
+});
+
 describe('startingJobForms of a copy (Duplicate)', () => {
 	const source = {
 		_id: 'j1',

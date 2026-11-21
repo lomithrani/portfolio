@@ -35,6 +35,8 @@
 		loadJobDraft,
 		type ImportedJobDraft
 	} from '#services/jobDrafts.ts';
+	import { notificationsStore } from '#services/notifications.ts';
+	import { readJobMatching } from '#services/recruiterMatching.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { JOB_PARAM, JOURNEY_PARAM, journeyReturnDomain } from '#services/workflow.ts';
 	import { m } from './page.messages.ts';
@@ -49,7 +51,9 @@
 	// (?journey=<portfolio>), it goes back there once the posting is created, to pick it. A
 	// recruiter whose session says they have not accepted the terms in force accepts them first
 	// (TermsAcceptance), as the other recruiter pages ask once the API refused them: the form opens
-	// once they have (the API would refuse to save it).
+	// once they have (the API would refuse to save it). While matching is on (notificationsStore), a
+	// job created open can be proposed to candidates at once: ticked to start with, unless the job is
+	// written from a candidate's hiring journey (?journey=: it is shared with that candidate).
 
 	// Read once: the import is taken when the editor opens, and the parameter goes once discarded
 	const importRequested = untrack(() => page.url.searchParams.get('import') === '1');
@@ -168,10 +172,14 @@
 	) => {
 		if (journeyHref) return backToJourney(saved, left);
 		const open = () => goto(resolve('/(app)/recruiter/jobs/[id]', { id: saved._id }));
+		const inMatching = !!readJobMatching((saved as { matching?: unknown }).matching)?.enabledAt;
 		toaster.success({
 			title: m.created,
-			description:
-				saved.status === 'draft' ? m.createdDraft(JOB_STATUS_LABELS.open) : m.createdNotDraft,
+			description: inMatching
+				? m.createdInMatching
+				: saved.status === 'draft'
+					? m.createdDraft(JOB_STATUS_LABELS.open)
+					: m.createdNotDraft,
 			// Created after the recruiter went elsewhere: they stay there, the toast leads to it
 			action: left ? { label: m.openIt, onClick: open } : undefined
 		});
@@ -323,6 +331,8 @@
 					duplicate={duplicateSource}
 					cancelHref={journeyHref ?? recruiterHref}
 					{recruiterHref}
+					matchingDefault={!journeyDomain}
+					matchingOffered={$notificationsStore.matching === 'on'}
 					{onSaved}
 					{onImportDiscarded}
 					onSessionExpired={() => (expiredWhileSaving = true)}
