@@ -53,7 +53,9 @@
 	// (TermsAcceptance), as the other recruiter pages ask once the API refused them: the form opens
 	// once they have (the API would refuse to save it). While matching is on (notificationsStore), a
 	// job created open can be proposed to candidates at once: ticked to start with, unless the job is
-	// written from a candidate's hiring journey (?journey=: it is shared with that candidate).
+	// written from a candidate's hiring journey (?journey=: it is shared with that candidate) or is a
+	// copy (?duplicate=: copies of a job that differ in one term are what reviewers refuse, since they
+	// would tell candidates' floors apart).
 
 	// Read once: the import is taken when the editor opens, and the parameter goes once discarded
 	const importRequested = untrack(() => page.url.searchParams.get('import') === '1');
@@ -331,7 +333,7 @@
 					duplicate={duplicateSource}
 					cancelHref={journeyHref ?? recruiterHref}
 					{recruiterHref}
-					matchingDefault={!journeyDomain}
+					matchingDefault={!journeyDomain && !duplicateId}
 					matchingOffered={$notificationsStore.matching === 'on'}
 					{onSaved}
 					{onImportDiscarded}

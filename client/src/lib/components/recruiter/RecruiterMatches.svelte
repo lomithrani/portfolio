@@ -9,7 +9,11 @@ leave the account menu's badge) and said new until read again; ending one is ask
 /matches/:id/end). While matching is off (the route's 404) it shows nothing; signed out, without a
 recruiter space or the terms in force, it shows nothing either: the page's own read says why (as
 UpcomingMeetings, a read of this list never signs the page out; ending one does, when the session
-has ended). No count, no email promised.
+has ended). The dashboard mounts it only once matching is known to be on (notificationsStore), so
+nothing of it shows, nor is asked, while MATCHING is off; a job's panel, only while its posting
+carries `matching`. Its dialog gives the focus back to the "End it" that opened it, else to that
+mutual interest's heading, else to this list's heading, else to `fallbackFocus`. No count, no email
+promised.
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
@@ -33,12 +37,15 @@ has ended). No count, no email promised.
 
 	let {
 		userId,
-		jobId
+		jobId,
+		fallbackFocus
 	}: {
 		/** The signed-in account: read again for another one */
 		userId: string;
 		/** One job's mutual interests (its matching panel); all of them without it (the dashboard) */
 		jobId?: string;
+		/** Where the focus goes once a dialog closed on a list that went (matching turned off) */
+		fallbackFocus?: () => HTMLElement | null;
 	} = $props();
 
 	const uid = $props.id();
@@ -131,9 +138,12 @@ has ended). No count, no email promised.
 		endBusy = true;
 		endError = '';
 		const result = await endRecruiterInterest(interest._id);
+		// Gone meanwhile (or matching turned off): the list is read again before the dialog closes,
+		// so that its focus finds the list as it is now
+		if (!result.ok && (result.failure === 'gone' || result.failure === 'off')) await read();
 		endBusy = false;
 		if (result.ok) {
-			ending = null;
+			// The list first: the dialog's focus then finds the ended one without its "End it"
 			const current = shown;
 			if (current.kind === 'ready') {
 				shown = {
@@ -141,6 +151,7 @@ has ended). No count, no email promised.
 					list: current.list.map((each) => (each._id === interest._id ? result.interest : each))
 				};
 			}
+			ending = null;
 			toaster.success({ title: m.endDialog.done });
 			void refreshNotifications();
 			return;
@@ -155,11 +166,26 @@ has ended). No count, no email promised.
 			case 'off':
 				ending = null;
 				toaster.info({ title: m.endDialog.gone });
-				void read();
 				return;
 			default:
 				endError = result.failure === 'network' ? networkError() : m.endDialog.failed;
 		}
+	}
+
+	/**
+	 * Where the focus goes once the dialog closes: back to "End it" while it is there (cancelled, or
+	 * a failure kept it), else to that mutual interest's heading (ended), else to this list's
+	 * heading, else to what the page gives (the list went)
+	 */
+	function endFocus(): HTMLElement | null {
+		const item = document.querySelector(`[data-recruiter-interest="${endingId}"]`);
+		const end = item?.querySelector<HTMLElement>('[data-end]');
+		if (end?.isConnected) return end;
+		const heading = item?.querySelector<HTMLElement>('[tabindex="-1"]');
+		if (heading?.isConnected) return heading;
+		const title = document.getElementById(`${uid}-title`);
+		if (title?.isConnected) return title;
+		return fallbackFocus?.() ?? null;
 	}
 
 	let inJob = $derived(!!jobId);
@@ -173,10 +199,12 @@ has ended). No count, no email promised.
 		data-recruiter-matches={jobId ?? 'all'}
 	>
 		{#if inJob}
-			<h4 id="{uid}-title" class="text-sm font-semibold">{m.jobTitle}</h4>
+			<h4 id="{uid}-title" tabindex="-1" class="text-sm font-semibold outline-none">
+				{m.jobTitle}
+			</h4>
 		{:else}
 			<div class="space-y-1">
-				<h2 id="{uid}-title" class="text-xl font-bold">{m.title}</h2>
+				<h2 id="{uid}-title" tabindex="-1" class="text-xl font-bold outline-none">{m.title}</h2>
 				<p class="text-sm text-surface-700-300">{m.intro}</p>
 			</div>
 		{/if}
@@ -240,8 +268,7 @@ has ended). No count, no email promised.
 
 <ConfirmDialog
 	open={ending !== null}
-	finalFocusEl={() =>
-		document.querySelector<HTMLElement>(`[data-recruiter-interest="${endingId}"] [tabindex="-1"]`)}
+	finalFocusEl={endFocus}
 	title={m.endDialog.title}
 	description={m.endDialog.description}
 	confirmLabel={m.endDialog.confirm}

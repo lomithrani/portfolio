@@ -388,12 +388,18 @@ describe('startingJobForms', () => {
 describe('startingJobForms of a new posting proposed to candidates (matching)', () => {
 	const blank = emptyJobForm();
 
-	it('keeps the choice with the draft, and reads back only a yes or a no', () => {
+	it('keeps the choice with the default it was made against, and reads back only a yes or a no', () => {
 		const storage = new MemoryStorage();
 		const key = jobDraftStorageKey('u1');
-		saveJobDraft(key, { form: filledForm(), matching: false }, storage);
-		expect(loadJobDraft(key, storage)?.matching).toBe(false);
-		storage.setItem(key, JSON.stringify({ form: filledForm(), matching: 'yes' }));
+		saveJobDraft(key, { form: filledForm(), matching: false, matchingDefault: true }, storage);
+		expect(loadJobDraft(key, storage)).toMatchObject({ matching: false, matchingDefault: true });
+		storage.setItem(
+			key,
+			JSON.stringify({ form: filledForm(), matching: 'yes', matchingDefault: true })
+		);
+		expect(loadJobDraft(key, storage)).not.toHaveProperty('matching');
+		// A choice without the default it was made against is none
+		storage.setItem(key, JSON.stringify({ form: filledForm(), matching: true }));
 		expect(loadJobDraft(key, storage)).not.toHaveProperty('matching');
 	});
 
@@ -402,26 +408,60 @@ describe('startingJobForms of a new posting proposed to candidates (matching)', 
 		expect(startingJobForms({ matching: false }, () => undefined).matching).toBe(false);
 		const restored = startingJobForms({ matching: true }, () => ({
 			form: filledForm(),
-			matching: false
+			matching: false,
+			matchingDefault: true
 		}));
 		expect([restored.restored, restored.matching]).toEqual([true, false]);
-		// A draft kept before the choice existed: the default
+		// A draft kept without a choice: the default
 		expect(startingJobForms({ matching: true }, () => ({ form: filledForm() })).matching).toBe(
 			true
 		);
+	});
+
+	it('never brings a choice made against another default: the dashboard’s and a journey’s share the draft', () => {
+		// Ticked on the dashboard (by default), then a job written from a candidate's page (unticked)
+		const fromJourney = startingJobForms({ matching: false }, () => ({
+			form: filledForm(),
+			matching: true,
+			matchingDefault: true
+		}));
+		expect([fromJourney.restored, fromJourney.matching]).toEqual([true, false]);
+		// Ticked by hand from a candidate's page, then the dashboard: its own default
+		const fromDashboard = startingJobForms({ matching: true }, () => ({
+			form: filledForm(),
+			matching: false,
+			matchingDefault: false
+		}));
+		expect(fromDashboard.matching).toBe(true);
+		// A draft stored without its default (never written so by the editor) brings no tick
+		expect(
+			startingJobForms({ matching: false }, () => ({ form: filledForm(), matching: true })).matching
+		).toBe(false);
 	});
 
 	it('restores a draft that changed the choice alone', () => {
 		const start = startingJobForms({ matching: true }, () => ({
 			form: emptyJobForm(),
 			basis: draftBasis(blank),
-			matching: false
+			matching: false,
+			matchingDefault: true
 		}));
 		expect([start.restored, start.matching]).toEqual([true, false]);
 		// The same choice as the default is no change
 		expect(
-			startingJobForms({ matching: true }, () => ({ form: emptyJobForm(), matching: true }))
-				.restored
+			startingJobForms({ matching: true }, () => ({
+				form: emptyJobForm(),
+				matching: true,
+				matchingDefault: true
+			})).restored
+		).toBe(false);
+		// Nor is a choice made against another default
+		expect(
+			startingJobForms({ matching: false }, () => ({
+				form: emptyJobForm(),
+				matching: true,
+				matchingDefault: true
+			})).restored
 		).toBe(false);
 	});
 

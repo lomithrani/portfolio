@@ -771,8 +771,10 @@ the moment of the two decisions; once read again (a withdrawal or the job leavin
 landed meanwhile takes it back first) it reveals the candidate's portfolio address to the recruiter and
 leads into the candidate's own hiring journey (its job step holds the job, its job match is frozen
 at the score then, its notes are still the recruiter's to confirm before the meeting opens). Either
-side ends it (`POST /matches/:id/end`). No email is sent: each side sees how many mutual interests
-it has not seen yet (`GET /me/notifications`), for the account menu's badge of the screens to come.
+side ends it (`POST /matches/:id/end`). No email is sent: the account menu says what each side has
+not seen yet (`GET /me/notifications`, read by `notificationsStore`): a candidate reads how many
+mutual interests are new on "Opportunities", the recruiter space is marked "New" without a number
+(`AccountMenu.svelte`).
 
 The first opt-in creates the `discoveryprofiles` collection (one document per account that turned
 discovery on or off or set its anonymous card), the first decision the `matches` collection (one

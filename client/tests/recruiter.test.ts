@@ -1,4 +1,11 @@
-import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
+import {
+	expect,
+	test,
+	type APIRequestContext,
+	type Page,
+	type Request,
+	type Route
+} from '@playwright/test';
 import {
 	API_URL,
 	E2E_CANDIDATE_ID,
@@ -13,7 +20,14 @@ import {
 	toasts,
 	type OwnerSession
 } from './support/owner';
-import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS, LEGAL_VERSION } from 'portfolio-common';
+import {
+	JOB_FIELD_CRITERIA,
+	JOB_FIELD_PATHS,
+	LEGAL_VERSION,
+	MATCHING_LIMITS,
+	matchingMessages,
+	withLocale
+} from 'portfolio-common';
 import { TERMS_REQUIRED, inAnHour, stubApi } from './support/api';
 import { stubGoogle } from './support/google';
 import { jobFormFieldOf } from '../src/services/jobPosting';
@@ -1668,6 +1682,147 @@ test.describe('proposing a job to candidates (matching)', () => {
 		await flip();
 		await expect(toasts(page)).toContainText('Sent for review');
 		await expect(panel.locator('[data-matching-state]')).toContainText('In review');
+	});
+
+	test('the editor’s choice starts unticked from a candidate’s page or for a copy, and only the limit of jobs proposed offers to create it without', async ({
+		page
+	}) => {
+		// Matching on, as the account menu reads it (any API under test): the choice shows
+		await stubApi(page, 'GET', '/me/notifications', () => ({
+			json: { mutualInterests: { candidate: 0, recruiter: 0 } }
+		}));
+		page.on('dialog', (leave) => leave.accept());
+		const choice = page.getByRole('checkbox', { name: 'Propose it to candidates' });
+
+		// Started from the dashboard (ticked by default) and left: the job written from a candidate's
+		// page, which shares its draft, starts unticked all the same
+		await openAsRecruiter(page, '/recruiter/jobs/new');
+		await page.getByRole('textbox', { name: 'Job title' }).fill(`Draft carried ${tag}`);
+		await page.getByLabel('Status', { exact: true }).selectOption('open');
+		await expect(choice).toBeChecked();
+		await gotoHydrated(page, '/recruiter/jobs/new?journey=e2e-journey');
+		await expect(page.getByText('Restored your unsaved changes from this browser.')).toBeVisible();
+		await expect(page.getByRole('textbox', { name: 'Job title' })).toHaveValue(
+			`Draft carried ${tag}`
+		);
+		await expect(choice).toBeVisible();
+		await expect(choice).not.toBeChecked();
+		// Ticked by hand there, that choice comes back there
+		await choice.check();
+		await gotoHydrated(page, '/recruiter/jobs/new?journey=e2e-journey');
+		await expect(choice).toBeChecked();
+		await page.getByRole('button', { name: 'Discard draft' }).click();
+		await page.getByRole('button', { name: 'Discard', exact: true }).click();
+
+		// A copy of a job (copies that differ in one term are what reviewers refuse): unticked
+		const source = await createJob(api, { title: `Copied ${tag}`, status: 'open' });
+		await gotoHydrated(page, `/recruiter/jobs/new?duplicate=${source._id}`);
+		await page.getByLabel('Status', { exact: true }).selectOption('open');
+		await expect(choice).toBeVisible();
+		await expect(choice).not.toBeChecked();
+
+		// From the dashboard, ticked: the limit of jobs proposed at once offers to create it without
+		// proposing it; the limit of job descriptions a recruiter keeps offers nothing
+		const tooManyProposed = withLocale('en', () =>
+			matchingMessages.job.tooMany(MATCHING_LIMITS.matchingJobsPerRecruiter)
+		);
+		const created = await stubApi(page, 'POST', '/jobs', (_request, index) =>
+			index === 0
+				? { status: 409, text: tooManyProposed }
+				: { status: 409, text: 'You can keep 100 job descriptions at most.' }
+		);
+		await gotoHydrated(page, '/recruiter/jobs/new');
+		await fillOpenJob(page, `Limit ${tag}`);
+		await page.getByRole('textbox', { name: 'Company' }).fill('E2E Corp');
+		await expect(choice).toBeChecked();
+		await page.getByRole('button', { name: 'Create job description' }).click();
+		await page
+			.getByRole('alertdialog', { name: 'Open this job description?' })
+			.getByRole('button', { name: 'Open', exact: true })
+			.click();
+		await expect(page.getByText(tooManyProposed)).toBeVisible();
+		await page.getByRole('button', { name: 'Create it without proposing it' }).click();
+		await expect(page.getByText('You can keep 100 job descriptions at most.')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Create it without proposing it' })).toHaveCount(
+			0
+		);
+		expect(created.map((request) => request.postDataJSON().matching)).toEqual([true, undefined]);
+	});
+
+	test('a job put into matching asks before a status takes it out, and its editor and deletion say what goes', async ({
+		page
+	}) => {
+		const title = `Leaving matching ${tag}`;
+		const { _id: id } = await createJob(api, { title, status: 'open' });
+		// Proposed to candidates, as the API answers it while matching is on (any API under test)
+		await page.route(`${API_URL}/recruiter/jobs/${id}`, async (route: Route) => {
+			if (route.request().method() !== 'GET') return route.fallback();
+			const response = await route.fetch();
+			const now = new Date().toISOString();
+			await route.fulfill({
+				response,
+				json: {
+					...(await response.json()),
+					matching: {
+						enabledAt: now,
+						review: { status: 'approved', requestedAt: now, reviewedAt: now, reason: null }
+					}
+				}
+			});
+		});
+		const statuses: Request[] = [];
+		page.on('request', (request) => {
+			if (request.method() === 'PUT' && request.url().endsWith(`/jobs/${id}/status`)) {
+				statuses.push(request);
+			}
+		});
+		await openAsRecruiter(page, `/recruiter/jobs/${id}`);
+
+		// Its deletion says that its matches go with it
+		await page.getByRole('button', { name: 'Delete' }).click();
+		const deletion = page.getByRole('alertdialog', { name: /^Delete/ });
+		await expect(deletion).toContainText(
+			'Its mutual interests with candidates, and the answers given on it, are deleted with it.'
+		);
+		await deletion.getByRole('button', { name: 'Cancel' }).click();
+		await expect(deletion).toBeHidden();
+
+		// Filled: what it loses is asked first; cancelled, nothing is sent
+		await page.getByRole('button', { name: 'Change status' }).click();
+		await page.getByRole('menuitemradio', { name: /^Filled/ }).click();
+		const leaving = page.getByRole('alertdialog', { name: 'Change the status to “Filled”?' });
+		await expect(leaving).toContainText(
+			'it stops being proposed: the answers that made no mutual interest are dropped, and its mutual interests end. Opening it again does not bring them back.'
+		);
+		await leaving.getByRole('button', { name: 'Cancel' }).click();
+		await expect(leaving).toBeHidden();
+		expect(statuses).toHaveLength(0);
+
+		// Its editor says what a save does, from the status chosen
+		await gotoHydrated(page, `/recruiter/jobs/${id}/edit`);
+		const note = page.locator('[data-editor-in-matching]');
+		await expect(note).toHaveAttribute('data-editor-in-matching', 'live');
+		await expect(note).toContainText('This job description is proposed to candidates');
+		await page.getByLabel('Status', { exact: true }).selectOption('filled');
+		await expect(note).toHaveAttribute('data-editor-in-matching', 'leaving');
+		await expect(note).toContainText('its mutual interests end');
+		await page.getByLabel('Status', { exact: true }).selectOption('on_hold');
+		await expect(note).toHaveAttribute('data-editor-in-matching', 'waiting');
+		await expect(note).toContainText('You propose this job description to candidates');
+		await page.getByLabel('Status', { exact: true }).selectOption('open');
+		await expect(note).toHaveAttribute('data-editor-in-matching', 'live');
+		page.on('dialog', (leave) => leave.accept());
+
+		// Confirmed from its page, the status goes
+		await gotoHydrated(page, `/recruiter/jobs/${id}`);
+		await page.getByRole('button', { name: 'Change status' }).click();
+		await page.getByRole('menuitemradio', { name: /^Closed/ }).click();
+		await page
+			.getByRole('alertdialog', { name: 'Change the status to “Closed”?' })
+			.getByRole('button', { name: 'Change the status' })
+			.click();
+		await expect(toasts(page)).toContainText('Status changed to Closed');
+		expect(statuses.map((request) => request.postDataJSON())).toEqual([{ status: 'closed' }]);
 	});
 
 	test('the switch says in words why it was refused, with the way to fix it', async ({ page }) => {

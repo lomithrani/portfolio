@@ -1,8 +1,12 @@
 import {
+	LOCALES,
 	MATCHING_LIMITS,
 	MATCHING_REVIEW_STATUSES,
 	OPEN_JOB_STATUS,
+	keepsMatching,
 	matchingJobProblem,
+	matchingMessages,
+	withLocale,
 	type JobStatus,
 	type MatchDecision,
 	type MatchingReviewStatus
@@ -111,6 +115,35 @@ export const jobMatchingState = (status: JobStatus, matching: JobMatching): JobM
 
 /** Whether matching can be turned on for a job now: only an open one */
 export const canProposeJob = (status: JobStatus): boolean => status === OPEN_JOB_STATUS;
+
+/**
+ * Whether a job was ever put into matching (the switch on now, or a review kept from before): its
+ * mutual interests, if any, go on whatever the switch says, and end once it is filled, closed or
+ * back to draft (server/services/jobMatching.ts afterJobStatusChange)
+ */
+export const everInMatching = (matching: JobMatching | null): boolean =>
+	!!matching && (!!matching.enabledAt || !!matching.review);
+
+/**
+ * What changing a job's status from `from` to `to` takes from matching, as its page asks first and
+ * its editor says: null when nothing (matching off, never put into matching, or a status it keeps:
+ * open or on hold, or one it had left already); else what it loses, said in words (still proposed:
+ * the answers and its mutual interests; put into matching before: its mutual interests, if any)
+ */
+export const leavingMatchingText = (
+	matching: JobMatching | null,
+	from: JobStatus,
+	to: JobStatus
+): string | null => {
+	if (!matching || !everInMatching(matching) || !keepsMatching(from) || keepsMatching(to)) {
+		return null;
+	}
+	return `${matching.enabledAt ? m.leaving.proposed : m.leaving.before} ${m.leaving.final}`;
+};
+
+/** What the dialog that deletes a job adds for a job put into matching (its matches go too) */
+export const deleteMatchingDetails = (matching: unknown): string =>
+	everInMatching(readJobMatching(matching)) ? m.deleteDetails : '';
 
 /**
  * The line of a job of the dashboard: where it stands in matching, or null (matching off, or the
@@ -242,7 +275,27 @@ export const matchingFormErrors = (
 ): Partial<Record<JobFormField, string>> => {
 	if (!proposed || form.status !== OPEN_JOB_STATUS) return {};
 	const problem = matchingJobProblem(form);
-	return problem ? { [problem.field]: problem.message } : {};
+	// The editor's words: the API's rule, and the other way out (unticking the choice)
+	return problem ? { [problem.field]: m.formErrors[problem.field] } : {};
+};
+
+/**
+ * Whether a 409 of POST /jobs is the limit of jobs proposed to candidates at once (the editor then
+ * offers to create it without proposing it), not the limit of job descriptions a recruiter keeps
+ * (which a creation without matching meets too). The API says it in the visitor's language, the
+ * one this page sends: compared in each
+ */
+export const isMatchingLimitBody = (value: unknown): boolean => {
+	const body = bodyText(value);
+	return (
+		!!body &&
+		LOCALES.some(
+			(locale) =>
+				withLocale(locale, () =>
+					matchingMessages.job.tooMany(MATCHING_LIMITS.matchingJobsPerRecruiter)
+				) === body
+		)
+	);
 };
 
 /** Whether the editor sends `matching: true` with a new posting: offered, ticked, created open */
@@ -294,13 +347,17 @@ export const readCandidates = async (jobId: string): Promise<CandidatesRead> => 
 };
 
 /**
- * Whether a candidate waits for the recruiter's answer on the job: `some`, `none`, or `unknown`
- * (the read failed, or is not allowed now). A read of the feed (counted as one): what the card
- * holds is not kept, and the deck reads it again. Never how many
+ * Whether a candidate waits for the recruiter's answer on the job: `some`, `none`, `not-proposed`
+ * (409 JOB_NOT_PROPOSED: the API proposes it to nobody although its posting reads as proposed, its
+ * stored version saved under rules made tighter since), or `unknown` (the read failed, or is not
+ * allowed now). A read of the feed (counted as one): what the card holds is not kept, and the deck
+ * reads it again. Never how many
  */
-export const candidatesWaiting = async (jobId: string): Promise<'some' | 'none' | 'unknown'> => {
+export type CandidatesWaiting = 'some' | 'none' | 'not-proposed' | 'unknown';
+
+export const candidatesWaiting = async (jobId: string): Promise<CandidatesWaiting> => {
 	const read = await readCandidates(jobId);
-	if (!read.ok) return 'unknown';
+	if (!read.ok) return read.failure.kind === 'job-not-proposed' ? 'not-proposed' : 'unknown';
 	return read.page.cards.length > 0 ? 'some' : 'none';
 };
 

@@ -29,7 +29,8 @@ import {
 // with or without matching. The mutual interest is made for real, the candidate first (through the
 // API), then the recruiter in the deck, and is ended: a run answers that card, so `seed:e2e` must
 // run again before the next (it removes the matches of the seeded jobs; CI seeds before every run),
-// or that test stops at once saying so. Google is never reached.
+// or that test stops at once saying so; it is never retried (`retries: 0`: a retry would find the
+// card answered by the attempt before it, and hide that attempt's failure). Google is never reached.
 
 test.skip(!JWT_SECRET, 'Set JWT_SECRET to the API’s secret to sign in as the e2e recruiter');
 
@@ -119,7 +120,10 @@ test('with matching off, nothing of it shows on the recruiter pages, and nothing
 	// The API's answers while MATCHING is off: the routes are not registered, the postings carry
 	// no `matching`
 	await stubApi(page, 'GET', '/me/notifications', () => ({ status: 404, text: 'NOT_FOUND' }));
-	await stubApi(page, 'GET', '/matches**', () => ({ status: 404, text: 'NOT_FOUND' }));
+	const interestReads = await stubApi(page, 'GET', '/matches**', () => ({
+		status: 404,
+		text: 'NOT_FOUND'
+	}));
 	await withMatching(page, '/recruiter/jobs', (posting) => delete posting.matching);
 	await withMatching(page, `/recruiter/jobs/${JOB_ID}`, (posting) => delete posting.matching);
 
@@ -128,11 +132,15 @@ test('with matching off, nothing of it shows on the recruiter pages, and nothing
 	await expect(page.locator('[data-matching-panel]')).toHaveCount(0);
 	await expect(page.getByText('Propose to candidates')).toHaveCount(0);
 
+	// The dashboard never shows, nor asks for, the mutual interests: not even a heading or a
+	// placeholder while the answer is on its way (they wait for matching to be known on)
 	await gotoHydrated(page, '/recruiter');
 	await expect(page.getByRole('heading', { name: 'Your job descriptions' })).toBeVisible();
 	await expect(page.locator('[data-recruiter-matches]')).toHaveCount(0);
+	await expect(page.getByRole('heading', { name: 'Mutual interests' })).toHaveCount(0);
 	await expect(page.locator('[data-job-matching]')).toHaveCount(0);
 	await expect(page.getByRole('alert')).toHaveCount(0);
+	expect(interestReads).toHaveLength(0);
 
 	// The editor offers no choice for a job created open
 	await gotoHydrated(page, '/recruiter/jobs/new');
@@ -274,6 +282,65 @@ test('the account menu marks the recruiter space while mutual interests are not 
 	await expect(item).not.toContainText('2');
 });
 
+test('a mutual interest not seen is said new, marked seen once shown, and the menu’s mark goes', async ({
+	page
+}) => {
+	const INTEREST = '65e2e00000000000000000e1';
+	let seen = false;
+	await stubApi(page, 'GET', '/me/notifications', () => ({
+		json: { mutualInterests: { candidate: 0, recruiter: seen ? 0 : 1 } }
+	}));
+	const now = new Date().toISOString();
+	await stubApi(page, 'GET', '/matches**', (request) =>
+		new URL(request.url()).searchParams.get('side') === 'recruiter'
+			? {
+					json: {
+						matches: [
+							{
+								_id: INTEREST,
+								side: 'recruiter',
+								matchedAt: now,
+								changedAt: null,
+								endedAt: null,
+								endReason: null,
+								seen: false,
+								job: {
+									_id: JOB_ID,
+									title: JOB_TITLE,
+									company: 'E2E Matching Corp',
+									status: 'open'
+								},
+								candidate: { domain: CANDIDATE_DOMAIN, title: null }
+							}
+						],
+						next: null
+					}
+				}
+			: undefined
+	);
+	const marked = await stubApi(page, 'PUT', `/matches/${INTEREST}/seen`, () => {
+		seen = true;
+		return { json: { ok: true } };
+	});
+	await openAsRecruiter(page, '/recruiter');
+
+	const item = page.locator(`[data-recruiter-interest="${INTEREST}"]`);
+	await expect(item.locator('[data-interest-new]')).toHaveText('New');
+	await expect.poll(() => marked.length).toBe(1);
+	// The counts read again once it was marked: the recruiter space is no longer marked new
+	const trigger = page.locator('[data-account-menu]');
+	await expect(trigger).not.toHaveAccessibleName(/new mutual interests/);
+	await expect(page.locator('[data-unseen-dot]')).toHaveCount(0);
+	await trigger.click();
+	const space = page.getByRole('menuitemradio', { name: /^Recruiter space/ });
+	await expect(space).toBeVisible();
+	await expect(space.locator('[data-recruiter-new]')).toHaveCount(0);
+	await page.keyboard.press('Escape');
+	// Still said new until read again
+	await expect(item.locator('[data-interest-new]')).toHaveText('New');
+	expect(marked).toHaveLength(1);
+});
+
 test.describe('with matching on', () => {
 	test.beforeAll(async () => {
 		const api = await apiAs(session);
@@ -296,6 +363,10 @@ test.describe('with matching on', () => {
 			'Google Calendar is not configured in the API under test, so the seeded candidate is not proposed: set GOOGLE_CLIENT_SECRET to any value'
 		);
 	});
+
+	// The seeded card answered by an attempt stays answered (only seed:e2e sets it back): a retry
+	// could never pass, and would hide this attempt's failure
+	test.describe.configure({ retries: 0 });
 
 	test('the recruiter reads an anonymous card, both are interested, the portfolio is revealed, and they end it', async ({
 		page

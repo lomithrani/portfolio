@@ -57,12 +57,14 @@
 		type StatusFilter
 	} from '#services/recruiter.ts';
 	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
-	import { jobMatchingLabel } from '#services/recruiterMatching.ts';
+	import { deleteMatchingDetails, jobMatchingLabel } from '#services/recruiterMatching.ts';
+	import { notificationsStore } from '#services/notifications.ts';
 	import { m } from './page.messages.ts';
 
 	// The recruiter's dashboard: the meetings they booked on candidates' Hire pages
-	// (UpcomingMeetings, GET /appointments/booked), their mutual interests of matching while it is
-	// on (RecruiterMatches, GET /matches?side=recruiter: nothing of it while it is off), their job
+	// (UpcomingMeetings, GET /appointments/booked), their mutual interests of matching once it is
+	// known to be on (RecruiterMatches, GET /matches?side=recruiter, mounted only once
+	// notificationsStore says so: nothing of it shows, nor is asked, while it is off), their job
 	// descriptions (GET /recruiter/jobs, each with where it stands in matching), with the PDF import
 	// (GET / POST /jobs/import) and deletion. Signed out: what the space does and a sign-in (the
 	// age and terms box first); signed in without a recruiter space: a button to create it, after
@@ -276,6 +278,8 @@
 	// --- Delete ----------------------------------------------------------------------------
 
 	let deleting = $state<{ job: RecruiterJob; busy: boolean; error: string } | null>(null);
+	// Counts the postings deleted: the mutual interests are read again (a deleted job's go with it)
+	let deletions = $state(0);
 	// Where the focus goes once the dialog closes: the next posting, else the heading
 	let focusAfterDelete: HTMLElement | null = null;
 
@@ -325,6 +329,7 @@
 			}
 			removeFromList(job._id, userId);
 			deleting = null;
+			deletions++;
 			toaster.success({ title: recruiterMessages.jobDeleted, description: job.title });
 		} catch {
 			deleting = { job, busy: false, error: networkError() };
@@ -434,8 +439,13 @@
 		{:else}
 			<!-- First: a meeting may be about to start -->
 			<UpcomingMeetings userId={user._id} />
-			<!-- Then the candidates both interested (matching: nothing of it while it is off) -->
-			<RecruiterMatches userId={user._id} />
+			<!-- Then the candidates both interested (matching: nothing of it, nor any request, until it is
+			     known to be on); read again once a posting is deleted (its mutual interests go with it) -->
+			{#if $notificationsStore.matching === 'on'}
+				{#key deletions}
+					<RecruiterMatches userId={user._id} fallbackFocus={() => heading ?? null} />
+				{/key}
+			{/if}
 
 			<div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
 				<div class="min-w-0 space-y-1">
@@ -670,6 +680,7 @@
 	open={!!deleting && !!user}
 	title={deleting ? recruiterMessages.deleteJobTitle(deleting.job.title) : ''}
 	description={recruiterMessages.deleteJob}
+	details={deleting ? deleteMatchingDetails(deleting.job.matching) : ''}
 	confirmLabel={common.delete}
 	busy={deleting?.busy ?? false}
 	error={deleting?.error ?? ''}

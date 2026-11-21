@@ -49,7 +49,9 @@
 	// portfolio and their page for recruiters. The posting (GET /recruiter/jobs/:id) says why there
 	// is no deck: matching off (no `matching`: "not available"), the job not proposed now (off, not
 	// open, in review, not accepted with the reviewer's reason, on hold). The deck's stops are said
-	// here (the terms to accept first: TermsAcceptance, then the deck starts again). Never a count of
+	// here (the terms to accept first: TermsAcceptance, then the deck starts again; the job no longer
+	// proposed, the posting read again, which says why, or, when it still reads as proposed, to save
+	// it again in the editor: saved under rules made tighter since). Never a count of
 	// candidates, a name, a place, a commute or a score; no email promised. Rendered in the browser
 	// only (recruiter/+layout.ts), not listed by search engines (under /recruiter/jobs, #lib/robots.ts).
 
@@ -134,6 +136,12 @@
 	let deckRun = $state(0);
 	/** Why the deck stopped, when the page says it apart from the posting's own state */
 	let stopped = $state.raw<DecisionFailure | null>(null);
+	/**
+	 * The feed answered 409 JOB_NOT_PROPOSED and the posting, read again, still reads as proposed:
+	 * the API proposes it to nobody (its stored version saved under rules made tighter since). Said
+	 * with the way out (the editor), never a Retry that could only meet the same answer
+	 */
+	let stale = $derived(stopped?.kind === 'job-not-proposed' && standing === 'live');
 	const stopHeading = 'candidates-stopped';
 	const stateHeading = 'candidates-state';
 
@@ -251,6 +259,19 @@
 					{#snippet actions()}
 						<a href={resolve('/(app)/recruiter/jobs/[id]', { id: jobId })} class={linkClass}
 							>{m.backToJob}</a
+						>
+					{/snippet}
+				</PageNotice>
+			{:else if stale}
+				<PageNotice title={m.notProposed.title} icon={EyeSlash} headingId={stopHeading}>
+					<p>{m.notProposed.stale}</p>
+					{#snippet actions()}
+						<a href={resolve('/(app)/recruiter/jobs/[id]/edit', { id: jobId })} class={linkClass}
+							>{m.notProposed.edit}</a
+						>
+						<a
+							href={resolve('/(app)/recruiter/jobs/[id]', { id: jobId })}
+							class="btn preset-tonal min-h-11">{m.backToJob}</a
 						>
 					{/snippet}
 				</PageNotice>

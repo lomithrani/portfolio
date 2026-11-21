@@ -108,6 +108,17 @@ describe('MatchingPanel', () => {
 		expect(html).not.toContain('<b>Say</b>');
 		expect(shown).toContain('once saved, it goes back for review');
 		expect(html).toContain(`href="/recruiter/jobs/${JOB_ID}/edit"`);
+		// Its terms are locked: a reason about them is answered by stopping it, or by a copy
+		expect(shown).toContain('If the reason is about its terms, which are locked');
+		expect(html).toContain(`href="/recruiter/jobs/new?duplicate=${JOB_ID}"`);
+		expect(shown).toContain('Duplicate');
+		// It still takes one of the places of the jobs proposed at once
+		expect(shown).toContain('turning it off frees its place');
+	});
+
+	it('keeps an open job’s switch usable (never disabled but for a job that cannot be proposed)', () => {
+		const html = panel(job({ matching: { enabledAt: NOW, review: review('approved') } }));
+		expect(html).not.toMatch(/<input[^>]*disabled/);
 	});
 
 	it('says it is proposed, with the way to the candidates, never how many', () => {
@@ -181,6 +192,30 @@ describe('RecruiterInterest', () => {
 			expect(html).not.toContain(word);
 		}
 		expect(shown).not.toMatch(/\bemail\b/i);
+	});
+
+	it('says that a job on hold is held again once open, and offers no way to book meanwhile', () => {
+		const onHold = readMutualInterest(
+			{ ...answer, job: { ...answer.job, status: 'on_hold' } },
+			'recruiter'
+		) as RecruiterMutualInterest;
+		const html = render(RecruiterInterest, { props: { interest: onHold, onEnd: noop } }).body;
+		const shown = textOf(html);
+		expect(shown).toContain('Going on');
+		expect(shown).toContain(
+			'Your job is on hold: their page for recruiters holds it again once you open it again'
+		);
+		expect(shown).not.toContain('go through the steps of their page for recruiters');
+		expect(shown).not.toContain('Go to their page for recruiters');
+		expect(html).not.toContain('href="/e2e-match-card/hire"');
+		// The portfolio stays theirs to see, and the mutual interest theirs to end
+		expect(html).toContain('href="/e2e-match-card/experiences"');
+		expect(html).toMatch(/<button[^>]*data-end/);
+		expect(
+			withLocale('fr', () =>
+				textOf(render(RecruiterInterest, { props: { interest: onHold, onEnd: noop } }).body)
+			)
+		).toContain('Votre offre est en pause');
 	});
 
 	it('names nothing before the portfolio is revealed, and offers no end once ended', () => {

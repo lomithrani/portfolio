@@ -5,13 +5,22 @@ dashboard or in a job's matching panel: the candidate's portfolio once revealed 
 address name: never a name or an email address), the job it is on (left out in that job's own
 panel: `showJob`), the day both became interested, where it stands (going on, ended by them, by the
 candidate, or the job no longer open), whether the job description was edited since, and what they
-can do while it lasts: go through the candidate's page for recruiters (which holds their job) to
-book a meeting, see the portfolio, end it (the list asks first). `fresh`: not seen before this
-showing (the list marks it seen as it shows it). Never a bare "match" (decision 11).
+can do while it lasts: go through the candidate's page for recruiters (which holds their job while
+it is open: on hold, the page's job step waits for it, and says so here) to book a meeting, see the
+portfolio, end it (the list asks first, the focus then back on its button: `data-end`). `fresh`: not
+seen before this showing (the list marks it seen as it shows it). Never a bare "match" (decision 11).
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { ArrowRight, Briefcase, HandThumbUp, UserCircle, XMark } from 'svelte-heros-v2';
+	import {
+		ArrowRight,
+		Briefcase,
+		HandThumbUp,
+		PauseCircle,
+		UserCircle,
+		XMark
+	} from 'svelte-heros-v2';
+	import { OPEN_JOB_STATUS } from 'portfolio-common';
 	import {
 		matchedOnText,
 		mutualInterestChangeText,
@@ -39,6 +48,9 @@ showing (the list marks it seen as it shows it). Never a bare "match" (decision 
 	const uid = $props.id();
 	let candidate = $derived(interest.candidate);
 	let going = $derived(!interest.endedAt);
+	// Its job on hold (a mutual interest goes on while it is): the candidate's page for recruiters
+	// holds it only once it is open again (server/services/workflowSteps/job.ts)
+	let held = $derived(interest.job.status === OPEN_JOB_STATUS);
 	let change = $derived(mutualInterestChangeText(interest));
 	let titleTag = $derived(`h${headingLevel}`);
 	/** A button's label wraps rather than run past it on a narrow phone (in French) */
@@ -89,12 +101,17 @@ showing (the list marks it seen as it shows it). Never a bare "match" (decision 
 	{#if change}
 		<p class="text-sm text-surface-700-300" data-interest-changed>{change}</p>
 	{/if}
-	{#if going && candidate}
+	{#if going && candidate && held}
 		<p class="text-sm">{m.item.next}</p>
+	{:else if going && candidate}
+		<p class="flex items-start gap-1.5 text-sm" data-interest-on-hold>
+			<PauseCircle size="18" class="mt-px shrink-0" aria-hidden="true" />
+			{m.item.onHold}
+		</p>
 	{/if}
 	{#if candidate || going}
 		<div class="flex flex-wrap gap-2 pt-1">
-			{#if candidate && going}
+			{#if candidate && going && held}
 				<a
 					class="{button} preset-filled-primary-500"
 					href={resolve('/[domain]/hire', { domain: candidate.domain })}
@@ -116,7 +133,12 @@ showing (the list marks it seen as it shows it). Never a bare "match" (decision 
 				</a>
 			{/if}
 			{#if going}
-				<button type="button" class="{button} preset-tonal-error" onclick={() => onEnd(interest)}>
+				<button
+					type="button"
+					class="{button} preset-tonal-error"
+					data-end
+					onclick={() => onEnd(interest)}
+				>
 					<XMark size="18" class="shrink-0" aria-hidden="true" />
 					{m.item.end}
 				</button>

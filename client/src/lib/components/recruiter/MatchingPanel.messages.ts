@@ -13,7 +13,7 @@ export const m = defineMessages({
 	 */
 	intro: {
 		en: 'Candidates whose own criteria this job meets see it, and you see their anonymous cards. Their portfolio is shown to you once you are both interested.',
-		fr: "Les candidats dont cette offre remplit les propres critères la voient, et vous voyez leur fiche anonyme. Leur portfolio vous est ouvert en cas d'intérêt réciproque."
+		fr: "Les candidats dont cette offre remplit les critères la voient, et vous voyez leur fiche anonyme. Leur portfolio vous est ouvert en cas d'intérêt réciproque."
 	},
 	/** The switch */
 	switchLabel: { en: 'Propose this job to candidates', fr: 'Proposer cette offre aux candidats' },
@@ -43,10 +43,18 @@ export const m = defineMessages({
 				en: 'A reviewer did not accept it for candidates. Their reason:',
 				fr: "Elle n'a pas été acceptée à la relecture. La raison donnée :"
 			},
-			/** Backed by: server/services/matchingReviews.ts reviewSavedWithEdit (an edit sends it back for review) */
+			/**
+			 * Backed by: server/services/matchingReviews.ts reviewSavedWithEdit (an edit sends it back
+			 * for review), common/models/jobTerms.ts LOCKED_JOB_FIELDS (an opened job's terms are locked)
+			 */
 			next: {
-				en: 'Edit the job description to address it: once saved, it goes back for review.',
-				fr: "Modifiez l'offre en conséquence : une fois enregistrée, elle repart en relecture."
+				en: 'You can edit what is not locked, such as the description: once saved, it goes back for review. If the reason is about its terms, which are locked, stop proposing it, or duplicate it to change them.',
+				fr: "Vous pouvez modifier ce qui n'est pas verrouillé, comme la description : une fois enregistrée, elle repart en relecture. Si la raison porte sur ses conditions, qui sont verrouillées, arrêtez de la proposer, ou dupliquez-la pour les changer."
+			},
+			/** Backed by: server/services/jobMatching.ts jobsInMatching (counted while the switch is on) */
+			place: {
+				en: 'While it stays on, it counts among the job descriptions you can propose at once: turning it off frees its place.',
+				fr: "Tant qu'elle reste activée, elle compte parmi les offres que vous pouvez proposer à la fois : la désactiver libère sa place."
 			}
 		},
 		live: {
@@ -62,6 +70,18 @@ export const m = defineMessages({
 				en: 'It is proposed to nobody while it is on hold. Open it again to propose it.',
 				fr: "Elle n'est proposée à personne tant qu'elle est en pause. Rouvrez-la pour la proposer."
 			}
+		},
+		/**
+		 * Open, on and accepted, but the API proposes it to nobody (its feed's 409 JOB_NOT_PROPOSED).
+		 * Backed by: server/services/jobMatching.ts versionReadsBack (saved under rules made tighter
+		 * since: a pay range wider than the cap)
+		 */
+		stale: {
+			badge: { en: 'Not proposed right now', fr: 'Pas proposée en ce moment' },
+			text: {
+				en: 'It is proposed to nobody right now: it was saved under rules that have changed since. Save it again in the editor to propose it: it then goes back for review.',
+				fr: "Elle n'est proposée à personne en ce moment : elle a été enregistrée selon des règles qui ont changé depuis. Enregistrez-la de nouveau dans l'éditeur pour la proposer : elle repart alors en relecture."
+			}
 		}
 	},
 	/** Whether candidates wait for an answer (a read of the feed): never how many */
@@ -73,21 +93,21 @@ export const m = defineMessages({
 		},
 		review: { en: 'Review candidates', fr: 'Examiner les candidats' }
 	},
-	/**
-	 * While it is proposed. Backed by: server/services/jobMatching.ts afterJobStatusChange (filled,
-	 * closed or back to draft: out of matching, its pending answers dropped, its mutual interests ended)
-	 */
-	leaving: {
-		en: 'Filled, closed or back to draft, it stops being proposed: the answers that made no mutual interest are dropped, and its mutual interests end.',
-		fr: "Pourvue, fermée ou repassée en brouillon, elle n'est plus proposée : les réponses sans intérêt réciproque sont effacées, et ses intérêts réciproques prennent fin."
-	},
-	/** The toasts once the switch went through */
+	/** The toasts once the switch went through, from what the API answered */
 	turnedOn: {
 		en: 'Sent for review: a reviewer reads it before candidates do',
 		fr: "Envoyée en relecture : elle est relue avant qu'un candidat ne la voie"
 	},
 	/** Turned on again, unchanged since a reviewer accepted it */
 	turnedOnLive: { en: 'Proposed to candidates', fr: 'Proposée aux candidats' },
+	/**
+	 * Turned on again, unchanged since a reviewer did not accept it. Backed by:
+	 * server/services/jobMatching.ts reviewOnEntry (an unchanged job keeps its review)
+	 */
+	turnedOnRejected: {
+		en: 'Turned on again, still not accepted: edit it to send it back for review',
+		fr: 'Réactivée, toujours pas acceptée : modifiez-la pour la renvoyer en relecture'
+	},
 	turnedOff: { en: 'No longer proposed to candidates', fr: "N'est plus proposée aux candidats" },
 	/** Turning it off: asked first */
 	stopDialog: {
@@ -106,5 +126,7 @@ export const m = defineMessages({
 	},
 	/** The way to fix a refusal */
 	edit: { en: 'Edit the job description', fr: "Modifier l'offre" },
+	/** A job not accepted for a locked term: a copy changes it (/recruiter/jobs/new?duplicate=) */
+	duplicate: { en: 'Duplicate', fr: 'Dupliquer' },
 	reload: { en: 'Reload', fr: 'Recharger' }
 });

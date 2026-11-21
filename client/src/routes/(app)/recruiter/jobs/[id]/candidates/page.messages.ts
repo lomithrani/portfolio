@@ -22,7 +22,7 @@ export const m = defineMessages({
 	 */
 	intro: {
 		en: 'The anonymous cards of the candidates whose own criteria this job meets, one at a time. Their portfolio is shown to you once you are both interested.',
-		fr: "Les fiches anonymes des candidats dont cette offre remplit les propres critères, une à la fois. Leur portfolio vous est ouvert en cas d'intérêt réciproque."
+		fr: "Les fiches anonymes des candidats dont cette offre remplit les critères, une à la fois. Leur portfolio vous est ouvert en cas d'intérêt réciproque."
 	},
 	/** The deck's accessible name */
 	deck: { en: 'Candidates to review', fr: 'Candidats à examiner' },
@@ -34,7 +34,7 @@ export const m = defineMessages({
 		},
 		/** Backed by: server/services/matchFeeds.ts (proposed when read), notifications (in-app badge only) */
 		text: {
-			en: 'Candidates are proposed here when they make themselves visible to recruiters, or when their criteria change and this job comes to meet them. When a candidate you said you are interested in says so too, your account menu shows it.',
+			en: 'Candidates are proposed here when they make themselves visible to recruiters, or when their criteria change and this job comes to meet them. When a candidate you are interested in says your job interests them too, your account menu shows it.',
 			fr: "Les candidats sont proposés ici quand ils se rendent visibles des recruteurs, ou quand leurs critères changent et que cette offre vient à les remplir. Quand un candidat qui vous intéresse dit que votre offre l'intéresse aussi, le menu de votre compte l'indique."
 		}
 	},
@@ -64,7 +64,18 @@ export const m = defineMessages({
 		paused: {
 			en: 'It is on hold: open it again to propose it to candidates.',
 			fr: 'Elle est en pause : rouvrez-la pour la proposer aux candidats.'
-		}
+		},
+		/**
+		 * Open, on and accepted, yet the API proposes it to nobody (409 JOB_NOT_PROPOSED, the posting
+		 * read again still reading as proposed). Backed by: server/services/jobMatching.ts
+		 * versionReadsBack (saved under rules made tighter since)
+		 */
+		stale: {
+			en: 'It was saved under rules that have changed since: save it again in the editor to propose it. It then goes back for review.',
+			fr: "Elle a été enregistrée selon des règles qui ont changé depuis : enregistrez-la de nouveau dans l'éditeur pour la proposer. Elle repart alors en relecture."
+		},
+		/** The way out of `stale` */
+		edit: { en: 'Edit the job description', fr: "Modifier l'offre" }
 	},
 	/** Matching is off in the API (the posting carries no `matching`, or a route answered its 404) */
 	unavailable: {

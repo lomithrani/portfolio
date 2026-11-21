@@ -72,5 +72,56 @@ export const m = defineMessages({
 			en: 'Could not save this change. Try again in a moment.',
 			fr: "Impossible d'enregistrer ce changement. Réessayez dans un instant."
 		}
+	},
+	/**
+	 * What a job that was put into matching loses once filled, closed or back to draft (its page's
+	 * status, its editor's, both asked or said first). Backed by: server/services/jobMatching.ts
+	 * afterJobStatusChange (out of matching, its pending answers dropped, its mutual interests ended,
+	 * whatever the switch says: mutual interests go on once it is turned off)
+	 */
+	leaving: {
+		/** Proposed to candidates now (the switch on) */
+		proposed: {
+			en: 'Filled, closed or back to draft, it stops being proposed: the answers that made no mutual interest are dropped, and its mutual interests end.',
+			fr: "Pourvue, fermée ou repassée en brouillon, elle n'est plus proposée : les réponses sans intérêt réciproque sont effacées, et ses intérêts réciproques prennent fin."
+		},
+		/** Put into matching before, not proposed now (its mutual interests go on) */
+		before: {
+			en: 'Filled, closed or back to draft, its mutual interests with candidates end, if it has any.',
+			fr: "Pourvue, fermée ou repassée en brouillon, ses intérêts réciproques avec des candidats prennent fin, s'il y en a."
+		},
+		/** Opened again later: what ended stays ended */
+		final: {
+			en: 'Opening it again does not bring them back.',
+			fr: 'La rouvrir ne les fait pas revenir.'
+		}
+	},
+	/** Its page's status set to filled, closed or draft, for a job put into matching: asked first */
+	statusDialog: {
+		/** `status`: the label of the status chosen */
+		title: {
+			en: (status: string) => `Change the status to “${status}”?`,
+			fr: (status: string) => `Passer le statut à « ${status} » ?`
+		},
+		confirm: { en: 'Change the status', fr: 'Changer le statut' }
+	},
+	/** Deleting a job put into matching: added to the dialog. Backed by: jobMatching.ts afterJobDeleted */
+	deleteDetails: {
+		en: 'Its mutual interests with candidates, and the answers given on it, are deleted with it.',
+		fr: 'Ses intérêts réciproques avec des candidats, et les réponses données à son sujet, sont supprimés avec elle.'
+	},
+	/**
+	 * The job editor, for a job created open with "Propose it to candidates" ticked: what it asks
+	 * first (portfolio-common's matchingJobProblem, the API's rule), with the other way out
+	 */
+	formErrors: {
+		company: {
+			en: 'Name the company: candidates decide whether they are interested before they know who you are. Or untick “Propose it to candidates”.',
+			fr: "Indiquez l'entreprise : les candidats disent s'ils sont intéressés avant de savoir qui vous êtes. Ou décochez « La proposer aux candidats »."
+		},
+		description: {
+			en: 'Describe the job: candidates read it before they say whether they are interested. Or untick “Propose it to candidates”.',
+			fr: "Décrivez le poste : les candidats lisent l'offre avant de dire s'ils sont intéressés. Ou décochez « La proposer aux candidats »."
+		}
 	}
 });

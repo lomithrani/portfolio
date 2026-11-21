@@ -7,10 +7,16 @@ mutual interest came of go), where it stands with the reviewers ("In review", "N
 the reviewer's reason as they wrote it, "Proposed to candidates", "On hold"), whether candidates
 wait for an answer once it is proposed (a read of the feed: never how many) with the way to their
 anonymous cards (/recruiter/jobs/:id/candidates), and the job's mutual interests
-(RecruiterMatches.svelte). Shown only while the posting carries `matching` (MATCHING on): absent,
+(RecruiterMatches.svelte, read again once its status or the switch changed: a job filled, closed
+or back to draft ends them). Shown only while the posting carries `matching` (MATCHING on): absent,
 nothing of matching shows. What the switch was refused for is said in words, with the way to fix
 it (the editor, a reload); what the page handles (signed out, the job gone, the terms, no recruiter
-space) goes to it.
+space) goes to it. A job not accepted says what can be done about it (an edit of what is not
+locked, or a copy, Duplicate) and that turning it off frees one of the jobs a recruiter may propose
+at once. A job that reads as proposed but that the API proposes to nobody (its feed's 409
+JOB_NOT_PROPOSED: saved under rules made tighter since) says to save it again in the editor. The
+switch stays focusable while its change is saved (read-only, never disabled: a disabled control
+loses the focus).
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -28,15 +34,17 @@ space) goes to it.
 	import { common } from '#lib/i18n/common.messages.ts';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import RecruiterMatches from './RecruiterMatches.svelte';
-	import type { RecruiterJobDetail } from '#services/recruiter.ts';
+	import { duplicateJobHref, type RecruiterJobDetail } from '#services/recruiter.ts';
 	import {
 		canProposeJob,
 		candidatesWaiting,
 		jobMatchingState,
 		readJobMatching,
 		setJobMatching,
+		type CandidatesWaiting,
 		type SwitchFailure
 	} from '#services/recruiterMatching.ts';
+	import { m as matchingTexts } from '#services/recruiterMatching.messages.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { m } from './MatchingPanel.messages.ts';
 
@@ -90,13 +98,18 @@ space) goes to it.
 		if (result.ok) {
 			stopping = false;
 			onChange(result.job);
+			// What the API answered: sent for review, or, unchanged since a reviewer decided, accepted
+			// (proposed at once) or still not accepted
 			const after = readJobMatching(result.job.matching);
+			const state = after ? jobMatchingState(result.job.status, after) : null;
 			toaster.success({
 				title: !enabled
 					? m.turnedOff
-					: after && jobMatchingState(result.job.status, after) === 'live'
+					: state === 'live'
 						? m.turnedOnLive
-						: m.turnedOn
+						: state === 'rejected'
+							? m.turnedOnRejected
+							: m.turnedOn
 			});
 			return;
 		}
@@ -132,7 +145,10 @@ space) goes to it.
 	}
 
 	// Whether candidates wait for an answer, once it is proposed: read again for another job
-	let waiting = $state<'some' | 'none' | 'unknown' | null>(null);
+	let waiting = $state<CandidatesWaiting | null>(null);
+	// Read as proposed, but the API proposes it to nobody: saved under rules made tighter since
+	let stale = $derived(standing === 'live' && waiting === 'not-proposed');
+	let title: HTMLElement | undefined = $state();
 	let peeked = '';
 	$effect(() => {
 		const key = standing === 'live' ? job._id : '';
@@ -153,17 +169,21 @@ space) goes to it.
 	<section
 		class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-4 p-4"
 		aria-labelledby="{uid}-title"
-		data-matching-panel={standing}
+		aria-busy={busy ? 'true' : undefined}
+		data-matching-panel={stale ? 'stale' : standing}
 	>
 		<div class="space-y-1">
-			<h3 id="{uid}-title" class="font-semibold">{m.title}</h3>
+			<h3 bind:this={title} id="{uid}-title" tabindex="-1" class="font-semibold outline-none">
+				{m.title}
+			</h3>
 			<p class="text-sm text-surface-700-300">{m.intro}</p>
 		</div>
 
 		<Switch
 			class="flex w-full items-start gap-3"
 			checked={shownOn}
-			disabled={busy || (!on && !canTurnOn)}
+			readOnly={busy}
+			disabled={!on && !canTurnOn}
 			onCheckedChange={(details) => onCheckedChange(details.checked)}
 		>
 			<Switch.Control class="mt-0.5 shrink-0">
@@ -205,7 +225,19 @@ space) goes to it.
 			</div>
 		{/if}
 
-		{#if standing !== 'off'}
+		{#if stale}
+			<div class="space-y-2" data-matching-state>
+				<p class="badge gap-1.5 preset-tonal-warning">
+					<ExclamationTriangle size="14" aria-hidden="true" />
+					{m.state.stale.badge}
+				</p>
+				<p class="text-sm">{m.state.stale.text}</p>
+				<a
+					href={resolve('/(app)/recruiter/jobs/[id]/edit', { id: job._id })}
+					class="{button} preset-tonal btn-sm">{m.edit}</a
+				>
+			</div>
+		{:else if standing !== 'off'}
 			{@const shown = m.state[standing]}
 			<div class="space-y-2" data-matching-state>
 				<p
@@ -239,15 +271,24 @@ space) goes to it.
 						{matching.review?.reason ?? ''}
 					</blockquote>
 					<p class="text-sm">{m.state.rejected.next}</p>
-					<a
-						href={resolve('/(app)/recruiter/jobs/[id]/edit', { id: job._id })}
-						class="{button} preset-tonal btn-sm">{m.edit}</a
-					>
+					<div class="flex flex-wrap gap-2">
+						<a
+							href={resolve('/(app)/recruiter/jobs/[id]/edit', { id: job._id })}
+							class="{button} preset-tonal btn-sm">{m.edit}</a
+						>
+						<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve()d, with a query -->
+						<a
+							href={duplicateJobHref(resolve('/(app)/recruiter/jobs/new'), job._id)}
+							class="{button} preset-tonal btn-sm">{m.duplicate}</a
+						>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
+					</div>
+					<p class="text-sm text-surface-700-300">{m.state.rejected.place}</p>
 				{/if}
 			</div>
 		{/if}
 
-		{#if standing === 'live'}
+		{#if standing === 'live' && !stale}
 			<div class="space-y-2" data-candidates-waiting={waiting ?? 'unknown'}>
 				{#if waiting === 'some'}
 					<p class="flex items-center gap-2 text-sm font-medium">
@@ -270,13 +311,16 @@ space) goes to it.
 		{#if on}
 			<p class="flex items-start gap-2 text-xs text-surface-700-300">
 				<InformationCircle size="16" class="shrink-0" aria-hidden="true" />
-				{m.leaving}
+				{matchingTexts.leaving.proposed}
 			</p>
 		{/if}
 
-		<!-- A job never proposed has none -->
+		<!-- A job never proposed has none; read again once its status or the switch changed (a job
+		     filled, closed or back to draft ends them) -->
 		{#if on || matching.review}
-			<RecruiterMatches {userId} jobId={job._id} />
+			{#key `${job.status}:${matching.enabledAt}`}
+				<RecruiterMatches {userId} jobId={job._id} fallbackFocus={() => title ?? null} />
+			{/key}
 		{/if}
 	</section>
 

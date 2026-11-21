@@ -144,14 +144,18 @@ export const hasPendingText = (pending: PendingListText | undefined): boolean =>
 
 /**
  * A stored editor draft: the form, the signature of the form it started from, the text typed in
- * the lists and not added yet, and, for a new posting, whether it is to be proposed to candidates
- * once created open (matching: not part of the posting, POST /jobs's `matching`)
+ * the lists and not added yet, and, for a new posting, the choice of proposing it to candidates
+ * once created open (matching: not part of the posting, POST /jobs's `matching`), stored only when
+ * the recruiter changed it, with the default it was changed from (`matchingDefault`): a job written
+ * from a candidate's page for recruiters starts unticked, from the dashboard ticked, and both share
+ * the draft of a new posting, so a choice comes back only under the default it was made against
  */
 export type StoredJobDraft = {
 	form: JobForm;
 	basis?: string;
 	pending?: PendingListText;
 	matching?: boolean;
+	matchingDefault?: boolean;
 };
 
 const TEXT_FIELDS = [
@@ -239,7 +243,9 @@ export function loadJobDraft(
 		form,
 		basis: typeof stored.basis === 'string' ? stored.basis : undefined,
 		...(hasPendingText(pending) ? { pending } : {}),
-		...(typeof stored.matching === 'boolean' ? { matching: stored.matching } : {})
+		...(typeof stored.matching === 'boolean' && typeof stored.matchingDefault === 'boolean'
+			? { matching: stored.matching, matchingDefault: stored.matchingDefault }
+			: {})
 	};
 }
 
@@ -281,7 +287,9 @@ export function clearJobDraft(
  * added yet: the restored draft's (a draft of such text alone is restored too), else none.
  *
  * `matching` (a new posting, while matching is offered): whether it is to be proposed to candidates
- * by default. The draft's own choice comes back with it (`matching` of the answer), and a draft that
+ * by default. The draft's own choice comes back with it (`matching` of the answer) only when it was
+ * made against that same default (`matchingDefault` of the draft: a choice made on the dashboard
+ * never ticks a job written from a candidate's page, nor the other way round), and a draft that
  * changed only that choice is restored too; without a choice offered, none is read.
  */
 export function startingJobForms(
@@ -333,7 +341,9 @@ export function startingJobForms(
 	// The choice of matching is a new posting's, when one is offered
 	const offered = !job && matching !== undefined;
 	const draftMatching =
-		offered && typeof draft?.matching === 'boolean' ? draft.matching : undefined;
+		offered && typeof draft?.matching === 'boolean' && draft.matchingDefault === matching
+			? draft.matching
+			: undefined;
 	const changed =
 		!!draft &&
 		(jobFormSignature(draft.form) !== jobFormSignature(baseline) ||

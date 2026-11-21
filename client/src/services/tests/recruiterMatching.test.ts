@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	LOCALES,
 	MATCHING_LIMITS,
+	matchingMessages,
 	messageSource,
 	withLocale,
 	type MessageTree
@@ -10,8 +11,12 @@ import { emptyJobForm } from '../jobPosting';
 import { networkError } from '../recruiter';
 import {
 	canProposeJob,
+	deleteMatchingDetails,
+	everInMatching,
+	isMatchingLimitBody,
 	jobMatchingLabel,
 	jobMatchingState,
+	leavingMatchingText,
 	matchingFormErrors,
 	readJobMatching,
 	recruiterInterestFailure,
@@ -186,6 +191,16 @@ describe('the job editor’s choice', () => {
 		expect(matchingFormErrors(form({ status: 'open', company: 'Acme' }), true)).toEqual({
 			description: expect.stringContaining('Describe the job')
 		});
+		// With the other way out: unticking the choice
+		expect(
+			matchingFormErrors(form({ status: 'open', description: 'Run it.' }), true).company
+		).toContain('Or untick “Propose it to candidates”.');
+		expect(
+			withLocale(
+				'fr',
+				() => matchingFormErrors(form({ status: 'open', company: 'Acme' }), true).description
+			)
+		).toContain('Ou décochez «\u00a0La proposer aux candidats\u00a0».');
 		expect(
 			matchingFormErrors(form({ status: 'open', company: 'Acme', description: 'Run it.' }), true)
 		).toEqual({});
@@ -202,6 +217,61 @@ describe('the job editor’s choice', () => {
 		expect(sendsMatching(open, { offered: false, proposed: true })).toBe(false);
 		expect(sendsMatching(open, { offered: true, proposed: false })).toBe(false);
 		expect(sendsMatching(form({ status: 'draft' }), { offered: true, proposed: true })).toBe(false);
+	});
+});
+
+describe('isMatchingLimitBody', () => {
+	it('tells the limit of jobs proposed at once from the limit of job descriptions, in either language', () => {
+		for (const locale of LOCALES) {
+			const body = withLocale(locale, () =>
+				matchingMessages.job.tooMany(MATCHING_LIMITS.matchingJobsPerRecruiter)
+			);
+			expect(isMatchingLimitBody(body)).toBe(true);
+			expect(isMatchingLimitBody(` ${body} `)).toBe(true);
+		}
+		expect(isMatchingLimitBody('You can keep 50 job descriptions at most.')).toBe(false);
+		expect(isMatchingLimitBody('')).toBe(false);
+		expect(isMatchingLimitBody(undefined)).toBe(false);
+		expect(isMatchingLimitBody({ message: 'x' })).toBe(false);
+	});
+});
+
+describe('what leaving matching takes', () => {
+	const on = readJobMatching({ enabledAt: REVIEWED, review: { status: 'approved' } });
+	const before = readJobMatching({ enabledAt: null, review: { status: 'pending' } });
+	const never = readJobMatching({ enabledAt: null, review: null });
+
+	it('is asked only of a job put into matching that a status takes out of it', () => {
+		expect(everInMatching(on)).toBe(true);
+		expect(everInMatching(before)).toBe(true);
+		expect(everInMatching(never)).toBe(false);
+		expect(everInMatching(null)).toBe(false);
+		for (const to of ['filled', 'closed', 'draft'] as const) {
+			expect(leavingMatchingText(on, 'open', to)).toContain('it stops being proposed');
+			expect(leavingMatchingText(on, 'on_hold', to)).toContain('its mutual interests end');
+			expect(leavingMatchingText(before, 'open', to)).toContain(
+				'its mutual interests with candidates end, if it has any'
+			);
+		}
+		// A status it keeps (open, on hold), one it had left already, a job never put into it, or
+		// matching off (no `matching`): nothing to ask
+		expect(leavingMatchingText(on, 'open', 'on_hold')).toBeNull();
+		expect(leavingMatchingText(on, 'on_hold', 'open')).toBeNull();
+		expect(leavingMatchingText(before, 'filled', 'closed')).toBeNull();
+		expect(leavingMatchingText(never, 'open', 'filled')).toBeNull();
+		expect(leavingMatchingText(null, 'open', 'filled')).toBeNull();
+		expect(leavingMatchingText(on, 'open', 'closed')).toContain(
+			'Opening it again does not bring them back.'
+		);
+	});
+
+	it('adds to the deletion of a job put into matching that its matches go too', () => {
+		expect(deleteMatchingDetails({ enabledAt: REVIEWED, review: null })).toContain(
+			'mutual interests with candidates'
+		);
+		expect(deleteMatchingDetails({ enabledAt: null, review: { status: 'rejected' } })).not.toBe('');
+		expect(deleteMatchingDetails({ enabledAt: null, review: null })).toBe('');
+		expect(deleteMatchingDetails(undefined)).toBe('');
 	});
 });
 
@@ -250,6 +320,10 @@ describe('what a recruiter reads of matching', () => {
 			...texts(source.label),
 			// The limit names how many of their own jobs they may propose at once: no count of candidates
 			...texts({ ...failures, limit: undefined } as unknown as MessageTree),
+			...texts(source.leaving),
+			...texts(source.statusDialog),
+			...texts({ deleteDetails: source.deleteDetails } as MessageTree),
+			...texts(source.formErrors),
 			...texts(messageSource(panel) as MessageTree),
 			...texts(messageSource(interests) as MessageTree),
 			...texts(messageSource(candidatesPage) as MessageTree),
