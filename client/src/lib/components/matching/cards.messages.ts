@@ -15,6 +15,7 @@ export const m = defineMessages({
 			en: (duration: string) => `${duration} of professional experience`,
 			fr: (duration: string) => `${duration} d'expérience professionnelle`
 		},
+		/** No professional role at all (roles without dates leave the total unsaid instead) */
 		noExperience: {
 			en: 'No professional experience listed',
 			fr: 'Aucune expérience professionnelle indiquée'
@@ -82,12 +83,20 @@ export const m = defineMessages({
 	},
 	mutual: {
 		heading: { en: "You're both interested", fr: 'Intérêt réciproque' },
-		/** To the candidate: what happens next (no email is promised: none is sent) */
+		/**
+		 * To the candidate: what happens next (no email is promised: none is sent). Nothing of whether
+		 * the portfolio is shown yet (their answer does not say it): how a meeting is booked
+		 */
 		candidate: {
 			en: (title: string) =>
-				`The recruiter of ${title} is interested in you too. They now see your portfolio, and go through the steps of your page for recruiters to book a meeting with you.`,
+				`The recruiter of ${title} is interested in you too. To book a meeting with you, they go through the steps of your page for recruiters.`,
 			fr: (title: string) =>
-				`Le recruteur de l'offre ${title} s'intéresse aussi à vous. Il voit maintenant votre portfolio, et passe par les étapes de votre page recruteurs pour réserver un rendez-vous avec vous.`
+				`Le recruteur de l'offre ${title} s'intéresse aussi à vous. Pour réserver un rendez-vous avec vous, il passe par les étapes de votre page recruteurs.`
+		},
+		/** The same, for a version of the job that no longer reads back (no title to name) */
+		candidateUntitled: {
+			en: 'The recruiter of this job is interested in you too. To book a meeting with you, they go through the steps of your page for recruiters.',
+			fr: "Le recruteur de cette offre s'intéresse aussi à vous. Pour réserver un rendez-vous avec vous, il passe par les étapes de votre page recruteurs."
 		},
 		/** To the recruiter, the portfolio revealed: their page for recruiters holds the job */
 		recruiter: {

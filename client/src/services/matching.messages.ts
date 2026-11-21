@@ -30,7 +30,7 @@ export const m = defineMessages({
 		/** Said once the answer is saved (a polite live region) */
 		passed: {
 			en: (title: string) => `You passed ${title}.`,
-			fr: (title: string) => `Vous passez l'offre ${title}.`
+			fr: (title: string) => `Vous avez passé votre tour sur l'offre ${title}.`
 		},
 		/** Its recruiter sees the candidate's interest (the discovery consent says so) */
 		interested: {
@@ -60,7 +60,10 @@ export const m = defineMessages({
 	},
 	/** A recruiter's deck: the anonymous cards proposed for their job. No digit anywhere */
 	recruiter: {
-		passed: { en: 'You passed this candidate.', fr: 'Vous passez ce candidat.' },
+		passed: {
+			en: 'You passed this candidate.',
+			fr: 'Vous avez passé votre tour sur ce candidat.'
+		},
 		/** The candidate sees the recruiter's interest beside the job (their feed's `interested`) */
 		interested: {
 			en: 'This candidate interests you: they see it beside your job.',
@@ -85,6 +88,40 @@ export const m = defineMessages({
 		loadFailed: {
 			en: 'Could not load the next candidate. Try again in a moment.',
 			fr: 'Impossible de charger le candidat suivant. Réessayez dans un instant.'
+		}
+	},
+	/** No card left while the answer on its way is saved (and none to read after it) */
+	sending: { en: 'Sending your answer…', fr: 'Envoi de votre réponse…' },
+	/**
+	 * Where a mutual interest stands (the lists of each side: mutualInterestStateText,
+	 * mutualInterestChangeText, matchedOnText). Never a bare "match" (it names the score)
+	 */
+	mutualInterest: {
+		ongoing: { en: 'Going on', fr: 'En cours' },
+		ended: { en: 'Ended', fr: 'Terminé' },
+		endedByYou: { en: 'You ended it', fr: 'Vous y avez mis fin' },
+		endedByCandidate: { en: 'The candidate ended it', fr: 'Le candidat y a mis fin' },
+		endedByRecruiter: { en: 'The recruiter ended it', fr: 'Le recruteur y a mis fin' },
+		/** Filled, closed or back to draft: every mutual interest on it ends */
+		jobClosed: {
+			en: 'Ended: the job is no longer open',
+			fr: "Terminé : l'offre n'est plus ouverte"
+		},
+		/** The posting was edited since (`changedAt`): each side keeps the version they were both interested in */
+		changed: {
+			candidate: {
+				en: 'The job description was edited since: you keep the version you said yes to.',
+				fr: "L'offre a été modifiée depuis : vous gardez la version à laquelle vous avez dit oui."
+			},
+			recruiter: {
+				en: 'The job description was edited since: the candidate keeps the version they said yes to.',
+				fr: "L'offre a été modifiée depuis : le candidat garde la version à laquelle il a dit oui."
+			}
+		},
+		/** `day`: '20 Nov 2026' */
+		matchedOn: {
+			en: (day: string) => `Both interested on ${day}`,
+			fr: (day: string) => `Intérêt réciproque le ${day}`
 		}
 	},
 	/** Why an answer, or its undo, did not go through */
@@ -112,12 +149,28 @@ export const m = defineMessages({
 			en: "You're both interested already.",
 			fr: 'Intérêt réciproque déjà établi.'
 		},
-		/** 429: the answers of a day (MATCHING_LIMITS.decisionsPerDay), as the API says it */
-		limit: {
-			en: 'You have answered as many times as a day allows. Try again tomorrow.',
-			fr: "Vous avez répondu autant de fois qu'une journée le permet. Réessayez demain."
+		/**
+		 * 429: the answers of a day (MATCHING_LIMITS.decisionsPerDay, a UTC day), with from when
+		 * (`moment`: its Retry-After, '22 Nov 2026, 01:00', in the visitor's time zone)
+		 */
+		limitUntil: {
+			en: (moment: string) =>
+				`You have answered as many times as a day allows. You can answer again from ${moment}.`,
+			fr: (moment: string) =>
+				`Vous avez répondu autant de fois qu'une journée le permet. Vous pourrez répondre de nouveau à partir du ${moment}.`
 		},
-		/** 429 of a read of a feed: the reads of an hour (MATCHING_FEED_READS of the API) */
+		/** The same without a Retry-After (never "tomorrow": the day is a UTC day) */
+		limit: {
+			en: 'You have answered as many times as a day allows. Try again later.',
+			fr: "Vous avez répondu autant de fois qu'une journée le permet. Réessayez plus tard."
+		},
+		/** 429 of a read of a feed: the reads of an hour (MATCHING_FEED_READS of the API), from when */
+		readLimitUntil: {
+			en: (moment: string) =>
+				`You have read what is proposed to you as often as an hour allows. Try again from ${moment}.`,
+			fr: (moment: string) =>
+				`Vous avez consulté ce qui vous est proposé aussi souvent qu'une heure le permet. Réessayez à partir du ${moment}.`
+		},
 		readLimit: {
 			en: 'You have read what is proposed to you as often as an hour allows. Try again later.',
 			fr: "Vous avez consulté ce qui vous est proposé aussi souvent qu'une heure le permet. Réessayez plus tard."

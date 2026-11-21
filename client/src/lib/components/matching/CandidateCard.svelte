@@ -39,10 +39,13 @@ moves to this card (`headingId`, tabindex -1).
 	let titleTag = $derived(`h${headingLevel}`);
 	let sectionTag = $derived(`h${headingLevel + 1}`);
 	let heading = $derived(card.headline ?? card.roles[0]?.title ?? m.candidate.anonymous);
+	// Roles without dates count no month: the total is then left unsaid, never "none listed"
 	let experience = $derived(
 		card.experienceMonths >= 1
 			? m.candidate.experience(formatMonthCount(card.experienceMonths))
-			: m.candidate.noExperience
+			: card.roles.length === 0
+				? m.candidate.noExperience
+				: ''
 	);
 
 	const roleTime = (months: number | null) =>
@@ -72,7 +75,9 @@ moves to this card (`headingId`, tabindex -1).
 		>
 			{heading}
 		</svelte:element>
-		<p class="text-surface-700-300">{experience}</p>
+		{#if experience}
+			<p class="text-surface-700-300">{experience}</p>
+		{/if}
 	</header>
 
 	{#if card.roles.length > 0}

@@ -8,6 +8,7 @@ import {
 	MATCH_END_REASONS,
 	MATCHING_LIMITS,
 	PERFECT_JOB_CRITERIA,
+	intlLocale,
 	isValidDomainName,
 	type DiscoveryRequirement,
 	type DiscoveryState,
@@ -19,7 +20,7 @@ import {
 } from 'portfolio-common';
 import { isConsentProblem } from './apiErrors';
 import type { JobPostingLike } from './jobPosting';
-import { isNetworkFailure, networkError } from './recruiter';
+import { formatDay, isNetworkFailure, networkError } from './recruiter';
 import {
 	isScore,
 	jobMatchCriteria,
@@ -40,6 +41,16 @@ import { m } from './matching.messages';
 // nothing of matching (`matchingOff`).
 
 // --- Small readers ---------------------------------------------------------------------------
+
+/** A moment as the screens say it: '28 Nov 2026, 14:05' (in the browser's time zone) */
+export const formatMoment = (date: Date): string =>
+	date.toLocaleString(intlLocale('en-GB'), {
+		day: 'numeric',
+		month: 'short',
+		year: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit'
+	});
 
 type Fields = Record<string, unknown>;
 
@@ -179,13 +190,21 @@ export const readRecruiterCard = (value: unknown): RecruiterCard | undefined => 
 
 /**
  * GET /recruiter/jobs/:id/candidates, read: at most MATCHING_LIMITS.recruiterCardsPerRead cards
- * (one: never a page that would count the job's candidates); undefined for an answer that is not one
+ * (one: never a page that would count the job's candidates); undefined for an answer that is not
+ * one, and for one that listed cards of which none reads (a web build and an API that disagree:
+ * the page says the read failed, to try again, rather than read the same card again and again,
+ * each read counted against the hour's reads). No card read, no more: the API says `more` only
+ * once it gave a card, and the next card is read once the one held is answered
  */
 export const readRecruiterFeed = (value: unknown): RecruiterFeed | undefined => {
 	const feed = fields(value);
 	if (!Array.isArray(feed.cards)) return undefined;
 	const cards = feed.cards.flatMap((entry) => readRecruiterCard(entry) ?? []);
-	return { cards: cards.slice(0, MATCHING_LIMITS.recruiterCardsPerRead), more: feed.more === true };
+	if (feed.cards.length > 0 && cards.length === 0) return undefined;
+	return {
+		cards: cards.slice(0, MATCHING_LIMITS.recruiterCardsPerRead),
+		more: cards.length > 0 && feed.more === true
+	};
 };
 
 // --- Job descriptions ------------------------------------------------------------------------
@@ -406,17 +425,18 @@ export interface DecisionResult {
 
 /**
  * The answer of PUT or DELETE of a decision of `side`; undefined for one that is not what the API
- * promises (the answer was saved all the same: the screen reads it again rather than guess)
+ * promises (the answer was saved all the same: the screen reads it again rather than guess), a
+ * mutual interest that does not read included: never taken for a plain answer, which Undo would
+ * offer to take back
  */
 export const readDecisionResult = (value: unknown, side: MatchSide): DecisionResult | undefined => {
 	const answer = fields(value);
 	if (!('decision' in answer) || !('match' in answer)) return undefined;
 	const decision = answer.decision === null ? null : oneOf(MATCH_DECISIONS, answer.decision);
 	if (decision === undefined) return undefined;
-	return {
-		decision,
-		match: answer.match === null ? null : (readMutualInterest(answer.match, side) ?? null)
-	};
+	if (answer.match === null) return { decision, match: null };
+	const match = readMutualInterest(answer.match, side);
+	return match ? { decision, match } : undefined;
 };
 
 // --- Discovery -------------------------------------------------------------------------------
@@ -599,23 +619,45 @@ export const deckLoading = <T>(deck: Deck<T>): Deck<T> => ({ ...deck, loading: t
 export const deckLoadFailed = <T>(deck: Deck<T>): Deck<T> => ({ ...deck, loading: false });
 
 /**
- * A read of the feed arrived: its cards go under those held (each once: a card held, or on its
- * way, is not added again), with whether there are more after them
+ * A read of the feed arrived: its cards go under those held (each once: a card held, on its way or
+ * answered already is not added again, as a read that left before an answer was saved may still
+ * list it), with whether there are more after them. Travel times still being computed (`pending`)
+ * stay said until a read from the start (`fromStart`) says otherwise: the jobs waiting for them may
+ * be behind a cursor read since, which says nothing of them
  */
-export const appendPage = <T>(deck: Deck<T>, page: DeckPage<T>, key: CardKey<T>): Deck<T> => {
-	const held = deck.sending ? [...deck.cards, deck.sending.card] : deck.cards;
+export const appendPage = <T>(
+	deck: Deck<T>,
+	page: DeckPage<T>,
+	key: CardKey<T>,
+	fromStart = false
+): Deck<T> => {
+	const held = [
+		...deck.cards,
+		...(deck.sending ? [deck.sending.card] : []),
+		...(deck.last ? [deck.last.card] : [])
+	];
+	const answered = new Set(deck.answered);
 	return {
 		...deck,
-		cards: [...deck.cards, ...fresh(held, page.cards, key)],
+		cards: [
+			...deck.cards,
+			...fresh(held, page.cards, key).filter((card) => !answered.has(key(card)))
+		],
 		more: page.more,
 		next: page.more ? (page.next ?? null) : null,
-		pending: page.pending === true,
+		pending: page.pending === true || (!fromStart && deck.pending),
 		loading: false
 	};
 };
 
 /** The card on top: the one the buttons and keys answer */
 export const topCard = <T>(deck: Deck<T>): T | undefined => deck.cards[0];
+
+/**
+ * Whether another card comes after the one on top: one held under it (a card undone comes back
+ * over the next one already read), or more to read. Never how many
+ */
+export const moreAfterTop = <T>(deck: Deck<T>): boolean => deck.cards.length > 1 || deck.more;
 
 /** Whether the deck takes an answer now: a card on top, nothing on its way */
 export const canDecide = <T>(deck: Deck<T>): boolean => !deck.sending && deck.cards.length > 0;
@@ -726,6 +768,43 @@ export const shouldLoadMore = <T>(deck: Deck<T>, side: MatchSide): boolean => {
 	return deck.next !== null && deck.cards.length <= 3;
 };
 
+/**
+ * What the deck shows: the moment both are interested (until the person goes on), nothing once it
+ * stopped (the page says why: `onStop`), a placeholder before its first read, the card on top, a
+ * placeholder while the next one is coming (a read, or an answer on its way with no card left), a
+ * failed read to try again, or that there is nothing to answer. Never the empty state while it
+ * stopped, nor while a card may still come
+ */
+export type DeckView =
+	'moment' | 'stopped' | 'placeholder' | 'card' | 'waiting' | 'error' | 'empty';
+
+export const deckView = <T>({
+	deck,
+	side,
+	started,
+	stopped,
+	moment,
+	readError
+}: {
+	deck: Deck<T>;
+	side: MatchSide;
+	/** Its first read came back */
+	started: boolean;
+	stopped: boolean;
+	/** A mutual interest is shown */
+	moment: boolean;
+	/** The latest read failed, to try again */
+	readError: boolean;
+}): DeckView => {
+	if (moment) return 'moment';
+	if (stopped) return 'stopped';
+	if (!started) return 'placeholder';
+	if (deck.cards.length > 0) return 'card';
+	if (deck.sending || deck.loading) return 'waiting';
+	if (readError) return 'error';
+	return shouldLoadMore(deck, side) ? 'waiting' : 'empty';
+};
+
 // --- Keys and drag ---------------------------------------------------------------------------
 
 export type DeckAction = MatchDecision | 'undo';
@@ -780,6 +859,29 @@ export const DRAG_LOCK_PX = 10;
 export const DRAG_DISTANCE = 0.3;
 /** Or the speed of a flick, in pixels per millisecond */
 export const DRAG_SPEED = 0.5;
+/** The share of the card's width a flick travels at least (a quick scroll is no answer) */
+export const DRAG_FLICK_DISTANCE = 0.15;
+
+/**
+ * What a drag never starts on: the card's controls, and its description (folded or read: text to
+ * select, never a gesture that answers)
+ */
+export const NOT_DRAGGED =
+	'a, button, input, select, textarea, summary, details, label, .prose, [contenteditable="true"]';
+
+/**
+ * Whether a pointer pressed on `target` starts the optional drag: a finger or a pen only (with a
+ * mouse, the buttons and the keys answer, and a drag would fight text selection), never on what
+ * NOT_DRAGGED names. An answer the other side already gave makes a mutual interest at once, which
+ * nothing takes back: an answer is never given by accident
+ */
+export const dragStarts = (
+	pointerType: string,
+	target: { closest?: (selector: string) => unknown } | null | undefined
+): boolean =>
+	(pointerType === 'touch' || pointerType === 'pen') &&
+	typeof target?.closest === 'function' &&
+	!target.closest(NOT_DRAGGED);
 
 /**
  * The direction a drag is locked to once it moved DRAG_LOCK_PX: `x` drags the card, `y` gives the
@@ -792,8 +894,8 @@ export const dragAxis = ({ dx, dy }: { dx: number; dy: number }): 'x' | 'y' | nu
 
 /**
  * What a card dragged sideways answers once let go: right says Interested, left passes, when it
- * travelled DRAG_DISTANCE of its width or was flicked at DRAG_SPEED; `cancel` otherwise (it
- * goes back), and for a drag that was not sideways
+ * travelled DRAG_DISTANCE of its width, or was flicked at DRAG_SPEED over DRAG_FLICK_DISTANCE of
+ * it at least; `cancel` otherwise (it goes back), and for a drag that was not sideways
  */
 export const dragDecision = ({
 	dx,
@@ -807,9 +909,11 @@ export const dragDecision = ({
 	ms: number;
 }): MatchDecision | 'cancel' => {
 	if (dragAxis({ dx, dy }) !== 'x') return 'cancel';
-	const far = width > 0 && Math.abs(dx) >= width * DRAG_DISTANCE;
-	const fast = ms > 0 && Math.abs(dx) / ms >= DRAG_SPEED;
-	if (!far && !fast) return 'cancel';
+	if (!(width > 0)) return 'cancel';
+	const far = Math.abs(dx) >= width * DRAG_DISTANCE;
+	const flicked =
+		ms > 0 && Math.abs(dx) / ms >= DRAG_SPEED && Math.abs(dx) >= width * DRAG_FLICK_DISTANCE;
+	if (!far && !flicked) return 'cancel';
 	return dx > 0 ? 'interested' : 'pass';
 };
 
@@ -839,9 +943,23 @@ export type DecisionFailureKind =
 export interface DecisionFailure {
 	kind: DecisionFailureKind;
 	message: string;
-	/** A 429's Retry-After, in seconds, when it gave one */
+	/**
+	 * A 429's Retry-After, in seconds, when it gave one: the message says from when, and the deck
+	 * takes no answer (or no read, for a read's limit) until then
+	 */
 	retryAfter?: number;
 }
+
+/** A 429's failure: from when it can be tried again (`retryAfter` seconds after `now`), when known */
+const limitFailure = (
+	retryAfter: number | undefined,
+	now: number,
+	until: (moment: string) => string,
+	later: string
+): DecisionFailure =>
+	retryAfter
+		? { kind: 'limit', message: until(formatMoment(new Date(now + retryAfter * 1000))), retryAfter }
+		: { kind: 'limit', message: later };
 
 /** The failures after which the deck takes no answer: the page says why */
 const STOPPING: readonly DecisionFailureKind[] = [
@@ -887,7 +1005,8 @@ export const decisionFailure = (
 	value: unknown,
 	side: MatchSide,
 	action: 'decide' | 'undo',
-	retryAfter?: number
+	retryAfter?: number,
+	now = Date.now()
 ): DecisionFailure => {
 	const retry: DecisionFailure = {
 		kind: 'retry',
@@ -925,7 +1044,7 @@ export const decisionFailure = (
 		case 422:
 			return isConsentProblem(status, value) ? { kind: 'terms', message: m.failure.terms } : retry;
 		case 429:
-			return { kind: 'limit', message: m.failure.limit, ...(retryAfter ? { retryAfter } : {}) };
+			return limitFailure(retryAfter, now, m.failure.limitUntil, m.failure.limit);
 		default:
 			return retry;
 	}
@@ -940,7 +1059,8 @@ export const feedFailure = (
 	status: number | undefined,
 	value: unknown,
 	side: MatchSide,
-	retryAfter?: number
+	retryAfter?: number,
+	now = Date.now()
 ): DecisionFailure => {
 	const retry: DecisionFailure = {
 		kind: 'retry',
@@ -967,7 +1087,7 @@ export const feedFailure = (
 		case 422:
 			return isConsentProblem(status, value) ? { kind: 'terms', message: m.failure.terms } : retry;
 		case 429:
-			return { kind: 'limit', message: m.failure.readLimit, ...(retryAfter ? { retryAfter } : {}) };
+			return limitFailure(retryAfter, now, m.failure.readLimitUntil, m.failure.readLimit);
 		default:
 			return retry;
 	}
@@ -998,3 +1118,30 @@ export const deckAnnouncement = (
  */
 export const recruiterQueueText = (more: boolean): string =>
 	more ? m.recruiter.more : m.recruiter.last;
+
+/**
+ * Where a mutual interest stands, as `interest.side` reads it: going on, or ended (by them, by the
+ * other side, or because the job is no longer open). Never a bare "match" (decision 11)
+ */
+export const mutualInterestStateText = (interest: MutualInterest): string => {
+	if (!interest.endedAt) return m.mutualInterest.ongoing;
+	switch (interest.endReason) {
+		case null:
+			return m.mutualInterest.ended;
+		case 'job_closed':
+			return m.mutualInterest.jobClosed;
+		default:
+			if (interest.endReason === interest.side) return m.mutualInterest.endedByYou;
+			return interest.side === 'candidate'
+				? m.mutualInterest.endedByRecruiter
+				: m.mutualInterest.endedByCandidate;
+	}
+};
+
+/** That the job description was edited since both were interested; null while it was not */
+export const mutualInterestChangeText = (interest: MutualInterest): string | null =>
+	interest.changedAt ? m.mutualInterest.changed[interest.side] : null;
+
+/** The day both became interested: 'Both interested on 20 Nov 2026' */
+export const matchedOnText = (matchedAt: string): string =>
+	m.mutualInterest.matchedOn(formatDay(matchedAt));

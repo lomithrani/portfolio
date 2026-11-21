@@ -20,11 +20,18 @@ import {
 	decisionFailure,
 	decisionLabel,
 	decisionSaved,
+	deckView,
 	feedFailure,
 	dragAxis,
 	dragDecision,
+	dragStarts,
 	emptyDeck,
+	formatMoment,
+	matchedOnText,
 	matchingOff,
+	moreAfterTop,
+	mutualInterestChangeText,
+	mutualInterestStateText,
 	readAnonymousCard,
 	readCandidateFeed,
 	readCardOutcomes,
@@ -46,9 +53,12 @@ import {
 	topCard,
 	undoFailed,
 	undoSaved,
-	type Deck
+	type Deck,
+	type MutualInterest
 } from '../matching';
 import { m } from '../matching.messages';
+import { m as cards } from '#components/matching/cards.messages.ts';
+import { m as outcomes } from '#components/matching/CriterionOutcomes.messages.ts';
 
 // The screens of matching (Path 2): what they keep of the API's answers, the deck's state and
 // rules, the keys and the drag that answer, why an answer failed, and what a recruiter reads
@@ -196,11 +206,25 @@ describe("the recruiter's feed", () => {
 
 	it('leaves out a card without a token, or with one that is not a token', () => {
 		for (const token of [undefined, '', 'short', 'not a token!'.repeat(4), 42]) {
-			expect(readRecruiterFeed({ cards: [{ ...entry, token }], more: false })?.cards).toEqual([]);
+			expect(
+				readRecruiterFeed({ cards: [{ ...entry, token }, entry], more: false })?.cards
+			).toEqual([{ token: TOKEN, card: CARD, outcomes: [], interested: true }]);
 		}
-		expect(readRecruiterFeed({ cards: [{ ...entry, card: {} }] })?.cards).toEqual([]);
 		expect(readRecruiterFeed({ more: true })).toBeUndefined();
 		expect(readRecruiterFeed(null)).toBeUndefined();
+	});
+
+	it('fails closed when it listed cards of which none reads, rather than read them again', () => {
+		// A web build and an API that disagree: a read that failed, never "nothing, but more"
+		// (the deck would read the same card again and again, each read counted)
+		for (const card of [
+			{ ...entry, token: 'x' },
+			{ ...entry, card: {} }
+		]) {
+			expect(readRecruiterFeed({ cards: [card], more: true })).toBeUndefined();
+		}
+		// No card read, no more to read: the next card comes once one is answered
+		expect(readRecruiterFeed({ cards: [], more: true })).toEqual({ cards: [], more: false });
 	});
 });
 
@@ -362,6 +386,59 @@ describe('mutual interests', () => {
 		for (const junk of [{}, { decision: 'yes', match: null }, { decision: 'pass' }, null]) {
 			expect(readDecisionResult(junk, 'candidate')).toBeUndefined();
 		}
+		// A mutual interest that does not read is never a plain answer (which Undo would offer to
+		// take back): the screen reads it again
+		expect(
+			readDecisionResult(
+				{ decision: 'interested', match: { ...recruiterSide, _id: 'x' } },
+				'recruiter'
+			)
+		).toBeUndefined();
+		expect(
+			readDecisionResult({ decision: 'interested', match: recruiterSide }, 'candidate')
+		).toBeUndefined();
+	});
+
+	it('words where a mutual interest stands for each side, never a bare "match"', () => {
+		const read = (entry: unknown) => readMutualInterest(entry) as MutualInterest;
+		const ended = { endedAt: '2026-11-21T08:00:00.000Z' };
+		const recruiter = read(recruiterSide);
+		const candidate = read(candidateSide);
+		expect(mutualInterestStateText(recruiter)).toBe('Going on');
+		expect(
+			mutualInterestStateText(read({ ...recruiterSide, ...ended, endReason: 'recruiter' }))
+		).toBe('You ended it');
+		expect(
+			mutualInterestStateText(read({ ...recruiterSide, ...ended, endReason: 'candidate' }))
+		).toBe('The candidate ended it');
+		expect(
+			mutualInterestStateText(read({ ...candidateSide, ...ended, endReason: 'candidate' }))
+		).toBe('You ended it');
+		expect(
+			mutualInterestStateText(read({ ...candidateSide, ...ended, endReason: 'recruiter' }))
+		).toBe('The recruiter ended it');
+		expect(
+			mutualInterestStateText(read({ ...candidateSide, ...ended, endReason: 'job_closed' }))
+		).toBe('Ended: the job is no longer open');
+		expect(mutualInterestStateText(read({ ...candidateSide, ...ended, endReason: 'x' }))).toBe(
+			'Ended'
+		);
+		expect(mutualInterestChangeText(candidate)).toBeNull();
+		const changed = { changedAt: '2026-11-21T09:00:00.000Z' };
+		expect(mutualInterestChangeText(read({ ...candidateSide, ...changed }))).toBe(
+			'The job description was edited since: you keep the version you said yes to.'
+		);
+		expect(mutualInterestChangeText(read({ ...recruiterSide, ...changed }))).toBe(
+			'The job description was edited since: the candidate keeps the version they said yes to.'
+		);
+		expect(matchedOnText('2026-11-20T10:00:00.000Z')).toBe('Both interested on 20 Nov 2026');
+		withLocale('fr', () => {
+			expect(mutualInterestStateText(recruiter)).toBe('En cours');
+			expect(
+				mutualInterestStateText(read({ ...recruiterSide, ...ended, endReason: 'candidate' }))
+			).toBe('Le candidat y a mis fin');
+			expect(matchedOnText('2026-11-20T10:00:00.000Z')).toBe('Intérêt réciproque le 20 nov. 2026');
+		});
 	});
 });
 
@@ -467,7 +544,7 @@ describe('the deck', () => {
 		);
 		expect(ids(deck)).toEqual(['a', 'b']);
 		expect(deck).toMatchObject({ more: true, next: 'c1', pending: true, loading: false });
-		deck = appendPage(deck, { cards: cards('b', 'c'), more: false, next: 'ignored' }, key);
+		deck = appendPage(deck, { cards: cards('b', 'c'), more: false, next: 'ignored' }, key, true);
 		expect(ids(deck)).toEqual(['a', 'b', 'c']);
 		expect(deck).toMatchObject({ more: false, next: null, pending: false });
 		// A read that failed keeps the cards held
@@ -549,6 +626,93 @@ describe('the deck', () => {
 		expect(ids(undoFailed(undoing, 'final'))).toEqual(['b']);
 	});
 
+	it('never adds again a card answered, nor the one whose answer can be undone', () => {
+		// "Check again" while an answer is on its way: the read left before it was saved
+		const sent = startDecision(deckOf('a', 'b'), 'pass', key, NOW);
+		const saved = decisionSaved(sent, key, false);
+		expect(ids(appendPage(saved, { cards: cards('a', 'c'), more: false }, key, true))).toEqual([
+			'b',
+			'c'
+		]);
+		// Undone, it is held again: once
+		const undone = undoSaved(startUndo(saved, NOW), key);
+		expect(ids(appendPage(undone, { cards: cards('a', 'c'), more: false }, key, true))).toEqual([
+			'a',
+			'b',
+			'c'
+		]);
+	});
+
+	it('keeps saying travel times are being computed until a read from the start says otherwise', () => {
+		const first = appendPage(
+			emptyDeck<Card>(),
+			{ cards: cards('a'), more: true, next: 'c1', pending: true },
+			key,
+			true
+		);
+		// The next page says nothing of the jobs waiting behind the cursor read since
+		const second = appendPage(first, { cards: cards('b'), more: false, pending: false }, key);
+		expect(second.pending).toBe(true);
+		expect(appendPage(second, { cards: [], more: false, pending: false }, key, true).pending).toBe(
+			false
+		);
+	});
+
+	it('says another card comes after the top one when one is held under it, never how many', () => {
+		// A recruiter answers A, reads B (no more after it), then undoes A: B still comes after it
+		const answeredA = answered(
+			appendPage(emptyDeck<Card>(), { cards: cards('a'), more: true }, key),
+			'pass'
+		);
+		const withB = appendPage(answeredA, { cards: cards('b'), more: false }, key);
+		const undone = undoSaved(startUndo(withB, NOW), key);
+		expect(ids(undone)).toEqual(['a', 'b']);
+		expect(undone.more).toBe(false);
+		expect(moreAfterTop(undone)).toBe(true);
+		expect(recruiterQueueText(moreAfterTop(undone))).toBe('More candidates after this one.');
+		expect(moreAfterTop(deckOf('b'))).toBe(false);
+		expect(moreAfterTop({ ...deckOf('b'), more: true })).toBe(true);
+	});
+
+	it('shows what is there, never the empty state once it stopped or while a card may come', () => {
+		const view = (deck: Deck<Card>, extra: Partial<Parameters<typeof deckView>[0]> = {}) =>
+			deckView({
+				deck,
+				side: 'recruiter',
+				started: true,
+				stopped: false,
+				moment: false,
+				readError: false,
+				...extra
+			});
+		expect(view(emptyDeck(), { started: false })).toBe('placeholder');
+		expect(view(deckOf('a'))).toBe('card');
+		expect(view(deckOf())).toBe('empty');
+		// Stopped (signed out, not proposed, the job in review, the terms, matching off): nothing,
+		// the page says why, whatever the deck holds
+		for (const deck of [deckOf(), deckOf('a'), deckLoading(deckOf())]) {
+			expect(view(deck, { stopped: true })).toBe('stopped');
+			expect(view(deck, { stopped: true, readError: true })).toBe('stopped');
+		}
+		// The moment both are interested shows until the person goes on, even once stopped
+		expect(view(deckOf(), { moment: true, stopped: true })).toBe('moment');
+		// A recruiter's answer on its way, no card left: the next one may come
+		const sent = startDecision(
+			appendPage(emptyDeck<Card>(), { cards: cards('a'), more: true }, key),
+			'pass',
+			key,
+			NOW
+		);
+		expect(view(sent)).toBe('waiting');
+		expect(view(decisionSaved(sent, key, false))).toBe('waiting');
+		expect(view(deckLoading(decisionSaved(sent, key, false)))).toBe('waiting');
+		// The last card's answer on its way: not "nothing to answer" until it is saved
+		expect(view(startDecision(deckOf('a'), 'pass', key, NOW))).toBe('waiting');
+		expect(view(answered(deckOf('a')))).toBe('empty');
+		// A read that failed, to try again
+		expect(view(decisionSaved(sent, key, false), { readError: true })).toBe('error');
+	});
+
 	it("reads a recruiter's next card once the one held is answered, a candidate's next page early", () => {
 		const recruiter = appendPage(emptyDeck<Card>(), { cards: cards('a'), more: true }, key);
 		expect(shouldLoadMore(recruiter, 'recruiter')).toBe(false);
@@ -617,6 +781,26 @@ describe('dragging a card', () => {
 		// Not sideways: the page scrolled
 		expect(dragDecision({ dx: 40, dy: 200, width, ms: 100 })).toBe('cancel');
 		expect(dragDecision({ dx: 8, dy: 0, width, ms: 1 })).toBe('cancel');
+		// Fast but short (a quick scroll, a pointer that slipped): no answer
+		expect(dragDecision({ dx: 12, dy: 0, width, ms: 20 })).toBe('cancel');
+		expect(dragDecision({ dx: -50, dy: 0, width, ms: 20 })).toBe('cancel');
+		expect(dragDecision({ dx: 60, dy: 0, width: 0, ms: 100 })).toBe('cancel');
+	});
+
+	it('starts with a finger or a pen only, never on a control or the description', () => {
+		const on = (match: string | null) => ({
+			closest: (selector: string) => (match && selector.split(', ').includes(match) ? {} : null)
+		});
+		expect(dragStarts('touch', on(null))).toBe(true);
+		expect(dragStarts('pen', on(null))).toBe(true);
+		// A mouse answers with the buttons and the keys: a drag would fight text selection
+		expect(dragStarts('mouse', on(null))).toBe(false);
+		expect(dragStarts('', on(null))).toBe(false);
+		for (const control of ['a', 'button', 'input', 'summary', 'details', 'label', '.prose']) {
+			expect(dragStarts('touch', on(control))).toBe(false);
+		}
+		expect(dragStarts('touch', null)).toBe(false);
+		expect(dragStarts('touch', {})).toBe(false);
 	});
 });
 
@@ -632,11 +816,16 @@ describe('why a read of a feed failed', () => {
 		expect(feedFailure(404, 'Job posting not found', 'recruiter').kind).toBe('job-gone');
 		expect(feedFailure(404, 'NOT_FOUND', 'candidate').kind).toBe('off');
 		expect(feedFailure(422, { property: 'consent' }, 'recruiter').kind).toBe('terms');
-		// The reads of an hour, never the answers of a day
-		expect(feedFailure(429, '', 'candidate', 120)).toEqual({
+		// The reads of an hour, never the answers of a day, with from when
+		const now = Date.parse('2026-11-21T13:00:00.000Z');
+		expect(feedFailure(429, '', 'candidate', 120, now)).toEqual({
 			kind: 'limit',
-			message: m.failure.readLimit,
+			message: m.failure.readLimitUntil(formatMoment(new Date(now + 120_000))),
 			retryAfter: 120
+		});
+		expect(feedFailure(429, '', 'recruiter')).toEqual({
+			kind: 'limit',
+			message: m.failure.readLimit
 		});
 		expect(feedFailure(500, 'boom', 'recruiter')).toEqual({
 			kind: 'retry',
@@ -713,16 +902,30 @@ describe('why an answer failed', () => {
 		});
 	});
 
-	it("says the day's limit, with its Retry-After", () => {
-		expect(decisionFailure(429, 'You can answer…', 'recruiter', 'decide', 3600)).toEqual({
+	it("says the day's limit, and from when its Retry-After lets an answer through", () => {
+		const now = Date.parse('2026-11-21T13:00:00.000Z');
+		const limited = decisionFailure(429, 'You can answer…', 'recruiter', 'decide', 3600, now);
+		expect(limited).toEqual({
 			kind: 'limit',
-			message: m.failure.limit,
+			message: m.failure.limitUntil(formatMoment(new Date(now + 3_600_000))),
 			retryAfter: 3600
 		});
+		// '21 Nov 2026, 14:00' in a browser at UTC: a moment, never a count
+		expect(limited.message).toContain(formatMoment(new Date(now + 3_600_000)));
+		expect(limited.message).toMatch(
+			/^You have answered as many times as a day allows\. You can answer again from /
+		);
+		withLocale('fr', () => {
+			expect(decisionFailure(429, '', 'candidate', 'decide', 60, now).message).toMatch(
+				/^Vous avez répondu autant de fois qu'une journée le permet\. Vous pourrez répondre de nouveau à partir du /
+			);
+		});
+		// Without a Retry-After, never "tomorrow": the day is a UTC day
 		expect(decisionFailure(429, '', 'candidate', 'decide')).toEqual({
 			kind: 'limit',
 			message: m.failure.limit
 		});
+		expect(m.failure.limit).not.toMatch(/tomorrow/);
 		expect(retryAfterSeconds(new Headers({ 'Retry-After': '3600' }))).toBe(3600);
 		expect(retryAfterSeconds({ 'retry-after': '42' })).toBe(42);
 		for (const bad of [
@@ -767,8 +970,36 @@ describe('what the deck says', () => {
 
 	it('never gives a recruiter a number, in either language', () => {
 		const source = messageSource(m) as Record<string, MessageTree>;
-		const recruiterTexts = [...texts(source.recruiter), ...texts(source.failure)];
-		expect(recruiterTexts.length).toBeGreaterThan(20);
+		const card = messageSource(cards) as Record<string, MessageTree>;
+		const mutual = card.mutual as Record<string, MessageTree>;
+		const criteria = messageSource(outcomes) as Record<string, MessageTree>;
+		const states = source.mutualInterest as Record<string, MessageTree>;
+		const changed = states.changed as Record<string, MessageTree>;
+		// Every text a recruiter reads: their deck, its failures, the anonymous card, the moment both
+		// are interested, the outcomes beside the card, where their mutual interests stand. The
+		// durations of roles and skills (formatMonthCount) are time, not counts; a moment of a
+		// Retry-After or the day both became interested are dates (functions are given words here)
+		const recruiterTexts = [
+			...texts(source.recruiter),
+			...texts(source.failure),
+			...texts({ decision: source.decision, sending: source.sending } as MessageTree),
+			...texts(card.candidate),
+			...texts({
+				heading: mutual.heading,
+				recruiter: mutual.recruiter,
+				notRevealed: mutual.notRevealed,
+				portfolio: mutual.portfolio,
+				pageForRecruiters: mutual.pageForRecruiters,
+				keepGoing: mutual.keepGoing,
+				newTab: mutual.newTab
+			} as MessageTree),
+			...texts({
+				dealBreaker: criteria.dealBreaker,
+				commute: (criteria.commute as Record<string, MessageTree>).recruiter
+			} as MessageTree),
+			...texts({ ...states, changed: changed.recruiter } as MessageTree)
+		];
+		expect(recruiterTexts.length).toBeGreaterThan(60);
 		for (const said of recruiterTexts) expect(said).not.toMatch(/\d/);
 		for (const locale of LOCALES) {
 			withLocale(locale, () => {

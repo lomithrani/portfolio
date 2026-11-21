@@ -2,7 +2,6 @@ import {
 	DISCOVERY_REJOIN_DAYS,
 	currentDiscoveryConsent,
 	discoveryConsentRenewable,
-	intlLocale,
 	legalMessages,
 	parseDiscoveryCard,
 	stepManifest,
@@ -14,6 +13,7 @@ import { portfolioTextApi } from '#services';
 import { bodyProperty, errorStatus } from './apiErrors';
 import { sortExperiences } from './experienceDates';
 import {
+	formatMoment,
 	matchingOff,
 	readCardPreview,
 	readDiscovery,
@@ -428,12 +428,5 @@ export const cardExperiences = (experiences: readonly PortfolioExperience[]): Ca
 		return [{ id, title, company }];
 	});
 
-/** A moment as the page says it: '28 Nov 2026, 14:05' (in the browser's time zone) */
-export const formatMoment = (date: Date): string =>
-	date.toLocaleString(intlLocale('en-GB'), {
-		day: 'numeric',
-		month: 'short',
-		year: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit'
-	});
+/** A moment as the page says it: '28 Nov 2026, 14:05' (matching.ts's, the decks say it so too) */
+export { formatMoment };

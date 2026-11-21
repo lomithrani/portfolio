@@ -121,6 +121,19 @@ describe('CandidateCard', () => {
 		expect(shown).toContain('No professional experience listed');
 	});
 
+	it('leaves the total unsaid for roles without dates, never "none listed" above them', () => {
+		const undated = {
+			headline: null,
+			experienceMonths: 0,
+			roles: [{ title: 'Staff engineer', months: null, current: false }],
+			skills: []
+		};
+		const shown = textOf(render(CandidateCard, { props: { card: undated } }).body);
+		expect(shown).toContain('Staff engineer No dates');
+		expect(shown).not.toContain('No professional experience');
+		expect(shown).not.toContain('of professional experience');
+	});
+
 	it('reads in French', () => {
 		const shown = withLocale('fr', () =>
 			textOf(render(CandidateCard, { props: { card, outcomes, interested: true } }).body)
@@ -248,18 +261,35 @@ describe('MutualInterestPanel', () => {
 			criteria: []
 		});
 		const shown = textOf(html);
+		// How a meeting is booked, never that the portfolio is shown (their answer does not say it)
 		expect(shown).toContain(
-			'The recruiter of Staff Platform Engineer is interested in you too. They now see your portfolio'
+			'The recruiter of Staff Platform Engineer is interested in you too. To book a meeting with you, they go through the steps of your page for recruiters.'
 		);
+		expect(shown).not.toMatch(/portfolio/i);
 		expect(html).toContain(`href="/opportunities/${JOB_ID}"`);
 		expect(shown).not.toMatch(/\bmatch(ed)?\b|e-mail|email/i);
-		expect(
-			withLocale('fr', () =>
-				textOf(
-					panel({ ...base, side: 'candidate', job: null, score: 82, minScore: 60, criteria: [] })
-				)
-			)
-		).toContain('Intérêt réciproque');
+	});
+
+	it('names no job whose version no longer reads back, in a whole sentence', () => {
+		const untitled = {
+			...base,
+			side: 'candidate',
+			job: null,
+			score: 82,
+			minScore: 60,
+			criteria: []
+		};
+		const shown = textOf(panel(untitled));
+		expect(shown).toContain(
+			'The recruiter of this job is interested in you too. To book a meeting with you, they go through the steps of your page for recruiters.'
+		);
+		expect(panel(untitled)).not.toContain('/opportunities/');
+		const french = withLocale('fr', () => textOf(panel(untitled)));
+		expect(french).toContain('Intérêt réciproque');
+		expect(french).toContain(
+			"Le recruteur de cette offre s'intéresse aussi à vous. Pour réserver un rendez-vous avec vous, il passe par les étapes de votre page recruteurs."
+		);
+		expect(french).not.toMatch(/de l'offre\s+s'intéresse/);
 	});
 
 	it('says a portfolio not revealed is not available, with nothing to follow', () => {
