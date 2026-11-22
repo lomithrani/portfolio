@@ -242,6 +242,8 @@ describe('the Skill model', () => {
 
 describe('presentSkill and presentExperience', () => {
   const id = () => new Types.ObjectId();
+  /** As the API reads it of a skill another one points at: shown only once recognised */
+  const recognised = { status: 'classified' };
 
   it('shows a skill with its category and the skill it is part of, and nothing else', () => {
     const [own, parent] = [id(), id()];
@@ -254,7 +256,7 @@ describe('presentSkill and presentExperience', () => {
         classification: { status: 'classified', at: new Date(), attempts: 1 },
         svg: '<svg/>',
         __v: 3,
-        parent: { _id: parent, displayName: '.NET', category: 'framework', names: ['.NET'], parent: id() }
+        parent: { _id: parent, displayName: '.NET', category: 'framework', names: ['.NET'], parent: id(), classification: recognised }
       })
     ).toEqual({
       _id: String(own),
@@ -281,7 +283,8 @@ describe('presentSkill and presentExperience', () => {
           _id: canonical,
           displayName: 'Cosmos DB',
           category: 'data',
-          parent: { _id: parent, displayName: 'Microsoft Azure', category: 'infrastructure' }
+          classification: { status: 'manual' },
+          parent: { _id: parent, displayName: 'Microsoft Azure', category: 'infrastructure', classification: recognised }
         }
       })
     ).toEqual({
@@ -298,20 +301,84 @@ describe('presentSkill and presentExperience', () => {
       presentSkill({
         _id: own,
         displayName: 'Debian',
-        parent: { _id: parent, displayName: 'GNU/Linux', aliasOf: { _id: canonical, displayName: 'Linux', category: 'infrastructure' } }
+        parent: {
+          _id: parent,
+          displayName: 'GNU/Linux',
+          classification: recognised,
+          aliasOf: { _id: canonical, displayName: 'Linux', category: 'infrastructure', classification: recognised }
+        }
       })
     ).toEqual({
       _id: String(own),
       displayName: 'Debian',
       parent: { _id: String(canonical), displayName: 'Linux', category: 'infrastructure' }
     });
-    expect(presentSkill({ _id: own, displayName: 'Loop', parent: { _id: own, displayName: 'Loop' } })).toEqual({
+    expect(presentSkill({ _id: own, displayName: 'Loop', parent: { _id: own, displayName: 'Loop', classification: recognised } })).toEqual({
       _id: String(own),
       displayName: 'Loop'
     });
     expect(
-      presentSkill({ _id: own, displayName: 'Loop', parent: { _id: parent, displayName: 'Alias', aliasOf: { _id: own, displayName: 'Loop' } } })
+      presentSkill({
+        _id: own,
+        displayName: 'Loop',
+        parent: {
+          _id: parent,
+          displayName: 'Alias',
+          classification: recognised,
+          aliasOf: { _id: own, displayName: 'Loop', classification: recognised }
+        }
+      })
     ).toEqual({ _id: String(own), displayName: 'Loop' });
+  });
+
+  it('shows the skill another one points at only once it is recognised as a skill', () => {
+    const [own, target, parent] = [id(), id(), id()];
+    for (const classification of [undefined, null, {}, { status: 'pending' }, { status: 'rejected' }, { status: 'approved' }]) {
+      // Another spelling of a skill nobody recognised yet (the classifier made it up, to classify
+      // later): shown as typed, with what it holds itself
+      expect(
+        presentSkill({
+          _id: own,
+          displayName: 'K8s',
+          classification: { status: 'classified' },
+          aliasOf: { _id: target, displayName: 'Made up', category: 'tool', classification }
+        })
+      ).toEqual({ _id: String(own), displayName: 'K8s' });
+      // Part of one: shown without a family
+      expect(
+        presentSkill({
+          _id: own,
+          displayName: '.NET Core',
+          category: 'framework',
+          parent: { _id: parent, displayName: 'Made up', category: 'framework', classification }
+        })
+      ).toEqual({ _id: String(own), displayName: '.NET Core', category: 'framework' });
+      // Part of a recognised spelling of one: that spelling is the family, as it is written
+      expect(
+        presentSkill({
+          _id: own,
+          displayName: 'Debian',
+          parent: {
+            _id: parent,
+            displayName: 'GNU/Linux',
+            category: 'infrastructure',
+            classification: recognised,
+            aliasOf: { _id: target, displayName: 'Made up', classification }
+          }
+        })
+      ).toEqual({
+        _id: String(own),
+        displayName: 'Debian',
+        parent: { _id: String(parent), displayName: 'GNU/Linux', category: 'infrastructure' }
+      });
+    }
+    // The skill of the entry itself is the owner's, shown whatever the catalogue thinks of it
+    for (const status of ['pending', 'rejected']) {
+      expect(presentSkill({ _id: own, displayName: 'My own word', classification: { status } })).toEqual({
+        _id: String(own),
+        displayName: 'My own word'
+      });
+    }
   });
 
   it('gives nothing for a reference that was not populated', () => {
@@ -322,7 +389,7 @@ describe('presentSkill and presentExperience', () => {
 
   it('lists each skill once per list, the first entry kept, and leaves the rest of the experience as it is', () => {
     const [kubernetes, k8s, go, gone] = [id(), id(), id(), id()];
-    const canonical = { _id: kubernetes, displayName: 'Kubernetes', category: 'infrastructure' };
+    const canonical = { _id: kubernetes, displayName: 'Kubernetes', category: 'infrastructure', classification: recognised };
     const experience = {
       _id: id(),
       title: 'Engineer',
@@ -487,6 +554,54 @@ describe('the skills of an experience as the API returns them', () => {
       { _id: String(root._id), displayName: t.id('Linux'), category: 'infrastructure' }
     ]);
     expectNothingPrivate(editedBody);
+  });
+
+  it('never puts a skill nobody recognised yet in place of, or above, what was typed', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
+    // As the classifier leaves them between two batches: it made up the skill these point at
+    // (from a model's answer), which is still to classify itself
+    const madeUp = await skill('Made up');
+    const alias = await skill('Mu', { aliasOf: madeUp._id, classification: classified() });
+    const child = await skill('Mu Core', { category: 'framework', parent: madeUp._id, classification: classified() });
+    const shownSkills = (body: { projects: { hardSkills: { skill: unknown }[] }[] }) =>
+      body.projects[0].hardSkills.map((entry) => entry.skill);
+    const asTyped = [
+      { _id: String(alias._id), displayName: t.id('Mu') },
+      { _id: String(child._id), displayName: t.id('Mu Core'), category: 'framework' }
+    ];
+
+    // Saved meanwhile: the experience references the spelling typed, not the made-up skill
+    const created = await postWithCookie(app, '/experiences', experienceBody(['mu', 'Mu Core']), owner.cookie);
+    expect(created.status).toBe(200);
+    const body = await readJson(created);
+    expect(shownSkills(body)).toEqual(asTyped);
+    const stored = (await Experience.findById(body._id).lean())!;
+    expect(stored.projects[0].hardSkills.map((entry) => String(entry.skill))).toEqual([String(alias._id), String(child._id)]);
+    expect(JSON.stringify(body)).not.toContain(t.id('Made up'));
+    expectNothingPrivate(body);
+
+    const read = async () => (await readJson(await makeRequest(app, `/domain/${domainName}`))).experiences[0];
+    expect(shownSkills(await read())).toEqual(asTyped);
+
+    // Not a skill after all, or given up on: still as typed
+    for (const status of ['rejected', 'pending'] as const) {
+      await Skill.updateOne(
+        { _id: madeUp._id },
+        { $set: { classification: { status, at: new Date(), attempts: SKILL_CLASSIFICATION.maxAttempts } } }
+      );
+      const shown = await read();
+      expect(shownSkills(shown)).toEqual(asTyped);
+      expectNothingPrivate(shown);
+    }
+
+    // Recognised: the spelling is that skill, the other one is part of it; nothing stored changed
+    await Skill.updateOne({ _id: madeUp._id }, { $set: { category: 'framework', classification: classified() } });
+    const recognised = { _id: String(madeUp._id), displayName: t.id('Made up'), category: 'framework' };
+    const shown = await read();
+    expect(shownSkills(shown)).toEqual([recognised, { ...asTyped[1], parent: recognised }]);
+    expectNothingPrivate(shown);
+    expect(String(await Skill.findOrCreate(t.id('mu')))).toBe(String(madeUp._id));
   });
 
   it('still shows, as typed, a skill the classifier did not recognise, and survives a skill that is gone', async () => {

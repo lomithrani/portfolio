@@ -10,6 +10,14 @@ for (const name of Object.keys(process.env)) {
 // import tests set a fake key and answer for api.anthropic.com themselves
 delete process.env.ANTHROPIC_API_KEY;
 
+// Never start the job that has Claude classify the catalogue's skills, here
+// or in the API the Eden suite spawns (which inherits this environment and
+// would otherwise read server/.env again): set, not removed. The classifier's
+// tests turn env.SKILL_CLASSIFICATION_DAILY_LIMIT on and answer for
+// api.anthropic.com themselves
+process.env.SKILL_CLASSIFICATION_INTERVAL_MS = '0';
+process.env.SKILL_CLASSIFICATION_DAILY_LIMIT = '0';
+
 // Never file a real GitHub issue from a test: the step suggestion tests set
 // a fake token and answer for api.github.com themselves
 delete process.env.GITHUB_ISSUES_TOKEN;

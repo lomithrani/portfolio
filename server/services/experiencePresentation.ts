@@ -5,7 +5,14 @@
 // as that skill, each skill once per list, with its category and the skill
 // it is part of. Nothing else of a Skill leaves the API: not its other
 // spellings (`names`), not where it stands with the classifier.
-import { isSkillCategory } from 'portfolio-common';
+//
+// A skill an entry points at is the owner's own, shown as typed whatever the
+// catalogue thinks of it. The skills that one points at (the skill it is
+// another spelling of, the skill it is part of) are shown only once they are
+// recognised as skills (classified, or set by hand): the classifier creates
+// them from what a model answered, and a name nobody recognised yet is never
+// put on someone's portfolio in place of, or above, what they typed.
+import { SUGGESTABLE_SKILL_STATUSES, isSkillCategory } from 'portfolio-common';
 import type { PresentedSkill, PresentedSkillParent } from 'portfolio-common';
 
 /** A Skill as EXPERIENCE_POPULATE read it, once made a plain object */
@@ -15,6 +22,7 @@ type PopulatedSkill = {
   category?: unknown;
   parent?: unknown;
   aliasOf?: unknown;
+  classification?: unknown;
 };
 
 /** A reference that was populated: a bare id, or the null of a skill that no longer exists, is not */
@@ -24,14 +32,29 @@ const isPopulated = (skill: unknown): skill is PopulatedSkill =>
   '_id' in skill &&
   typeof (skill as { displayName?: unknown }).displayName === 'string';
 
-/** The skill a document stands for: the one it is another spelling of, when there is one */
-const canonical = (skill: PopulatedSkill): PopulatedSkill => (isPopulated(skill.aliasOf) ? skill.aliasOf : skill);
+/** Recognised as a skill: classified by the classifier, or set by hand (what the search suggests too) */
+const isRecognised = (skill: PopulatedSkill): boolean => {
+  const status = (skill.classification as { status?: unknown } | null | undefined)?.status;
+  return (SUGGESTABLE_SKILL_STATUSES as readonly unknown[]).includes(status);
+};
+
+/** A skill another one points at, when it can be shown: populated, and recognised as a skill */
+const isShownTarget = (skill: unknown): skill is PopulatedSkill => isPopulated(skill) && isRecognised(skill);
+
+/**
+ * The skill a document stands for: the one it is another spelling of, once
+ * that one is recognised as a skill (until then the document is shown as it
+ * is, as typed)
+ */
+const canonical = (skill: PopulatedSkill): PopulatedSkill => (isShownTarget(skill.aliasOf) ? skill.aliasOf : skill);
 
 const category = (skill: PopulatedSkill) => (isSkillCategory(skill.category) ? { category: skill.category } : {});
 
 const presentParent = (parent: unknown, childId: string): PresentedSkillParent | undefined => {
   if (!isPopulated(parent)) return undefined;
   const skill = canonical(parent);
+  // Not recognised as a skill (yet): the skill is shown without a family
+  if (!isRecognised(skill)) return undefined;
   const _id = String(skill._id);
   // Never its own parent
   if (_id === childId) return undefined;
@@ -40,8 +63,9 @@ const presentParent = (parent: unknown, childId: string): PresentedSkillParent |
 
 /**
  * A populated skill as the API presents it: the canonical skill when it is
- * another spelling of one, with its category and the skill it is part of.
- * Undefined for a reference that was not populated
+ * another spelling of one, with its category and the skill it is part of
+ * (both only once recognised as skills). Undefined for a reference that was
+ * not populated
  */
 export const presentSkill = (stored: unknown): PresentedSkill | undefined => {
   if (!isPopulated(stored)) return undefined;

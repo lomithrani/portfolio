@@ -45,9 +45,10 @@ const experienceSchema = new Schema<Experience>({
   projects: [projectSchema]
 });
 
-// What the API reads of a skill it presents: never its other spellings
-// (`names`), nor where it stands with the classifier
-const PRESENTED_SKILL_FIELDS = 'displayName category parent aliasOf';
+// What the API reads of a skill to present it: never its other spellings
+// (`names`). Its status with the classifier is read, never returned: a skill
+// another one points at is shown only once recognised (presentSkill)
+const PRESENTED_SKILL_FIELDS = 'displayName category parent aliasOf classification.status';
 
 // A skill the API presents is read with the skill it is part of (`parent`)
 // and, when it is another spelling of a skill (`aliasOf`), that skill and

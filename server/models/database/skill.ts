@@ -79,6 +79,12 @@ export const isPendingSkill = (skill: Pick<Skill, 'classification'>): boolean =>
   return classification.status === 'pending' && (classification.attempts ?? 0) < SKILL_CLASSIFICATION.maxAttempts;
 };
 
+/** Whether a skill is recognised as one: classified by the classifier, or set by hand (see SUGGESTABLE_SKILLS) */
+export const isRecognisedSkill = (skill: Pick<Skill, 'classification'>): boolean => {
+  const status = skill.classification?.status;
+  return status !== undefined && status !== null && SUGGESTABLE_SKILL_STATUSES.includes(status);
+};
+
 const pendingSkillListeners = new Set<() => void>();
 
 /**
@@ -109,6 +115,7 @@ interface SkillModel extends Model<Skill> {
   /**
    * The id of the skill `name` names, created when no skill has that name:
    * the canonical skill when the name is another spelling of one (aliasOf)
+   * that is recognised as a skill, else the spelling's own document
    */
   findOrCreate(name: string): Promise<Types.ObjectId>;
   /**
@@ -155,7 +162,11 @@ skillSchema.statics.findOrCreate = async function (rawName: string) {
   // known as an alias keeps its reference, resolved when it is read
   const canonical = await canonicalOf(this, skill);
   if (isPendingSkill(canonical)) notifyPendingSkill();
-  return canonical._id;
+  // Only once that skill is recognised (classified, or set by hand): until
+  // then the experience references the spelling typed, which is shown as
+  // typed and resolved when read (presentSkill), so a skill the classifier
+  // made up from a model's answer and never recognised is on no experience
+  return isRecognisedSkill(canonical) ? canonical._id : skill._id;
 }
 
 skillSchema.statics.findCanonical = async function (rawName: string) {

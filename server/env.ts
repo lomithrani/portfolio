@@ -142,6 +142,19 @@ export interface ServerEnv {
   otelSignals: OtelSignals;
   /** Period of the 'memory' log line in milliseconds; 0 turns it off */
   MEMORY_LOG_INTERVAL_MS: number;
+  /**
+   * Period, in milliseconds, of the background job that has Claude classify
+   * the skills of the catalogue not classified yet (their category, the
+   * skill they are part of, the skill they are another spelling of:
+   * services/skillClassificationJob.ts); 0 turns the job off. Off without
+   * ANTHROPIC_API_KEY too
+   */
+  SKILL_CLASSIFICATION_INTERVAL_MS: number;
+  /**
+   * Calls to Claude that job makes per UTC day for the whole site, each
+   * classifying a batch of skill names, never given back (0 turns the job off)
+   */
+  SKILL_CLASSIFICATION_DAILY_LIMIT: number;
   TLS_PASSPHRASE?: string;
   /** Non-fatal problems, printed at startup */
   warnings: string[];
@@ -255,22 +268,29 @@ const parseOtelExporter = (
 };
 
 const DEFAULT_MEMORY_LOG_INTERVAL_MS = 600_000;
-const MIN_MEMORY_LOG_INTERVAL_MS = 1_000;
+const DEFAULT_SKILL_CLASSIFICATION_INTERVAL_MS = 600_000;
+const MIN_TIMER_INTERVAL_MS = 1_000;
 // Longest delay setInterval accepts; above it, the timer fires every 1 ms
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
-const parseMemoryLogInterval = (raw: string | undefined, problems: string[]): number => {
-  if (raw === undefined || raw.trim() === '') return DEFAULT_MEMORY_LOG_INTERVAL_MS;
+// The period of a timer: 0 (off), or milliseconds a setInterval can take
+const parseTimerInterval = (
+  name: string,
+  raw: string | undefined,
+  defaultValue: number,
+  problems: string[]
+): number => {
+  if (raw === undefined || raw.trim() === '') return defaultValue;
   // Digits only: Number() would also accept '1e3' or '0x3e8'
   const ms = /^\s*\d+\s*$/.test(raw) ? Number(raw) : Number.NaN;
   if (
     !Number.isInteger(ms) ||
-    (ms !== 0 && (ms < MIN_MEMORY_LOG_INTERVAL_MS || ms > MAX_TIMER_DELAY_MS))
+    (ms !== 0 && (ms < MIN_TIMER_INTERVAL_MS || ms > MAX_TIMER_DELAY_MS))
   ) {
     problems.push(
-      `MEMORY_LOG_INTERVAL_MS must be 0 (off) or a whole number of milliseconds from ${MIN_MEMORY_LOG_INTERVAL_MS} to ${MAX_TIMER_DELAY_MS} (got ${JSON.stringify(raw)})`
+      `${name} must be 0 (off) or a whole number of milliseconds from ${MIN_TIMER_INTERVAL_MS} to ${MAX_TIMER_DELAY_MS} (got ${JSON.stringify(raw)})`
     );
-    return DEFAULT_MEMORY_LOG_INTERVAL_MS;
+    return defaultValue;
   }
   return ms;
 };
@@ -288,6 +308,8 @@ const DEFAULT_JOB_IMPORT_DAILY_LIMIT = 30;
 const DEFAULT_JOB_IMPORT_ATTEMPTS_PER_DAY = 10;
 /** Under what Transitous asks to be told about (720 route requests a day) */
 const DEFAULT_COMMUTE_DAILY_LIMIT = 500;
+/** Each call classifies up to 40 skill names (portfolio-common's SKILL_CLASSIFICATION.batchSize) */
+const DEFAULT_SKILL_CLASSIFICATION_DAILY_LIMIT = 100;
 
 // A count of requests: 0 or more, digits only (Number() would also accept
 // '1e3', '0x3e8' or '2.5'); 0 turns `feature` off
@@ -490,7 +512,25 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
   const OTEL_TRACES_EXPORTER = parseOtelExporter('OTEL_TRACES_EXPORTER', source.OTEL_TRACES_EXPORTER, problems);
   const OTEL_METRICS_EXPORTER = parseOtelExporter('OTEL_METRICS_EXPORTER', source.OTEL_METRICS_EXPORTER, problems);
   const OTEL_LOGS_EXPORTER = parseOtelExporter('OTEL_LOGS_EXPORTER', source.OTEL_LOGS_EXPORTER, problems);
-  const MEMORY_LOG_INTERVAL_MS = parseMemoryLogInterval(source.MEMORY_LOG_INTERVAL_MS, problems);
+  const MEMORY_LOG_INTERVAL_MS = parseTimerInterval(
+    'MEMORY_LOG_INTERVAL_MS',
+    source.MEMORY_LOG_INTERVAL_MS,
+    DEFAULT_MEMORY_LOG_INTERVAL_MS,
+    problems
+  );
+  const SKILL_CLASSIFICATION_INTERVAL_MS = parseTimerInterval(
+    'SKILL_CLASSIFICATION_INTERVAL_MS',
+    source.SKILL_CLASSIFICATION_INTERVAL_MS,
+    DEFAULT_SKILL_CLASSIFICATION_INTERVAL_MS,
+    problems
+  );
+  const SKILL_CLASSIFICATION_DAILY_LIMIT = parseLimit(
+    'SKILL_CLASSIFICATION_DAILY_LIMIT',
+    source.SKILL_CLASSIFICATION_DAILY_LIMIT,
+    DEFAULT_SKILL_CLASSIFICATION_DAILY_LIMIT,
+    problems,
+    'skill classification'
+  );
 
   if (problems.length > 0) throw new EnvironmentError(problems);
 
@@ -548,6 +588,8 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
       logs: otelEnabled && OTEL_LOGS_EXPORTER === 'otlp'
     },
     MEMORY_LOG_INTERVAL_MS,
+    SKILL_CLASSIFICATION_INTERVAL_MS,
+    SKILL_CLASSIFICATION_DAILY_LIMIT,
     TLS_PASSPHRASE: optional(source.TLS_PASSPHRASE),
     warnings
   };
