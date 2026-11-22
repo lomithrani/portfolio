@@ -1,4 +1,5 @@
 import { afterEach, describe, it, expect } from 'vitest';
+import { withLocale } from 'portfolio-common';
 import {
 	experiencePeriod,
 	formatDuration,
@@ -6,6 +7,7 @@ import {
 	formatMonthCount,
 	formatMonthRange,
 	formatProjectMonths,
+	formatShortDuration,
 	fromMonthKey,
 	projectEnd,
 	reviveExperienceDates,
@@ -247,6 +249,32 @@ describe('formatMonthCount', () => {
 		expect(formatMonthCount(0)).toBe('');
 		expect(formatMonthCount(-4)).toBe('');
 		expect(formatMonthCount(NaN)).toBe('');
+	});
+});
+
+describe('formatShortDuration', () => {
+	const text = formatShortDuration;
+
+	it('writes whole years from a year on, months under it', () => {
+		expect(text(1)).toBe('1 mo');
+		expect(text(11)).toBe('11 mos');
+		expect(text(12)).toBe('1 yr');
+		expect(text(23)).toBe('1 yr');
+		expect(text(24)).toBe('2 yrs');
+		expect(text(111)).toBe('9 yrs');
+	});
+
+	it("is in the page's language", () => {
+		const french = (months: number) => withLocale('fr', () => formatShortDuration(months));
+		expect(french(1)).toBe('1 mois');
+		expect(french(12)).toBe('1 an');
+		expect(french(40)).toBe('3 ans');
+	});
+
+	it('is empty under a month', () => {
+		expect(formatShortDuration(0)).toBe('');
+		expect(formatShortDuration(-4)).toBe('');
+		expect(formatShortDuration(NaN)).toBe('');
 	});
 });
 

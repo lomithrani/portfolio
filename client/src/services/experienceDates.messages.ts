@@ -24,6 +24,16 @@ export const m = defineMessages({
 		fr: (years: number, months: number) =>
 			parts(years ? `${years} ${plural(years, 'an', 'ans')}` : '', months ? `${months} mois` : '')
 	},
+	/**
+	 * '9 yrs', '1 yr', '8 mos': a duration at a glance, on a skill's tag (whole years from a year
+	 * on, months under it)
+	 */
+	shortDuration: {
+		en: (years: number, months: number) =>
+			years ? `${years} ${plural(years, 'yr', 'yrs')}` : `${months} ${plural(months, 'mo', 'mos')}`,
+		fr: (years: number, months: number) =>
+			years ? `${years} ${plural(years, 'an', 'ans')}` : `${months} mois`
+	},
 	/** '5 years 2 months', '1 year', '3 months': a duration, in full words */
 	monthCount: {
 		en: (years: number, months: number) =>

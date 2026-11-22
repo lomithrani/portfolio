@@ -87,6 +87,16 @@ export function formatMonthCount(months: number): string {
 	return m.monthCount(Math.floor(months / 12), Math.floor(months % 12));
 }
 
+/**
+ * '9 yrs', '1 yr', '8 mos': a number of months at a glance, for a skill's tag (shorter than
+ * formatDuration's '9 yrs 3 mos': whole years from a year on, months under it); '' under a month
+ */
+export function formatShortDuration(months: number): string {
+	if (!(months >= 1)) return '';
+	const whole = Math.floor(months);
+	return m.shortDuration(Math.floor(whole / 12), whole % 12);
+}
+
 type Dated = { start?: Date | string | null; end?: Date | string | null };
 
 /**
