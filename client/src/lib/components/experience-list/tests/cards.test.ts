@@ -10,8 +10,9 @@ import Experience from '#components/Experience.svelte';
 import Project from '#components/Project.svelte';
 
 // The skill tags of a card as the server renders them: the most used on the page first, and
-// beyond the first of a kind the rest behind a "+N" button, never one the page points at (it
-// matches the filters, or the skill being previewed)
+// beyond the first of a kind the rest behind a "+N" button, never one that matches the filters.
+// A preview unfolds nothing (no tag moves under the pointer): it marks the "+N" that folds a tag
+// of the previewed skill
 
 const month = (key: string) => new Date(`${key}-01T00:00:00.000Z`);
 const NOW = new Date('2026-11-11T10:00:00.000Z');
@@ -68,7 +69,8 @@ const list = (body: string, label: string) => {
 		button: button && {
 			text: textOf(button[2]),
 			name: /aria-label="([^"]*)"/.exec(button[1])?.[1],
-			expanded: /aria-expanded="true"/.test(button[1])
+			expanded: /aria-expanded="true"/.test(button[1]),
+			...(/data-holds-previewed/.test(button[1]) ? { previewed: true } : {})
 		}
 	};
 };
@@ -147,7 +149,7 @@ describe("a project's skill tags", () => {
 		});
 	});
 
-	it('never hides a tag of the skill being previewed, or of a skill that is part of it', () => {
+	it('unfolds nothing for a preview: a folded tag of the previewed skill, or of a skill that is part of it, marks the button', () => {
 		// All used as long: ranked by name, 'Zeta Core' last
 		const family = [
 			{
@@ -163,11 +165,23 @@ describe("a project's skill tags", () => {
 		const index = skillIndex(family, NOW);
 		const [wide] = family[0].projects;
 		const shown = (previewSkill: string | null) =>
-			list(card({ project: wide, skills: index, previewSkill }), 'Technical skills')?.tags;
-		expect(shown(null)).toEqual(letters(CARD_SKILLS.shown));
-		expect(shown('zeta core')).toEqual([...letters(CARD_SKILLS.shown), 'Zeta Core']);
-		expect(shown('zeta')).toEqual([...letters(CARD_SKILLS.shown), 'Zeta Core']);
-		expect(shown('tech a')).toEqual(letters(CARD_SKILLS.shown));
+			list(card({ project: wide, skills: index, previewSkill }), 'Technical skills');
+		const folded = { text: '+3', name: 'Show 3 more skills', expanded: false };
+		expect(shown(null)).toMatchObject({ tags: letters(CARD_SKILLS.shown), button: folded });
+		expect(shown(null)?.button).not.toHaveProperty('previewed');
+		// The same tags, in the same places, whatever is previewed: a row that changed under the
+		// pointer would move the tag it rests on, close the preview, and open it again
+		for (const previewed of ['zeta core', 'zeta']) {
+			expect(shown(previewed)).toMatchObject({
+				tags: letters(CARD_SKILLS.shown),
+				button: { ...folded, previewed: true }
+			});
+		}
+		// A skill that is in sight, or that the project does not use, marks nothing
+		for (const elsewhere of ['tech a', 'tech z']) {
+			expect(shown(elsewhere)?.tags).toEqual(letters(CARD_SKILLS.shown));
+			expect(shown(elsewhere)?.button).not.toHaveProperty('previewed');
+		}
 	});
 
 	it("names the button in the page's language", () => {

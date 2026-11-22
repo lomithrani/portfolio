@@ -4,6 +4,8 @@ import { withLocale } from 'portfolio-common';
 import type { Experience } from 'portfolio-api/models/database';
 import { COLLAPSED_SKILLS, type ExperienceFilters } from '#services/filters.ts';
 import Filters from './Filters.svelte';
+import source from './Filters.svelte?raw';
+import { m } from './Filters.messages.ts';
 
 // The filters' panel as the server renders it: folded, a fixed number of the most used skills
 // (nothing is measured), the selected ones always among them, and "All N skills" only when the
@@ -227,6 +229,37 @@ describe('the filters, folded', () => {
 		});
 		expect(decode(toggle(body)!.replace(/<[^>]+>/g, ' '))).toBe('Les 17 compétences');
 		expect(decode(/data-filtered-by[^>]*>([\s\S]*?)<\/p>/.exec(body)![1])).toBe('Filtre : Tech A');
+	});
+
+	it('gives the time beside a name the contrast of its tag: never an opacity', () => {
+		const body = panel(career, { skills: ['tech a'] });
+		const spans = [...body.matchAll(/<span\b([^>]*\bdata-skill-(?:time|parts)[^>]*)>/g)].map(
+			([, attributes]) => attributes
+		);
+		expect(spans.length).toBeGreaterThan(3);
+		for (const attributes of spans) expect(attributes).not.toMatch(/opacity/);
+		// On the selected tag the time has the name's colour; on a plain one, the muted text colour
+		const time = (label: string) =>
+			new RegExp(
+				`<button\\b[^>]*data-preview="skill:${label}"[^>]*>[\\s\\S]*?<span\\b([^>]*data-skill-time[^>]*)>`
+			).exec(body)?.[1];
+		expect(time('tech a')).toBeDefined();
+		expect(time('tech a')).not.toContain('text-surface-700-300');
+		expect(time('tech b')).toContain('text-surface-700-300');
+	});
+
+	it('says what the search found to screen readers, apart from the count of experiences', () => {
+		// The open panel is not rendered on the server: read from the component itself
+		const result = /<p\b[^>]*data-skill-search-result[^>]*>/.exec(source.replace(/\s+/g, ' '))?.[0];
+		expect(result).toContain('aria-live="polite"');
+		expect(result).not.toContain('role=');
+		expect(source.match(/role="status"/g)).toHaveLength(1);
+		expect(m.skillsFound(1)).toBe('1 skill found');
+		expect(m.skillsFound(4)).toBe('4 skills found');
+		expect(withLocale('fr', () => [m.skillsFound(1), m.skillsFound(4)])).toEqual([
+			'1 compétence trouvée',
+			'4 compétences trouvées'
+		]);
 	});
 
 	it('renders nothing without skills', () => {

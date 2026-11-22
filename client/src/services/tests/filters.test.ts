@@ -557,6 +557,31 @@ describe('skillGroups', () => {
 		expect(shape(skillGroups(index, 'wpf'))).toEqual([['framework', 1, ['WPF']]]);
 		expect(skillGroups(index, 'cobol')).toEqual({ categorized: true, groups: [], count: 0 });
 	});
+
+	it('searches ignoring accents, however they were typed, and takes a pattern literally', () => {
+		const french = skillIndex(
+			[
+				job(
+					'Conseil',
+					['2020-01', '2021-12'],
+					project('Mission', ['2020-01', '2021-12'], ['C#', '.NET'], ['Négociation', 'Sécurité'])
+				)
+			],
+			NOW
+		);
+		const found = (query: string) =>
+			skillGroups(french, query).groups.flatMap((group) =>
+				group.families.map((family) => family.skill.label)
+			);
+		for (const query of ['neg', 'nég', 'NÉG', 'ne\u0301g', 'NEGOCIATION']) {
+			expect(found(query)).toEqual(['Négociation']);
+		}
+		expect(found('securite')).toEqual(['Sécurité']);
+		// Signs are not accents: they still tell skills apart
+		expect(found('c#')).toEqual(['C#']);
+		expect(found('.net')).toEqual(['.NET']);
+		for (const pattern of ['(', '[a-z', '\\', '.*']) expect(found(pattern)).toEqual([]);
+	});
 });
 
 describe('orderSkillsByRank', () => {

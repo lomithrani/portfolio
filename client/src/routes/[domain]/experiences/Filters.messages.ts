@@ -68,6 +68,11 @@ export const m = defineMessages({
 		en: (query: string) => `No skill matches “${query}”.`,
 		fr: (query: string) => `Aucune compétence ne correspond à « ${query} ».`
 	},
+	/** Said to screen readers while the search box holds a text: how many skills it leaves */
+	skillsFound: {
+		en: (count: number) => `${count} ${plural(count, 'skill', 'skills')} found`,
+		fr: (count: number) => `${count} ${plural(count, 'compétence trouvée', 'compétences trouvées')}`
+	},
 	/** How many experiences there are */
 	count: {
 		en: (total: number) => `${total} ${plural(total, 'experience', 'experiences')}`,

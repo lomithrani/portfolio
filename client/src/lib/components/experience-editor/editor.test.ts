@@ -14,6 +14,7 @@ import {
 	type SkillOption
 } from '#services/skillSearch.ts';
 import SkillSuggestions from './SkillSuggestions.svelte';
+import suggestionsSource from './SkillSuggestions.svelte?raw';
 import { fitWithin, iconFits, iconKind } from './icon';
 import {
 	clearDraft,
@@ -277,6 +278,19 @@ describe('the suggestions of a skills field', () => {
 		]);
 		// The ids the field names with aria-activedescendant
 		expect(drawn.map(({ id }) => id)).toEqual([0, 1, 2, 3, 4, 5].map((i) => `f-suggestions-${i}`));
+	});
+
+	it('keeps the focus in the field for a press anywhere in the list, its scrollbar included', () => {
+		// A press on the scrollbar is a press on the list, not on an option: cancelled there, it
+		// scrolls the list; left alone, it takes the focus and the list closes. Handlers are not
+		// in the server's markup: read from the component
+		const markup = suggestionsSource.replace(/\s+/g, ' ');
+		const listbox = markup.slice(markup.indexOf('<ul '), markup.indexOf('{#each'));
+		expect(listbox).toContain('role="listbox"');
+		expect(listbox).toContain('onpointerdown={(event) => event.preventDefault()}');
+		const option = markup.slice(markup.indexOf('<li '), markup.indexOf('<span'));
+		expect(option).toContain('role="option"');
+		expect(option).not.toContain('onpointerdown');
 	});
 
 	it('shows what each suggestion is: its category, its family, the skill another spelling stands for', () => {

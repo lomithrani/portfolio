@@ -33,7 +33,7 @@
 		previewed?: boolean;
 		/** The skills of the page, ranked: the tags are listed the most used on the page first */
 		skills?: SkillIndex;
-		/** Key of the skill whose tag is hovered or focused: its tags here are never folded away */
+		/** Key of the skill whose tag is hovered or focused: a "+N" that folds a tag of it is marked */
 		previewSkill?: string | null;
 	} = $props();
 
@@ -55,14 +55,20 @@
 	);
 
 	// Beyond its first tags of a kind, the rest fold behind a "+N" button that shows them in place
-	// (see foldSkills). Never one that matches the filters, or the skill being previewed: what the
-	// page points at stays in sight
-	const pinned = (skill: PresentedSkill) =>
-		highlightSkill(skill.displayName) ||
-		(previewSkill !== null && skillMatchesKey(skill.displayName, previewSkill, skills?.taxonomy));
+	// (see foldSkills). Never one that matches the filters: what the page is filtered by stays in
+	// sight. A preview unfolds nothing: it is a colour change only, so no row shifts under the
+	// pointer that opened it (a tag that moved away from the pointer would close the preview, come
+	// back, and open it again, for ever). A folded tag of the previewed skill marks its "+N" instead
+	const pinned = (skill: PresentedSkill) => highlightSkill(skill.displayName);
+	const isPreviewed = (skill: PresentedSkill) =>
+		previewSkill !== null && skillMatchesKey(skill.displayName, previewSkill, skills?.taxonomy);
+	const folded = (kind: 'hard' | 'soft', label: string, list: PresentedSkill[]) => {
+		const { shown, hidden } = foldSkills(list, pinned);
+		return { kind, label, shown, hidden, holdsPreviewed: hidden.some(isPreviewed) };
+	};
 	let lists = $derived([
-		{ kind: 'hard' as const, label: m.technicalSkills, ...foldSkills(hardSkills, pinned) },
-		{ kind: 'soft' as const, label: m.softSkills, ...foldSkills(softSkills, pinned) }
+		folded('hard', m.technicalSkills, hardSkills),
+		folded('soft', m.softSkills, softSkills)
 	]);
 	let unfolded = $state({ hard: false, soft: false });
 </script>
@@ -115,12 +121,17 @@
 						{#if list.hidden.length > 0}
 							<li>
 								<!-- As tall as a tag: the row keeps its height. Its name says what it shows -->
+								<!-- Tinted while it folds a tag of the skill being previewed: the tint takes the
+									border's place, so the button keeps its size -->
 								<button
 									type="button"
-									class="chip min-w-9 border border-surface-300-700 font-medium text-surface-800-200 hover:preset-tonal"
+									class="chip min-w-9 border font-medium {!open && list.holdsPreviewed
+										? 'border-transparent preset-tonal-primary'
+										: 'border-surface-300-700 text-surface-800-200 hover:preset-tonal'}"
 									aria-expanded={open}
 									aria-label={open ? undefined : m.showMoreSkills(list.hidden.length)}
 									data-more-skills={list.kind}
+									data-holds-previewed={(!open && list.holdsPreviewed) || undefined}
 									onclick={() => (unfolded[list.kind] = !open)}
 								>
 									{open ? m.fewerSkills : `+${list.hidden.length}`}

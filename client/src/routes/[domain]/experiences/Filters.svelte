@@ -180,11 +180,19 @@
 			"y" of a name long enough to be cut short -->
 		<span class="truncate leading-5">{skill.label}</span>
 		{#if time}
-			<span class="shrink-0 font-normal opacity-75" aria-hidden="true" data-skill-time>{time}</span>
+			<!-- Quieter than the name on a plain tag, by the muted text colour: never by opacity, which
+				takes a selected tag's text under the contrast its name has -->
+			<span
+				class="shrink-0 font-normal {selected || included ? '' : 'text-surface-700-300'}"
+				aria-hidden="true"
+				data-skill-time>{time}</span
+			>
 		{/if}
 		{#if options.folded && parts > 0}
-			<span class="shrink-0 font-normal opacity-75" aria-hidden="true" data-skill-parts
-				>+{parts}</span
+			<span
+				class="shrink-0 font-normal {selected || included ? '' : 'text-surface-700-300'}"
+				aria-hidden="true"
+				data-skill-parts>+{parts}</span
 			>
 		{/if}
 		{#if details}<span id={detailsId} class="sr-only" aria-hidden="true">{details}</span>{/if}
@@ -243,7 +251,6 @@
 					</p>
 					{@render skillsToggle()}
 				</div>
-
 				{#each groups.groups as group (group.category ?? group.kind)}
 					<div
 						role="group"
@@ -279,9 +286,20 @@
 						</ul>
 					</div>
 				{/each}
-				{#if groups.count === 0}
-					<p class="text-sm text-surface-700-300">{m.noSkillMatches(query.trim())}</p>
-				{/if}
+				<!-- What the search found, said to screen readers as it changes (always in the page, so its
+					changes are read), and shown when it found nothing. Not a status: the panel has one,
+					the experiences' count -->
+				<p
+					class={groups.count === 0 ? 'text-sm text-surface-700-300' : 'sr-only'}
+					aria-live="polite"
+					data-skill-search-result
+				>
+					{query.trim()
+						? groups.count === 0
+							? m.noSkillMatches(query.trim())
+							: m.skillsFound(groups.count)
+						: ''}
+				</p>
 			{:else}
 				{#each rows as row (row.kind)}
 					{#if row.chips.length > 0}

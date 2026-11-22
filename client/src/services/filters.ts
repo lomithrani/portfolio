@@ -335,8 +335,8 @@ const GROUP_ORDER: readonly SkillCategory[] = [
 ];
 
 /**
- * Every skill of the page for the expanded panel, the ones whose label holds `query` when there
- * is one: grouped by category in the catalogue's order (soft skills last, those without a
+ * Every skill of the page for the expanded panel, the ones whose label holds `query` (ignoring
+ * case and accents) when there is one: grouped by category in the catalogue's order (soft skills last, those without a
  * category with "Other" right before them), each group sorted by time used, a skill followed by
  * the skills that are part of it, whatever their own category (a skill without a category is
  * listed under theirs). Without a single category, two
@@ -344,8 +344,11 @@ const GROUP_ORDER: readonly SkillCategory[] = [
  * the skill it is part of does not is listed alone, where its family would be.
  */
 export function skillGroups(index: SkillIndex, query = ''): SkillGroups {
-	const text = normalizeSkill(query);
-	const matches = (skill: RankedSkill) => !text || normalizeSkill(skill.label).includes(text);
+	// For this search only, accents aside ('neg' finds 'Négociation', however the accent was
+	// typed): never in normalizeSkill, which is a skill's key
+	const fold = (value: string) => normalizeSkill(value.normalize('NFD').replace(/\p{M}/gu, ''));
+	const text = fold(query);
+	const matches = (skill: RankedSkill) => !text || fold(skill.label).includes(text);
 	const categorized = index.ranked.some((skill) => skill.category);
 	// A skill the catalogue gave no category yet goes with the skills that are part of it (the
 	// most used of them that has one)

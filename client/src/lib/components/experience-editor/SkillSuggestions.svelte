@@ -64,12 +64,21 @@ suggestion its arrows are on (`aria-activedescendant`); the pointer picks here.
 	]}
 	data-skill-suggestions
 >
-	<ul {id} role="listbox" aria-label={m.skills.suggestions} class="max-h-60 overflow-y-auto">
+	<!-- A press anywhere in the list keeps the focus, and what is typed, in the field: on an option
+	     (picked by its click) and on the list's own scrollbar, which would otherwise take the focus
+	     and close the list instead of scrolling it -->
+	<ul
+		{id}
+		role="listbox"
+		aria-label={m.skills.suggestions}
+		class="max-h-60 overflow-y-auto"
+		onpointerdown={(event) => event.preventDefault()}
+	>
 		{#each shown as option, index (option.name)}
 			{@const group = category(option)}
 			<!-- The keyboard picks from the field (the arrows, Enter); this is for the pointer, which
 			     does not move the arrows' place: a list opening under a resting pointer must not make
-			     Enter pick the skill under it. Pressing keeps the focus, and what is typed, in the field -->
+			     Enter pick the skill under it -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<li
 				id="{id}-{index}"
@@ -82,7 +91,6 @@ suggestion its arrows are on (`aria-activedescendant`); the pointer picks here.
 					index === active ? 'preset-tonal-primary' : 'hover:preset-tonal'
 				]}
 				data-skill-option={option.source}
-				onpointerdown={(event) => event.preventDefault()}
 				onclick={() => onpick(option)}
 			>
 				<span class="flex min-w-0 flex-wrap items-center gap-x-1.5">
