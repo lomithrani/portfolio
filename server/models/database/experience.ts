@@ -45,13 +45,34 @@ const experienceSchema = new Schema<Experience>({
   projects: [projectSchema]
 });
 
+// What the API reads of a skill it presents: never its other spellings
+// (`names`), nor where it stands with the classifier
+const PRESENTED_SKILL_FIELDS = 'displayName category parent aliasOf';
+
+// A skill the API presents is read with the skill it is part of (`parent`)
+// and, when it is another spelling of a skill (`aliasOf`), that skill and
+// its own parent. A parent that became another spelling of a skill since is
+// read as that skill too
+const PRESENTED_PARENT_POPULATE: PopulateOptions = {
+  path: 'parent',
+  select: PRESENTED_SKILL_FIELDS,
+  populate: { path: 'aliasOf', select: PRESENTED_SKILL_FIELDS }
+};
+const PRESENTED_SKILL_POPULATE: PopulateOptions[] = [
+  PRESENTED_PARENT_POPULATE,
+  { path: 'aliasOf', select: PRESENTED_SKILL_FIELDS, populate: PRESENTED_PARENT_POPULATE }
+];
+
 /**
- * What the API returns for an experience: skills populated, the shape the
- * client renders (GET /domain/:name, POST/PUT /experiences).
+ * What the API returns for an experience: skills populated, to be presented
+ * with presentExperience (services/experiencePresentation.ts), which gives
+ * the shape the client renders (GET /domain/:name, POST/PUT /experiences).
+ * Always both: a populated skill that was not presented still has the ids
+ * of the skills it points at.
  */
 export const EXPERIENCE_POPULATE: PopulateOptions[] = [
-  { path: 'projects.hardSkills.skill' },
-  { path: 'projects.softSkills.skill' }
+  { path: 'projects.hardSkills.skill', select: PRESENTED_SKILL_FIELDS, populate: PRESENTED_SKILL_POPULATE },
+  { path: 'projects.softSkills.skill', select: PRESENTED_SKILL_FIELDS, populate: PRESENTED_SKILL_POPULATE }
 ];
 
 /** UTC midnight of the 1st of the date's month: dates have month precision */
@@ -100,14 +121,22 @@ const resolveSkills = async (projects: ProjectRequest[]) => {
   );
 };
 
-/** A project's skill list with resolved ids: blank names and repeats dropped */
+/**
+ * A project's skill list with resolved ids: blank names and repeats dropped,
+ * two spellings of one skill included ('K8s' and 'Kubernetes' resolve to the
+ * same skill: Skill.findOrCreate), the first kept
+ */
 const skillRefs = (skills: SkillRequest[], ids: Map<string, Types.ObjectId>) => {
   const seen = new Set<string>();
+  const listed = new Set<string>();
   return skills.flatMap((skill) => {
     const key = skillKey(skill.name);
     if (!key || seen.has(key)) return [];
     seen.add(key);
-    return [{ skill: ids.get(key)!, level: skill.level }];
+    const id = ids.get(key)!;
+    if (listed.has(String(id))) return [];
+    listed.add(String(id));
+    return [{ skill: id, level: skill.level }];
   });
 };
 

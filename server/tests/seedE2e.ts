@@ -50,6 +50,10 @@
 // 'e2e.reviewer@example.com' (fixed id 65e2e0000000000000000005, no portfolio, no recruiter space)
 // reviews the jobs put into matching for client/tests/matching-review.test.ts, on an API whose
 // MATCHING_REVIEWERS lists it: that file decides on the jobs it tags alone.
+// The curated part of the skill catalogue (seedSkills.ts) is applied on every run, as `bun run seed`
+// applies it: the skills the tests type have their category, and the catalogue has families and
+// aliases ('.NET Core' is part of '.NET', 'K8s' is 'Kubernetes'), all set by hand ('manual'), so
+// nothing here waits for the classifier, which never runs in the tests.
 // This file loads nothing that imports server/env.ts (CI seeds with MONGO_URL and JWT_SECRET only):
 // the review version of the jobs in matching comes from server/services/jobVersion.ts, never from
 // jobMatching.ts.
@@ -81,6 +85,7 @@ import type { JobPosting as StoredJobPosting } from "../models/database/jobPosti
 import { reviewedVersion } from "../services/jobVersion";
 import { recordConsent } from "../services/legal";
 import { redactConnectionString } from "../services/redact";
+import { seedSkillCatalogue } from "./seedSkills";
 
 const mongoUrl = Bun.env.MONGO_URL;
 if (!mongoUrl) {
@@ -410,6 +415,9 @@ await WorkflowInstance.deleteMany({ owner: { $in: matchCandidateIds } });
 // a day (MATCHING_DECISIONS of services/matches.ts, 'matching-decision:'): keyed by a hash of the
 // account, they are cleared for every account of the e2e database
 await RateLimitCounter.deleteMany({ _id: /^(job-share|discovery-grant|matching-feed|matching-decision):/ });
+
+// The curated skills of the catalogue, with their categories, families and aliases
+await seedSkillCatalogue();
 
 console.log(
   `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate, ` +

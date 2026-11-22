@@ -4,6 +4,7 @@ import Elysia from 'elysia';
 import { userLogged } from './userLogged';
 import { DomainDoesNotExistError, ResourceNotFoundError } from '../errors';
 import { experienceRequest, objectIdParams } from '../models/elysia';
+import { presentExperience } from '../services/experiencePresentation';
 import { logger } from '../services/logger';
 import { m } from './experiences.messages';
 
@@ -50,7 +51,7 @@ export const experiences = new Elysia()
     // Same shape (and type) as GET /domain/:name's experiences, so the client
     // can render it directly
     await result.populate(EXPERIENCE_POPULATE);
-    return result.toObject<Experience>();
+    return presentExperience(result.toObject<Experience>());
   },
     {
       body: experienceRequest,
@@ -70,7 +71,7 @@ export const experiences = new Elysia()
     const result = await experience.save();
 
     await result.populate(EXPERIENCE_POPULATE);
-    return result.toObject<Experience>();
+    return presentExperience(result.toObject<Experience>());
   },
     {
       params: objectIdParams,

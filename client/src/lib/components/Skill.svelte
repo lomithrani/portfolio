@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Skill } from 'portfolio-api/models/database';
+	import type { PresentedSkill } from 'portfolio-api/models/database';
 	import { previewTarget } from '#services/projectPreview.ts';
 
 	let {
@@ -7,7 +7,7 @@
 		variant = 'hard',
 		highlighted = false
 	}: {
-		skill: Pick<Skill, 'displayName'>;
+		skill: Pick<PresentedSkill, 'displayName'>;
 		/** Same chip for both; soft skills (listed after the technical ones) are a lighter tint */
 		variant?: 'hard' | 'soft';
 		/** Matches the active filters: a colour change only, so rows never shift */

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Project, Skill as SkillModel } from 'portfolio-api/models/database';
+	import type { PresentedSkill, Project } from 'portfolio-api/models/database';
 	import Skill from './Skill.svelte';
 	import Markdown from './Markdown.svelte';
 	import { formatProjectMonths, type ExperiencePeriod } from '#services/experienceDates.ts';
@@ -25,10 +25,10 @@
 		previewed?: boolean;
 	} = $props();
 
-	// The API populates the skills (GET /domain/:name)
+	// The API populates the skills and presents each as the catalogue knows it (GET /domain/:name)
 	const skillsOf = (entries: Project['hardSkills']) =>
 		entries
-			.map((entry) => entry.skill as SkillModel)
+			.map((entry) => entry.skill as PresentedSkill)
 			.filter((skill) => typeof skill?.displayName === 'string');
 
 	let headingId = $derived(`project-${experienceId}-${String(project._id ?? '')}`);
