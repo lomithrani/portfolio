@@ -43,6 +43,9 @@ const RAW_FORM =
 let owner: OwnerSession;
 let recruiterApi: APIRequestContext;
 let job: RecruiterJob;
+// Matching is on in the API under test (GET /me/notifications answers): who may read the page is
+// then said with the candidates matching proposes it to
+let matchingOn = false;
 
 /** The e2e-shared owner as GET /isLogged describes it: a portfolio, no space chosen yet */
 const ownerUser = () => ({
@@ -84,6 +87,7 @@ test.beforeAll(async ({}, testInfo) => {
 		data: { input: { jobId: job._id } }
 	});
 	expect(picked.ok(), `${await picked.text()}: run \`bun run --cwd server seed:e2e\``).toBe(true);
+	matchingOn = (await recruiterApi.get(`${API_URL}/me/notifications`)).status() !== 404;
 });
 
 test.afterAll(async () => {
@@ -104,7 +108,7 @@ test('the owner reads the job the recruiter picked on their journey, on a page n
 	expect(response?.headers()['x-robots-tag']).toMatch(/\bnoindex\b/);
 
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Job description');
-	await expect(page.getByText('Shared in a hiring journey')).toBeVisible();
+	await expect(page.getByText('Private, for the people it concerns')).toBeVisible();
 	await expect(page.getByRole('heading', { level: 2, name: TITLE })).toBeVisible();
 	await expect(page.getByText('E2E Corp')).toBeVisible();
 	await expect(page.getByText(/45,000/)).toBeVisible();
@@ -114,10 +118,12 @@ test('the owner reads the job the recruiter picked on their journey, on a page n
 	await expect(page.locator('input[type="password"]')).toHaveCount(0);
 	await expect(page.getByText(RAW_FORM, { exact: false })).toBeVisible();
 	// Dated, and says who else can open it
-	await expect(page.getByText(/^Opened \d+ \w+ \d{4}$/)).toBeVisible();
+	await expect(page.getByText(/^Opened \d+\s\w+\s\d{4}$/)).toBeVisible();
 	await expect(
 		page.getByText(
-			"This page is private: only this job description's recruiter and the portfolio owners on whose hiring journey it was picked can open it."
+			matchingOn
+				? "This page is private: only this job description's recruiter, the portfolio owners on whose hiring journey it was picked, the candidates it is proposed to and those who have or had a mutual interest in it with its recruiter can open it."
+				: "This page is private: only this job description's recruiter and the portfolio owners on whose hiring journey it was picked can open it."
 		)
 	).toBeVisible();
 	await expect(page).toHaveTitle(`${TITLE} | Portfolio`);

@@ -19,6 +19,7 @@ import {
 	type WorkflowStepManifest,
 	type WorkflowStepStatus
 } from 'portfolio-common';
+import { JOB_OF_MUTUAL_INTEREST } from './apiBodies';
 import { isConsentProblem } from './apiErrors';
 import { isNetworkFailure, networkError } from './recruiter';
 import { m } from './workflow.messages';
@@ -47,7 +48,60 @@ export interface Journey {
 	steps: JourneyStep[];
 	/** The caller owns the portfolio: a preview, where no step is locked */
 	own?: true;
+	/**
+	 * The caller (a recruiter) and the owner are both interested in one of the caller's jobs
+	 * (matching): as the API answered it, read with journeyMatch
+	 */
+	match?: unknown;
 }
+
+/**
+ * The mutual interest of matching between the owner and the signed-in visitor that leads into the
+ * journey (the journey's `match`): the job they are both interested in, as the owner said yes to it,
+ * when they both became interested (an ISO date: the journey's routes go through portfolioTextApi),
+ * and whether the posting was edited since (each side keeps the version they said yes to)
+ */
+export interface JourneyMatch {
+	_id: string;
+	job: { _id: string; title: string; company?: string };
+	matchedAt: string;
+	changed?: true;
+}
+
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
+
+/**
+ * The journey's mutual interest, from what the API answered (`match`); undefined without one, or
+ * when it is not one (an id that is not one, a job without a title, a date that is not one): the
+ * page then shows the journey as anyone's
+ */
+export const journeyMatch = (value: unknown): JourneyMatch | undefined => {
+	if (!value || typeof value !== 'object') return undefined;
+	const { _id, job, matchedAt, changed } = value as Record<string, unknown>;
+	const {
+		_id: jobId,
+		title,
+		company
+	} = (job && typeof job === 'object' ? job : {}) as Record<string, unknown>;
+	if (typeof _id !== 'string' || !OBJECT_ID.test(_id)) return undefined;
+	if (typeof jobId !== 'string' || !OBJECT_ID.test(jobId)) return undefined;
+	if (typeof title !== 'string' || !title.trim()) return undefined;
+	if (typeof matchedAt !== 'string' || Number.isNaN(Date.parse(matchedAt))) return undefined;
+	return {
+		_id,
+		job: {
+			_id: jobId,
+			title,
+			...(typeof company === 'string' && company.trim() ? { company } : {})
+		},
+		matchedAt,
+		...(changed === true ? { changed: true as const } : {})
+	};
+};
+
+/** A step's `view` says it is held by a mutual interest (the job step's job, the frozen score) */
+const heldByMutualInterest = (view: unknown): boolean =>
+	!!view && typeof view === 'object' && (view as { matched?: unknown }).matched === true;
 
 const STEP_STATUSES: readonly WorkflowStepStatus[] = ['pending', 'succeeded', 'failed'];
 
@@ -306,7 +360,11 @@ export const journeyDescription = (
 /**
  * The line under a step's name. `describe`: what the step's type says to a visitor it is open
  * to (what it asks, or what they did there); undefined for a type this version does not show.
- * `describeFailed`: what it says to a visitor who did not pass it, when it says more than that
+ * `describeFailed`: what it says to a visitor who did not pass it, when it says more than that.
+ * A step a mutual interest of matching holds (the job step's job, the frozen score) says what it
+ * holds even while a step before it is to do (a note): it is done for the visitor, only not open yet;
+ * the job step whose job does not hold now (on hold, or the terms in force not accepted) says what
+ * brings it back, as it does once open
  */
 export const stepNote = (
 	journey: Journey,
@@ -319,6 +377,9 @@ export const stepNote = (
 	if (!describe) return m.stepUnavailable;
 	// The owner reads what the step asks of recruiters
 	if (journey.own) return stepManifest(step.type)?.description ?? '';
+	if (state === 'locked' && heldByMutualInterest(step.view)) {
+		return describe(step, step.status === 'succeeded' ? 'done' : 'open');
+	}
 	if (state === 'locked') return index === 1 ? m.completeStepAbove : m.completeStepsAbove;
 	if (state === 'failed') return describeFailed?.(step) ?? m.notPassed;
 	return describe(step, state);
@@ -396,6 +457,12 @@ export interface JourneyJob {
 	 * aside): the owner still reads, and the job match still scores, the version shared
 	 */
 	outdated?: true;
+	/**
+	 * The job the owner and the visitor are both interested in (matching): the step holds it, the
+	 * version the owner said yes to (`sharedAt`: when they both became interested), while their mutual
+	 * interest lasts, and the visitor cannot share another. Never `outdated`
+	 */
+	matched?: true;
 }
 
 /** The job shared, from a job step's `view`; undefined when there is none (or it is not one) */
@@ -407,13 +474,15 @@ export const pickedJob = (view: unknown): JourneyJob | undefined => {
 	if (typeof _id !== 'string' || typeof title !== 'string') return undefined;
 	if (typeof status !== 'string' || !Object.hasOwn(JOB_STATUS_LABELS, status)) return undefined;
 	const shared = typeof sharedAt === 'string' && !Number.isNaN(Date.parse(sharedAt));
+	const matched = heldByMutualInterest(view);
 	return {
 		_id,
 		title,
 		...(typeof company === 'string' && company ? { company } : {}),
 		status: status as JobStatus,
 		...(shared ? { sharedAt } : {}),
-		...(shared && outdated === true ? { outdated: true as const } : {})
+		...(shared && outdated === true && !matched ? { outdated: true as const } : {}),
+		...(matched ? { matched: true as const } : {})
 	};
 };
 
@@ -458,27 +527,37 @@ export const jobLine = (job: { title: string; company?: string }): string =>
 /**
  * The line under the job step's name: what it asks, or the job shared (and whether it changed
  * since). A job picked that does not hold: not open anymore, picked before versions were kept (to
- * share again), or open and shared but the recruiter has not accepted the terms in force
+ * share again), or open and shared but the recruiter has not accepted the terms in force. The job
+ * of a mutual interest (matching) is said so, and, while it does not hold, what brings it back: the
+ * posting open again (on hold: a job filled, closed or back to draft ends the mutual interest), or
+ * the terms in force accepted; never to pick another, which the step does not take while it lasts
  */
 export const jobStepNote = (view: unknown, state: 'open' | 'done'): string => {
 	const job = pickedJob(view);
+	if (state === 'done' && job?.matched) return m.job.matched(jobLine(job));
 	if (state === 'done' && job) return job.outdated ? m.job.outdated(jobLine(job)) : jobLine(job);
 	if (!job) return m.job.ask;
-	if (!isPickable(job)) return m.job.notOpen(job.title, JOB_STATUS_LABELS[job.status]);
-	return job.sharedAt ? m.job.acceptTerms(job.title) : m.job.shareAgain(job.title);
+	if (!isPickable(job)) {
+		const status = JOB_STATUS_LABELS[job.status];
+		return job.matched ? m.job.matchedNotOpen(job.title, status) : m.job.notOpen(job.title, status);
+	}
+	// The job of a mutual interest is never shared again: open, only the terms are missing
+	return job.sharedAt || job.matched ? m.job.acceptTerms(job.title) : m.job.shareAgain(job.title);
 };
 
 /**
  * What a failed pick (or share of a new version) means. `reload-jobs`: the recruiter's jobs are
  * not what the step shows (it loads them again); `terms`: the recruiter has not accepted the terms
- * in force (a 422 on `consent`: the step asks for them, TermsAcceptance). A 429: the journey
+ * in force (a 422 on `consent`: the step asks for them, TermsAcceptance); `matched`: a mutual
+ * interest with the owner (matching) was made since the page loaded, and its job holds the step (the
+ * page loads the journey again, which shows that job in place of the form). A 429: the journey
  * scores the jobs shared, and this recruiter shared as many as a day allows
  * (JOB_STEP_LIMITS.scoredSharesPerDay)
  */
 export const pickJobFailure = (
 	status: number | undefined,
 	value: unknown
-): StepFailure<'reload-jobs' | 'terms'> => {
+): StepFailure<'reload-jobs' | 'terms' | 'matched'> => {
 	if (isNetworkFailure(value)) return submitFailure(status, value);
 	const text = bodyText(value);
 	switch (status) {
@@ -499,6 +578,11 @@ export const pickJobFailure = (
 				? { message: m.job.pick.gone, kind: 'reload-jobs' }
 				: submitFailure(status, value);
 		case 409:
+			// A mutual interest with the owner was made since the page loaded: the journey, loaded
+			// again, shows its job, which holds the step
+			if (text === JOB_OF_MUTUAL_INTEREST) {
+				return { message: m.job.pick.mutualInterest, kind: 'matched' };
+			}
 			return /open job/i.test(text)
 				? { message: m.job.pick.notOpen, kind: 'reload-jobs' }
 				: { message: m.job.pick.journeyChanged, kind: 'changed' };
@@ -532,11 +616,74 @@ export const requestedJob = (address: URL): string | null =>
 
 /**
  * The address asks for a job other than the one picked: the job step shows, on that job, even
- * when the step is done
+ * when the step is done. Never while a mutual interest holds the step with its job: it takes no
+ * other job then, whatever the address asks
  */
 export const asksForAnotherJob = (view: unknown, address: URL): boolean => {
 	const asked = requestedJob(address);
-	return asked !== null && pickedJob(view)?._id !== asked;
+	const picked = pickedJob(view);
+	return asked !== null && !picked?.matched && picked?._id !== asked;
+};
+
+// --- After a mutual interest (matching) -------------------------------------------------
+
+/**
+ * The job of the mutual interest as the journey's job step shows it (`view.matched`), and whether
+ * the step holds it now (succeeded: the posting open, the terms in force accepted); undefined on a
+ * journey whose job step does not show it (or that has none: the invitation names the job)
+ */
+export const mutualInterestJob = (
+	journey: Journey
+): { job: JourneyJob; holds: boolean } | undefined => {
+	for (const step of journey.steps) {
+		if (step.type !== 'job') continue;
+		const job = pickedJob(step.view);
+		if (job?.matched) return { job, holds: step.status === 'succeeded' };
+	}
+	return undefined;
+};
+
+/**
+ * What is left of the journey for the recruiter of a mutual interest (the Hire page's banner), in
+ * the order to read: while the job step does not hold the job of the mutual interest, what brings it
+ * back (the posting open again, or the terms in force accepted); then, on a journey that leads to a
+ * meeting they can book (`booking`: not when nobody can book, which the page says itself), the steps
+ * still to do before it, by their type's phrase and the name of their own a step has (`title`: a
+ * note's), or that nothing else is asked. Nothing once the meeting is booked: its step says so. The
+ * steps the mutual interest holds (the job, the frozen score) are never counted as to do
+ */
+export const mutualInterestNext = (
+	journey: Journey,
+	{
+		booking,
+		title = () => undefined
+	}: { booking: boolean; title?: (step: JourneyStep) => string | undefined }
+): string[] => {
+	const goal = goalStepIndex(journey.steps);
+	const before = goal === -1 ? journey.steps : journey.steps.slice(0, goal);
+	const lines: string[] = [];
+	const held = mutualInterestJob({ steps: before });
+	const jobWaits = held !== undefined && !held.holds;
+	if (held && jobWaits) {
+		lines.push(
+			isPickable(held.job)
+				? m.match.jobTerms
+				: m.match.jobNotOpen(JOB_STATUS_LABELS[held.job.status])
+		);
+	}
+	if (!booking || goal === -1 || journey.steps[goal].status === 'succeeded') return lines;
+	// A step not passed stops the journey there: that step says why
+	if (before.some((step) => step.status === 'failed')) return lines;
+	const left = before
+		.filter((step) => step.status !== 'succeeded' && !heldByMutualInterest(step.view))
+		.map((step) => {
+			const phrase = stepPhrase(step);
+			const own = title(step);
+			return own ? m.summary.titled(phrase, own) : phrase;
+		});
+	if (left.length > 0) lines.push(m.match.left(left));
+	else if (!jobWaits) lines.push(m.match.bookNow);
+	return lines;
 };
 
 // --- Note step ---------------------------------------------------------------------------
@@ -576,52 +723,79 @@ export interface JobMatch {
 	criteria?: JobMatchCriterion[];
 	/** The service this site asks for public transport times, to credit with the commute */
 	transit?: TransitProvider;
+	/**
+	 * The job the owner and the visitor are both interested in (matching): its score is the one it
+	 * had then, frozen while their mutual interest lasts (nothing to check again, nothing to change)
+	 */
+	matched?: true;
+	/** When it was frozen, with `matched`: when they both became interested (an ISO date) */
+	frozenAt?: string;
 }
 
 /** The services public transport times can come from (the API's COMMUTE_TRANSIT) */
 export const TRANSIT_PROVIDERS = ['here', 'transitous'] as const;
 export type TransitProvider = (typeof TRANSIT_PROVIDERS)[number];
 
-const isScore = (value: unknown): value is number => {
+/** The public transport service of an answer, when it is one this client knows */
+export const transitProvider = (value: unknown): TransitProvider | undefined =>
+	TRANSIT_PROVIDERS.find((name) => name === value);
+
+/** A score out of 100, as the API gives it (a whole number from 0 to 100) */
+export const isScore = (value: unknown): value is number => {
 	const { min, max } = JOB_MATCH_STEP_LIMITS.minScore;
 	return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
 };
 
 const OUTCOMES: readonly JobMatchCriterion['outcome'][] = ['match', 'partial', 'miss', 'unknown'];
 
+/**
+ * The outcome of each criterion, from a list the API gave (a job match step's `view`, an anonymous
+ * card's outcomes, a job proposed to the candidate): an entry that is not one is left out, as is a
+ * criterion given twice (the first stays)
+ */
+export const jobMatchCriteria = (value: unknown): JobMatchCriterion[] => {
+	if (!Array.isArray(value)) return [];
+	const seen = new Set<string>();
+	return value.flatMap((entry): JobMatchCriterion[] => {
+		const { criterion, outcome, notStated, dealBreaker } = (
+			entry && typeof entry === 'object' ? entry : {}
+		) as Record<string, unknown>;
+		const known = PERFECT_JOB_CRITERIA.find((name) => name === criterion);
+		const result = OUTCOMES.find((name) => name === outcome);
+		if (!known || !result || seen.has(known)) return [];
+		seen.add(known);
+		return [
+			{
+				criterion: known,
+				outcome: result,
+				notStated: notStated === true,
+				dealBreaker: dealBreaker === true
+			}
+		];
+	});
+};
+
 /** The score, from a job match step's `view`; undefined when there is none (or it is not one) */
 export const jobMatch = (view: unknown): JobMatch | undefined => {
 	if (!view || typeof view !== 'object') return undefined;
-	const { score, minScore, job, criteria, transit } = view as Record<string, unknown>;
-	const provider = TRANSIT_PROVIDERS.find((name) => name === transit);
+	const { score, minScore, job, criteria, transit, frozenAt } = view as Record<string, unknown>;
+	const provider = transitProvider(transit);
 	const { _id, title } = (job && typeof job === 'object' ? job : {}) as Record<string, unknown>;
 	if (!isScore(score) || !isScore(minScore)) return undefined;
 	if (typeof _id !== 'string' || typeof title !== 'string') return undefined;
-	const listed = Array.isArray(criteria)
-		? criteria.flatMap((entry): JobMatchCriterion[] => {
-				const { criterion, outcome, notStated, dealBreaker } = (entry ?? {}) as Record<
-					string,
-					unknown
-				>;
-				const known = PERFECT_JOB_CRITERIA.find((name) => name === criterion);
-				const result = OUTCOMES.find((name) => name === outcome);
-				if (!known || !result) return [];
-				return [
-					{
-						criterion: known,
-						outcome: result,
-						notStated: notStated === true,
-						dealBreaker: dealBreaker === true
-					}
-				];
-			})
-		: undefined;
+	const matched = heldByMutualInterest(view);
+	const frozen =
+		matched && typeof frozenAt === 'string' && !Number.isNaN(Date.parse(frozenAt))
+			? frozenAt
+			: undefined;
 	return {
 		score,
 		minScore,
 		job: { _id, title },
-		...(listed ? { criteria: listed } : {}),
-		...(provider ? { transit: provider } : {})
+		...(Array.isArray(criteria) ? { criteria: jobMatchCriteria(criteria) } : {}),
+		...(provider ? { transit: provider } : {}),
+		...(matched ? { matched: true as const } : {}),
+		...(frozen ? { frozenAt: frozen } : {})
 	};
 };
 
@@ -643,21 +817,40 @@ export const jobMatchSettings = (config: unknown): { minScore: unknown; showDeta
 /** The score reached the minimum */
 export const passesJobMatch = (match: JobMatch): boolean => match.score >= match.minScore;
 
-/** The line under the job match step's name: what it asks, or the score of the job picked */
+/**
+ * The line under the job match step's name: what it asks, or the score of the job picked (the one
+ * it had when both became interested, for the job of a mutual interest)
+ */
 export const jobMatchNote = (step: { config?: unknown; view?: unknown }): string => {
 	const match = jobMatch(step.view);
 	if (match) {
-		return passesJobMatch(match)
-			? m.jobMatch.passed(match.job.title, match.score)
-			: m.jobMatch.under(match.job.title, match.score, match.minScore);
+		if (!passesJobMatch(match)) {
+			return m.jobMatch.under(match.job.title, match.score, match.minScore);
+		}
+		return match.matched
+			? m.jobMatch.frozen(match.job.title, match.score)
+			: m.jobMatch.passed(match.job.title, match.score);
 	}
 	const minScore = jobMatchMinScore(step.config);
 	return minScore === undefined ? m.jobMatch.ask : m.jobMatch.askMin(minScore);
 };
 
-/** How a criterion's outcome reads in the details of a score */
-export const jobMatchOutcomeText = (entry: JobMatchCriterion): string => {
+/**
+ * Who reads how a job does on a candidate's criteria: the recruiter whose job it is (on the
+ * candidate's page for recruiters, beside an anonymous card), or the candidate themselves
+ */
+export type OutcomeAudience = 'recruiter' | 'candidate';
+
+/** How a criterion's outcome reads in the details of a score, for `audience` */
+export const jobMatchOutcomeText = (
+	entry: JobMatchCriterion,
+	audience: OutcomeAudience = 'recruiter'
+): string => {
 	if (entry.outcome === 'unknown') return m.jobMatch.outcome.unknown;
-	if (entry.notStated) return m.jobMatch.outcome.notStated;
+	if (entry.notStated) {
+		return audience === 'recruiter'
+			? m.jobMatch.outcome.notStated
+			: m.jobMatch.outcome.notStatedForCandidate;
+	}
 	return m.jobMatch.outcome[entry.outcome];
 };

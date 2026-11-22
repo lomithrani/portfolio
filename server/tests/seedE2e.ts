@@ -13,23 +13,27 @@
 // job they need in the browser, so it stays that way). 'e2e-preview' is read, never changed, by
 // client/tests/robots.test.ts: its title and tagline, set here on every run, are the preview of a
 // shared link, with characters the HTML must escape. 'e2e-ready' is the owner of the one test of
-// client/tests/landing.test.ts that sets a portfolio up with nothing answered in the browser (the
-// gate from "Get started", the perfect job's essentials, the landing card then ready): it sets back
-// what it changes at its start, so a run never depends on the one before. The candidate 'e2e.candidate@example.com' (no domain, no
+// client/tests/landing.test.ts that sets a portfolio up with nothing answered in the browser but
+// what would ask Google (the gate from "Get started", the perfect job's essentials, the landing card then ready): it sets back
+// what it changes at its start, so a run never depends on the one before; it has a calendar
+// (a placeholder grant, a meeting type with hours), which counts on a site that takes Google
+// Calendar. The candidate 'e2e.candidate@example.com' (no domain, no
 // recruiter space, no acceptance of the terms) is signed in as by client/tests/account.test.ts,
 // claim-consent.test.ts, feedback.test.ts, recruiter.test.ts, hire-journey.test.ts, job-view.test.ts
 // and the signed-in steps of landing.test.ts; the tests that would change it (accepting the terms,
 // claiming, opening a recruiter space or recording a space: PUT /me/mode, deleting the account)
 // answer those requests in the browser, so it stays that way.
-// Matching (Path 2), for the test files of its screens to come, one candidate and one job for each
+// Matching (Path 2), for the test files of its screens, one candidate and one job for each
 // file, so that the two files, which run in parallel, never read what the other decides: 'e2e-match'
 // (fixed id 65e2e0000000000000000003, client/tests/matching-candidate.test.ts, seeded with
 // discovery off: the test turns it on; a withdrawal holds the next opt-in back
 // DISCOVERY_REJOIN_DAYS (429), which only this seed clears, as it empties the profile's consents:
 // that file answers DELETE /discovery/consent in the browser, or this seed runs again before each
-// of its runs) and 'e2e-match-card' (fixed id
+// of its runs; its deck answers the job seeded for it, which only this seed proposes to it again)
+// and 'e2e-match-card' (fixed id
 // 65e2e0000000000000000004, client/tests/matching-recruiter.test.ts, seeded on: the e2e recruiter
-// reads its anonymous card).
+// reads its anonymous card, and answers it in the deck once the candidate said through the API
+// that the job interests them; that mutual interest is the run's, which only this seed removes).
 // Each has everything discovery asks for, set back on every run: the terms in force, a perfect job
 // of three criteria with the pay, the gate journey, a Google Calendar grant (a placeholder: nothing
 // ever asks Google with it) and a meeting type with hours, an experience. The e2e recruiter has two
@@ -42,7 +46,10 @@
 // booked), and the counters of the day's discovery opt-ins, of the hour's feed reads and of the
 // day's decisions. They are proposed only by an API run with MATCHING=true, and with
 // GOOGLE_CLIENT_SECRET set (any value: Calendar counts as configured; nothing asks Google unless a
-// page books or lists slots, which the tests answer in the browser).
+// page books or lists slots, which the tests answer in the browser). The reviewer
+// 'e2e.reviewer@example.com' (fixed id 65e2e0000000000000000005, no portfolio, no recruiter space)
+// reviews the jobs put into matching for client/tests/matching-review.test.ts, on an API whose
+// MATCHING_REVIEWERS lists it: that file decides on the jobs it tags alone.
 // This file loads nothing that imports server/env.ts (CI seeds with MONGO_URL and JWT_SECRET only):
 // the review version of the jobs in matching comes from server/services/jobVersion.ts, never from
 // jobMatching.ts.
@@ -122,6 +129,32 @@ for (const owner of owners) {
     { upsert: true }
   );
 
+  // A calendar recruiters can book in, on a site that takes Google Calendar (GOOGLE_CLIENT_SECRET
+  // set, as CI's API is for the files of matching): the landing page's ready state then counts it
+  // done. A grant as the API stores it once connected, a placeholder nothing ever sends to Google
+  // (client/tests/landing.test.ts answers in the browser the admin page's calendar requests that
+  // would), and a meeting type with hours; set on every run
+  if (owner.domain === 'e2e-ready') {
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: { 'googleCalendar.refreshToken': 'e2e-placeholder', 'googleCalendar.connectedAt': new Date() },
+        $unset: { 'googleCalendar.revokedAt': 1 }
+      }
+    );
+    await AppointmentSchedule.findOneAndUpdate(
+      { user: user._id, title: 'E2E intro call' },
+      {
+        $set: {
+          timezone: 'Europe/Paris',
+          enabled: true,
+          availability: [1, 2, 3, 4, 5].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '17:00' }))
+        }
+      },
+      { upsert: true }
+    );
+  }
+
   // A job to pick before the meeting: the e2e recruiter's pick links the job's private page
   // (/opportunities/:id), which its owner reads. Set on every run (a database seeded before has
   // the default journey), as PUT /workflow stores it
@@ -170,6 +203,22 @@ await User.findOneAndUpdate(
       _id: new Types.ObjectId('65e2e0000000000000000002'),
       name: 'E2E',
       surname: 'Candidate'
+    }
+  },
+  { upsert: true }
+);
+
+// A reviewer of matching: no portfolio, no recruiter space. Its id is fixed (E2E_REVIEWER_ID of
+// client/tests/support/owner.ts signs its session); the API under test lists its email in
+// MATCHING_REVIEWERS (CI's e2e job does) for client/tests/matching-review.test.ts, which reads the
+// jobs waiting for a review and decides on its own tagged jobs only
+await User.findOneAndUpdate(
+  { email: 'e2e.reviewer@example.com' },
+  {
+    $setOnInsert: {
+      _id: new Types.ObjectId('65e2e0000000000000000005'),
+      name: 'Remy',
+      surname: 'Reviewer'
     }
   },
   { upsert: true }
@@ -364,8 +413,9 @@ await RateLimitCounter.deleteMany({ _id: /^(job-share|discovery-grant|matching-f
 
 console.log(
   `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate, ` +
-    `and for matching: ${matchCandidates.map((candidate) => candidate.domain).join(', ')} and the jobs ` +
-    matchingJobs.map((job) => `"${job.title}"`).join(', ')
+    `and for matching: ${matchCandidates.map((candidate) => candidate.domain).join(', ')}, the jobs ` +
+    matchingJobs.map((job) => `"${job.title}"`).join(', ') +
+    ' and the e2e reviewer'
 );
 await mongoose.disconnect();
 process.exit(0);

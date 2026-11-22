@@ -3,7 +3,8 @@ import {
 	jobMatchMinScore,
 	jobMatchNote,
 	jobStepNote,
-	noteContent
+	noteContent,
+	pickedJob
 } from '#services/workflow.ts';
 import JobMatchSettings from './JobMatchSettings.svelte';
 import JobMatchStep from './JobMatchStep.svelte';
@@ -37,9 +38,8 @@ const CLIENT_STEPS: Record<string, ClientStep> = {
 		Visitor: JobStep,
 		note: (step, state) => jobStepNote(step.view, state),
 		wantsOpen: (step, address) => asksForAnotherJob(step.view, address),
-		get reopenLabel() {
-			return m.job.reopen;
-		},
+		// The job of a mutual interest is not changed here while it lasts: the step only shows it
+		reopenLabel: (step) => (pickedJob(step.view)?.matched ? undefined : m.job.reopen),
 		// Picking needs a session and a recruiter space. The minutes are a pick's, or a short job's:
 		// one written on the way takes longer, which `asks` says
 		effort: {

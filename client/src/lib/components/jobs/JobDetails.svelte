@@ -1,10 +1,14 @@
 <!--
 @component
 A job posting as candidates and its recruiter read it: status, title, company, the facts
-(JobFacts) and the Markdown description, rendered without raw HTML. Used by the recruiter's job
+(JobFacts) and the Markdown description, rendered without raw HTML, each link with the host it
+leads to beside it (Markdown's linkHosts: what a link's text hides, a reviewer sees). Used by the recruiter's job
 page and by the private page of a job shared with a candidate (/opportunities/:id): it has no
 controls of its own. Pass them as snippets: `actions` (next to the title: Edit...), `meta` (under
-the company: dates...) and `children` (after the description).
+the company: dates...) and `children` (after the description). `headingId` names the title, for a
+page that moves the focus to it (it then takes it: the reviewers' list of jobs in matching), and
+`regions={false}` keeps its two sections from being named regions, for a page that lists many
+postings (that list: landmarks repeated per job would make landmark navigation useless).
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -18,6 +22,8 @@ the company: dates...) and `children` (after the description).
 	let {
 		job,
 		headingLevel = 2,
+		headingId,
+		regions = true,
 		actions,
 		meta,
 		children
@@ -25,6 +31,10 @@ the company: dates...) and `children` (after the description).
 		job: JobPostingLike;
 		/** Level of the title's heading; the sections below rank under it */
 		headingLevel?: 1 | 2 | 3;
+		/** The title's id, for a page that moves the focus to it (it takes it: tabindex -1) */
+		headingId?: string;
+		/** Whether its sections are named regions (landmarks): false on a page listing many */
+		regions?: boolean;
 		/** Controls next to the title (they wrap under it on small screens) */
 		actions?: Snippet;
 		/** Under the company: dates... */
@@ -34,13 +44,14 @@ the company: dates...) and `children` (after the description).
 	} = $props();
 
 	const uid = $props.id();
+	let titleId = $derived(headingId ?? `${uid}-title`);
 	let titleTag = $derived(`h${headingLevel}`);
 	let sectionTag = $derived(`h${headingLevel + 1}`);
 	let title = $derived(job.title?.trim() || m.untitled);
 	let description = $derived(job.description?.trim() ?? '');
 </script>
 
-<article class="relative space-y-6" aria-labelledby="{uid}-title">
+<article class="relative space-y-6" aria-labelledby={titleId}>
 	<header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
 		<div class="min-w-0 flex-1 space-y-2">
 			{#if job.status}
@@ -48,8 +59,9 @@ the company: dates...) and `children` (after the description).
 			{/if}
 			<svelte:element
 				this={titleTag}
-				id="{uid}-title"
-				class="text-2xl font-bold break-words md:text-3xl"
+				id={titleId}
+				tabindex={headingId ? -1 : undefined}
+				class="rounded-base text-2xl font-bold break-words outline-none focus-visible:ring-2 focus-visible:ring-primary-500 md:text-3xl"
 			>
 				{title}
 			</svelte:element>
@@ -70,20 +82,20 @@ the company: dates...) and `children` (after the description).
 
 	<section
 		class="card preset-outlined-surface-200-800 bg-surface-50-950 p-4 sm:p-6"
-		aria-labelledby="{uid}-facts"
+		aria-labelledby={regions ? `${uid}-facts` : undefined}
 	>
 		<svelte:element this={sectionTag} id="{uid}-facts" class="sr-only">{m.keyFacts}</svelte:element>
 		<JobFacts {job} />
 	</section>
 
-	<section class="space-y-3" aria-labelledby="{uid}-about">
+	<section class="space-y-3" aria-labelledby={regions ? `${uid}-about` : undefined}>
 		<svelte:element this={sectionTag} id="{uid}-about" class="text-lg font-semibold">
 			{m.about}
 		</svelte:element>
 		{#if description}
 			<!-- Written by any recruiter: its raw HTML shows as text. Its headings rank right under
 			     "About the job", whichever level the description starts with -->
-			<Markdown content={description} topHeadingLevel={headingLevel + 2} html={false} />
+			<Markdown content={description} topHeadingLevel={headingLevel + 2} html={false} linkHosts />
 		{:else}
 			<p class="text-surface-700-300">{m.noDescription}</p>
 		{/if}

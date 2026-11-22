@@ -8,7 +8,9 @@
 	import { toaster } from '#services/toaster.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { isCurrentSection, recordSpaceShown } from '#services/account.ts';
+	import { notificationsStore } from '#services/notifications.ts';
 	import { sessionCheckedStore } from '#services/stores/index.ts';
+	import { SITE_NAME } from '#components/legal/legalDocuments.ts';
 	import { untrack, type Snippet } from 'svelte';
 	import { get } from 'svelte/store';
 	import { browser } from '$app/env';
@@ -19,15 +21,28 @@
 	import { NOINDEX, isNoindexRoute } from '#lib/robots.ts';
 	import { m } from './layout.messages.ts';
 
-	// Pages that belong to no portfolio: the recruiter space (/recruiter), and the private page of a
-	// job description shared with a candidate (/opportunities/:id, the link of a meeting
-	// invitation). Same header and toasts as a portfolio, without its rail: the account menu leads
-	// from one space to the other, the header's logo to the landing page, and the language and
-	// light/dark switches close the page, next to the legal links.
+	// Pages that belong to no portfolio: the recruiter space (/recruiter), the private page of a job
+	// description shared with a candidate (/opportunities/:id, the link of a meeting invitation),
+	// and the candidate's opportunities (/opportunities: matching's jobs proposed to them and their
+	// mutual interests). Same header and toasts as a portfolio, without its rail: the account menu
+	// leads from one space to the other, the header's logo to the landing page, and the language
+	// and light/dark switches close the page, next to the legal links.
 	let { children }: { children: Snippet } = $props();
 
+	// The inbox is named only while matching answers (GET /me/notifications): before, and while it
+	// is off (the page then says only that it is not available), the site's name alone. The
+	// reviewers' page of matching (/recruiter/reviews) has the site's name alone too, whoever reads
+	// it: the page says what it is only to a reviewer, and is no space of theirs
 	let header = $derived(
-		isCurrentSection(page.url.pathname, '/opportunities') ? m.opportunity : m.recruiter
+		page.route.id === '/(app)/opportunities'
+			? $notificationsStore.matching === 'on'
+				? m.opportunities
+				: { title: SITE_NAME, subtitle: undefined }
+			: page.route.id === '/(app)/recruiter/reviews'
+				? { title: SITE_NAME, subtitle: undefined }
+				: isCurrentSection(page.url.pathname, '/opportunities')
+					? m.opportunity
+					: m.recruiter
 	);
 
 	$effect(() => {
@@ -36,7 +51,7 @@
 	});
 
 	// A page of the recruiter space records it as the account's active space (recordSpaceShown;
-	// /opportunities, read by a portfolio owner, the candidate space), so the account menu names
+	// /opportunities and its pages, read by a portfolio owner, the candidate space), so the account menu names
 	// the space shown: after each navigation (a link, a bookmark, the menu, which only navigates),
 	// and once the session is known for the page the visit began on. A navigation the page kept
 	// (unsaved changes) records nothing.

@@ -699,8 +699,9 @@ matches, or sends an edited job back for review. The flag is read when the API s
 takes effect at its next deploy. The startup line `Running at ...` says
 `"matching":"on (1 job reviewer)"` (how many reviewers, never who) or why it is off.
 
-- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land. No page
-  calls its routes yet: they are for the screens that come next, and for the tests.
+- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land (its
+  screens read its routes; with it unset they show nothing of it), and `MATCHING_REVIEWERS` to the
+  accounts that review the jobs put into matching there.
 - **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
   and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
   assessment is signed: a candidate's consent must point to published texts. Public transport
@@ -721,9 +722,12 @@ candidate) and decides with `PUT /matching/reviews/:id`
 `{ decision: 'approve' | 'reject', reason?, version }`, on the version read (an edit since: 409).
 Refuse copies of a job that differ in one term, the pay or the office: each copy's cards would
 tell its recruiter the candidates' floors or areas.
-No screen does it yet: until the review screen ships, a reviewer calls the API signed in (the
-`auth` cookie of their session). The `matching_job_reviews` metric counts the jobs waiting: nothing
-else tells the reviewers (no email is sent). An approved job its recruiter edits (its description,
+A reviewer does it on the web at **`/recruiter/reviews`** (signed in with the account whose email
+is listed; bookmark it: no menu leads there, so nothing anyone else sees says who reviews or that
+the page exists, and anyone else reads "Not available"): the jobs waiting, each with who is behind
+it and the recruiter's other jobs, copies flagged with the terms they differ in, then Approve
+(asked first) or Reject with the reason the recruiter reads. The `matching_job_reviews` metric
+counts the jobs waiting: nothing else tells the reviewers (no email is sent). An approved job its recruiter edits (its description,
 or another field no criterion reads: its terms are locked) waits for a review again; an edit
 saved while a review was decided (or matching switched) is refused with a 409, and the recruiter's
 editor reloads the posting. A job is
@@ -767,8 +771,10 @@ the moment of the two decisions; once read again (a withdrawal or the job leavin
 landed meanwhile takes it back first) it reveals the candidate's portfolio address to the recruiter and
 leads into the candidate's own hiring journey (its job step holds the job, its job match is frozen
 at the score then, its notes are still the recruiter's to confirm before the meeting opens). Either
-side ends it (`POST /matches/:id/end`). No email is sent: each side sees how many mutual interests
-it has not seen yet (`GET /me/notifications`), for the account menu's badge of the screens to come.
+side ends it (`POST /matches/:id/end`). No email is sent: the account menu says what each side has
+not seen yet (`GET /me/notifications`, read by `notificationsStore`): a candidate reads how many
+mutual interests are new on "Opportunities", the recruiter space is marked "New" without a number
+(`AccountMenu.svelte`).
 
 The first opt-in creates the `discoveryprofiles` collection (one document per account that turned
 discovery on or off or set its anonymous card), the first decision the `matches` collection (one
@@ -1026,7 +1032,8 @@ the old one). Each ruleset:
 - requires a pull request (no approval: the repository has one maintainer), merged by squash into
   `develop`, by merge commit into `main`;
 - requires the CI jobs to pass (`Lint, type-check, build`, both `Server and client unit tests`,
-  `Playwright end-to-end tests`), and on `main` also `Only develop merges into main`;
+  both `Playwright end-to-end tests`: `(matching on)` and `(matching off)`), and on `main` also
+  `Only develop merges into main`;
 - on `develop` only, requires the pull request to be up to date with `develop`: after another
   merge, press **Update branch** and let CI run again, so what is merged is what was tested. Not
   on `main`: a release leaves a merge commit there that `develop` never gets, so a release PR is
@@ -1223,12 +1230,15 @@ An empty array (`[]`) from each query means nothing to do. Otherwise, rename the
 
 Portfolios are public to anyone with their address but are not listed by search engines
 (CLAUDE.md, "Search engines"): every page of a portfolio, the 404 of a name nobody claimed,
-`/account`, `/recruiter/jobs/*` and `/opportunities/*` (the private page of a job description
-shared with a candidate) answer with `x-robots-tag: noindex, nofollow, noarchive`, and the API
-sends the same header on every answer. The pages rendered on the server (a portfolio's pages,
-`/account`) also carry a robots meta in their HTML; the 404 of a name nobody claimed has the
-header alone; `/recruiter/jobs/*` and `/opportunities/*` are rendered in the browser, so their
-meta is only written once their script ran (`curl` never sees it). The landing page, the legal
+`/account`, `/recruiter/jobs/*` (with a job's candidates of matching,
+`/recruiter/jobs/<id>/candidates`), `/recruiter/reviews` (the reviewers' page of matching),
+`/opportunities` (the candidate's inbox of matching) and `/opportunities/*` (the private page of
+a job description shared with a candidate) answer with `x-robots-tag: noindex, nofollow,
+noarchive`, and the API sends the same header on every answer. The pages rendered on the server (a
+portfolio's pages, `/account`) also carry a robots meta in their HTML; the 404 of a name nobody
+claimed has the header alone; `/recruiter/jobs/*`, `/recruiter/reviews`, `/opportunities` and
+`/opportunities/*` are rendered in the browser, so their meta is only written once their script
+ran (`curl` never sees it). The landing page, the legal
 pages and `/recruiter` stay listed, with their canonical links (the one of `/recruiter`, rendered
 in the browser too, is written by its script). The job board is gone: `/jobs` answers `410 Gone`,
 which tells search engines to drop it, `/jobs/<id>` answers `308` to `/opportunities/<id>` (the
@@ -1266,6 +1276,9 @@ headers https://example.com/legal/privacy | grep -ci '^x-robots-tag'            
 curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs               # 410: the job board is gone
 curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://example.com/jobs/65e2e00000000000000000aa   # 308 .../opportunities/65e2e00000000000000000aa
 headers https://example.com/opportunities/65e2e00000000000000000aa | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+headers https://example.com/opportunities | grep -i '^x-robots-tag'             # the same (the inbox of matching)
+headers https://example.com/recruiter/reviews | grep -i '^x-robots-tag'         # the same (the reviewers' page)
+headers https://example.com/recruiter/jobs/65e2e00000000000000000aa/candidates | grep -i '^x-robots-tag'   # the same
 curl -s -o /dev/null -w '%{http_code}\n' https://api.example.com/jobs           # 404
 curl -s https://example.com/robots.txt | grep -iE '^(user-agent|allow|disallow)'   # each group with its user agents
 LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'

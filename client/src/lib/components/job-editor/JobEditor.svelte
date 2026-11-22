@@ -32,6 +32,17 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
   browser once the posting is saved or the recruiter discards it (`onImportDiscarded`).
 - `duplicate` (add mode): starts from a copy of that posting, as a draft (Duplicate), its draft
   kept under a key of its own (`jobDraft:<userId>:copy:<jobId>`).
+- `matchingDefault` and `matchingOffered` (add mode, matching: Path 2): for a job created open, the
+  choice of proposing it to the candidates whose criteria it meets (POST /jobs's `matching`, not
+  part of the posting), ticked or not to start with, kept with the draft once changed (with the
+  default it was changed from: a choice comes back only under that default), shown and sent only
+  while matching is offered (`matchingOffered`: the API has it on) and the status is open (the API
+  refuses it on a draft); ticked, the company and a description are asked first (the API's rule,
+  the company's hint saying so), and a 409 of the jobs a recruiter may propose at once offers to
+  create it without proposing it. A job created otherwise is proposed from its page. In edit mode,
+  a job put into matching says what a save does to it, from the status chosen: a change sends it
+  back for review, or, filled, closed or back to draft, it leaves matching (its pending answers
+  dropped, its mutual interests ended).
 - A save that opens a posting never opened (portfolio-common's locksJobTerms) is confirmed first
   (OpenJobDialog): its terms lock then.
 - Mounted once per posting: remount it (e.g. `{#key}`) to start over with other props.
@@ -46,7 +57,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		DocumentDuplicate,
 		ExclamationTriangle,
 		InformationCircle,
-		LockClosed
+		LockClosed,
+		UserGroup
 	} from 'svelte-heros-v2';
 	import {
 		CONTRACT_TYPE_LABELS,
@@ -72,6 +84,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		WORK_MODE_LABELS,
 		intlLocale,
 		jobTermsLocked,
+		keepsMatching,
 		locksJobTerms,
 		type AddressSuggestion,
 		type JobStatus,
@@ -84,6 +97,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	import { portfolioApi } from '#services';
 	import { clearAuthentication } from '#services/authentication.ts';
 	import { errorStatus } from '#services/apiErrors.ts';
+	import { JOB_CHANGED, JOB_TERMS_LOCKED, RECRUITER_REQUIRED } from '#services/apiBodies.ts';
 	import {
 		JOB_FIELD_LABELS,
 		JOB_STATUS_DESCRIPTIONS,
@@ -104,6 +118,14 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		type JobPostingLike
 	} from '#services/jobPosting.ts';
 	import { officeFromSuggestion, officeKey, type OfficeAddress } from '#services/addressSearch.ts';
+	import {
+		isMatchingLimitBody,
+		jobMatchingState,
+		leavingMatchingText,
+		matchingFormErrors,
+		readJobMatching,
+		sendsMatching
+	} from '#services/recruiterMatching.ts';
 	import { toaster } from '#services/toaster.ts';
 	import AddressSearch from '#components/address/AddressSearch.svelte';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
@@ -150,6 +172,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		cancelHref,
 		recruiterHref,
 		duplicateHref,
+		matchingDefault,
+		matchingOffered = false,
 		onSaved,
 		onImportDiscarded,
 		onSessionExpired
@@ -166,6 +190,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					updatedAt?: Date | string;
 					/** Set once it was opened: its terms are locked */
 					publishedAt?: Date | string;
+					/** Whether it is proposed to candidates (matching), as the recruiter routes answer it */
+					matching?: unknown;
 			  })
 			| null;
 		/** Add mode: the job description import to start from */
@@ -178,6 +204,13 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		recruiterHref: string;
 		/** Edit mode: the new posting copied from this one (/recruiter/jobs/new?duplicate=<id>) */
 		duplicateHref?: string;
+		/**
+		 * Add mode: whether a job created open is proposed to candidates to start with (matching);
+		 * undefined: the choice is never offered
+		 */
+		matchingDefault?: boolean;
+		/** Add mode: matching is on in the API (the choice shows for a job created open) */
+		matchingOffered?: boolean;
 		/**
 		 * After a save; the draft is already gone. Typically a toast and a navigation, but not
 		 * when the recruiter `left` the editor while it was saving (no navigation then)
@@ -199,13 +232,9 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 	// How each field is named: its label here, and in the error summary
 	const labels = JOB_FIELD_LABELS;
-	// The API's 403 of an account without a recruiter space: matched, not shown (the API sends it
-	// in English whatever the language)
-	const RECRUITER_SPACE_REQUIRED = 'Create your recruiter space first';
-	/** The API's 409 when the posting changed since the editor loaded it (PUT /jobs/:id) */
-	const JOB_CHANGED = 'This job posting was changed since you opened it';
-	/** The API's 409 when an edit changes the terms of a posting opened before (PUT /jobs/:id) */
-	const JOB_TERMS_LOCKED = 'The terms of an opened job posting cannot be changed';
+	// The API's bodies matched, not shown (English whatever the language, #services/apiBodies.ts):
+	// the 403 of an account without a recruiter space, the 409 of a posting changed since the editor
+	// loaded it, and of an edit that changes the terms of a posting opened before (PUT /jobs/:id)
 
 	// The editor works on the props as they were when it was mounted
 	const initialJob = untrack(() => job);
@@ -222,15 +251,23 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		imported: !!initialImport,
 		duplicateOf: initialDuplicate?._id
 	});
+	// A new posting's choice of matching, to start with (undefined: never offered)
+	const initialMatching = mode === 'add' ? untrack(() => matchingDefault) : undefined;
 	const start = startingJobForms(
 		{
 			job: initialJob,
 			imported: initialImport?.draft,
 			duplicate: initialDuplicate,
-			locked
+			locked,
+			matching: initialMatching
 		},
 		() => loadJobDraft(storageKey)
 	);
+	// Edit mode: a job put into matching (as loaded) says what a save does to it, from the status
+	// chosen in the form
+	const matchingAtLoad = initialJob ? readJobMatching(initialJob.matching) : null;
+	const loadedStatus: JobStatus = initialJob?.status ?? 'draft';
+	const inMatching = !!matchingAtLoad?.enabledAt;
 	const baselineSignature = jobFormSignature(start.baseline);
 	// Stored with the draft: what it started from (a stale draft keeps its own, to keep warning)
 	let basisToStore = start.draftBasis;
@@ -268,7 +305,32 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	}
 	// Text typed in the lists (skills…) and not added yet: a change too (ListInput's bind:text)
 	let pendingText: PendingListText = $state(start.pending);
-	let dirty = $derived(jobFormSignature(form) !== baselineSignature || hasPendingText(pendingText));
+	// Whether a job created open is proposed to candidates (matching), and whether the choice shows
+	let proposed = $state(start.matching ?? false);
+	let matchingShown = $derived(
+		initialMatching !== undefined && matchingOffered && form.status === 'open'
+	);
+	/**
+	 * Edit mode, a job put into matching: filled, closed or back to draft in the form, what saving
+	 * it takes from matching (a warning); else, proposed to candidates, that a change goes back for
+	 * review (`live`: proposed to candidates now, open and accepted; `waiting` otherwise)
+	 */
+	let matchingNote = $derived.by(
+		(): { kind: 'leaving'; text: string } | { kind: 'live' | 'waiting' } | null => {
+			if (!matchingAtLoad) return null;
+			const leaving = leavingMatchingText(matchingAtLoad, loadedStatus, form.status);
+			if (leaving) return { kind: 'leaving', text: leaving };
+			if (!inMatching || !keepsMatching(form.status)) return null;
+			return form.status === 'open' && jobMatchingState(loadedStatus, matchingAtLoad) === 'live'
+				? { kind: 'live' }
+				: { kind: 'waiting' };
+		}
+	);
+	let dirty = $derived(
+		jobFormSignature(form) !== baselineSignature ||
+			hasPendingText(pendingText) ||
+			(initialMatching !== undefined && proposed !== initialMatching)
+	);
 	let restoredNotice = $state(start.restored);
 	// Terms the stored draft changed that the posting, opened since, keeps: they cannot be saved on
 	// it, and stay in this browser (with the draft) until the recruiter duplicates it with them or
@@ -301,6 +363,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		const snapshot = $state.snapshot(form) as JobForm;
 		const pending = $state.snapshot(pendingText);
 		const held = heldTerms;
+		// A new posting's choice of matching goes with its draft once the recruiter changed it, with
+		// the default it was changed from (a job written from a candidate's page starts unticked)
+		const choice =
+			initialMatching !== undefined && proposed !== initialMatching
+				? { matching: proposed, matchingDefault: initialMatching }
+				: {};
 		if (finished) return;
 		if (held) {
 			// The terms the posting could not take stay over the rest of the draft
@@ -314,7 +382,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 			saveJobDraft(storageKey, {
 				form: snapshot,
 				basis: basisToStore,
-				...(hasPendingText(pending) ? { pending } : {})
+				...(hasPendingText(pending) ? { pending } : {}),
+				...choice
 			});
 		} else {
 			clearJobDraft(storageKey);
@@ -332,8 +401,13 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	const snapshotOf = (field: JobFormField) => JSON.stringify(form[field]);
 	// Text typed in a list (skills…) that a save could not add: shown until that text changes
 	let pendingTextErrors = $state<Partial<Record<JobFormField, string>>>({});
+	/** What the form misses, the company and a description asked of a job proposed to candidates */
+	const formErrors = () => ({
+		...matchingFormErrors(form, matchingShown && proposed),
+		...jobFormErrors(form)
+	});
 	let errors = $derived.by(() => {
-		const found = { ...(attempted ? jobFormErrors(form) : {}), ...pendingTextErrors };
+		const found = { ...(attempted ? formErrors() : {}), ...pendingTextErrors };
 		if (serverError && snapshotOf(serverError.field) === serverError.snapshot) {
 			found[serverError.field] ??= serverError.message;
 		}
@@ -452,7 +526,11 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		});
 	}
 
-	async function handleSaveError(error: { status: unknown; value?: unknown }, editorUrl: string) {
+	async function handleSaveError(
+		error: { status: unknown; value?: unknown },
+		editorUrl: string,
+		withMatching = false
+	) {
 		const code = errorStatus(error);
 		const text = apiText(error.value);
 		if (destroyed) {
@@ -466,7 +544,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		}
 		if (code === 403) {
 			return showSubmitError(
-				text === RECRUITER_SPACE_REQUIRED
+				text === RECRUITER_REQUIRED
 					? {
 							message: m.noRecruiterSpace,
 							link: { href: recruiterHref, label: m.openRecruiterSpace }
@@ -493,6 +571,14 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 					{ label: m.reload, run: reloadEditor },
 					...(duplicateHref ? [{ label: m.duplicateWithChanges, run: duplicateWithChanges }] : [])
 				]
+			});
+		}
+		if (code === 409 && withMatching && isMatchingLimitBody(error.value)) {
+			// As many jobs proposed to candidates as a recruiter may have: it can be created without
+			// being proposed (not so for the job descriptions a recruiter may keep: said below)
+			return showSubmitError({
+				message: text ?? m.tooManyJobs,
+				actions: [{ label: m.matching.withoutIt, run: createWithoutMatching }]
 			});
 		}
 		if (code === 409) {
@@ -532,7 +618,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		submitError = null;
 		// Text typed in a list without pressing Enter is part of the posting: added now
 		pendingTextErrors = commitPendingText();
-		const found = orderedJobFormErrors({ ...jobFormErrors(form), ...pendingTextErrors });
+		const found = orderedJobFormErrors({ ...formErrors(), ...pendingTextErrors });
 		if (found.length > 0) {
 			announcement = m.fieldsToFix(found.length);
 			await tick();
@@ -546,6 +632,13 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		return send();
 	}
 
+	/** "Create it without proposing it": the choice unticked, the posting created again */
+	function createWithoutMatching() {
+		proposed = false;
+		submitError = null;
+		return send();
+	}
+
 	/** Sends the form (checked, and confirmed when it opens the posting) */
 	async function send() {
 		if (status !== 'idle' || finished) return;
@@ -553,6 +646,8 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		status = 'saving';
 		announcement = common.saving;
 		const body = formToJobInput($state.snapshot(form) as JobForm);
+		// A new posting created open, proposed to candidates: sent for review with it
+		const withMatching = !jobId && sendsMatching(form, { offered: matchingShown, proposed });
 		// Where to come back to, should the recruiter leave before the answer and it fail
 		const editorUrl = `${location.pathname}${location.search}`;
 		let saved: SavedJob;
@@ -561,11 +656,14 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 				? await portfolioApi
 						.jobs({ id: jobId })
 						.put(loadedVersion ? { ...body, updatedAt: loadedVersion } : body, withCredentials)
-				: await portfolioApi.jobs.post(body, withCredentials);
+				: await portfolioApi.jobs.post(
+						withMatching ? { ...body, matching: true } : body,
+						withCredentials
+					);
 			if (error || !data) {
 				status = 'idle';
 				announcement = '';
-				return handleSaveError(error ?? { status: undefined }, editorUrl);
+				return handleSaveError(error ?? { status: undefined }, editorUrl, withMatching);
 			}
 			saved = data;
 		} catch {
@@ -665,6 +763,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 	function startOver() {
 		form = structuredClone(start.baseline);
 		heldTerms = null;
+		proposed = initialMatching ?? false;
 		// The office is the starting one again: its note is looked up for it
 		officeAsked = office();
 		pendingText = emptyPendingText();
@@ -1002,6 +1101,24 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 		</section>
 	{/if}
 
+	{#if matchingNote?.kind === 'leaving'}
+		<p
+			class="flex items-start gap-2 rounded-container preset-tonal-warning px-4 py-3 text-sm text-surface-950-50"
+			data-editor-in-matching="leaving"
+		>
+			<ExclamationTriangle size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
+			{matchingNote.text}
+		</p>
+	{:else if matchingNote}
+		<p
+			class="flex items-start gap-2 rounded-container preset-tonal-primary px-4 py-3 text-sm"
+			data-editor-in-matching={matchingNote.kind}
+		>
+			<UserGroup size="18" class="mt-0.5 shrink-0" aria-hidden="true" />
+			{matchingNote.kind === 'live' ? m.matching.inMatching : m.matching.inMatchingWaiting}
+		</p>
+	{/if}
+
 	{#if errorList.length > 0 || submitError}
 		<div
 			bind:this={summaryElement}
@@ -1097,7 +1214,12 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						/>
 					{/snippet}
 				</Field>
-				<Field field="company" label={labels.company} hint={m.companyHint}>
+				<Field
+					field="company"
+					label={labels.company}
+					hint={matchingShown && proposed ? m.matching.companyRequired : m.companyHint}
+					required={matchingShown && proposed}
+				>
 					{#snippet control(attributes)}
 						<input
 							{...attributes}
@@ -1120,7 +1242,7 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 							</select>
 						{/snippet}
 					</Field>
-					<Field field="openings" label={labels.openings} unit={m.positions}>
+					<Field field="openings" label={labels.openings}>
 						{#snippet control(attributes)}
 							<input
 								{...attributes}
@@ -1133,6 +1255,35 @@ ends: `onSaved` is told (`left`), and a failure is a toast (the changes stay in 
 						{/snippet}
 					</Field>
 				</div>
+				{#if matchingShown}
+					<!-- Matching: a job created open, proposed to the candidates whose criteria it meets -->
+					<div
+						class="flex items-start gap-3 rounded-container border border-surface-200-800 p-3"
+						data-matching-choice
+					>
+						<input
+							id="{uid}-matching"
+							type="checkbox"
+							class="checkbox mt-0.5 shrink-0"
+							bind:checked={proposed}
+							aria-describedby="{uid}-matching-hint"
+						/>
+						<div class="min-w-0 space-y-0.5">
+							<label
+								for="{uid}-matching"
+								class="flex cursor-pointer items-center gap-1.5 font-medium"
+							>
+								<UserGroup size="18" class="shrink-0" aria-hidden="true" />
+								{m.matching.label}
+							</label>
+							<p id="{uid}-matching-hint" class="text-sm text-surface-700-300">
+								{m.matching.hint}
+							</p>
+						</div>
+					</div>
+				{:else if initialMatching !== undefined && matchingOffered}
+					<p class="text-sm text-surface-700-300" data-matching-later>{m.matching.later}</p>
+				{/if}
 			</section>
 
 			<!-- Description -->

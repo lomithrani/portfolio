@@ -25,7 +25,8 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 		DocumentArrowUp,
 		Eye,
 		ExclamationTriangle,
-		InformationCircle
+		InformationCircle,
+		MagnifyingGlass
 	} from 'svelte-heros-v2';
 	import {
 		DEFAULT_JOB_MATCH_MIN_SCORE,
@@ -47,7 +48,9 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 		type Readiness,
 		type SetupItem
 	} from '#services/candidateSetup.ts';
-	import { failureText, networkError } from '#services/recruiter.ts';
+	import { consentAction, discoveryOn, discoverySummary } from '#services/discovery.ts';
+	import type { DiscoveryStatus } from '#services/matching.ts';
+	import { failureText, formatDay, networkError } from '#services/recruiter.ts';
 	import { quotaText, type ImportStatus } from '#services/resumeImport.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { journeySummary, noteContent, savedWorkflowProblem } from '#services/workflow.ts';
@@ -67,7 +70,9 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 		openTab,
 		journeyChanged,
 		journeySaved,
-		onJourneySaved
+		onJourneySaved,
+		discovery = null,
+		openDiscovery = () => {}
 	}: {
 		domainName: string;
 		/** What the account has set up (GET /me/readiness); null until it was read */
@@ -91,6 +96,13 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 		 * once the promise settles)
 		 */
 		onJourneySaved: () => Promise<void>;
+		/**
+		 * Where the owner stands in discovery (GET /discovery); null while matching is off or it is
+		 * not known: the item is left out
+		 */
+		discovery?: DiscoveryStatus | null;
+		/** Shows its settings (the Perfect job tab, #discovery) */
+		openDiscovery?: () => void;
 	} = $props();
 
 	const uid = $props.id();
@@ -232,6 +244,22 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 			missingEssentials(readiness).map((essential) => m.perfectJob.essentials[essential])
 		);
 
+	/** What the discovery item says, where the owner stands */
+	const discoveryText = (status: DiscoveryStatus) => {
+		const summary = discoverySummary(status);
+		if (summary === 'on' && status.enabledAt) return m.discovery.on(formatDay(status.enabledAt));
+		if (summary === 'renew' && status.consentExpiresAt) {
+			return m.discovery.renew(formatDay(status.consentExpiresAt));
+		}
+		if (summary === 'paused') {
+			return consentAction(status) === 'renew' && status.consentExpiresAt
+				? m.discovery.pausedRenew(formatDay(status.consentExpiresAt))
+				: m.discovery.paused;
+		}
+		if (summary === 'lapsed') return m.discovery.lapsed;
+		return m.discovery.off;
+	};
+
 	/**
 	 * A button's label wraps rather than overflow its card on a narrow phone (in French), on lines
 	 * that stay legible
@@ -367,6 +395,46 @@ checklist that could not be read again stays, said to be out of date, with "Try 
 				</div>
 			</li>
 		</ol>
+
+		<!-- Optional, and only while matching is available: never part of the checklist above -->
+		{#if discovery}
+			<section
+				class="card flex items-start gap-3 border border-dashed border-surface-300-700 p-4 sm:gap-4 sm:p-5"
+				aria-labelledby="{uid}-discovery"
+				data-item="discovery"
+				data-state={discovery.state}
+			>
+				<span
+					class="flex size-8 shrink-0 items-center justify-center rounded-full border border-surface-300-700 text-surface-700-300"
+					aria-hidden="true"
+				>
+					<MagnifyingGlass size="16" />
+				</span>
+				<div class="min-w-0 flex-1 space-y-3">
+					<!-- On a phone the badge goes under the title, in every language: never alone on a
+					     line of its own in one and beside the title in another -->
+					<div
+						class="flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2"
+					>
+						<h3 class="font-semibold" id="{uid}-discovery">{m.discovery.title}</h3>
+						<span class="badge preset-tonal text-xs">{m.discovery.optional}</span>
+					</div>
+					<p class="text-sm text-surface-700-300">{discoveryText(discovery)}</p>
+					<div class="flex flex-wrap gap-2">
+						<button type="button" class={linkButton} onclick={openDiscovery}>
+							{m.discovery.open}
+							<ArrowRight size="16" aria-hidden="true" />
+						</button>
+						{#if discoveryOn(discovery)}
+							<a class={linkButton} href={resolve('/(app)/opportunities')}>
+								{m.discovery.opportunities}
+								<ArrowRight size="16" aria-hidden="true" />
+							</a>
+						{/if}
+					</div>
+				</div>
+			</section>
+		{/if}
 	{/if}
 </div>
 

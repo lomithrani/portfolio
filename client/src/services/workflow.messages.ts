@@ -165,6 +165,25 @@ export const m = defineMessages({
 			en: (title: string) => `Pick ${title} again to share it and go on.`,
 			fr: (title: string) => `Choisissez à nouveau ${title} pour la partager et continuer.`
 		},
+		/**
+		 * `job`: "Senior Engineer · Acme", the version the owner said yes to: the job the owner and the
+		 * recruiter are both interested in (matching), which the step holds while their mutual interest
+		 * lasts. Never a bare "match" (it names the score)
+		 */
+		matched: {
+			en: (job: string) => `${job}: the job you are both interested in.`,
+			fr: (job: string) => `${job} : l'offre de votre intérêt réciproque.`
+		},
+		/**
+		 * The job of a mutual interest, not open (on hold: filled, closed or back to draft ends the
+		 * mutual interest). `status`: its label ("On hold"). The step takes no other job meanwhile
+		 */
+		matchedNotOpen: {
+			en: (title: string, status: string) =>
+				`${title} is ${status.toLowerCase()} now: this page holds it again once you open it again.`,
+			fr: (title: string, status: string) =>
+				`${title} a maintenant le statut « ${status} » : cette page la retient de nouveau dès que vous la rouvrez.`
+		},
 		/** Shared and open, but the recruiter has not accepted the terms of use in force */
 		acceptTerms: {
 			en: (title: string) => `Accept the terms of use in force to go on with ${title}.`,
@@ -192,6 +211,14 @@ export const m = defineMessages({
 				en: 'Only an open job description can be picked. Set its status to Open first.',
 				fr: "Seule une offre ouverte peut être choisie. Passez d'abord son statut à « Ouverte »."
 			},
+			/**
+			 * 409 JOB_OF_MUTUAL_INTEREST: a mutual interest with the owner was made since the page
+			 * loaded, and its job holds the step (the page loads the journey again)
+			 */
+			mutualInterest: {
+				en: 'This step now holds the job you are both interested in: you cannot share another while your mutual interest lasts.',
+				fr: "Cette étape retient désormais l'offre de votre intérêt réciproque : vous ne pouvez pas en partager une autre tant qu'il dure."
+			},
 			journeyChanged: {
 				en: 'This hiring journey changed: it no longer asks for a job here.',
 				fr: "Ce parcours de recrutement a changé : il ne demande plus d'offre ici."
@@ -210,11 +237,57 @@ export const m = defineMessages({
 		}
 	},
 
+	// --- After a mutual interest (matching) ---
+	/**
+	 * What is left of the journey for the recruiter of a mutual interest (mutualInterestNext: the
+	 * Hire page's banner). No email is promised (decision 10: in-app only)
+	 */
+	match: {
+		/**
+		 * The job step waits for the job of the mutual interest, not open (on hold: filled, closed or
+		 * back to draft ends the mutual interest). `status`: its label ("On hold"). Backed by:
+		 * server/services/workflowSteps/job.ts matchedJob (it holds while the posting is open and the
+		 * recruiter accepted the terms in force; 409 JOB_OF_MUTUAL_INTEREST for another job)
+		 */
+		jobNotOpen: {
+			en: (status: string) =>
+				`Your job is ${status.toLowerCase()} now: this page holds it again once you open it again from its page, and takes no other job meanwhile.`,
+			fr: (status: string) =>
+				`Votre offre a maintenant le statut « ${status} » : cette page la retient de nouveau dès que vous la rouvrez depuis sa page, et n'en prend pas d'autre d'ici là.`
+		},
+		/**
+		 * The job step waits for the job of the mutual interest, open: the recruiter has not accepted
+		 * the terms of use in force. Backed by: server/services/workflowSteps/job.ts matchedJob
+		 */
+		jobTerms: {
+			en: 'Accept the terms of use in force: this page holds your job again once you do, and takes no other job meanwhile.',
+			fr: "Acceptez les conditions d'utilisation en vigueur : cette page retient de nouveau votre offre dès que c'est fait, et n'en prend pas d'autre d'ici là."
+		},
+		/** `phrases`: the steps still to do before the meeting, lowercased, in order (one at least) */
+		left: {
+			en: (phrases: readonly string[]) =>
+				`Still to do before the meeting: ${inOrder(phrases, 'then')}.`,
+			fr: (phrases: readonly string[]) =>
+				`Reste à faire avant le rendez-vous : ${inOrder(phrases, 'puis')}.`
+		},
+		bookNow: {
+			en: 'Nothing else is asked of you: pick a time slot below.',
+			fr: "Rien d'autre ne vous est demandé : choisissez un créneau ci-dessous."
+		}
+	},
+
 	// --- Job match step ---
 	jobMatch: {
 		passed: {
 			en: (title: string, score: number) => `${title} scores ${score} out of 100.`,
 			fr: (title: string, score: number) => `${title} obtient ${score} sur 100.`
+		},
+		/** The job of a mutual interest: the score it had when both became interested, frozen */
+		frozen: {
+			en: (title: string, score: number) =>
+				`${title} scored ${score} out of 100 when you were both interested.`,
+			fr: (title: string, score: number) =>
+				`${title} a obtenu ${score} sur 100 au moment de l'intérêt réciproque.`
 		},
 		under: {
 			en: (title: string, score: number, minScore: number) =>
@@ -240,6 +313,11 @@ export const m = defineMessages({
 			notStated: {
 				en: 'Not stated in your job description',
 				fr: 'Non précisé dans votre offre'
+			},
+			/** The same, read by the candidate (a job proposed to them) */
+			notStatedForCandidate: {
+				en: 'Not stated in the job description',
+				fr: "Non précisé dans l'offre"
 			},
 			match: { en: 'Matches', fr: 'Correspond' },
 			partial: { en: 'Partly matches', fr: 'Correspond en partie' },

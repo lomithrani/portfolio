@@ -227,5 +227,59 @@ export const m = defineMessages({
 		see: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' },
 		/** The Share tab: a reply to recruiters, a LinkedIn text (as the page for recruiters calls it) */
 		more: { en: 'More ways to share', fr: 'Plus de façons de partager' }
+	},
+
+	/**
+	 * Being proposed to recruiters (Path 2), shown only while matching is available (GET /discovery
+	 * answered): optional, never counted in the checklist the link needs. Its settings are in the
+	 * Perfect job tab (#discovery)
+	 */
+	discovery: {
+		title: { en: 'Be found by recruiters', fr: 'Être visible des recruteurs' },
+		optional: { en: 'Optional', fr: 'Facultatif' },
+		/**
+		 * Backed by: server/services/matchFeeds.ts (the anonymous card proposed for the open jobs that
+		 * meet the candidate's criteria), server/services/matches.ts (the portfolio revealed once both
+		 * are interested)
+		 */
+		off: {
+			en: 'Let Portfolio propose your anonymous card to the recruiters whose open jobs meet your criteria. Your name and your portfolio stay hidden until you are both interested.',
+			fr: "Laissez Portfolio proposer votre fiche anonyme aux recruteurs dont les offres ouvertes répondent à vos critères. Votre nom et votre portfolio restent masqués jusqu'à un intérêt réciproque."
+		},
+		/** `since`: '12 Nov 2026' */
+		on: {
+			en: (since: string) => `Your anonymous card has been proposed to recruiters since ${since}.`,
+			fr: (since: string) => `Votre fiche anonyme est proposée aux recruteurs depuis le ${since}.`
+		},
+		/** `until`: the day the consent ends, within DISCOVERY_CONSENT_RENEWAL_DAYS */
+		renew: {
+			en: (until: string) => `Your consent ends on ${until}: confirm it again to stay visible.`,
+			fr: (until: string) =>
+				`Votre consentement prend fin le ${until} : confirmez-le de nouveau pour rester visible.`
+		},
+		paused: {
+			en: 'Paused: something is missing, so no recruiter sees your card.',
+			fr: 'En pause : il manque quelque chose, aucun recruteur ne voit donc votre fiche.'
+		},
+		/** Paused, and the consent in its last DISCOVERY_CONSENT_RENEWAL_DAYS days: `until` the day */
+		pausedRenew: {
+			en: (until: string) =>
+				`Paused: something is missing, so no recruiter sees your card. Your consent also ends on ${until}: confirm it again to stay visible.`,
+			fr: (until: string) =>
+				`En pause : il manque quelque chose, aucun recruteur ne voit donc votre fiche. Votre consentement prend aussi fin le ${until} : confirmez-le de nouveau pour rester visible.`
+		},
+		lapsed: {
+			en: 'Your consent ended: give it again so that recruiters see your card.',
+			fr: 'Votre consentement a pris fin : donnez-le de nouveau pour que les recruteurs voient votre fiche.'
+		},
+		open: { en: 'Open the settings', fr: 'Ouvrir les réglages' },
+		/**
+		 * While on or paused, named as the menu names it. Backed by: routes/(app)/opportunities (the
+		 * candidate's inbox: the jobs proposed or why there are none, the mutual interests)
+		 */
+		opportunities: {
+			en: 'Open your opportunities',
+			fr: 'Ouvrir vos opportunités'
+		}
 	}
 });

@@ -19,6 +19,7 @@
 		journeyDescription,
 		journeyEffort,
 		journeyIntro,
+		journeyMatch,
 		stepName,
 		stepNote,
 		stepStates,
@@ -30,6 +31,7 @@
 	import { portfolioName } from '#services/linkPreview.ts';
 	import { clientStep, type ClientStep, type SubmitResult } from '#components/hire/steps/index.ts';
 	import BeforeYouStart from '#components/hire/BeforeYouStart.svelte';
+	import MatchBanner from '#components/hire/MatchBanner.svelte';
 	import CopyLink from '#components/share/CopyLink.svelte';
 	import { m as copyMessages } from '#components/share/CopyLink.messages.ts';
 	import OpenGraph from '#components/OpenGraph.svelte';
@@ -115,6 +117,14 @@
 			{ closed }
 		)
 	);
+	// The visitor (a recruiter) and the owner are both interested in one of the visitor's jobs
+	// (matching): the journey holds that job for them, and the banner says what is left. Only a
+	// journey loaded with the session has one (the server's render is anyone signed out's)
+	let match = $derived(
+		journey && !journey.own && loaded.state === 'ready' && loaded.from === 'browser'
+			? journeyMatch(journey.match)
+			: undefined
+	);
 	// A journey that is only the step it leads to shows that step alone, without the list
 	let bare = $derived(
 		journey && isBareJourney(journey) ? clientStep(journey.steps[0].type) : undefined
@@ -123,6 +133,7 @@
 	let expanded = $state(0);
 	let request = 0;
 	const stepHeadings: HTMLElement[] = $state([]);
+	let pageHeading: HTMLElement | undefined = $state();
 
 	/**
 	 * The steps a visitor can open: not the locked ones. A step that is not passed shows too: its
@@ -151,17 +162,35 @@
 		);
 	};
 
+	/** The mutual interest a journey the browser loaded shows (the banner), by its id */
+	const shownMatchId = (state: JourneyState): string | undefined =>
+		state.state === 'ready' && state.from === 'browser' && !state.journey.own
+			? journeyMatch(state.journey.match)?._id
+			: undefined;
+
+	/** The mutual interest ended from the banner: the page says it (the banner's toast), not again */
+	let endedHere: string | undefined;
+
 	/**
 	 * `follow`: the address can ask for a step (not after a submit, which settles what it asked).
-	 * `viewer`: whom it was loaded for (the browser's loads)
+	 * `viewer`: whom it was loaded for (the browser's loads). Returns whether a mutual interest the
+	 * page showed for that viewer no longer leads here (the other side ended it, its job did, or
+	 * matching was turned off): said in a toast, unless it was ended from the banner
 	 */
 	function showJourney(
 		next: Journey,
 		{ follow = true, viewer = '' }: { follow?: boolean; viewer?: string } = {}
-	) {
+	): boolean {
+		const before =
+			loaded.state === 'ready' && loaded.viewer === viewer ? shownMatchId(loaded) : undefined;
 		loaded = { state: 'ready', journey: next, from: 'browser', viewer };
 		const asked = follow ? stepAskedFor(next) : -1;
 		expanded = asked === -1 ? activeStepIndex(next) : asked;
+		const ended = before !== undefined && before !== shownMatchId(loaded);
+		if (ended && before !== endedHere) {
+			toaster.info({ title: m.matchEnded.title, description: m.matchEnded.text(ownerName) });
+		}
+		return ended;
 	}
 
 	/** The journey the server rendered, as anyone signed out stands in it; `failure`: said above it */
@@ -193,7 +222,12 @@
 		if (asked !== -1) expanded = asked;
 	});
 
-	async function loadJourney() {
+	/**
+	 * Loads the journey as the visitor stands in it. `dropHeld`: what the browser showed is known to
+	 * be out of date (a mutual interest was just ended: its banner and the steps it held must not stay
+	 * on a failure). Returns whether a mutual interest the page showed no longer leads here
+	 */
+	async function loadJourney({ dropHeld = false }: { dropHeld?: boolean } = {}): Promise<boolean> {
 		const current = ++request;
 		const viewer = keptAccount();
 		if (loaded.state !== 'ready') loaded = { state: 'loading' };
@@ -201,28 +235,30 @@
 			const { data: answer, error } = await portfolioTextApi.workflow
 				.domains({ domainName: encodeURIComponent(data.domainName) })
 				.get(withCredentials);
-			if (current !== request) return;
+			if (current !== request) return false;
 			if (error || !answer) {
-				failed(failureText(error?.value, m.journeyFailed), viewer);
-				return;
+				failed(failureText(error?.value, m.journeyFailed), viewer, dropHeld);
+				return false;
 			}
-			showJourney(answer, { viewer });
+			return showJourney(answer, { viewer });
 		} catch {
-			if (current === request) failed(networkError(), viewer);
+			if (current === request) failed(networkError(), viewer, dropHeld);
+			return false;
 		}
 	}
 
 	/**
 	 * The journey could not be loaded for `viewer`. Steps the browser loaded for them stay, and a
-	 * toast says so. The server's (as anyone signed out stands in them) stay too, read-only for a
-	 * signed-in visitor, with the failure and "Try again" above them. Another account's never stay
-	 * on screen (after a sign-out, on a shared computer): the server's take their place, else the
-	 * failure takes the steps' place
+	 * toast says so, unless they are out of date (`dropHeld`: a mutual interest just ended, whose
+	 * banner and held steps must not stay). The server's (as anyone signed out stands in them) stay
+	 * too, read-only for a signed-in visitor, with the failure and "Try again" above them. Another
+	 * account's never stay on screen (after a sign-out, on a shared computer): the server's take
+	 * their place, else the failure takes the steps' place
 	 */
-	function failed(message: string, viewer: string) {
+	function failed(message: string, viewer: string, dropHeld = false) {
 		if (loaded.state !== 'ready') {
 			loaded = { state: 'error', message };
-		} else if (loaded.from === 'browser' && loaded.viewer === viewer) {
+		} else if (loaded.from === 'browser' && loaded.viewer === viewer && !dropHeld) {
 			toaster.error({ title: message });
 		} else if (loaded.viewer === '') {
 			loaded = { ...loaded, failure: message };
@@ -271,9 +307,22 @@
 		});
 	});
 
+	/** The focus on the heading of step `index`: a journey that is the meeting alone, the page's */
 	async function focusStep(index: number) {
 		await tick();
-		stepHeadings[index]?.focus();
+		(bare ? pageHeading : stepHeadings[index])?.focus();
+	}
+
+	/**
+	 * A step asked for the journey again (it changed, a mutual interest now holds the job, the terms
+	 * were accepted): once loaded, the focus goes to the step shown when what had it went with the
+	 * steps before (a step that folded); never taken from where it still is
+	 */
+	async function reloadJourney() {
+		await loadJourney();
+		await tick();
+		const focused = document.activeElement;
+		if (!focused || focused === document.body || !focused.isConnected) await focusStep(expanded);
 	}
 
 	/** What the visitor submits on a step: the API answers with the journey as they now stand in it */
@@ -308,20 +357,36 @@
 		};
 	}
 
+	/**
+	 * The mutual interest was ended from the banner (or by the other side meanwhile, which the banner
+	 * found): the journey read again has no banner, its job step is to do as for anyone; the focus
+	 * goes to the step shown. Should it not be read again, the banner and the steps it held do not
+	 * stay: the server's (anyone's) take their place, with the failure and "Try again"
+	 */
+	async function onMatchEnded() {
+		endedHere = match?._id;
+		await loadJourney({ dropHeld: true });
+		await focusStep(expanded);
+	}
+
 	async function onStepLocked(reason: 'signed-out' | 'locked') {
 		if (reason === 'signed-out' && user) {
 			// Reloaded below: the account change must not start a second load
 			journeyViewer = '';
 			clearAuthentication();
 			toaster.error({ title: accountMessages.sessionExpired });
+			await loadJourney();
+		} else if (reason === 'signed-out') {
+			toaster.warning({ title: m.locked.signIn, description: m.locked.why(ownerName) });
+			await loadJourney();
 		} else {
-			// The owner added steps since the page was opened, or an earlier step does not hold anymore
-			toaster.warning({
-				title: reason === 'signed-out' ? m.locked.signIn : m.locked.stepsFirst,
-				description: m.locked.why(ownerName)
-			});
+			// The owner added steps since the page was opened, or an earlier step does not hold anymore;
+			// a mutual interest that no longer leads here is why, which the page then says instead
+			const ended = await loadJourney();
+			if (!ended) {
+				toaster.warning({ title: m.locked.stepsFirst, description: m.locked.why(ownerName) });
+			}
 		}
-		await loadJourney();
 		await focusStep(expanded);
 	}
 </script>
@@ -342,7 +407,7 @@
 		{ownerName}
 		{address}
 		submit={(input) => submitStep(step.id, input)}
-		reload={() => void loadJourney()}
+		reload={() => void reloadJourney()}
 		locked={onStepLocked}
 		succeeded={() => onStepSucceeded(step.id)}
 		{bookable}
@@ -403,7 +468,9 @@
 <div class="max-w-3xl mx-auto p-6 space-y-8">
 	<section class="space-y-2">
 		<!-- Balanced: the owner's name never leaves one word alone on the last line -->
-		<h1 class="h2 text-balance">{m.title(ownerName)}</h1>
+		<h1 class="h2 text-balance outline-none" tabindex="-1" bind:this={pageHeading}>
+			{m.title(ownerName)}
+		</h1>
 		{#if journey}
 			<p class="opacity-75">{journeyIntro(ownerName, goal, { closed })}</p>
 		{/if}
@@ -434,8 +501,24 @@
 	{:else if journey}
 		{#if journey.own}{@render ownerNote()}{/if}
 		{#if loaded.state === 'ready' && loaded.failure}{@render failure(loaded.failure)}{/if}
-		<!-- Nothing to prepare for a meeting nobody can book: the intro says so -->
-		{#if !closed}<BeforeYouStart {journey} {ownerName} />{/if}
+		<!-- The recruiter of a mutual interest: the job it holds and what is left, in place of what to
+		     prepare (they came through matching). Nothing to prepare for a meeting nobody can book:
+		     the intro says so -->
+		{#if match}
+			{#key match._id}
+				<MatchBanner
+					{match}
+					{journey}
+					{ownerName}
+					booking={goal?.booking === true && !closed}
+					onEnded={onMatchEnded}
+					onSignedOut={() => void onStepLocked('signed-out')}
+					onTermsAccepted={() => void loadJourney()}
+				/>
+			{/key}
+		{:else if !closed}
+			<BeforeYouStart {journey} {ownerName} />
+		{/if}
 		<!-- What the server rendered is the whole page without JavaScript: it says what each step
 		     asks, but going through them needs the browser. Its own bottom margin: a <noscript> is
 		     inline, the page's spacing does not reach the steps under it -->
@@ -509,7 +592,7 @@
 									void focusStep(index);
 								}}
 							>
-								{(state === 'done' && entry?.reopenLabel) || m.open}
+								{(state === 'done' && entry?.reopenLabel?.(step)) || m.open}
 								<span class="sr-only">{name}</span>
 							</button>
 						{/if}

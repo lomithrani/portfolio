@@ -6,7 +6,8 @@ it matters (1 to 5). A recruiter's job is scored against it out of 100 in the hi
 (the step "Get the job scored", which sets the minimum). The criteria are checked on every
 change with the rules the API enforces (portfolio-common's parsePerfectJob): what is wrong is
 said at the setting it is about, and nothing can be saved until it is fixed. Recruiters never
-see the criteria.
+see the criteria. The tab ends with discovery's settings (DiscoverySettings: being proposed to
+recruiters as an anonymous card, saved apart from the criteria), while matching is available.
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
@@ -62,16 +63,44 @@ see the criteria.
 	import { common } from '#lib/i18n/common.messages.ts';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import AddressSearch from '#components/address/AddressSearch.svelte';
+	import type { AdminTab } from '#services/candidateSetup.ts';
+	import type { CardExperience, DiscoveryKnown } from '#services/discovery.ts';
+	import type { DiscoveryStatus } from '#services/matching.ts';
+	import DiscoverySettings from './discovery/DiscoverySettings.svelte';
 	import { m } from './PerfectJobTab.messages.ts';
 	import ChipList from './perfect-job/ChipList.svelte';
 	import Choices from './perfect-job/Choices.svelte';
 	import Criterion from './perfect-job/Criterion.svelte';
 
 	let {
-		openJourney
+		openJourney,
+		openTab,
+		active = false,
+		discovery = null,
+		onDiscovery = () => {},
+		reloadDiscovery = () => {},
+		experiences = []
 	}: {
-		/** Shows the tab of the hiring journey, where the step using the perfect job is set */
-		openJourney: () => void;
+		/**
+		 * Shows the tab of the hiring journey, where the step using the perfect job is set; `gate`:
+		 * with the steps discovery asks for added, as changes not saved yet
+		 */
+		openJourney: (add?: 'gate') => void;
+		/** Shows another tab of the admin page */
+		openTab?: (tab: AdminTab) => void;
+		/** This tab is the one shown */
+		active?: boolean;
+		/**
+		 * Being proposed to recruiters (GET /discovery, read by the page; null until it was; `off`:
+		 * matching is off, nothing of it shows), saved apart from the criteria (DiscoverySettings)
+		 */
+		discovery?: DiscoveryKnown | null;
+		/** What a change of discovery answered */
+		onDiscovery?: (status: DiscoveryStatus) => void;
+		/** Reads discovery again (what the criteria saved changes what is missing) */
+		reloadDiscovery?: () => void;
+		/** The portfolio's experiences: the anonymous card's settings list them */
+		experiences?: readonly CardExperience[];
 	} = $props();
 
 	const uid = $props.id();
@@ -196,6 +225,8 @@ see the criteria.
 			travelTimes = data.commute;
 			form = structuredClone(next);
 			toaster.success({ title: m.saved, description: perfectJobSummary(next) });
+			// The criteria are what discovery asks first (how many are rated, the pay)
+			reloadDiscovery();
 		} catch {
 			saveError = networkError();
 		} finally {
@@ -204,11 +235,33 @@ see the criteria.
 	}
 
 	onMount(load);
+
+	/**
+	 * Discovery's checklist leads to the criteria: the pay's switch, or the first criterion's, in
+	 * view with the heading of its group (the admin page keeps what it scrolls to clear of its tabs)
+	 */
+	function showCriteria(which: 'pay' | 'criteria') {
+		const target =
+			which === 'pay'
+				? root?.querySelector<HTMLElement>('[data-criterion="pay"]')
+				: root?.querySelector<HTMLElement>('[data-criterion]');
+		if (target) {
+			target.scrollIntoView({ block: 'start' });
+			target.querySelector<HTMLElement>('input')?.focus({ preventScroll: true });
+			return;
+		}
+		// The criteria are not there (still loading, or they could not be read): the top of the tab,
+		// where it says so, its Retry when they could not
+		root?.scrollIntoView({ block: 'start' });
+		(status === 'error' ? retryButton : title)?.focus({ preventScroll: true });
+	}
+	let title: HTMLElement | undefined = $state();
+	let retryButton: HTMLButtonElement | undefined = $state();
 </script>
 
 <div class="space-y-6" bind:this={root}>
 	<section class="space-y-2">
-		<h2 class="h3">{m.title}</h2>
+		<h2 class="h3 outline-none" tabindex="-1" bind:this={title}>{m.title}</h2>
 		<p class="opacity-75">{m.intro}</p>
 	</section>
 
@@ -217,7 +270,9 @@ see the criteria.
 	{:else if status === 'error'}
 		<div class="card preset-tonal-error space-y-3 p-4" role="alert">
 			<p class="text-sm">{loadError}</p>
-			<button type="button" class="btn btn-sm preset-tonal" onclick={load}>{common.retry}</button>
+			<button type="button" class="btn btn-sm preset-tonal" bind:this={retryButton} onclick={load}
+				>{common.retry}</button
+			>
 		</div>
 	{:else}
 		<div class="card preset-tonal flex items-start gap-3 p-4 text-sm" role="note">
@@ -233,7 +288,11 @@ see the criteria.
 				<p>
 					<Rich text={m.scoring.use(stepManifest('job-match')?.label ?? '')}>
 						{#snippet journey(text)}
-							<button type="button" class="underline underline-offset-2" onclick={openJourney}>
+							<button
+								type="button"
+								class="underline underline-offset-2"
+								onclick={() => openJourney()}
+							>
 								{text}
 							</button>
 						{/snippet}
@@ -796,4 +855,16 @@ see the criteria.
 			<p class="text-sm text-error-700-300" role="alert">{saveError}</p>
 		{/if}
 	{/if}
+
+	<DiscoverySettings
+		{discovery}
+		{onDiscovery}
+		reload={reloadDiscovery}
+		{experiences}
+		criteriaChanged={changed}
+		{active}
+		{openJourney}
+		openTab={(tab) => openTab?.(tab)}
+		onCriteria={showCriteria}
+	/>
 </div>

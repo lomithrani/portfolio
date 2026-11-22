@@ -1,4 +1,10 @@
-import type { Page, Request, Route } from '@playwright/test';
+import {
+	expect,
+	type APIRequestContext,
+	type Page,
+	type Request,
+	type Route
+} from '@playwright/test';
 import { API_URL } from './owner';
 
 // Routes of the API answered in the browser (page.route): what a test must not change for real
@@ -67,5 +73,47 @@ export const TERMS_REQUIRED = {
 		on: 'body',
 		property: 'consent',
 		message: 'Accept the terms of use in force to use your recruiter space.'
+	}
+};
+
+/**
+ * Whether the API under test takes Google Calendar connections (GOOGLE_CLIENT_SECRET set, any
+ * value: CI sets a placeholder for the files of matching, whose candidates' calendar must count),
+ * read as the account `api` signs in with (GET /appointments/calendar-status, which asks Google
+ * nothing). The "Get started" checklist then counts the calendar: what a test expects of it
+ * depends on it
+ */
+export const calendarConfigured = async (api: APIRequestContext): Promise<boolean> => {
+	const response = await api.get(`${API_URL}/appointments/calendar-status`);
+	return response.ok() && (await response.json()).configured === true;
+};
+
+/**
+ * How CI runs the API under test: E2E_MATCHING of the e2e job's leg (`on`: MATCHING=true and a
+ * placeholder GOOGLE_CLIENT_SECRET; `off`: neither). Undefined when run by hand: the files of
+ * matching then skip, saying why, what the API under test cannot do
+ */
+export const E2E_MATCHING =
+	process.env.E2E_MATCHING === 'on' || process.env.E2E_MATCHING === 'off'
+		? process.env.E2E_MATCHING
+		: undefined;
+
+/**
+ * In CI, the API under test must be what its leg says (a skip there would hide that a variable of
+ * the workflow, renamed or dropped, turned the end-to-end proof of matching off): under `on`,
+ * matching answers and, where it is asked (`calendar`), the seeded calendar counts; under `off`,
+ * matching answers the 404 of routes that do not exist. By hand, nothing is asserted
+ */
+export const expectMatchingMode = (found: { matching: boolean; calendar?: boolean }) => {
+	if (E2E_MATCHING === 'on') {
+		expect(found.matching, 'E2E_MATCHING=on: run the API with MATCHING=true').toBe(true);
+		if (found.calendar !== undefined) {
+			expect(found.calendar, 'E2E_MATCHING=on: run the API with GOOGLE_CLIENT_SECRET set').toBe(
+				true
+			);
+		}
+	}
+	if (E2E_MATCHING === 'off') {
+		expect(found.matching, 'E2E_MATCHING=off: run the API without MATCHING').toBe(false);
 	}
 };

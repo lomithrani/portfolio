@@ -14,8 +14,9 @@ import {
 	type OwnerSession
 } from './support/owner';
 import { stubAddressSearch } from './support/addresses';
-import { TERMS_REQUIRED, stubApi } from './support/api';
+import { TERMS_REQUIRED, calendarConfigured, stubApi } from './support/api';
 import { createJob, deleteJobs, jobPosting } from './support/jobs';
+import { dayFromToday, meetingType, slotOn, stubAppointments } from './support/appointments';
 import {
 	DEFAULT_WORKFLOW_STEPS,
 	LEGAL_VERSION,
@@ -155,36 +156,7 @@ const preflight = (request: Request) => ({
  * no Google Calendar is connected here, so the API lists none (and the server's render of the Hire
  * page knows nothing can be booked), but the page asks again in the browser
  */
-const stubMeetingType = (page: Page) =>
-	page.route(`${API_URL}/appointments/**`, async (route) => {
-		const request = route.request();
-		if (request.method() === 'OPTIONS') return route.fulfill(preflight(request));
-		const headers = cors(request);
-		const { pathname } = new URL(request.url());
-		if (pathname.endsWith(`/domains/${DOMAIN}/schedules`)) {
-			const meetingType = {
-				id: '65e2e00000000000000000ab',
-				title: 'Intro call',
-				description: null,
-				durationMinutes: 30,
-				minNoticeHours: 0,
-				maxAdvanceDays: 30,
-				timezone: 'Europe/Paris',
-				locationType: 'google_meet',
-				locationDetails: null,
-				availability: [{ dayOfWeek: 1, startTime: '09:00', endTime: '10:00' }]
-			};
-			return route.fulfill({ json: [meetingType], headers });
-		}
-		if (pathname.endsWith('/available-dates')) {
-			const today = new Date().toISOString().slice(0, 10);
-			return route.fulfill({
-				json: { horizon: { first: today, last: today }, dates: [] },
-				headers
-			});
-		}
-		return route.fulfill({ status: 404, body: 'Not stubbed', headers });
-	});
+const stubMeetingType = (page: Page) => stubAppointments(page, DOMAIN);
 
 /** What the page never says of a meeting nobody can book: an invitation, how long it all takes */
 const MEETING_PROMISE =
@@ -285,11 +257,21 @@ test.describe('the admin page', () => {
 		// A journey saved (the meeting alone) is one the owner chose
 		await expect(item('journey')).toHaveAttribute('data-state', 'done');
 		await expect(item('journey')).toContainText(
-			'Your page for recruiters asks nothing before the meeting. To ask for the job first:'
+			'Your page for recruiters asks nothing before the meeting.'
 		);
-		// Nobody can book on this site (no Google Calendar): the item does not say they can
-		await expect(item('calendar')).toHaveAttribute('data-state', 'unavailable');
-		await expect(item('journey')).not.toContainText('can book');
+		await expect(item('journey')).toContainText('To ask for the job first:');
+		if (await calendarConfigured(ownerApi)) {
+			// A site that takes Google Calendar (CI's, for matching): the calendar is to do, and
+			// nobody books before it is open
+			await expect(item('calendar')).toHaveAttribute('data-state', 'toDo');
+			await expect(item('journey')).toContainText(
+				'Recruiters can book once your calendar is open.'
+			);
+		} else {
+			// Nobody can book on this site (no Google Calendar): the item does not say they can
+			await expect(item('calendar')).toHaveAttribute('data-state', 'unavailable');
+			await expect(item('journey')).not.toContainText('can book');
+		}
 		await expect(item('share').getByRole('textbox', { name: 'Your link' })).toHaveValue(
 			`http://localhost:4173/${DOMAIN}`
 		);
@@ -758,12 +740,17 @@ test.describe('the hiring journey', () => {
 		await change.click();
 		await expect(page.getByRole('tab', { name: 'Hiring journey', selected: true })).toBeVisible();
 		await expect(editorSteps(page)).toHaveCount(2);
-		// A job asked for, but not scored before the meeting: "Get started" says so
+		// A job asked for, but not scored before the meeting: "Get started" says so (after the
+		// sentence on the calendar, on a site that takes it)
 		await page.getByRole('tab', { name: /^Get started/ }).click();
-		await expect(
-			page.getByRole('list', { name: 'Checklist' }).locator('[data-item="journey"]')
-		).toContainText(
-			'Recruiters select or create a job, then book a meeting. A job is asked for, but it is not scored against what you want before the meeting. To score it first:'
+		const journeyItem = page
+			.getByRole('list', { name: 'Checklist' })
+			.locator('[data-item="journey"]');
+		await expect(journeyItem).toContainText(
+			'Recruiters select or create a job, then book a meeting.'
+		);
+		await expect(journeyItem).toContainText(
+			'A job is asked for, but it is not scored against what you want before the meeting. To score it first:'
 		);
 	});
 
@@ -1004,52 +991,23 @@ test.describe('the hiring journey', () => {
 	}) => {
 		await setJourney('meeting');
 		// Answered in the browser: no Google Calendar is connected here
-		const day = (offset: number) =>
-			new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
-		const date = day(1);
-		const slot = { start: `${date}T08:00:00.000Z`, end: `${date}T09:00:00.000Z` };
-		const schedule = {
+		const date = dayFromToday(1);
+		const slot = slotOn(date);
+		const schedule = meetingType({
 			id: '65e2e00000000000000000aa',
 			title: `Phone screen ${tag}`,
-			description: null,
 			durationMinutes: 60,
-			minNoticeHours: 0,
-			maxAdvanceDays: 30,
-			timezone: 'Europe/Paris',
 			locationType: 'phone',
 			locationDetails: '+33 1 23 45 67 89',
 			availability: [
 				{ dayOfWeek: new Date(date).getUTCDay(), startTime: '09:00', endTime: '10:00' }
 			]
-		};
-		const booked: Record<string, unknown>[] = [];
-		await page.route(`${API_URL}/appointments/**`, async (route) => {
-			const request = route.request();
-			const headers = cors(request);
-			if (request.method() === 'OPTIONS') return route.fulfill(preflight(request));
-			const { pathname } = new URL(request.url());
-			if (pathname.endsWith(`/domains/${DOMAIN}/schedules`)) {
-				return route.fulfill({ json: [schedule], headers });
-			}
-			if (pathname.endsWith('/available-dates')) {
-				return route.fulfill({
-					json: { horizon: { first: day(0), last: day(30) }, dates: [date] },
-					headers
-				});
-			}
-			if (pathname.endsWith('/available-slots')) return route.fulfill({ json: [slot], headers });
-			if (pathname.endsWith('/book')) {
-				booked.push(request.postDataJSON());
-				const json = {
-					booked: true,
-					start: slot.start,
-					end: slot.end,
-					meetLink: null,
-					eventLink: null
-				};
-				return route.fulfill({ json, headers });
-			}
-			return route.continue();
+		});
+		const booked = await stubAppointments(page, DOMAIN, {
+			schedules: [schedule],
+			dates: [date],
+			horizonDays: 30,
+			slots: [slot]
 		});
 		await signIn(page, recruiter);
 		await gotoHydrated(page, `/${DOMAIN}/hire`);
@@ -1174,7 +1132,7 @@ test.describe('the hiring journey', () => {
 		// Each choice shows its pay, and the day it was opened: a duplicate keeps its title
 		const openChoice = jobStep.locator('label', { hasText: `Staff engineer ${tag}` });
 		await expect(openChoice).toContainText('€45,000 – €55,000 gross per year');
-		await expect(openChoice).toContainText(/Opened \d{1,2} \w+ \d{4}/);
+		await expect(openChoice).toContainText(/Opened \d{1,2}\s\w+\s\d{4}/);
 		await expect(jobStep.locator('label', { hasText: `Data engineer ${tag}` })).not.toContainText(
 			'Opened'
 		);
@@ -1234,7 +1192,7 @@ test.describe('the hiring journey', () => {
 		await gotoHydrated(ownerPage, `/opportunities/${job._id}`);
 		await expect(ownerPage.getByText('The version shared first.')).toBeVisible();
 		await expect(ownerPage.getByText('The new version.')).toHaveCount(0);
-		await expect(ownerPage.getByText(/^Shared with you \d{1,2} \w+ \d{4}$/)).toBeVisible();
+		await expect(ownerPage.getByText(/^Shared with you \d{1,2}\s\w+\s\d{4}$/)).toBeVisible();
 
 		// The recruiter: the step says the job changed since it was shared
 		await stubMeetingType(page);
@@ -1246,7 +1204,7 @@ test.describe('the hiring journey', () => {
 		const sharedOn = jobStep.locator('p', { hasText: /^You shared / });
 		await expect(sharedOn).toHaveText(
 			new RegExp(
-				`^You shared Staff <b>engineer</b> ${tag} · E2E Corp on \\d{1,2} \\w+ \\d{4}: ${DOMAIN} reads that version\\.$`
+				`^You shared Staff <b>engineer</b> ${tag} · E2E Corp on \\d{1,2}\\s\\w+\\s\\d{4}: ${DOMAIN} reads that version\\.$`
 			)
 		);
 		await expect(sharedOn.locator('time')).toHaveCount(1);

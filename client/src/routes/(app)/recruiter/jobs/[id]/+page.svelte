@@ -15,6 +15,7 @@
 	} from 'svelte-heros-v2';
 	import {
 		JOB_LIMITS,
+		JOB_STATUS_LABELS,
 		highestPayMax,
 		isPayRangeTooWide,
 		jobTermsLocked,
@@ -29,6 +30,7 @@
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
 	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
+	import MatchingPanel from '#components/recruiter/MatchingPanel.svelte';
 	import OpenJobDialog from '#components/recruiter/OpenJobDialog.svelte';
 	import StatusControl from '#components/recruiter/StatusControl.svelte';
 	import { portfolioApi } from '#services';
@@ -49,14 +51,24 @@
 		type RecruiterJobDetail
 	} from '#services/recruiter.ts';
 	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
+	import {
+		deleteMatchingDetails,
+		leavingMatchingText,
+		readJobMatching
+	} from '#services/recruiterMatching.ts';
+	import { m as matchingTexts } from '#services/recruiterMatching.messages.ts';
 	import { m } from './page.messages.ts';
 
 	// One of the recruiter's job descriptions (GET /recruiter/jobs/:id): the posting as candidates
 	// read it, its status (PUT /jobs/:id/status, confirmed first when it opens the posting: its
-	// terms lock, OpenJobDialog), its copy (Duplicate: /recruiter/jobs/new?duplicate=<id>) and its
-	// deletion. It is never public: the recruiter shows it to a candidate by picking it on their
-	// Hire page. A recruiter who has not accepted the terms in force (422 on `consent`) accepts
-	// them first (TermsAcceptance). Rendered in the browser only (recruiter/+layout.ts).
+	// terms lock, OpenJobDialog; and when it takes a job put into matching out of it, filled, closed
+	// or back to draft: its pending answers dropped, its mutual interests ended), its copy (Duplicate:
+	// /recruiter/jobs/new?duplicate=<id>) and its deletion (which, for a job put into matching, says
+	// that its matches go too). It is never public: the recruiter shows it to a candidate by picking it on their
+	// Hire page, or proposes it to the candidates whose criteria it meets (matching, while the
+	// posting carries `matching`: MatchingPanel, under its status). A recruiter who has not
+	// accepted the terms in force (422 on `consent`) accepts them first (TermsAcceptance). Rendered
+	// in the browser only (recruiter/+layout.ts).
 
 	type LoadState =
 		| { kind: 'idle' }
@@ -89,6 +101,7 @@
 		loadState = { kind: 'loading', key };
 		deleting = null;
 		confirmingStatus = null;
+		leavingMatching = null;
 		try {
 			const { data, error } = await portfolioApi.recruiter.jobs({ id }).get(withCredentials);
 			if (requested !== key) return;
@@ -137,6 +150,7 @@
 	let job = $derived(
 		loadState.kind === 'loaded' && loadState.userId === user?._id ? loadState.job : null
 	);
+	let loadedFor = $derived(loadState.kind === 'loaded' ? loadState.userId : '');
 	const recruiterHref = resolve('/(app)/recruiter');
 
 	/** Updates the loaded posting (still the same one) */
@@ -156,6 +170,9 @@
 	let changingStatus = $state(false);
 	// The status asked for, until the recruiter confirms it opens the posting (its terms lock)
 	let confirmingStatus = $state<JobStatus | null>(null);
+	// The status asked for, until the recruiter confirms it takes the job out of matching, with
+	// what that takes from it (its pending answers, its mutual interests)
+	let leavingMatching = $state<{ status: JobStatus; text: string } | null>(null);
 
 	/**
 	 * A posting whose range was saved wider than the cap before it cannot be opened (the API answers
@@ -185,7 +202,13 @@
 			narrowPayToOpen(job._id, job.pay.min);
 			return;
 		}
-		if (locksJobTerms(status, job)) confirmingStatus = status;
+		if (locksJobTerms(status, job)) {
+			confirmingStatus = status;
+			return;
+		}
+		// A job put into matching, filled, closed or back to draft: what it loses is asked first
+		const leaving = leavingMatchingText(readJobMatching(job.matching), job.status, status);
+		if (leaving) leavingMatching = { status, text: leaving };
 		else changeStatus(status);
 	}
 
@@ -263,6 +286,7 @@
 		// Close the dialogs before the page unmounts (their focus trap would read a destroyed page)
 		deleting = null;
 		confirmingStatus = null;
+		leavingMatching = null;
 	});
 </script>
 
@@ -343,6 +367,16 @@
 
 				<aside id="manage" class="space-y-4" aria-label={m.manage}>
 					<StatusControl status={job.status} busy={changingStatus} onChange={chooseStatus} />
+					<MatchingPanel
+						{job}
+						userId={loadedFor}
+						onChange={(updated) => updateJob((current) => ({ ...current, ...updated }))}
+						onReload={retry}
+						onSessionExpired={sessionExpired}
+						onTerms={() => (loadState = { kind: 'terms' })}
+						onGone={() => (loadState = { kind: 'not-found' })}
+						onNoSpace={() => (loadState = { kind: 'no-space' })}
+					/>
 				</aside>
 			</div>
 		{:else if !$sessionCheckedStore || loadState.kind === 'loading' || (user && loadState.kind === 'idle' && user.recruiter !== false)}
@@ -402,11 +436,28 @@
 	open={!!deleting && !!job}
 	title={job ? recruiterMessages.deleteJobTitle(job.title) : ''}
 	description={recruiterMessages.deleteJob}
+	details={job ? deleteMatchingDetails(job.matching) : ''}
 	confirmLabel={common.delete}
 	busy={deleting?.busy ?? false}
 	error={deleting?.error ?? ''}
 	onConfirm={confirmDelete}
 	onCancel={() => (deleting = null)}
+	finalFocusEl={signedOutFocus}
+/>
+
+<ConfirmDialog
+	open={!!job && !!leavingMatching}
+	title={leavingMatching
+		? matchingTexts.statusDialog.title(JOB_STATUS_LABELS[leavingMatching.status])
+		: ''}
+	description={leavingMatching?.text ?? ''}
+	confirmLabel={matchingTexts.statusDialog.confirm}
+	onConfirm={() => {
+		const status = leavingMatching?.status;
+		leavingMatching = null;
+		if (status) changeStatus(status);
+	}}
+	onCancel={() => (leavingMatching = null)}
 	finalFocusEl={signedOutFocus}
 />
 

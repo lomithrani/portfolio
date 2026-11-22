@@ -346,7 +346,7 @@ The registry `client/src/lib/components/hire/steps/index.ts` maps a type name to
 | `title(step)` | no | The step's name when it is not the manifest's label. The note returns its `config.title`. |
 | `failedNote(step)` | no | The line under the step's name for a visitor who did not pass it, for a type that can return `failed`; "Not passed." when unset. |
 | `wantsOpen(step, address)` | no | Whether the address asks for this step to be shown unfolded. The job step uses it when the address carries a `?job=` other than the job picked. |
-| `reopenLabel` | no | What the button that unfolds the step says once it is done ("Change" for the job step); "Open" when unset. |
+| `reopenLabel(step)` | no | What the button that unfolds the step says once it is done, for that step (`JourneyStep`): a label ("Change" for the job step), or `undefined` for "Open" (the job step returns `undefined` while a mutual interest holds its job); "Open" when unset. |
 | `ownerPreview` | no | Set it to `true` when the owner's preview should show the step itself (the note, without its button) instead of the manifest's description. The `Visitor` then gets `journey.own` and must offer the owner nothing to submit: the API refuses the owner on their own journey. |
 | `effort` | yes | What the step takes from a visitor, said in "Before you start" on the Hire page before they start: `asks(step, ownerName)` (what it asks, in a sentence, from the settings visitors get of it: the job match says its minimum), `minutes` (about how long it takes; 0 for a step worked out for them, as the job match is) and `needs` (what to have at hand, each a `StepNeed` of `types.ts` whose text is in `needs` of `steps.messages.ts`: `googleAccount` for a step the visitor submits, which needs a session; `jobDescription` for the job step; none for a meeting alone, which is booked signed out). The card says each need once and adds up the minutes. A step whose time varies says so in `asks` (the job step counts a pick's minutes, and says writing a job description takes longer). It is rendered on the server from the journey as anyone signed out gets it, so `asks` reads only `step.config` (what `visitorConfig` returns), never `step.view`. `registry.test.ts` fails when an entry has none, or says nothing in a language. |
 | `goal` | for an `access` type | What the Hire page says under its title when the journey leads to this step (the title is the same for every journey, "Propose a role to <owner>"): `alone` (the line when the step is the whole journey) and `after` (the same line when steps come before it), and `next(ownerName)`, what happens once it is done ("Before you start": the meeting's says the calendar invitation, and that only then does the owner get the recruiter's name and email address). `booking: true` for a step that books the owner's calendar (the meeting): it can be done only while the calendar offers a meeting type, which the page knows as `bookable`; otherwise the page promises nothing of it (its intro says the owner takes no meeting requests online, no "Before you start", a description without the steps). Read the texts when they are shown (getters over the messages), never into a constant. `registry.test.ts` fails when an `access` type has none. |
@@ -535,6 +535,37 @@ the recruiter's job step is to do again, as anyone's, and nothing of it outlives
 the posting removes it with the shares of that job (the job match's record names the job for
 that). A new step type that should behave differently for a job that comes from matching reads
 `ctx.mutualInterest`, never the Match itself.
+
+**On the page for recruiters** (client). The page reads `match` with `journeyMatch` of
+`client/src/services/workflow.ts` (an answer that is not one is no mutual interest: the page is
+anyone's), only from a journey loaded with the session (the server's render is anyone signed out's),
+and shows `client/src/lib/components/hire/MatchBanner.svelte` above the steps in place of "Before you
+start" (the recruiter came through matching): "You're both interested", the job they met over (a link
+to its page in their recruiter space), since when, edited since (`changed`), that this page holds that
+job (only while its job step succeeded with it: `mutualInterestJob`) or that the invitation names it
+(a journey without one), what is left before the meeting (`mutualInterestNext`: what brings back a job
+the step does not hold now, the posting open again or the terms in force accepted; then the steps not
+done, by their type's phrase, or that nothing else is asked; never a meeting nobody can book), what
+happens once it is booked (the goal's `next`, as "Before you start" says it), and "End it" (asked
+first, saying that a meeting already booked stays booked; a refusal for the terms in force asks for
+them in the banner; the page then reads the journey again, where the job step is to do as for anyone,
+and a read that fails puts the server's journey, anyone's, in place of the steps it held). Shown, the
+mutual interest is marked seen, each time the banner shows. When a later read of the journey (a step
+refused, a note confirmed) no longer has the mutual interest the page showed, the page says so in a
+toast, rather than "Complete the steps first", and the focus goes to the step shown. The job step's
+`view.matched` is read by
+`pickedJob` (`matched`, never `outdated`): `JobStep.svelte` shows that job, with no list to pick
+another, nothing to share again and no "Change" (`reopenLabel` is a function of the step), and while
+it does not hold, what brings it back (the posting open again, with a link to its page, or the terms
+in force, `TermsAcceptance`); `asksForAnotherJob` ignores `?job=` while it holds; the 409
+`JOB_OF_MUTUAL_INTEREST` of a share from a page loaded before the mutual interest is said in words
+(`pickJobFailure`, `matched`: a toast, and the journey loaded again, the focus on the step shown). The
+job match's `view.matched` and `frozenAt` are read by `jobMatch`: `JobMatchStep.svelte` says "Score
+when you were both interested, on <day>", that it no longer changes, and offers neither "Check again"
+nor a duplicate (a frozen score under its minimum says that ending the mutual interest is the way to
+share another job). A step a mutual interest holds says what it holds even while a step before it is
+to do (`stepNote`: the note first, the job and its score after it), and a job it does not hold now
+what brings it back.
 
 ## Steps with routes of their own
 
