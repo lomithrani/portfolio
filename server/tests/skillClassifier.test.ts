@@ -104,6 +104,11 @@ const claudeError =
   () =>
     Response.json({ type: 'error', error: { type, message }, request_id: 'req_error' }, { status, headers: { 'request-id': 'req_error' } });
 
+/** The connection is lost before any answer */
+const lostConnection: Answer = () => {
+  throw new TypeError('fetch failed');
+};
+
 /** Never answers until the request is aborted */
 const silence: Answer = (signal) =>
   new Promise<Response>((_, reject) => {
@@ -496,18 +501,14 @@ describe('what Claude answers', () => {
     expect(isPendingSkill(await read('first'))).toBe(true);
   });
 
+  // Claude answered these names, and nothing of the answer can be used: that may be their doing
   it.each([
-    ['is not JSON', () => claudeAnswer('Here are the skills you asked for!'), 'warn'],
-    ['is a refusal', () => claudeAnswer('', { stop_reason: 'refusal' }), 'warn'],
-    ['is cut short', () => claudeAnswer('{"skills":[{"index":0,', { stop_reason: 'max_tokens' }), 'warn'],
-    ['is an overloaded API (529)', () => claudeError(529, 'overloaded_error', 'Overloaded'), 'warn'],
-    ['is a rate limit (429)', () => claudeError(429, 'rate_limit_error', 'Too many requests'), 'warn'],
-    ['is a key the API refuses (401)', () => claudeError(401, 'authentication_error', `invalid x-api-key ${TEST_API_KEY}`), 'error'],
-    ['never comes before the deadline', () => silence, 'warn']
-  ] as const)('leaves the whole batch to classify when the answer %s', async (_label, answer, level) => {
-    skillClassifierTimeouts.classifyMs = 80;
+    ['is not JSON', () => claudeAnswer('Here are the skills you asked for!')],
+    ['is a refusal', () => claudeAnswer('', { stop_reason: 'refusal' })],
+    ['is cut short', () => claudeAnswer('{"skills":[{"index":0,', { stop_reason: 'max_tokens' })]
+  ] as const)('leaves the whole batch to classify, one more try counted, when the answer %s', async (_label, answer) => {
     await pending('one');
-    await pending('two');
+    await pending('two', withStatus('pending', 1));
     fake.answers.push(answer());
 
     const batch = await classifyPendingSkills();
@@ -515,11 +516,43 @@ describe('what Claude answers', () => {
     expect(batch).toMatchObject({ state: 'failed', counts: { asked: 2, classified: 0, rejected: 0, failed: 2, calls: 1 } });
     // Sent once, never retried
     expect(fake.claude).toHaveLength(1);
-    for (const name of ['one', 'two']) {
-      const skill = await read(name);
-      expect(skill.classification).toMatchObject({ status: 'pending', attempts: 1 });
-      expect(skill.category).toBeUndefined();
-    }
+    expect((await read('one')).classification).toMatchObject({ status: 'pending', attempts: 1 });
+    expect((await read('two')).classification).toMatchObject({ status: 'pending', attempts: 2 });
+    for (const name of ['one', 'two']) expect((await read(name)).category).toBeUndefined();
+    expect(logged('warn')).toHaveLength(1);
+  });
+
+  // No answer to speak of: an outage, a deadline, a key or a request the API refuses. None of it is the names' doing
+  it.each([
+    ['an overloaded API (529)', () => claudeError(529, 'overloaded_error', 'Overloaded'), 'warn'],
+    ['a rate limit (429)', () => claudeError(429, 'rate_limit_error', 'Too many requests'), 'warn'],
+    ['a server error (500)', () => claudeError(500, 'api_error', 'Internal server error'), 'warn'],
+    ['an unavailable API (503)', () => claudeError(503, 'api_error', 'Service unavailable'), 'warn'],
+    ['a key the API refuses (401)', () => claudeError(401, 'authentication_error', `invalid x-api-key ${TEST_API_KEY}`), 'error'],
+    ['a key without the permission (403)', () => claudeError(403, 'permission_error', 'Not allowed'), 'error'],
+    ['a request the API rejects (400)', () => claudeError(400, 'invalid_request_error', 'Your credit balance is too low'), 'error'],
+    ['a model the API does not have (404)', () => claudeError(404, 'not_found_error', 'model not found'), 'error'],
+    ['a lost connection', () => lostConnection, 'warn'],
+    ['no answer before the deadline', () => silence, 'warn']
+  ] as const)('leaves the whole batch to classify, and counts no try, after %s', async (_label, answer, level) => {
+    skillClassifierTimeouts.classifyMs = 80;
+    await pending('one');
+    await pending('two', withStatus('pending', 2));
+    const before = { one: await read('one'), two: await read('two') };
+    fake.answers.push(answer());
+
+    const batch = await classifyPendingSkills();
+
+    // The call was made (it counts in the day's), the batch failed (the sweep stops there)
+    expect(batch).toMatchObject({ state: 'failed', counts: { asked: 2, classified: 0, rejected: 0, failed: 2, calls: 1 } });
+    // Sent once, never retried
+    expect(fake.claude).toHaveLength(1);
+    // Nothing was written: not a try, not a date
+    expect(await read('one')).toEqual(before.one);
+    expect(await read('two')).toEqual(before.two);
+    expect((await read('one')).classification).toBeUndefined();
+    expect((await read('two')).classification).toMatchObject({ status: 'pending', attempts: 2 });
+    for (const name of ['one', 'two']) expect(isPendingSkill(await read(name))).toBe(true);
     expect(logged(level)).toHaveLength(1);
   });
 
@@ -532,16 +565,25 @@ describe('what Claude answers', () => {
   });
 
   it('classifySkillNames never throws, and asks nothing without a key or without names', async () => {
-    expect(await classifySkillNames([], [])).toEqual({ ok: false });
+    expect(await classifySkillNames([], [])).toEqual({ ok: false, answered: false });
     env.ANTHROPIC_API_KEY = undefined;
-    expect(await classifySkillNames(['Go'], [])).toEqual({ ok: false });
+    expect(await classifySkillNames(['Go'], [])).toEqual({ ok: false, answered: false });
     expect(fake.claude).toHaveLength(0);
 
     env.ANTHROPIC_API_KEY = TEST_API_KEY;
     spyOn(globalThis, 'fetch').mockImplementation((() => {
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch);
-    expect(await classifySkillNames(['Go'], [])).toEqual({ ok: false });
+    expect(await classifySkillNames(['Go'], [])).toEqual({ ok: false, answered: false });
+  });
+
+  it('classifySkillNames says whether Claude answered at all', async () => {
+    fake.answers.push(claudeAnswer('', { stop_reason: 'refusal' }));
+    expect(await classifySkillNames([t.n('Go')], [])).toEqual({ ok: false, answered: true });
+    fake.answers.push(claudeError(529, 'overloaded_error', 'Overloaded'));
+    expect(await classifySkillNames([t.n('Go')], [])).toEqual({ ok: false, answered: false });
+    fake.answers.push(lostConnection);
+    expect(await classifySkillNames([t.n('Go')], [])).toEqual({ ok: false, answered: false });
   });
 });
 
@@ -579,7 +621,8 @@ describe('applySkillClassification', () => {
     expect(String(stored!.aliasOf)).toBe(String(proper._id));
     expect(stored!.category).toBeUndefined();
     expect(stored!.classification).toMatchObject({ status: 'classified', attempts: 1 });
-    expect((await Skill.findById(proper._id).lean())!.names).toEqual([t.n('C#'), t.n('c#')]);
+    // Nothing is written on the skill it points at
+    expect((await Skill.findById(proper._id).lean())!.names).toEqual([t.n('C#')]);
   });
 
   it('creates the skill it is part of, still to classify, when the catalogue has none', async () => {
@@ -647,9 +690,9 @@ describe('applySkillClassification', () => {
     expect(String((await read('React Hooks')).parent)).toBe(String(parent._id));
   });
 
-  it('merges the names of another spelling into its skill, which Skill.findOrCreate then resolves to', async () => {
+  it('keeps another spelling a document of its own: nothing is added to its skill, and a save still stores the spelling typed', async () => {
     const canonical = await pending('Kubernetes', { ...withStatus('classified'), category: 'infrastructure' });
-    const alias = await Skill.create({ displayName: t.n('K8s'), names: [t.n('K8s'), t.n('kube')], category: 'tool' });
+    const alias = await Skill.create({ displayName: t.n('K8s'), names: [t.n('K8s'), t.n('k8s')], category: 'tool' });
     const older = await pending('k8s cluster', { ...withStatus('classified'), aliasOf: alias._id });
     const part = await pending('K3s', { ...withStatus('classified'), parent: alias._id });
 
@@ -660,15 +703,30 @@ describe('applySkillClassification', () => {
     expect(stored!.category).toBeUndefined();
     expect(stored!.parent).toBeUndefined();
     expect(stored!.classification).toMatchObject({ status: 'classified', at: NOW, attempts: 1 });
-    expect((await Skill.findById(canonical._id).lean())!.names).toEqual([t.n('Kubernetes'), t.n('K8s'), t.n('kube')]);
+    // Its spellings stay its own: the skill it points at is written nothing
+    expect(stored!.names).toEqual([t.n('K8s'), t.n('k8s')]);
+    expect(await Skill.findById(canonical._id).lean()).toEqual({
+      _id: canonical._id,
+      displayName: t.n('Kubernetes'),
+      names: [t.n('Kubernetes')],
+      category: 'infrastructure',
+      ...withStatus('classified'),
+      __v: 0
+    });
     // Never chained, and what was part of it is part of that skill
     expect(String((await Skill.findById(older._id).lean())!.aliasOf)).toBe(String(canonical._id));
     expect(String((await Skill.findById(part._id).lean())!.parent)).toBe(String(canonical._id));
-    // An experience saved from now on references the canonical skill, whatever the spelling typed
-    for (const spelling of ['K8s', 'k8S', 'kube', 'Kubernetes']) {
-      expect(String(await Skill.findOrCreate(t.n(spelling)))).toBe(String(canonical._id));
+    // An experience saved from now on still references the spelling typed: the alias is resolved when read
+    for (const spelling of [t.n('K8s'), t.n('k8S'), ` ${t.n('k8s').toUpperCase()} `]) {
+      expect(String(await Skill.findOrCreate(spelling))).toBe(String(alias._id));
     }
+    expect(String(await Skill.findOrCreate(t.n('k8s cluster')))).toBe(String(older._id));
+    expect(String(await Skill.findOrCreate(t.n('KUBERNETES')))).toBe(String(canonical._id));
+    // The classifier's own lookup follows it
     expect(String((await Skill.findCanonical(t.n('k8s')))!._id)).toBe(String(canonical._id));
+    // Unset by hand, the spelling is a skill of its own again: nothing else holds it
+    await Skill.updateOne({ _id: alias._id }, { $unset: { aliasOf: 1 } });
+    expect(String((await Skill.findCanonical(t.n('k8s')))!._id)).toBe(String(alias._id));
   });
 
   it('a skill that becomes another spelling of one that was part of it leaves that one without a parent', async () => {
@@ -718,8 +776,9 @@ describe('applySkillClassification', () => {
     expect(stored).toMatchObject({ displayName: t.n('Kubernetes'), names: [t.n('Kubernetes')], ...before });
     expect(stored!.parent).toBeUndefined();
     expect(stored!.aliasOf).toBeUndefined();
-    // The spelling still resolves, through its own document
-    expect(String(await Skill.findOrCreate(t.n('k8s')))).toBe(String(manual._id));
+    // A save stores the spelling typed; the classifier's lookup finds the skill through that document
+    expect(String(await Skill.findOrCreate(t.n('k8s')))).toBe(String(alias._id));
+    expect(String((await Skill.findCanonical(t.n('k8s')))!._id)).toBe(String(manual._id));
   });
 
   it('rejects what is not a skill, and writes nothing else', async () => {
@@ -770,12 +829,19 @@ describe('applySkillClassification', () => {
 // ── Tries ───────────────────────────────────────────────────
 
 describe('tries', () => {
-  it(`gives up on a skill after ${SKILL_CLASSIFICATION.maxAttempts} failed tries, until an operator resets it`, async () => {
+  it(`gives up on a skill Claude answered ${SKILL_CLASSIFICATION.maxAttempts} times without settling it, until an operator resets it`, async () => {
     await pending('stubborn');
-    fake.defaultAnswer = claudeError(500, 'api_error', 'Internal server error');
+    // Answered each time, with nothing usable for it: a refusal, an answer that is not JSON, an answer without its item
+    const unusable = [
+      claudeAnswer('', { stop_reason: 'refusal' }),
+      claudeAnswer('I would rather not.'),
+      claudeAnswer({ skills: [] })
+    ];
+    expect(unusable).toHaveLength(SKILL_CLASSIFICATION.maxAttempts);
+    fake.answers.push(...unusable);
 
     for (let attempt = 1; attempt <= SKILL_CLASSIFICATION.maxAttempts; attempt++) {
-      expect((await classifyPendingSkills()).state).toBe('failed');
+      expect((await classifyPendingSkills()).counts).toMatchObject({ asked: 1, failed: 1, classified: 0 });
       expect(await read('stubborn')).toMatchObject({ classification: { status: 'pending', attempts: attempt } });
     }
     expect(fake.claude).toHaveLength(SKILL_CLASSIFICATION.maxAttempts);
@@ -790,6 +856,37 @@ describe('tries', () => {
     fake.defaultAnswer = answering(() => ({ category: 'tool' }));
     expect((await classifyPendingSkills()).counts).toMatchObject({ asked: 1, classified: 1 });
     expect(await read('stubborn')).toMatchObject({ category: 'tool', classification: { status: 'classified', attempts: 1 } });
+  });
+
+  it('never gives up on a skill for an outage, however long: no try is counted while Claude does not answer', async () => {
+    skillClassifierTimeouts.classifyMs = 60;
+    await pending('patient');
+    await pending('tried once', withStatus('pending', 1));
+    // More failed calls than the tries a skill has: an overloaded API, a server error, a rate limit, an expired key,
+    // a spend limit, a lost connection, no answer at all
+    const outage = [
+      claudeError(529, 'overloaded_error', 'Overloaded'),
+      claudeError(500, 'api_error', 'Internal server error'),
+      claudeError(429, 'rate_limit_error', 'Too many requests'),
+      claudeError(401, 'authentication_error', 'invalid x-api-key'),
+      claudeError(400, 'invalid_request_error', 'Your credit balance is too low'),
+      lostConnection,
+      silence
+    ];
+    expect(outage.length).toBeGreaterThan(SKILL_CLASSIFICATION.maxAttempts);
+    fake.answers.push(...outage);
+
+    for (const _ of outage) {
+      expect(await classifyPendingSkills()).toMatchObject({ state: 'failed', counts: { asked: 2, failed: 2, calls: 1 } });
+    }
+    expect(fake.claude).toHaveLength(outage.length);
+    expect((await read('patient')).classification).toBeUndefined();
+    expect((await read('tried once')).classification).toMatchObject({ status: 'pending', attempts: 1 });
+
+    // Claude is back: both are asked again and classified, without an operator
+    expect((await classifyPendingSkills()).counts).toMatchObject({ asked: 2, classified: 2, failed: 0 });
+    expect(await read('patient')).toMatchObject({ classification: { status: 'classified', attempts: 1 } });
+    expect(await read('tried once')).toMatchObject({ classification: { status: 'classified', attempts: 2 } });
   });
 
   it('counts the tries of a skill classified at last', async () => {
@@ -899,8 +996,9 @@ describe('a sweep', () => {
     const third = await sweepAgain();
     expect(third).toMatchObject({ ran: true, budgetReached: true, counts: { asked: 0, calls: 0, failed: 0 } });
     expect(fake.claude).toHaveLength(2);
-    // Not asked: no try counted, it waits for tomorrow
-    expect(await read('Go')).toMatchObject({ classification: { status: 'pending', attempts: 2 } });
+    // No try was counted, for the failed calls nor for the one not made: it waits for tomorrow
+    expect((await read('Go')).classification).toBeUndefined();
+    expect(isPendingSkill(await read('Go'))).toBe(true);
     expect(logged('info').at(-1)!.text).toContain('"budgetReached":true');
   });
 
@@ -909,7 +1007,15 @@ describe('a sweep', () => {
     await pending('Go');
     expect(await sweepSkillClassification()).toMatchObject({ ran: true, counts: { calls: 1, failed: 1 } });
     expect(fake.claude).toHaveLength(1);
-    expect(await read('Go')).toMatchObject({ classification: { attempts: 1 } });
+    // An outage: no try counted, though the call counts in the day's
+    expect((await read('Go')).classification).toBeUndefined();
+    expect((await peekRateLimit(skillClassificationCounters.callsKey, skillClassificationBudget())).count).toBe(1);
+
+    // Nor after an answer nothing can be read of, which counts a try
+    fake.defaultAnswer = claudeAnswer('', { stop_reason: 'refusal' });
+    expect(await sweepAgain()).toMatchObject({ ran: true, counts: { calls: 1, failed: 1 } });
+    expect(fake.claude).toHaveLength(2);
+    expect(await read('Go')).toMatchObject({ classification: { status: 'pending', attempts: 1 } });
   });
 
   it(`makes at most ${SKILL_SWEEP_BATCHES} calls of ${SKILL_CLASSIFICATION.batchSize} skills`, async () => {
@@ -1029,8 +1135,13 @@ describe('the job', () => {
     fake.defaultAnswer = claudeError(529, 'overloaded_error', 'Overloaded');
     start();
     const id = await Skill.findOrCreate(t.n('Go'));
-    await until(async () => (await Skill.findById(id).lean())?.classification?.attempts === 1);
-    expect(await read('Go')).toMatchObject({ classification: { status: 'pending', attempts: 1 } });
+    expect(id).toBeInstanceOf(Types.ObjectId);
+    // Its sweep ran, and failed
+    await until(() => logged('info').length > 0);
+    expect(fake.claude).toHaveLength(1);
+    // Still to classify, no try counted: the next sweep asks again
+    expect((await read('Go')).classification).toBeUndefined();
+    expect(isPendingSkill(await read('Go'))).toBe(true);
   });
 
   it('does nothing once stopped', async () => {

@@ -35,6 +35,11 @@ import { isDuplicateKeyError } from './mongoErrors'
 // Everything written is metadata on the Skill collection, reversible by an
 // operator: no experience is ever rewritten, and a skill whose status is
 // 'manual' is never modified, not even as the skill another one points at.
+// What Claude said is applied when a skill is read, never when an experience
+// is written: a save stores the document of the spelling typed whatever was
+// classified (Skill.findOrCreate), and a spelling said to be another skill's
+// is a document of its own pointing at it (aliasOf), never a name added to
+// that skill. So one wrong answer is undone by changing one document.
 // Nothing here is read by matching, which counts with the names alone.
 
 /** Model that classifies skills: the imports' and the feedback's */
@@ -139,13 +144,27 @@ export type SkillClassifierAnswer =
       outputTokens: number
       estimatedCostUsd: number
     }
-  | { ok: false }
+  | {
+      ok: false
+      /**
+       * Whether Claude answered. True: it answered these names and nothing of
+       * it can be used (a refusal, an answer cut short, not the JSON asked
+       * for), which may be the names' doing. False: no answer to speak of (no
+       * key, no answer before the deadline, a lost connection, an HTTP error
+       * status from Anthropic), which is never the names' doing
+       */
+      answered: boolean
+    }
 
-const FAILED: SkillClassifierAnswer = { ok: false }
+/** No answer: an outage, a deadline, a key or a request the API refuses. Nothing of it is the names' doing */
+const NO_ANSWER: SkillClassifierAnswer = { ok: false, answered: false }
+/** Claude answered, and nothing of the answer can be used */
+const UNUSABLE_ANSWER: SkillClassifierAnswer = { ok: false, answered: true }
 
 /** Why a call failed, for the operator's log: never the request (the names), the key masked */
 const logCallFailure = (error: unknown, apiKey: string, asked: number, deadlineReached: boolean) => {
   if (!(error instanceof Anthropic.APIError)) {
+    // Before any answer: what the SDK does not wrap (it wraps a lost connection and a timeout itself)
     logger.error('Skill classification: the call failed, the skills stay to classify', {
       model: SKILL_CLASSIFIER_MODEL,
       asked,
@@ -180,11 +199,12 @@ const logCallFailure = (error: unknown, apiKey: string, asked: number, deadlineR
  * the names the catalogue has: one call, sent once, within
  * skillClassifierTimeouts.classifyMs. Never throws: without a key, or when
  * the call fails, is refused, is cut short or answers junk, it is
- * `{ ok: false }` and nothing was classified
+ * `{ ok: false }` and nothing was classified, with whether Claude answered
+ * at all (`answered`: see SkillClassifierAnswer)
  */
 export async function classifySkillNames(names: readonly string[], known: readonly string[]): Promise<SkillClassifierAnswer> {
   const apiKey = env.ANTHROPIC_API_KEY
-  if (!apiKey || names.length === 0) return FAILED
+  if (!apiKey || names.length === 0) return NO_ANSWER
 
   let response: Anthropic.Message
   const deadline = new AbortController()
@@ -205,8 +225,9 @@ export async function classifySkillNames(names: readonly string[], known: readon
       { maxRetries: 0, timeout: skillClassifierTimeouts.classifyMs, signal: deadline.signal }
     )
   } catch (error) {
+    // No message came back: no answer, a lost connection, or an HTTP error status (429, 5xx, 529, 400, 401, 403, 404...)
     logCallFailure(error, apiKey, names.length, deadline.signal.aborted)
-    return FAILED
+    return NO_ANSWER
   } finally {
     clearTimeout(timer)
   }
@@ -226,7 +247,7 @@ export async function classifySkillNames(names: readonly string[], known: readon
       stopReason: response.stop_reason ?? undefined,
       ...usage
     })
-    return FAILED
+    return UNUSABLE_ANSWER
   }
   return { ok: true, results: parseSkillClassification(output, names), ...usage }
 }
@@ -313,8 +334,12 @@ const familyRoot = async (start: StoredSkill, self: Types.ObjectId) => {
  *   spelling of that one.
  * - Another spelling of a skill (`aliasOf`, or the spelling above): it
  *   points at that skill, has neither a category nor a parent of its own,
- *   its names are added to that skill's, and what pointed at it (its own
- *   other spellings, the skills that were part of it) points at that skill.
+ *   and what pointed at it (its own other spellings, the skills that were
+ *   part of it) points at that skill. It stays a document of its own, the
+ *   one the experiences that use the spelling reference, before and after:
+ *   nothing of it is added to that skill (its `names` stay the casings of
+ *   its own name), so unsetting its `aliasOf` shows the spelling as typed
+ *   again on every experience.
  * - Part of a skill (`parent`): of the skill at the top of that one's
  *   family, since families have one level, and the skills that were part of
  *   it become part of that one too. Never of itself, never of a skill that
@@ -322,9 +347,9 @@ const familyRoot = async (start: StoredSkill, self: Types.ObjectId) => {
  * - The skill it names (a parent, the skill it is a spelling of) is found
  *   by name ignoring case, and created, to classify later, when the
  *   catalogue has none: until it is recognised itself, the API shows it on
- *   no portfolio (experiencePresentation.ts) and no save resolves to it
- *   (Skill.findOrCreate). A skill set by hand ('manual') can be pointed at
- *   and is never modified.
+ *   no portfolio (experiencePresentation.ts), and no save ever stores a
+ *   skill in place of the spelling typed (Skill.findOrCreate). A skill set
+ *   by hand ('manual') can be pointed at and is never modified.
  */
 export async function applySkillClassification(
   skillId: Types.ObjectId | string,
@@ -386,9 +411,7 @@ export async function applySkillClassification(
       $unset: { parent: 1, category: 1 }
     })
     if (modifiedCount === 0) return 'skipped'
-    // Its spellings resolve to that skill directly too
-    const names = [...new Set([skill.displayName, ...(skill.names ?? [])])]
-    await Skill.updateOne({ _id: aliasTarget._id, ...NOT_MANUAL }, { $addToSet: { names: { $each: names } } })
+    // Nothing is written on that skill: the spelling resolves to it through this document, when read
     // Never chained: its own other spellings are that skill's
     await Skill.updateMany({ aliasOf: self, _id: { $ne: aliasTarget._id }, ...NOT_MANUAL }, { $set: { aliasOf: aliasTarget._id } })
     // The skills that were part of it are part of that skill's family: one level, and never of themselves
@@ -427,7 +450,10 @@ export interface SkillBatchCounts {
   classified: number
   /** Not skills: said so by Claude, or names that cannot be one (never sent) */
   rejected: number
-  /** Still to classify, with one more try counted: the call failed, or said nothing usable of them */
+  /**
+   * Asked and still to classify: the call failed, or said nothing usable of
+   * them. One more try is counted for them only when Claude answered
+   */
   failed: number
   /** Calls made to Claude (0 or 1) */
   calls: number
@@ -450,8 +476,9 @@ export const emptySkillBatchCounts = (): SkillBatchCounts => ({
 export interface SkillBatchResult {
   /**
    * `empty`: nothing is left to classify. `refused`: `mayCall` said no,
-   * nothing was sent. `failed`: the call failed, the batch stays to classify.
-   * `done`: the batch was worked through
+   * nothing was sent. `failed`: the call gave nothing usable (no answer, or
+   * one that cannot be read), the batch stays to classify. `done`: the
+   * batch was worked through
    */
   state: 'empty' | 'refused' | 'failed' | 'done'
   counts: SkillBatchCounts
@@ -467,7 +494,13 @@ const toClassify = (): QueryFilter<SkillFields> => ({
   ]
 })
 
-/** One more try counted for skills that stay to classify (from SKILL_CLASSIFICATION.maxAttempts they are skipped) */
+/**
+ * One more try counted for skills that stay to classify (from
+ * SKILL_CLASSIFICATION.maxAttempts they are skipped until an operator resets
+ * them). Only for what Claude answered without settling them: an outage, a
+ * deadline or a key the API refuses says nothing of the names, and must
+ * never park them (three sweeps during an outage would)
+ */
 const countFailedTry = (ids: Types.ObjectId[], now: Date) =>
   ids.length === 0
     ? Promise.resolve()
@@ -489,9 +522,15 @@ const knownSkillNames = async () => {
  * Classifies the next batch of skills still to classify, the oldest first:
  * one call to Claude at most. `mayCall` is asked right before that call
  * (never when nothing would be sent) and keeps it in by answering false: the
- * job counts the day's calls with it. A failed call, or a skill the answer
- * says nothing usable of, counts one more try for it and leaves it to
- * classify. Throws only what MongoDB throws
+ * job counts the day's calls with it. A skill stays to classify, with one
+ * more try counted, when Claude answered and it could not be settled: the
+ * answer says nothing usable of it (no item for it, or one that breaks a
+ * rule), is a refusal, is cut short or is not the JSON asked for, or its
+ * result could not be saved. A call that got no answer for reasons that are
+ * not the names' (no answer before the deadline, a lost connection, an HTTP
+ * error status: 429, 5xx, 529, 400, 401, 403, 404) leaves the batch to
+ * classify and counts no try: `failed` either way, so the sweep stops there.
+ * Throws only what MongoDB throws
  */
 export async function classifyPendingSkills(
   { mayCall, now = new Date() }: { mayCall: () => boolean | Promise<boolean>; now?: Date } = { mayCall: () => true }
@@ -522,7 +561,8 @@ export async function classifyPendingSkills(
   counts.calls = 1
   const answer = await classifySkillNames(names, await knownSkillNames())
   if (!answer.ok) {
-    await countFailedTry(ask.map((skill) => skill.id), now)
+    // An answer nothing can be read of may be these names' doing: a try each. No answer is not: none
+    if (answer.answered) await countFailedTry(ask.map((skill) => skill.id), now)
     counts.failed = ask.length
     return { state: 'failed', counts }
   }

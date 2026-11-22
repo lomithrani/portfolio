@@ -184,14 +184,20 @@ describe('the skills that what was typed could be (GET /skills/search)', () => {
     expect(everything).not.toContain(`Family${t.suffix}`);
   });
 
-  it('resolves another spelling to its skill, with the spelling that matched', async () => {
+  it('resolves another spelling to its skill, with the spelling that matched, through the document of that spelling', async () => {
     const user = await createUser('alias');
+    // As the catalogue holds them: the skill knows the casings of its own name, the other spelling is a document
+    // of its own that points at it
     const kubernetes = await skill(`Kubernetes${t.suffix}`, {
-      names: [`Kubernetes${t.suffix}`, `kubernetes${t.suffix}`, `K8s${t.suffix}`],
+      names: [`Kubernetes${t.suffix}`, `kubernetes${t.suffix}`],
       category: 'infrastructure',
       classification: status('manual')
     });
-    await skill(`K8s${t.suffix}`, { aliasOf: kubernetes._id, classification: status('manual') });
+    const k8s = await skill(`K8s${t.suffix}`, {
+      names: [`K8s${t.suffix}`, `k8s${t.suffix}`],
+      aliasOf: kubernetes._id,
+      classification: status('manual')
+    });
 
     const canonical = { name: `Kubernetes${t.suffix}`, category: 'infrastructure' as const };
     // Typed as the alias, in any case: the skill once, and the spelling as the catalogue writes it
@@ -200,11 +206,20 @@ describe('the skills that what was typed could be (GET /skills/search)', () => {
     // Typed as the skill: no alias, and another casing of its name is not one
     expect(await found(`kubernetes${t.suffix}`, user.cookie)).toEqual([canonical]);
     expect(await found(`KUBERNETES${t.suffix}`, user.cookie)).toEqual([canonical]);
+    // Both by a part of their names: the skill once, under its own name
+    expect(await found(t.suffix, user.cookie)).toEqual([canonical]);
+
+    // The alias unset by hand: the spelling is a skill of its own again, and the skill no longer answers to it
+    await Skill.updateOne({ _id: k8s._id }, { $unset: { aliasOf: 1 } });
+    expect(await found(`k8s${t.suffix}`, user.cookie)).toEqual([{ name: `K8s${t.suffix}` }]);
+    // Not recognised (the classifier rejected it, or it waits): the spelling suggests nothing, even of its skill
+    await Skill.updateOne({ _id: k8s._id }, { $set: { aliasOf: kubernetes._id, classification: status('rejected') } });
+    expect(await found(`k8s${t.suffix}`, user.cookie)).toEqual([]);
   });
 
   it('suggests a skill once when its name and another spelling both match, under its name', async () => {
     const user = await createUser('once');
-    const node = await skill(`Node${t.suffix}.js`, { names: [`Node${t.suffix}.js`, `Node${t.suffix}JS`] });
+    const node = await skill(`Node${t.suffix}.js`);
     await skill(`Node${t.suffix}JS`, { aliasOf: node._id });
     // Both start with what was typed
     expect(await found(`node${t.suffix}`, user.cookie)).toEqual([{ name: `Node${t.suffix}.js` }]);
@@ -226,7 +241,7 @@ describe('the skills that what was typed could be (GET /skills/search)', () => {
     await skill(`A ${q}`);
     await skill(`${q} Connect`);
     await skill(q.toUpperCase());
-    const exactAlias = await skill(`Canonical${t.suffix}`, { names: [`Canonical${t.suffix}`, `${q} core`] });
+    const exactAlias = await skill(`Canonical${t.suffix}`);
     await skill(`${q} core`, { aliasOf: exactAlias._id });
 
     expect((await found(q, user.cookie)).map(({ name, alias }) => (alias ? `${alias} → ${name}` : name))).toEqual([

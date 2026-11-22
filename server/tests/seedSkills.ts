@@ -9,6 +9,10 @@
 // catalogue can rely on: families ('.NET Core' and '.NET Framework' are part
 // of '.NET', 'Debian' and 'Ubuntu' of 'Linux'...) and aliases ('K8s' is
 // 'Kubernetes', 'NodeJS' is 'Node.js'...).
+// An alias is a Skill document of its own that points at its skill (aliasOf),
+// never a name of that skill: an experience typed 'K8s' references the 'K8s'
+// document and is shown as Kubernetes when read (Skill.findOrCreate,
+// services/experiencePresentation.ts).
 // This file loads nothing that imports server/env.ts (see seedE2e.ts).
 import type { Types } from "mongoose";
 import type { SkillCategory } from "portfolio-common";
@@ -137,8 +141,11 @@ const spellAs = async (skill: SkillDocument, name: string) => {
  * Applies the list to the Skill collection: each skill with its category,
  * the skill it is part of and its other spellings, all 'manual'. Idempotent,
  * and what it writes keeps the catalogue's rules (one level of families, an
- * alias never chained) whatever the collection held: a manual entry wins
- * over what the classifier wrote.
+ * alias never chained, a skill's `names` only the casings of its own name)
+ * whatever the collection held: a manual entry wins over what the
+ * classifier wrote. It also repairs what an earlier version of this seed
+ * left: the spellings of a skill's aliases among that skill's own `names`,
+ * through which a save of 'K8s' stored Kubernetes.
  */
 export const seedSkillCatalogue = async (
   list: readonly SeedSkill[] = SEED_SKILLS,
@@ -192,10 +199,12 @@ export const seedSkillCatalogue = async (
         { parent: alias._id, _id: { $ne: skill._id } },
         { $set: { parent: (parent ?? skill)._id } }
       );
-      // Its spellings resolve to the skill itself from now on (Skill.findOrCreate)
+      // The spelling is the alias's own, never a name of the skill: a save of it stores the alias
+      // (Skill.findOrCreate), resolved when read. An earlier version of this seed added it to the
+      // skill's names: taken out, in any casing ($pull compares with the collation)
       await Skill.updateOne(
         { _id: skill._id },
-        { $addToSet: { names: { $each: [spelling, ...(alias.names ?? [])] } } },
+        { $pull: { names: { $in: [spelling, ...(alias.names ?? [])] } } },
         { collation: SKILL_NAME_COLLATION }
       );
       aliases += 1;

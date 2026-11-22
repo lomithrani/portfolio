@@ -65,7 +65,10 @@ export const SKILL_CLASSIFICATION = {
 	batchSize: 40,
 	/** Canonical names of the catalogue sent with a batch, so parents and aliases reuse them */
 	knownNames: 500,
-	/** After this many failed tries a skill is skipped, until an operator resets it */
+	/**
+	 * After this many tries a skill is skipped, until an operator resets it. A try is a call Claude
+	 * answered without settling the skill; one that got no answer (an outage, a refused key) is none
+	 */
 	maxAttempts: 3
 } as const;
 

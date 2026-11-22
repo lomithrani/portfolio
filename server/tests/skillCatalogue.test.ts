@@ -1,13 +1,21 @@
 // The skill catalogue against a real MongoDB (MONGO_URL, local or from
-// TEST_MONGO_URL): the Skill model (aliases resolved when a name is looked
-// up, the skills still to classify, those the search may suggest), how the
-// API presents the skills of an experience (an alias shown as its skill,
+// TEST_MONGO_URL): the Skill model (a name looked up is the document of the
+// spelling typed, never the skill it is another spelling of; the skills
+// still to classify, those the search may suggest), how the API presents the
+// skills of an experience (an alias resolved when read: shown as its skill,
 // once per list, with its category and the skill it is part of, nothing
-// private), and the curated list the seeds apply. Each test names what it
+// private; never when written: what is stored, and what matching's anonymous
+// card shows, is the spelling typed), and the curated list the seeds apply. Each test names what it
 // creates with a suffix of its own and removes it: they pass in any order.
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
-import { SKILL_CATEGORIES, SKILL_CLASSIFICATION, normalizeSkill, skillTaxonomy } from 'portfolio-common';
+import {
+  SKILL_CATEGORIES,
+  SKILL_CLASSIFICATION,
+  normalizeSkill,
+  parseSkillClassification,
+  skillTaxonomy
+} from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
 import { Domain, Experience, Skill, User } from '../models/database';
@@ -17,7 +25,9 @@ import {
   isPendingSkill,
   onPendingSkillResolved
 } from '../models/database/skill';
+import { anonymousCard } from '../services/candidateCard';
 import { presentExperience, presentSkill } from '../services/experiencePresentation';
+import { applySkillClassification } from '../services/skillClassifier';
 import {
   CONSENT,
   experienceRequestBody,
@@ -62,9 +72,9 @@ const classified = () => ({ status: 'classified' as const, at: new Date(), attem
 const skill = (name: string, fields: Record<string, unknown> = {}) =>
   Skill.create({ displayName: t.id(name), names: [t.id(name)], ...fields });
 
-const loginWithDomain = async (name: string, domainName: string) => {
+const loginWithDomain = async (name: string, domainName: string, email = t.email(name)) => {
   const result = await postJson(app, '/login', {
-    token: await signGoogleIdToken({ claims: { sub: t.id(`sub-${name}`), email: t.email(name) } })
+    token: await signGoogleIdToken({ claims: { sub: t.id(`sub-${name}`), email } })
   });
   expect(result.status).toBe(200);
   const cookie = `auth=${parseCookie(result.headers.get('Set-Cookie') ?? '')['auth']}`;
@@ -136,21 +146,35 @@ describe('the Skill model', () => {
     }
   });
 
-  it('resolves another spelling of a skill to that skill, whatever the case, creating nothing', async () => {
-    const canonical = await skill('Kubernetes', { category: 'infrastructure', classification: manual() });
-    const alias = await skill('K8s', { aliasOf: canonical._id, classification: manual() });
+  it('looks another spelling of a skill up as its own document, never as that skill, creating nothing', async () => {
+    // Whatever the catalogue says of the target: recognised by hand, by the classifier, or not yet
+    for (const [name, classification] of [
+      ['manual', manual()],
+      ['classified', classified()],
+      ['pending', undefined]
+    ] as const) {
+      const canonical = await skill(`Kubernetes-${name}`, { category: 'infrastructure', classification });
+      const alias = await skill(`K8s-${name}`, { aliasOf: canonical._id, classification: classified() });
 
-    expect(String(await Skill.findOrCreate(t.id('K8s')))).toBe(String(canonical._id));
-    expect(String(await Skill.findOrCreate(` ${t.id('k8S').toUpperCase()} `))).toBe(String(canonical._id));
-    expect(String(await Skill.findOrCreate(t.id('kubernetes')))).toBe(String(canonical._id));
-    expect(await Skill.countDocuments({ displayName: new RegExp(`-${t.suffix}$`, 'i') })).toBe(2);
-    // Nothing of either document changed but the spellings it knows
-    expect((await Skill.findById(alias._id))?.displayName).toBe(t.id('K8s'));
-    expect(String((await Skill.findById(alias._id))?.aliasOf)).toBe(String(canonical._id));
-    expect((await Skill.findById(canonical._id))?.displayName).toBe(t.id('Kubernetes'));
+      // What an experience stores: the spelling typed
+      expect(String(await Skill.findOrCreate(t.id(`K8s-${name}`)))).toBe(String(alias._id));
+      expect(String(await Skill.findOrCreate(` ${t.id(`k8S-${name}`).toUpperCase()} `))).toBe(String(alias._id));
+      expect(String(await Skill.findOrCreate(t.id(`kubernetes-${name}`)))).toBe(String(canonical._id));
+      // The classifier's own lookup still follows the alias
+      expect(String((await Skill.findCanonical(t.id(`k8s-${name}`)))?._id)).toBe(String(canonical._id));
+
+      // Nothing of either document changed but the casings of its own name it knows
+      const [storedAlias, storedCanonical] = [await Skill.findById(alias._id).lean(), await Skill.findById(canonical._id).lean()];
+      expect(storedAlias?.displayName).toBe(t.id(`K8s-${name}`));
+      expect(String(storedAlias?.aliasOf)).toBe(String(canonical._id));
+      expect(storedAlias?.names.map(normalizeSkill)).toEqual([normalizeSkill(t.id(`K8s-${name}`))]);
+      expect(storedCanonical?.displayName).toBe(t.id(`Kubernetes-${name}`));
+      expect(storedCanonical?.names).toEqual([t.id(`Kubernetes-${name}`)]);
+    }
+    expect(await Skill.countDocuments({ displayName: new RegExp(`-${t.suffix}$`, 'i') })).toBe(6);
   });
 
-  it('resolves a spelling the skill itself knows (names), and an alias whose skill is gone to itself', async () => {
+  it('resolves a name the skill itself knows (names), and an alias whose skill is gone to itself', async () => {
     const canonical = await Skill.create({
       displayName: t.id('PostgreSQL'),
       names: [t.id('PostgreSQL'), t.id('Postgres')]
@@ -516,8 +540,9 @@ describe('the skills of an experience as the API returns them', () => {
     });
   });
 
-  it('stores the skill itself when a known alias is typed, and returns the presented shape from POST and PUT', async () => {
-    const owner = await loginWithDomain('owner', t.id('domain'));
+  it('stores the spelling typed when a known alias is typed, and returns it presented as its skill from POST and PUT', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
     const root = await skill('Linux', { category: 'infrastructure', classification: manual() });
     const debian = await skill('Debian', { category: 'infrastructure', parent: root._id, classification: manual() });
     const alias = await skill('Deb', { aliasOf: debian._id, classification: manual() });
@@ -527,33 +552,153 @@ describe('the skills of an experience as the API returns them', () => {
       category: 'infrastructure',
       parent: { _id: String(root._id), displayName: t.id('Linux'), category: 'infrastructure' }
     };
+    const shownSkills = (body: { projects: { hardSkills: { level: number; skill: unknown }[] }[] }) =>
+      body.projects[0].hardSkills.map((entry) => entry.skill);
 
     const created = await postWithCookie(app, '/experiences', experienceBody(['deb', 'Debian', 'New thing']), owner.cookie);
     expect(created.status).toBe(200);
     const body = await readJson(created);
-    expect(body.projects[0].hardSkills.map((entry: { skill: unknown }) => entry.skill)).toEqual([
+    // Read: the alias is its skill, once though two spellings of it were typed, the first entry kept
+    expect(shownSkills(body)).toEqual([
       debianShown,
       // Just typed: no category yet
       { _id: expect.any(String), displayName: t.id('New thing') }
     ]);
+    expect(body.projects[0].hardSkills[0].level).toBe(0);
     expectNothingPrivate(body);
-    // The reference stored is the skill's, never the alias's, and once: two spellings of it were typed
+    // Written: the document of each spelling typed, the alias's own included, never the skill in its place
     const stored = (await Experience.findById(body._id).lean())!;
-    const storedIds = stored.projects[0].hardSkills.map((entry) => String(entry.skill));
-    expect(storedIds).toHaveLength(2);
-    expect(storedIds[0]).toBe(String(debian._id));
-    expect(storedIds).not.toContain(String(alias._id));
-    // Kept with the first spelling's level
-    expect(stored.projects[0].hardSkills[0].level).toBe(0);
+    expect(stored.projects[0].hardSkills.map((entry) => String(entry.skill))).toEqual([
+      String(alias._id),
+      String(debian._id),
+      String((await Skill.findOne({ displayName: t.id('New thing') }))!._id)
+    ]);
+    // The same from GET /domain/:name
+    const read = async () => (await readJson(await makeRequest(app, `/domain/${domainName}`))).experiences[0];
+    expect(shownSkills(await read())).toEqual(shownSkills(body));
 
     const edited = await putWithCookie(app, `/experiences/${body._id}`, experienceBody(['DEB'], ['Linux']), owner.cookie);
     expect(edited.status).toBe(200);
     const editedBody = await readJson(edited);
-    expect(editedBody.projects[0].hardSkills.map((entry: { skill: unknown }) => entry.skill)).toEqual([debianShown]);
+    expect(shownSkills(editedBody)).toEqual([debianShown]);
     expect(editedBody.projects[0].softSkills.map((entry: { skill: unknown }) => entry.skill)).toEqual([
       { _id: String(root._id), displayName: t.id('Linux'), category: 'infrastructure' }
     ]);
     expectNothingPrivate(editedBody);
+    const storedAfter = (await Experience.findById(body._id).lean())!;
+    expect(storedAfter.projects[0].hardSkills.map((entry) => String(entry.skill))).toEqual([String(alias._id)]);
+    // Neither document learnt the other's spelling
+    expect((await Skill.findById(debian._id).lean())!.names).toEqual([t.id('Debian')]);
+    expect((await Skill.findById(alias._id).lean())!.names.map(normalizeSkill)).toEqual([normalizeSkill(t.id('Deb'))]);
+  });
+
+  it('brings back the spelling typed on every experience, old and new, once the alias is unset by hand', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
+    const shownNames = (experience: { projects: { hardSkills: { skill: { displayName: string } }[] }[] }) =>
+      experience.projects[0].hardSkills.map((entry) => entry.skill.displayName);
+    const read = async (): Promise<Record<string, string[]>> =>
+      Object.fromEntries(
+        (await readJson(await makeRequest(app, `/domain/${domainName}`))).experiences.map(
+          (experience: { title: string; projects: { hardSkills: { skill: { displayName: string } }[] }[] }) => [
+            experience.title,
+            shownNames(experience)
+          ]
+        )
+      );
+
+    // Saved before the catalogue knew anything of either name
+    const before = await postWithCookie(app, '/experiences', experienceBody(['Postgres', 'Go'], [], 'Before'), owner.cookie);
+    expect(before.status).toBe(200);
+    expect(shownNames(await readJson(before))).toEqual([t.id('Postgres'), t.id('Go')]);
+
+    // The classifier then says 'Postgres' is another spelling of 'PostgreSQL', which it recognises
+    const typed = (await Skill.findOne({ displayName: t.id('Postgres') }))!;
+    const [said] = parseSkillClassification(
+      [{ recognised: true, category: 'data', aliasOf: t.id('PostgreSQL'), aliasKind: 'spelling' }],
+      [t.id('Postgres')]
+    );
+    expect(await applySkillClassification(typed._id, said!)).toBe('classified');
+    const target = (await Skill.findOne({ displayName: t.id('PostgreSQL') }))!;
+    expect(await applySkillClassification(target._id, { name: t.id('PostgreSQL'), recognised: true, canonical: t.id('PostgreSQL'), category: 'data' })).toBe(
+      'classified'
+    );
+
+    // Saved after it: the same spelling, typed again in another casing
+    const after = await postWithCookie(app, '/experiences', experienceBody(['postgres', 'Kafka'], [], 'After'), owner.cookie);
+    expect(after.status).toBe(200);
+    expect(shownNames(await readJson(after))).toEqual([t.id('PostgreSQL'), t.id('Kafka')]);
+    expect(await read()).toEqual({
+      Before: [t.id('PostgreSQL'), t.id('Go')],
+      After: [t.id('PostgreSQL'), t.id('Kafka')]
+    });
+    // Both reference the document of the spelling typed, which is all the classifier wrote to
+    const references = async () => {
+      const ids = (await Domain.findOne({ name: domainName }))!.experiences.map(String);
+      const experiences = await Experience.find({ _id: { $in: ids } }).lean();
+      return experiences.map((experience) => String(experience.projects[0].hardSkills[0].skill));
+    };
+    expect(await references()).toEqual([String(typed._id), String(typed._id)]);
+    expect((await Skill.findById(target._id).lean())!.names).toEqual([t.id('PostgreSQL')]);
+
+    // A wrong answer is undone by changing that one field of that one document
+    await Skill.updateOne({ _id: typed._id }, { $unset: { aliasOf: 1 } });
+
+    expect(await read()).toEqual({
+      Before: [t.id('Postgres'), t.id('Go')],
+      After: [t.id('Postgres'), t.id('Kafka')]
+    });
+    expect(await references()).toEqual([String(typed._id), String(typed._id)]);
+    // And for what is saved from then on
+    const later = await postWithCookie(app, '/experiences', experienceBody(['POSTGRES'], [], 'Later'), owner.cookie);
+    expect(shownNames(await readJson(later))).toEqual([t.id('Postgres')]);
+    expect((await read()).Later).toEqual([t.id('Postgres')]);
+  });
+
+  it('shows the spelling typed on the anonymous card of matching, for an experience saved after its alias was classified', async () => {
+    const domainName = t.id('domain');
+    // An address whose words are in no skill name of this test: the card leaves out a skill that names its candidate
+    const email = `card.reader@sc${t.suffix}.example.com`;
+    try {
+      const owner = await loginWithDomain('reader', domainName, email);
+      const user = (await User.findOne({ email }))!;
+
+      // The classifier said 'K8s' is another spelling of 'Kubernetes', and recognised both
+      const typed = await skill('K8s');
+      const [said] = parseSkillClassification(
+        [{ recognised: true, category: 'infrastructure', aliasOf: t.id('Kubernetes'), aliasKind: 'abbreviation' }],
+        [t.id('K8s')]
+      );
+      expect(await applySkillClassification(typed._id, said!)).toBe('classified');
+      const target = (await Skill.findOne({ displayName: t.id('Kubernetes') }))!;
+      expect(
+        await applySkillClassification(target._id, {
+          name: t.id('Kubernetes'),
+          recognised: true,
+          canonical: t.id('Kubernetes'),
+          category: 'infrastructure'
+        })
+      ).toBe('classified');
+
+      // Saved afterwards
+      const created = await postWithCookie(app, '/experiences', experienceBody(['k8s', 'Go']), owner.cookie);
+      expect(created.status).toBe(200);
+      const body = await readJson(created);
+      // The portfolio reads it as the skill
+      expect(body.projects[0].hardSkills.map((entry: { skill: { displayName: string } }) => entry.skill.displayName)).toEqual([
+        t.id('Kubernetes'),
+        t.id('Go')
+      ]);
+      // What is stored is the spelling typed, so the card, which reads the stored skill's own name, never shows a
+      // name a model chose
+      const stored = (await Experience.findById(body._id).lean())!;
+      expect(String(stored.projects[0].hardSkills[0].skill)).toBe(String(typed._id));
+      const card = await anonymousCard(String(user._id));
+      expect(card.skills.map(({ name }) => name).sort()).toEqual([t.id('Go'), t.id('K8s')].sort());
+      expect(JSON.stringify(card)).not.toContain(t.id('Kubernetes'));
+    } finally {
+      await User.deleteOne({ email });
+    }
   });
 
   it('never puts a skill nobody recognised yet in place of, or above, what was typed', async () => {
@@ -601,7 +746,8 @@ describe('the skills of an experience as the API returns them', () => {
     const shown = await read();
     expect(shownSkills(shown)).toEqual([recognised, { ...asTyped[1], parent: recognised }]);
     expectNothingPrivate(shown);
-    expect(String(await Skill.findOrCreate(t.id('mu')))).toBe(String(madeUp._id));
+    // A save still stores the spelling typed
+    expect(String(await Skill.findOrCreate(t.id('mu')))).toBe(String(alias._id));
   });
 
   it('still shows, as typed, a skill the classifier did not recognise, and survives a skill that is gone', async () => {
@@ -641,7 +787,9 @@ describe('the curated catalogue of the seeds', () => {
     expect(root).toMatchObject({ category: 'framework', classification: { status: 'manual', attempts: 0 } });
     expect(root.parent).toBeUndefined();
     expect(root.aliasOf).toBeUndefined();
-    expect([...root.names].sort()).toEqual([t.id('Root'), t.id('Rooty'), t.id('Rt')].sort());
+    // Its names are the casings of its own name: an alias is a document of its own, never a name of it
+    expect(root.names).toEqual([t.id('Root')]);
+    expect(alias.names).toEqual([t.id('Rt')]);
     expect(String(core.parent)).toBe(String(root._id));
     expect(core).toMatchObject({ category: 'framework', classification: { status: 'manual' } });
     expect(kind).toMatchObject({ category: 'soft', classification: { status: 'manual' } });
@@ -649,8 +797,10 @@ describe('the curated catalogue of the seeds', () => {
     expect(alias.category).toBeUndefined();
     expect(alias.parent).toBeUndefined();
     expect(alias.classification?.status).toBe('manual');
-    // Typing an alias gives the skill
-    expect(String(await Skill.findOrCreate(t.id('rooty')))).toBe(String(root._id));
+    // Typing an alias gives the alias's own document (shown as the skill when read), typing the skill the skill
+    expect(String(await Skill.findOrCreate(t.id('rooty')))).toBe(String((await stored('Rooty'))._id));
+    expect(String((await stored('Rooty')).aliasOf)).toBe(String(root._id));
+    expect(String(await Skill.findOrCreate(t.id('ROOT')))).toBe(String(root._id));
 
     const snapshot = async () =>
       (await Skill.find({ displayName: new RegExp(`-${t.suffix}$`, 'i') }).sort({ _id: 1 }).lean()).map(
@@ -659,6 +809,36 @@ describe('the curated catalogue of the seeds', () => {
     const first = await snapshot();
     expect(first).toHaveLength(5);
     expect(await seedSkillCatalogue(list())).toEqual({ skills: 3, aliases: 2 });
+    expect(await snapshot()).toEqual(first);
+  });
+
+  it('repairs a database seeded when an alias was also a name of its skill, and changes nothing when run again', async () => {
+    // As the earlier seed left them: the spellings of the aliases, in any casing, among the skill's own names
+    const root = await skill('Root', {
+      category: 'framework',
+      classification: manual(),
+      names: [t.id('Root'), t.id('root'), t.id('Rt'), t.id('ROOTY'), t.id('Unrelated')]
+    });
+    const rt = await skill('Rt', { aliasOf: root._id, classification: manual(), names: [t.id('Rt'), t.id('rt')] });
+    // A save of the alias then stored the skill
+    expect(String(await Skill.findOrCreate(t.id('rt')))).toBe(String(root._id));
+
+    await seedSkillCatalogue(list());
+
+    const repaired = (await Skill.findById(root._id).lean())!;
+    // Only the spellings seeded as its aliases went: its own casings, and what the list does not name, stay
+    expect(repaired.names).toEqual([t.id('Root'), t.id('root'), t.id('Unrelated')]);
+    expect((await Skill.findById(rt._id).lean())!.names).toEqual([t.id('Rt'), t.id('rt')]);
+    expect(String(await Skill.findOrCreate(t.id('rt')))).toBe(String(rt._id));
+    expect(String(await Skill.findOrCreate(t.id('Rooty')))).toBe(String((await stored('Rooty'))._id));
+    expect(String(await Skill.findOrCreate(t.id('root')))).toBe(String(root._id));
+
+    const snapshot = async () =>
+      (await Skill.find({ displayName: new RegExp(`-${t.suffix}$`, 'i') }).sort({ _id: 1 }).lean()).map(
+        ({ classification, ...rest }) => ({ ...rest, status: classification?.status })
+      );
+    const first = await snapshot();
+    await seedSkillCatalogue(list());
     expect(await snapshot()).toEqual(first);
   });
 

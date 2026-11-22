@@ -18,7 +18,9 @@ import { m as limits } from './rateLimit.messages';
 // the classifier rejected never is. That holds for everything a suggestion
 // says: the skill it adds, the skill it is part of, the spelling that
 // matched. Nothing is classified here, no model is asked: the search reads
-// the catalogue as it stands.
+// the catalogue as it stands. Another spelling of a skill is a document of
+// its own (aliasOf), found under its own name and suggested as the skill it
+// points at: resolved here, when read, as for an experience.
 //
 // What is typed is never logged, and never kept: the counter of the account's
 // searches is keyed by a hash of the account (rateLimitKey).
@@ -31,8 +33,9 @@ export const SKILL_SEARCHES_PER_USER: RateLimit = { limit: 120, windowMs: 60_000
 
 /**
  * Documents read for each way of matching (exact, start, anywhere): more than
- * are answered, since several can be one skill (its spellings) and some are
- * not suggested (another spelling of a skill not recognised yet)
+ * are answered, since several can be one skill (the documents of its other
+ * spellings) and some are not suggested (another spelling of a skill not
+ * recognised yet)
  */
 const CANDIDATES_PER_STAGE = 40;
 
@@ -140,7 +143,8 @@ export async function suggestSkills(text: string): Promise<SkillSuggestion[]> {
       // made it up as the target, to classify later): nothing to suggest
       if (!isSuggestable(canonical)) continue;
 
-      // The spelling that matched best: the skill's own name first
+      // The spelling of this document that matched best: its name first, then the casings of it
+      // people typed (`names`)
       let best: { spelling: string; rank: Rank } | undefined;
       for (const spelling of [skill.displayName, ...(skill.names ?? [])]) {
         const rank = rankOf(spelling, query);

@@ -17,20 +17,28 @@ export const SKILL_NAME_COLLATION = { locale: 'en', strength: 2 };
  */
 const classificationSchema = new Schema({
   status: { type: String, enum: SKILL_CLASSIFICATION_STATUSES, required: true },
-  /** When it last changed (classified, rejected, set by hand, or a failed try) */
+  /** When it last changed (classified, rejected, set by hand, or a try that settled nothing) */
   at: Date,
-  /** Tries so far, failed ones included: skipped from SKILL_CLASSIFICATION.maxAttempts */
+  // Tries so far: the times Claude answered and this skill could not be
+  // settled, and the one that settled it. A call that got no answer (an
+  // outage, a refused key) counts none. Skipped from SKILL_CLASSIFICATION.maxAttempts
   attempts: { type: Number, default: 0 }
 }, { _id: false });
 
-// The site's skill catalogue: one document per skill people typed. Experiences
-// reference it and are never rewritten: what the catalogue learns of a skill
-// afterwards (its category, the skill it is part of, the skill it is another
-// spelling of) is metadata here, resolved when a skill is read or looked up
+// The site's skill catalogue: one document per spelling people typed.
+// Experiences reference the document of the spelling typed and are never
+// rewritten: what the catalogue learns of a skill afterwards (its category,
+// the skill it is part of, the skill it is another spelling of) is metadata
+// here, resolved when a skill is read (services/experiencePresentation.ts,
+// services/skillSearch.ts), never when an experience is written. So what a
+// model said of a spelling is undone by changing that one document: every
+// experience, saved before or after, shows the spelling typed again
 export const skillSchema = new Schema({
-  /** The canonical spelling, shown everywhere */
+  /** Its spelling, shown wherever the skill is */
   displayName: { type: String, required: true, unique: true, index: true },
-  /** The spellings that resolve to this skill (findOrCreate) */
+  // The casings of its own display name people typed (findOrCreate), and
+  // nothing else: another spelling of the skill ('K8s' of 'Kubernetes') is a
+  // document of its own that points at it (aliasOf), never a name here
   names: { type: [String], index: true },
   svg: String,
   /** One of portfolio-common's SKILL_CATEGORIES */
@@ -40,7 +48,9 @@ export const skillSchema = new Schema({
   parent: { type: Schema.Types.ObjectId, ref: 'Skill' },
   // This document is another spelling of that skill ('K8s' of 'Kubernetes').
   // Never chained: it points at a skill without aliasOf. An alias has no
-  // parent or category of its own
+  // parent or category of its own. Experiences that used the spelling keep
+  // referencing this document: unsetting the field is all it takes to show
+  // the spelling as typed again
   aliasOf: { type: Schema.Types.ObjectId, ref: 'Skill' },
   classification: { type: classificationSchema, default: undefined }
 });
@@ -79,18 +89,13 @@ export const isPendingSkill = (skill: Pick<Skill, 'classification'>): boolean =>
   return classification.status === 'pending' && (classification.attempts ?? 0) < SKILL_CLASSIFICATION.maxAttempts;
 };
 
-/** Whether a skill is recognised as one: classified by the classifier, or set by hand (see SUGGESTABLE_SKILLS) */
-export const isRecognisedSkill = (skill: Pick<Skill, 'classification'>): boolean => {
-  const status = skill.classification?.status;
-  return status !== undefined && status !== null && SUGGESTABLE_SKILL_STATUSES.includes(status);
-};
-
 const pendingSkillListeners = new Set<() => void>();
 
 /**
- * Calls `listener` each time findOrCreate resolved a name to a skill still
- * to classify (see isPendingSkill): what wakes the classification job after
- * an experience was saved. Synchronous, with nothing of the skill: a
+ * Calls `listener` each time findOrCreate was given a name whose skill, as
+ * it is read (its own document, or the skill it is another spelling of), is
+ * still to classify (see isPendingSkill): what wakes the classification job
+ * after an experience was saved. Synchronous, with nothing of the skill: a
  * listener only schedules work, and what it throws is dropped. Returns the
  * function that removes it
  */
@@ -113,16 +118,18 @@ const notifyPendingSkill = () => {
 
 interface SkillModel extends Model<Skill> {
   /**
-   * The id of the skill `name` names, created when no skill has that name:
-   * the canonical skill when the name is another spelling of one (aliasOf)
-   * that is recognised as a skill, else the spelling's own document
+   * The id of the document of the spelling `name`, ignoring case (its
+   * display name or one of its names; the oldest when several match),
+   * created when there is none: what an experience stores. Never the skill
+   * it is another spelling of (aliasOf): that is resolved when the
+   * experience is read, never when it is written
    */
   findOrCreate(name: string): Promise<Types.ObjectId>;
   /**
    * The skill `name` names, ignoring case (its display name or one of its
    * names; the oldest when several match), as its canonical skill when it
-   * is another spelling of one. Null when no skill has that name: nothing
-   * is created
+   * is another spelling of one: how the classifier finds the skill a name
+   * points at. Null when no skill has that name: nothing is created
    */
   findCanonical(name: string): Promise<SkillDocument | null>;
 }
@@ -136,13 +143,13 @@ const canonicalOf = async (skills: Model<Skill>, skill: SkillDocument): Promise<
 
 skillSchema.statics.findOrCreate = async function (rawName: string) {
   const name = rawName.trim();
-  // Atomic upsert: matches an alias or the display name, ignoring case (the
-  // oldest skill wins if case variants exist), and records the alias ($addToSet
-  // also ignores case: a known name in another casing is not added again). The
-  // display name keeps its first spelling. Concurrent inserts of a new name
-  // make one fail with a duplicate key error (unique display name); the retry
-  // then matches the winner's document. Two casings of a new name inserted at
-  // the same instant can still both be created.
+  // Atomic upsert: matches one of its names or the display name, ignoring case
+  // (the oldest skill wins if case variants exist), and records the name
+  // ($addToSet also ignores case: a known name in another casing is not added
+  // again). The display name keeps its first spelling. Concurrent inserts of
+  // a new name make one fail with a duplicate key error (unique display
+  // name); the retry then matches the winner's document. Two casings of a new
+  // name inserted at the same instant can still both be created.
   const upsert = () =>
     this.findOneAndUpdate(
       { $or: [{ names: name }, { displayName: name }] },
@@ -157,16 +164,14 @@ skillSchema.statics.findOrCreate = async function (rawName: string) {
     if (!isDuplicateKeyError(error)) throw error;
     skill = await upsert();
   }
-  // Another spelling of a skill: the experience references that skill.
-  // Nothing stored is rewritten: an experience saved before the name was
-  // known as an alias keeps its reference, resolved when it is read
-  const canonical = await canonicalOf(this, skill);
-  if (isPendingSkill(canonical)) notifyPendingSkill();
-  // Only once that skill is recognised (classified, or set by hand): until
-  // then the experience references the spelling typed, which is shown as
-  // typed and resolved when read (presentSkill), so a skill the classifier
-  // made up from a model's answer and never recognised is on no experience
-  return isRecognisedSkill(canonical) ? canonical._id : skill._id;
+  // The skill it is shown as when read (presentSkill): itself, or the skill
+  // it is another spelling of. Still to classify: the job is woken
+  if (isPendingSkill(await canonicalOf(this, skill))) notifyPendingSkill();
+  // The experience references the spelling typed, whatever the catalogue
+  // says of it: that it is another spelling of a skill may be a model's
+  // answer, which is applied when the experience is read and never written
+  // into it (matching's anonymous card reads the stored skill's own name)
+  return skill._id;
 }
 
 skillSchema.statics.findCanonical = async function (rawName: string) {

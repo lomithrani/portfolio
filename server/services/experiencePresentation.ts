@@ -6,6 +6,13 @@
 // it is part of. Nothing else of a Skill leaves the API: not its other
 // spellings (`names`), not where it stands with the classifier.
 //
+// Here, and nowhere when an experience is written: a save stores the
+// document of the spelling typed (Skill.findOrCreate), so that a spelling is
+// another skill's, which may be a model's answer, is undone on every
+// experience by unsetting that one `aliasOf`. Matching's anonymous card
+// (services/candidateCard.ts) does not come through here: it shows the
+// stored skill's own name, the spelling typed.
+//
 // A skill an entry points at is the owner's own, shown as typed whatever the
 // catalogue thinks of it. The skills that one points at (the skill it is
 // another spelling of, the skill it is part of) are shown only once they are

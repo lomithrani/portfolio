@@ -124,8 +124,10 @@ const resolveSkills = async (projects: ProjectRequest[]) => {
 
 /**
  * A project's skill list with resolved ids: blank names and repeats dropped,
- * two spellings of one skill included ('K8s' and 'Kubernetes' resolve to the
- * same skill: Skill.findOrCreate), the first kept
+ * the first kept, and never the same document twice (two names the catalogue
+ * holds as one: Skill.findOrCreate). What is stored is the spelling typed:
+ * 'K8s' and 'Kubernetes' are two entries, shown as one skill when the
+ * experience is read (presentExperience), never merged here
  */
 const skillRefs = (skills: SkillRequest[], ids: Map<string, Types.ObjectId>) => {
   const seen = new Set<string>();
