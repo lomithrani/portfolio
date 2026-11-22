@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { EXPERIENCE_LIMITS, ExperienceType } from 'portfolio-common';
+import { render } from 'svelte/server';
+import { EXPERIENCE_LIMITS, ExperienceType, withLocale } from 'portfolio-common';
 import type { Experience } from 'portfolio-api/models/database';
 import {
 	emptyExperienceForm,
@@ -7,6 +8,12 @@ import {
 	formSignature,
 	type FormData
 } from '#services/experienceForm.ts';
+import {
+	mergeSkillSuggestions,
+	suggestionKeyAction,
+	type SkillOption
+} from '#services/skillSearch.ts';
+import SkillSuggestions from './SkillSuggestions.svelte';
 import { fitWithin, iconFits, iconKind } from './icon';
 import {
 	clearDraft,
@@ -202,5 +209,178 @@ describe('icon helpers', () => {
 	it('checks the stored size limit', () => {
 		expect(iconFits('x'.repeat(EXPERIENCE_LIMITS.icon))).toBe(true);
 		expect(iconFits('x'.repeat(EXPERIENCE_LIMITS.icon + 1))).toBe(false);
+	});
+});
+
+// The suggestions of a skills field as they render (SkillSuggestions.svelte), from what the field
+// gives it: the owner's own skills merged with the catalogue's answer (services/skillSearch.ts)
+describe('the suggestions of a skills field', () => {
+	/** The markup's text, as a reader gets it: tags dropped, spaces collapsed */
+	const textOf = (body: string) =>
+		body
+			.replace(/<!--[\s\S]*?-->/g, '')
+			.replace(/<[^>]+>/g, ' ')
+			.replace(/&amp;/g, '&')
+			.replace(/&#39;/g, "'")
+			.replace(/\s+/g, ' ')
+			.trim();
+
+	/** Each option of the list: its attributes, and its text */
+	const optionsOf = (body: string) =>
+		[...body.matchAll(/<li([^>]*)>([\s\S]*?)<\/li>/g)].map(([, attributes, content]) => ({
+			id: /\sid="([^"]*)"/.exec(attributes)?.[1],
+			name: /aria-label="([^"]*)"/.exec(attributes)?.[1].replace(/&amp;/g, '&'),
+			selected: /aria-selected="([^"]*)"/.exec(attributes)?.[1],
+			source: /data-skill-option="([^"]*)"/.exec(attributes)?.[1],
+			text: textOf(content)
+		}));
+
+	/** What the field suggests for "k": two of the owner's skills, then the catalogue's answer */
+	const options: SkillOption[] = mergeSkillSuggestions({
+		typed: 'k',
+		picked: ['Kotlin'],
+		own: ['Kafka', 'Kotlin', 'Leadership', 'Apache Spark'],
+		known: [],
+		catalogue: [
+			{ name: 'Kafka', category: 'data' },
+			{ name: 'Kotlin', category: 'language' },
+			{ name: 'Kubernetes', category: 'infrastructure', alias: 'K8s' },
+			{ name: 'Kotlin Multiplatform', category: 'framework', parent: 'Kotlin' },
+			{ name: 'Kanban', category: 'practice' },
+			{ name: 'Keycloak' }
+		]
+	});
+
+	const draw = (props: Partial<{ open: boolean; active: number }> = {}) =>
+		render(SkillSuggestions, {
+			props: { id: 'f-suggestions', options, open: true, active: -1, onpick: () => {}, ...props }
+		}).body;
+
+	it("merges the owner's own skills with the catalogue's, each skill once", () => {
+		expect(options.map(({ name, source }) => `${source}: ${name}`)).toEqual([
+			'own: Kafka',
+			'own: Apache Spark',
+			// Kafka is the owner's already, Kotlin is picked
+			'catalogue: Kubernetes',
+			'catalogue: Kotlin Multiplatform',
+			'catalogue: Kanban',
+			'catalogue: Keycloak'
+		]);
+		const drawn = optionsOf(draw());
+		expect(drawn.map(({ source }) => source)).toEqual([
+			'own',
+			'own',
+			'catalogue',
+			'catalogue',
+			'catalogue',
+			'catalogue'
+		]);
+		// The ids the field names with aria-activedescendant
+		expect(drawn.map(({ id }) => id)).toEqual([0, 1, 2, 3, 4, 5].map((i) => `f-suggestions-${i}`));
+	});
+
+	it('shows what each suggestion is: its category, its family, the skill another spelling stands for', () => {
+		const body = draw();
+		expect(body).toContain('role="listbox"');
+		expect(body).toContain('aria-label="Suggestions"');
+		expect(optionsOf(body).map(({ text }) => text)).toEqual([
+			'Kafka On your portfolio',
+			'Apache Spark On your portfolio',
+			// The spelling that matched, then the skill picking it adds
+			'K8s Kubernetes Cloud & infrastructure',
+			'Kotlin Multiplatform Frameworks & runtimes · Part of Kotlin',
+			'Kanban Practices & domains',
+			// A skill the catalogue has not placed: its name alone
+			'Keycloak'
+		]);
+	});
+
+	it('names each suggestion for screen readers, in English and in French', () => {
+		expect(optionsOf(draw()).map(({ name }) => name)).toEqual([
+			'Kafka, on your portfolio',
+			'Apache Spark, on your portfolio',
+			'Kubernetes, also known as K8s, Cloud & infrastructure',
+			'Kotlin Multiplatform, Frameworks & runtimes, part of Kotlin',
+			'Kanban, Practices & domains',
+			'Keycloak'
+		]);
+		const french = withLocale('fr', () => optionsOf(draw()));
+		expect(french.map(({ name }) => name)).toEqual([
+			'Kafka, sur votre portfolio',
+			'Apache Spark, sur votre portfolio',
+			// French typography: a non-breaking space before the colon (defineMessages)
+			'Kubernetes, autre nom\u00a0: K8s, Cloud et infrastructure',
+			'Kotlin Multiplatform, Frameworks et runtimes, fait partie de Kotlin',
+			'Kanban, Pratiques et domaines',
+			'Keycloak'
+		]);
+		expect(french.map(({ text }) => text)).toEqual([
+			'Kafka Sur votre portfolio',
+			'Apache Spark Sur votre portfolio',
+			'K8s Kubernetes Cloud et infrastructure',
+			'Kotlin Multiplatform Frameworks et runtimes · Fait partie de Kotlin',
+			'Kanban Pratiques et domaines',
+			'Keycloak'
+		]);
+	});
+
+	it('marks the suggestion the arrows are on, and follows the keyboard', () => {
+		const state = { open: true, count: options.length, active: -1 };
+		expect(optionsOf(draw()).map(({ selected }) => selected)).toEqual(Array(6).fill('false'));
+		// ArrowDown twice: the second suggestion
+		expect(suggestionKeyAction({ key: 'ArrowDown' }, state)).toEqual({ action: 'move', active: 0 });
+		expect(suggestionKeyAction({ key: 'ArrowDown' }, { ...state, active: 0 })).toEqual({
+			action: 'move',
+			active: 1
+		});
+		expect(optionsOf(draw({ active: 1 })).map(({ selected }) => selected)).toEqual([
+			'false',
+			'true',
+			'false',
+			'false',
+			'false',
+			'false'
+		]);
+		// Enter picks it: the skill's own name, for another spelling too
+		expect(suggestionKeyAction({ key: 'Enter' }, { ...state, active: 2 })).toEqual({
+			action: 'pick',
+			index: 2
+		});
+		expect(options[2].name).toBe('Kubernetes');
+	});
+
+	it('stays in the page while closed, empty and out of sight: Escape closes the list alone', () => {
+		expect(suggestionKeyAction({ key: 'Escape' }, { open: true, count: 6, active: 1 })).toEqual({
+			action: 'close'
+		});
+		const closed = draw({ open: false });
+		// The listbox the field's aria-controls names is still there
+		expect(closed).toContain('id="f-suggestions"');
+		expect(optionsOf(closed)).toEqual([]);
+		expect(
+			/<div class="[^"]*(?<![-\w])hidden(?![-\w])[^"]*"[^>]*data-skill-suggestions/.test(closed)
+		).toBe(true);
+		expect(
+			/<div class="[^"]*(?<![-\w])hidden(?![-\w])[^"]*"[^>]*data-skill-suggestions/.test(draw())
+		).toBe(false);
+		// Closed, Escape is no longer the list's: the dialog around the field takes it
+		expect(
+			suggestionKeyAction({ key: 'Escape' }, { open: false, count: 6, active: -1 })
+		).toBeUndefined();
+	});
+
+	it('writes what people typed as text, never as markup', () => {
+		const body = render(SkillSuggestions, {
+			props: {
+				id: 'f-suggestions',
+				options: [{ name: '<img src=x onerror=alert(1)>', alias: '"><b>', source: 'catalogue' }],
+				open: true,
+				active: 0,
+				onpick: () => {}
+			}
+		}).body;
+		expect(body).not.toContain('<img');
+		expect(body).not.toContain('<b>');
+		expect(body).toContain('&lt;img src=x onerror=alert(1)>');
 	});
 });

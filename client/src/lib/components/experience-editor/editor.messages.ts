@@ -140,12 +140,50 @@ export const m = defineMessages({
 			en: 'Type a skill and press Enter',
 			fr: 'Saisissez une compétence et appuyez sur Entrée'
 		},
+		/** Names the list of suggestions under the field */
 		suggestions: { en: 'Suggestions', fr: 'Suggestions' },
-		suggestionsLabel: { en: 'Suggestions:', fr: 'Suggestions :' },
-		/** `skill`: a suggested skill */
-		add: {
-			en: (skill: string) => `Add ${skill}`,
-			fr: (skill: string) => `Ajouter ${skill}`
+		/** Told to screen readers when the list shows or changes */
+		count: {
+			en: (count: number) => `${count} ${plural(count, 'suggestion', 'suggestions')}`,
+			fr: (count: number) => `${count} ${plural(count, 'suggestion', 'suggestions')}`
+		},
+		/** Beside a suggestion that is one of the owner's own skills */
+		own: { en: 'On your portfolio', fr: 'Sur votre portfolio' },
+		/** Beside a suggestion that is part of another skill; `parent`: that skill ('.NET') */
+		partOf: {
+			en: (parent: string) => `Part of ${parent}`,
+			fr: (parent: string) => `Fait partie de ${parent}`
+		},
+		/**
+		 * The name of a suggestion for screen readers. `name`: the skill picking it adds
+		 * ('Kubernetes'); `alias`: the spelling that matched what was typed, when it is not that
+		 * name ('K8s'); `category`: its category's label; `parent`: the skill it is part of
+		 */
+		option: {
+			own: {
+				en: (name: string) => `${name}, on your portfolio`,
+				fr: (name: string) => `${name}, sur votre portfolio`
+			},
+			catalogue: {
+				en: (skill: { name: string; alias?: string; category?: string; parent?: string }) =>
+					[
+						skill.name,
+						skill.alias && `also known as ${skill.alias}`,
+						skill.category,
+						skill.parent && `part of ${skill.parent}`
+					]
+						.filter(Boolean)
+						.join(', '),
+				fr: (skill: { name: string; alias?: string; category?: string; parent?: string }) =>
+					[
+						skill.name,
+						skill.alias && `autre nom : ${skill.alias}`,
+						skill.category,
+						skill.parent && `fait partie de ${skill.parent}`
+					]
+						.filter(Boolean)
+						.join(', ')
+			}
 		},
 		hint: {
 			en: 'Press Enter, or separate skills with a comma.',

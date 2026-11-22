@@ -2002,6 +2002,8 @@ describe('no Google token in any API response', () => {
     } finally {
       env.commuteTimesEnabled = travelTimes;
     }
+    // The skill search of the experience editor (tests/skillSearch.test.ts covers it)
+    expect((await call('GET', '/skills/search?q=type', auth)).status).toBe(200);
     expect((await call('GET', `/workflow/domains/${sweepDomain}`, auth)).status).toBe(200);
 
     // A step suggestion (tests/stepSuggestions.test.ts covers it): its request,
