@@ -1,11 +1,12 @@
 import { Domain, Experience, EXPERIENCE_POPULATE } from '../models/database';
-import { experienceFieldsFromRequest } from '../models/database/experience';
+import { experienceFieldsFromRequest, storedSpellings } from '../models/database/experience';
 import Elysia from 'elysia';
 import { userLogged } from './userLogged';
 import { DomainDoesNotExistError, ResourceNotFoundError } from '../errors';
 import { experienceRequest, objectIdParams } from '../models/elysia';
 import { presentExperience } from '../services/experiencePresentation';
 import { logger } from '../services/logger';
+import { newSkillNamesAllowance } from '../services/skillAllowance';
 import { m } from './experiences.messages';
 
 /** The caller's domain, if `id` is one of its experiences (404 otherwise) */
@@ -27,7 +28,7 @@ export const experiences = new Elysia()
 
     if (!domain) throw new DomainDoesNotExistError(() => m.noDomain);
 
-    const experience = await Experience.fromRequest(body);
+    const experience = await Experience.fromRequest(body, { newSkillNames: newSkillNamesAllowance(userId) });
 
     const result = await experience.save();
 
@@ -66,7 +67,14 @@ export const experiences = new Elysia()
 
     if (!experience) throw new ResourceNotFoundError(() => m.experienceNotFound)
 
-    experience.set(await experienceFieldsFromRequest(body));
+    // What the editor sends back is what the API showed: the spellings the
+    // experience stores are kept under the names they were shown as
+    experience.set(
+      await experienceFieldsFromRequest(body, {
+        stored: await storedSpellings(experience),
+        newSkillNames: newSkillNamesAllowance(userId)
+      })
+    );
 
     const result = await experience.save();
 

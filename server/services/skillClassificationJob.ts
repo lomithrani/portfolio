@@ -19,8 +19,13 @@ import type { SkillBatchCounts } from './skillClassifier'
 // Each call is billed, so a sweep makes at most SKILL_SWEEP_BATCHES of them,
 // the site at most SKILL_CLASSIFICATION_DAILY_LIMIT per UTC day (counted
 // when Claude is called, never given back), and a sweep first takes a lease
-// in MongoDB so two instances of the API do not sweep in the same minute.
-// Off without ANTHROPIC_API_KEY, or with either setting at 0.
+// in MongoDB so two instances of the API do not start a sweep in the same
+// clock minute. The lease is that minute's, not the sweep's: a call still
+// under way when the minute ends can overlap the next minute's sweep of
+// another instance, which then asks the same names once more (one call paid
+// twice; its results are skipped, each skill being written only while it is
+// still to classify). Off without ANTHROPIC_API_KEY, or with either setting
+// at 0.
 
 const DAY_MS = 24 * 60 * 60_000
 
@@ -28,9 +33,10 @@ const DAY_MS = 24 * 60 * 60_000
 export const SKILL_SWEEP_BATCHES = 5
 
 /**
- * The lease a sweep takes before it does anything: one sweep per minute for
- * the whole site, whichever instance of the API runs it. A property so tests
- * can change its window
+ * The lease a sweep takes before it does anything: one sweep started per
+ * clock minute for the whole site, whichever instance of the API runs it
+ * (see above for what it does not cover). A property so tests can change its
+ * window
  */
 export const skillSweepLease: RateLimit = { limit: 1, windowMs: 60_000 }
 
@@ -114,8 +120,10 @@ const runSweep = async (): Promise<SkillSweepResult> => {
       }
       const result = await classifyPendingSkills({ mayCall })
       for (const key of Object.keys(counts) as (keyof SkillBatchCounts)[]) counts[key] += result.counts[key]
-      // Nothing left, the day's calls used up, or a call that failed (the next would ask the same skills again)
-      if (result.state !== 'done') break
+      // Nothing left, the day's calls used up, or a call that got no answer (the next would ask the
+      // same skills again). After an answer that could not be used the next batch is a smaller one,
+      // or other skills: the sweep goes on
+      if (result.state !== 'done' && !(result.state === 'failed' && result.narrowed)) break
     }
   } finally {
     // One line per sweep that had something to do: counts only, never a skill name

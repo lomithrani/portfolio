@@ -4,7 +4,7 @@ import {
   SKILL_ALIAS_KINDS,
   SKILL_CATEGORIES,
   SKILL_CLASSIFICATION,
-  cleanSkillName,
+  classifiableSkillName,
   parseSkillClassification,
   sameSkillSpelling
 } from 'portfolio-common'
@@ -27,10 +27,19 @@ import { isDuplicateKeyError } from './mongoErrors'
 // What is sent is skill names and nothing else: the names to classify and
 // the canonical names the catalogue already has, never an account, a
 // portfolio or an experience. A name that cannot be one (a link, an email
-// address) is rejected here and never sent. The names are untrusted data
+// address, a phone number, a sentence) is rejected here and never sent. The
+// names are untrusted data
 // between tags in the prompt, never instructions, and Claude's answer is
 // untrusted too: portfolio-common's parseSkillClassification checks every
 // part of it, and what breaks a rule is dropped for that skill alone.
+//
+// A batch is the oldest skills to classify of the whole site, whoever typed
+// them, so one name must not be able to hold the others back: a batch is
+// bounded by the characters of its names as well as by their number (its
+// answer, which repeats them, stays far from the deadline and the output
+// limit), an answer that cannot be used for a whole batch is asked again in
+// small batches, then name by name (only the name at fault is given up on),
+// and after a call that passed its deadline the next one asks half as many.
 //
 // Everything written is metadata on the Skill collection, reversible by an
 // operator: no experience is ever rewritten, and a skill whose status is
@@ -60,6 +69,15 @@ export const skillClassifierScope: { pending: QueryFilter<SkillFields>; known: Q
   pending: {},
   known: {}
 }
+
+/**
+ * How many names the next call asks at most, below what the tries allow:
+ * halved each time a call passes its deadline with several names (it may be
+ * their number that takes too long), back to none (undefined) once a call
+ * was answered. In memory: a restart starts from whole batches again. A
+ * property so tests can read and reset it
+ */
+export const skillBatchSizing: { cap: number | undefined } = { cap: undefined }
 
 // ── The request ─────────────────────────────────────────────
 
@@ -154,6 +172,8 @@ export type SkillClassifierAnswer =
        * status from Anthropic), which is never the names' doing
        */
       answered: boolean
+      /** With `answered` false: the call was stopped at skillClassifierTimeouts.classifyMs */
+      deadlineReached?: boolean
     }
 
 /** No answer: an outage, a deadline, a key or a request the API refuses. Nothing of it is the names' doing */
@@ -227,7 +247,7 @@ export async function classifySkillNames(names: readonly string[], known: readon
   } catch (error) {
     // No message came back: no answer, a lost connection, or an HTTP error status (429, 5xx, 529, 400, 401, 403, 404...)
     logCallFailure(error, apiKey, names.length, deadline.signal.aborted)
-    return NO_ANSWER
+    return deadline.signal.aborted ? { ok: false, answered: false, deadlineReached: true } : NO_ANSWER
   } finally {
     clearTimeout(timer)
   }
@@ -264,8 +284,13 @@ const PENDING = PENDING_SKILLS as QueryFilter<SkillFields>
 /** What became of a skill a result was applied to; `skipped`: it was no longer to classify, nothing was written */
 export type AppliedSkillClassification = 'classified' | 'rejected' | 'skipped'
 
-/** The name of a skill as it is sent to Claude and compared with its answer; undefined for what cannot be a skill name */
-export const classifiableName = (displayName: string) => cleanSkillName(displayName)
+/**
+ * The name of a skill as it is sent to Claude and compared with its answer;
+ * undefined for what cannot be a skill name (portfolio-common's
+ * classifiableSkillName: a link, an email address, a phone number, several
+ * lines, a text too long or of too many words to be one)
+ */
+export const classifiableName = (displayName: string) => classifiableSkillName(displayName)
 
 /** A name the classifier does not recognise as a skill: nothing points at it, so it is shown to nobody else */
 const isRejected = (skill: Pick<SkillFields, 'classification'>) => skill.classification?.status === 'rejected'
@@ -304,7 +329,9 @@ const targetNamed = async (name: string, self: Types.ObjectId): Promise<StoredSk
 /**
  * The skill at the top of the family `start` is in (families have one level,
  * but what is stored is walked whatever it holds), and whether the skill
- * being classified is above it: it then stops under that one
+ * being classified is above it: it then stops under that one. A parent that
+ * cannot be one (a rejected name, another spelling of a skill: what a skill
+ * set by hand may still point at) is not climbed to
  */
 const familyRoot = async (start: StoredSkill, self: Types.ObjectId) => {
   let root = start
@@ -313,7 +340,8 @@ const familyRoot = async (start: StoredSkill, self: Types.ObjectId) => {
     if (root.parent.equals(self)) return { root, underSelf: true }
     if (walked.has(String(root.parent))) break
     const parent = await Skill.findById(root.parent).lean()
-    if (!parent) break
+    // Nothing may be part of a rejected name or of another spelling: the family ends under it
+    if (!parent || isRejected(parent) || parent.aliasOf) break
     walked.add(String(parent._id))
     root = parent
   }
@@ -365,14 +393,18 @@ export async function applySkillClassification(
     classification: { status, at: now, attempts: (skill.classification?.attempts ?? 0) + 1 }
   })
 
+  // In each case below, what points at the skill is re-pointed first and the
+  // skill is stamped last: a failure in between leaves it to classify (the
+  // whole step is done again by a later sweep, its writes are idempotent),
+  // never stamped with a link left pointing at what it no longer is
+
   if (!result.recognised) {
-    const { modifiedCount } = await Skill.updateOne(own, { $set: stamp('rejected') })
-    if (modifiedCount === 0) return 'skipped'
     // Shown to its owner as typed and to nobody else: what pointed at it (a skill the classifier
     // created as the parent or the usual name of others, then did not recognise) no longer does
     await Skill.updateMany({ parent: self, ...NOT_MANUAL }, { $unset: { parent: 1 } })
     await Skill.updateMany({ aliasOf: self, ...NOT_MANUAL }, { $unset: { aliasOf: 1 } })
-    return 'rejected'
+    const { modifiedCount } = await Skill.updateOne(own, { $set: stamp('rejected') })
+    return modifiedCount === 0 ? 'skipped' : 'rejected'
   }
 
   // Its spelling: the same name, corrected
@@ -406,19 +438,18 @@ export async function applySkillClassification(
         ? await targetNamed(result.aliasOf, self)
         : undefined
   if (aliasTarget) {
-    const { modifiedCount } = await Skill.updateOne(own, {
-      $set: { aliasOf: aliasTarget._id, ...stamp('classified') },
-      $unset: { parent: 1, category: 1 }
-    })
-    if (modifiedCount === 0) return 'skipped'
-    // Nothing is written on that skill: the spelling resolves to it through this document, when read
     // Never chained: its own other spellings are that skill's
     await Skill.updateMany({ aliasOf: self, _id: { $ne: aliasTarget._id }, ...NOT_MANUAL }, { $set: { aliasOf: aliasTarget._id } })
     // The skills that were part of it are part of that skill's family: one level, and never of themselves
     const { root } = await familyRoot(aliasTarget, self)
     await Skill.updateMany({ parent: self, _id: { $ne: root._id }, ...NOT_MANUAL }, { $set: { parent: root._id } })
     await Skill.updateMany({ parent: self, _id: root._id, ...NOT_MANUAL }, { $unset: { parent: 1 } })
-    return 'classified'
+    // Nothing is written on that skill: the spelling resolves to it through this document, when read
+    const { modifiedCount } = await Skill.updateOne(own, {
+      $set: { aliasOf: aliasTarget._id, ...stamp('classified') },
+      $unset: { parent: 1, category: 1 }
+    })
+    return modifiedCount === 0 ? 'skipped' : 'classified'
   }
 
   let parent: Types.ObjectId | undefined
@@ -429,6 +460,8 @@ export async function applySkillClassification(
     if (family && !family.underSelf && !family.root._id.equals(self)) parent = family.root._id
   }
 
+  // A skill that has a parent is never a parent itself: what was part of it is part of that parent
+  if (parent) await Skill.updateMany({ parent: self, _id: { $ne: parent }, ...NOT_MANUAL }, { $set: { parent } })
   const { modifiedCount } = await Skill.updateOne(own, {
     $set: {
       ...(result.category ? { category: result.category } : {}),
@@ -436,10 +469,7 @@ export async function applySkillClassification(
       ...stamp('classified')
     }
   })
-  if (modifiedCount === 0) return 'skipped'
-  // A skill that has a parent is never a parent itself: what was part of it is part of that parent
-  if (parent) await Skill.updateMany({ parent: self, _id: { $ne: parent }, ...NOT_MANUAL }, { $set: { parent } })
-  return 'classified'
+  return modifiedCount === 0 ? 'skipped' : 'classified'
 }
 
 // ── A batch ─────────────────────────────────────────────────
@@ -481,14 +511,26 @@ export interface SkillBatchResult {
    * batch was worked through
    */
   state: 'empty' | 'refused' | 'failed' | 'done'
+  /**
+   * With `failed`: the names asked will not be asked together again (a try
+   * was counted, and the next batch is a smaller one or other skills), so a
+   * sweep may go on. Not set after a call that got no answer: the next batch
+   * would be the same names
+   */
+  narrowed?: boolean
   counts: SkillBatchCounts
 }
 
-/** The skills still to classify: pending, not given up on, and not another spelling of a skill already */
+/**
+ * The skills still to classify: pending, not given up on, not held back
+ * (beyond their account's allowance of the day: services/skillAllowance.ts)
+ * and not another spelling of a skill already
+ */
 const toClassify = (): QueryFilter<SkillFields> => ({
   $and: [
     PENDING,
     { 'classification.attempts': { $not: { $gte: SKILL_CLASSIFICATION.maxAttempts } } },
+    { 'classification.held': { $ne: true } },
     { aliasOf: null },
     skillClassifierScope.pending
   ]
@@ -518,27 +560,50 @@ const knownSkillNames = async () => {
   return known.flatMap((skill) => classifiableName(skill.displayName) ?? [])
 }
 
+/** Names asked together when the oldest skill to classify has `tries` tries (see SKILL_CLASSIFICATION.retryBatchSizes) */
+const batchSizeAfter = (tries: number): number => {
+  if (tries <= 0) return SKILL_CLASSIFICATION.batchSize
+  const sizes = SKILL_CLASSIFICATION.retryBatchSizes
+  return sizes[Math.min(tries, sizes.length) - 1]
+}
+
 /**
  * Classifies the next batch of skills still to classify, the oldest first:
  * one call to Claude at most. `mayCall` is asked right before that call
  * (never when nothing would be sent) and keeps it in by answering false: the
- * job counts the day's calls with it. A skill stays to classify, with one
- * more try counted, when Claude answered and it could not be settled: the
- * answer says nothing usable of it (no item for it, or one that breaks a
- * rule), is a refusal, is cut short or is not the JSON asked for, or its
- * result could not be saved. A call that got no answer for reasons that are
- * not the names' (no answer before the deadline, a lost connection, an HTTP
- * error status: 429, 5xx, 529, 400, 401, 403, 404) leaves the batch to
- * classify and counts no try: `failed` either way, so the sweep stops there.
- * Throws only what MongoDB throws
+ * job counts the day's calls with it.
+ *
+ * A batch holds skills with as many tries as the oldest one to classify:
+ * SKILL_CLASSIFICATION.batchSize of those never tried, then fewer
+ * (`retryBatchSizes`: 8 after one try, one alone after two), and never more
+ * names than `batchCharacters` characters. So an answer that cannot be used
+ * for a whole batch (a refusal, an answer cut short) is asked again in small
+ * batches, and only a name that fails alone reaches
+ * SKILL_CLASSIFICATION.maxAttempts.
+ *
+ * A skill stays to classify, with one more try counted, when Claude answered
+ * and it could not be settled: the answer says nothing usable of it (no item
+ * for it, or one that breaks a rule), is a refusal, is cut short or is not
+ * the JSON asked for, or its result could not be saved. A call that got no
+ * answer for reasons that are not the names' (no answer before the deadline,
+ * a lost connection, an HTTP error status: 429, 5xx, 529, 400, 401, 403,
+ * 404) leaves the batch to classify and counts no try: `failed` either way.
+ * After a deadline the next batch asks half as many names (skillBatchSizing),
+ * until a call is answered. Throws only what MongoDB throws
  */
 export async function classifyPendingSkills(
   { mayCall, now = new Date() }: { mayCall: () => boolean | Promise<boolean>; now?: Date } = { mayCall: () => true }
 ): Promise<SkillBatchResult> {
   const counts = emptySkillBatchCounts()
-  const pending = await Skill.find(toClassify(), 'displayName')
+  const oldest = await Skill.findOne(toClassify(), 'classification.attempts').sort({ _id: 1 }).lean()
+  if (!oldest) return { state: 'empty', counts }
+  const tries = oldest.classification?.attempts ?? 0
+  const size = Math.max(1, Math.min(batchSizeAfter(tries), skillBatchSizing.cap ?? Number.POSITIVE_INFINITY))
+  // `{ $in: [null, 0] }` also matches a skill without a classification
+  const sameTries: QueryFilter<SkillFields> = { 'classification.attempts': tries <= 0 ? { $in: [null, 0] } : tries }
+  const pending = await Skill.find({ $and: [toClassify(), sameTries] }, 'displayName')
     .sort({ _id: 1 })
-    .limit(SKILL_CLASSIFICATION.batchSize)
+    .limit(size)
     .lean()
   if (pending.length === 0) return { state: 'empty', counts }
 
@@ -546,12 +611,19 @@ export async function classifyPendingSkills(
     if (applied !== 'skipped') counts[applied] += 1
   }
 
-  // A link, an email address, several lines: not a skill name, and never sent anywhere
+  // A link, an email address, a sentence, several lines: not a skill name, and never sent anywhere
   const ask: { id: Types.ObjectId; name: string }[] = []
+  let characters = 0
   for (const skill of pending) {
     const name = classifiableName(skill.displayName)
-    if (name !== undefined) ask.push({ id: skill._id, name })
-    else tally(await applySkillClassification(skill._id, { name: skill.displayName, recognised: false }, now))
+    if (name === undefined) {
+      tally(await applySkillClassification(skill._id, { name: skill.displayName, recognised: false }, now))
+      continue
+    }
+    // The answer repeats every name: what does not fit this call waits for the next (one name always fits)
+    if (ask.length > 0 && characters + name.length > SKILL_CLASSIFICATION.batchCharacters) break
+    characters += name.length
+    ask.push({ id: skill._id, name })
   }
   if (ask.length === 0) return { state: 'done', counts }
   if (!(await mayCall())) return { state: 'refused', counts }
@@ -561,11 +633,21 @@ export async function classifyPendingSkills(
   counts.calls = 1
   const answer = await classifySkillNames(names, await knownSkillNames())
   if (!answer.ok) {
-    // An answer nothing can be read of may be these names' doing: a try each. No answer is not: none
-    if (answer.answered) await countFailedTry(ask.map((skill) => skill.id), now)
     counts.failed = ask.length
+    if (answer.answered) {
+      // An answer nothing can be read of may be these names' doing: a try each. They are asked again
+      // in a smaller batch (or, their tries used up, never): not together, so a sweep may go on
+      await countFailedTry(ask.map((skill) => skill.id), now)
+      const narrowed = tries + 1 >= SKILL_CLASSIFICATION.maxAttempts || ask.length > batchSizeAfter(tries + 1)
+      return { state: 'failed', narrowed, counts }
+    }
+    // No answer is never the names' doing: no try. Past the deadline with several names, it may be
+    // their number: the next call asks half as many, until one is answered
+    if (answer.deadlineReached && ask.length > 1) skillBatchSizing.cap = Math.ceil(ask.length / 2)
     return { state: 'failed', counts }
   }
+  // Answered: whole batches again
+  skillBatchSizing.cap = undefined
   counts.inputTokens = answer.inputTokens
   counts.outputTokens = answer.outputTokens
   counts.estimatedCostUsd = answer.estimatedCostUsd

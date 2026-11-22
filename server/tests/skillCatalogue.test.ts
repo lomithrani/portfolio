@@ -26,6 +26,8 @@ import {
   onPendingSkillResolved
 } from '../models/database/skill';
 import { anonymousCard } from '../services/candidateCard';
+import { peekRateLimit } from '../services/rateLimit';
+import { NEW_SKILL_NAMES_PER_USER, newSkillNamesKey } from '../services/skillAllowance';
 import { presentExperience, presentSkill } from '../services/experiencePresentation';
 import { applySkillClassification } from '../services/skillClassifier';
 import {
@@ -123,6 +125,13 @@ describe('the Skill model', () => {
   it('has the indexes the search and the classification job read with', async () => {
     const indexes = (await Skill.collection.indexes()).map((index) => JSON.stringify(index.key));
     expect(indexes).toContain(JSON.stringify({ 'classification.status': 1, _id: 1 }));
+    // The search's: by status then name, under the collation it runs with (the skills still to
+    // classify are never read)
+    const search = (await Skill.collection.indexes()).filter((index) => String(index.name).startsWith('status_'));
+    expect(search.map((index) => [index.name, JSON.stringify(index.key), index.collation?.locale, index.collation?.strength]).sort()).toEqual([
+      ['status_displayName_ci', JSON.stringify({ 'classification.status': 1, displayName: 1 }), 'en', 2],
+      ['status_names_ci', JSON.stringify({ 'classification.status': 1, names: 1 }), 'en', 2]
+    ]);
     expect(indexes).toContain(JSON.stringify({ parent: 1 }));
     expect(indexes).toContain(JSON.stringify({ aliasOf: 1 }));
   });
@@ -701,6 +710,114 @@ describe('the skills of an experience as the API returns them', () => {
     }
   });
 
+  it('keeps the spellings an experience stores when the editor saves back the names the API showed', async () => {
+    const domainName = t.id('domain');
+    // An address whose words are in no skill name of this test (see the card's test above)
+    const email = `round.trip@sc${t.suffix}.example.com`;
+    try {
+      const owner = await loginWithDomain('editor', domainName, email);
+      const user = (await User.findOne({ email }))!;
+      type Shown = { title: string; projects: { name: string; hardSkills: { level: number; skill: { displayName: string } }[] }[] };
+      const shown = (experience: Shown) => experience.projects.map((project) => project.hardSkills.map((entry) => `${entry.skill.displayName}@${entry.level}`));
+      const read = async (): Promise<Shown & { _id: string }> => (await readJson(await makeRequest(app, `/domain/${domainName}`))).experiences[0];
+      const storedEntries = async (id: string) => {
+        const experience = (await Experience.findById(id).lean())!;
+        return experience.projects.map((project) => project.hardSkills.map((entry) => `${String(entry.skill)}@${entry.level}`));
+      };
+      /** What the editor sends: the experience as the API showed it, each skill by the name shown */
+      const asEdited = (experience: Shown, changes: Record<string, unknown> = {}) => ({
+        ...experienceRequestBody,
+        title: experience.title,
+        projects: experience.projects.map((project) => ({
+          name: project.name,
+          summary: 'Runs things',
+          hardSkills: project.hardSkills.map((entry) => ({ name: entry.skill.displayName, level: entry.level })),
+          softSkills: []
+        })),
+        ...changes
+      });
+
+      // Typed before the catalogue knew anything: two spellings of one skill among them, with a level each
+      const created = await postWithCookie(app, '/experiences', experienceBody(['Postgres', 'K8s', 'Kubernetes', 'Go']), owner.cookie);
+      expect(created.status).toBe(200);
+      const { _id } = await readJson(created);
+      const id = Object.fromEntries(
+        await Promise.all(
+          ['Postgres', 'K8s', 'Kubernetes', 'Go'].map(async (name) => [name, String((await Skill.findOne({ displayName: t.id(name) }))!._id)] as const)
+        )
+      );
+      // The classifier: Postgres is another spelling of PostgreSQL (which it creates), K8s of Kubernetes; all recognised
+      const say = async (name: string, said: Record<string, unknown>) => {
+        const [result] = parseSkillClassification([{ recognised: true, category: 'data', ...said }], [t.id(name)]);
+        expect(await applySkillClassification((await Skill.findOne({ displayName: t.id(name) }))!._id, result!)).toBe('classified');
+      };
+      await say('Postgres', { aliasOf: t.id('PostgreSQL'), aliasKind: 'spelling' });
+      await say('PostgreSQL', {});
+      await say('K8s', { aliasOf: t.id('Kubernetes'), aliasKind: 'abbreviation' });
+      await say('Kubernetes', {});
+
+      const typed = [[`${id.Postgres}@0`, `${id.K8s}@1`, `${id.Kubernetes}@2`, `${id.Go}@3`]];
+      const cardBefore = (await anonymousCard(String(user._id))).skills.map(({ name }) => name).sort();
+      expect(cardBefore).toEqual(['Go', 'K8s', 'Kubernetes', 'Postgres'].map(t.id).sort());
+      const before = await read();
+      expect(shown(before)).toEqual([[`${t.id('PostgreSQL')}@0`, `${t.id('Kubernetes')}@1`, `${t.id('Go')}@3`]]);
+
+      // The owner opens the editor, changes the title alone and saves
+      const edited = await putWithCookie(app, `/experiences/${_id}`, asEdited(before, { title: 'Staff engineer' }), owner.cookie);
+      expect(edited.status).toBe(200);
+      expect(shown(await readJson(edited))).toEqual(shown(before));
+      expect((await read()).title).toBe('Staff engineer');
+      // Nothing of what was typed changed: each spelling's own document, both spellings of the one skill, each level
+      expect(await storedEntries(_id)).toEqual(typed);
+      expect((await anonymousCard(String(user._id))).skills.map(({ name }) => name).sort()).toEqual(cardBefore);
+
+      // A level changed in the editor is the level of the entry that was shown; a project renamed where it stands keeps its spellings
+      const levelled = asEdited(await read());
+      levelled.projects[0].hardSkills[1].level = 9;
+      levelled.projects[0].name = 'Platform, renamed';
+      expect((await putWithCookie(app, `/experiences/${_id}`, levelled, owner.cookie)).status).toBe(200);
+      expect(await storedEntries(_id)).toEqual([[`${id.Postgres}@0`, `${id.K8s}@9`, `${id.Kubernetes}@2`, `${id.Go}@3`]]);
+      expect(shown(await read())).toEqual([[`${t.id('PostgreSQL')}@0`, `${t.id('Kubernetes')}@9`, `${t.id('Go')}@3`]]);
+
+      // A project added before it, where the usual name is typed: that project stores the name typed there,
+      // the project that moved keeps its own spellings
+      const moved = asEdited(await read());
+      moved.projects.unshift({ name: 'New project', summary: 'Runs things', hardSkills: [{ name: t.id('Kubernetes'), level: 4 }], softSkills: [] });
+      expect((await putWithCookie(app, `/experiences/${_id}`, moved, owner.cookie)).status).toBe(200);
+      expect(await storedEntries(_id)).toEqual([[`${id.Kubernetes}@4`], [`${id.Postgres}@0`, `${id.K8s}@9`, `${id.Kubernetes}@2`, `${id.Go}@3`]]);
+
+      // What a model said is still undone by one field, on an experience that was edited since
+      await Skill.updateMany({ _id: { $in: [id.Postgres, id.K8s] } }, { $unset: { aliasOf: 1 } });
+      expect(shown(await read())).toEqual([
+        [`${t.id('Kubernetes')}@4`],
+        [`${t.id('Postgres')}@0`, `${t.id('K8s')}@9`, `${t.id('Kubernetes')}@2`, `${t.id('Go')}@3`]
+      ]);
+      expect((await anonymousCard(String(user._id))).skills.map(({ name }) => name).sort()).toEqual(cardBefore);
+      expect(JSON.stringify(await anonymousCard(String(user._id)))).not.toContain(t.id('PostgreSQL'));
+    } finally {
+      await User.deleteOne({ email });
+    }
+  });
+
+  it('removes every spelling of a skill taken out in the editor, and stores a spelling typed again as itself', async () => {
+    const domainName = t.id('domain');
+    const owner = await loginWithDomain('owner', domainName);
+    const kubernetes = await skill('Kubernetes', { category: 'infrastructure', classification: manual() });
+    const alias = await skill('K8s', { aliasOf: kubernetes._id, classification: manual() });
+    const stored = async (id: string) => (await Experience.findById(id).lean())!.projects[0].hardSkills.map((entry) => String(entry.skill));
+
+    const created = await readJson(await postWithCookie(app, '/experiences', experienceBody(['K8s', 'Kubernetes', 'Go']), owner.cookie));
+    const go = String((await Skill.findOne({ displayName: t.id('Go') }))!._id);
+    expect(await stored(created._id)).toEqual([String(alias._id), String(kubernetes._id), go]);
+
+    // The alias typed again by itself: its own document, once
+    expect((await putWithCookie(app, `/experiences/${created._id}`, experienceBody(['k8s', 'Kubernetes', 'Go']), owner.cookie)).status).toBe(200);
+    expect(await stored(created._id)).toEqual([String(alias._id), String(kubernetes._id), go]);
+    // Kubernetes taken out in the editor, which showed one tag for both spellings: both go
+    expect((await putWithCookie(app, `/experiences/${created._id}`, experienceBody(['Go']), owner.cookie)).status).toBe(200);
+    expect(await stored(created._id)).toEqual([go]);
+  });
+
   it('never puts a skill nobody recognised yet in place of, or above, what was typed', async () => {
     const domainName = t.id('domain');
     const owner = await loginWithDomain('owner', domainName);
@@ -772,6 +889,94 @@ describe('the skills of an experience as the API returns them', () => {
   });
 });
 
+describe('the names one account adds to what the classifier is asked', () => {
+  const savedLimit = { ...NEW_SKILL_NAMES_PER_USER };
+  afterEach(() => {
+    Object.assign(NEW_SKILL_NAMES_PER_USER, savedLimit);
+  });
+
+  it('are bounded per day: those beyond are stored and shown as typed, held back, and never sent', async () => {
+    expect(NEW_SKILL_NAMES_PER_USER).toEqual({ limit: SKILL_CLASSIFICATION.newNamesPerDay, windowMs: 24 * 60 * 60_000 });
+    NEW_SKILL_NAMES_PER_USER.limit = 3;
+    const owner = await loginWithDomain('flood', t.id('flood'));
+    const user = (await User.findOne({ email: t.email('flood') }))!;
+    const other = await loginWithDomain('other', t.id('other'));
+    await skill('Known', { category: 'tool', classification: manual() });
+    let woken = 0;
+    const remove = onPendingSkillResolved(() => (woken += 1));
+    try {
+      const names = ['New 1', 'known', 'New 2', 'New 3', 'New 4', 'New 5'];
+      const created = await postWithCookie(app, '/experiences', experienceBody(names), owner.cookie);
+      // The save is never refused, and shows every name as typed
+      expect(created.status).toBe(200);
+      const body = await readJson(created);
+      expect(body.projects[0].hardSkills.map((entry: { skill: { displayName: string } }) => entry.skill.displayName)).toEqual(
+        ['New 1', 'Known', 'New 2', 'New 3', 'New 4', 'New 5'].map(t.id)
+      );
+      const state = async (name: string) => (await Skill.findOne({ displayName: t.id(name) }).lean())!;
+      // The first three new names wait for the classifier, as any skill just typed
+      for (const name of ['New 1', 'New 2', 'New 3']) {
+        expect((await state(name)).classification).toBeUndefined();
+        expect(isPendingSkill(await state(name))).toBe(true);
+      }
+      // Those beyond the day's allowance are held back: kept, never sent
+      for (const name of ['New 4', 'New 5']) {
+        expect((await state(name)).classification).toMatchObject({ status: 'pending', attempts: 0, held: true });
+        expect(isPendingSkill(await state(name))).toBe(false);
+      }
+      // Counted on a key that is a hash of the account, all five of them
+      const key = newSkillNamesKey(String(user._id));
+      expect(key).not.toContain(String(user._id));
+      expect((await peekRateLimit(key, NEW_SKILL_NAMES_PER_USER)).count).toBe(5);
+
+      // Saved again the same day, in an edit too: the names the classifier already waits for are no
+      // new names, and the two held back stay so (saving again is no way around the allowance)
+      woken = 0;
+      expect((await putWithCookie(app, `/experiences/${body._id}`, experienceBody(names.map((name) => name.toUpperCase())), owner.cookie)).status).toBe(200);
+      expect((await peekRateLimit(key, NEW_SKILL_NAMES_PER_USER)).count).toBe(7);
+      for (const name of ['New 4', 'New 5']) expect((await state(name)).classification).toMatchObject({ held: true });
+      // One more new name: stored, held back
+      expect((await putWithCookie(app, `/experiences/${body._id}`, experienceBody(['New 6']), owner.cookie)).status).toBe(200);
+      expect((await state('New 6')).classification).toMatchObject({ status: 'pending', held: true });
+      expect(isPendingSkill(await state('New 6'))).toBe(false);
+
+      // Another account has its own allowance, and a name held back that it types is released: nobody
+      // can keep a skill from being classified for everyone by typing it first
+      woken = 0;
+      expect((await postWithCookie(app, '/experiences', experienceBody(['new 5', 'Theirs']), other.cookie)).status).toBe(200);
+      expect((await state('Theirs')).classification).toBeUndefined();
+      expect((await state('New 5')).classification).toBeUndefined();
+      expect(isPendingSkill(await state('New 5'))).toBe(true);
+      expect(woken).toBe(2);
+      expect((await state('New 4')).classification).toMatchObject({ held: true });
+    } finally {
+      remove();
+    }
+  });
+
+  it('says which names a save would add to what the classifier is asked, ignoring case, in one query', async () => {
+    await skill('Have', { classification: manual() });
+    await Skill.updateOne({ displayName: t.id('Have') }, { $addToSet: { names: t.id('Also have') } });
+    await skill('Waiting');
+    await skill('Held', { classification: { status: 'pending', at: new Date(), attempts: 0, held: true } });
+    const asked = [` ${t.id('HAVE')} `, t.id('also HAVE'), t.id('waiting'), t.id('HELD'), t.id('Lack'), t.id('Lack too'), ''];
+    expect(await Skill.namesToQueue(asked)).toEqual([t.id('HELD'), t.id('Lack'), t.id('Lack too')]);
+    expect(await Skill.namesToQueue([])).toEqual([]);
+    expect(await Skill.findOne({ displayName: t.id('Lack') })).toBeNull();
+    // Held back again by a save beyond the allowance, released by one within it
+    const held = (await Skill.findOne({ displayName: t.id('Held') }))!;
+    expect(String(await Skill.findOrCreate(t.id('held'), { held: true }))).toBe(String(held._id));
+    expect((await Skill.findById(held._id).lean())!.classification).toMatchObject({ held: true });
+    expect(String(await Skill.findOrCreate(t.id('held')))).toBe(String(held._id));
+    expect((await Skill.findById(held._id).lean())!.classification).toBeUndefined();
+    // A skill the classifier settled, or was already asked about, is never held back afterwards
+    await Skill.findOrCreate(t.id('have'), { held: true });
+    await Skill.findOrCreate(t.id('waiting'), { held: true });
+    expect((await Skill.findOne({ displayName: t.id('Have') }).lean())!.classification).toMatchObject({ status: 'manual' });
+    expect((await Skill.findOne({ displayName: t.id('Waiting') }).lean())!.classification).toBeUndefined();
+  });
+});
+
 describe('the curated catalogue of the seeds', () => {
   const stored = async (name: string) => (await Skill.findOne({ displayName: t.id(name) }).lean())!;
   const list = (): SeedSkill[] => [
@@ -832,6 +1037,51 @@ describe('the curated catalogue of the seeds', () => {
     expect(String(await Skill.findOrCreate(t.id('rt')))).toBe(String(rt._id));
     expect(String(await Skill.findOrCreate(t.id('Rooty')))).toBe(String((await stored('Rooty'))._id));
     expect(String(await Skill.findOrCreate(t.id('root')))).toBe(String(root._id));
+
+    const snapshot = async () =>
+      (await Skill.find({ displayName: new RegExp(`-${t.suffix}$`, 'i') }).sort({ _id: 1 }).lean()).map(
+        ({ classification, ...rest }) => ({ ...rest, status: classification?.status })
+      );
+    const first = await snapshot();
+    await seedSkillCatalogue(list());
+    expect(await snapshot()).toEqual(first);
+  });
+
+  it('keeps the list\'s spelling when case variants of a name exist, and makes the others spellings of the skill', async () => {
+    // From before lookups ignored case: two documents of one name, the older one not spelled as the list does;
+    // the same for one of the list's aliases
+    const lower = await skill('kind', { classification: classified(), category: 'tool' });
+    const exact = await skill('Kind');
+    const under = await skill('Under-kind', { parent: lower._id, classification: classified() });
+    const spelling = await skill('Kindly', { aliasOf: lower._id, classification: classified() });
+    const oldAlias = await skill('RT');
+    const exactAlias = await skill('Rt');
+
+    await seedSkillCatalogue(list());
+
+    const read = async (id: Types.ObjectId) => (await Skill.findById(id).lean())!;
+    // The skill is the document spelled as the list spells it
+    expect(await read(exact._id)).toMatchObject({ displayName: t.id('Kind'), category: 'soft', classification: { status: 'manual' } });
+    expect((await read(exact._id)).aliasOf).toBeUndefined();
+    // The other variant keeps its spelling (a unique name) and is another spelling of the skill, never a second skill
+    const variant = await read(lower._id);
+    expect(variant).toMatchObject({ displayName: t.id('kind'), classification: { status: 'manual' } });
+    expect(String(variant.aliasOf)).toBe(String(exact._id));
+    expect(variant.category).toBeUndefined();
+    expect(variant.parent).toBeUndefined();
+    // What pointed at the variant points at the skill
+    expect(String((await read(under._id)).parent)).toBe(String(exact._id));
+    expect(String((await read(spelling._id)).aliasOf)).toBe(String(exact._id));
+    // A save of the name resolves to the oldest document, which is read as the skill
+    expect(String(await Skill.findOrCreate(t.id('Kind')))).toBe(String(lower._id));
+    expect(String((await Skill.findCanonical(t.id('KIND')))!._id)).toBe(String(exact._id));
+    expect(presentSkill((await Skill.findById(lower._id).populate('aliasOf'))!.toObject())).toMatchObject({ displayName: t.id('Kind'), category: 'soft' });
+
+    // A variant of an alias of the list is a spelling of the list's skill too, never chained through the alias
+    const root = await stored('Root');
+    expect(String((await read(exactAlias._id)).aliasOf)).toBe(String(root._id));
+    expect(String((await read(oldAlias._id)).aliasOf)).toBe(String(root._id));
+    expect((await read(oldAlias._id)).classification?.status).toBe('manual');
 
     const snapshot = async () =>
       (await Skill.find({ displayName: new RegExp(`-${t.suffix}$`, 'i') }).sort({ _id: 1 }).lean()).map(

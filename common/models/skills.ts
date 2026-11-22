@@ -61,8 +61,29 @@ export type SkillAliasKind = (typeof SKILL_ALIAS_KINDS)[number];
 
 /** The limits of the classifier: names per call, catalogue names sent with them, tries per skill */
 export const SKILL_CLASSIFICATION = {
-	/** Skill names classified by one call */
+	/** Skill names classified by one call, at most */
 	batchSize: 40,
+	/**
+	 * Characters of names one call holds at most (always one name at least): the answer repeats each
+	 * name, so its size, and the time it takes, follow what is asked. A batch of long names is a
+	 * few names, far from the call's deadline and from its output limit
+	 */
+	batchCharacters: 1_500,
+	/**
+	 * Names asked together once the oldest skill to classify has one try, then two: an answer that
+	 * could not be used for a whole batch is asked again in small batches, then name by name, so
+	 * only the name at fault reaches `maxAttempts`
+	 */
+	retryBatchSizes: [8, 1],
+	/** A longer text, or one of more words, is no skill name: never sent, never written (isSkillNameLike) */
+	nameLength: 60,
+	nameWords: 8,
+	/**
+	 * New skill names one account adds to what the classifier is asked per UTC day: those beyond are
+	 * stored and shown to their owner as typed, held back, and never sent until a save within an
+	 * account's allowance names them again
+	 */
+	newNamesPerDay: 200,
 	/** Canonical names of the catalogue sent with a batch, so parents and aliases reuse them */
 	knownNames: 500,
 	/**
@@ -82,8 +103,12 @@ export const SKILL_SEARCH = {
 	debounceMs: 250
 } as const;
 
-/** What was typed, as it is searched: trimmed, its runs of spaces as one */
-export const skillSearchText = (raw: string): string => raw.replace(/\s+/g, ' ').trim();
+/**
+ * What was typed, as it is searched: nothing invisible (cleanIssueText: a control character, a
+ * zero-width one), trimmed, its runs of spaces as one
+ */
+export const skillSearchText = (raw: string): string =>
+	cleanIssueText(raw).replace(/\s+/g, ' ').trim();
 
 /** Whether `text` (as skillSearchText left it) can be searched: neither empty nor too long */
 export const canSearchSkill = (text: string): boolean =>
@@ -439,7 +464,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /** A scheme (`https://`) or `www.`: a skill name is never a link. 'Node.js' and 'ASP.NET' are none */
 const SKILL_NAME_LINK = /[a-z][a-z0-9+.-]*:\/\/|(^|[^a-z0-9])www\./i;
-const SKILL_NAME_EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+// An address ends in a domain: letters after its last dot. A package with its version
+// ('react@18.2', 'node@18.x') is none
+const SKILL_NAME_EMAIL = /[^\s@]+@[^\s@]+\.[a-z]{2,}\b/i;
 
 /**
  * A skill name written by the classifier (a parent, the skill a spelling is an alias of, a
@@ -461,10 +488,56 @@ export function cleanSkillName(value: unknown): string | undefined {
 	return name;
 }
 
-/** A skill name without its case and spaces: 'Node JS' and 'nodejs' are the same spelling corrected */
-const foldSkillName = (name: string): string => normalizeSkill(name).replace(/\s+/g, '');
+// A host followed by a path ('t.me/jane', 'linkedin.com/in/jane'): a way to reach someone, never
+// a skill. '.js' and '.ts' are no domains ('Node.js/React'), and the technologies written like a
+// host are read as words first: a .NET library as Microsoft writes it ('ASP.NET/Azure',
+// 'ML.NET'), ASP.NET, ADO.NET and VB.NET in any case, Socket.IO ('behance.net/jane' stays a site)
+const SKILL_NAME_HOST_PATH = /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?!(?:js|ts)\/)[a-z]{2,24}\/\S/i;
+const SKILL_NAME_TECHNOLOGY_HOSTS = [
+	/(?<![@.\p{L}\p{N}_-])[\p{L}\p{N}]+\.NET\b/gu,
+	/(?<![@.\p{L}\p{N}_-])(?:asp|ado|vb)\.net\b/giu,
+	/(?<![@.\p{L}\p{N}_-])socket\.io\b/giu
+];
+// A phone number: 9 digits or more from a '+' or a 0, one separator at most between two of them,
+// or 3, 3 and 4 digits. 'ISO 27001:2022' and 'SQL Server 2019' are none
+const SKILL_NAME_PHONE =
+	/(?<![\p{L}\p{N}])(?:\+|0)\d(?:[\s.()-]?\d){7,}|(?<![\p{L}\p{N}])\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?!\d)/u;
 
-/** Whether two skill names are one, ignoring case and spaces ('C #' and 'c#') */
+/**
+ * Whether a name (as cleanSkillName left it) reads like a skill name: SKILL_CLASSIFICATION's
+ * `nameLength` characters and `nameWords` words at most, no host followed by a path, no phone
+ * number. What is not is never sent to the classifier (a sentence shares no prompt with other
+ * people's names), and never written from its answer as the skill another one points at.
+ */
+export function isSkillNameLike(name: string): boolean {
+	const read = name.normalize('NFKC');
+	if (read.length > SKILL_CLASSIFICATION.nameLength) return false;
+	if (read.split(/\s+/).filter(Boolean).length > SKILL_CLASSIFICATION.nameWords) return false;
+	const words = SKILL_NAME_TECHNOLOGY_HOSTS.reduce(
+		(text, technology) => text.replace(technology, ' '),
+		read
+	);
+	return !SKILL_NAME_HOST_PATH.test(words) && !SKILL_NAME_PHONE.test(read);
+}
+
+/**
+ * A name the classifier can be asked about, or can answer with: cleaned (cleanSkillName), and
+ * one that reads like a skill name (isSkillNameLike). Undefined otherwise.
+ */
+export function classifiableSkillName(value: unknown): string | undefined {
+	const name = cleanSkillName(value);
+	return name !== undefined && isSkillNameLike(name) ? name : undefined;
+}
+
+/**
+ * A skill name without its case, its spaces and its compatibility forms: 'Node JS' and 'nodejs'
+ * are the same spelling corrected, and so are a full-width or circled letter and the plain one
+ * ('Ｔerraform', the form the catalogue's lookups already take for the same name)
+ */
+const foldSkillName = (name: string): string =>
+	normalizeSkill(name.normalize('NFKC')).replace(/\s+/g, '');
+
+/** Whether two skill names are one, ignoring case, spaces and compatibility forms ('C #' and 'c#') */
 export const sameSkillSpelling = (a: string, b: string): boolean =>
 	foldSkillName(a) === foldSkillName(b);
 
@@ -484,7 +557,8 @@ export const sameSkillSpelling = (a: string, b: string): boolean =>
  * - `canonical` is kept only when it is the asked name ignoring case and spaces (a corrected
  *   spelling: 'c#' → 'C#'), else the asked name is;
  * - `category` must be one of SKILL_CATEGORIES;
- * - `parent` and `aliasOf` are cleaned (cleanSkillName) and are never the skill itself;
+ * - `parent` and `aliasOf` are cleaned (cleanSkillName), read like a skill name (isSkillNameLike:
+ *   never a sentence, a host with a path or a phone number) and are never the skill itself;
  * - `aliasOf` needs an `aliasKind` of SKILL_ALIAS_KINDS;
  * - an alias has neither a parent nor a category of its own: with a valid `aliasOf`, `parent`
  *   and `category` are dropped.
@@ -529,7 +603,7 @@ export function parseSkillClassification(
 		const canonical =
 			corrected !== undefined && sameSkillSpelling(corrected, name) ? corrected : name.trim();
 		const other = (value: unknown) => {
-			const cleaned = cleanSkillName(value);
+			const cleaned = classifiableSkillName(value);
 			return cleaned !== undefined && !sameSkillSpelling(cleaned, name) ? cleaned : undefined;
 		};
 

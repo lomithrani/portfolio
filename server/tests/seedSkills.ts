@@ -113,9 +113,17 @@ const displayedAs = (name: string, except?: Types.ObjectId) =>
     .collation(SKILL_NAME_COLLATION)
     .sort({ _id: 1 });
 
-/** The skill displayed under `name`, created when there is none */
+/** The skill displayed exactly as `name` */
+const spelledAs = (name: string, except?: Types.ObjectId) =>
+  Skill.findOne({ displayName: name, ...(except ? { _id: { $ne: except } } : {}) });
+
+/**
+ * The skill displayed under `name`, created when there is none: the one
+ * spelled exactly so when the collection has case variants of the name (from
+ * before lookups ignored case), else the oldest ignoring case
+ */
 const ensureSkill = async (name: string, except?: Types.ObjectId): Promise<SkillDocument> => {
-  const existing = await displayedAs(name, except);
+  const existing = (await spelledAs(name, except)) ?? (await displayedAs(name, except));
   if (existing) return existing;
   try {
     return await Skill.create({ displayName: name, names: [name] });
@@ -138,12 +146,40 @@ const spellAs = async (skill: SkillDocument, name: string) => {
 };
 
 /**
+ * The other documents displayed as `name` ignoring case (case variants from
+ * before lookups ignored case; a save of the name resolves to the oldest of
+ * them) become other spellings of `skill`, like the list's aliases: shown and
+ * suggested as the skill, under its spelling, and never as a second skill.
+ * What pointed at them points at the skill, or at the skill it is part of
+ */
+const foldCaseVariants = async (
+  name: string,
+  /** The document that keeps the name: the skill itself, or the list's alias spelled so */
+  kept: SkillDocument,
+  skill: SkillDocument,
+  family: SkillDocument,
+  manual: { status: 'manual'; at: Date; attempts: number }
+) => {
+  const variants = await Skill.find({ displayName: name, _id: { $nin: [kept._id, skill._id] } }, '_id').collation(SKILL_NAME_COLLATION);
+  for (const variant of variants) {
+    await Skill.updateMany({ aliasOf: variant._id, _id: { $ne: skill._id } }, { $set: { aliasOf: skill._id } });
+    await Skill.updateMany({ parent: variant._id, _id: { $nin: [skill._id, family._id] } }, { $set: { parent: family._id } });
+    await Skill.updateOne(
+      { _id: variant._id },
+      { $set: { aliasOf: skill._id, classification: manual }, $unset: { parent: 1, category: 1 } }
+    );
+  }
+};
+
+/**
  * Applies the list to the Skill collection: each skill with its category,
  * the skill it is part of and its other spellings, all 'manual'. Idempotent,
  * and what it writes keeps the catalogue's rules (one level of families, an
  * alias never chained, a skill's `names` only the casings of its own name)
  * whatever the collection held: a manual entry wins over what the
- * classifier wrote. It also repairs what an earlier version of this seed
+ * classifier wrote. Case variants of a name of the list ('typescript' beside
+ * 'TypeScript') become other spellings of the list's skill, which is the one
+ * spelled as the list does. It also repairs what an earlier version of this seed
  * left: the spellings of a skill's aliases among that skill's own `names`,
  * through which a save of 'K8s' stored Kubernetes.
  */
@@ -179,6 +215,7 @@ export const seedSkillCatalogue = async (
     );
     // One level: what was part of a skill that now has a parent is part of that parent
     if (parent) await Skill.updateMany({ parent: skill._id }, { $set: { parent: parent._id } });
+    await foldCaseVariants(entry.name, skill, skill, parent ?? skill, manual);
 
     for (const spelling of entry.aliases ?? []) {
       const alias = await ensureSkill(spelling, skill._id);
@@ -207,6 +244,7 @@ export const seedSkillCatalogue = async (
         { $pull: { names: { $in: [spelling, ...(alias.names ?? [])] } } },
         { collation: SKILL_NAME_COLLATION }
       );
+      await foldCaseVariants(spelling, alias, skill, parent ?? skill, manual);
       aliases += 1;
     }
   }

@@ -40,6 +40,8 @@ export {
 	projectUsesSkillFamily,
 	rankedSkills,
 	cleanSkillName,
+	isSkillNameLike,
+	classifiableSkillName,
 	sameSkillSpelling,
 	parseSkillClassification
 } from './skills';

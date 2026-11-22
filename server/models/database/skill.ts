@@ -22,7 +22,12 @@ const classificationSchema = new Schema({
   // Tries so far: the times Claude answered and this skill could not be
   // settled, and the one that settled it. A call that got no answer (an
   // outage, a refused key) counts none. Skipped from SKILL_CLASSIFICATION.maxAttempts
-  attempts: { type: Number, default: 0 }
+  attempts: { type: Number, default: 0 },
+  // Held back: created by a save beyond its account's allowance of new names
+  // for the day (SKILL_CLASSIFICATION.newNamesPerDay). Still pending, never
+  // asked, until a save within an account's allowance resolves it again
+  // (findOrCreate then drops the classification), or an operator does
+  held: Boolean
 }, { _id: false });
 
 // The site's skill catalogue: one document per spelling people typed.
@@ -59,9 +64,15 @@ export const skillSchema = new Schema({
 // Not unique: case variants created before lookups ignored case may coexist
 skillSchema.index({ displayName: 1 }, { name: 'displayName_ci', collation: SKILL_NAME_COLLATION });
 skillSchema.index({ names: 1 }, { name: 'names_ci', collation: SKILL_NAME_COLLATION });
-// The classifier's sweep (pending skills, the oldest first: PENDING_SKILLS
-// sorted by _id) and the search (SUGGESTABLE_SKILLS)
+// The classifier's sweep: pending skills, the oldest first (PENDING_SKILLS
+// sorted by _id)
 skillSchema.index({ 'classification.status': 1, _id: 1 });
+// The search (services/skillSearch.ts): the recognised skills
+// (SUGGESTABLE_SKILLS) by name, under the collation the search runs with, so
+// it reads the recognised skills alone, never the names still to classify or
+// rejected, however many of those people typed
+skillSchema.index({ 'classification.status': 1, displayName: 1 }, { name: 'status_displayName_ci', collation: SKILL_NAME_COLLATION });
+skillSchema.index({ 'classification.status': 1, names: 1 }, { name: 'status_names_ci', collation: SKILL_NAME_COLLATION });
 // The skills that are part of a skill, and the other spellings of one
 skillSchema.index({ parent: 1 }, { sparse: true });
 skillSchema.index({ aliasOf: 1 }, { sparse: true });
@@ -82,10 +93,11 @@ export const PENDING_SKILLS = { 'classification.status': { $in: [null, 'pending'
  */
 export const SUGGESTABLE_SKILLS = { 'classification.status': { $in: [...SUGGESTABLE_SKILL_STATUSES] } };
 
-/** Whether a skill is still to classify: pending, and not given up on */
+/** Whether a skill is still to classify: pending, not given up on, and not held back */
 export const isPendingSkill = (skill: Pick<Skill, 'classification'>): boolean => {
   const classification = skill.classification;
   if (!classification) return true;
+  if (classification.held) return false;
   return classification.status === 'pending' && (classification.attempts ?? 0) < SKILL_CLASSIFICATION.maxAttempts;
 };
 
@@ -116,6 +128,19 @@ const notifyPendingSkill = () => {
   }
 };
 
+/** How Skill.findOrCreate treats a name the classifier was not asked about yet */
+export interface FindOrCreateSkillOptions {
+  /**
+   * The name is beyond what its account may add today to what the classifier
+   * is asked (SKILL_CLASSIFICATION.newNamesPerDay): a skill created for it is
+   * held back (`classification.held`: kept and shown to its owner as typed,
+   * never sent), and one already held back stays so. Without it, a skill
+   * held back is released: to classify like any skill just typed. Nothing
+   * else changes for a skill that exists
+   */
+  held?: boolean;
+}
+
 interface SkillModel extends Model<Skill> {
   /**
    * The id of the document of the spelling `name`, ignoring case (its
@@ -124,7 +149,14 @@ interface SkillModel extends Model<Skill> {
    * it is another spelling of (aliasOf): that is resolved when the
    * experience is read, never when it is written
    */
-  findOrCreate(name: string): Promise<Types.ObjectId>;
+  findOrCreate(name: string, options?: FindOrCreateSkillOptions): Promise<Types.ObjectId>;
+  /**
+   * Which of `names` (trimmed) a save would add to what the classifier is
+   * asked: those the catalogue lacks, ignoring case (neither the display
+   * name nor one of the names of a skill), and those of a skill held back.
+   * One query for all of them; nothing is created
+   */
+  namesToQueue(names: readonly string[]): Promise<string[]>;
   /**
    * The skill `name` names, ignoring case (its display name or one of its
    * names; the oldest when several match), as its canonical skill when it
@@ -141,8 +173,12 @@ const canonicalOf = async (skills: Model<Skill>, skill: SkillDocument): Promise<
   return canonical ?? skill;
 };
 
-skillSchema.statics.findOrCreate = async function (rawName: string) {
+skillSchema.statics.findOrCreate = async function (rawName: string, options: FindOrCreateSkillOptions = {}) {
   const name = rawName.trim();
+  // Only on insert: a skill that exists keeps where it stands with the classifier
+  const created = options.held
+    ? { displayName: name, classification: { status: 'pending', at: new Date(), attempts: 0, held: true } }
+    : { displayName: name };
   // Atomic upsert: matches one of its names or the display name, ignoring case
   // (the oldest skill wins if case variants exist), and records the name
   // ($addToSet also ignores case: a known name in another casing is not added
@@ -153,7 +189,7 @@ skillSchema.statics.findOrCreate = async function (rawName: string) {
   const upsert = () =>
     this.findOneAndUpdate(
       { $or: [{ names: name }, { displayName: name }] },
-      { $setOnInsert: { displayName: name }, $addToSet: { names: name } },
+      { $setOnInsert: created, $addToSet: { names: name } },
       { upsert: true, returnDocument: 'after', collation: SKILL_NAME_COLLATION, sort: { _id: 1 } }
     );
 
@@ -164,6 +200,12 @@ skillSchema.statics.findOrCreate = async function (rawName: string) {
     if (!isDuplicateKeyError(error)) throw error;
     skill = await upsert();
   }
+  // Held back by an earlier save, and within this account's allowance: to
+  // classify from now on, like a skill just typed
+  if (!options.held && skill.classification?.held) {
+    await this.updateOne({ _id: skill._id, 'classification.held': true }, { $unset: { classification: 1 } });
+    skill.classification = undefined;
+  }
   // The skill it is shown as when read (presentSkill): itself, or the skill
   // it is another spelling of. Still to classify: the job is woken
   if (isPendingSkill(await canonicalOf(this, skill))) notifyPendingSkill();
@@ -172,6 +214,28 @@ skillSchema.statics.findOrCreate = async function (rawName: string) {
   // answer, which is applied when the experience is read and never written
   // into it (matching's anonymous card reads the stored skill's own name)
   return skill._id;
+}
+
+skillSchema.statics.namesToQueue = async function (names: readonly string[]) {
+  const asked = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
+  if (asked.length === 0) return [];
+  const known: { displayName: string; names?: string[] | null; classification?: { held?: boolean | null } | null }[] =
+    await (this as Model<Skill>)
+      .find({ $or: [{ names: { $in: asked } }, { displayName: { $in: asked } }] }, 'displayName names classification.held')
+      .collation(SKILL_NAME_COLLATION)
+      .lean();
+  // As the collation compares at this strength: case aside. A name it takes
+  // for a known one in a way this does not see (a compatibility form) counts
+  // as new: it only counts against the account's allowance, findOrCreate
+  // still finds the skill
+  const fold = (name: string) => name.trim().toLowerCase();
+  const queued = new Set(
+    known
+      .filter((skill) => !skill.classification?.held)
+      .flatMap((skill) => [skill.displayName, ...(skill.names ?? [])])
+      .map(fold)
+  );
+  return asked.filter((name) => !queued.has(fold(name)));
 }
 
 skillSchema.statics.findCanonical = async function (rawName: string) {

@@ -11,7 +11,8 @@ import { env } from '../env';
 import { createApp } from '../app';
 import { RateLimitCounter, Skill, User } from '../models/database';
 import { logger } from '../services/logger';
-import { SKILL_SEARCHES_PER_USER, suggestSkills } from '../services/skillSearch';
+import { SUGGESTABLE_SKILLS } from '../models/database/skill';
+import { SKILL_SEARCHES_PER_USER, skillSearchQueries, suggestSkills } from '../services/skillSearch';
 import { authCookie } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
@@ -135,6 +136,12 @@ describe('the skills that what was typed could be (GET /skills/search)', () => {
     expect(french.json<{ message: string }>().message).toBe(
       'Saisissez entre 1 et 100 caractères pour rechercher une compétence.'
     );
+    // Nothing left to search once what cannot be seen is gone: never a query MongoDB refuses (a NUL)
+    for (const q of ['\u0000', '\u200B', ' \u0000\u0007 ']) {
+      const refused = await search(q, user.cookie);
+      expect(refused.status).toBe(422);
+      expect(refused.json<{ property: string }>().property).toBe('q');
+    }
     // Without q at all: the request's own validation
     const missing = await call('/skills/search', user.cookie);
     expect(missing.status).toBe(422);
@@ -316,6 +323,45 @@ describe('the skills that what was typed could be (GET /skills/search)', () => {
     expect(await suggestSkills(`lots${t.suffix}`)).toHaveLength(SKILL_SEARCH.results);
     // The skill typed, then those starting with it: the answer is full, nothing looks further
     expect(find).toHaveBeenCalledTimes(2);
+  });
+
+  it('searches what was typed without what cannot be seen: a control character is no error', async () => {
+    const user = await createUser('nul');
+    await skill(`Nul${t.suffix}`);
+    for (const q of [`nul${t.suffix}\u0000`, `nul\u0000${t.suffix}`, `\u0000nul${t.suffix}`, `nul\u200B${t.suffix}`]) {
+      expect(await found(q, user.cookie)).toEqual([{ name: `Nul${t.suffix}` }]);
+    }
+    expect(logLines.filter((line) => line.startsWith('error'))).toEqual([]);
+  });
+
+  it('reads the recognised skills alone, however many names still to classify hold what was typed', async () => {
+    // What anyone can add by saving experiences: names never classified, under the very text searched
+    const junk = 400;
+    await Skill.insertMany(
+      Array.from({ length: junk }, (_, index) => ({ displayName: `Flood${t.suffix} junk ${index}`, names: [`Flood${t.suffix} junk ${index}`] }))
+    );
+    await Skill.insertMany(
+      Array.from({ length: 50 }, (_, index) => ({
+        displayName: `Flood${t.suffix} rejected ${index}`,
+        names: [`Flood${t.suffix} rejected ${index}`],
+        classification: status('rejected')
+      }))
+    );
+    for (let index = 0; index < 3; index++) await skill(`Flood${t.suffix} ${index}`);
+    const recognised = await Skill.countDocuments(SUGGESTABLE_SKILLS);
+
+    for (const text of [`flood${t.suffix}`, `ood${t.suffix}`, `nothing${t.suffix}`]) {
+      for (const stage of skillSearchQueries(text)) {
+        const plan = (await stage.find().explain('executionStats')) as unknown as {
+          executionStats: { totalDocsExamined: number; totalKeysExamined: number };
+        };
+        // Never a document that is not a recognised skill; by its name or its start, only those that match
+        expect(plan.executionStats.totalDocsExamined).toBeLessThanOrEqual(stage.rank === 2 ? recognised : 6);
+        if (stage.rank !== 2) expect(plan.executionStats.totalKeysExamined).toBeLessThanOrEqual(12);
+      }
+    }
+    expect((await suggestSkills(`flood${t.suffix}`)).map(({ name }) => name)).toEqual([0, 1, 2].map((index) => `Flood${t.suffix} ${index}`));
+    expect((await suggestSkills(`ood${t.suffix}`)).map(({ name }) => name)).toEqual([0, 1, 2].map((index) => `Flood${t.suffix} ${index}`));
   });
 
   it('stops an account that searches too much in a minute, and only that account', async () => {

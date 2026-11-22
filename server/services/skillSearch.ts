@@ -75,21 +75,48 @@ const rankOf = (spelling: string, query: string): Rank | undefined => {
 /** What was typed, as a pattern that matches it and nothing else: 'c++' is no quantifier, '.net' no wildcard */
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** Sorts after every text that starts with what it is appended to, under the collation: U+FFFF has the highest weight */
+const AFTER_EVERY_SUFFIX = '\uffff';
+
 /**
  * The ways a skill matches what was typed, the best first: each is read only
  * while the ones before it did not fill the answer, so a short text ('c')
- * reads a few documents, never every skill that has the letter
+ * reads a few documents, never every skill that has the letter.
+ *
+ * Each runs on the indexes that start with the status
+ * (`status_displayName_ci`, `status_names_ci`: the recognised skills alone,
+ * under the search's collation), so the names still to classify or rejected,
+ * which anyone can add, are never read: the exact name and the names that
+ * start with the text as ranges of those indexes, the names that contain it
+ * as a pattern tested on the recognised skills alone.
  */
 const stages = (text: string): { rank: Rank; filter: Record<string, unknown> }[] => {
   const pattern = literal(text);
-  const matching = (regex: string) => ({ $regex: regex, $options: 'i' });
+  const starting = { $gte: text, $lt: text + AFTER_EVERY_SUFFIX };
+  const containing = { $regex: pattern, $options: 'i' };
   return [
-    // Ignoring case through the collation, on the indexes findOrCreate uses
+    // Ignoring case through the collation
     { rank: 0, filter: { $or: [{ displayName: text }, { names: text }] } },
-    { rank: 1, filter: { $or: [{ displayName: matching(`^${pattern}`) }, { names: matching(`^${pattern}`) }] } },
-    { rank: 2, filter: { $or: [{ displayName: matching(pattern) }, { names: matching(pattern) }] } }
+    { rank: 1, filter: { $or: [{ displayName: starting }, { names: starting }] } },
+    { rank: 2, filter: { $or: [{ displayName: containing }, { names: containing }] } }
   ];
 };
+
+/**
+ * The query of each way of matching `text`, the best first, leaving out the
+ * documents `matched` already: what suggestSkills runs, and what the tests
+ * read the plan of
+ */
+export const skillSearchQueries = (text: string, matched: Iterable<string> = []) =>
+  stages(text).map((stage) => ({
+    rank: stage.rank,
+    find: () =>
+      Skill.find({ ...SUGGESTABLE_SKILLS, ...stage.filter, _id: { $nin: [...matched] } })
+        .collation(SKILL_NAME_COLLATION)
+        .sort({ displayName: 1, _id: 1 })
+        .limit(CANDIDATES_PER_STAGE)
+        .select(SEARCH_FIELDS)
+  }));
 
 interface Found {
   suggestion: SkillSuggestion;
@@ -121,13 +148,9 @@ export async function suggestSkills(text: string): Promise<SkillSuggestion[]> {
   /** The skill a document stands for: the one it is another spelling of, while that one exists */
   const canonicalOf = (skill: CatalogueSkill) => byId(skill.aliasOf) ?? skill;
 
-  for (const stage of stages(text)) {
-    const skills = await Skill.find({ ...SUGGESTABLE_SKILLS, ...stage.filter, _id: { $nin: [...matched] } })
-      .collation(SKILL_NAME_COLLATION)
-      .sort({ displayName: 1, _id: 1 })
-      .limit(CANDIDATES_PER_STAGE)
-      .select(SEARCH_FIELDS)
-      .lean<CatalogueSkill[]>();
+  // `matched` is read when a stage runs: each leaves out what the stages before it matched
+  for (const stage of skillSearchQueries(text, matched)) {
+    const skills = await stage.find().lean<CatalogueSkill[]>();
     for (const skill of skills) {
       matched.add(String(skill._id));
       read.set(String(skill._id), skill);
