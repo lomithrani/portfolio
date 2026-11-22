@@ -68,7 +68,7 @@ bun install
 cp server/.env.example server/.env
 cp client/.env.example client/.env
 bun run db:up      # MongoDB 7 (as in production) on 127.0.0.1:27017: Docker, else a local mongod
-bun run db:seed    # owner user + the 'louis.gentil' domain (safe to re-run)
+bun run db:seed    # owner user + the 'louis.gentil' domain + a curated skill catalogue (safe to re-run)
 bun run dev        # API on http://localhost:3000 and web app on http://localhost:5173
 ```
 
@@ -91,7 +91,7 @@ Run from the repository root.
 | `bun run dev:client`   | Web dev server only (`client/`, Vite on port 5173)                                           |
 | `bun run db:up`        | Start the local MongoDB (`compose.yaml`, or a local `mongod` without Docker) until healthy   |
 | `bun run db:down`      | Stop it (keeps the data; `docker compose down -v` deletes it)                                |
-| `bun run db:seed`      | Seed the database at `MONGO_URL` with the owner user and the `louis.gentil` domain           |
+| `bun run db:seed`      | Seed the database at `MONGO_URL` with the owner user, the `louis.gentil` domain and a curated skill catalogue (categories, families, other spellings) |
 | `bun run typecheck`    | `tsc` on the API and `svelte-check` on the web app                                           |
 | `bun run lint`         | Prettier check and ESLint on the web app                                                     |
 | `bun run test`         | API tests (need MongoDB; set `TEST_MONGO_URL`, see [Testing](#testing)) and web unit tests   |

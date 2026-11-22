@@ -71,6 +71,11 @@ Variables), in the three dashboards.
   /matching/reviews` from the reviewers' page (`/recruiter/reviews`), whose address only a reviewer
   types. Those count as `route="unmatched"`, `status="404"` (the API cannot tell them from a route
   that never existed).
+- **`GET /skills/search` counts typing, not visits.** The experience editor asks it once per pause
+  while an owner types a skill (at most 120 a minute per account), so the API health dashboard's
+  requests by route show it far above the saves it leads to. The skill catalogue's background job
+  has no route and no metric: its sweeps are log lines (`Skill classification sweep`, counts
+  only), and its failed calls are among the warnings and errors (`Skill classification: ...`).
 
 ## Changing a dashboard
 

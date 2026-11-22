@@ -75,6 +75,12 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			not store the PDF, and nothing is published until you add it yourself.
 		</li>
 		<li>
+			The names of the skills you type are kept in a catalogue shared by the whole site, with no
+			record of who typed them. Where this site enables it, Anthropic's Claude (USA) sorts those
+			names, and nothing else, in the background; a name recognised as a skill can then be suggested
+			to other signed-in people who type a skill.
+		</li>
+		<li>
 			Feedback you send is published as a public issue on GitHub, without your name. Where this site
 			enables it, Anthropic's Claude (USA) sorts it first.
 		</li>
@@ -136,6 +142,41 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	The descriptions of experiences and projects can show images hosted on other sites, chosen by the
 	portfolio's owner. Visitors' browsers load them from those sites, which then receive the visitor's
 	IP address and browser details, under their own rules. We do not choose or control these images.
+</p>
+
+<h4 id="data-skills">Skill names and the shared catalogue</h4>
+<p>
+	The skills you add to a project are public, like the rest of your portfolio. Their
+	<strong>names</strong> are also kept in a catalogue shared by the whole site: one entry per name typed,
+	without your account, your portfolio or your experiences. It is what lets a page group skills, count
+	the time spent on each, and suggest skills while someone types one.
+</p>
+<p>
+	Where this site enables it, the names that are not sorted yet are sent to Anthropic's Claude model
+	(USA), in the background, not while you type: the names and nothing else, with names the catalogue
+	already has, never an account, a portfolio or an experience. Claude says whether a name is a
+	skill, and gives it a category, the skill it is part of (".NET Core" is part of ".NET") and the
+	skill it is another spelling of ("K8s" for "Kubernetes"). A name that cannot be a skill, such as a
+	link, an email address, a phone number or a whole sentence, is never sent. On your portfolio, your
+	skills are then grouped by category, a skill counts the time of the skills that are part of it,
+	and another spelling is shown under the skill's usual name. The capitals and spaces of a name can
+	be corrected ("c#" becomes "C#"), as can a letter typed in a special form (a full-width or circled
+	letter becomes the plain one); beyond that, your experiences keep the name you typed, so a sorting
+	that is wrong can be undone: write to
+	<ContactEmail {publisher} {lang} /> to have one corrected.
+</p>
+<p>
+	Once a name is recognised as a skill, by Claude or by us, it can be suggested to other signed-in
+	people while they type a skill in their own portfolio, never saying who typed it. A name that is
+	not recognised is suggested to nobody: it stays, as typed, on the portfolios of those who typed
+	it. While you type a skill, the text typed so far is sent to our server to find suggestions. It is
+	not kept: it is neither stored in our database nor written to our servers' log. We only count
+	these searches, and the new skill names you add each day (beyond 200 a day they stay on your
+	portfolio as typed and are not sent to be sorted for the time being), with counters keyed by a
+	hash of your account identifier. Because a skill name can be suggested to others and stays in the
+	catalogue (see
+	<a class="link-text" href="#retention">how long we keep it</a>), do not type anything personal as
+	a skill.
 </p>
 
 <h4 id="data-resume">Résumé import (optional)</h4>
@@ -345,6 +386,17 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				</td>
 			</tr>
 			<tr>
+				<td>
+					Keep the skill catalogue: sort the names of the skills typed (where this site enables it,
+					with an AI model) and suggest the recognised ones to people who type a skill
+				</td>
+				<td>
+					Legitimate interest, art. 6(1)(f): showing skills consistently and making them quicker to
+					enter. Only names are used, never who typed them; you can object (see
+					<a class="link-text" href="#rights">your rights</a>)
+				</td>
+			</tr>
+			<tr>
 				<td>Keep a record of your acceptance of the terms and of your age confirmation</td>
 				<td>
 					Legitimate interest, art. 6(1)(f): being able to show which terms you accepted and that
@@ -389,6 +441,11 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 		account, a guest of the same invitation.
 	</li>
 	<li>
+		<strong>Other signed-in people</strong>: the name of a skill you typed, once it is recognised as
+		a skill, can be suggested to them while they type one, never saying who typed it (see
+		<a class="link-text" href="#data-skills">skill names</a>).
+	</li>
+	<li>
 		<strong>Our processors</strong>, which act on our instructions:
 		<ul>
 			<li>
@@ -407,8 +464,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				>);
 			</li>
 			<li>
-				Anthropic PBC (USA): reading the résumé and job description PDFs you import, and sorting the
-				feedback you send, where this site enables it. Under Anthropic's <a
+				Anthropic PBC (USA): reading the résumé and job description PDFs you import and, where this
+				site enables it, sorting the feedback you send and the skill names of the catalogue (the
+				names alone). Under Anthropic's <a
 					class="link-text"
 					href={LINKS.anthropicCommercialTerms}
 					rel="noopener noreferrer">commercial terms</a
@@ -494,6 +552,15 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				<td>Until you delete them, or your account</td>
 			</tr>
 			<tr>
+				<td>Skill names in the shared catalogue</td>
+				<td>
+					Kept in the catalogue, where they are linked to no account, including after the experience
+					or the account that brought them is deleted: write to us to have one removed. The names
+					sorted by Claude are kept by Anthropic only for a limited period under its commercial
+					terms
+				</td>
+			</tr>
+			<tr>
 				<td>Travel times, and where the addresses of job descriptions are</td>
 				<td>
 					30 days for a travel time, 90 for the location of a job's address, under a keyed hash that
@@ -542,7 +609,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			<tr>
 				<td>Rate limit and quota counters (keyed hashes)</td>
 				<td>
-					Deleted automatically at the end of their window: one hour to 30 days. When you delete
+					Deleted automatically at the end of their window: one minute to 30 days. When you delete
 					your account, the quotas you used (résumé and job description imports, step suggestions,
 					feedback, and the job description imports of your recruiter plan) are carried over to
 					counters keyed by a hash of your Google account identifier, kept until the end of their
@@ -587,12 +654,12 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 		>Google account permissions</a
 	>), and your portfolio address becomes available to others. What stays: skill names in the shared
-	catalogue (they are not linked to anyone), step suggestions and feedback already published on
-	GitHub (write to us to have one removed), the meeting slots you reserved as a guest of other
-	portfolios (until the slot ends, no longer tied to your account), the abuse and quota counters
-	(keyed hashes, deleted at the end of their window, at most 30 days; the quotas you used are
-	carried over to a hash of your Google account identifier, as described above), and logs until they
-	expire.
+	catalogue (they are not linked to anyone; write to us to have one removed), step suggestions and
+	feedback already published on GitHub (write to us to have one removed), the meeting slots you
+	reserved as a guest of other portfolios (until the slot ends, no longer tied to your account), the
+	abuse and quota counters (keyed hashes, deleted at the end of their window, at most 30 days; the
+	quotas you used are carried over to a hash of your Google account identifier, as described above),
+	and logs until they expire.
 </p>
 
 <h3 id="rights">Your rights</h3>
@@ -607,8 +674,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	<li>
 		<strong>erase</strong> it: delete your account yourself from
 		<a class="link-text" href={resolve('/(site)/account')}>your account page</a>, or ask us; the
-		step suggestions and feedback published on GitHub are not removed with your account, so ask us
-		for those;
+		step suggestions and feedback published on GitHub, and the skill names kept in the shared
+		catalogue, are not removed with your account, so ask us for those;
 	</li>
 	<li><strong>restrict</strong> its processing;</li>
 	<li>
@@ -653,6 +720,14 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	Where this site enables it, Claude also sorts the feedback you send as a bug, a feature request or
 	a task, and writes its title and summary. They are published in the issue with your text, where
 	you can see them, and they only decide how the maintainers file it: nothing about you.
+</p>
+<p>
+	Where this site enables it, Claude also sorts the names of the skills people type: whether a name
+	is a skill, its category, the skill it is part of and its other spellings. It works on names
+	alone, in the background, and it can be wrong. Its sorting changes how skills are grouped and
+	named on portfolios, yours included, and which names are suggested to people who type a skill. It
+	is not used to assess, rank or filter anyone, and no decision about you rests on it. Write to us
+	to have a sorting corrected.
 </p>
 <p>
 	A hiring journey can score the job description a recruiter picks against the owner's perfect job,

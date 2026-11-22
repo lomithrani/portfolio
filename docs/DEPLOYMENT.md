@@ -179,7 +179,7 @@ local development.
 | `GOOGLE_CLIENT_SECRET`         | for appointments | Client secret of that same OAuth client; sealed. Enables Google Calendar appointments (see [Google Calendar appointments](#google-calendar-appointments)) |
 | `AUTH_COOKIE_SAMESITE`         | no       | Leave unset (`strict`); see [Custom domains](#custom-domains-are-required-for-login)               |
 | `CLIENT_IP_HEADER`             | no       | Leave unset: on Railway it defaults to `X-Real-IP`. Set it only behind another proxy (see [Booking protection](#booking-protection)) |
-| `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé and job description imports (see [Résumé import](#résumé-import)) and sorts feedback (see [Feedback](#feedback)) |
+| `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé and job description imports (see [Résumé import](#résumé-import)), sorts feedback (see [Feedback](#feedback)) and, in the background, the skill catalogue (see [Skill catalogue](#skill-catalogue)) |
 | `GITHUB_ISSUES_TOKEN`          | for step suggestions and feedback | Fine-grained GitHub token with Issues write on one repository; sealed. Enables step suggestions and feedback (see [Step suggestions](#step-suggestions), [Feedback](#feedback)) |
 | `COMMUTE_TIMES`                | for the commute criterion | `true` turns travel times on (see [Travel times](#travel-times)); addresses then go to the Géoplateforme |
 | `COMMUTE_TRANSIT`              | for public transport | `here` or `transitous`: the service asked for public transport times (see [Travel times](#travel-times)) |
@@ -194,6 +194,8 @@ local development.
 | `RESUME_IMPORT_ATTEMPTS_PER_DAY` | no     | Import attempts per user per UTC day, failed ones included; leave unset (`10`); `0` turns résumé import off |
 | `JOB_IMPORT_DAILY_LIMIT`       | no       | Job description imports per UTC day for the whole site; leave unset (`30`); `0` turns job import off |
 | `JOB_IMPORT_ATTEMPTS_PER_DAY`  | no       | Job import attempts per recruiter per UTC day, failed ones included; leave unset (`10`); `0` turns job import off |
+| `SKILL_CLASSIFICATION_INTERVAL_MS` | no   | Period of the background job that has Claude sort the skill catalogue; leave unset (`600000`, 10 minutes); `0` turns the job off (see [Skill catalogue](#skill-catalogue)) |
+| `SKILL_CLASSIFICATION_DAILY_LIMIT` | no   | Calls to Claude that job makes per UTC day for the whole site, each sorting up to 40 skill names; leave unset (`100`); `0` turns the job off |
 | `API_DOCS`                     | no       | `true` to serve the OpenAPI docs (`/swagger`) in production; off by default there                  |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | no       | OTLP endpoint (e.g. Grafana Cloud); telemetry is fully off while it is unset                       |
 | `OTEL_EXPORTER_OTLP_HEADERS`   | no       | e.g. `Authorization=Basic <base64 of instanceId:token>`; sealed                                    |
@@ -342,6 +344,19 @@ and set `CLIENT_IP_HEADER=CF-Connecting-IP` on that API (see
 [Booking protection](#booking-protection)). A Cloudflare cookie (`__cf_bm` of Bot Fight Mode, the
 `cf_clearance` of a passed challenge) or Web Analytics goes in the cookies page and the privacy
 policy first.
+
+**Skill names.** The privacy policy says (`#data-skills`, and in `#summary`, `#legal-bases`,
+`#recipients`, `#retention` and `#ai`) that the names of the skills people type are kept in a
+catalogue shared by the site, that where the site enables it Anthropic's Claude sorts them in the
+background, receiving the names and nothing else, that a name recognised as a skill can then be
+suggested to other signed-in people, never with who typed it, and that the names stay when an
+account is deleted (the deletion dialog says it too). Before the release that brings the
+[skill catalogue](#skill-catalogue)'s job reaches production, where `ANTHROPIC_API_KEY` is set for
+the imports: check that this text is in the release (the web service and the API deploy from the
+same commit), decide whether `LEGAL_VERSION` is bumped for it (then tell the accounts first, as
+above), and set `SKILL_CLASSIFICATION_DAILY_LIMIT=0` on the production API meanwhile if the names
+must not leave before the notice. If the job ever sends more than names, or a name becomes visible
+to others before it is recognised, the policy changes first, in both languages.
 
 **Who pays.** The Terms say candidates never pay (article L5321-3 of the Labour Code forbids
 asking job seekers for anything in return for placement services) and that the service is free
@@ -679,6 +694,224 @@ never followed, and the token never appears in a response or a log line. Claude 
 12 s for both its requests, so the answer comes well before the 30 s Bun lets a connection stay
 silent (Elysia's `idleTimeout`; Bun does not apply it while it handles a request with a body, as
 this one has, see [Résumé import](#résumé-import), but the budget does not count on that).
+
+## Skill catalogue
+
+The skills people type on their experiences are kept in one catalogue for the whole site (the
+`skills` collection: one document per spelling typed, linked to no account). A background job of
+the API has **Claude** (the model of the imports, see [Résumé import](#résumé-import)) sort the names
+not sorted yet: whether a
+name is a skill at all, its category, the skill it is part of (".NET Core" is part of ".NET") and
+the skill it is another spelling of ("K8s" is "Kubernetes"). The experiences page then groups its
+filters by category, counts a family's time together and shows another spelling as its skill, and
+the experience editor suggests, to every signed-in owner who types a skill, the names
+**recognised** so far (`GET /skills/search`). The job uses the same `ANTHROPIC_API_KEY`, so it is
+**off while the key is unset**: skills then stay as typed, without categories or families, and the
+editor suggests only the skills set by hand (see [By hand](#by-hand-in-mongodb) and the seed
+below). The startup line `Running at ...` says
+`"skillClassification":"on (<model>, every 600 s and after a save, at most 100 calls of 40 skills per day)"`
+or why it is off (`off (no ANTHROPIC_API_KEY)`, `off (SKILL_CLASSIFICATION_INTERVAL_MS is 0)`,
+`off (SKILL_CLASSIFICATION_DAILY_LIMIT is 0)`).
+
+| Variable                           | Default  | What it does                                                                              |
+| ---------------------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`                | unset    | The key billed for the calls; the job is off without it                                   |
+| `SKILL_CLASSIFICATION_INTERVAL_MS` | `600000` | How often a sweep runs (10 minutes); `0` turns the job off, otherwise `1000` at least (an invalid value stops the deployment) |
+| `SKILL_CLASSIFICATION_DAILY_LIMIT` | `100`    | Calls to Claude per UTC day for the whole site, each sorting up to 40 names, counted when the call is made and never given back; `0` turns the job off |
+
+**What is sent.** Skill names and nothing else: the names to sort (40 a call at most) and up to
+500 names the catalogue already recognises, so that families and other spellings reuse them. Never
+an account, a portfolio, an experience or an identifier. A name that cannot be a skill (a link,
+an email address, a phone number, a site followed by a path, several lines, a text of more than 60
+characters or 8 words) is rejected by the API and never sent. Claude's answer is checked
+item by item before anything is stored, and what breaks a rule is dropped for that one skill
+(the skill it names as a family or a usual name must read like a skill name too).
+Nothing is sorted while someone types: a save stores the spelling typed and answers at once.
+
+**What one account can add.** An account adds at most 200 new names a UTC day to what the job is
+asked. A save is never refused for it: the names beyond are stored and shown to their owner as
+typed, held back (`classification.held`), and never sent. They are released, and sorted like any
+other, when a save within an account's allowance names them again (the same account another day,
+or anyone else who types the name), or by hand (below). So one account cannot fill the queue ahead
+of everyone else's skills, nor keep a name from being sorted by typing it first.
+
+**When it runs.** A sweep runs every `SKILL_CLASSIFICATION_INTERVAL_MS`, about 15 seconds after
+the API starts, and about 15 seconds after an experience is saved with a skill not sorted yet. A
+sweep takes a lease in MongoDB first (one sweep a minute for the whole site, so two instances of
+the API do not start a sweep in the same clock minute), makes at most 5 calls (200 names), the
+oldest skills first, and stops when nothing is left, when the day's calls are used up, or at a
+call that got no answer. The lease is the minute's, not the sweep's: with more than one API
+instance, a call still under way when the minute ends can overlap the other instance's next sweep,
+which asks the same names once more (one call paid twice, nothing written twice). A call asks 40
+names at most, fewer when the names are long (1,500 characters of names a call), 8 once the oldest
+name was in an answer that could not be used, one alone after two such answers, and half as many
+as the last call after one that passed its 30 s deadline (until a call is answered again).
+
+**First deploy.** Every skill already stored is unsorted, so the first sweeps work through the
+whole collection: 200 names about 15 seconds after the API starts, then 200 every 10 minutes
+(1,200 an hour, more when experiences are saved with unsorted skills meanwhile: each such save
+asks for a sweep too), up to the daily limit: at the defaults, 100 calls, so 4,000 names per UTC
+day, the rest the day after. The names Claude gives as the skill others are part of, or as the usual
+name of a spelling, are added to the catalogue when it lacks them and sorted in turn, so a little
+more than the stored names is asked. Until a skill is sorted, the pages show it as typed: nothing
+is missing meanwhile, the filters' panel just lists technical then soft skills until one of the
+page's skills has a category. No migration is needed: the fields are added as skills are sorted,
+and Mongoose builds the collection's new indexes at startup (among them the two the skill search
+reads the recognised skills with, `status_displayName_ci` and `status_names_ci`). Count what is
+left with:
+
+```bash
+mongosh "<MONGO_URL>" --quiet --eval '
+  db.skills.aggregate([{ $group: { _id: { $ifNull: ["$classification.status", "pending"] }, skills: { $sum: 1 } } }]).forEach(printjson);
+  printjson({ skippedAfter3Tries: db.skills.countDocuments({ "classification.status": "pending", "classification.attempts": { $gte: 3 } }) });
+  printjson({ heldBack: db.skills.countDocuments({ "classification.held": true }) });   // beyond an account's 200 new names a day
+  db.ratelimitcounters.find({ _id: /^skill-classification:calls:/ }).forEach(printjson)   // the calls of the day
+'
+```
+
+**Cost.** One call sends the instructions, up to 500 known names and 40 names to sort (about
+1,500 to 3,500 input tokens) and gets a few fields per name back (about 1,500 to 2,500 output
+tokens, 6,000 at most): about **$0.001 a call**, at most about $0.0035 (at the imports' rates: $0.10
+per million input tokens and $0.50 per million output tokens). These are estimates from the size of
+the request, not measured on the real API; each sweep that called Claude logs the real figures,
+`Skill classification sweep {"calls":…,"asked":…,"classified":…,"rejected":…,"failed":…,"budgetReached":…,"inputTokens":…,"outputTokens":…,"estimatedCostUsd":…}`,
+with counts only, never a skill name. At the defaults the site spends at most 100 calls a day,
+about $0.10 (at most about $0.35), on top of the imports, and the workspace's spend limit is the
+hard stop: once it is reached the calls are refused, which is logged at `error`
+(`Skill classification: the Claude API refused the request, the skills stay to classify`, with the
+API's message, the key masked) and counts no try against the skills.
+
+**Failures.** A call that got no answer (a timeout after 30 s, a lost connection, `429`, `5xx`,
+`529`, a refused key or request) leaves the names to sort again at the next sweep and counts
+nothing against them, so an outage never loses skills; it still uses one of the day's calls. A
+name Claude answered about without settling it (no usable answer for it, a refusal, an answer cut
+short) gets one more try, and after **3 tries** it is skipped until someone resets it (below).
+A whole answer that cannot be used counts a try for each of its names, which are then asked again
+8 at a time, then one by one: only the name at fault reaches 3 tries, and the sweep goes on with
+the smaller batches rather than stop.
+
+**Turning it off.** Set `SKILL_CLASSIFICATION_DAILY_LIMIT=0` (or `SKILL_CLASSIFICATION_INTERVAL_MS=0`)
+on the API service and deploy: no name is sent to Anthropic any more. What was sorted before stays
+(the pages keep their categories and families, the editor keeps suggesting the recognised names);
+new names stay as typed. Do this on production **before** deploying the release that brings the
+job if the privacy policy that describes it is not live yet or accounts are still to be told (see
+[Legal pages](#legal-pages)): the key is already set there for the imports, so the job would
+otherwise start with the deploy.
+
+### The seeded skills
+
+`bun run db:seed` now also writes a curated part of the catalogue (`server/tests/seedSkills.ts`:
+some 60 skills with their categories, a few families such as ".NET Core" and ".NET Framework"
+under ".NET", and a dozen other spellings such as "K8s" for "Kubernetes"), all marked as set by
+hand (`manual`), which the job never touches. It needs no key. It is idempotent, and on a
+database that already holds those names it takes them over: an existing "typescript" is spelled
+"TypeScript", gets its category, and a stored "K8s" becomes another spelling of "Kubernetes", so
+the portfolios that typed it show Kubernetes (the experiences themselves are not changed). Where
+the collection holds two documents for one name in different cases (possible for names created
+before lookups ignored case: "typescript" and "TypeScript"), the one spelled as the list spells it
+is the skill and the other becomes another spelling of it, so the name is shown and suggested once,
+as the list spells it. Run it
+on production when you want that list set by hand (it is safe before or after the job has run: a
+manual entry wins); it still creates the owner's user and the `louis.gentil` domain only when
+they are missing (see [MongoDB](#mongodb)). `seed:e2e` applies the same list.
+
+### By hand, in MongoDB
+
+Everything the catalogue knows of a skill is on its document in `skills`, and no experience is
+ever rewritten, so a correction is one update and shows at once on every portfolio. A skill marked
+`manual` is never modified by the job. Names are matched here by their exact `displayName` (find
+it first: `db.skills.find({ displayName: /kube/i }, { displayName: 1, category: 1, parent: 1, aliasOf: 1, classification: 1 })`).
+Keep the catalogue's rules when you write: families have **one level** (a skill that has a
+`parent` is never the parent of another), another spelling points at a skill that is not itself
+another spelling, and has neither `category` nor `parent` of its own. The categories are
+`language`, `framework`, `infrastructure`, `data`, `security`, `practice`, `tool`, `soft` and
+`other`.
+
+```js
+const manual = { status: 'manual', at: new Date(), attempts: 0 };
+
+// A category set by hand
+db.skills.updateOne({ displayName: 'Kafka' }, { $set: { category: 'data', classification: manual } });
+
+// A skill that is part of another (".NET Core" is part of ".NET"): the parent must have no parent
+// itself, and be recognised (classified or manual), or the family is not shown
+const dotnet = db.skills.findOne({ displayName: '.NET' });
+db.skills.updateOne(
+  { displayName: '.NET Core' },
+  { $set: { parent: dotnet._id, category: 'framework', classification: manual }, $unset: { aliasOf: 1 } }
+);
+
+// Not part of anything after all
+db.skills.updateOne({ displayName: 'C#' }, { $unset: { parent: 1 }, $set: { classification: manual } });
+
+// Another spelling of a skill ("K8s" is "Kubernetes"): the skill itself must be recognised
+// (classified or manual), or the spelling keeps being shown as typed
+const kubernetes = db.skills.findOne({ displayName: 'Kubernetes' });
+db.skills.updateOne(
+  { displayName: 'K8s' },
+  { $set: { aliasOf: kubernetes._id, classification: manual }, $unset: { parent: 1, category: 1 } }
+);
+
+// A wrong "other spelling" undone: every experience that typed it shows it as typed again
+db.skills.updateOne({ displayName: 'Go' }, { $unset: { aliasOf: 1 }, $set: { category: 'language', classification: manual } });
+
+// Not a skill: kept for those who typed it, shown to them as typed, suggested to nobody,
+// and nothing may point at it
+const bad = db.skills.findOne({ displayName: 'asdf' });
+db.skills.updateOne(
+  { _id: bad._id },
+  { $set: { classification: { status: 'rejected', at: new Date(), attempts: 0 } }, $unset: { parent: 1, aliasOf: 1, category: 1 } }
+);
+db.skills.updateMany({ parent: bad._id }, { $unset: { parent: 1 } });
+db.skills.updateMany({ aliasOf: bad._id }, { $unset: { aliasOf: 1 } });
+```
+
+To have the job sort a skill again (a wrong answer, or one it gave up on), send it back to
+pending without what was written on it; the next sweep asks it again:
+
+```js
+// One skill
+db.skills.updateOne(
+  { displayName: 'Terraform' },
+  { $set: { classification: { status: 'pending', at: new Date(), attempts: 0 } }, $unset: { category: 1, parent: 1, aliasOf: 1 } }
+);
+
+// Every skill skipped after 3 tries
+db.skills.updateMany(
+  { 'classification.status': 'pending', 'classification.attempts': { $gte: 3 } },
+  { $set: { 'classification.attempts': 0 } }
+);
+
+// Every name held back beyond an account's 200 new names a day (look at them first: they are
+// held back because one account added many at once)
+db.skills.find({ 'classification.held': true }, { displayName: 1 }).limit(50);
+db.skills.updateMany({ 'classification.held': true }, { $unset: { classification: 1 } });
+
+// Everything the job ever wrote (the skills set by hand stay): the catalogue as typed again.
+// Turn the job off first, or it starts over
+db.skills.updateMany(
+  { 'classification.status': { $in: ['classified', 'rejected'] } },
+  { $unset: { category: 1, parent: 1, aliasOf: 1, classification: 1 } }
+);
+```
+
+A spelling the job corrected (`c#` to `C#`) keeps its corrected `displayName` through these
+updates: set it back by hand if needed (`displayName` is unique). The skills the job added as a
+parent or a usual name that nobody typed stay in the collection, pending: no portfolio shows them
+and nobody is suggested them until they are recognised.
+
+**Removing a name.** A skill name stays in the catalogue when the experience, or the account,
+that brought it is deleted (the privacy policy says so, `#retention`). To remove one on request
+(someone typed something personal as a skill), check what still uses it, then delete it; an
+experience that still references it simply no longer shows that tag:
+
+```js
+const skill = db.skills.findOne({ displayName: '<the name>' });
+db.experiences.countDocuments({ $or: [{ 'projects.hardSkills.skill': skill._id }, { 'projects.softSkills.skill': skill._id }] });
+db.skills.updateMany({ parent: skill._id }, { $unset: { parent: 1 } });
+db.skills.updateMany({ aliasOf: skill._id }, { $unset: { aliasOf: 1 } });
+db.skills.deleteOne({ _id: skill._id });
+```
 
 ## Matching
 
@@ -1081,7 +1314,9 @@ the deploy.
   credentials change.
 - Seed a fresh database once with the owner's user and the `louis.gentil` domain (the example the
   landing page links to); the script is idempotent and never prints the connection string's
-  password:
+  password. It also writes the curated skills of the catalogue, set by hand (see
+  [The seeded skills](#the-seeded-skills) for what that does to a database that already has
+  skills):
 
   ```bash
   MONGO_URL="<production MONGO_URL>" bun run db:seed
@@ -1346,7 +1581,8 @@ that search engines are asked not to list a portfolio, never that it cannot be f
 1. **Build logs** (deployment, **Build Logs**, or `railway logs --build --service <service>`):
    Railpack's plan lists `bun │ 1.4.4 │ package.json > packageManager`, the install step runs
    `bun install --frozen-lockfile`, and the web build prints `Using @sveltejs/adapter-bun`.
-2. **Deploy logs** (`railway logs --service <service>`): the API logs `Running at http://[::]:<PORT>`;
+2. **Deploy logs** (`railway logs --service <service>`): the API logs `Running at http://[::]:<PORT>`
+   (with what is on or off: `"resumeImport"`, `"feedback"`, `"skillClassification"`, `"matching"`...);
    the web logs `Listening on http://localhost:<PORT>/` (Bun prints `localhost` for the
    `0.0.0.0` wildcard). The deployment turns **Active** only after its healthcheck passed.
 3. **Endpoints**:
@@ -1363,6 +1599,7 @@ that search engines are asked not to list a portfolio, never that it cannot be f
    curl -s -o /dev/null -D - https://example.com/louis.gentil/experiences | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
    curl -s -o /dev/null -D - https://api.example.com/health | grep -i '^x-robots-tag'                 # the same
    curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs   # 410: the job board is gone
+   curl -s -o /dev/null -w '%{http_code}\n' 'https://api.example.com/skills/search?q=type'   # 401: the skill search is for signed-in accounts
    curl -s https://example.com/legal | grep -c 'cdn-cgi\|__cf_email__'   # 0: the proxy changed nothing
    ```
 
