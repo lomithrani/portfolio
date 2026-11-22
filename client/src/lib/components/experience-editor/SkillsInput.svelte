@@ -231,7 +231,9 @@ without a word: the field only ever suggests, any name can be typed.
 		<SkillSuggestions id={listId} {options} {open} {active} onpick={pick} />
 	</div>
 	<p class="sr-only" role="status">{open ? m.skills.count(options.length) : ''}</p>
-	<p id={hintId} class="text-xs text-surface-700-300">
+	<!-- Out of sight under an open list (its place kept: nothing moves), whose rounded corner would
+	     otherwise show the top of its first letter; it still describes the field -->
+	<p id={hintId} class={['text-xs text-surface-700-300', open && 'invisible']}>
 		{m.skills.hint}
 	</p>
 	<FieldError {field} />
