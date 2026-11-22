@@ -50,6 +50,17 @@
 // 'e2e.reviewer@example.com' (fixed id 65e2e0000000000000000005, no portfolio, no recruiter space)
 // reviews the jobs put into matching for client/tests/matching-review.test.ts, on an API whose
 // MATCHING_REVIEWERS lists it: that file decides on the jobs it tags alone.
+// The curated part of the skill catalogue (seedSkills.ts) is applied on every run, as `bun run seed`
+// applies it: the skills the tests type have their category, and the catalogue has families and
+// aliases ('.NET Core' is part of '.NET', 'K8s' is 'Kubernetes'), all set by hand ('manual'), so
+// nothing here waits for the classifier, which never runs in the tests.
+// 'e2e-skills' is the portfolio client/tests/skills.test.ts reads, and never changes (its editor
+// test saves nothing): its experiences are set back here on every run, as POST /experiences stores
+// them, after the catalogue (E2E_SKILLS_EXPERIENCES: more technical and soft skills than the
+// filters' panel shows folded, each with its own time, the seeded family of '.NET', 'K8s' typed
+// for Kubernetes, a project with more technical skills than its card shows, and skills the
+// catalogue does not know, which stay pending). E2E_FOREIGN_PENDING_SKILL is a name another
+// account typed, pending too: the search never suggests it to the owner of 'e2e-skills'.
 // This file loads nothing that imports server/env.ts (CI seeds with MONGO_URL and JWT_SECRET only):
 // the review version of the jobs in matching comes from server/services/jobVersion.ts, never from
 // jobMatching.ts.
@@ -73,6 +84,7 @@ import {
   Match,
   PerfectJob,
   RateLimitCounter,
+  Skill,
   User,
   Workflow,
   WorkflowInstance
@@ -81,6 +93,7 @@ import type { JobPosting as StoredJobPosting } from "../models/database/jobPosti
 import { reviewedVersion } from "../services/jobVersion";
 import { recordConsent } from "../services/legal";
 import { redactConnectionString } from "../services/redact";
+import { SEED_ALIAS, SEED_FAMILY, seedSkillCatalogue } from "./seedSkills";
 
 const mongoUrl = Bun.env.MONGO_URL;
 if (!mongoUrl) {
@@ -101,7 +114,8 @@ const owners = [
   { email: 'e2e.journey@example.com', name: 'Jay', surname: 'Journey', domain: 'e2e-journey' },
   { email: 'e2e.sharekit@example.com', name: 'Skye', surname: 'Sharer', domain: 'e2e-share-kit' },
   { email: 'e2e.preview@example.com', name: 'Pia', surname: 'Preview', domain: 'e2e-preview' },
-  { email: 'e2e.ready@example.com', name: 'Remy', surname: 'Ready', domain: 'e2e-ready' }
+  { email: 'e2e.ready@example.com', name: 'Remy', surname: 'Ready', domain: 'e2e-ready' },
+  { email: 'e2e.skills@example.com', name: 'Suki', surname: 'Skills', domain: 'e2e-skills' }
 ];
 
 // The heading of 'e2e-preview', which its link preview carries (og:title, og:description): text
@@ -410,6 +424,122 @@ await WorkflowInstance.deleteMany({ owner: { $in: matchCandidateIds } });
 // a day (MATCHING_DECISIONS of services/matches.ts, 'matching-decision:'): keyed by a hash of the
 // account, they are cleared for every account of the e2e database
 await RateLimitCounter.deleteMany({ _id: /^(job-share|discovery-grant|matching-feed|matching-decision):/ });
+
+// The curated skills of the catalogue, with their categories, families and aliases
+await seedSkillCatalogue();
+
+// ── The skills of a portfolio (client/tests/skills.test.ts) ──────────────────
+
+/** A stored date: UTC midnight of the 1st of a 'YYYY-MM' month */
+const monthOf = (value: string) => new Date(`${value}-01T00:00:00.000Z`);
+const skillsNamed = (names: readonly string[]) => names.map((name) => ({ name, level: -1 }));
+const skillsProject = (
+  name: string,
+  [start, end]: [string, string],
+  hard: readonly string[],
+  soft: readonly string[]
+) => ({
+  name,
+  summary: '',
+  start: monthOf(start),
+  end: monthOf(end),
+  hardSkills: skillsNamed(hard),
+  softSkills: skillsNamed(soft)
+});
+
+/** Skills the curated catalogue does not have: they stay pending (no category), a technical one and two soft ones */
+const E2E_PENDING_SKILLS = ['Quorvex', 'Facilitation', 'Public speaking'] as const;
+/** A name another account typed, pending too, which no experience of 'e2e-skills' uses */
+const E2E_FOREIGN_PENDING_SKILL = 'Zentrafuge';
+
+const [netCore, netFramework] = SEED_FAMILY.children;
+
+// Fictional, and all in the past: the time on each skill never changes with the day the tests run.
+// The months each skill adds up to (each calendar month once, both ends included) are all
+// different among the skills the panel shows folded; client/tests/skills.test.ts holds the same
+// figures (SKILLS there). Projects: Billing 36 months, Observability 24, Invoicing 18, Pipelines
+// 42, and the CLI toolkit's 8, which ran during Billing.
+const E2E_SKILLS_EXPERIENCES = [
+  {
+    type: ExperienceType.Professional,
+    title: 'Lead Platform Engineer',
+    summary: 'Seeded for the end-to-end tests of the skills.',
+    company: { name: 'Brightloop' },
+    start: monthOf('2019-01'),
+    end: monthOf('2023-12'),
+    projects: [
+      skillsProject(
+        'Billing platform',
+        ['2019-01', '2021-12'],
+        // Typed as another spelling of a skill: stored as typed, shown as the skill it stands for
+        ['Git', 'Docker', 'SQL', netCore, 'C#', SEED_ALIAS.alias],
+        ['Communication', 'Leadership', 'Mentoring']
+      ),
+      // More technical skills than a card shows before its "+N"
+      skillsProject(
+        'Observability rollout',
+        ['2022-01', '2023-12'],
+        ['Git', 'Docker', netCore, 'Kafka', 'TypeScript', 'Quorvex', 'Grafana', 'Prometheus', 'Terraform', 'Redis'],
+        ['Communication', 'Leadership', 'Facilitation']
+      )
+    ]
+  },
+  {
+    type: ExperienceType.Professional,
+    title: 'Software Engineer',
+    summary: 'Seeded for the end-to-end tests of the skills.',
+    company: { name: 'Tidewater Labs' },
+    start: monthOf('2014-01'),
+    end: monthOf('2018-12'),
+    projects: [
+      skillsProject(
+        'Legacy invoicing',
+        ['2014-01', '2015-06'],
+        ['Git', 'SQL', netFramework, 'C#', 'Python'],
+        ['Leadership', 'Teamwork']
+      ),
+      skillsProject(
+        'Data pipelines',
+        ['2015-07', '2018-12'],
+        ['Git', 'Docker', 'SQL', 'Kafka', 'PostgreSQL'],
+        ['Communication', 'Teamwork', 'Problem solving']
+      )
+    ]
+  },
+  {
+    type: ExperienceType.Personal,
+    title: 'Open-source maintainer',
+    summary: 'Seeded for the end-to-end tests of the skills.',
+    start: monthOf('2020-03'),
+    end: monthOf('2020-10'),
+    projects: [skillsProject('CLI toolkit', ['2020-03', '2020-10'], ['Go', 'Quorvex'], ['Public speaking'])]
+  }
+];
+
+// Its experiences are replaced on every run: whatever the database held (an earlier version of
+// this list), the portfolio is this one. Saved as POST /experiences saves them
+// (Experience.fromRequest: each skill found or created under the spelling typed)
+const skillsDomain = await Domain.findOne({ name: 'e2e-skills' }).lean<{
+  _id: Types.ObjectId;
+  experiences: Types.ObjectId[];
+}>();
+if (!skillsDomain) throw new Error("The 'e2e-skills' portfolio was not seeded");
+await Experience.deleteMany({ _id: { $in: skillsDomain.experiences } });
+const skillsExperiences = [];
+for (const request of E2E_SKILLS_EXPERIENCES) {
+  const experience = await Experience.fromRequest(request);
+  await experience.save();
+  skillsExperiences.push(experience._id);
+}
+await Domain.updateOne({ _id: skillsDomain._id }, { $set: { experiences: skillsExperiences } });
+
+// What the catalogue does not know stays as a save leaves it, pending, whatever a classifier run
+// against this database made of it since: no category, no family, no other spelling
+await Skill.findOrCreate(E2E_FOREIGN_PENDING_SKILL);
+await Skill.updateMany(
+  { displayName: { $in: [...E2E_PENDING_SKILLS, E2E_FOREIGN_PENDING_SKILL] } },
+  { $unset: { category: 1, parent: 1, aliasOf: 1, classification: 1 } }
+);
 
 console.log(
   `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate, ` +

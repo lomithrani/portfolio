@@ -1,9 +1,12 @@
 // Seeds the owner's user and the default 'louis.gentil' domain (the client's
-// root redirect target). Idempotent: safe to run against a seeded database.
+// root redirect target), and the curated part of the skill catalogue
+// (seedSkills.ts: categories, a few families and aliases, set by hand, so
+// they need no classifier). Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed
 import mongoose from "mongoose";
 import { Domain, User } from "../models/database";
 import { redactConnectionString } from "../services/redact";
+import { seedSkillCatalogue } from "./seedSkills";
 
 const mongoUrl = Bun.env.MONGO_URL;
 if (!mongoUrl) {
@@ -28,6 +31,8 @@ await Domain.findOneAndUpdate(
   { upsert: true }
 );
 
-console.log('Seeded');
+const catalogue = await seedSkillCatalogue();
+
+console.log(`Seeded (with ${catalogue.skills} skills of the catalogue and ${catalogue.aliases} aliases)`);
 await mongoose.disconnect();
 process.exit(0);

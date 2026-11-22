@@ -14,5 +14,13 @@ export const m = defineMessages({
 			const used = `Utilisée dans ${count} ${plural(count, 'projet', 'projets')}`;
 			return time ? `${used} (${time})` : used;
 		}
+	},
+	/**
+	 * Under the caption of a skill that others are part of ('.NET'): its projects and its time are
+	 * theirs too, by name
+	 */
+	countsFamily: {
+		en: (names: string[]) => `Counts the skills that are part of it: ${names.join(', ')}`,
+		fr: (names: string[]) => `Compte les compétences qui en font partie : ${names.join(', ')}`
 	}
 });

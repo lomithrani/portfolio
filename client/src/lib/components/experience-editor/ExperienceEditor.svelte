@@ -74,6 +74,18 @@ toasts, `invalidateAll()` and what happens to the list after a save or a delete.
 		else onClose();
 	}}
 	initialFocusEl={initialFocus}
+	onEscapeKeyDown={(event) => {
+		// A field's open list of suggestions (SkillsInput) takes Escape: the list closes, the
+		// dialog stays. The dialog hears the key first (on the document), while the list is open
+		const field = event.target;
+		if (
+			field instanceof HTMLElement &&
+			field.getAttribute('role') === 'combobox' &&
+			field.getAttribute('aria-expanded') === 'true'
+		) {
+			event.preventDefault();
+		}
+	}}
 >
 	<Portal>
 		<Dialog.Backdrop class="fixed inset-0 z-50 bg-surface-950/60" />

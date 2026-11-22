@@ -12,6 +12,7 @@ import {
 import { userLogged } from './userLogged';
 import { clientAddress } from '../services/clientAddress';
 import { domainAvailability, limitDomainAvailabilityRequestsFromIp } from '../services/domainAvailability';
+import { presentExperience } from '../services/experiencePresentation';
 import { requireCurrentTerms } from '../services/legal';
 import { isDuplicateKeyError } from '../services/mongoErrors';
 import { ALREADY_OWNS_DOMAIN, DOMAIN_NOT_FOUND } from '../protocol';
@@ -28,9 +29,12 @@ const domainPublic = new Elysia()
       path: 'experiences',
       populate: EXPERIENCE_POPULATE
     })
-    return populatedDomain.toObject<Omit<Domain, "experiences"> & {
+    const shown = populatedDomain.toObject<Omit<Domain, "experiences"> & {
       experiences: Experience[];
-    }>()
+    }>();
+    // Each skill as the catalogue knows it now: its canonical spelling, its
+    // category, the skill it is part of (services/experiencePresentation.ts)
+    return { ...shown, experiences: shown.experiences.map(presentExperience) };
   })
   // Whether a name can still be claimed, for the claim forms' live hint.
   // Advisory only (POST /domain/claim decides): one indexed lookup, nothing

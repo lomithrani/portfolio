@@ -1,7 +1,11 @@
 export { Experience, EXPERIENCE_POPULATE } from './experience'
 export type { Company } from './company'
 export { Project } from './project'
+export type { ProjectSkill } from './project'
 export { Skill } from './skill'
+export type { SkillDocument } from './skill'
+// A skill as the API presents it: what the client reads of a project's skill
+export type { PresentedSkill, PresentedSkillParent } from 'portfolio-common'
 export { Domain } from './domain'
 export { User } from './user'
 export { Workflow } from './workflow'

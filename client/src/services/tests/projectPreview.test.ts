@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { withLocale } from 'portfolio-common';
 import {
 	experiencePreview,
 	previewTarget,
@@ -317,5 +318,101 @@ describe('resolvePreview', () => {
 		]) {
 			expect(resolvePreview(all, target, NOW), target).toBeUndefined();
 		}
+	});
+});
+
+describe('a skill that others are part of', () => {
+	// As the API presents them: '.NET Core' and 'WPF' are part of '.NET'
+	const part = (name: string) => ({
+		skill: { _id: `skill-${name}`, displayName: name, parent: { _id: 'net', displayName: '.NET' } }
+	});
+	const career = [
+		{
+			_id: 'ccc',
+			title: 'Backend developer',
+			company: { name: 'Globex' },
+			start: utc('2018-01'),
+			end: utc('2021-12'),
+			projects: [
+				{
+					name: 'Billing',
+					start: utc('2018-01'),
+					end: utc('2019-06'),
+					hardSkills: [part('.NET Core'), ...skills(['C#'])],
+					softSkills: []
+				},
+				{
+					name: 'Desk',
+					start: utc('2019-01'),
+					end: utc('2019-12'),
+					hardSkills: [part('WPF')],
+					softSkills: []
+				},
+				{
+					name: 'Portal',
+					start: utc('2021-01'),
+					end: utc('2021-12'),
+					hardSkills: [...skills(['.NET', 'C#'])],
+					softSkills: []
+				}
+			]
+		}
+	];
+
+	it('previews the projects of its family, counts their months once, and says so', () => {
+		expect(skillPreview(career, '.net', NOW)).toEqual({
+			kind: 'skill',
+			title: '.NET',
+			// Jan 2018 to Dec 2019 (two projects overlap), then 2021
+			caption: 'Used in 3 projects (3 years)',
+			period: '',
+			entries: [
+				{ name: 'Billing', context: 'Backend developer · Globex', period: 'Jan 2018 – Jun 2019' },
+				{ name: 'Desk', context: 'Backend developer · Globex', period: 'Jan 2019 – Dec 2019' },
+				{ name: 'Portal', context: 'Backend developer · Globex', period: 'Jan 2021 – Dec 2021' }
+			],
+			skills: { hard: [], soft: [] },
+			// The most used first
+			family: 'Counts the skills that are part of it: .NET Core, WPF'
+		});
+		expect(skillMonths(career, '.net', NOW)).toBe(36);
+		expect(resolvePreview(career, 'skill:.net', NOW)?.entries).toHaveLength(3);
+	});
+
+	it('previews a skill that is part of another alone', () => {
+		const preview = skillPreview(career, 'wpf', NOW);
+		expect(preview).toMatchObject({
+			title: 'WPF',
+			caption: 'Used in 1 project (1 year)',
+			entries: [{ name: 'Desk' }]
+		});
+		expect(preview).not.toHaveProperty('family');
+		expect(skillMonths(career, '.net core', NOW)).toBe(18);
+	});
+
+	it('previews a skill only named by the skills that are part of it', () => {
+		const [experience] = career;
+		const without = [{ ...experience, projects: experience.projects.slice(0, 2) }];
+		expect(skillPreview(without, '.net', NOW)).toMatchObject({
+			title: '.NET',
+			caption: 'Used in 2 projects (2 years)',
+			entries: [{ name: 'Billing' }, { name: 'Desk' }]
+		});
+	});
+
+	it('draws the projects of its family on its small timeline', () => {
+		expect(skillTimeline(career, '.net', NOW)?.bars.map((bar) => bar.name)).toEqual([
+			'Billing',
+			'Desk',
+			'Portal'
+		]);
+		expect(skillTimeline(career, 'wpf', NOW)?.bars.map((bar) => bar.name)).toEqual(['Desk']);
+	});
+
+	it("says it in the page's language", () => {
+		expect(withLocale('fr', () => skillPreview(career, '.net', NOW)?.family)).toBe(
+			// defineMessages keeps the space before the colon unbreakable
+			'Compte les compétences qui en font partie\u00a0: .NET Core, WPF'
+		);
 	});
 });

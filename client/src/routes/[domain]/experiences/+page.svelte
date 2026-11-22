@@ -29,6 +29,7 @@
 		experienceUsesSkill,
 		filtersFromSearchParams,
 		isSkillHighlighted,
+		skillIndex,
 		type ExperienceFilters
 	} from '#services/filters.ts';
 	import { sortExperiences } from '#services/experienceDates.ts';
@@ -94,10 +95,19 @@
 
 	// `data` is replaced (not mutated) by invalidateAll(), which keeps these derivations fresh
 	let allExperiences: ExperienceModel[] = $derived(sortExperiences(data.domain.experiences ?? []));
-	let experiences: ExperienceModel[] = $derived(applyFilters(allExperiences, filters));
+	// The skills of the page, ranked by time used, with their families (a skill can be part of
+	// another: '.NET Core' of '.NET'). Read once here: the filters' panel, the cards' tags, the
+	// timeline and the previews all go by it. Filtering by a skill matches the projects using a
+	// skill that is part of it too
+	let skills = $derived(skillIndex(allExperiences));
+	let experiences: ExperienceModel[] = $derived(
+		applyFilters(allExperiences, filters, skills.taxonomy)
+	);
 	// Without the selections no experience has any more (see activeFilters)
-	let active = $derived(activeFilters(allExperiences, filters));
-	let highlightSkill = $derived((displayName: string) => isSkillHighlighted(active, displayName));
+	let active = $derived(activeFilters(allExperiences, filters, skills.taxonomy));
+	let highlightSkill = $derived((displayName: string) =>
+		isSkillHighlighted(active, displayName, skills.taxonomy)
+	);
 	let knownSkills = $derived(collectKnownSkills(allExperiences));
 
 	// Key of the skill whose tag is hovered or focused (ProjectPreview): its projects are outlined,
@@ -107,7 +117,10 @@
 	// name every skill, those of the experiences the current filters hide too
 	let previewListed = $derived.by(() => {
 		const key = previewSkill;
-		return key !== null && experiences.some((experience) => experienceUsesSkill(experience, key));
+		return (
+			key !== null &&
+			experiences.some((experience) => experienceUsesSkill(experience, key, skills.taxonomy))
+		);
 	});
 
 	// --- Timeline view ------------------------------------------------------------------------
@@ -577,7 +590,12 @@
 				</div>
 			{/if}
 
-			<Filters experiences={allExperiences} bind:filters resultCount={experiences.length} />
+			<Filters
+				experiences={allExperiences}
+				{skills}
+				bind:filters
+				resultCount={experiences.length}
+			/>
 
 			{#if view === 'list'}
 				{#each experiences as experience (String(experience._id))}
@@ -588,9 +606,10 @@
 						{highlightSkill}
 						highlighted={highlightedId === String(experience._id)}
 						{previewSkill}
+						{skills}
 						muted={previewListed &&
 							previewSkill !== null &&
-							!experienceUsesSkill(experience, previewSkill)}
+							!experienceUsesSkill(experience, previewSkill, skills.taxonomy)}
 					/>
 				{:else}
 					<div class="card preset-outlined-surface-200-800 space-y-3 p-6 text-center">
@@ -616,6 +635,7 @@
 			<Timeline
 				experiences={allExperiences}
 				filters={active}
+				taxonomy={skills.taxonomy}
 				{previewSkill}
 				{selectedId}
 				onSelect={selectOnTimeline}
@@ -632,6 +652,7 @@
 						highlighted={highlightedId === selectedId}
 						{revealedProject}
 						{previewSkill}
+						{skills}
 					/>
 				{/key}
 			{/if}
@@ -641,7 +662,12 @@
 
 <!-- The projects behind a skill tag (or a bar of the timeline) while it is hovered or focused -->
 {#if allExperiences.length > 0}
-	<ProjectPreview experiences={allExperiences} {view} onSkill={(key) => (previewSkill = key)} />
+	<ProjectPreview
+		experiences={allExperiences}
+		taxonomy={skills.taxonomy}
+		{view}
+		onSkill={(key) => (previewSkill = key)}
+	/>
 {/if}
 
 {#snippet importButton(classes: string)}

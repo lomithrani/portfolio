@@ -46,6 +46,14 @@ export const m = defineMessages({
 			en: 'Your portfolio and everything you publish on it, which anyone with its address can read (search engines are asked not to list it), and your hiring journey.',
 			fr: 'Votre portfolio et tout ce que vous y publiez, que toute personne qui a son adresse peut lire (nous demandons aux moteurs de recherche de ne pas le référencer), ainsi que votre parcours de recrutement.'
 		},
+		/**
+		 * The Skill collection (server/models/database/skill.ts): names only, linked to no account,
+		 * which server/services/accountDeletion.ts leaves (privacy policy, #data-skills, #retention)
+		 */
+		skills: {
+			en: 'The names of the skills you type, in a catalogue shared by the whole site, without your account: they stay there if you delete it.',
+			fr: 'Les noms des compétences que vous saisissez, dans un catalogue partagé par tout le site, sans votre compte : ils y restent si vous le supprimez.'
+		},
 		jobs: {
 			en: 'Your job descriptions and your meeting types.',
 			fr: "Vos offres d'emploi et vos types de rendez-vous."

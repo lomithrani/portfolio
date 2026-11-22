@@ -76,6 +76,13 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			pas vous-même.
 		</li>
 		<li>
+			Les noms des compétences que vous saisissez sont conservés dans un catalogue partagé par tout
+			le site, sans indication de qui les a saisis. Lorsque ce site l'active, Claude d'Anthropic
+			(États-Unis) classe ces noms, et rien d'autre, en arrière-plan ; un nom reconnu comme une
+			compétence peut ensuite être suggéré aux autres personnes connectées qui saisissent une
+			compétence.
+		</li>
+		<li>
 			Les avis que vous nous donnez sont publiés sous forme de ticket public sur GitHub, sans votre
 			nom. Lorsque ce site l'active, Claude d'Anthropic (États-Unis) les trie d'abord.
 		</li>
@@ -138,6 +145,45 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	sites, choisies par le propriétaire du portfolio. Le navigateur des visiteurs les charge depuis
 	ces sites, qui reçoivent alors l'adresse IP du visiteur et des informations sur son navigateur,
 	selon leurs propres règles. Nous ne choisissons ni ne contrôlons ces images.
+</p>
+
+<h4 id="data-skills">Noms de compétences et catalogue partagé</h4>
+<p>
+	Les compétences que vous ajoutez à un projet sont publiques, comme le reste de votre portfolio.
+	Leurs <strong>noms</strong> sont aussi conservés dans un catalogue partagé par tout le site : une entrée
+	par nom saisi, sans votre compte, votre portfolio ni vos expériences. C'est ce qui permet à une page
+	de regrouper les compétences, de compter le temps passé sur chacune, et d'en suggérer pendant la saisie.
+</p>
+<p>
+	Lorsque ce site l'active, les noms qui ne sont pas encore classés sont envoyés au modèle Claude
+	d'Anthropic (États-Unis), en arrière-plan et non pendant votre saisie : les noms et rien d'autre,
+	accompagnés de noms que le catalogue contient déjà, jamais un compte, un portfolio ni une
+	expérience. Claude indique si un nom désigne bien une compétence et, dans ce cas, sa catégorie, la
+	compétence dont elle fait partie (« .NET Core » fait partie de « .NET ») et celle dont ce nom est
+	un autre nom (« K8s » pour « Kubernetes »). Un nom qui ne peut pas être une compétence, comme un
+	lien, une adresse e-mail, un numéro de téléphone ou une phrase entière, n'est jamais envoyé. Sur
+	votre portfolio, vos compétences sont alors regroupées par catégorie, une compétence compte le
+	temps de celles qui en font partie, et un autre nom s'affiche sous le nom habituel de la
+	compétence. Les majuscules et les espaces d'un nom peuvent être corrigés (« c# » devient « C# »),
+	de même qu'une lettre saisie sous une forme particulière (pleine chasse, cerclée), remplacée par
+	la lettre ordinaire ; pour le reste, vos expériences gardent le nom que vous avez saisi, si bien
+	qu'un classement erroné peut être annulé : écrivez à
+	<ContactEmail {publisher} {lang} /> pour en faire corriger un.
+</p>
+<p>
+	Une fois reconnu comme une compétence, par Claude ou par nous, un nom peut être suggéré aux autres
+	personnes connectées pendant qu'elles saisissent une compétence dans leur propre portfolio, sans
+	jamais dire qui l'a saisi. Un nom qui n'est pas reconnu n'est suggéré à personne : il reste, tel
+	que saisi, sur le portfolio de ceux qui l'ont saisi. Pendant que vous saisissez une compétence, le
+	texte déjà tapé est envoyé à notre serveur pour trouver des suggestions. Il n'est pas conservé :
+	il n'est ni enregistré dans notre base de données ni écrit dans le journal de nos serveurs. Nous
+	comptons seulement ces recherches, ainsi que les nouveaux noms de compétences que vous ajoutez
+	chaque jour (au-delà de 200 par jour, ils restent sur votre portfolio tels que saisis et ne sont
+	pas envoyés au classement dans l'immédiat), avec des compteurs identifiés par une empreinte de
+	l'identifiant de votre compte. Comme un nom de compétence peut être suggéré à d'autres et reste
+	dans le catalogue (voir
+	<a class="link-text" href="#retention">durées de conservation</a>), ne saisissez rien de personnel
+	comme compétence.
 </p>
 
 <h4 id="data-resume">Import de CV (facultatif)</h4>
@@ -362,6 +408,18 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				</td>
 			</tr>
 			<tr>
+				<td>
+					Tenir le catalogue de compétences : classer les noms des compétences saisies (lorsque ce
+					site l'active, par un modèle d'IA) et suggérer ceux qui sont reconnus aux personnes qui
+					saisissent une compétence
+				</td>
+				<td>
+					Intérêt légitime, art. 6(1)(f) : présenter les compétences de façon cohérente et en
+					faciliter la saisie. Seuls les noms sont utilisés, jamais l'identité de qui les a saisis ;
+					vous pouvez vous y opposer (voir <a class="link-text" href="#rights">vos droits</a>)
+				</td>
+			</tr>
+			<tr>
 				<td
 					>Conserver une trace de votre acceptation des conditions et de votre confirmation d'âge</td
 				>
@@ -417,6 +475,12 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 		du portfolio, invité au même rendez-vous.
 	</li>
 	<li>
+		<strong>Les autres personnes connectées</strong> : le nom d'une compétence que vous avez saisie,
+		une fois reconnu comme une compétence, peut leur être suggéré pendant qu'elles en saisissent
+		une, sans jamais dire qui l'a saisi (voir
+		<a class="link-text" href="#data-skills">noms de compétences</a>).
+	</li>
+	<li>
 		<strong>Nos sous-traitants</strong>, qui agissent sur nos instructions :
 		<ul>
 			<li>
@@ -436,8 +500,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				>) ;
 			</li>
 			<li>
-				Anthropic PBC (États-Unis) : lecture des PDF de CV et d'offres d'emploi que vous importez,
-				et tri des avis que vous envoyez, lorsque ce site l'active. Selon les <a
+				Anthropic PBC (États-Unis) : lecture des PDF de CV et d'offres d'emploi que vous importez
+				et, lorsque ce site l'active, tri des avis que vous envoyez et classement des noms de
+				compétences du catalogue (les noms seuls). Selon les <a
 					class="link-text"
 					href={LINKS.anthropicCommercialTerms}
 					rel="noopener noreferrer">conditions commerciales</a
@@ -527,6 +592,15 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				<td>Jusqu'à ce que vous les supprimiez, ou votre compte</td>
 			</tr>
 			<tr>
+				<td>Noms de compétences du catalogue partagé</td>
+				<td>
+					Conservés dans le catalogue, où ils ne sont rattachés à aucun compte, y compris après la
+					suppression de l'expérience ou du compte qui les a apportés : écrivez-nous pour en faire
+					retirer un. Les noms classés par Claude ne sont gardés par Anthropic que pendant une durée
+					limitée, selon ses conditions commerciales
+				</td>
+			</tr>
+			<tr>
 				<td>Temps de trajet, et position des adresses des offres d'emploi</td>
 				<td>
 					30 jours pour un temps de trajet, 90 pour la position de l'adresse d'un poste, sous une
@@ -578,7 +652,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			<tr>
 				<td>Compteurs de limitation et de quotas (empreintes)</td>
 				<td>
-					Supprimés automatiquement à la fin de leur période : d'une heure à 30 jours. Quand vous
+					Supprimés automatiquement à la fin de leur période : d'une minute à 30 jours. Quand vous
 					supprimez votre compte, les quotas que vous avez utilisés (imports de CV et d'offres,
 					suggestions d'étapes, avis, et imports d'offres de votre offre recruteur) sont reportés
 					sur des compteurs identifiés par une empreinte de l'identifiant de votre compte Google,
@@ -627,12 +701,13 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 		>autorisations de votre compte Google</a
 	>), et l'adresse de votre portfolio redevient disponible. Ce qui reste : les noms de compétences
-	du catalogue partagé (ils ne sont liés à personne), les suggestions d'étapes et les avis déjà
-	publiés sur GitHub (écrivez-nous pour en faire retirer un), les créneaux que vous avez réservés
-	comme invité d'autres portfolios (jusqu'à la fin du créneau, sans lien avec votre compte), les
-	compteurs contre les abus et de quotas (empreintes, supprimées à la fin de leur période, 30 jours
-	au plus ; les quotas utilisés sont reportés sur une empreinte de l'identifiant de votre compte
-	Google, comme indiqué ci-dessus), et les journaux jusqu'à leur expiration.
+	du catalogue partagé (ils ne sont liés à personne ; écrivez-nous pour en faire retirer un), les
+	suggestions d'étapes et les avis déjà publiés sur GitHub (écrivez-nous pour en faire retirer un),
+	les créneaux que vous avez réservés comme invité d'autres portfolios (jusqu'à la fin du créneau,
+	sans lien avec votre compte), les compteurs contre les abus et de quotas (empreintes, supprimées à
+	la fin de leur période, 30 jours au plus ; les quotas utilisés sont reportés sur une empreinte de
+	l'identifiant de votre compte Google, comme indiqué ci-dessus), et les journaux jusqu'à leur
+	expiration.
 </p>
 
 <h3 id="rights">Vos droits</h3>
@@ -647,8 +722,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	<li>
 		les <strong>effacer</strong> : supprimez vous-même votre compte depuis
 		<a class="link-text" href={resolve('/(site)/account')}>la page de votre compte</a>, ou
-		demandez-le-nous ; les suggestions d'étapes et les avis publiés sur GitHub ne sont pas retirés
-		avec votre compte : demandez-le-nous pour ceux-là ;
+		demandez-le-nous ; les suggestions d'étapes et les avis publiés sur GitHub, ainsi que les noms
+		de compétences conservés dans le catalogue partagé, ne sont pas retirés avec votre compte :
+		demandez-le-nous pour ceux-là ;
 	</li>
 	<li>en <strong>limiter</strong> le traitement ;</li>
 	<li>
@@ -694,6 +770,15 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	fonctionnalité ou tâche) et rédige leur titre et leur résumé. Ils sont publiés dans le ticket avec
 	votre texte, où vous pouvez les voir, et ne décident que de la façon dont les mainteneurs le
 	classent : rien qui vous concerne.
+</p>
+<p>
+	Lorsque ce site l'active, Claude classe aussi les noms des compétences saisies : si un nom désigne
+	bien une compétence, sa catégorie, la compétence dont elle fait partie et ses autres noms. Il
+	travaille sur les noms seuls, en arrière-plan, et peut se tromper. Son classement change la façon
+	dont les compétences sont regroupées et nommées sur les portfolios, le vôtre compris, et les noms
+	suggérés aux personnes qui saisissent une compétence. Il ne sert ni à évaluer, ni à classer, ni à
+	filtrer qui que ce soit, et aucune décision vous concernant ne repose sur lui. Écrivez-nous pour
+	faire corriger un classement.
 </p>
 <p>
 	Un parcours de recrutement peut noter l'offre choisie par un recruteur au regard du poste idéal du

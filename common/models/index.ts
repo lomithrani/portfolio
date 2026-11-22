@@ -25,6 +25,40 @@ export type {
 	SkillUse
 } from './experienceMonths';
 export {
+	SKILL_CATEGORIES,
+	SKILL_CLASSIFICATION_STATUSES,
+	SUGGESTABLE_SKILL_STATUSES,
+	SKILL_ALIAS_KINDS,
+	SKILL_CLASSIFICATION,
+	SKILL_SEARCH,
+	isSkillCategory,
+	skillCategoryLabel,
+	skillSearchText,
+	canSearchSkill,
+	skillTaxonomy,
+	skillFamilyKeys,
+	projectUsesSkillFamily,
+	rankedSkills,
+	cleanSkillName,
+	isSkillNameLike,
+	classifiableSkillName,
+	sameSkillSpelling,
+	parseSkillClassification
+} from './skills';
+export type {
+	SkillCategory,
+	SkillClassificationStatus,
+	SkillAliasKind,
+	SkillSuggestion,
+	PresentedSkill,
+	PresentedSkillParent,
+	SkillTaxonomyNode,
+	SkillTaxonomy,
+	RankedSkill,
+	SkillClassification
+} from './skills';
+export { skillMessages } from './skills.messages';
+export {
 	DOMAIN_NAME_PATTERN,
 	RESERVED_DOMAIN_NAMES,
 	isValidDomainName,

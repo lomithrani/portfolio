@@ -31,10 +31,14 @@ export const m = defineMessages({
 			fr: 'Les brouillons que ce navigateur conserve pour votre compte.'
 		}
 	},
-	/** What deleting the account cannot take back (privacy policy, #retention) */
+	/**
+	 * What deleting the account cannot take back (privacy policy, #retention): what went to Google
+	 * and GitHub, and the skill names of the shared catalogue (the Skill collection, linked to no
+	 * account: server/services/accountDeletion.ts leaves it)
+	 */
 	whatStays: {
-		en: 'Meetings already added to Google calendars stay there, and the step suggestions and feedback already published on GitHub stay (they do not name you; write to us to have one removed).',
-		fr: "Les rendez-vous déjà ajoutés à des agendas Google y restent, et les suggestions d'étape et les avis déjà publiés sur GitHub restent (ils ne vous nomment pas ; écrivez-nous pour en faire retirer un)."
+		en: "Meetings already added to Google calendars stay there, and the step suggestions and feedback already published on GitHub stay (they do not name you; write to us to have one removed). The names of the skills you typed stay in the site's shared catalogue, linked to no one.",
+		fr: "Les rendez-vous déjà ajoutés à des agendas Google y restent, et les suggestions d'étape et les avis déjà publiés sur GitHub restent (ils ne vous nomment pas ; écrivez-nous pour en faire retirer un). Les noms des compétences que vous avez saisies restent dans le catalogue partagé du site, sans lien avec personne."
 	},
 	/** The field's label; `word` is what the person types (DELETE_CONFIRMATION_WORD) */
 	typeToConfirm: {

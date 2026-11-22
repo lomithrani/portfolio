@@ -373,8 +373,9 @@ export const m = defineMessages({
 		/**
 		 * Backed by: ProjectPreview.svelte (client/src/lib/components/experience-list/) and
 		 * skillMonths of client/src/services/projectPreview.ts (the projects using a skill, and the
-		 * months they add up to), on portfolio-common's skillMonths and projectUsesSkill
-		 * (common/models/experienceMonths.ts), the filters of the experiences page
+		 * months they add up to; for a skill that others are part of, its family's), on
+		 * portfolio-common's skillMonths (common/models/experienceMonths.ts) and
+		 * projectUsesSkillFamily (common/models/skills.ts), the filters of the experiences page
 		 * (client/src/routes/[domain]/experiences/Filters.svelte)
 		 */
 		skills: {

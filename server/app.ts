@@ -18,6 +18,7 @@ import {
   perfectJob,
   addresses,
   feedback,
+  skills,
   matchingRoutes
 } from './plugins'
 import { errors, MissingAuthCookieError, PayloadTooLargeError, UnsupportedMediaTypeError } from './errors'
@@ -212,6 +213,7 @@ export const createApp = () =>
     .use(perfectJob)
     .use(addresses)
     .use(feedback)
+    .use(skills)
     // Path 2 (CLAUDE.md, Matching): its routes are not even registered while
     // MATCHING is off, so they answer 404 like any route that does not exist
     .use(matchingRoutes())

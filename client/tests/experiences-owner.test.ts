@@ -367,9 +367,10 @@ test.describe('filters', () => {
 		// A visitor's view: no session needed
 		await gotoHydrated(page, `/${DOMAIN}/experiences`);
 		await expect(headings).toHaveText([backend, frontend, side]);
-		// Skills only: no type chips
+		// Skills only: no type chips ("All 12 skills", on a portfolio with more skills than the panel
+		// shows folded, is no type)
 		await expect(
-			filters.getByRole('button', { name: /^(All|Professional|Personal)\b/ })
+			filters.getByRole('button', { name: /^(All|Professional|Personal)$/ })
 		).toHaveCount(0);
 
 		await filters.getByRole('button', { name: 'Kafka', exact: true }).click();
@@ -975,9 +976,14 @@ test.describe('hovering a skill tag', () => {
 		// scrolling back to the filters brings under it would show its own preview
 		await page.mouse.move(0, 0);
 
-		// The filters' tags, with the keyboard too: the tag is described by its preview
+		// The filters' tags, with the keyboard too: the tag is described by its preview. The tags are
+		// listed the most used first: Kafka (2 years 10 months), then Go (1 year 2 months)
+		const mostUsed = filters.getByRole('group', { name: 'Most used' }).getByRole('button');
+		await expect(mostUsed).toHaveCount(2);
+		await expect(mostUsed.first()).toHaveAccessibleName('Kafka');
+		await expect(mostUsed.last()).toHaveAccessibleName('Go');
 		await filters.getByRole('button', { name: 'Go', exact: true }).focus();
-		await page.keyboard.press('Tab');
+		await page.keyboard.press('Shift+Tab');
 		await expect(kafka).toBeFocused();
 		await expect(preview).toBeVisible();
 		await expect(preview).toContainText('Used in 2 projects');
@@ -1082,8 +1088,9 @@ test.describe('hovering a skill tag', () => {
 
 		await page.setViewportSize({ width: 1280, height: 500 });
 		await gotoHydrated(page, `/${DOMAIN}/experiences`);
+		// Kafka comes first: as long as Figma, in more projects
 		await filters.getByRole('button', { name: 'Figma', exact: true }).focus();
-		await page.keyboard.press('Tab');
+		await page.keyboard.press('Shift+Tab');
 		await expect(filters.getByRole('button', { name: 'Kafka', exact: true })).toBeFocused();
 		await expect(preview).toBeVisible();
 		await expect(card(page, second)).toHaveAttribute('data-muted');

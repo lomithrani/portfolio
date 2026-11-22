@@ -159,6 +159,7 @@
 				<ul class="list-disc space-y-1.5 ps-5 text-sm text-surface-700-300">
 					<li>{m.data.google}</li>
 					<li>{m.data.portfolio}</li>
+					<li>{m.data.skills}</li>
 					<li>{m.data.jobs}</li>
 					<li>{m.data.terms}</li>
 				</ul>
