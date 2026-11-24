@@ -5,7 +5,16 @@ import { defineMessages } from 'portfolio-common';
 export const m = defineMessages({
 	note: {
 		read: { en: 'You have read this note.', fr: 'Vous avez lu cette note.' },
-		ask: { en: 'Read the note, then confirm it.', fr: 'Lisez la note, puis confirmez-la.' },
+		ask: {
+			en: 'Read the note, then confirm that you have read it.',
+			fr: "Lisez la note, puis confirmez l'avoir lue."
+		},
+		/** What the step asks, before the visitor starts ("Before you start") */
+		asks: {
+			en: (ownerName: string) => `Read ${ownerName}'s note, then confirm that you have read it.`,
+			fr: (ownerName: string) =>
+				`Lisez la note que ${ownerName} a écrite, puis confirmez l'avoir lue.`
+		},
 		signIn: {
 			en: 'Sign in to confirm that you have read this.',
 			fr: 'Connectez-vous pour confirmer que vous avez lu ceci.'
@@ -15,8 +24,8 @@ export const m = defineMessages({
 			title: { en: 'Title', fr: 'Titre' },
 			titlePlaceholder: { en: 'e.g. Before you book', fr: 'ex. : Avant de réserver' },
 			titleHelp: {
-				en: "The step's name on your Hire page.",
-				fr: "Le nom de l'étape sur votre page Recruter."
+				en: "The step's name on your page for recruiters.",
+				fr: "Le nom de l'étape sur votre page recruteurs."
 			},
 			text: { en: 'Note', fr: 'Note' },
 			textPlaceholder: {
@@ -33,6 +42,16 @@ export const m = defineMessages({
 	job: {
 		/** The button unfolding the step once a job is picked */
 		reopen: { en: 'Change', fr: 'Modifier' },
+		/**
+		 * What the step asks, before the visitor starts ("Before you start"). The minutes counted are a
+		 * pick's: writing a job description on the way takes longer
+		 */
+		asks: {
+			en: (ownerName: string) =>
+				`Pick one of your open job descriptions, or write a new one (that takes longer). ${ownerName} sees it in the meeting invitation.`,
+			fr: (ownerName: string) =>
+				`Choisissez l'une de vos offres d'emploi ouvertes, ou rédigez-en une nouvelle (cela prend plus de temps). ${ownerName} la voit dans l'invitation au rendez-vous.`
+		},
 		jobsFailed: {
 			en: 'Could not load your job descriptions.',
 			fr: "Impossible de charger vos offres d'emploi."
@@ -47,6 +66,11 @@ export const m = defineMessages({
 			en: 'Your job descriptions live in a recruiter space. Create yours (it is free) to pick one or write a new one.',
 			fr: "Vos offres d'emploi se trouvent dans un espace recruteur. Créez le vôtre (c'est gratuit) pour en choisir une ou en rédiger une nouvelle."
 		},
+		/** Create was pressed with the age and terms box unticked */
+		tickTheBox: {
+			en: 'Tick the box to confirm your age and accept the terms before you create your recruiter space.',
+			fr: 'Cochez la case pour confirmer votre âge et accepter les conditions avant de créer votre espace recruteur.'
+		},
 		creatingSpace: { en: 'Creating…', fr: 'Création…' },
 		createSpace: { en: 'Create my recruiter space', fr: 'Créer mon espace recruteur' },
 		loadingJobs: {
@@ -58,15 +82,84 @@ export const m = defineMessages({
 			fr: "Vous n'avez pas encore d'offre d'emploi. Rédigez celle pour laquelle vous recrutez : vous revenez ici pour la choisir."
 		},
 		yourJobs: { en: 'Your job descriptions', fr: "Vos offres d'emploi" },
+		/**
+		 * Under a job to pick, the day it first left the draft status (`day`: '3 Nov 2026', shown as a
+		 * <time>): a duplicate keeps its source's title, this tells them apart
+		 */
+		opened: {
+			en: (day: string) => `Opened <time>${day}</time>`,
+			fr: (day: string) => `Ouverte le <time>${day}</time>`
+		},
 		notPickable: {
 			en: 'Only an open job description can be picked. <status>Change its status</status>',
 			fr: 'Seule une offre ouverte peut être choisie. <status>Changer son statut</status>'
 		},
+		/** Under the jobs to pick: the owner reads the version shared, not later edits */
 		ownerSees: {
-			en: (ownerName: string) => `${ownerName} sees the job you pick in the meeting invitation.`,
+			en: (ownerName: string) =>
+				`${ownerName} reads the job as you share it now, linked in the meeting invitation. If you edit it later, you can share the new version here.`,
 			fr: (ownerName: string) =>
-				`${ownerName} voit l'offre que vous choisissez dans l'invitation au rendez-vous.`
+				`${ownerName} lit l'offre telle que vous la partagez maintenant, dont le lien figure dans l'invitation au rendez-vous. Si vous la modifiez ensuite, vous pourrez partager la nouvelle version ici.`
 		},
+		/**
+		 * Above the jobs to pick, once one is shared. Where the values go, each rendered by its own
+		 * snippet (what a person typed never goes through the tag parser): `<job></job>` "Senior
+		 * Engineer · Acme", the version shared; `<time></time>` '3 Nov 2026'; `<owner></owner>` the
+		 * portfolio's name
+		 */
+		sharedOn: {
+			en: 'You shared <job></job> on <time></time>: <owner></owner> reads that version.',
+			fr: 'Vous avez partagé <job></job> le <time></time> : <owner></owner> lit cette version.'
+		},
+		/**
+		 * The posting differs from the version shared. A posting shared was opened, so its terms are
+		 * locked: what changes is its description, or a field no criterion reads
+		 */
+		changedSince: {
+			en: (ownerName: string) =>
+				`This job description changed since you shared it: ${ownerName} still reads, and the steps after this one still use, the version shared.`,
+			fr: (ownerName: string) =>
+				`Cette offre a été modifiée depuis que vous l'avez partagée : ${ownerName} lit toujours, et les étapes suivantes utilisent toujours, la version partagée.`
+		},
+		/**
+		 * The job of a mutual interest (matching), which the step holds while it lasts. Where the values
+		 * go, each rendered by its own snippet: `<job></job>` "Senior Engineer · Acme", the version the
+		 * owner said yes to; `<owner></owner>` the portfolio's name; `<time></time>` '20 Nov 2026'.
+		 * Never a bare "match" (it names the score). Backed by: server/services/workflowSteps/job.ts
+		 * (the job of the mutual interest, `matched`; the version said yes to in the invitation,
+		 * mutualInterestLines; 409 JOB_OF_MUTUAL_INTEREST for another job)
+		 */
+		matched: {
+			holds: {
+				en: 'You and <owner></owner> are both interested in <job></job> (since <time></time>): <owner></owner> reads the version they said yes to, linked in the meeting invitation.',
+				fr: "Depuis le <time></time>, l'intérêt est réciproque entre <owner></owner> et vous pour <job></job> : <owner></owner> lit la version sur laquelle il porte, dont le lien figure dans l'invitation au rendez-vous."
+			},
+			/** The same, when the day both became interested is not known (a date that does not read) */
+			holdsUndated: {
+				en: 'You and <owner></owner> are both interested in <job></job>: <owner></owner> reads the version they said yes to, linked in the meeting invitation.',
+				fr: "L'intérêt est réciproque entre <owner></owner> et vous pour <job></job> : <owner></owner> lit la version sur laquelle il porte, dont le lien figure dans l'invitation au rendez-vous."
+			},
+			noOther: {
+				en: 'This step holds that job while your mutual interest lasts: you cannot share another here.',
+				fr: "Cette étape retient cette offre tant que l'intérêt réciproque dure : vous ne pouvez pas en partager une autre ici."
+			},
+			/**
+			 * Not open (on hold: filled, closed or back to draft ends the mutual interest), which the line
+			 * above it says (jobStepNote). `<status>`: the link to its page, where its status is changed
+			 */
+			notOpen: {
+				en: 'The steps after this one wait until it is open again. <status>Change its status</status>',
+				fr: "Les étapes suivantes attendent qu'elle soit de nouveau ouverte. <status>Changer son statut</status>"
+			},
+			/** Open, but the recruiter has not accepted the terms of use in force (TermsAcceptance follows) */
+			terms: {
+				en: 'This page holds your job again once you accept the terms of use in force.',
+				fr: "Cette page retient de nouveau votre offre dès que vous acceptez les conditions d'utilisation en vigueur."
+			}
+		},
+		shareNewVersion: { en: 'Share the new version', fr: 'Partager la nouvelle version' },
+		sharing: { en: 'Sharing…', fr: 'Partage…' },
+		newVersionShared: { en: 'New version shared', fr: 'Nouvelle version partagée' },
 		continueWith: { en: 'Continue with this job', fr: 'Continuer avec cette offre' },
 		write: { en: 'Write a new job description', fr: 'Rédiger une nouvelle offre' },
 		importPdf: { en: 'Import from PDF', fr: 'Importer un PDF' },
@@ -80,32 +173,51 @@ export const m = defineMessages({
 	},
 
 	jobMatch: {
+		/**
+		 * What the step asks, before the visitor starts ("Before you start"): with the minimum its
+		 * settings show visitors, then without one. Next to a note step, the score is « résultat ».
+		 * Neutral, like every text of this step: the job is scored against the owner's criteria,
+		 * never "what they are looking for" (having a portfolio says nothing about looking for a job,
+		 * as the landing's FAQ says)
+		 */
+		asks: {
+			en: (ownerName: string, minScore: number) =>
+				`Your job is scored out of 100 against ${ownerName}'s criteria: you see your score, never what they ask for. At least ${minScore} opens the next step.`,
+			fr: (ownerName: string, minScore: number) =>
+				`Votre offre est notée sur 100 selon les critères de ${ownerName} : vous voyez son résultat, jamais ce qui est demandé. Il faut au moins ${minScore} pour ouvrir l'étape suivante.`
+		},
+		asksNoMin: {
+			en: (ownerName: string) =>
+				`Your job is scored out of 100 against ${ownerName}'s criteria: you see your score, never what they ask for.`,
+			fr: (ownerName: string) =>
+				`Votre offre est notée sur 100 selon les critères de ${ownerName} : vous voyez son résultat, jamais ce qui est demandé.`
+		},
 		ask: {
 			en: (ownerName: string) =>
-				`The job you pick is scored out of 100 against what ${ownerName} is looking for.`,
+				`The job you pick is scored out of 100 against ${ownerName}'s criteria.`,
 			fr: (ownerName: string) =>
-				`L'offre que vous choisissez est notée sur 100 par rapport à ce que recherche ${ownerName}.`
+				`L'offre que vous choisissez est notée sur 100 selon les critères de ${ownerName}.`
 		},
 		askMin: {
 			en: (ownerName: string, minScore: number) =>
-				`The job you pick is scored out of 100 against what ${ownerName} is looking for: at least ${minScore} opens the next step.`,
+				`The job you pick is scored out of 100 against ${ownerName}'s criteria: at least ${minScore} opens the next step.`,
 			fr: (ownerName: string, minScore: number) =>
-				`L'offre que vous choisissez est notée sur 100 par rapport à ce que recherche ${ownerName} : il faut au moins ${minScore} pour ouvrir l'étape suivante.`
+				`L'offre que vous choisissez est notée sur 100 selon les critères de ${ownerName} : il faut au moins ${minScore} pour ouvrir l'étape suivante.`
 		},
 		/** Before and after the score, for screen readers: "Score: 62 out of 100" */
 		score: { en: 'Score:', fr: 'Note :' },
 		outOf100: { en: 'out of 100', fr: 'sur 100' },
 		closeEnough: {
 			en: (title: string, ownerName: string) =>
-				`${title} is close enough to what ${ownerName} is looking for.`,
+				`${title} matches ${ownerName}'s criteria closely enough.`,
 			fr: (title: string, ownerName: string) =>
-				`${title} est assez proche de ce que recherche ${ownerName}.`
+				`${title} correspond assez aux critères de ${ownerName}.`
 		},
 		notCloseEnough: {
 			en: (title: string, ownerName: string) =>
-				`${title} is not close enough to what ${ownerName} is looking for.`,
+				`${title} does not match ${ownerName}'s criteria closely enough.`,
 			fr: (title: string, ownerName: string) =>
-				`${title} n'est pas assez proche de ce que recherche ${ownerName}.`
+				`${title} ne correspond pas assez aux critères de ${ownerName}.`
 		},
 		asksFor: {
 			en: (ownerName: string, minScore: number) =>
@@ -121,49 +233,63 @@ export const m = defineMessages({
 			en: (ownerName: string) => `How your job does on what matters to ${ownerName}`,
 			fr: (ownerName: string) => `Votre offre face à ce qui compte pour ${ownerName}`
 		},
-		dealBreaker: { en: 'Deal-breaker', fr: 'Éliminatoire' },
-		commute: {
-			en: (ownerName: string) =>
-				`The commute is ${ownerName}'s travel time to your job's address, there and back, over a week.`,
-			fr: (ownerName: string) =>
-				`Le trajet est le temps que met ${ownerName} pour aller à l'adresse de votre offre et en revenir, sur une semaine.`
-		},
-		/** Who the travel times come from: on a site without public transport, then with each service it can ask */
-		commuteSources: {
-			none: {
-				en: 'Travel times: <ign>Géoplateforme (IGN)</ign>.',
-				fr: 'Temps de trajet : <ign>Géoplateforme (IGN)</ign>.'
-			},
-			here: {
-				en: 'Travel times: <ign>Géoplateforme (IGN)</ign> and, by public transport, <here>HERE</here>.',
-				fr: 'Temps de trajet : <ign>Géoplateforme (IGN)</ign> et, en transports en commun, <here>HERE</here>.'
-			},
-			transitous: {
-				en: 'Travel times: <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> and <osm>OpenStreetMap contributors</osm>.',
-				fr: "Temps de trajet : <ign>Géoplateforme (IGN)</ign>, <transitous>Transitous</transitous> et <osm>les contributeurs d'OpenStreetMap</osm>."
-			}
-		},
 		dealBreakerMissed: {
 			en: (ownerName: string) =>
 				`A job that does not match a deal-breaker of ${ownerName}'s scores 0, whatever the rest.`,
 			fr: (ownerName: string) =>
 				`Une offre qui ne correspond pas à un critère éliminatoire pour ${ownerName} obtient 0, quel que soit le reste.`
 		},
+		/**
+		 * Under the minimum, with the criteria shown. The job was opened to be picked: its terms are
+		 * locked, a new version of them is a new job description (Duplicate)
+		 */
 		raiseWithDetails: {
-			en: 'What your job description does not state counts as not matching: completing it can raise the score.',
-			fr: 'Ce que votre offre ne précise pas compte comme ne correspondant pas : la compléter peut augmenter la note.'
+			en: 'What your job description does not state counts as not matching. Its pay and conditions have been locked since it was opened, but a new job description that states more can score higher: duplicate this one, complete the copy and open it, then pick it above.',
+			fr: "Ce que votre offre ne précise pas compte comme ne correspondant pas. Sa rémunération et ses conditions sont verrouillées depuis son ouverture, mais une nouvelle offre qui en précise davantage peut obtenir une meilleure note : dupliquez celle-ci, complétez la copie et ouvrez-la, puis choisissez-la à l'étape ci-dessus."
 		},
+		/** The same, the owner not sharing the criteria */
 		raiseWithoutDetails: {
 			en: (ownerName: string) =>
-				`${ownerName} does not share what they are looking for here. A job description that says more (seniority, skills, remote days, travel…) can score higher: what it leaves out counts as not matching.`,
+				`${ownerName} does not share their criteria here. A job description that says more (seniority, skills, remote days, travel…) can score higher: what it leaves out counts as not matching. Its pay and conditions have been locked since it was opened: duplicate it, complete the copy and open it, then pick it above.`,
 			fr: (ownerName: string) =>
-				`${ownerName} ne partage pas ses critères ici. Une offre qui en dit plus (niveau d'expérience, compétences, jours de télétravail, déplacements…) peut obtenir une meilleure note : ce qu'elle ne précise pas compte comme ne correspondant pas.`
+				`${ownerName} ne partage pas ses critères ici. Une offre qui en dit plus (niveau d'expérience, compétences, jours de télétravail, déplacements…) peut obtenir une meilleure note : ce qu'elle ne précise pas compte comme ne correspondant pas. Sa rémunération et ses conditions sont verrouillées depuis son ouverture : dupliquez-la, complétez la copie et ouvrez-la, puis choisissez-la à l'étape ci-dessus.`
 		},
 		pickAnother: {
 			en: 'You can also pick another job in the step above.',
 			fr: "Vous pouvez aussi choisir une autre offre à l'étape ci-dessus."
 		},
-		edit: { en: 'Edit this job description', fr: 'Modifier cette offre' },
+		/**
+		 * The job of a mutual interest (matching): its score is the one it had when both became
+		 * interested (`frozenAt`, '20 Nov 2026' in a <time>), frozen while their mutual interest lasts.
+		 * Backed by: server/services/workflowSteps/jobMatch.ts (`frozen`: the mutual interest's score,
+		 * minimum and outcomes, whatever the owner's criteria became since)
+		 */
+		frozen: {
+			on: {
+				en: (day: string) => `Score when you were both interested, on <time>${day}</time>`,
+				fr: (day: string) => `Note au moment de l'intérêt réciproque, le <time>${day}</time>`
+			},
+			undated: {
+				en: 'Score when you were both interested',
+				fr: "Note au moment de l'intérêt réciproque"
+			},
+			holds: {
+				en: 'This score no longer changes while your mutual interest lasts.',
+				fr: "Cette note ne change plus tant que l'intérêt réciproque dure."
+			},
+			/**
+			 * A frozen score under its minimum (only a record not written by a mutual interest can hold
+			 * one: the step fails closed): nothing here changes it. Backed by:
+			 * server/services/workflowSteps/jobMatch.ts (`failed` under the frozen minimum),
+			 * server/services/matches.ts endMatch (the job step is then to do, as anyone's)
+			 */
+			under: {
+				en: 'This score, kept from when you were both interested, is under the minimum: to share another job here, end your mutual interest first.',
+				fr: "Cette note, gardée depuis l'intérêt réciproque, est sous le minimum : pour partager une autre offre ici, mettez d'abord fin à l'intérêt réciproque."
+			}
+		},
+		/** A new job description copied from the one scored (its terms are locked) */
+		duplicate: { en: 'Duplicate this job description', fr: 'Dupliquer cette offre' },
 		checkAgain: { en: 'Check again', fr: 'Vérifier de nouveau' },
 		settings: {
 			minScore: { en: 'Minimum score', fr: 'Note minimale' },
@@ -201,12 +327,13 @@ export const m = defineMessages({
 			fr: 'Vous avez réservé un rendez-vous. Vous pouvez réserver un autre créneau.'
 		},
 		ask: { en: 'Pick a time slot that suits you.', fr: 'Choisissez un créneau qui vous convient.' },
-		/** How the Hire page presents itself when the journey leads to a meeting (StepGoal) */
+		/** What the step asks, before the visitor starts ("Before you start") */
+		asks: {
+			en: 'Pick a time slot, then give your name and email address.',
+			fr: 'Choisissez un créneau, puis indiquez votre nom et votre adresse e-mail.'
+		},
+		/** What the Hire page says under its title when the journey leads to a meeting (StepGoal) */
 		goal: {
-			heading: {
-				en: (ownerName: string) => `Book a meeting with ${ownerName}`,
-				fr: (ownerName: string) => `Réserver un rendez-vous avec ${ownerName}`
-			},
 			alone: {
 				en: "Pick a time slot that suits you — you'll receive a calendar invitation by email.",
 				fr: 'Choisissez un créneau qui vous convient : vous recevrez une invitation par e-mail.'
@@ -214,7 +341,40 @@ export const m = defineMessages({
 			after: {
 				en: "Then pick a time slot: you'll receive a calendar invitation by email.",
 				fr: 'Choisissez ensuite un créneau : vous recevrez une invitation par e-mail.'
+			},
+			/**
+			 * What happens once the meeting is booked ("Before you start"), and that the owner learns who
+			 * the recruiter is only then.
+			 * Backed by: POST /appointments/book (server/plugins/appointments.ts), which invites the name
+			 * and address typed in the booking form and puts the job picked in the invitation
+			 * (`describe` of server/services/workflowSteps/job.ts); before it, nothing shows the owner
+			 * who went through their steps: no route lists a journey's visitors (WorkflowInstance is read
+			 * only for the visitor's own progress, server/services/workflows.ts), and a posting's DTO
+			 * never names its recruiter (server/services/jobPostings.ts)
+			 */
+			next: {
+				en: (ownerName: string) =>
+					`Once you book, you receive a calendar invitation by email, and the meeting goes into ${ownerName}'s calendar: only then do they get your name and email address.`,
+				fr: (ownerName: string) =>
+					`Une fois le créneau réservé, vous recevez une invitation par e-mail, et ${ownerName} retrouve le rendez-vous dans son agenda : ce n'est qu'à ce moment-là que votre nom et votre adresse e-mail lui parviennent.`
 			}
+		}
+	},
+
+	/**
+	 * What a visitor needs at hand for the steps (StepNeed), each said once in "Before you start".
+	 * The job description: every posting states its pay range (validateJobPosting); the PDF
+	 * import is offered only where the API has it on (GET /jobs/import), which a visitor signed out
+	 * cannot know
+	 */
+	needs: {
+		googleAccount: {
+			en: 'A Google account, to sign in',
+			fr: 'Un compte Google, pour vous connecter'
+		},
+		jobDescription: {
+			en: 'The job description and its pay range, or its PDF where import is offered',
+			fr: "L'offre d'emploi et sa fourchette de rémunération, ou son PDF lorsque l'import est proposé"
 		}
 	}
 });

@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { render } from 'svelte/server';
+import { withLocale } from 'portfolio-common';
 import Markdown from './Markdown.svelte';
 
-// Markdown.svelte as the server renders it (the public job page is rendered on the server)
+// Markdown.svelte as the server renders it (as on a page rendered on the server)
 const rendered = (props: { content: string } & Record<string, unknown>) =>
 	render(Markdown, { props }).body;
 
@@ -47,6 +48,105 @@ describe('Markdown', () => {
 			expect(body).toContain('<code>List&lt;String&gt;</code>');
 			expect(body).toContain('<table>');
 			expect(body).toContain('<td align="right">2</td>');
+		});
+
+		/** A link opened apart, as linkHosts writes it: its text, the host when shown, the new tab */
+		const apart = (href: string, text: string, host?: string, title?: string) =>
+			`<a class="link-apart" href="${href}"${title ? ` title="${title}"` : ''} target="_blank" rel="noopener noreferrer nofollow"><span class="link-text">${text}</span>${host ? ` <span class="link-host">(${host})</span>` : ''}<span class="sr-only"> (opens in a new tab)</span></a>`;
+		const hosted = (content: string) => rendered({ content, html: false, linkHosts: true });
+
+		it('shows where each link leads inside it, opened apart without a referrer (linkHosts)', () => {
+			const body = hosted(
+				'Read [About us](https://t.example/j123 "Us") or https://acme.example/jobs, or [home](/acme).'
+			);
+			// The host a harmless text hides is shown, and is part of the link's name with the new tab
+			// (a screen reader says it too): a reviewer can refuse a tracking link
+			expect(body).toContain(apart('https://t.example/j123', 'About us', 't.example', 'Us'));
+			// A bare address says its host already
+			expect(body).toContain(apart('https://acme.example/jobs', 'https://acme.example/jobs'));
+			expect(body).not.toContain('(acme.example)');
+			// A relative link stays as markdown makes it
+			expect(body).toContain('<a href="/acme">home</a>');
+			// A lookalike name shows as what it is
+			expect(hosted('[Apply](https://аcme.example/x)')).toMatch(
+				/<span class="link-host">\(xn--[a-z0-9-]+\.example\)<\/span>/
+			);
+			// Without it, links are as markdown makes them
+			expect(
+				rendered({ content: '[About us](https://t.example/j123)', html: false })
+			).not.toContain('link-host');
+		});
+
+		it('says the new tab in the reader’s language', () => {
+			expect(withLocale('fr', () => hosted('[Postuler](https://t.example/a)'))).toContain(
+				'<span class="sr-only"> (nouvel onglet)</span></a>'
+			);
+		});
+
+		it('opens apart a link without a scheme that still names a host, inline or by reference', () => {
+			// A browser reads each of them as https://t.example/…: never a plain link sending the referrer
+			expect(hosted('[A](//t.example/x)')).toContain(
+				apart('https://t.example/x', 'A', 't.example')
+			);
+			expect(hosted('[A](///t.example/x)')).toContain(
+				apart('https://t.example/x', 'A', 't.example')
+			);
+			expect(hosted('[A](/\\/t.example/x)')).toContain(
+				apart('https://t.example/x', 'A', 't.example')
+			);
+			expect(hosted('[Apply][r]\n\n[r]: //t.example/ref')).toContain(
+				apart('https://t.example/ref', 'Apply', 't.example')
+			);
+			// A host named like the one paths are read against is a host all the same
+			expect(hosted('[A](//a.invalid/x)')).toContain(
+				apart('https://a.invalid/x', 'A', 'a.invalid')
+			);
+			// A path, a query or a fragment of this site, and another scheme, stay as markdown makes them
+			const local = hosted(
+				'[home](/acme) [page](jobs/1) [query](?a=1) [top](#top) [mail](mailto:jobs@acme.example)'
+			);
+			expect(local).toContain('<a href="/acme">home</a>');
+			expect(local).toContain('<a href="jobs/1">page</a>');
+			expect(local).toContain('<a href="?a=1">query</a>');
+			expect(local).toContain('<a href="#top">top</a>');
+			expect(local).toContain('<a href="mailto:jobs@acme.example">mail</a>');
+			expect(local).not.toContain('link-host');
+		});
+
+		it('leaves the host out only for a link whose text is its own address', () => {
+			// A text that looks like an address, or names one somewhere, says nothing of where it leads
+			expect(hosted('[jobs.acme-group.com](https://acme-group.co/x)')).toContain(
+				'<span class="link-host">(acme-group.co)</span>'
+			);
+			expect(hosted('[track.io.acme-careers.com](https://track.io/x)')).toContain(
+				'<span class="link-host">(track.io)</span>'
+			);
+			expect(hosted('[acme.example/careers](https://me.example/track)')).toContain(
+				'<span class="link-host">(me.example)</span>'
+			);
+			expect(hosted('[jobs at acme.example](https://me.example/u/42)')).toContain(
+				'<span class="link-host">(me.example)</span>'
+			);
+			expect(
+				hosted('[https://careers.acme.example/?ref=t.example](https://t.example/c)')
+			).toContain('<span class="link-host">(t.example)</span>');
+			// A name before an @ reads as the host: the host is shown, and the link goes without it
+			expect(hosted('https://acme.example@t.example/abc')).toContain(
+				apart('https://t.example/abc', 'https://acme.example@t.example/abc', 't.example')
+			);
+			expect(hosted('[Careers](https://acme.example@t.example/abc)')).toContain(
+				apart('https://t.example/abc', 'Careers', 't.example')
+			);
+			// Its own address, bare, www or as its text: the host once
+			expect(hosted('www.acme.example/jobs')).toContain(
+				apart('http://www.acme.example/jobs', 'www.acme.example/jobs')
+			);
+			expect(hosted('[acme.example](https://acme.example/)')).toContain(
+				apart('https://acme.example/', 'acme.example')
+			);
+			expect(hosted('[HTTPS://ACME.EXAMPLE/Jobs](https://acme.example/Jobs)')).toContain(
+				apart('https://acme.example/Jobs', 'HTTPS://ACME.EXAMPLE/Jobs')
+			);
 		});
 
 		it('drops javascript: links', () => {

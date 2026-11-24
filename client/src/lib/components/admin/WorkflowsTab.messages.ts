@@ -1,4 +1,4 @@
-import { defineMessages } from 'portfolio-common';
+import { defineMessages, plural } from 'portfolio-common';
 
 export const m = defineMessages({
 	loadFailed: {
@@ -21,8 +21,8 @@ export const m = defineMessages({
 	saved: { en: 'Hiring journey saved', fr: 'Parcours de recrutement enregistré' },
 	title: { en: 'Hiring journey', fr: 'Parcours de recrutement' },
 	intro: {
-		en: 'Choose the steps recruiters go through on your Hire page, in order. Each step opens once the ones before it are done.',
-		fr: "Choisissez les étapes que les recruteurs suivent sur votre page Recruter, dans l'ordre. Chaque étape s'ouvre une fois les précédentes terminées."
+		en: 'Choose the steps recruiters go through on your page for recruiters, in order. Each step opens once the ones before it are done.',
+		fr: "Choisissez les étapes que les recruteurs suivent sur votre page recruteurs, dans l'ordre. Chaque étape s'ouvre une fois les précédentes terminées."
 	},
 	loading: {
 		en: 'Loading your hiring journey...',
@@ -72,6 +72,26 @@ export const m = defineMessages({
 		fr: (name: string) => `Étape retirée : ${name}.`
 	},
 
+	// --- The steps discovery asks for (the Perfect job tab's "Add the missing steps") ---
+	/**
+	 * `names`: the steps added, as one list ("Share a job and Get the job scored"); `count`: how
+	 * many (one to three)
+	 */
+	gateAdded: {
+		en: (names: string, count: number) =>
+			`Added: ${names}. Check ${plural(count, 'its', 'their')} settings, then save your journey to keep ${plural(count, 'it', 'them')}.`,
+		fr: (names: string, count: number) =>
+			`${plural(count, 'Étape ajoutée', 'Étapes ajoutées')} : ${names}. Vérifiez ${plural(count, 'ses', 'leurs')} réglages, puis enregistrez votre parcours pour ${plural(count, 'la', 'les')} garder.`
+	},
+	gateNothing: {
+		en: 'Your steps already ask for the job, score it and lead to a meeting: save them if you changed them.',
+		fr: "Vos étapes demandent déjà l'offre, la font noter et mènent à un rendez-vous : enregistrez-les si vous les avez modifiées."
+	},
+	gateFull: {
+		en: 'Your journey has no room for the steps it lacks: remove one, then add the job, its score or the meeting below.',
+		fr: "Votre parcours n'a plus de place pour les étapes qui lui manquent : retirez-en une, puis ajoutez l'offre, sa notation ou le rendez-vous ci-dessous."
+	},
+
 	// --- Saving ---
 	/** Before what is wrong with a step */
 	problemAt: {
@@ -80,6 +100,15 @@ export const m = defineMessages({
 	},
 	saving: { en: 'Saving...', fr: 'Enregistrement…' },
 	save: { en: 'Save journey', fr: 'Enregistrer le parcours' },
+	/**
+	 * Before a save, while the owner is visible to recruiters (discovery, Path 2), for a journey
+	 * that lacks the gate (a job step, then a job match, then a meeting): it is a requirement of
+	 * discovery, which pauses without it (CLAUDE.md "Matching")
+	 */
+	pausesDiscovery: {
+		en: 'Saving this journey pauses being visible to recruiters, until your journey asks for the job, scores it and leads to a meeting again.',
+		fr: "Si vous enregistrez ce parcours, vous ne serez plus visible des recruteurs, jusqu'à ce que votre parcours demande de nouveau l'offre, la fasse noter et mène à un rendez-vous."
+	},
 	undo: { en: 'Undo changes', fr: 'Annuler les modifications' },
-	seeHirePage: { en: 'See your Hire page', fr: 'Voir votre page Recruter' }
+	seeHirePage: { en: 'See your page for recruiters', fr: 'Voir votre page recruteurs' }
 });

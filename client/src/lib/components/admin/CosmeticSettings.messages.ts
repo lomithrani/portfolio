@@ -14,9 +14,13 @@ export const m = defineMessages({
 	},
 	header: { en: 'Header', fr: 'En-tête' },
 	title: { en: 'Title', fr: 'Titre' },
+	/**
+	 * The title is the name visitors and recruiters read everywhere: the header, the tab's title,
+	 * "Propose a role to …" (the page for recruiters and its link preview)
+	 */
 	titleHint: {
-		en: "Left empty, your header shows the name in your portfolio's address.",
-		fr: "Laissé vide, l'en-tête affiche le nom de l'adresse de votre portfolio."
+		en: "Your name, as visitors and recruiters read it (“Propose a role to Jane Doe”). Left empty, the name in your portfolio's address is used.",
+		fr: "Votre nom, tel que les visiteurs et les recruteurs le lisent (« Proposer un poste à Jane Doe »). Laissé vide, le nom de l'adresse de votre portfolio est utilisé."
 	},
 	subtitle: { en: 'Subtitle', fr: 'Sous-titre' },
 	subtitlePlaceholder: {

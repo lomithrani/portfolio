@@ -82,24 +82,27 @@ export const m = defineMessages({
 		en: 'Maximum pay is required',
 		fr: 'Indiquez la rémunération maximale'
 	},
-	/** What each status means for the posting's visibility (the editor's hint) */
+	/**
+	 * What each status means for the posting (the editor's hint, the toast of a status change):
+	 * no status makes it public, only an open one can be picked on a candidate's page for recruiters
+	 */
 	statusDescriptions: {
 		draft: { en: 'Only you can see it.', fr: 'Vous seul pouvez la voir.' },
 		open: {
-			en: 'Public: candidates can apply.',
-			fr: 'Publique : les candidats peuvent postuler.'
+			en: "Hiring: you can pick it on a candidate's page for recruiters.",
+			fr: "Recrutement en cours : vous pouvez la choisir sur la page recruteurs d'un candidat."
 		},
 		on_hold: {
-			en: 'Public, but not taking applications for now.',
-			fr: 'Publique, mais sans candidature possible pour le moment.'
+			en: 'Paused: it cannot be picked for now.',
+			fr: 'En pause : elle ne peut pas être choisie pour le moment.'
 		},
 		filled: {
-			en: 'Public, marked as filled: no more applications.',
-			fr: "Publique, marquée comme pourvue : elle n'accepte plus de candidatures."
+			en: 'Marked as filled: it can no longer be picked.',
+			fr: 'Marquée comme pourvue : elle ne peut plus être choisie.'
 		},
 		closed: {
-			en: 'Public, marked as closed: no more applications.',
-			fr: "Publique, marquée comme fermée : elle n'accepte plus de candidatures."
+			en: 'Marked as closed: it can no longer be picked.',
+			fr: 'Marquée comme fermée : elle ne peut plus être choisie.'
 		}
 	},
 

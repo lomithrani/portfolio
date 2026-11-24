@@ -1,7 +1,8 @@
 <!--
 @component
 Cookies et stockage local (français), traduction fidèle de CookiesEn.svelte : le cookie de
-session, le cookie de langue, les cookies de Google Identity Services, chaque clé du stockage local avec sa finalité et
+session, le cookie de langue, les cookies de Google Identity Services, Cloudflare (devant les pages :
+aucun cookie, aucun script), chaque clé du stockage local avec sa finalité et
 sa durée, pourquoi il n'y a pas de bandeau (directive ePrivacy art. 5(3), loi Informatique et
 Libertés art. 82), comment les effacer.
 -->
@@ -33,13 +34,16 @@ Libertés art. 82), comment les effacer.
 	de votre navigateur pour votre thème et vos brouillons non enregistrés. Il n'y a ni mesure d'audience,
 	ni publicité, ni traceur de réseaux sociaux. La connexion avec Google n'est chargée que lorsque vous
 	la demandez (par exemple en cliquant sur « Se connecter ») ; elle dépose alors son propre cookie
-	<code>g_state</code> sur le domaine de ce site et ses cookies sur accounts.google.com, selon les règles
-	de Google. Tout ce qui est listé ici est strictement nécessaire à un service que vous demandez : c'est
-	pourquoi le site ne vous demande pas votre consentement par un bandeau (article 5(3) de la directive
-	ePrivacy, article 82 de la loi Informatique et Libertés). Les descriptions d'un portfolio peuvent aussi
-	afficher des images hébergées sur d'autres sites, choisies par son propriétaire : votre navigateur les
-	charge depuis ces sites, qui reçoivent votre adresse IP et des informations sur votre navigateur et
-	appliquent leurs propres règles.
+	<code>g_state</code> sur le domaine de ce site et ses cookies sur accounts.google.com, selon les
+	règles de Google. Tout ce qui est listé ici est strictement nécessaire à un service que vous
+	demandez : c'est pourquoi le site ne vous demande pas votre consentement par un bandeau (article
+	5(3) de la directive ePrivacy, article 82 de la loi Informatique et Libertés). Les descriptions
+	d'un portfolio peuvent aussi afficher des images hébergées sur d'autres sites, choisies par son
+	propriétaire : votre navigateur les charge depuis ces sites, qui reçoivent votre adresse IP et des
+	informations sur votre navigateur et appliquent leurs propres règles. Les pages du site passent
+	par Cloudflare, un réseau de diffusion de contenu, qui ne dépose aucun cookie et n'ajoute aucun
+	script sur ce site (voir la
+	<LegalDocLink doc="privacy" {lang} hash="recipients">politique de confidentialité</LegalDocLink>).
 </p>
 
 <h3 id="cookies">Cookies</h3>
@@ -109,14 +113,14 @@ Libertés art. 82), comment les effacer.
 <p>
 	<strong>Quand Google intervient.</strong> Le script de connexion de Google n'est chargé qu'après une
 	demande de votre part qui en a besoin : un clic sur un bouton « Se connecter » ou « Se connecter avec
-	Google » (dans l'en-tête des portfolios, des pages d'offres et de l'espace recruteur, dans le panneau
-	de candidature d'une offre ou dans un parcours de recrutement), la case d'âge et de conditions cochée
-	sur la page d'accueil ou dans un formulaire de création de portfolio, la connexion de Google Agenda,
-	ainsi que la déconnexion ou la suppression de votre compte, pour désactiver la connexion automatique
-	de Google sur ce navigateur (sans quoi Google vous reconnecterait aussitôt). Son chargement transmet
-	à Google votre adresse IP et des informations sur votre navigateur, même si vous ne vous connectez pas.
-	Une fois chargé, il le reste jusqu'à ce que vous quittiez ou rechargiez le site, y compris sur les pages
-	que vous ouvrez ensuite, comme les pages légales.
+	Google » (dans l'en-tête des portfolios et de l'espace recruteur, dans un parcours de recrutement, ou
+	sur la page d'une offre d'emploi partagée avec vous), la case d'âge et de conditions cochée sur la page
+	d'accueil, sur la page de l'espace recruteur ou dans un formulaire de création de portfolio, la connexion
+	de Google Agenda, ainsi que la déconnexion ou la suppression de votre compte, pour désactiver la connexion
+	automatique de Google sur ce navigateur (sans quoi Google vous reconnecterait aussitôt). Son chargement
+	transmet à Google votre adresse IP et des informations sur votre navigateur, même si vous ne vous connectez
+	pas. Une fois chargé, il le reste jusqu'à ce que vous quittiez ou rechargiez le site, y compris sur
+	les pages que vous ouvrez ensuite, comme les pages légales.
 </p>
 
 <h3 id="local-storage">Stockage local</h3>
@@ -190,7 +194,7 @@ Libertés art. 82), comment les effacer.
 	<li>
 		Les réglages de votre navigateur permettent de supprimer les cookies et le stockage de ce site
 		(« données de site »), ou de les bloquer. Bloquer le cookie <code>auth</code> empêche de se
-		connecter ; la lecture des portfolios et des offres d'emploi fonctionne toujours. Sans le cookie
+		connecter ; la lecture des portfolios fonctionne toujours. Sans le cookie
 		<code>lang</code>, les pages suivent la langue de votre navigateur.
 	</li>
 	<li>

@@ -92,7 +92,8 @@ export interface ServerEnv {
    * COMMUTE_TRANSIT=here, the HERE Public Transit API (a commercial service
    * with a free monthly allowance; needs HERE_API_KEY), or
    * COMMUTE_TRANSIT=transitous, api.transitous.org (its usage policy:
-   * open-source, non-commercial projects, light use; needs COMMUTE_CONTACT)
+   * open-source, non-commercial projects, light use; needs COMMUTE_CONTACT),
+   * which matching never asks (services/commute.ts)
    */
   COMMUTE_TRANSIT?: 'here' | 'transitous';
   /**
@@ -108,6 +109,20 @@ export interface ServerEnv {
   COMMUTE_CONTACT?: string;
   /** Requests to the geocoding and route services per UTC day, for the whole site (0 turns travel times off) */
   COMMUTE_DAILY_LIMIT: number;
+  /**
+   * MATCHING=true: Path 2, matching on open jobs (plugins/matches.ts:
+   * discovery, reviews, feeds, decisions, mutual interests). Off without it:
+   * its routes are not registered (404), nothing is proposed and journeys
+   * read no mutual interest; what a job's changes do to its matches still
+   * runs (it only ends, drops, deletes or sends back for review)
+   */
+  matchingEnabled: boolean;
+  /**
+   * The accounts (their emails, lower case) that review each job put into
+   * matching before it reaches a candidate (services/matchingReviews.ts),
+   * from MATCHING_REVIEWERS. Empty: no job is ever approved. Never logged
+   */
+  matchingReviewers: ReadonlySet<string>;
   /** Serve OpenAPI docs (always outside production, opt-in with API_DOCS=true) */
   apiDocsEnabled: boolean;
   OTEL_EXPORTER_OTLP_ENDPOINT?: string;
@@ -127,6 +142,19 @@ export interface ServerEnv {
   otelSignals: OtelSignals;
   /** Period of the 'memory' log line in milliseconds; 0 turns it off */
   MEMORY_LOG_INTERVAL_MS: number;
+  /**
+   * Period, in milliseconds, of the background job that has Claude classify
+   * the skills of the catalogue not classified yet (their category, the
+   * skill they are part of, the skill they are another spelling of:
+   * services/skillClassificationJob.ts); 0 turns the job off. Off without
+   * ANTHROPIC_API_KEY too
+   */
+  SKILL_CLASSIFICATION_INTERVAL_MS: number;
+  /**
+   * Calls to Claude that job makes per UTC day for the whole site, each
+   * classifying a batch of skill names, never given back (0 turns the job off)
+   */
+  SKILL_CLASSIFICATION_DAILY_LIMIT: number;
   TLS_PASSPHRASE?: string;
   /** Non-fatal problems, printed at startup */
   warnings: string[];
@@ -240,22 +268,29 @@ const parseOtelExporter = (
 };
 
 const DEFAULT_MEMORY_LOG_INTERVAL_MS = 600_000;
-const MIN_MEMORY_LOG_INTERVAL_MS = 1_000;
+const DEFAULT_SKILL_CLASSIFICATION_INTERVAL_MS = 600_000;
+const MIN_TIMER_INTERVAL_MS = 1_000;
 // Longest delay setInterval accepts; above it, the timer fires every 1 ms
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
-const parseMemoryLogInterval = (raw: string | undefined, problems: string[]): number => {
-  if (raw === undefined || raw.trim() === '') return DEFAULT_MEMORY_LOG_INTERVAL_MS;
+// The period of a timer: 0 (off), or milliseconds a setInterval can take
+const parseTimerInterval = (
+  name: string,
+  raw: string | undefined,
+  defaultValue: number,
+  problems: string[]
+): number => {
+  if (raw === undefined || raw.trim() === '') return defaultValue;
   // Digits only: Number() would also accept '1e3' or '0x3e8'
   const ms = /^\s*\d+\s*$/.test(raw) ? Number(raw) : Number.NaN;
   if (
     !Number.isInteger(ms) ||
-    (ms !== 0 && (ms < MIN_MEMORY_LOG_INTERVAL_MS || ms > MAX_TIMER_DELAY_MS))
+    (ms !== 0 && (ms < MIN_TIMER_INTERVAL_MS || ms > MAX_TIMER_DELAY_MS))
   ) {
     problems.push(
-      `MEMORY_LOG_INTERVAL_MS must be 0 (off) or a whole number of milliseconds from ${MIN_MEMORY_LOG_INTERVAL_MS} to ${MAX_TIMER_DELAY_MS} (got ${JSON.stringify(raw)})`
+      `${name} must be 0 (off) or a whole number of milliseconds from ${MIN_TIMER_INTERVAL_MS} to ${MAX_TIMER_DELAY_MS} (got ${JSON.stringify(raw)})`
     );
-    return DEFAULT_MEMORY_LOG_INTERVAL_MS;
+    return defaultValue;
   }
   return ms;
 };
@@ -264,6 +299,8 @@ const DEFAULT_RESUME_IMPORT_MONTHLY_LIMIT = 3;
 const DEFAULT_RESUME_IMPORT_DAILY_LIMIT = 30;
 /** Where the steps owners suggest are filed, unless GITHUB_ISSUES_REPO says otherwise */
 const DEFAULT_GITHUB_ISSUES_REPO = 'lomithrani/portfolio';
+/** An email address, roughly: what MATCHING_REVIEWERS lists (compared with an account's email) */
+const EMAIL = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
 // The name is not `.` or `..`: the URL it is put in would then name another path
 const GITHUB_REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 const DEFAULT_RESUME_IMPORT_ATTEMPTS_PER_DAY = 10;
@@ -271,6 +308,8 @@ const DEFAULT_JOB_IMPORT_DAILY_LIMIT = 30;
 const DEFAULT_JOB_IMPORT_ATTEMPTS_PER_DAY = 10;
 /** Under what Transitous asks to be told about (720 route requests a day) */
 const DEFAULT_COMMUTE_DAILY_LIMIT = 500;
+/** Each call classifies up to 40 skill names (portfolio-common's SKILL_CLASSIFICATION.batchSize) */
+const DEFAULT_SKILL_CLASSIFICATION_DAILY_LIMIT = 100;
 
 // A count of requests: 0 or more, digits only (Number() would also accept
 // '1e3', '0x3e8' or '2.5'); 0 turns `feature` off
@@ -436,6 +475,28 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     warnings.push('COMMUTE_TRANSIT is set without COMMUTE_TIMES=true: travel times stay off');
   }
 
+  const matching = optional(source.MATCHING);
+  if (matching !== undefined && matching !== 'true' && matching !== 'false') {
+    problems.push(`MATCHING must be true or false (got ${JSON.stringify(matching)})`);
+  }
+  // Emails, never echoed: the problem names the entry by its place in the list
+  const matchingReviewers = new Set<string>();
+  const reviewers = optional(source.MATCHING_REVIEWERS);
+  if (reviewers !== undefined) {
+    reviewers.split(',').forEach((entry, index) => {
+      const email = entry.trim().toLowerCase();
+      if (EMAIL.test(email)) matchingReviewers.add(email);
+      else problems.push(`MATCHING_REVIEWERS must be email addresses separated by commas (entry ${index + 1} is not one)`);
+    });
+  }
+  if (matching === 'true' && reviewers === undefined) {
+    warnings.push('MATCHING=true without MATCHING_REVIEWERS: no job description can be approved for candidates');
+  }
+  // Transitous' usage policy is for non-commercial projects: matching never asks it (services/commute.ts)
+  if (matching === 'true' && commuteTimes === 'true' && commuteTransit === 'transitous') {
+    warnings.push('MATCHING=true with COMMUTE_TRANSIT=transitous: matching computes travel times without public transport');
+  }
+
   const GITHUB_ISSUES_TOKEN = optional(source.GITHUB_ISSUES_TOKEN);
   if (GITHUB_ISSUES_TOKEN && /[\s"']/.test(GITHUB_ISSUES_TOKEN)) {
     problems.push('GITHUB_ISSUES_TOKEN must be the bare GitHub token (no quotes or spaces)');
@@ -451,7 +512,25 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
   const OTEL_TRACES_EXPORTER = parseOtelExporter('OTEL_TRACES_EXPORTER', source.OTEL_TRACES_EXPORTER, problems);
   const OTEL_METRICS_EXPORTER = parseOtelExporter('OTEL_METRICS_EXPORTER', source.OTEL_METRICS_EXPORTER, problems);
   const OTEL_LOGS_EXPORTER = parseOtelExporter('OTEL_LOGS_EXPORTER', source.OTEL_LOGS_EXPORTER, problems);
-  const MEMORY_LOG_INTERVAL_MS = parseMemoryLogInterval(source.MEMORY_LOG_INTERVAL_MS, problems);
+  const MEMORY_LOG_INTERVAL_MS = parseTimerInterval(
+    'MEMORY_LOG_INTERVAL_MS',
+    source.MEMORY_LOG_INTERVAL_MS,
+    DEFAULT_MEMORY_LOG_INTERVAL_MS,
+    problems
+  );
+  const SKILL_CLASSIFICATION_INTERVAL_MS = parseTimerInterval(
+    'SKILL_CLASSIFICATION_INTERVAL_MS',
+    source.SKILL_CLASSIFICATION_INTERVAL_MS,
+    DEFAULT_SKILL_CLASSIFICATION_INTERVAL_MS,
+    problems
+  );
+  const SKILL_CLASSIFICATION_DAILY_LIMIT = parseLimit(
+    'SKILL_CLASSIFICATION_DAILY_LIMIT',
+    source.SKILL_CLASSIFICATION_DAILY_LIMIT,
+    DEFAULT_SKILL_CLASSIFICATION_DAILY_LIMIT,
+    problems,
+    'skill classification'
+  );
 
   if (problems.length > 0) throw new EnvironmentError(problems);
 
@@ -493,6 +572,8 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
     HERE_API_KEY,
     COMMUTE_CONTACT,
     COMMUTE_DAILY_LIMIT,
+    matchingEnabled: matching === 'true',
+    matchingReviewers,
     apiDocsEnabled: !isProduction || source.API_DOCS === 'true',
     OTEL_EXPORTER_OTLP_ENDPOINT,
     OTEL_SERVICE_NAME: optional(source.OTEL_SERVICE_NAME) ?? 'portfolio-server',
@@ -507,6 +588,8 @@ export const parseEnv = (source: Record<string, string | undefined>): ServerEnv 
       logs: otelEnabled && OTEL_LOGS_EXPORTER === 'otlp'
     },
     MEMORY_LOG_INTERVAL_MS,
+    SKILL_CLASSIFICATION_INTERVAL_MS,
+    SKILL_CLASSIFICATION_DAILY_LIMIT,
     TLS_PASSPHRASE: optional(source.TLS_PASSPHRASE),
     warnings
   };

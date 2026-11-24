@@ -30,6 +30,11 @@ beforeEach(() => {
     if (!skillIds.has(name)) skillIds.set(name, new Types.ObjectId());
     return skillIds.get(name)!;
   });
+  // The catalogue's other lookups of a save: the names it lacks (none here, so nothing is counted
+  // against the account's allowance of new names), and what an edited experience stores (no skill
+  // is another spelling of one); tests/skillCatalogue.test.ts runs both against MongoDB
+  spyOn(Skill, 'namesToQueue').mockResolvedValue([]);
+  spyOn(Skill, 'find').mockReturnValue({ lean: async () => [] } as never);
 });
 
 afterEach(() => {
@@ -287,6 +292,7 @@ describe('POST /experiences', () => {
     expect(body).toMatchObject({ type: 'validation', on: 'body', property });
     expect(body.message).toBeString();
     expect(Skill.findOrCreate).not.toHaveBeenCalled();
+    expect(Skill.namesToQueue).not.toHaveBeenCalled();
     expect(experienceSave).not.toHaveBeenCalled();
     expect(domainUpdate).not.toHaveBeenCalled();
   });

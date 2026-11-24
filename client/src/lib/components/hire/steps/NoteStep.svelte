@@ -10,7 +10,7 @@ visitors do, without anything to confirm.
 	import { isSessionValid } from '#services/authentication.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { noteContent, submitFailure } from '#services/workflow.ts';
-	import ApplySignIn from '#components/apply/ApplySignIn.svelte';
+	import SignInButton from '#components/hire/SignInButton.svelte';
 	import Markdown from '#components/Markdown.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { m } from './steps.messages';
@@ -51,15 +51,17 @@ visitors do, without anything to confirm.
 	<!-- Once confirmed, the note is only there to read again; so it is for its owner, who previews it -->
 	{#if step.status !== 'succeeded' && !journey.own}
 		{#if !$sessionCheckedStore}
+			<!-- Until the session is known; never on a page without scripts, which never checks it
+			     (its <noscript> line says why the note cannot be confirmed) -->
 			<div
-				class="placeholder h-11 w-40 animate-pulse motion-reduce:animate-none"
+				class="placeholder h-11 w-40 animate-pulse motion-reduce:animate-none noscript:hidden"
 				aria-hidden="true"
 			></div>
 		{:else if !signedIn}
 			<div class="space-y-3">
 				<p class="text-sm">{m.note.signIn}</p>
 				<!-- No space chosen: an account keeps the one it had -->
-				<ApplySignIn mode={null} />
+				<SignInButton />
 			</div>
 		{:else}
 			<button

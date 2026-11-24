@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { skillTaxonomy, type SkillTaxonomy } from 'portfolio-common';
 	import { previewedSkill, resolvePreview, skillTimeline } from '#services/projectPreview.ts';
 	import { placeSpan, type ExperienceView } from '#services/timeline.ts';
 	import { m } from './ProjectPreview.messages.ts';
@@ -10,16 +11,20 @@
 	// and bars only name what they preview. A tag that does nothing else (a card's skill chip)
 	// also shows it when tapped, for touch screens. On the timeline view, the filters' tags draw
 	// their projects as a small timeline of their own instead of a list: only them, over the years.
+	// A skill that others are part of ('.NET', with '.NET Core') previews its family's projects.
 
 	type Experiences = Parameters<typeof resolvePreview>[0];
 
 	let {
 		experiences,
+		taxonomy: givenTaxonomy,
 		view = 'list',
 		onSkill
 	}: {
 		/** Every experience of the page: what the previews are made from */
 		experiences: Experiences;
+		/** The families of their skills (see skillTaxonomy), when the page has them already */
+		taxonomy?: SkillTaxonomy;
 		/**
 		 * The view of the page: a skill's projects are a list on the list; on the timeline, a small
 		 * timeline for the filters' tags (a card's tags keep the list)
@@ -41,7 +46,10 @@
 	let target: string | null = $state(null);
 	let popover: HTMLElement | undefined = $state();
 	let position: { left: number; top: number } | null = $state(null);
-	let preview = $derived(target ? (resolvePreview(experiences, target) ?? null) : null);
+	let taxonomy = $derived(givenTaxonomy ?? skillTaxonomy(experiences));
+	let preview = $derived(
+		target ? (resolvePreview(experiences, target, new Date(), taxonomy) ?? null) : null
+	);
 	// A skill's projects over time: for the filters' tags on the timeline view only. A tag inside
 	// an experience's card keeps the list, on the timeline view too (the card under the chart is
 	// the list's card). None either when none of the projects can be placed: their experiences
@@ -49,7 +57,7 @@
 	let chart = $derived.by(() => {
 		if (view !== 'timeline' || !preview || !anchor || anchor.closest('article')) return null;
 		const skill = previewedSkill(target);
-		return skill ? (skillTimeline(experiences, skill) ?? null) : null;
+		return skill ? (skillTimeline(experiences, skill, new Date(), taxonomy) ?? null) : null;
 	});
 
 	// Plain spaces around the dot (a text expression: the template would trim them)
@@ -66,6 +74,11 @@
 	let pinned = false;
 	/** The element just pressed (or dismissed with Escape): no preview until the pointer leaves it */
 	let muted: HTMLElement | null = null;
+	/**
+	 * Where the pointer pressed something last, until it moves: what the press brought under a
+	 * resting pointer (the tags shown by "All N skills", a row that wrapped) is not hovered
+	 */
+	let pressedAt: { x: number; y: number } | null = null;
 	let showTimer: ReturnType<typeof setTimeout> | undefined;
 	let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -136,12 +149,18 @@
 		if (anchor && preview && popover) untrack(place);
 	});
 
-	// The anchor is described by its preview while it shows (read after the tag's own name)
+	// The anchor is described by its preview while it shows (read after the tag's own name), in
+	// place of what describes it otherwise (a filter's tag says its time in a few words), which
+	// it gets back
 	$effect(() => {
 		const element = anchor;
 		if (!element || !preview) return;
+		const before = element.getAttribute('aria-describedby');
 		element.setAttribute('aria-describedby', `${uid}-preview`);
-		return () => element.removeAttribute('aria-describedby');
+		return () => {
+			if (before === null) element.removeAttribute('aria-describedby');
+			else element.setAttribute('aria-describedby', before);
+		};
 	});
 
 	$effect(() => {
@@ -162,6 +181,16 @@
 				cancelHide();
 				return;
 			}
+			// The page moved under a pointer that did not: nothing new is being pointed at
+			// (within a pixel: a click gives whole pixels, the pointer's own events fractions of one)
+			if (
+				pressedAt &&
+				Math.abs(event.clientX - pressedAt.x) < 1 &&
+				Math.abs(event.clientY - pressedAt.y) < 1
+			) {
+				return;
+			}
+			pressedAt = null;
 			const element = anchorOf(event.target);
 			if (element !== muted) muted = null;
 			if (!element || element === muted) {
@@ -197,6 +226,8 @@
 
 		const onClick = (event: MouseEvent) => {
 			if (inPopover(event.target)) return;
+			// A press of the pointer (the keyboard's has no place: its `detail` is 0)
+			pressedAt = event.detail > 0 ? { x: event.clientX, y: event.clientY } : null;
 			const element = anchorOf(event.target);
 			if (element && !element.closest('button, a')) {
 				// A tag that does nothing else: a press shows its preview, or closes it
@@ -269,17 +300,24 @@
 			{#if preview.period}
 				<p class="text-xs text-surface-700-300">{preview.period}</p>
 			{/if}
+			{#if preview.family}
+				<p class="text-xs text-surface-700-300 wrap-anywhere" data-preview-family>
+					{preview.family}
+				</p>
+			{/if}
 		</div>
 		{#if preview.skills.hard.length > 0 || preview.skills.soft.length > 0}
 			<ul class="flex flex-wrap gap-1" aria-label={m.skills}>
 				{#each preview.skills.hard as name (name)}
-					<li class="chip preset-tonal-primary px-1.5 py-0.5 text-xs">{name}</li>
+					<li class="chip preset-tonal-primary max-w-full px-1.5 py-0.5 text-xs">
+						<span class="-my-0.5 truncate py-0.5">{name}</span>
+					</li>
 				{/each}
 				{#each preview.skills.soft as name (name)}
 					<li
-						class="chip bg-[color-mix(in_oklab,var(--color-primary-50-950)_45%,transparent)] px-1.5 py-0.5 text-xs text-primary-950-50"
+						class="chip max-w-full bg-[color-mix(in_oklab,var(--color-primary-50-950)_45%,transparent)] px-1.5 py-0.5 text-xs text-primary-950-50"
 					>
-						{name}
+						<span class="-my-0.5 truncate py-0.5">{name}</span>
 					</li>
 				{/each}
 			</ul>

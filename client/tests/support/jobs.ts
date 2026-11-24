@@ -7,7 +7,7 @@ import { API_URL } from './owner';
 // of the recruiter space, which run in parallel: each test names its postings with its own tag
 // and removes those alone.
 
-export type RecruiterJob = { _id: string; title: string; status: string; applicantCount: number };
+export type RecruiterJob = { _id: string; title: string; status: string };
 
 /** A complete posting: a full-time CDI on site in Paris, `fields` replacing whole fields */
 export const jobPosting = (
@@ -28,7 +28,7 @@ export const jobPosting = (
 export const createJob = async (
 	api: APIRequestContext,
 	fields: Parameters<typeof jobPosting>[0]
-): Promise<Omit<RecruiterJob, 'applicantCount'>> => {
+): Promise<RecruiterJob> => {
 	const response = await api.post(`${API_URL}/jobs`, { data: jobPosting(fields) });
 	expect(response.ok(), await response.text()).toBe(true);
 	return response.json();

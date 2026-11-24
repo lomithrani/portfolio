@@ -3,7 +3,10 @@
 // deal-breaker, and a fictional recruiter with an open job too far away. Everything but the two
 // users and the domain goes through the API, as the app would write it. Starts again from nothing
 // each time. The perfect job's address is looked up by the API: start it with COMMUTE_TIMES=true.
+// The recruiter accepts the terms in force (PUT /me/consent) before writing his job: the API
+// refuses every recruiter route until he has, so after a LEGAL_VERSION bump run this seed again.
 // Usage: bun scripts/landing-demos/seed.mjs
+import { currentConsent } from 'portfolio-common';
 import { API, JANE, SAM, mongo, session } from './lib.mjs';
 
 // Start again from nothing
@@ -222,8 +225,10 @@ await call(JANE, 'PUT', '/workflow', {
 			id: 'note',
 			type: 'note',
 			config: {
-				title: 'Before you start',
-				text: 'I am open to **staff or lead frontend** roles around Lyon.\n\nShare the job first: you will see at once how it matches what I am looking for.'
+				// Not the page's own "Before you start" card above the steps, and in the neutral words
+				// of the page around it (the job is scored against the owner's criteria)
+				title: 'My conditions',
+				text: 'I am open to **staff or lead frontend** roles around Lyon.\n\nShare the job first: you will see at once how it matches my criteria.'
 			}
 		},
 		{ id: 'job', type: 'job', config: {} },
@@ -254,6 +259,10 @@ const jobs = [
 		workMode: 'on_site'
 	})
 ];
+// The terms in force, accepted where a recruiter accepts them (his space has no acceptance yet)
+await call(SAM, 'PUT', '/me/consent', { ...currentConsent(), source: 'recruiter' });
+console.log('recruiter terms accepted');
+
 for (const posting of jobs) {
 	const created = await call(SAM, 'POST', '/jobs', posting);
 	console.log('job', created._id, created.title, created.status);

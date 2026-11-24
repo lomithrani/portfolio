@@ -9,7 +9,7 @@
 		experienceTypeLabels
 	} from '#components/experience-list/experienceList.ts';
 	import { experiencePeriod } from '#services/experienceDates.ts';
-	import { projectMatchesFilters } from '#services/filters.ts';
+	import { projectMatchesFilters, type SkillIndex } from '#services/filters.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { m } from './Experience.messages.ts';
 
@@ -28,7 +28,8 @@
 		highlighted = false,
 		revealedProject = null,
 		previewSkill = null,
-		muted = false
+		muted = false,
+		skills
 	}: {
 		experience: ExperienceModel;
 		/** Shows the owner's Edit button */
@@ -44,6 +45,12 @@
 		previewSkill?: string | null;
 		/** Stepped back while that skill is previewed: none of its projects uses it */
 		muted?: boolean;
+		/**
+		 * The skills of the page, ranked, with their families: the projects' tags are listed the
+		 * most used first, and a previewed skill outlines the projects using a skill that is part
+		 * of it too
+		 */
+		skills?: SkillIndex;
 	} = $props();
 
 	let id = $derived(String(experience._id));
@@ -180,7 +187,9 @@
 						within={period}
 						{highlightSkill}
 						revealed={revealedProject === index}
-						previewed={projectMatchesFilters(project, previewFilters)}
+						previewed={projectMatchesFilters(project, previewFilters, skills?.taxonomy)}
+						{skills}
+						{previewSkill}
 					/>
 				</div>
 			{/each}

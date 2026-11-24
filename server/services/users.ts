@@ -6,7 +6,7 @@ import { ConflictError, CouldntVerifyJwtError } from '../errors';
 import { UNKNOWN_USER } from '../protocol';
 import { restoreAccountQuotas } from './accountQuotas';
 import type { GoogleIdentity } from './google';
-import { latestTermsVersion } from './legal';
+import { latestTermsVersion, requireCurrentTerms } from './legal';
 import { isDuplicateKeyError } from './mongoErrors';
 import { enableRecruiterSpace } from './recruiters';
 import { m } from './google.messages';
@@ -80,13 +80,26 @@ export const findAccount = async (userId: string) => {
 
 /**
  * Makes `mode` the account's active space. Choosing 'recruiter' creates the
- * recruiter space the first time; an existing one keeps its plan and imports
- * used. Returns the updated user; 401 when the account no longer exists.
+ * recruiter space the first time, once the account accepted the terms in
+ * force: `consent` (the age and terms checkbox, ticked where the space is
+ * opened) is checked and recorded from the source 'recruiter' for an
+ * account that has not (422 on `consent` without it, and no space). An
+ * existing space keeps its plan and imports used, and switching to it needs
+ * no consent (its routes ask for the terms in force: services/recruiters.ts).
+ * Returns the updated user; 401 when the account no longer exists.
  */
-export const setActiveMode = async (userId: string, mode: UserMode) => {
+export const setActiveMode = async (userId: string, mode: UserMode, consent?: unknown) => {
   if (!Types.ObjectId.isValid(userId)) throw unknownUser();
-  // The space first: an account never shows the recruiter mode without one
-  if (mode === 'recruiter' && !(await enableRecruiterSpace(userId))) throw unknownUser();
+  if (mode === 'recruiter') {
+    const account = await User.findById(userId, { recruiter: 1 }).lean();
+    if (!account) throw unknownUser();
+    if (!account.recruiter) {
+      // The terms before the space: no recruiter space is opened without them
+      await requireCurrentTerms(userId, consent, 'recruiter');
+      // The space before the mode: an account never shows the recruiter mode without one
+      if (!(await enableRecruiterSpace(userId))) throw unknownUser();
+    }
+  }
   const user = await User.findByIdAndUpdate(
     userId,
     { $set: { activeMode: mode } },

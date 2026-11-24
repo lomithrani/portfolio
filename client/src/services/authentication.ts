@@ -114,8 +114,12 @@ const isLogged = async (): Promise<boolean> => {
 	}
 };
 
-/** Why a sign-in failed: 'stale-terms' (the confirmation was given for an older version of the terms) or anything else */
-type SignInFailureReason = 'stale-terms' | 'error';
+/**
+ * Why a sign-in failed: 'stale-terms' (the confirmation was given for an older version of the
+ * terms), 'consent' (the API asks for the confirmation: opening the recruiter space without it) or
+ * anything else
+ */
+type SignInFailureReason = 'stale-terms' | 'consent' | 'error';
 
 type SignInResult = { ok: true } | { ok: false; reason: SignInFailureReason };
 
@@ -124,8 +128,11 @@ interface SignInOptions {
 	mode?: UserMode;
 	/** The age and terms checkbox ticked before signing in (portfolio-common currentConsent()) */
 	consent?: ConsentInput;
-	/** Where that checkbox was: the landing page (the API's default) or a claim form */
-	consentSource?: 'landing' | 'claim';
+	/**
+	 * Where that checkbox was: the landing page (the API's default), a claim form, or the recruiter
+	 * space (the API's default with the mode 'recruiter')
+	 */
+	consentSource?: 'landing' | 'claim' | 'recruiter';
 }
 
 /** The field a 422 validation error names (`property`), '' for any other body */
@@ -137,11 +144,12 @@ const validationProperty = (value: unknown): string =>
 /**
  * Exchanges a Google ID token for the API's auth cookie, and says why it failed: 'stale-terms'
  * when the API refused the confirmation as given for an older version of the terms (a page loaded
- * before they changed: only a reload helps), 'error' otherwise (the API rejected the token, or the
- * cookie does not round-trip). The user stays logged out on failure. `mode` makes that space the
- * account's active one (choosing 'recruiter' creates the recruiter space); without it the account
- * keeps the space it last chose. `consent` is recorded by the API, from `consentSource`, before
- * the session is issued.
+ * before they changed: only a reload helps), 'consent' when it asks for one (the mode 'recruiter'
+ * opens the recruiter space, which needs the terms in force), 'error' otherwise (the API rejected
+ * the token, or the cookie does not round-trip). The user stays logged out on failure. `mode`
+ * makes that space the account's active one (choosing 'recruiter' creates the recruiter space);
+ * without it the account keeps the space it last chose. `consent` is recorded by the API, from
+ * `consentSource`, before the session is issued.
  */
 const signIn = async (
 	googleCredential: string,
@@ -160,9 +168,14 @@ const signIn = async (
 		const session = { user: readUser(data), expires: readExpires(data) };
 		if (error || !isSessionValid(session)) {
 			clearAuthentication();
-			const stale =
-				errorStatus(error) === 422 && validationProperty(error?.value) === 'consent.termsVersion';
-			return { ok: false, reason: stale ? 'stale-terms' : 'error' };
+			const property = errorStatus(error) === 422 ? validationProperty(error?.value) : '';
+			const reason: SignInFailureReason =
+				property === 'consent.termsVersion'
+					? 'stale-terms'
+					: property === 'consent'
+						? 'consent'
+						: 'error';
+			return { ok: false, reason };
 		}
 
 		// The cookie is httpOnly: make sure the browser stored it and sends it back
@@ -181,14 +194,13 @@ const signIn = async (
 };
 
 /**
- * Exchanges a Google ID token for the API's auth cookie (signIn). Returns false (and leaves the
- * user logged out) when the API rejects the token or when the cookie does not round-trip.
+ * Exchanges a Google ID token for the API's auth cookie (signIn), in the space the account last
+ * chose and without a confirmation: a sign-in that chooses a space or sends the age and terms
+ * checkbox goes through signIn, which says why it failed. Returns false (and leaves the user
+ * logged out) when the API rejects the token or when the cookie does not round-trip.
  */
-const login = async (
-	googleCredential: string,
-	mode?: UserMode,
-	consent?: ConsentInput
-): Promise<boolean> => (await signIn(googleCredential, { mode, consent })).ok;
+const login = async (googleCredential: string): Promise<boolean> =>
+	(await signIn(googleCredential)).ok;
 
 const logout = async (): Promise<void> => {
 	try {

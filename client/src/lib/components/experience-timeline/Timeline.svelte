@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Experience as ExperienceModel } from 'portfolio-api/models/database';
-	import { ExperienceType } from 'portfolio-common';
+	import { ExperienceType, skillTaxonomy, type SkillTaxonomy } from 'portfolio-common';
 	import { flushSync, tick, untrack } from 'svelte';
 	import {
 		AcademicCap,
@@ -30,6 +30,7 @@
 	let {
 		experiences,
 		filters,
+		taxonomy: givenTaxonomy,
 		previewSkill = null,
 		selectedId = null,
 		onSelect
@@ -38,6 +39,12 @@
 		experiences: ExperienceModel[];
 		/** The filters that apply (see activeFilters): their projects are drawn bigger */
 		filters: ExperienceFilters;
+		/**
+		 * The families of the experiences' skills (see skillTaxonomy), when the page has them
+		 * already: a selected or previewed skill points at the projects using a skill that is part
+		 * of it too
+		 */
+		taxonomy?: SkillTaxonomy;
 		/** Key of the skill whose tag is hovered or focused: its projects are outlined */
 		previewSkill?: string | null;
 		/** The experience whose card is shown under the timeline */
@@ -49,6 +56,7 @@
 	const uid = $props.id();
 
 	let timeline = $derived(buildTimeline(experiences));
+	let taxonomy = $derived(givenTaxonomy ?? skillTaxonomy(experiences));
 	let axis = $derived({ start: timeline.start, end: timeline.end });
 	let months = $derived(timeline.end - timeline.start);
 	let filtering = $derived(filters.skills.length > 0);
@@ -335,7 +343,7 @@
 						{@const block = placeSpan(item.extent, axis)}
 						{@const own = placeSpan(item.span, item.extent)}
 						{@const matches = item.projects.some(({ project }) =>
-							projectMatchesFilters(project, filters)
+							projectMatchesFilters(project, filters, taxonomy)
 						)}
 						{@const selected = selectedId === id}
 						{@const TypeIcon = typeIcons[experience.type] ?? Briefcase}
@@ -378,8 +386,12 @@
 								<ul class="lanes grid gap-y-1" aria-label={m.projectsOf(experience.title)}>
 									{#each item.projects as entry (entry.index)}
 										{@const place = placeSpan(entry.span, item.extent)}
-										{@const matched = projectMatchesFilters(entry.project, filters)}
-										{@const previewed = projectMatchesFilters(entry.project, previewFilters)}
+										{@const matched = projectMatchesFilters(entry.project, filters, taxonomy)}
+										{@const previewed = projectMatchesFilters(
+											entry.project,
+											previewFilters,
+											taxonomy
+										)}
 										<li
 											class="min-w-0 self-center"
 											style:grid-row={entry.row + 1}

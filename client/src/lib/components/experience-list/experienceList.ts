@@ -1,4 +1,4 @@
-import type { ExperienceType } from 'portfolio-common';
+import { normalizeSkill, skillDisplayName, type ExperienceType } from 'portfolio-common';
 import { experiencePeriod, formatDuration, formatMonthRange } from '#services/experienceDates.ts';
 import { m } from '#components/experience-list/experienceList.messages.ts';
 
@@ -38,24 +38,18 @@ export function experienceSubtitle(
 	return parts.filter((part) => part.text !== '');
 }
 
-const displayNameOf = (entry: SkillEntry): string | undefined => {
-	const skill = entry.skill;
-	if (!skill || typeof skill !== 'object' || !('displayName' in skill)) return undefined;
-	const name = (skill as { displayName?: unknown }).displayName;
-	return typeof name === 'string' && name.trim() ? name.trim() : undefined;
-};
-
 /**
- * Distinct names of a kind of skill, grouped ignoring case: each group is labelled with its
- * most used spelling (ties: the first seen), sorted alphabetically.
+ * Distinct names of a kind of skill, grouped ignoring case (by portfolio-common's normalizeSkill,
+ * as the filters group them): each group is labelled with its most used spelling (ties: the first
+ * seen), sorted alphabetically.
  */
 function distinctSkillNames(projects: ListedProject[], kind: 'hardSkills' | 'softSkills') {
 	const groups = new Map<string, Map<string, number>>();
 	for (const project of projects) {
 		for (const entry of project[kind] ?? []) {
-			const name = displayNameOf(entry);
+			const name = skillDisplayName(entry);
 			if (!name) continue;
-			const key = name.toLowerCase();
+			const key = normalizeSkill(name);
 			const spellings = groups.get(key) ?? new Map<string, number>();
 			spellings.set(name, (spellings.get(name) ?? 0) + 1);
 			groups.set(key, spellings);

@@ -4,8 +4,21 @@ The job step of a portfolio's hiring journey: the recruiter picks one of their o
 descriptions (GET /recruiter/jobs), or writes a new one and comes back here to pick it
 (/recruiter/jobs/new?journey=<portfolio>, back on the Hire page with ?job=<id>: the job the
 address asks for is the one selected). Before that, a visitor signs in (keeping the space the
-account had) and an account without a recruiter space creates it here.
+account had) and an account without a recruiter space creates it here, after the age and terms box
+when it has not accepted the terms in force (the API records them from the source 'recruiter'); a
+recruiter who has not accepted the terms in force (the API answers 422 on `consent`, and a job
+picked before stops counting) accepts them here (TermsAcceptance) before picking.
 The pick is submitted to the step (`{ jobId }`); the job picked comes back as the step's view.
+The step keeps the version shared: what the owner reads and the steps after it use. Once shared,
+the step says when, and, when the posting changed since (its terms are locked once opened: its
+description, or a field no criterion reads), offers to share the new version (the same submit). On
+a journey that scores the job, the API counts the shares (429 beyond a day's), but the job kept,
+picked again unchanged.
+A recruiter the owner and they are both interested in one of their jobs (a mutual interest of
+matching) finds that job here (the step's view says `matched`): the version the owner said yes to,
+which the step holds while the mutual interest lasts, with no list to pick another (the API answers
+409 to a share meanwhile) and nothing to share again; while it does not hold, what brings it back
+(the posting open again, the terms in force accepted).
 Not for the portfolio's owner (the API refuses their pick): the page shows them the step's
 description instead.
 -->
@@ -13,11 +26,11 @@ description instead.
 	import { tick, untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { Briefcase, DocumentArrowUp, PlusCircle } from 'svelte-heros-v2';
-	import type { JobStatus } from 'portfolio-common';
+	import { ArrowPath, Briefcase, DocumentArrowUp, PlusCircle } from 'svelte-heros-v2';
+	import { currentConsent, type JobStatus } from 'portfolio-common';
 	import { portfolioApi } from '#services';
 	import { errorStatus } from '#services/apiErrors.ts';
-	import { switchMode } from '#services/account.ts';
+	import { hasAcceptedCurrentTerms, isConsentProblem, switchMode } from '#services/account.ts';
 	import { isSessionValid } from '#services/authentication.ts';
 	import { loadImportedDraft, type ImportedJobDraft } from '#services/jobDrafts.ts';
 	import {
@@ -26,7 +39,8 @@ description instead.
 		jobImportQuotaText,
 		type JobImportStatus
 	} from '#services/jobImport.ts';
-	import { networkError, failureText } from '#services/recruiter.ts';
+	import { formatPay, type JobPostingLike } from '#services/jobPosting.ts';
+	import { networkError, failureText, formatDay, isoDate } from '#services/recruiter.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
@@ -34,12 +48,17 @@ description instead.
 		JOURNEY_PARAM,
 		initialJobChoice,
 		isPickable,
+		jobLine,
+		outdatedShare,
 		pickJobFailure,
 		pickedJob,
 		requestedJob,
 		sortJobChoices
 	} from '#services/workflow.ts';
-	import ApplySignIn from '#components/apply/ApplySignIn.svelte';
+	import SignInButton from '#components/hire/SignInButton.svelte';
+	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
+	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
+	import RecruiterRules from '#components/legal/RecruiterRules.svelte';
 	import JobImport from '#components/job-import/JobImport.svelte';
 	import JobStatusBadge from '#components/jobs/JobStatusBadge.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
@@ -52,11 +71,23 @@ description instead.
 	const uid = $props.id();
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
 
-	type JobChoice = { _id: string; title: string; company?: string; status: JobStatus };
+	/**
+	 * A posting to pick, with its pay and the day it was opened: a duplicate (the only way to change
+	 * an opened posting's terms) keeps the title and company of its source, these tell them apart
+	 */
+	type JobChoice = {
+		_id: string;
+		title: string;
+		company?: string;
+		status: JobStatus;
+		pay?: JobPostingLike['pay'];
+		publishedAt?: Date | string;
+	};
 	type JobsState =
 		| { key: string; state: 'loading' }
 		| { key: string; state: 'loaded'; jobs: JobChoice[] }
 		| { key: string; state: 'no-space' }
+		| { key: string; state: 'terms' }
 		| { key: string; state: 'error'; message: string };
 
 	// The signed-in account, once the session has been checked with the API
@@ -65,8 +96,14 @@ description instead.
 			? $authenticationStore.user
 			: undefined
 	);
-	// Jobs are loaded for an account with a recruiter space
-	let jobsKey = $derived(user?.recruiter ? user._id : null);
+	// The job shared (the version the step keeps), and the one whose new version can be shared
+	let shared = $derived(pickedJob(step.view));
+	let newVersion = $derived(outdatedShare(step.view));
+	// The job of a mutual interest with the owner, which holds the step while it lasts: nothing to pick
+	let matched = $derived(shared?.matched ? shared : undefined);
+
+	// Jobs are loaded for an account with a recruiter space, unless a mutual interest holds the step
+	let jobsKey = $derived(user?.recruiter && !matched ? user._id : null);
 	let jobs = $state.raw<JobsState | null>(null);
 	// The jobs of the current account only
 	let shown = $derived(jobs && jobs.key === jobsKey ? jobs : null);
@@ -80,6 +117,13 @@ description instead.
 	let pickError = $state('');
 	let creatingSpace = $state(false);
 	let spaceError = $state('');
+	const consentId = `${uid}-consent`;
+	/** The age and terms box, ticked to create the recruiter space */
+	let consent = $state(false);
+	let consentError = $state('');
+	/** The API asked for the confirmation although the session said the terms were accepted */
+	let consentAsked = $state(false);
+	let needsConsent = $derived(!!user && (consentAsked || !hasAcceptedCurrentTerms(user)));
 
 	// Messages about an account go with it: a sign-in after an expired session starts clean
 	let account = $derived(user?._id ?? null);
@@ -88,6 +132,9 @@ description instead.
 		untrack(() => {
 			pickError = '';
 			spaceError = '';
+			consent = false;
+			consentError = '';
+			consentAsked = false;
 		});
 	});
 
@@ -178,6 +225,11 @@ description instead.
 					jobs = { key, state: 'no-space' };
 					return;
 				}
+				// The terms in force are not accepted: the step asks for them first
+				if (isConsentProblem(status, error?.value)) {
+					jobs = { key, state: 'terms' };
+					return;
+				}
 				jobs = { key, state: 'error', message: failureText(error?.value, m.job.jobsFailed) };
 				return;
 			}
@@ -186,7 +238,9 @@ description instead.
 					_id: job._id,
 					title: job.title,
 					company: job.company,
-					status: job.status
+					status: job.status,
+					pay: job.pay,
+					publishedAt: job.publishedAt
 				}))
 			);
 			jobs = { key, state: 'loaded', jobs: list };
@@ -210,11 +264,26 @@ description instead.
 	});
 
 	async function createRecruiterSpace() {
-		creatingSpace = true;
+		if (creatingSpace) return;
 		spaceError = '';
-		const result = await switchMode('recruiter');
+		if (needsConsent && !consent) {
+			consentError = m.job.tickTheBox;
+			document.getElementById(consentId)?.focus();
+			return;
+		}
+		creatingSpace = true;
+		const result = await switchMode('recruiter', needsConsent ? currentConsent() : undefined);
 		creatingSpace = false;
 		if (!result.ok) {
+			if (result.cause === 'consent') {
+				// The box shows (again): ticking it is what is missing, unless this page is outdated
+				consentAsked = true;
+				consent = false;
+				consentError = result.message;
+				await tick();
+				document.getElementById(consentId)?.focus();
+				return;
+			}
 			spaceError = result.message;
 			return;
 		}
@@ -224,20 +293,33 @@ description instead.
 
 	async function pick(event: SubmitEvent) {
 		event.preventDefault();
-		if (!selected || picking) return;
+		if (selected) await share(selected, m.job.picked);
+	}
+
+	/** Shares the posting `jobId` (a pick, or the new version of the one shared): `done` on success */
+	async function share(jobId: string, done: string) {
+		if (picking) return;
 		picking = true;
 		pickError = '';
-		const result = await submit({ jobId: selected });
+		const result = await submit({ jobId });
 		picking = false;
 		if (!result.ok) {
 			const failure = pickJobFailure(result.status, result.value);
 			pickError = failure.message;
 			if (failure.kind === 'signed-out' || failure.kind === 'locked') locked(failure.kind);
 			if (failure.kind === 'changed') reload();
+			// The job of a mutual interest now holds the step: the journey loaded again shows it in place
+			// of this form, which goes with the message: a toast says it
+			if (failure.kind === 'matched') {
+				toaster.info({ title: failure.message });
+				reload();
+			}
 			if (failure.kind === 'reload-jobs' && jobsKey) await loadJobs(jobsKey);
+			// The terms to accept show in place of the list (their acceptance loads it again)
+			if (failure.kind === 'terms' && jobsKey) jobs = { key: jobsKey, state: 'terms' };
 			return;
 		}
-		toaster.success({ title: m.job.picked });
+		toaster.success({ title: done });
 		// The pick settles what the address asked for: it selects nothing any more. The browser's
 		// address: page.url still has ?job= after an earlier shallow goto
 		if (new URLSearchParams(location.search).has(JOB_PARAM)) {
@@ -250,8 +332,9 @@ description instead.
 </script>
 
 {#if !$sessionCheckedStore}
+	<!-- Until the session is known; never on a page without scripts, which never checks it -->
 	<div
-		class="placeholder h-6 w-56 animate-pulse motion-reduce:animate-none"
+		class="placeholder h-6 w-56 animate-pulse motion-reduce:animate-none noscript:hidden"
 		aria-hidden="true"
 	></div>
 {:else if !user}
@@ -259,11 +342,56 @@ description instead.
 		<p class="text-sm">{m.job.signIn}</p>
 		<!-- No space chosen: an account keeps the one it had (the portfolio's owner, checking their
 		     page signed out, must not end up in a recruiter space) -->
-		<ApplySignIn mode={null} />
+		<SignInButton />
+	</div>
+{:else if matched}
+	{@const line = jobLine(matched)}
+	{@const jobHref = resolve('/(app)/recruiter/jobs/[id]', { id: matched._id })}
+	<div class="space-y-3 text-sm" data-matched-job>
+		{#if step.status === 'succeeded'}
+			<div class="space-y-2 rounded-container border border-surface-200-800 p-3">
+				<p>
+					<!-- Undated when the day both became interested does not read (pickedJob drops it) -->
+					<Rich text={matched.sharedAt ? m.job.matched.holds : m.job.matched.holdsUndated}>
+						{#snippet job()}<a class="font-semibold underline underline-offset-2" href={jobHref}
+								>{line}</a
+							>{/snippet}
+						{#snippet time()}{#if matched.sharedAt}<time datetime={isoDate(matched.sharedAt)}
+									>{formatDay(matched.sharedAt)}</time
+								>{/if}{/snippet}
+						{#snippet owner()}{ownerName}{/snippet}
+					</Rich>
+				</p>
+				<p>{m.job.matched.noOther}</p>
+			</div>
+		{:else if !isPickable(matched)}
+			<p>
+				<Rich text={m.job.matched.notOpen}>
+					{#snippet status(text)}<a class="underline underline-offset-2" href={jobHref}>{text}</a
+						>{/snippet}
+				</Rich>
+			</p>
+		{:else}
+			<!-- Open, yet not held: the terms in force are what is missing (the step holds it again
+			     once they are accepted, and the journey goes on from it) -->
+			<p>{m.job.matched.terms}</p>
+			<TermsAcceptance {user} source="recruiter" required onAccepted={() => reload()} />
+		{/if}
 	</div>
 {:else if !user.recruiter || shown?.state === 'no-space'}
 	<div class="space-y-3">
 		<p class="text-sm">{m.job.noSpace}</p>
+		{#if needsConsent}
+			<AgeTermsConsent
+				bind:checked={consent}
+				error={consent ? undefined : consentError || undefined}
+				disabled={creatingSpace}
+				id={consentId}
+				recruiter
+			/>
+		{:else}
+			<RecruiterRules />
+		{/if}
 		<button
 			type="button"
 			class="btn preset-filled-primary-700-300 min-h-11"
@@ -276,6 +404,25 @@ description instead.
 		{#if spaceError}
 			<p class="text-sm text-error-700-300" role="alert">{spaceError}</p>
 		{/if}
+	</div>
+{:else if shown?.state === 'terms'}
+	<div class="space-y-3">
+		{#if pickError}
+			<p class="text-sm text-error-700-300" role="alert">{pickError}</p>
+		{/if}
+		<TermsAcceptance
+			{user}
+			source="recruiter"
+			required
+			onAccepted={() => {
+				pickError = '';
+				if (jobsKey) void loadJobs(jobsKey);
+				// The import was refused with the list: it may be offered now
+				void refreshImportStatus();
+				// A job picked before the terms changed holds again: the journey goes on from it
+				if (pickedJob(step.view)) reload();
+			}}
+		/>
 	</div>
 {:else if !shown || shown.state === 'loading'}
 	<p class="text-sm opacity-60" role="status">{m.job.loadingJobs}</p>
@@ -292,6 +439,33 @@ description instead.
 	</div>
 {:else if shown.state === 'loaded'}
 	<form class="space-y-4" onsubmit={pick}>
+		{#if shared?.sharedAt}
+			{@const sharedAt = shared.sharedAt}
+			{@const sharedLine = jobLine(shared)}
+			<div class="space-y-2 rounded-container border border-surface-200-800 p-3 text-sm">
+				<p>
+					<Rich text={m.job.sharedOn}>
+						{#snippet job()}{sharedLine}{/snippet}
+						{#snippet time()}<time datetime={isoDate(sharedAt)}>{formatDay(sharedAt)}</time
+							>{/snippet}
+						{#snippet owner()}{ownerName}{/snippet}
+					</Rich>
+				</p>
+				{#if newVersion}
+					{@const outdated = newVersion}
+					<p>{m.job.changedSince(ownerName)}</p>
+					<button
+						type="button"
+						class="btn preset-filled-primary-700-300 min-h-11"
+						disabled={picking}
+						onclick={() => share(outdated._id, m.job.newVersionShared)}
+					>
+						<ArrowPath size="18" aria-hidden="true" />
+						{picking ? m.job.sharing : m.job.shareNewVersion}
+					</button>
+				{/if}
+			</div>
+		{/if}
 		{#if shown.jobs.length === 0}
 			<p class="text-sm">{m.job.noJob}</p>
 		{:else}
@@ -299,6 +473,7 @@ description instead.
 				<legend class="mb-2 text-sm font-semibold">{m.job.yourJobs}</legend>
 				{#each shown.jobs as job (job._id)}
 					{@const pickable = isPickable(job)}
+					{@const pay = formatPay(job.pay)}
 					<label
 						class={[
 							'flex items-start gap-3 rounded-container border p-3',
@@ -321,6 +496,18 @@ description instead.
 							<span class="block font-semibold break-words">{job.title}</span>
 							{#if job.company}
 								<span class="block text-sm text-surface-700-300">{job.company}</span>
+							{/if}
+							{#if pay}
+								<span class="block text-sm text-surface-700-300">{pay}</span>
+							{/if}
+							{#if job.publishedAt}
+								<span class="block text-xs text-surface-700-300">
+									<Rich text={m.job.opened(formatDay(job.publishedAt))}>
+										{#snippet time(day)}
+											<time datetime={isoDate(job.publishedAt)}>{day}</time>
+										{/snippet}
+									</Rich>
+								</span>
 							{/if}
 							{#if !pickable}
 								<span class="block text-xs" id="{uid}-{job._id}-why">

@@ -23,6 +23,7 @@ export const RESERVED_DOMAIN_NAMES: ReadonlySet<string> = new Set([
 	'login',
 	'logout',
 	'me',
+	'opportunities',
 	'privacy',
 	'recruiter',
 	'report',
@@ -35,9 +36,12 @@ export const RESERVED_DOMAIN_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 // Names that look like file requests (wp-login.php, config.json, ...) are
-// almost always vulnerability scanners, never people.
+// almost always vulnerability scanners, never people. The pictures, icons and
+// videos are those the web app serves at its root (client/static: favicon.png,
+// logo.svg, og-image.png, og-hire.png...): the bare address of a portfolio with
+// such a name would serve the file, which answers before any route.
 const FILE_EXTENSION_PATTERN =
-	/\.(php\d?|asp|aspx|jsp|cgi|env|json|xml|txt|html?|js|map|sql|bak|old|zip|gz|tar|ini|ya?ml|log|git|cfg|conf)$/;
+	/\.(php\d?|asp|aspx|jsp|cgi|env|json|xml|txt|html?|js|map|sql|bak|old|zip|gz|tar|ini|ya?ml|log|git|cfg|conf|png|jpe?g|gif|svg|webp|avif|ico|webm|mp4)$/;
 
 export const normalizeDomainName = (name: string): string => name.trim().toLowerCase();
 

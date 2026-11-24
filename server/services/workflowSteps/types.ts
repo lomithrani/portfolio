@@ -1,4 +1,5 @@
 import type { WorkflowStepStatus } from 'portfolio-common';
+import type { MutualInterest } from '../mutualInterests';
 
 // What a step type of the hiring journey does in the API. One file per type
 // in this folder, registered in index.ts under the name of its manifest in
@@ -31,6 +32,19 @@ export interface StepContext<Config, Data> {
    * picked in the job step)
    */
   earlier: readonly EarlierStep[];
+  /**
+   * The steps after this one, in order: their ids and types only (what they stored is theirs). For
+   * a type whose submission matters to a step after it (the job step caps the shares a job match
+   * after it scores)
+   */
+  later: readonly { id: string; type: string }[];
+  /**
+   * The mutual interest of matching (Path 2) between the owner and this visitor that leads into the
+   * journey now, when there is one (services/mutualInterests.ts; none while MATCHING is off): the
+   * job step holds its job, the job match its score as it was then. The engine reads it once per
+   * journey, like the progress
+   */
+  mutualInterest?: MutualInterest;
 }
 
 export interface ServerStep<Config extends object = object, Data = unknown, View = unknown> {

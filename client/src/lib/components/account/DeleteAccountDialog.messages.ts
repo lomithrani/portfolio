@@ -13,13 +13,10 @@ export const m = defineMessages({
 			en: 'Your portfolio <address></address>, its experiences and projects, and your hiring journey. The address becomes available to others.',
 			fr: "Votre portfolio <address></address>, ses expériences et ses projets, ainsi que votre parcours de recrutement. Son adresse redevient disponible pour d'autres."
 		},
-		jobs: {
-			en: 'Your job descriptions and their lists of applicants.',
-			fr: "Vos offres d'emploi et leurs listes de candidats."
-		},
-		applications: {
-			en: "Your job applications and your progress in other people's hiring journeys.",
-			fr: "Vos candidatures et votre progression dans les parcours de recrutement d'autres personnes."
+		jobs: { en: 'Your job descriptions.', fr: "Vos offres d'emploi." },
+		journeys: {
+			en: "Your progress in other people's hiring journeys.",
+			fr: "Votre progression dans les parcours de recrutement d'autres personnes."
 		},
 		meetings: {
 			en: 'Your meeting types and bookings. If you connected Google Calendar, its tokens are deleted and Google is asked to revoke its access.',
@@ -34,9 +31,14 @@ export const m = defineMessages({
 			fr: 'Les brouillons que ce navigateur conserve pour votre compte.'
 		}
 	},
+	/**
+	 * What deleting the account cannot take back (privacy policy, #retention): what went to Google
+	 * and GitHub, and the skill names of the shared catalogue (the Skill collection, linked to no
+	 * account: server/services/accountDeletion.ts leaves it)
+	 */
 	whatStays: {
-		en: 'Meetings already added to Google calendars stay there, and step suggestions already published on GitHub stay (they do not name you).',
-		fr: "Les rendez-vous déjà ajoutés à des agendas Google y restent, et les suggestions d'étape déjà publiées sur GitHub restent (elles ne vous nomment pas)."
+		en: "Meetings already added to Google calendars stay there, and the step suggestions and feedback already published on GitHub stay (they do not name you; write to us to have one removed). The names of the skills you typed stay in the site's shared catalogue, linked to no one.",
+		fr: "Les rendez-vous déjà ajoutés à des agendas Google y restent, et les suggestions d'étape et les avis déjà publiés sur GitHub restent (ils ne vous nomment pas ; écrivez-nous pour en faire retirer un). Les noms des compétences que vous avez saisies restent dans le catalogue partagé du site, sans lien avec personne."
 	},
 	/** The field's label; `word` is what the person types (DELETE_CONFIRMATION_WORD) */
 	typeToConfirm: {

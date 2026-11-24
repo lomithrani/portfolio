@@ -32,12 +32,6 @@ export const m = defineMessages({
 		fr: (status: string, shown: number, total: number) =>
 			`${status} : ${shown} sur ${total} ${plural(total, "offre d'emploi", "offres d'emploi")}`
 	},
-	noApplicants: { en: 'No applicants yet', fr: 'Aucun candidat pour le moment' },
-	/** '1 applicant', '12 applicants' */
-	applicantCount: {
-		en: (count: number) => `${count} ${plural(count, 'applicant', 'applicants')}`,
-		fr: (count: number) => `${count} ${plural(count, 'candidat', 'candidats')}`
-	},
 
 	// --- Status -----------------------------------------------------------------------------
 
@@ -45,85 +39,6 @@ export const m = defineMessages({
 	statusChanged: {
 		en: (status: string) => `Status changed to ${status}`,
 		fr: (status: string) => `Statut modifié : ${status}`
-	},
-
-	// --- Applicants -------------------------------------------------------------------------
-
-	/** How an applicant got on the list (a badge) */
-	applicantSource: {
-		applied: { en: 'Applied', fr: 'A postulé' },
-		added_by_recruiter: { en: 'Added by you', fr: 'Ajouté par vous' }
-	},
-	/** 'Applied 3 Nov 2026' */
-	appliedOn: {
-		en: (day: string) => `Applied ${day}`,
-		fr: (day: string) => `A postulé le ${day}`
-	},
-	/** 'Added 3 Nov 2026' */
-	addedOn: {
-		en: (day: string) => `Added ${day}`,
-		fr: (day: string) => `Ajouté le ${day}`
-	},
-	/** Why "Add a portfolio" cannot send what was typed */
-	domainProblem: {
-		empty: {
-			en: "Enter the name of a candidate's portfolio, e.g. louis.gentil.",
-			fr: "Saisissez le nom du portfolio d'un candidat, par exemple louis.gentil."
-		},
-		invalid: {
-			en: 'This is not a portfolio name. Check how it is spelled.',
-			fr: "Ce n'est pas un nom de portfolio. Vérifiez son orthographe."
-		}
-	},
-	/** Why POST /jobs/:id/applicants failed */
-	addApplicant: {
-		sessionExpired: {
-			en: 'Your session expired. Sign in again to add a candidate.',
-			fr: 'Votre session a expiré. Reconnectez-vous pour ajouter un candidat.'
-		},
-		ownPortfolio: {
-			en: 'This is your own portfolio: you cannot add it.',
-			fr: "C'est votre propre portfolio : vous ne pouvez pas l'ajouter."
-		},
-		noRecruiterSpace: {
-			en: 'Your account has no recruiter space yet. Create it to manage applicants.',
-			fr: "Votre compte n'a pas encore d'espace recruteur. Créez-le pour gérer les candidats."
-		},
-		unknownPortfolio: {
-			en: (domain: string) => `“${domain}” is not on Portfolio. Check how it is spelled.`,
-			fr: (domain: string) => `« ${domain} » n'est pas sur Portfolio. Vérifiez son orthographe.`
-		},
-		jobGone: {
-			en: 'This job description no longer exists: it may have been deleted.',
-			fr: "Cette offre d'emploi n'existe plus : elle a peut-être été supprimée."
-		},
-		alreadyApplicant: {
-			en: (domain: string) => `“${domain}” is already an applicant.`,
-			fr: (domain: string) => `« ${domain} » fait déjà partie des candidats.`
-		},
-		full: {
-			en: (limit: number) => `This job description has reached its limit of ${limit} applicants.`,
-			fr: (limit: number) => `Cette offre d'emploi a atteint sa limite de ${limit} candidats.`
-		},
-		failed: {
-			en: 'Could not add this portfolio. Try again in a moment.',
-			fr: "Impossible d'ajouter ce portfolio. Réessayez dans un instant."
-		}
-	},
-	/** What the confirmation says before an applicant is removed (`name`: how they are listed) */
-	removeApplicant: {
-		applied: {
-			en: (name: string) =>
-				`${name} applied with their portfolio. They are no longer listed for this job description, and can apply again while it is open.`,
-			fr: (name: string) =>
-				`${name} a postulé avec son portfolio. Son nom ne figurera plus sur cette offre d'emploi, et une nouvelle candidature reste possible tant que l'offre est ouverte.`
-		},
-		added: {
-			en: (name: string) =>
-				`${name} is no longer listed for this job description. You can add the portfolio again later.`,
-			fr: (name: string) =>
-				`${name} ne figurera plus sur cette offre d'emploi. Vous pourrez ajouter ce portfolio de nouveau plus tard.`
-		}
 	},
 
 	// --- Deleting a posting (the dashboard and the posting's page) --------------------------
@@ -134,15 +49,7 @@ export const m = defineMessages({
 		fr: (title: string) => `Supprimer « ${title} » ?`
 	},
 	/** What the confirmation says before a posting is deleted */
-	deleteJob: {
-		noApplicants: { en: 'This cannot be undone.', fr: 'Cette action est irréversible.' },
-		withApplicants: {
-			en: (count: number) =>
-				`Its list of ${count} ${plural(count, 'applicant', 'applicants')} is deleted with it. This cannot be undone.`,
-			fr: (count: number) =>
-				`Sa liste de ${count} ${plural(count, 'candidat', 'candidats')} est supprimée avec elle. Cette action est irréversible.`
-		}
-	},
+	deleteJob: { en: 'This cannot be undone.', fr: 'Cette action est irréversible.' },
 	deleteJobFailed: {
 		en: 'Could not delete it. Try again in a moment.',
 		fr: 'Impossible de la supprimer. Réessayez dans un instant.'

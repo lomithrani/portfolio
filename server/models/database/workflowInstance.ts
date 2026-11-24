@@ -3,7 +3,8 @@ import type { InferSchemaType, Types } from "mongoose";
 
 // A visitor's way through the hiring journey (Workflow) of a portfolio's
 // owner: one per owner and visitor (unique index), created when the visitor
-// completes their first step. It keeps what each step stored for this
+// completes their first step, or when a mutual interest of matching leads
+// them there (services/matches.ts). It keeps what each step stored for this
 // visitor, under the step's id: the step's type alone knows what its data
 // means (services/workflowSteps/), and reads it again each time the journey
 // or a later step is asked for (services/workflows.ts).

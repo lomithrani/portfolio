@@ -1,5 +1,6 @@
 import { Elysia, StatusMap } from 'elysia'
 import mongoose from 'mongoose'
+import { ROBOTS_NOINDEX } from 'portfolio-common'
 import { openapi } from '@elysiajs/openapi'
 import { env } from './env'
 import {
@@ -13,9 +14,12 @@ import {
   corsConf,
   jobs,
   jobImport,
+  opportunities,
   perfectJob,
   addresses,
-  feedback
+  feedback,
+  skills,
+  matchingRoutes
 } from './plugins'
 import { errors, MissingAuthCookieError, PayloadTooLargeError, UnsupportedMediaTypeError } from './errors'
 import { instrumentation, httpRequestCounter, httpRequestDuration } from './instrumentation'
@@ -128,6 +132,13 @@ const apiDocs = () =>
 
 export const createApp = () =>
   new Elysia({ serve: { maxRequestBodySize: MAX_REQUEST_BODY_SIZE } })
+    // Asks search engines not to list any answer of the API (GET /domain/:name
+    // is a whole portfolio as public JSON). Sent on every answer, errors,
+    // unmatched 404s and CORS preflights included: Elysia's default headers
+    // start the context of every request. No robots.txt Disallow instead: a
+    // crawler must fetch an answer to read this header. The web pages ask the
+    // same of the portfolios (client/src/lib/robots.ts), with the same value
+    .headers({ 'x-robots-tag': ROBOTS_NOINDEX })
     .use(instrumentation)
     // The request's language, for every text the API answers with (services/locale.ts)
     .use(locale)
@@ -202,7 +213,12 @@ export const createApp = () =>
     .use(perfectJob)
     .use(addresses)
     .use(feedback)
+    .use(skills)
+    // Path 2 (CLAUDE.md, Matching): its routes are not even registered while
+    // MATCHING is off, so they answer 404 like any route that does not exist
+    .use(matchingRoutes())
     .use(appointments)
+    .use(opportunities)
     // Before jobs: its static /jobs/import routes, then the /jobs/:id ones
     .use(jobImport)
     .use(jobs)

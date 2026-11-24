@@ -15,5 +15,6 @@ export const WORKFLOW_STEP_MANIFESTS: Record<string, WorkflowStepManifest<object
 
 export { DEFAULT_JOB_MATCH_MIN_SCORE, JOB_MATCH_STEP_LIMITS } from './jobMatch';
 export type { JobMatchStepConfig } from './jobMatch';
+export { JOB_STEP_LIMITS } from './job';
 export { NOTE_STEP_LIMITS } from './note';
 export type { NoteStepConfig } from './note';

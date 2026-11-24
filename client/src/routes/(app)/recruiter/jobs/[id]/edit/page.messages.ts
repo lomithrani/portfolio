@@ -11,9 +11,17 @@ export const m = defineMessages({
 		fr: "Modifier l'offre d'emploi | Recruteur"
 	},
 	heading: { en: 'Edit job description', fr: "Modifier l'offre d'emploi" },
+	/**
+	 * Backed by: the editor's Save (nothing is saved before it); server/services/workflowSteps/job.ts
+	 * (the version shared is kept: an edit reaches no journey until it is shared again, `outdated`
+	 * and "Share the new version"); server/services/jobAccess.ts (`pickOnJourney`, `legacyPick`: a
+	 * pick stored before versions were kept shows the posting as it is now, and its step asks to pick
+	 * it again: `shareAgain` of client/src/services/workflow.ts). Drop the last sentence with
+	 * `legacyPick`
+	 */
 	intro: {
-		en: 'Changes show on the job page as soon as you save them.',
-		fr: "Les modifications apparaissent sur la page de l'offre dès que vous les enregistrez."
+		en: "Your changes apply as soon as you save them. Where you shared this job description on a candidate's page for recruiters, the candidate keeps the version you shared until you share it again. Where that page asks you to pick it again, the candidate reads it as it is now until you do.",
+		fr: "Vos modifications s'appliquent dès que vous les enregistrez. Là où vous avez partagé cette offre sur la page recruteurs d'un candidat, il garde la version partagée jusqu'à ce que vous la partagiez de nouveau. Là où cette page vous demande de la choisir à nouveau, il la lit telle qu'elle est maintenant jusqu'à ce que vous le fassiez."
 	},
 	signInText: {
 		en: 'Sign in to edit your job descriptions.',

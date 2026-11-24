@@ -80,6 +80,16 @@ export const jobPostingRequest = t.Object({
 });
 
 /**
+ * Body of POST /jobs: the posting, and whether to propose it to candidates through matching once
+ * created (`matching`, Path 2: off unless true, and ignored while MATCHING is off). Not a field of
+ * the posting: PUT /jobs/:id never takes it (PUT /jobs/:id/matching turns it on or off)
+ */
+export const jobPostingCreateRequest = t.Object({
+  ...jobPostingRequest.properties,
+  matching: t.Optional(t.Boolean())
+});
+
+/**
  * Body of PUT /jobs/:id: the posting, and the `updatedAt` of the version the edit started from
  * (as the API returned it). With it, the edit is refused (409) when the posting changed since
  */
@@ -90,17 +100,6 @@ export const jobPostingEditRequest = t.Object({
 
 /** Body of PUT /jobs/:id/status */
 export const jobStatusRequest = t.Object({ status: jobStatus });
-
-/** Body of POST /jobs/:id/applicants: the portfolio (domain name) to add */
-export const jobApplicantRequest = t.Object({
-  domain: t.String({ minLength: 1, maxLength: 255 })
-});
-
-/** Route params of an applicant of a job posting */
-export const jobApplicantParams = t.Object({
-  id: t.String({ pattern: '^[0-9a-fA-F]{24}$' }),
-  applicationId: t.String({ pattern: '^[0-9a-fA-F]{24}$' })
-});
 
 /** Body of PUT /me/mode, and the optional mode of POST /login */
 // No default: t.UnionEnum defaults to its first value, which Elysia fills in

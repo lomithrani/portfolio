@@ -179,19 +179,23 @@ local development.
 | `GOOGLE_CLIENT_SECRET`         | for appointments | Client secret of that same OAuth client; sealed. Enables Google Calendar appointments (see [Google Calendar appointments](#google-calendar-appointments)) |
 | `AUTH_COOKIE_SAMESITE`         | no       | Leave unset (`strict`); see [Custom domains](#custom-domains-are-required-for-login)               |
 | `CLIENT_IP_HEADER`             | no       | Leave unset: on Railway it defaults to `X-Real-IP`. Set it only behind another proxy (see [Booking protection](#booking-protection)) |
-| `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé and job description imports (see [Résumé import](#résumé-import)) and sorts feedback (see [Feedback](#feedback)) |
+| `ANTHROPIC_API_KEY`            | for résumé import | Claude API key of a dedicated workspace with a spend limit; sealed. Enables résumé and job description imports (see [Résumé import](#résumé-import)), sorts feedback (see [Feedback](#feedback)) and, in the background, the skill catalogue (see [Skill catalogue](#skill-catalogue)) |
 | `GITHUB_ISSUES_TOKEN`          | for step suggestions and feedback | Fine-grained GitHub token with Issues write on one repository; sealed. Enables step suggestions and feedback (see [Step suggestions](#step-suggestions), [Feedback](#feedback)) |
 | `COMMUTE_TIMES`                | for the commute criterion | `true` turns travel times on (see [Travel times](#travel-times)); addresses then go to the Géoplateforme |
 | `COMMUTE_TRANSIT`              | for public transport | `here` or `transitous`: the service asked for public transport times (see [Travel times](#travel-times)) |
 | `HERE_API_KEY`                 | with `COMMUTE_TRANSIT=here` | API key of an app of your HERE platform account; sealed. Billed per journey asked beyond the free monthly allowance |
 | `COMMUTE_CONTACT`              | with `COMMUTE_TRANSIT=transitous` | An email address or a web page, sent as the User-Agent of the requests to Transitous |
-| `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off |
+| `COMMUTE_DAILY_LIMIT`          | no       | Requests to the travel time services per UTC day for the whole site; leave unset (`500`); `0` turns travel times off; matching's warm-ups use half of it at most |
+| `MATCHING`                     | no       | `true` on staging only, for now: turns matching (Path 2) on (see [Matching](#matching)); leave unset in production until its legal texts ship |
+| `MATCHING_REVIEWERS`           | no       | The emails of the accounts that review each job put into matching before it reaches a candidate, separated by commas (never logged); without one, no job is ever proposed (see [Matching](#matching)) |
 | `GITHUB_ISSUES_REPO`           | no       | Repository the suggestions and feedback are filed in, `owner/name`; leave unset (`lomithrani/portfolio`) |
 | `RESUME_IMPORT_MONTHLY_LIMIT`  | no       | Imports per user per 30 days; leave unset (`3`); `0` turns résumé import off                        |
 | `RESUME_IMPORT_DAILY_LIMIT`    | no       | Imports per UTC day for the whole site; leave unset (`30`); `0` turns résumé import off             |
 | `RESUME_IMPORT_ATTEMPTS_PER_DAY` | no     | Import attempts per user per UTC day, failed ones included; leave unset (`10`); `0` turns résumé import off |
 | `JOB_IMPORT_DAILY_LIMIT`       | no       | Job description imports per UTC day for the whole site; leave unset (`30`); `0` turns job import off |
 | `JOB_IMPORT_ATTEMPTS_PER_DAY`  | no       | Job import attempts per recruiter per UTC day, failed ones included; leave unset (`10`); `0` turns job import off |
+| `SKILL_CLASSIFICATION_INTERVAL_MS` | no   | Period of the background job that has Claude sort the skill catalogue; leave unset (`600000`, 10 minutes); `0` turns the job off (see [Skill catalogue](#skill-catalogue)) |
+| `SKILL_CLASSIFICATION_DAILY_LIMIT` | no   | Calls to Claude that job makes per UTC day for the whole site, each sorting up to 40 skill names; leave unset (`100`); `0` turns the job off |
 | `API_DOCS`                     | no       | `true` to serve the OpenAPI docs (`/swagger`) in production; off by default there                  |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | no       | OTLP endpoint (e.g. Grafana Cloud); telemetry is fully off while it is unset                       |
 | `OTEL_EXPORTER_OTLP_HEADERS`   | no       | e.g. `Authorization=Basic <base64 of instanceId:token>`; sealed                                    |
@@ -242,8 +246,11 @@ deployed site.
 
 The landing page's share tags (`canonical`, `og:url`, the `hreflang` links of its English and
 French versions, `og:image` = `/og-image.png`, or `/og-image-fr.png` in French) are built from
-that same derived origin: after the first deploy, check they read `https://<your domain>/...`
-(`curl -s https://example.com/ | grep -o '<meta property="og:url"[^>]*>'`).
+that same derived origin, and so are the preview tags of a portfolio's experiences page and page
+for recruiters (`og:url`, `og:image` = `/og-portfolio.png` and `/og-hire.png`, `-fr.png` in
+French): after the first deploy, check they read `https://<your domain>/...`
+(`curl -s https://example.com/ | grep -o '<meta property="og:url"[^>]*>'`, and
+[Search engines](#search-engines) for the portfolio's).
 
 ### Legal pages
 
@@ -257,12 +264,138 @@ in place of the publisher and contact, and the web deploy logs one warning at st
 (`LEGAL_PUBLISHER_NAME is not set: the legal notice and the privacy policy show ...`). Without a
 SIREN the publisher is presented as an individual acting on a non-professional basis.
 
-Before going live, confirm what the texts state about the operations: log and trace retention
-("up to 30 days", `LOG_RETENTION` in `client/src/lib/components/legal/legalDocuments.ts`),
-database backups, and the processors' transfer basis (Railway, Anthropic, Google, GitHub, the
-monitoring provider). When the Terms of use or the Privacy policy change materially, bump
-`LEGAL_VERSION` in `common/models/legal.ts`: accounts are asked to accept the new version, and a
-claim needs it.
+Before going live, confirm what the texts state about the operations: log and trace retention ("up
+to 30 days", `LOG_RETENTION` in `client/src/lib/components/legal/legalDocuments.ts`), what
+Cloudflare keeps of the page requests ("up to 31 days", `CLOUDFLARE_LOG_RETENTION` there: the
+retention of its traffic and security analytics on the Free, Pro and Business plans, 90 days on
+Enterprise; check the zone's plan and Cloudflare's data processing addendum), database backups, and the processors' transfer basis (Railway, Cloudflare, Anthropic, Google, GitHub, the
+monitoring provider: each on the [Data Privacy Framework
+list](https://www.dataprivacyframework.gov/list), or with standard contractual clauses in its data
+processing terms; for Cloudflare, that the account is covered by its customer data processing
+addendum). When the Terms of use or the Privacy policy change materially, bump `LEGAL_VERSION` in
+`common/models/legal.ts`: accounts are asked to accept the new version, and a claim needs it, as
+does the recruiter space: opening one, and every recruiter route, which answers 422 on `consent`
+until the recruiter accepts the new version (the recruiter pages then show the terms to accept).
+Recruiter spaces opened before recruiters accepted the terms (before the `recruiter` consent source)
+are asked the same way. Reseed the e2e database after a bump (`bun run --cwd server seed:e2e`
+records the version in force for the e2e recruiter), locally and in the cloud environment.
+
+**Tell the accounts before a bump reaches production.** Both documents promise it (`#changes` of
+the Terms and of the Privacy policy: "tell you on the site or by email before the change
+applies"), and nothing on the site does it: the checkbox only shows once the release is deployed,
+and from then on every recruiter route answers 422 on `consent` until the new version is accepted.
+So, before deploying a release that bumps `LEGAL_VERSION` to production, email every account a
+short notice, in English and French: what changes, when it applies, that they will be asked to
+accept the new version (recruiters before they use their space again), and that they can delete
+their account instead. The notice of `2026-11-18` also tells recruiters what the Terms now ask of
+them (`#recruiters`): once a job description is opened, its pay and conditions can no longer be
+changed (a new version of them is a new job description: Duplicate), and the top of its pay range
+is at most 1.5 times its bottom. Read the addresses at that moment from production's database, for example
+`mongosh "$MONGO_URL" --quiet --eval 'db.users.find({}, { email: 1, _id: 0 }).forEach((u) => print(u.email))'`,
+send the notice with the addresses in Bcc, and keep no copy of the list. List this step in the
+release pull request's deployment notes. If no notice can be sent before the deploy, change
+`#changes` first (both documents, both languages) so it no longer promises one.
+
+**Cloudflare.** The privacy policy names Cloudflare, Inc. as the content delivery network and
+proxy in front of the **web pages only** (`#recipients`, `#data-technical`, `#transfers` and its
+log retention in `#retention`): on 2026-11-18, `curl -sI https://portfolio.gentil.tech/` answered
+`server: cloudflare` with a `cf-ray`, while `https://api.portfolio.gentil.tech/health` and both
+staging hosts answered `server: railway-hikari` (Railway directly). The cookies page names it too
+(`#summary`: it "sets no cookie and adds no script on this site"). The texts say that Cloudflare
+receives the requests and the pages sent back, not that it changes them, stores anything in the
+browser or adds a script: no Cloudflare cookie, no Web Analytics beacon (which "no analytics" in
+the privacy policy and the cookies page rules out), and **two zone settings that Cloudflare turns
+on by default must stay off**. Both were on when checked on 2026-11-18: turn them off before
+deploying the release that names Cloudflare in the privacy policy.
+
+- **Email Address Obfuscation** (Security, **Settings**, "Email Address Obfuscation" off, or a
+  configuration rule that turns it off for the hostname). On, it replaced every email address of
+  `/legal`, `/legal/privacy` and `/legal/terms` (the publisher's contact, the host's) with a
+  `/cdn-cgi/l/email-protection` link and added its script `email-decode.min.js` to those pages:
+  without JavaScript, and for anything reading the HTML, the legal notice's contact address read
+  "[email protected]".
+- **Network Error Logging** (Account home, **Network**, "Network Error Logging Monitoring" off,
+  or the zone setting `nel`). On, every answer carries `NEL` and `Report-To` headers: the
+  browser keeps a reporting policy for 7 days and sends Cloudflare a report when a connection to
+  the site fails, which neither the privacy policy nor the cookies page lists.
+
+Run the checks after changing a Cloudflare setting, and after each production deploy (also in
+[Verify a deploy](#verify-a-deploy)):
+
+```bash
+for url in https://portfolio.gentil.tech/ https://api.portfolio.gentil.tech/health; do
+  echo "$url"; curl -s -o /dev/null -D - "$url" | grep -iE '^(server|cf-ray|set-cookie|nel|report-to):'
+done   # server (and cf-ray for the pages) only: no set-cookie, nel or report-to
+for p in / /legal /legal/privacy /legal/terms /legal/cookies '/legal?lang=fr'; do
+  printf '%s ' "$p"; curl -s "https://portfolio.gentil.tech$p" | grep -c 'cdn-cgi\|cloudflareinsights\|__cf_email__'
+done   # 0 for each page: no address rewritten, no script added
+```
+
+The pages without an email address (the landing page, `/legal/cookies`) show nothing either way:
+check the legal notice, the privacy policy and the terms. If one of these features has to stay on,
+the texts change first, in both languages, with a `LEGAL_VERSION` bump: Email Address Obfuscation
+in `#recipients` (Cloudflare rewrites the email addresses shown on the pages and adds a script that
+decodes them), Network Error Logging in `#recipients` and on the cookies page (the reporting policy
+the browser keeps, for 7 days).
+
+Putting the API (or staging) behind Cloudflare changes the texts: say so in the privacy policy
+(both languages; the API carries the session cookie and every form's data), bump `LEGAL_VERSION`,
+and set `CLIENT_IP_HEADER=CF-Connecting-IP` on that API (see
+[Booking protection](#booking-protection)). A Cloudflare cookie (`__cf_bm` of Bot Fight Mode, the
+`cf_clearance` of a passed challenge) or Web Analytics goes in the cookies page and the privacy
+policy first.
+
+**Skill names.** The privacy policy says (`#data-skills`, and in `#summary`, `#legal-bases`,
+`#recipients`, `#retention` and `#ai`) that the names of the skills people type are kept in a
+catalogue shared by the site, that where the site enables it Anthropic's Claude sorts them in the
+background, receiving the names and nothing else, that a name recognised as a skill can then be
+suggested to other signed-in people, never with who typed it, and that the names stay when an
+account is deleted (the deletion dialog says it too). Before the release that brings the
+[skill catalogue](#skill-catalogue)'s job reaches production, where `ANTHROPIC_API_KEY` is set for
+the imports: check that this text is in the release (the web service and the API deploy from the
+same commit), decide whether `LEGAL_VERSION` is bumped for it (then tell the accounts first, as
+above), and set `SKILL_CLASSIFICATION_DAILY_LIMIT=0` on the production API meanwhile if the names
+must not leave before the notice. If the job ever sends more than names, or a name becomes visible
+to others before it is recognised, the policy changes first, in both languages.
+
+**Who pays.** The Terms say candidates never pay (article L5321-3 of the Labour Code forbids
+asking job seekers for anything in return for placement services) and that the service is free
+for recruiters for now, who are told before any paid feature applies to them. A paid feature can
+only ever be for recruiters, and the Terms (and `LEGAL_VERSION`) change before it ships.
+
+**Annual placement report.** The Terms name the activity placement (article L5321-1: the site
+puts job offers and job seekers in touch, and is not a party to the employment contract). A
+private organisation that runs placement sends the préfet a report **every year before 31 March**
+on the year before (article R5323-8): its placement turnover and that turnover's share of its
+total, and the number of job seekers received, placed and still registered on 31 December, by sex
+and age. Ask the DDETS of the publisher's département (in Île-de-France, the unité départementale
+of the DRIEETS) for the model of the statement, which an arrêté sets, and whether "not known" is
+accepted for sex and age: the site collects neither, and must not start to (data minimisation,
+and a sex or age field next to hiring invites discrimination, article L5321-2). Placement turnover
+is 0 while the service is free, and placements are not tracked (the site never learns who was
+hired). The counts, from the production database, in January (counts only, nothing about a
+person):
+
+```bash
+mongosh "<production MONGO_URL>" --quiet --eval '
+  const year = 2026;
+  const from = new Date(Date.UTC(year, 0, 1)), to = new Date(Date.UTC(year + 1, 0, 1));
+  const idAt = (date) => ObjectId.createFromTime(Math.floor(date.getTime() / 1000));
+  printjson({
+    year,
+    portfoliosCreated: db.domains.countDocuments({ _id: { $gte: idAt(from), $lt: idAt(to) } }),
+    portfoliosOn31December: db.domains.countDocuments({ _id: { $lt: idAt(to) } }),
+    recruiterSpacesOpened: db.users.countDocuments({ "recruiter.enabledAt": { $gte: from, $lt: to } }),
+    journeysStarted: db.workflowinstances.countDocuments({ createdAt: { $gte: from, $lt: to } })
+  })'
+```
+
+A portfolio has no creation date of its own: its `_id` holds the second it was created. Job
+seekers received are the portfolios created that year; those still registered on 31 December are
+the portfolios created before it that still exist, so run it early in January (a portfolio goes
+with its account). `recruiterSpacesOpened` and `journeysStarted` (a recruiter's first step on a
+candidate's journey; gone with either account) describe the other side and the activity; keep the
+answer with the report.
 
 ## Google Calendar appointments
 
@@ -348,8 +481,9 @@ proxy, so the API reads the `X-Real-IP` header Railway sets instead: that is the
 `CLIENT_IP_HEADER` whenever Railway's `RAILWAY_PROJECT_ID` variable is present, so nothing needs
 setting on Railway. Put another proxy in front of Railway (e.g. Cloudflare's orange cloud on the
 custom domain) and `X-Real-IP` becomes that proxy's address: set `CLIENT_IP_HEADER` to the header
-holding the visitor's address there (`CF-Connecting-IP` for Cloudflare). For a list header such as
-`X-Forwarded-For`, the API takes the last entry, the one the closest proxy appended. Only name a
+holding the visitor's address there (`CF-Connecting-IP` for Cloudflare; today Cloudflare fronts
+the web pages only, not the API, so the default holds: see [Legal pages](#legal-pages)). For a
+list header such as `X-Forwarded-For`, the API takes the last entry, the one the closest proxy appended. Only name a
 header that proxy overwrites: anything else, a client can set to any value. An invalid header
 name stops the deployment with `CLIENT_IP_HEADER must be an HTTP header name`.
 
@@ -561,6 +695,334 @@ never followed, and the token never appears in a response or a log line. Claude 
 silent (Elysia's `idleTimeout`; Bun does not apply it while it handles a request with a body, as
 this one has, see [Résumé import](#résumé-import), but the budget does not count on that).
 
+## Skill catalogue
+
+The skills people type on their experiences are kept in one catalogue for the whole site (the
+`skills` collection: one document per spelling typed, linked to no account). A background job of
+the API has **Claude** (the model of the imports, see [Résumé import](#résumé-import)) sort the names
+not sorted yet: whether a
+name is a skill at all, its category, the skill it is part of (".NET Core" is part of ".NET") and
+the skill it is another spelling of ("K8s" is "Kubernetes"). The experiences page then groups its
+filters by category, counts a family's time together and shows another spelling as its skill, and
+the experience editor suggests, to every signed-in owner who types a skill, the names
+**recognised** so far (`GET /skills/search`). The job uses the same `ANTHROPIC_API_KEY`, so it is
+**off while the key is unset**: skills then stay as typed, without categories or families, and the
+editor suggests only the skills set by hand (see [By hand](#by-hand-in-mongodb) and the seed
+below). The startup line `Running at ...` says
+`"skillClassification":"on (<model>, every 600 s and after a save, at most 100 calls of 40 skills per day)"`
+or why it is off (`off (no ANTHROPIC_API_KEY)`, `off (SKILL_CLASSIFICATION_INTERVAL_MS is 0)`,
+`off (SKILL_CLASSIFICATION_DAILY_LIMIT is 0)`).
+
+| Variable                           | Default  | What it does                                                                              |
+| ---------------------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`                | unset    | The key billed for the calls; the job is off without it                                   |
+| `SKILL_CLASSIFICATION_INTERVAL_MS` | `600000` | How often a sweep runs (10 minutes); `0` turns the job off, otherwise `1000` at least (an invalid value stops the deployment) |
+| `SKILL_CLASSIFICATION_DAILY_LIMIT` | `100`    | Calls to Claude per UTC day for the whole site, each sorting up to 40 names, counted when the call is made and never given back; `0` turns the job off |
+
+**What is sent.** Skill names and nothing else: the names to sort (40 a call at most) and up to
+500 names the catalogue already recognises, so that families and other spellings reuse them. Never
+an account, a portfolio, an experience or an identifier. A name that cannot be a skill (a link,
+an email address, a phone number, a site followed by a path, several lines, a text of more than 60
+characters or 8 words) is rejected by the API and never sent. Claude's answer is checked
+item by item before anything is stored, and what breaks a rule is dropped for that one skill
+(the skill it names as a family or a usual name must read like a skill name too).
+Nothing is sorted while someone types: a save stores the spelling typed and answers at once.
+
+**What one account can add.** An account adds at most 200 new names a UTC day to what the job is
+asked. A save is never refused for it: the names beyond are stored and shown to their owner as
+typed, held back (`classification.held`), and never sent. They are released, and sorted like any
+other, when a save within an account's allowance names them again (the same account another day,
+or anyone else who types the name), or by hand (below). So one account cannot fill the queue ahead
+of everyone else's skills, nor keep a name from being sorted by typing it first.
+
+**When it runs.** A sweep runs every `SKILL_CLASSIFICATION_INTERVAL_MS`, about 15 seconds after
+the API starts, and about 15 seconds after an experience is saved with a skill not sorted yet. A
+sweep takes a lease in MongoDB first (one sweep a minute for the whole site, so two instances of
+the API do not start a sweep in the same clock minute), makes at most 5 calls (200 names), the
+oldest skills first, and stops when nothing is left, when the day's calls are used up, or at a
+call that got no answer. The lease is the minute's, not the sweep's: with more than one API
+instance, a call still under way when the minute ends can overlap the other instance's next sweep,
+which asks the same names once more (one call paid twice, nothing written twice). A call asks 40
+names at most, fewer when the names are long (1,500 characters of names a call), 8 once the oldest
+name was in an answer that could not be used, one alone after two such answers, and half as many
+as the last call after one that passed its 30 s deadline (until a call is answered again).
+
+**First deploy.** Every skill already stored is unsorted, so the first sweeps work through the
+whole collection: 200 names about 15 seconds after the API starts, then 200 every 10 minutes
+(1,200 an hour, more when experiences are saved with unsorted skills meanwhile: each such save
+asks for a sweep too), up to the daily limit: at the defaults, 100 calls, so 4,000 names per UTC
+day, the rest the day after. The names Claude gives as the skill others are part of, or as the usual
+name of a spelling, are added to the catalogue when it lacks them and sorted in turn, so a little
+more than the stored names is asked. Until a skill is sorted, the pages show it as typed: nothing
+is missing meanwhile, the filters' panel just lists technical then soft skills until one of the
+page's skills has a category. No migration is needed: the fields are added as skills are sorted,
+and Mongoose builds the collection's new indexes at startup (among them the two the skill search
+reads the recognised skills with, `status_displayName_ci` and `status_names_ci`). Count what is
+left with:
+
+```bash
+mongosh "<MONGO_URL>" --quiet --eval '
+  db.skills.aggregate([{ $group: { _id: { $ifNull: ["$classification.status", "pending"] }, skills: { $sum: 1 } } }]).forEach(printjson);
+  printjson({ skippedAfter3Tries: db.skills.countDocuments({ "classification.status": "pending", "classification.attempts": { $gte: 3 } }) });
+  printjson({ heldBack: db.skills.countDocuments({ "classification.held": true }) });   // beyond an account's 200 new names a day
+  db.ratelimitcounters.find({ _id: /^skill-classification:calls:/ }).forEach(printjson)   // the calls of the day
+'
+```
+
+**Cost.** One call sends the instructions, up to 500 known names and 40 names to sort (about
+1,500 to 3,500 input tokens) and gets a few fields per name back (about 1,500 to 2,500 output
+tokens, 6,000 at most): about **$0.001 a call**, at most about $0.0035 (at the imports' rates: $0.10
+per million input tokens and $0.50 per million output tokens). These are estimates from the size of
+the request, not measured on the real API; each sweep that called Claude logs the real figures,
+`Skill classification sweep {"calls":…,"asked":…,"classified":…,"rejected":…,"failed":…,"budgetReached":…,"inputTokens":…,"outputTokens":…,"estimatedCostUsd":…}`,
+with counts only, never a skill name. At the defaults the site spends at most 100 calls a day,
+about $0.10 (at most about $0.35), on top of the imports, and the workspace's spend limit is the
+hard stop: once it is reached the calls are refused, which is logged at `error`
+(`Skill classification: the Claude API refused the request, the skills stay to classify`, with the
+API's message, the key masked) and counts no try against the skills.
+
+**Failures.** A call that got no answer (a timeout after 30 s, a lost connection, `429`, `5xx`,
+`529`, a refused key or request) leaves the names to sort again at the next sweep and counts
+nothing against them, so an outage never loses skills; it still uses one of the day's calls. A
+name Claude answered about without settling it (no usable answer for it, a refusal, an answer cut
+short) gets one more try, and after **3 tries** it is skipped until someone resets it (below).
+A whole answer that cannot be used counts a try for each of its names, which are then asked again
+8 at a time, then one by one: only the name at fault reaches 3 tries, and the sweep goes on with
+the smaller batches rather than stop.
+
+**Turning it off.** Set `SKILL_CLASSIFICATION_DAILY_LIMIT=0` (or `SKILL_CLASSIFICATION_INTERVAL_MS=0`)
+on the API service and deploy: no name is sent to Anthropic any more. What was sorted before stays
+(the pages keep their categories and families, the editor keeps suggesting the recognised names);
+new names stay as typed. Do this on production **before** deploying the release that brings the
+job if the privacy policy that describes it is not live yet or accounts are still to be told (see
+[Legal pages](#legal-pages)): the key is already set there for the imports, so the job would
+otherwise start with the deploy.
+
+### The seeded skills
+
+`bun run db:seed` now also writes a curated part of the catalogue (`server/tests/seedSkills.ts`:
+some 60 skills with their categories, a few families such as ".NET Core" and ".NET Framework"
+under ".NET", and a dozen other spellings such as "K8s" for "Kubernetes"), all marked as set by
+hand (`manual`), which the job never touches. It needs no key. It is idempotent, and on a
+database that already holds those names it takes them over: an existing "typescript" is spelled
+"TypeScript", gets its category, and a stored "K8s" becomes another spelling of "Kubernetes", so
+the portfolios that typed it show Kubernetes (the experiences themselves are not changed). Where
+the collection holds two documents for one name in different cases (possible for names created
+before lookups ignored case: "typescript" and "TypeScript"), the one spelled as the list spells it
+is the skill and the other becomes another spelling of it, so the name is shown and suggested once,
+as the list spells it. Run it
+on production when you want that list set by hand (it is safe before or after the job has run: a
+manual entry wins); it still creates the owner's user and the `louis.gentil` domain only when
+they are missing (see [MongoDB](#mongodb)). `seed:e2e` applies the same list.
+
+### By hand, in MongoDB
+
+Everything the catalogue knows of a skill is on its document in `skills`, and no experience is
+ever rewritten, so a correction is one update and shows at once on every portfolio. A skill marked
+`manual` is never modified by the job. Names are matched here by their exact `displayName` (find
+it first: `db.skills.find({ displayName: /kube/i }, { displayName: 1, category: 1, parent: 1, aliasOf: 1, classification: 1 })`).
+Keep the catalogue's rules when you write: families have **one level** (a skill that has a
+`parent` is never the parent of another), another spelling points at a skill that is not itself
+another spelling, and has neither `category` nor `parent` of its own. The categories are
+`language`, `framework`, `infrastructure`, `data`, `security`, `practice`, `tool`, `soft` and
+`other`.
+
+```js
+const manual = { status: 'manual', at: new Date(), attempts: 0 };
+
+// A category set by hand
+db.skills.updateOne({ displayName: 'Kafka' }, { $set: { category: 'data', classification: manual } });
+
+// A skill that is part of another (".NET Core" is part of ".NET"): the parent must have no parent
+// itself, and be recognised (classified or manual), or the family is not shown
+const dotnet = db.skills.findOne({ displayName: '.NET' });
+db.skills.updateOne(
+  { displayName: '.NET Core' },
+  { $set: { parent: dotnet._id, category: 'framework', classification: manual }, $unset: { aliasOf: 1 } }
+);
+
+// Not part of anything after all
+db.skills.updateOne({ displayName: 'C#' }, { $unset: { parent: 1 }, $set: { classification: manual } });
+
+// Another spelling of a skill ("K8s" is "Kubernetes"): the skill itself must be recognised
+// (classified or manual), or the spelling keeps being shown as typed
+const kubernetes = db.skills.findOne({ displayName: 'Kubernetes' });
+db.skills.updateOne(
+  { displayName: 'K8s' },
+  { $set: { aliasOf: kubernetes._id, classification: manual }, $unset: { parent: 1, category: 1 } }
+);
+
+// A wrong "other spelling" undone: every experience that typed it shows it as typed again
+db.skills.updateOne({ displayName: 'Go' }, { $unset: { aliasOf: 1 }, $set: { category: 'language', classification: manual } });
+
+// Not a skill: kept for those who typed it, shown to them as typed, suggested to nobody,
+// and nothing may point at it
+const bad = db.skills.findOne({ displayName: 'asdf' });
+db.skills.updateOne(
+  { _id: bad._id },
+  { $set: { classification: { status: 'rejected', at: new Date(), attempts: 0 } }, $unset: { parent: 1, aliasOf: 1, category: 1 } }
+);
+db.skills.updateMany({ parent: bad._id }, { $unset: { parent: 1 } });
+db.skills.updateMany({ aliasOf: bad._id }, { $unset: { aliasOf: 1 } });
+```
+
+To have the job sort a skill again (a wrong answer, or one it gave up on), send it back to
+pending without what was written on it; the next sweep asks it again:
+
+```js
+// One skill
+db.skills.updateOne(
+  { displayName: 'Terraform' },
+  { $set: { classification: { status: 'pending', at: new Date(), attempts: 0 } }, $unset: { category: 1, parent: 1, aliasOf: 1 } }
+);
+
+// Every skill skipped after 3 tries
+db.skills.updateMany(
+  { 'classification.status': 'pending', 'classification.attempts': { $gte: 3 } },
+  { $set: { 'classification.attempts': 0 } }
+);
+
+// Every name held back beyond an account's 200 new names a day (look at them first: they are
+// held back because one account added many at once)
+db.skills.find({ 'classification.held': true }, { displayName: 1 }).limit(50);
+db.skills.updateMany({ 'classification.held': true }, { $unset: { classification: 1 } });
+
+// Everything the job ever wrote (the skills set by hand stay): the catalogue as typed again.
+// Turn the job off first, or it starts over
+db.skills.updateMany(
+  { 'classification.status': { $in: ['classified', 'rejected'] } },
+  { $unset: { category: 1, parent: 1, aliasOf: 1, classification: 1 } }
+);
+```
+
+A spelling the job corrected (`c#` to `C#`) keeps its corrected `displayName` through these
+updates: set it back by hand if needed (`displayName` is unique). The skills the job added as a
+parent or a usual name that nobody typed stay in the collection, pending: no portfolio shows them
+and nobody is suggested them until they are recognised.
+
+**Removing a name.** A skill name stays in the catalogue when the experience, or the account,
+that brought it is deleted (the privacy policy says so, `#retention`). To remove one on request
+(someone typed something personal as a skill), check what still uses it, then delete it; an
+experience that still references it simply no longer shows that tag:
+
+```js
+const skill = db.skills.findOne({ displayName: '<the name>' });
+db.experiences.countDocuments({ $or: [{ 'projects.hardSkills.skill': skill._id }, { 'projects.softSkills.skill': skill._id }] });
+db.skills.updateMany({ parent: skill._id }, { $unset: { parent: 1 } });
+db.skills.updateMany({ aliasOf: skill._id }, { $unset: { aliasOf: 1 } });
+db.skills.deleteOne({ _id: skill._id });
+```
+
+## Matching
+
+Matching on open jobs (Path 2, CLAUDE.md "Matching") is **off until `MATCHING=true`**: its routes
+(`GET`/`PUT /discovery`, `GET /discovery/card`, `POST`/`DELETE /discovery/consent`,
+`PUT /jobs/:id/matching`, `GET /matching/reviews`, `PUT /matching/reviews/:id`, the feeds
+`GET /opportunities` and `GET /recruiter/jobs/:id/candidates`, the decisions
+`PUT`/`DELETE /opportunities/jobs/:id/decision` and
+`PUT`/`DELETE /recruiter/jobs/:id/candidates/decision`, and the mutual interests `GET /matches`,
+`GET /matches/:id`, `PUT /matches/:id/seen`, `POST /matches/:id/end` and `GET /me/notifications`)
+are not registered, so they answer 404 as routes that do not exist whatever the request (`/swagger`
+does not list them), `POST /jobs` ignores its `matching`, no matching route answers and nothing is
+proposed, the hiring journeys read no mutual interest (what one stored in a journey holds nothing:
+its recruiter shares a job as anyone does), and the metrics `discoverable_candidates`,
+`matching_job_postings`, `matching_job_reviews` and `active_matches` are 0. What a job's changes do
+to its matches (closed, deleted, edited) runs whatever the flag: it only ends, drops or deletes
+matches, or sends an edited job back for review. The flag is read when the API starts: a change
+takes effect at its next deploy. The startup line `Running at ...` says
+`"matching":"on (1 job reviewer)"` (how many reviewers, never who) or why it is off.
+
+- **Staging** (`portfolio api develop`): set `MATCHING=true` to try it as its parts land (its
+  screens read its routes; with it unset they show nothing of it), and `MATCHING_REVIEWERS` to the
+  accounts that review the jobs put into matching there.
+- **Production** (`portfolio api`): leave it unset. It is turned on only once its privacy policy
+  and terms sections are published (with a `LEGAL_VERSION` bump) and the data protection impact
+  assessment is signed: a candidate's consent must point to published texts. Public transport
+  times then come from HERE or from nowhere, never from Transitous (see
+  [Travel times](#travel-times), "Matching").
+
+**Reviewers.** Every job a recruiter puts into matching is read by hand before it reaches any
+candidate: it starts pending, and only a reviewer's approval proposes it (a rejection carries a
+reason the recruiter reads). The reviewers are the accounts whose email is in
+`MATCHING_REVIEWERS` (comma-separated, compared without case; never logged: a wrong entry stops the
+API naming its place in the list, not its value). Without one, the API warns at startup
+(`MATCHING=true without MATCHING_REVIEWERS`) and no job is ever proposed. A reviewer reads the jobs
+waiting with `GET /matching/reviews` (the oldest first: the posting, the domain of its
+recruiter's email and a key standing for that recruiter, the same for all their jobs, and their
+other jobs in matching now or in the last 90 days, those that are copies of it, the same company
+and title or the same description, flagged with the terms they differ in; nothing of any
+candidate) and decides with `PUT /matching/reviews/:id`
+`{ decision: 'approve' | 'reject', reason?, version }`, on the version read (an edit since: 409).
+Refuse copies of a job that differ in one term, the pay or the office: each copy's cards would
+tell its recruiter the candidates' floors or areas.
+A reviewer does it on the web at **`/recruiter/reviews`** (signed in with the account whose email
+is listed; bookmark it: no menu leads there, so nothing anyone else sees says who reviews or that
+the page exists, and anyone else reads "Not available"): the jobs waiting, each with who is behind
+it and the recruiter's other jobs, copies flagged with the terms they differ in, then Approve
+(asked first) or Reject with the reason the recruiter reads. The `matching_job_reviews` metric
+counts the jobs waiting: nothing else tells the reviewers (no email is sent). An approved job its recruiter edits (its description,
+or another field no criterion reads: its terms are locked) waits for a review again; an edit
+saved while a review was decided (or matching switched) is refused with a 409, and the recruiter's
+editor reloads the posting. A job is
+proposed only while its recruiter has accepted the terms in force: after a `LEGAL_VERSION` bump,
+their approved jobs leave every feed, and `matching_job_postings`, until they accept the new terms
+(nothing to do on the operator's side; the review stays). A posting opened before the pay range cap
+with a wider range cannot be put into matching (422 on `pay.max`) until its recruiter saves it
+again.
+
+**Feeds.** The jobs proposed to a candidate and the anonymous cards of the candidates proposed for
+a recruiter's job are computed when they are read, from what is stored: no background job, no
+collection of their own. Each read is counted, both feeds together, against **120 reads per
+account per hour** (`MATCHING_FEED_READS` of `server/services/matchFeeds.ts`; 429 with
+`Retry-After`, counters `matching-feed:<hash>`), and asks no outside service: travel times come from
+the cache, the missing ones are asked in the background within matching's share of
+`COMMUTE_DAILY_LIMIT` (see [Travel times](#travel-times)). The private page of a job proposed to
+a candidate counts as a read too. A recruiter reads one card at a time, the next once it is
+answered, and whether there are more, never how many (nor whether candidates wait for a travel
+time). A recruiter's cards stand for their candidates by tokens sealed with a key derived from `JWT_SECRET` (AES-256-GCM, bound to the
+recruiter and the job, a week at most): changing `JWT_SECRET` makes the cards already shown
+unreadable, and recruiters read their feed again.
+
+**Decisions and mutual interests.** A candidate says whether a job proposed to them interests
+them, a recruiter whether a card's candidate does (the card's token in the body); either undoes
+theirs within 10 minutes, and only their latest decision when it is their first answer on the
+pair (a decision taken again is changed, never undone), until both are interested (the recruiter
+with the token of the card they decided on, which their screen keeps: their feed never shows a
+candidate they answered again; a token older than a week and those 10 minutes is refused). When
+each side first answered a pair is kept with it, through an undo and through the job leaving
+matching (switched off, filled, closed or back to draft: its decisions go, that date stays until
+the match expires), so that the other side's pass after it never shows. A candidate who withdraws
+cannot turn discovery on again for 7 days (`DISCOVERY_REJOIN_DAYS`; 429 with `Retry-After`). A decision
+holds for the version of the job it was given on: a candidate's interest in a version since edited
+(and reviewed again) is not made into a mutual interest by the recruiter's; the job is proposed to
+them again instead. Each decision or undo is counted against **300 per account per
+UTC day**, both sides together (`MATCHING_DECISIONS` of `server/services/matches.ts`, from
+`MATCHING_LIMITS.decisionsPerDay`; 429 with `Retry-After`, counters `matching-decision:<hash>`), and
+asks no outside service (travel times from the cache, as the feeds read them). Both interested is a
+mutual interest: one per job and candidate, made by one conditioned write, whatever the order or
+the moment of the two decisions; once read again (a withdrawal or the job leaving matching that
+landed meanwhile takes it back first) it reveals the candidate's portfolio address to the recruiter and
+leads into the candidate's own hiring journey (its job step holds the job, its job match is frozen
+at the score then, its notes are still the recruiter's to confirm before the meeting opens). Either
+side ends it (`POST /matches/:id/end`). No email is sent: the account menu says what each side has
+not seen yet (`GET /me/notifications`, read by `notificationsStore`): a candidate reads how many
+mutual interests are new on "Opportunities", the recruiter space is marked "New" without a number
+(`AccountMenu.svelte`).
+
+The first opt-in creates the `discoveryprofiles` collection (one document per account that turned
+discovery on or off or set its anonymous card), the first decision the `matches` collection (one
+per job and candidate, removed by MongoDB once its `expiresAt` is past: a decision no mutual
+interest came of 6 months after it at most, a mutual interest 3 months after it ended,
+`MATCH_RETENTION` of `common/models/matching.ts`, which the privacy policy will state), and a job
+put into matching gets a `matching` field: no migration. Mongoose adds the new indexes at startup
+(`status_1_matching.enabledAt_1_publishedAt_-1` and the partial one on the reviews waiting on
+`jobpostings`, the unique one and the TTL on `matches`); the index it replaces,
+`status_1_publishedAt_-1`, stays until it is dropped by hand, harmless meanwhile:
+`db.jobpostings.dropIndex('status_1_publishedAt_-1')`. Turning `MATCHING` off again proposes
+nobody to anyone, and keeps those documents as they are: candidates find their choice again when
+it is turned back on (paused until they sign in, if that was over 180 days before), and account
+deletion removes them whatever the flag.
+
 ## Travel times
 
 The perfect job has a "Commute" criterion: the travel time an owner accepts a week, from an
@@ -569,15 +1031,12 @@ until `COMMUTE_TIMES=true`**: `GET /perfect-job` then answers `commute: { enable
 admin tab does not let the criterion be switched on, and a commute already saved does not count
 in a job's score.
 
-The landing page, its share images and the signed-out recruiter page present the commute as one of
-the criteria a job is scored against (`client/src/routes/(site)/page.messages.ts`: the
-description (`meta.description`), the hero's lead (`hero.lead`), the first "Calls you can stop
-taking" card (`match.spared.commute`), the "The job gets a score" step (`match.steps.score`), the
-journey demo's label and caption (`match.demo`) and its recording
-`client/static/landing/demo-journey.*`, and the FAQ answer about the commute address
-(`faq.recruiters.address`); `client/scripts/og-image/render.mjs` and the share images it made,
-`client/static/og-image.png` and `og-image-fr.png`; `RecruiterLanding.messages.ts`). Run the
-production API with `COMMUTE_TIMES=true`, or take those mentions out.
+The landing page presents the commute as one of the criteria a job is scored against
+(`client/src/routes/(site)/page.messages.ts`: the first "Calls you can stop taking" card
+(`spared.commute`), the "The job gets a score" step (`link.steps.score`), the journey demo's label
+and caption (`link.demo`) and its recording `client/static/landing/demo-journey.*`, and the FAQ
+answer about the commute address (`faq.recruiters.address`). Run the production API with
+`COMMUTE_TIMES=true`, or take those mentions out.
 
 | Service | Used for | Key | What it receives |
 | --- | --- | --- | --- |
@@ -625,6 +1084,49 @@ lower it to stay within the free allowance whatever happens, e.g. `160`); over i
 service does not answer, the commute is left out of the scores (recruiters see "Could not be
 computed right now: not counted") instead of blocking anyone. The API logs `Travel times: no
 answer` at warn level with the kind of request and the reason, never the address.
+
+**Matching.** Matching on open jobs (Path 2, see [Matching](#matching), off until `MATCHING=true`)
+scores the jobs open to it against the candidates who opted in: many pairs in one read, where a
+journey's job match step scores one, and a pair never asked can take some 20 seconds (a place
+looked up, then its ways), in a request Bun cuts after 30 seconds without data. So its reads never
+ask a service: they read only the travel times kept (`cachedCommuteContext` of
+`server/services/commute.ts`, which also says whether what is missing can still be found), and
+what a pair still needs is asked in the background (`warmCommute`; `warmOffice` looks a job's
+office up when matching is turned on for it, so that each candidate then needs only the ways). A
+warm-up reads the candidate's address when it runs, not when it was asked for, and asks nothing
+once they withdrew their consent to matching, let it lapse or deleted their account. Warm-ups run
+one at a time, with a pause of 400 ms after each that asked something (the Géoplateforme takes 5
+route requests a second from one address, and a pair asks up to two at once). A pair already
+waiting takes no second place; at most 100 wait, 20 of them for one account: beyond, a warm-up is
+dropped (a later read asks for it again) and the API logs `Travel times: warm-up dropped` with the
+reason (`queue full` or `account share`) and how many were dropped, one line a minute at most. A
+warm-up that fails (the database did not answer) logs `Travel times: warm-up failed` with the
+error's name only, and the next warm-up goes on.
+
+Each request a warm-up sends counts against three caps: 100 a day for the account whose read
+wanted it (`discovery-commute` counters, keyed by a hash of the account, so that one account
+cannot use up matching's day), half of `COMMUTE_DAILY_LIMIT` for all warm-ups together
+(`MATCHING_COMMUTE_SHARE`, the `discovery-commute-site` counter), and `COMMUTE_DAILY_LIMIT`
+itself. The other half is kept for the job match steps of journeys: however busy matching is, a
+page for recruiters keeps its travel times, and a candidate's commute deal-breaker keeps counting
+there, until journeys alone reach the limit. Once matching's half is used, warm-ups wait for the
+next UTC day, and matching shows the commutes it has not kept as unknown (a recruiter's feed holds
+back a candidate whose deal-breaker commute is unknown). A pair costs up to three requests (car,
+on foot, public transport), an office one or two the first time: size `COMMUTE_DAILY_LIMIT` for
+twice the new pairs a day brings (each is then kept 30 days), and with HERE, for its monthly
+allowance. The failure memo applies too: a service that did not answer is left alone for 10
+minutes by warm-ups as by journeys.
+
+Matching never asks Transitous, nor reads what it answered a journey: its usage policy is for
+open-source, non-commercial projects, which a site that matches candidates with recruiters'
+jobs may not stay. With `COMMUTE_TRANSIT=transitous`, matching computes the commute by the other
+modes a candidate accepts, whose time is then the most the way can take: it is used only when the
+commute matches with it. Otherwise (and for a candidate who accepts public transport alone)
+matching cannot tell, and treats that commute as unknown, never as not counted, so a candidate
+with a commute deal-breaker is held back from recruiters' feeds for those jobs instead of being
+proposed for jobs anywhere. The API warns at startup when `MATCHING=true` is set with it. Before
+matching is turned on in production, choose HERE (`COMMUTE_TRANSIT=here` with its key, priced
+above) or no public transport (`COMMUTE_TRANSIT` unset).
 
 **Address search.** The two forms that take an address (the commute of the perfect job, the
 office of a job posting) search it as it is typed: `POST /addresses/search` answers with the
@@ -686,7 +1188,10 @@ The production services deploy from **`main`**, the staging services from **`dev
 Work goes to `develop`: every pull request targets it (`develop` is the repository's default
 branch) and is squash-merged. A release brings `develop` into `main`:
 
-1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship.
+1. Check staging (`develop.portfolio.gentil.tech`) has what you want to ship. When the release
+   bumps `LEGAL_VERSION` (`git diff <latest tag> develop -- common/models/legal.ts`), email the
+   accounts first, before running the workflow (the merge deploys production on its own): see
+   "Tell the accounts before a bump reaches production" under [Legal pages](#legal-pages).
 2. Run the `Release` workflow (after its one-time setup, below): **Actions**, **Release**, **Run
    workflow** (branch `develop`), and pick what the release brings since the last one
    ([semantic versioning](https://semver.org)):
@@ -760,7 +1265,8 @@ the old one). Each ruleset:
 - requires a pull request (no approval: the repository has one maintainer), merged by squash into
   `develop`, by merge commit into `main`;
 - requires the CI jobs to pass (`Lint, type-check, build`, both `Server and client unit tests`,
-  `Playwright end-to-end tests`), and on `main` also `Only develop merges into main`;
+  both `Playwright end-to-end tests`: `(matching on)` and `(matching off)`), and on `main` also
+  `Only develop merges into main`;
 - on `develop` only, requires the pull request to be up to date with `develop`: after another
   merge, press **Update branch** and let CI run again, so what is merged is what was tested. Not
   on `main`: a release leaves a merge commit there that `develop` never gets, so a release PR is
@@ -808,38 +1314,275 @@ the deploy.
   credentials change.
 - Seed a fresh database once with the owner's user and the `louis.gentil` domain (the example the
   landing page links to); the script is idempotent and never prints the connection string's
-  password:
+  password. It also writes the curated skills of the catalogue, set by hand (see
+  [The seeded skills](#the-seeded-skills) for what that does to a database that already has
+  skills):
 
   ```bash
   MONGO_URL="<production MONGO_URL>" bun run db:seed
   ```
+
+### The job board's applications (one-off)
+
+The public job board, applying to a job and the applicant lists are gone: no route reads or writes
+the `jobapplications` collection any more, except deleting an account, which still removes the
+account's own applications from it (as candidate, for its portfolio, to its job descriptions:
+`LEGACY_JOB_APPLICATIONS_COLLECTION` of `server/services/accountDeletion.ts`) until it is gone.
+Once the API without them runs on a stage, record how many applications it held, by source
+(counts only: no candidate, posting or portfolio), then drop the collection, in that stage's
+database (staging, then production):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  printjson(db.jobapplications.aggregate([{ $group: { _id: "$source", count: { $sum: 1 } } }]).toArray());
+  db.jobapplications.drop()'
+```
+
+Write the counts in the release's pull request: they are the only record left of the board's
+applications. Do it soon after the deploy: until then the collection holds personal data that the
+privacy policy no longer describes. `drop()` answers `false` once it is gone. Once it is dropped on
+both stages, a later release removes `LEGACY_JOB_APPLICATIONS_COLLECTION` from account deletion. Drop it from local and cloud-session databases too, and run
+`bun run --cwd server seed:e2e` again there: its portfolio `e2e-applicant` became `e2e-shared`
+(the old one is left unused).
+
+The overview dashboard loses its job application panels with this release: import
+`docs/grafana/overview.json` over the stack's **Portfolio · Overview** (Dashboards, New, Import,
+same uid, overwrite).
+
+### Locked job terms and capped pay ranges (one-off)
+
+From the release that brings them, a job description's terms (the fields the perfect job scores,
+`LOCKED_JOB_FIELDS` of `common/models/jobTerms.ts`) are locked once it has been opened
+(`publishedAt` set, whatever its status since), and the top of a pay range is at most 1.5 times its
+bottom (`JOB_LIMITS.pay.maxRangeRatio`). Nothing is migrated: the postings already opened become
+locked as they are, and one saved wider than 1.5 times its bottom before the cap is scored as if its
+top were that (its editor shows that top, which its next save stores; until then its page in the
+recruiter space still shows the top it was saved with, and so does `/opportunities/:id` for a pick
+made before the job step kept the version shared, see below: a version shared carries the capped
+top). Such a posting cannot be saved
+again with its wider top, nor opened from its status if it never was, until it is narrowed. Before
+deploying that release on each stage (staging, then production), count them (counts only: no
+posting, recruiter or pay):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  const wider = { $expr: { $gt: ["$pay.max", { $multiply: ["$pay.min", 1.5] }] } };
+  printjson({
+    opened: db.jobpostings.countDocuments({ publishedAt: { $ne: null } }),
+    wider: db.jobpostings.countDocuments(wider),
+    openedAndWider: db.jobpostings.countDocuments({ $and: [{ publishedAt: { $ne: null } }, wider] })
+  })'
+```
+
+Write the counts in the release's pull request. When `wider` is not 0, tell the recruiters of those
+postings, with the `LEGAL_VERSION` notice (see "Tell the accounts before a bump reaches
+production") or on their own, that each must be narrowed (its editor) or, once opened, duplicated
+into a new job description with the range they mean: an opened one is matched with a top of 1.5
+times its bottom from the deploy.
+
+### Versions of shared jobs (one-off)
+
+From the release that brings them, the job step of a hiring journey keeps the version of the job
+description the recruiter shared (`data.posting` of the step in `workflowinstances`:
+`server/services/workflowSteps/job.ts`), and holds only with one. A pick stored before has none,
+and nothing is migrated (the version shared then is not known): from the deploy, that job step is
+to do again for its recruiter (pending, "Pick <job> again to share it and go on"), the steps after
+it lock, booking included, until they pick the job again, and its owner reads the job description
+as it is now on `/opportunities/:id` (which invitations already sent link) until then. Before
+deploying that release on each stage (staging, then production), count those picks (counts only:
+no recruiter, owner or job):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  const legacy = { $expr: { $gt: [{ $size: { $filter: {
+    input: { $objectToArray: { $ifNull: ["$steps", {}] } },
+    cond: { $and: [
+      { $ne: [{ $type: "$$this.v.data.job" }, "missing"] },
+      { $eq: [{ $type: "$$this.v.data.posting" }, "missing"] }
+    ] }
+  } } }, 0] } };
+  printjson({
+    journeys: db.workflowinstances.countDocuments(legacy),
+    recruiters: db.workflowinstances.distinct("visitor", legacy).length
+  })'
+```
+
+Write the counts in the release's pull request. When `recruiters` is not 0, tell those recruiters
+before production gets the release (`distinct("visitor", legacy)` gives their account ids, whose
+email is in `users`: never in the pull request) that they must pick their job again on each
+candidate's page for recruiters where they had picked it, and that the meeting stays locked until
+they do. Once production counts 0, a later release removes the fallback for those picks
+(`legacyPick` of the job step, read by `server/services/jobAccess.ts`).
+
+A rule of job descriptions made tighter in a later release (a new required field, a shorter
+length, a narrower range) sends the versions kept that break it back to pending in the same way
+(`storedJobSnapshot` of `server/services/jobPostings.ts` checks every version kept with today's
+rules): count them before deploying it with a query of the same shape, its `cond` testing the rule
+on `$$this.v.data.posting`, and tell their recruiters likewise. Matching keeps versions too, read
+back the same way: count the mutual interests going on whose version breaks the rule (in
+`matches`, `{ matchedAt: { $exists: true }, endedAt: { $exists: false } }` and the rule tested on
+`snapshot.posting`: from the deploy they lead nowhere, their recruiter shares a job on the
+candidate's page as anyone does, and the candidate reads them without the job) and the jobs in
+matching that break it (in `jobpostings`, `{ 'matching.enabledAt': { $exists: true } }` and the
+rule: proposed to nobody from the deploy, until their recruiter duplicates them with what the rule
+asks), and write those counts in the release's pull request too.
 
 ### Reserved portfolio names
 
 Every top-level route of the web app is a reserved portfolio name (`RESERVED_DOMAIN_NAMES` in
 `common/models/domainName.ts`): a portfolio with that name would be hidden behind the route.
 The landing page, legal pages and account page reserved `about`, `contact`, `cookies`, `help`,
-`legal`, `privacy`, `report`, `signup`, `start` and `terms`. Before deploying a version that
-reserves new names, check that no existing portfolio uses one (it would become unreachable, and
-could not be found or claimed again):
+`legal`, `privacy`, `report`, `signup`, `start` and `terms`; the private page of a job
+description shared with a candidate (`/opportunities/:id`) reserved `opportunities`. Before
+deploying a version that reserves new names, check on each stage (the staging database, then
+production's) that no existing portfolio uses one (it would become unreachable, and could not be
+found or claimed again):
 
 ```bash
-mongosh "<production MONGO_URL>" --quiet --eval '
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
   db.domains.find(
-    { name: { $in: ["about", "contact", "cookies", "help", "legal", "privacy", "report", "signup", "start", "terms"] } },
+    { name: { $in: ["about", "contact", "cookies", "help", "legal", "opportunities", "privacy", "report", "signup", "start", "terms"] } },
     { name: 1, admin: 1 }
   ).toArray()'
 ```
 
-An empty array (`[]`) means nothing to do. Otherwise, rename the domain (`db.domains.updateOne`
-with a free name) and tell its owner before deploying.
+The files of `client/static` answer at the site's root too (`/og-hire.png`, `/logo.svg`...), so
+no name ending with a picture, icon or video extension can be claimed either (`.png`, `.jpg`,
+`.svg`, `.webp`, `.ico`, `.webm`, `.mp4`...: `FILE_EXTENSION_PATTERN` of the same file). Before
+deploying the version that refuses them, check once that no portfolio has one: its pages would
+still load, but the site would take its name for an invalid one (a recruiter writing a job from
+its page for recruiters would not be sent back there):
+
+```bash
+mongosh "<MONGO_URL of the stage>" --quiet --eval '
+  db.domains.find({ name: /\.(png|jpe?g|gif|svg|webp|avif|ico|webm|mp4)$/ }, { name: 1, admin: 1 }).toArray()'
+```
+
+An empty array (`[]`) from each query means nothing to do. Otherwise, rename the domain
+(`db.domains.updateOne` with a free name) and tell its owner before deploying that stage.
+
+## Search engines
+
+Portfolios are public to anyone with their address but are not listed by search engines
+(CLAUDE.md, "Search engines"): every page of a portfolio, the 404 of a name nobody claimed,
+`/account`, `/recruiter/jobs/*` (with a job's candidates of matching,
+`/recruiter/jobs/<id>/candidates`), `/recruiter/reviews` (the reviewers' page of matching),
+`/opportunities` (the candidate's inbox of matching) and `/opportunities/*` (the private page of
+a job description shared with a candidate) answer with `x-robots-tag: noindex, nofollow,
+noarchive`, and the API sends the same header on every answer. The pages rendered on the server (a
+portfolio's pages, `/account`) also carry a robots meta in their HTML; the 404 of a name nobody
+claimed has the header alone; `/recruiter/jobs/*`, `/recruiter/reviews`, `/opportunities` and
+`/opportunities/*` are rendered in the browser, so their meta is only written once their script
+ran (`curl` never sees it). The landing page, the legal
+pages and `/recruiter` stay listed, with their canonical links (the one of `/recruiter`, rendered
+in the browser too, is written by its script). The job board is gone: `/jobs` answers `410 Gone`,
+which tells search engines to drop it, `/jobs/<id>` answers `308` to `/opportunities/<id>` (the
+link of the meeting invitations sent before), and the API's `GET /jobs` and `GET /jobs/<id>`
+answer 404.
+
+**robots.txt refuses nothing, on purpose.** A crawler has to fetch a page to read its `noindex`:
+a `Disallow` would hide the request, and a search engine can still list a refused address it
+finds through a link, without its content. It would also stop LinkedIn, Slack and the like from
+building the preview of a shared portfolio, and it could not name portfolios anyway (each is a
+top-level path, `/<name>`). With Cloudflare in front of the web service and its managed
+robots.txt on, Cloudflare puts its own block (`# BEGIN Cloudflare Managed Content` to
+`# END Cloudflare Managed Content`: `User-agent: *` with its content signals, and a `Disallow: /`
+for each AI training crawler it lists, such as GPTBot, ClaudeBot, CCBot or Google-Extended) above
+the lines of `client/static/robots.txt`, which follow unchanged. Keep it so, and check that the
+block adds no `Disallow: /` for `User-agent: *`.
+
+**Cloudflare must not get in the way.** Bot Fight Mode, Block AI bots, AI Crawl Control and any
+WAF rule must not challenge the crawlers of link previews (`LinkedInBot`, `Slackbot`,
+`Twitterbot`, `facebookexternalhit`), and no Transform Rule or cache rule may strip
+`X-Robots-Tag`.
+
+**Checks**, from outside, after a deploy that touches pages or headers (`GET` requests: the
+headers of a `HEAD` request may differ):
+
+```bash
+headers() { curl -s -o /dev/null -D - "$@"; }
+headers https://example.com/louis.gentil/experiences | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+headers https://example.com/louis.gentil/hire | grep -i '^x-robots-tag'          # the same
+headers https://example.com/a-name-nobody-claimed/experiences | grep -i '^x-robots-tag'   # the same, on the 404
+headers https://api.example.com/health | grep -i '^x-robots-tag'                 # the same
+curl -s https://example.com/louis.gentil/experiences | grep -o '<meta name="robots"[^>]*>'
+headers https://example.com/ | grep -ci '^x-robots-tag'                          # 0: the landing page is listed
+headers https://example.com/legal/privacy | grep -ci '^x-robots-tag'             # 0
+curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs               # 410: the job board is gone
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://example.com/jobs/65e2e00000000000000000aa   # 308 .../opportunities/65e2e00000000000000000aa
+headers https://example.com/opportunities/65e2e00000000000000000aa | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+headers https://example.com/opportunities | grep -i '^x-robots-tag'             # the same (the inbox of matching)
+headers https://example.com/recruiter/reviews | grep -i '^x-robots-tag'         # the same (the reviewers' page)
+headers https://example.com/recruiter/jobs/65e2e00000000000000000aa/candidates | grep -i '^x-robots-tag'   # the same
+curl -s -o /dev/null -w '%{http_code}\n' https://api.example.com/jobs           # 404
+curl -s https://example.com/robots.txt | grep -iE '^(user-agent|allow|disallow)'   # each group with its user agents
+LINKEDIN='LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)'
+curl -s -o /dev/null -w '%{http_code}\n' -A "$LINKEDIN" \
+  https://example.com/louis.gentil/experiences                                   # 200, not a challenge (403 or 503)
+curl -sL -A "$LINKEDIN" https://example.com/louis.gentil \
+  | grep -o '<meta property="og:\(url\|image\|locale\)"[^>]*>'                   # the link people copy: og:url .../louis.gentil/experiences, og:image .../og-portfolio.png, og:locale en_GB
+curl -sL -A "$LINKEDIN" 'https://example.com/louis.gentil?lang=fr' \
+  | grep -o '<meta property="og:\(url\|image\|locale\)"[^>]*>'                   # og:url .../experiences?lang=fr, og:image .../og-portfolio-fr.png, og:locale fr_FR
+curl -s -A "$LINKEDIN" https://example.com/louis.gentil/experiences \
+  | grep -o '<meta property="og:[^>]*>\|<meta name="twitter:[^>]*>'             # og:title (the portfolio's title), og:description (its tagline), og:image .../og-portfolio.png, og:url, og:locale en_GB, twitter:card, twitter:image:alt
+curl -s -A "$LINKEDIN" 'https://example.com/louis.gentil/hire?lang=fr' \
+  | grep -o '<meta property="og:[^>]*>'                                          # og:title « Proposer un poste à … », og:description « Sur la page recruteurs de … : réserver un rendez-vous, en 2 minutes environ » (the journey's steps; « La page recruteurs de …. … ne prend pas de demandes de rendez-vous en ligne pour le moment » while the calendar offers no meeting type with hours), og:image .../og-hire-fr.png, og:url ...?lang=fr, og:locale fr_FR
+curl -s https://example.com/louis.gentil/hire | grep -o 'Before you start\|About [0-9]* minutes\|does not take meeting requests online'   # the page rendered on the server, from the journey: "Before you start" where a meeting can be booked, else that none is taken online
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' -A "$LINKEDIN" \
+  https://example.com/og-hire-fr.png                                             # 200 image/png
+```
+
+In the robots.txt output, every group that names `User-agent: *` has only `Allow: /` or an empty
+`Disallow:`: a `Disallow: /` belongs only to the AI crawlers Cloudflare's block names (GPTBot,
+ClaudeBot...). The page fetched as LinkedInBot must be the portfolio itself, with its preview tags,
+not a challenge page that also answers 200.
+
+LinkedIn's [Post Inspector](https://www.linkedin.com/post-inspector/) on a portfolio's addresses
+then shows their previews: `/<name>` first (the link its owner copies, sent on to its
+experiences), then `/<name>/experiences` and `/<name>/hire`, each in English and with `?lang=fr`,
+with their title, description and picture. LinkedIn keeps a link's preview for about a
+week: inspecting the address fetches it again, after a change of the pictures or of a
+portfolio's title.
+
+**After a release that changes the landing page's preview or demos** (its title, description,
+`og-image.png`, `og-image-fr.png`, or the recordings `client/static/landing/demo-*.webm`, `.mp4`
+and `.jpg`, which keep their addresses when they change), inspect `https://<your domain>/` and
+`https://<your domain>/?lang=fr` in the Post Inspector, so links already shared show the new
+title and picture. If Cloudflare keeps static files in its cache (it does by default for these
+extensions), purge those addresses (**Caching**, **Configuration**, **Custom Purge**:
+`/og-image.png`, `/og-image-fr.png`, `/landing/demo-journey.webm`, `.mp4`, `.jpg`, and
+`demo-style.*` when they changed), then check what is served:
+`curl -sI https://<your domain>/og-image.png | grep -i '^\(last-modified\|etag\|cf-cache-status\)'`.
+
+**Pages listed before.** A `noindex` counts from the next time a search engine reads the page,
+which can take weeks. Verify the domain in
+[Google Search Console](https://search.google.com/search-console) (a domain property, with the
+DNS `TXT` record it gives, added in Cloudflare: it covers every subdomain), find what is listed
+(`site:portfolio.gentil.tech` in Google, then `site:api.portfolio.gentil.tech`,
+`site:develop.portfolio.gentil.tech` and `site:develop.api.portfolio.gentil.tech`), and ask for
+the removal of each portfolio (**Removals**, **New request**, **Remove all URLs with this
+prefix**: `https://portfolio.gentil.tech/<name>/`). Do the same for the API's answers, which until
+this header had none (`GET /domain/<name>` is a whole portfolio as JSON): the prefix
+`https://api.portfolio.gentil.tech/domain/`, and `https://develop.api.portfolio.gentil.tech/domain/`
+for staging, whose portfolios found under `https://develop.portfolio.gentil.tech/<name>/` go too.
+The former job board goes the same way: the prefix `https://portfolio.gentil.tech/jobs` (and
+`https://api.portfolio.gentil.tech/jobs`, with their staging twins). Google hides them for about six
+months, long enough to read the `noindex` (or the `410` of the job board); **Pages** then lists
+them under "Excluded by 'noindex' tag". Do the same in
+[Bing Webmaster Tools](https://www.bing.com/webmasters) (**Content Removal**), whose index other
+engines use too.
+
+**Limits.** `noindex` is a request. Google and Bing follow it; a crawler that ignores robots
+rules, or an AI answer engine, may not. That is why the landing FAQ and the privacy policy say
+that search engines are asked not to list a portfolio, never that it cannot be found.
 
 ## Verify a deploy
 
 1. **Build logs** (deployment, **Build Logs**, or `railway logs --build --service <service>`):
    Railpack's plan lists `bun │ 1.4.4 │ package.json > packageManager`, the install step runs
    `bun install --frozen-lockfile`, and the web build prints `Using @sveltejs/adapter-bun`.
-2. **Deploy logs** (`railway logs --service <service>`): the API logs `Running at http://[::]:<PORT>`;
+2. **Deploy logs** (`railway logs --service <service>`): the API logs `Running at http://[::]:<PORT>`
+   (with what is on or off: `"resumeImport"`, `"feedback"`, `"skillClassification"`, `"matching"`...);
    the web logs `Listening on http://localhost:<PORT>/` (Bun prints `localhost` for the
    `0.0.0.0` wildcard). The deployment turns **Active** only after its healthcheck passed.
 3. **Endpoints**:
@@ -848,13 +1591,21 @@ with a free name) and tell its owner before deploying.
    curl -i https://api.example.com/health      # 200 OK
    curl -i https://example.com/healthz         # 200 ok
    curl -s -o /dev/null -w '%{http_code}\n' https://example.com/   # 200 (the landing page, no redirect)
-   curl -s https://example.com/ | grep -o '<title>[^<]*</title>'    # <title>Your portfolio screens jobs for you | Portfolio</title>
+   curl -s https://example.com/ | grep -o '<title>[^<]*</title>'    # <title>Your career, on your terms | Portfolio</title>
    curl -s https://example.com/legal | grep -c 'Publisher details are not configured yet'   # 0 once LEGAL_* are set
    curl -s https://api.example.com/domain/louis.gentil/availability   # {"name":"louis.gentil","available":false,"reason":"taken"}
    curl -si -H 'Origin: https://example.com' https://api.example.com/domain/louis.gentil \
      | grep -i '^access-control-allow-origin'  # https://example.com
+   curl -s -o /dev/null -D - https://example.com/louis.gentil/experiences | grep -i '^x-robots-tag'   # x-robots-tag: noindex, nofollow, noarchive
+   curl -s -o /dev/null -D - https://api.example.com/health | grep -i '^x-robots-tag'                 # the same
+   curl -s -o /dev/null -w '%{http_code}\n' https://example.com/jobs   # 410: the job board is gone
+   curl -s -o /dev/null -w '%{http_code}\n' 'https://api.example.com/skills/search?q=type'   # 401: the skill search is for signed-in accounts
+   curl -s https://example.com/legal | grep -c 'cdn-cgi\|__cf_email__'   # 0: the proxy changed nothing
    ```
 
+   The other checks of what search engines and link previews get: [Search engines](#search-engines);
+   of what Cloudflare adds to the pages (Email Address Obfuscation, Network Error Logging): the
+   loops under [Legal pages](#legal-pages).
 4. **In the browser**: open the site, sign in with Google, reload the page and check you are still
    signed in (the `auth` cookie is stored for the API domain). With `GOOGLE_CLIENT_SECRET` set,
    **Admin, Appointments** shows the calendar as connected (or offers to connect it).

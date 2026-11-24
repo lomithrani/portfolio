@@ -82,7 +82,8 @@ variables only (PublisherDetails).
 <h3 id="report">Reporting illegal content</h3>
 <p>
 	Anyone can tell us about content on this site they believe is illegal: a portfolio, a job
-	description, a hiring journey note or anything else users publish. Write to
+	description shared on a hiring journey, a hiring journey note or anything else users put on the
+	site. Write to
 	<ContactEmail {publisher} {lang} subject="Report" /> with the subject <strong>Report</strong>, and
 	include:
 </p>
@@ -118,10 +119,10 @@ variables only (PublisherDetails).
 	unless stated otherwise, and are protected by intellectual property law.
 </p>
 <p>
-	Content that users publish (portfolios, experiences and projects, job descriptions, hiring journey
-	notes) belongs to the people who published it. They grant this site only the licence described in
-	the <LegalDocLink doc="terms" {lang} hash="content">terms of use</LegalDocLink>, to host and show
-	it while it is online. Company names, logos and trademarks shown in portfolios and job
+	Content that users put on the site (portfolios, experiences and projects, job descriptions, hiring
+	journey notes) belongs to the people who wrote it. They grant this site only the licence described
+	in the <LegalDocLink doc="terms" {lang} hash="content">terms of use</LegalDocLink>, to host and
+	show it while it is online. Company names, logos and trademarks shown in portfolios and job
 	descriptions belong to their owners.
 </p>
 

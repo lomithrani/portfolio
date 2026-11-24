@@ -13,7 +13,8 @@ import {
   PeriodicExportingMetricReader
 } from '@opentelemetry/sdk-metrics';
 import { env } from '../env';
-import { Domain, JobPosting, User } from '../models/database';
+import { DISCOVERY_CONSENT_MONTHS, DISCOVERY_INACTIVITY_DAYS, LEGAL_VERSION } from 'portfolio-common';
+import { DiscoveryProfile, Domain, JobPosting, Match, User } from '../models/database';
 import { logger } from '../services/logger';
 import {
   SITE_RECORD_KINDS,
@@ -36,9 +37,12 @@ const counts = (overrides: Partial<SiteRecordCounts> = {}): SiteRecordCounts => 
   experiences: 57,
   job_postings: 9,
   open_job_postings: 5,
-  job_applications: 3,
   journeys_started: 2,
   upcoming_bookings: 1,
+  discoverable_candidates: 3,
+  matching_job_postings: 2,
+  matching_job_reviews: 1,
+  active_matches: 1,
   ...overrides
 });
 
@@ -142,14 +146,16 @@ describe('countSiteRecords', () => {
     assertDisposableDatabase(env.MONGO_URL);
     await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
     connected = true;
-    await Promise.all([User.init(), Domain.init(), JobPosting.init()]);
+    await Promise.all([User.init(), Domain.init(), JobPosting.init(), DiscoveryProfile.init(), Match.init()]);
   });
 
   afterAll(async () => {
     if (!connected) return;
     const users = await User.find({ email: new RegExp(`-${suffix}@`) }).select('_id');
     const ids = users.map((user) => user._id);
+    await Match.deleteMany({ $or: [{ recruiter: { $in: ids } }, { candidate: { $in: ids } }] });
     await JobPosting.deleteMany({ recruiter: { $in: ids } });
+    await DiscoveryProfile.deleteMany({ user: { $in: ids } });
     await Domain.deleteMany({ admin: { $in: ids } });
     await User.deleteMany({ _id: { $in: ids } });
     await mongoose.disconnect();
@@ -182,4 +188,105 @@ describe('countSiteRecords', () => {
     expect(after.job_postings - before.job_postings).toBe(2);
     expect(after.open_job_postings - before.open_job_postings).toBe(1);
   });
+
+  it('counts the candidates proposed to recruiters: discovery on, its consent in force, active', async () => {
+    const matching = env.matchingEnabled;
+    env.matchingEnabled = true;
+    try {
+      await countsDiscoverable();
+    } finally {
+      env.matchingEnabled = matching;
+    }
+  });
+
+  it('counts no candidate proposed to recruiters while MATCHING is off', async () => {
+    const matching = env.matchingEnabled;
+    env.matchingEnabled = false;
+    try {
+      const user = await User.create({ email: email('off'), googleId: `sub-off-${suffix}` });
+      await DiscoveryProfile.create({ user: user._id, enabledAt: new Date(), lastActiveAt: new Date() });
+      expect((await countSiteRecords()).discoverable_candidates).toBe(0);
+    } finally {
+      env.matchingEnabled = matching;
+    }
+  });
+
+  it('counts the jobs proposed to candidates, those waiting for a review, and the mutual interests that go on', async () => {
+    const matching = env.matchingEnabled;
+    env.matchingEnabled = true;
+    try {
+      const before = await countSiteRecords();
+      const now = new Date();
+      const acceptance = (version: string) => ({ version, acceptedAt: now, ageConfirmationKey: 'age-16-v1', source: 'recruiter' });
+      // A recruiter who accepted the terms in force, and one who has not accepted them since a bump
+      const recruiter = await User.create({
+        email: email('matching'),
+        googleId: `sub-matching-${suffix}`,
+        legalAcceptances: [acceptance(LEGAL_VERSION)]
+      });
+      const behind = await User.create({
+        email: email('behind'),
+        googleId: `sub-behind-${suffix}`,
+        legalAcceptances: [acceptance('2025-01-01')]
+      });
+      const candidate = await User.create({ email: email('matched'), googleId: `sub-matched-${suffix}` });
+      const review = (status: string) => ({ status, requestedAt: now, ...(status === 'pending' ? {} : { reviewedAt: now }) });
+      const job = (status: 'open' | 'on_hold', matching?: Record<string, unknown>, by = recruiter) =>
+        JobPosting.create({ ...COMPLETE_POSTINGS[0], recruiter: by._id, status, publishedAt: now, ...(matching ? { matching } : {}) });
+      const live = await job('open', { enabledAt: now, review: review('approved') });
+      // Not proposed: of a recruiter without the terms in force, waiting for a review, rejected, on
+      // hold, turned off, not in matching at all
+      await job('open', { enabledAt: now, review: review('approved') }, behind);
+      await job('open', { enabledAt: now, review: review('pending') });
+      await job('on_hold', { enabledAt: now, review: review('pending') });
+      await job('open', { enabledAt: now, review: review('rejected') });
+      await job('on_hold', { enabledAt: now, review: review('approved') });
+      await job('open', { review: review('approved') });
+      await job('open');
+      const match = (fields: Record<string, unknown>) =>
+        Match.create({ job: live._id, recruiter: recruiter._id, candidate: new mongoose.Types.ObjectId(), ...fields });
+      await match({ matchedAt: now, revealedAt: now, snapshot: { posting: {}, score: 90, minScore: 70 } });
+      // Not going on: ended, or no mutual interest
+      await match({ matchedAt: now, endedAt: now, endReason: 'job_closed' });
+      await Match.create({ job: live._id, recruiter: recruiter._id, candidate: candidate._id, candidateDecision: { value: 'interested', at: now } });
+
+      const after = await countSiteRecords();
+
+      expect(after.matching_job_postings - before.matching_job_postings).toBe(1);
+      expect(after.matching_job_reviews - before.matching_job_reviews).toBe(2);
+      expect(after.active_matches - before.active_matches).toBe(1);
+
+      // Off: nothing of matching is read
+      env.matchingEnabled = false;
+      expect(await countSiteRecords()).toMatchObject({ matching_job_postings: 0, matching_job_reviews: 0, active_matches: 0 });
+    } finally {
+      env.matchingEnabled = matching;
+    }
+  });
+
+  const countsDiscoverable = async () => {
+    const before = await countSiteRecords();
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const profile = async (name: string, fields: Record<string, unknown>) => {
+      const user = await User.create({ email: email(name), googleId: `sub-${name}-${suffix}` });
+      await DiscoveryProfile.create({ user: user._id, ...fields });
+    };
+    await profile('on', { enabledAt: new Date(now - day), lastActiveAt: new Date(now - day) });
+    // Not counted: off (never on, or withdrawn), the consent lapsed, inactive for too long
+    await profile('never', { card: { headline: 'Engineer' } });
+    await profile('withdrawn', { lastActiveAt: new Date(now - day) });
+    await profile('lapsed', {
+      enabledAt: new Date(now - (DISCOVERY_CONSENT_MONTHS * 31 + 1) * day),
+      lastActiveAt: new Date(now - day)
+    });
+    await profile('asleep', {
+      enabledAt: new Date(now - (DISCOVERY_INACTIVITY_DAYS + 10) * day),
+      lastActiveAt: new Date(now - (DISCOVERY_INACTIVITY_DAYS + 1) * day)
+    });
+
+    const after = await countSiteRecords();
+
+    expect(after.discoverable_candidates - before.discoverable_candidates).toBe(1);
+  };
 });

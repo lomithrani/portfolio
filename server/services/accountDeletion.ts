@@ -2,10 +2,11 @@ import mongoose, { Types } from 'mongoose';
 import {
   AppointmentBooking,
   AppointmentSchedule,
+  DiscoveryProfile,
   Domain,
   Experience,
-  JobApplication,
   JobPosting,
+  Match,
   PerfectJob,
   User,
   Workflow,
@@ -36,11 +37,18 @@ import { logger } from './logger';
 //   from among them). The travel times computed from that address stay in
 //   CommuteCache until they expire (30 days at most): their keys are hashes
 //   that show neither the address nor the account
-// - JobPosting.recruiter, with every JobApplication to those postings
-// - JobApplication.candidate (and .domain, the candidate's own domain)
+// - JobPosting.recruiter, and the documents of the legacy `jobapplications`
+//   collection (the removed job board's applications, no longer read, dropped
+//   by hand after the deploy: docs/DEPLOYMENT.md) to those postings, of the
+//   account as candidate and of its domains
 // - AppointmentSchedule.user and AppointmentBooking.user; AppointmentBooking.visitor
 //   (the meetings the account booked on other portfolios) is unset: the
 //   meeting stays booked in its owner's calendar, and its slot held
+// - DiscoveryProfile.user (Path 2: whether the account is proposed to
+//   recruiters, its anonymous card's settings, its consents and withdrawals)
+// - Match.candidate and Match.recruiter (Path 2: the decisions and mutual
+//   interests of the account on either side, with what each side saw), and the
+//   matches of its job postings
 // - the User itself, Google Calendar tokens and acceptances included
 
 /** What was removed, by collection (the log line and the tests read it) */
@@ -53,17 +61,28 @@ export interface AccountDeletionSummary {
   workflowInstances: number;
   perfectJobs: number;
   jobPostings: number;
-  jobApplications: number;
+  /** Documents of the legacy `jobapplications` collection (the removed job board) */
+  legacyJobApplications: number;
   appointmentSchedules: number;
   appointmentBookings: number;
   /** Bookings the account made on other portfolios, no longer tied to it */
   bookedMeetings: number;
+  /** Its discovery (Path 2): the consents it gave and withdrew go with it */
+  discoveryProfiles: number;
+  /** Its matches (Path 2), as candidate, as recruiter, and of its job postings */
+  matches: number;
   /** What Google answered when asked to revoke the Google Calendar grant ('none': no grant stored) */
   googleCalendar: Awaited<ReturnType<typeof revokeGoogleCalendarAccess>>;
 }
 
 /** Collection of the old /workflows API (`{ user, name, description, enabled, steps }`), still stored, never read */
 export const LEGACY_WORKFLOWS_COLLECTION = 'workflows';
+
+/**
+ * Collection of the removed job board's applications (`{ job, candidate, domain, source }`), never
+ * read; dropped by hand on each stage (docs/DEPLOYMENT.md), then this goes too
+ */
+export const LEGACY_JOB_APPLICATIONS_COLLECTION = 'jobapplications';
 
 const unknownUser = () => new CouldntVerifyJwtError(UNKNOWN_USER);
 
@@ -91,31 +110,36 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
 
   const [
     experiences,
-    jobApplications,
     workflowInstances,
     workflows,
     perfectJobs,
     legacyWorkflows,
+    legacyJobApplications,
     appointmentBookings,
     appointmentSchedules,
-    bookedMeetings
+    bookedMeetings,
+    discoveryProfiles,
+    matches
   ] = await Promise.all([
     Experience.deleteMany({ _id: { $in: experienceIds } }),
-    JobApplication.deleteMany({
-      $or: [{ job: { $in: jobIds } }, { candidate: id }, { domain: { $in: domainIds } }]
-    }),
     WorkflowInstance.deleteMany({ $or: [{ owner: id }, { visitor: id }] }),
     Workflow.deleteMany({ user: id }),
     PerfectJob.deleteMany({ user: id }),
     // The old /workflows API wrote there; no model reads it any more
     mongoose.connection.collection(LEGACY_WORKFLOWS_COLLECTION).deleteMany({ user: { $in: [id, userId] } }),
+    // The removed job board wrote there, until the collection is dropped
+    mongoose.connection.collection(LEGACY_JOB_APPLICATIONS_COLLECTION).deleteMany({
+      $or: [{ candidate: id }, { domain: { $in: domainIds } }, { job: { $in: jobIds } }]
+    }),
     AppointmentBooking.deleteMany({ user: id }),
     AppointmentSchedule.deleteMany({ user: id }),
-    AppointmentBooking.updateMany({ visitor: id }, { $unset: { visitor: 1 } })
+    AppointmentBooking.updateMany({ visitor: id }, { $unset: { visitor: 1 } }),
+    DiscoveryProfile.deleteMany({ user: id }),
+    Match.deleteMany({ $or: [{ candidate: id }, { recruiter: id }, { job: { $in: jobIds } }] })
   ]);
-  // After their applications, then the domains after their experiences: an
-  // interrupted deletion leaves nothing pointing at what is gone
-  const jobPostings = await JobPosting.deleteMany({ _id: { $in: jobIds } });
+  // The postings after their applications and matches, then the domains after their
+  // experiences: an interrupted deletion leaves nothing pointing at what is gone
+  const jobPostings = await JobPosting.deleteMany({ recruiter: id });
   const removedDomains = await Domain.deleteMany({ _id: { $in: domainIds } });
   // Before the account, which holds the Google id and the plan's imports used
   await carryOverAccountQuotas(userId, user.googleId, user.recruiter?.jobImportsUsed);
@@ -129,10 +153,12 @@ export async function deleteAccount(userId: string): Promise<AccountDeletionSumm
     workflowInstances: workflowInstances.deletedCount,
     perfectJobs: perfectJobs.deletedCount,
     jobPostings: jobPostings.deletedCount,
-    jobApplications: jobApplications.deletedCount,
+    legacyJobApplications: legacyJobApplications.deletedCount,
     appointmentSchedules: appointmentSchedules.deletedCount,
     appointmentBookings: appointmentBookings.deletedCount,
     bookedMeetings: bookedMeetings.modifiedCount,
+    discoveryProfiles: discoveryProfiles.deletedCount,
+    matches: matches.deletedCount,
     googleCalendar
   };
   // The user id only: no email, no domain name, no token

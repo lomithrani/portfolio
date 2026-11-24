@@ -35,6 +35,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	import LegalDocLink from '../LegalDocLink.svelte';
 	import PublisherDetails from '../PublisherDetails.svelte';
 	import {
+		CLOUDFLARE_LOG_RETENTION,
 		LOG_RETENTION,
 		SITE_NAME,
 		legalLastUpdated,
@@ -53,6 +54,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 	const lang = 'en';
 	const logRetention = LOG_RETENTION.en;
+	const cloudflareLogRetention = CLOUDFLARE_LOG_RETENTION.en;
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- the links left are external sites, mailto: and in-page anchors (facts.ts); the site's pages go through resolve() (LegalDocLink) -->
@@ -64,12 +66,19 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			name and picture are not kept.
 		</li>
 		<li>
-			What you put in your portfolio is public: it is the point of the site. Do not publish what you
-			want to keep private.
+			What you put in your portfolio is public: anyone with its address can read it, which is the
+			point of the site. We ask search engines not to list it. Do not publish what you want to keep
+			private.
 		</li>
 		<li>
 			If you import a résumé, the PDF is sent to Anthropic (USA) to draft your experiences. We do
 			not store the PDF, and nothing is published until you add it yourself.
+		</li>
+		<li>
+			The names of the skills you type are kept in a catalogue shared by the whole site, with no
+			record of who typed them. Where this site enables it, Anthropic's Claude (USA) sorts those
+			names, and nothing else, in the background; a name recognised as a skill can then be suggested
+			to other signed-in people who type a skill.
 		</li>
 		<li>
 			Feedback you send is published as a public issue on GitHub, without your name. Where this site
@@ -114,17 +123,60 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <h4 id="data-portfolio">Your portfolio (public)</h4>
 <p>
 	When you claim a portfolio, its address (for example <code>{page.url.host}/jane.doe</code>) and
-	everything you add to it are <strong>public</strong>: anyone can read them and search engines can
-	index them. This includes the title and subtitle of the header (usually your name), the theme,
-	your experiences with their companies, locations, dates and descriptions, your projects and
-	skills, your hiring journey and its notes, and the public part of your booking schedules (title,
-	description, time zone, meeting location and available times). The public data of a portfolio also
-	contains a random internal identifier of the owner's account, never their email address.
+	everything you add to it are <strong>public</strong>: anyone with the address can read them. This
+	includes the title and subtitle of the header (usually your name), the theme, your experiences
+	with their companies, locations, dates and descriptions, your projects and skills, your hiring
+	journey and its notes, and the public part of your booking schedules (title, description, time
+	zone, meeting location and available times). The public data of a portfolio also contains a random
+	internal identifier of the owner's account, never their email address.
+</p>
+<p>
+	We ask search engines not to list portfolios: every page of a portfolio, and every answer of the
+	site's API, carries a <code>noindex</code> request, which the main search engines, such as Google and
+	Bing, follow. A page they had already listed leaves their results once they read it again, which can
+	take a few weeks. It is a request, not a lock: a service can ignore it, and anyone who has the address
+	of your portfolio, or is given it, can still open it. Sites where you share the address, such as LinkedIn,
+	read the page to show a preview of it.
 </p>
 <p>
 	The descriptions of experiences and projects can show images hosted on other sites, chosen by the
 	portfolio's owner. Visitors' browsers load them from those sites, which then receive the visitor's
 	IP address and browser details, under their own rules. We do not choose or control these images.
+</p>
+
+<h4 id="data-skills">Skill names and the shared catalogue</h4>
+<p>
+	The skills you add to a project are public, like the rest of your portfolio. Their
+	<strong>names</strong> are also kept in a catalogue shared by the whole site: one entry per name typed,
+	without your account, your portfolio or your experiences. It is what lets a page group skills, count
+	the time spent on each, and suggest skills while someone types one.
+</p>
+<p>
+	Where this site enables it, the names that are not sorted yet are sent to Anthropic's Claude model
+	(USA), in the background, not while you type: the names and nothing else, with names the catalogue
+	already has, never an account, a portfolio or an experience. Claude says whether a name is a
+	skill, and gives it a category, the skill it is part of (".NET Core" is part of ".NET") and the
+	skill it is another spelling of ("K8s" for "Kubernetes"). A name that cannot be a skill, such as a
+	link, an email address, a phone number or a whole sentence, is never sent. On your portfolio, your
+	skills are then grouped by category, a skill counts the time of the skills that are part of it,
+	and another spelling is shown under the skill's usual name. The capitals and spaces of a name can
+	be corrected ("c#" becomes "C#"), as can a letter typed in a special form (a full-width or circled
+	letter becomes the plain one); beyond that, your experiences keep the name you typed, so a sorting
+	that is wrong can be undone: write to
+	<ContactEmail {publisher} {lang} /> to have one corrected.
+</p>
+<p>
+	Once a name is recognised as a skill, by Claude or by us, it can be suggested to other signed-in
+	people while they type a skill in their own portfolio, never saying who typed it. A name that is
+	not recognised is suggested to nobody: it stays, as typed, on the portfolios of those who typed
+	it. While you type a skill, the text typed so far is sent to our server to find suggestions. It is
+	not kept: it is neither stored in our database nor written to our servers' log. We only count
+	these searches, and the new skill names you add each day (beyond 200 a day they stay on your
+	portfolio as typed and are not sent to be sorted for the time being), with counters keyed by a
+	hash of your account identifier. Because a skill name can be suggested to others and stays in the
+	catalogue (see
+	<a class="link-text" href="#retention">how long we keep it</a>), do not type anything personal as
+	a skill.
 </p>
 
 <h4 id="data-resume">Résumé import (optional)</h4>
@@ -144,24 +196,16 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <h4 id="data-recruiter">Recruiter space and job descriptions</h4>
 <p>
 	Recruiters write job descriptions: title, company, location, work mode, contract, working time,
-	pay, requirements, benefits and description. Once published, a job description is public, but it
-	never names the recruiter's account. A job description PDF can also be imported: it is sent to
-	Anthropic like a résumé, and not stored by us. Where this site computes travel times (see <a
-		class="link-text"
-		href="#data-perfect-job">perfect job</a
-	>), the address of a job's office (street, postal code and town) is sent to the Géoplateforme of
-	IGN, the map service that locates it: as it is typed in the job editor, when its fields are left,
-	and when the job description is scored in a hiring journey with a commute criterion, even for a
-	draft that is never published.
-</p>
-
-<h4 id="data-applications">Applications</h4>
-<p>
-	When you apply to a job description with your portfolio, the recruiter who published it sees your
-	application with your portfolio's address and header title. A recruiter can also add a public
-	portfolio to the list of applicants of one of their job descriptions; that portfolio's owner can
-	then appear in the recruiter's list. You can withdraw an application, and the recruiter can remove
-	it; it is deleted with the job description.
+	pay, requirements, benefits and description. A job description is not public: the site publishes
+	no job descriptions and lists none. Its recruiter keeps it in their recruiter space, and shows it
+	to a portfolio owner by picking it in that owner's <a class="link-text" href="#data-journey"
+		>hiring journey</a
+	>. A job description PDF can also be imported: it is sent to Anthropic like a résumé, and not
+	stored by us. Where this site computes travel times (see
+	<a class="link-text" href="#data-perfect-job">perfect job</a>), the address of a job's office
+	(street, postal code and town) is sent to the Géoplateforme of IGN, the map service that locates
+	it: as it is typed in the job editor (drafts included), when its fields are left, and when the job
+	description is scored in a hiring journey with a commute criterion.
 </p>
 
 <h4 id="data-journey">Hiring journey and meetings</h4>
@@ -169,7 +213,11 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	A portfolio owner can ask visitors to go through steps before booking a meeting (read a note,
 	choose one of their job descriptions, then book). For a signed-in visitor, we store the progress
 	in each journey: which steps are done and when, the job description chosen, and when a meeting was
-	booked.
+	booked. The job description chosen is kept as it was when the recruiter shared it: that version is
+	what the portfolio owner reads and, when their journey scores job descriptions, what is scored. A
+	later edit of the job description changes neither until the recruiter shares it again in that
+	journey. It is kept with the progress (see
+	<a class="link-text" href="#retention">how long we keep it</a>).
 </p>
 <p>
 	To book a meeting you enter your <strong>name</strong>, your <strong>email address</strong> and, if
@@ -177,11 +225,15 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	Calendar, which creates the event with you as a guest and emails you the invitation. The portfolio owner
 	is a guest too, with the email address of their account, so that they receive the invitation as well:
 	each of you sees the other's address in it. The invitation also contains the details of the earlier
-	steps (for example the title, company and link of the job description you chose). We keep only a reservation
-	of the time slot (the time, the calendar, the event identifier, its Google Meet link and a hash of your
-	email address keyed with a secret) and, when you book signed in, your account, so that the meeting is
-	listed under your upcoming meetings in your recruiter space with its link to join. It is deleted automatically
-	when the slot ends or the meeting is cancelled.
+	steps (for example the title, company and link of the job description you chose). That link opens a
+	private page of this site: only the recruiter and the portfolio owners on whose journey the recruiter
+	chose that job description can open it, signed in (each owner reads there the version shared in their
+	journey), each owner only while it is the job description the recruiter last chose in their journey
+	and it is not a draft; anyone else the invitation reaches reads that it is not shared with them. We
+	keep only a reservation of the time slot (the time, the calendar, the event identifier, its Google Meet
+	link and a hash of your email address keyed with a secret) and, when you book signed in, your account,
+	so that the meeting is listed under your upcoming meetings in your recruiter space with its link to
+	join. It is deleted automatically when the slot ends or the meeting is cancelled.
 </p>
 
 <h4 id="data-perfect-job">Your perfect job (private)</h4>
@@ -262,7 +314,9 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	monitoring is enabled, our monitoring provider receives traces of the requests, which include the
 	IP address, the browser's user agent, the address of the page without its query string, and the
 	request headers (cookies, authorisation headers, query strings and request bodies are removed
-	before they are sent).
+	before they are sent). The requests for the site's pages, though not those to its API, first go
+	through Cloudflare, which therefore also sees your IP address (see
+	<a class="link-text" href="#recipients">who receives your data</a>).
 </p>
 
 <h4 id="data-device">On your device</h4>
@@ -304,7 +358,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				<td>Contract, art. 6(1)(b)</td>
 			</tr>
 			<tr>
-				<td>Recruiter space, public job pages and applications</td>
+				<td>Recruiter space and its job descriptions</td>
 				<td>Contract, art. 6(1)(b)</td>
 			</tr>
 			<tr>
@@ -329,6 +383,17 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				<td>
 					Contract, art. 6(1)(b), for filing it at your request; legitimate interest, art. 6(1)(f),
 					for sorting it: handling feedback quickly
+				</td>
+			</tr>
+			<tr>
+				<td>
+					Keep the skill catalogue: sort the names of the skills typed (where this site enables it,
+					with an AI model) and suggest the recognised ones to people who type a skill
+				</td>
+				<td>
+					Legitimate interest, art. 6(1)(f): showing skills consistently and making them quicker to
+					enter. Only names are used, never who typed them; you can object (see
+					<a class="link-text" href="#rights">your rights</a>)
 				</td>
 			</tr>
 			<tr>
@@ -361,21 +426,24 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <h3 id="recipients">Who receives your data</h3>
 <ul>
 	<li>
-		<strong>The public</strong>: the content of portfolios, published job descriptions (without the
-		recruiter's identity), journey notes and the public part of booking schedules; on GitHub, the
-		step suggestions and feedback you send (without your name).
-	</li>
-	<li>
-		<strong>Recruiters</strong>: the address and header title of the portfolios on the applicant
-		lists of their job descriptions.
+		<strong>The public</strong>: the content of portfolios, journey notes and the public part of
+		booking schedules; on GitHub, the step suggestions and feedback you send (without your name).
 	</li>
 	<li>
 		<strong>Portfolio owners</strong>: the name, email address and note of a visitor who books a
-		meeting, with the details of the journey steps before it, in their Google Calendar invitation.
+		meeting, with the details of the journey steps before it (such as the title and company of the
+		job description a recruiter picked), in their Google Calendar invitation; and the job
+		description a recruiter picked in their journey, as the recruiter shared it, on its private page
+		(see <a class="link-text" href="#data-journey">hiring journey</a>).
 	</li>
 	<li>
 		<strong>Visitors who book a meeting</strong>: the email address of the portfolio owner's
 		account, a guest of the same invitation.
+	</li>
+	<li>
+		<strong>Other signed-in people</strong>: the name of a skill you typed, once it is recognised as
+		a skill, can be suggested to them while they type one, never saying who typed it (see
+		<a class="link-text" href="#data-skills">skill names</a>).
 	</li>
 	<li>
 		<strong>Our processors</strong>, which act on our instructions:
@@ -387,8 +455,18 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				>);
 			</li>
 			<li>
-				Anthropic PBC (USA): reading the résumé and job description PDFs you import, and sorting the
-				feedback you send, where this site enables it. Under Anthropic's <a
+				Cloudflare, Inc. (USA): the content delivery network and proxy that the site's pages are
+				served through (the API is reached without it). It receives each request for a page, with
+				your IP address and your browser's details, and the page sent back (<a
+					class="link-text"
+					href={LINKS.cloudflarePrivacy}
+					rel="noopener noreferrer">privacy policy</a
+				>);
+			</li>
+			<li>
+				Anthropic PBC (USA): reading the résumé and job description PDFs you import and, where this
+				site enables it, sorting the feedback you send and the skill names of the catalogue (the
+				names alone). Under Anthropic's <a
 					class="link-text"
 					href={LINKS.anthropicCommercialTerms}
 					rel="noopener noreferrer">commercial terms</a
@@ -442,8 +520,8 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 <h3 id="transfers">Transfers outside the European Union</h3>
 <p>
-	Our host, Anthropic, Google, GitHub and our monitoring provider may process data in the
-	<strong>United States</strong>; the database is hosted there. These transfers rely on the
+	Our host, Cloudflare, Anthropic, Google, GitHub and our monitoring provider may process data in
+	the <strong>United States</strong>; the database is hosted there. These transfers rely on the
 	<a class="link-text" href={LINKS.dpf} rel="noopener noreferrer">EU-US Data Privacy Framework</a>
 	(adequacy decision of the European Commission of 10 July 2023) for recipients certified under it, and
 	otherwise on the
@@ -469,9 +547,18 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			<tr>
 				<td>
 					Portfolio, experiences, hiring journey, perfect job (the address you travel from
-					included), booking schedules, job descriptions, applications
+					included), booking schedules, job descriptions
 				</td>
 				<td>Until you delete them, or your account</td>
+			</tr>
+			<tr>
+				<td>Skill names in the shared catalogue</td>
+				<td>
+					Kept in the catalogue, where they are linked to no account, including after the experience
+					or the account that brought them is deleted: write to us to have one removed. The names
+					sorted by Claude are kept by Anthropic only for a limited period under its commercial
+					terms
+				</td>
 			</tr>
 			<tr>
 				<td>Travel times, and where the addresses of job descriptions are</td>
@@ -481,9 +568,13 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 				</td>
 			</tr>
 			<tr>
-				<td>Your progress in other portfolios' journeys</td>
 				<td>
-					Until you delete your account, or the owner removes the step or deletes their account
+					Your progress in other portfolios' journeys, with the version of the job description you
+					shared there
+				</td>
+				<td>
+					Until you delete your account, or the owner removes the step or deletes their account; the
+					version of a job description, at the latest until you delete that job description
 				</td>
 			</tr>
 			<tr>
@@ -518,7 +609,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			<tr>
 				<td>Rate limit and quota counters (keyed hashes)</td>
 				<td>
-					Deleted automatically at the end of their window: one hour to 30 days. When you delete
+					Deleted automatically at the end of their window: one minute to 30 days. When you delete
 					your account, the quotas you used (résumé and job description imports, step suggestions,
 					feedback, and the job description imports of your recruiter plan) are carried over to
 					counters keyed by a hash of your Google account identifier, kept until the end of their
@@ -528,6 +619,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 			<tr>
 				<td>Server logs, host logs and traces</td>
 				<td>{logRetention}</td>
+			</tr>
+			<tr>
+				<td>What Cloudflare keeps of the requests for the site's pages</td>
+				<td>{cloudflareLogRetention}</td>
 			</tr>
 			<tr>
 				<td>Messages you send us (requests, reports)</td>
@@ -553,18 +648,18 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 		>your account page</a
 	>
 	is immediate: your account, your portfolio and its experiences, your hiring journey and the progress
-	of its visitors, your progress in other journeys, your booking schedules and reservations, your job
-	descriptions and their applications, and your applications are removed from our database at once, the
-	Google Calendar tokens are deleted and we ask Google to revoke the access (you can check it in your
+	of its visitors, your progress in other journeys, your booking schedules and reservations, and your
+	job descriptions are removed from our database at once, the Google Calendar tokens are deleted and we
+	ask Google to revoke the access (you can check it in your
 	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 		>Google account permissions</a
 	>), and your portfolio address becomes available to others. What stays: skill names in the shared
-	catalogue (they are not linked to anyone), step suggestions and feedback already published on
-	GitHub (write to us to have one removed), the meeting slots you reserved as a guest of other
-	portfolios (until the slot ends, no longer tied to your account), the abuse and quota counters
-	(keyed hashes, deleted at the end of their window, at most 30 days; the quotas you used are
-	carried over to a hash of your Google account identifier, as described above), and logs until they
-	expire.
+	catalogue (they are not linked to anyone; write to us to have one removed), step suggestions and
+	feedback already published on GitHub (write to us to have one removed), the meeting slots you
+	reserved as a guest of other portfolios (until the slot ends, no longer tied to your account), the
+	abuse and quota counters (keyed hashes, deleted at the end of their window, at most 30 days; the
+	quotas you used are carried over to a hash of your Google account identifier, as described above),
+	and logs until they expire.
 </p>
 
 <h3 id="rights">Your rights</h3>
@@ -572,14 +667,15 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <ul>
 	<li><strong>access</strong> your data and get a copy of it;</li>
 	<li>
-		<strong>rectify</strong> it: you edit your portfolio and job descriptions yourself; your email address
+		<strong>rectify</strong> it: you edit your portfolio and job descriptions yourself (once a job description
+		is opened, its pay and conditions can no longer be changed: delete it, or ask us); your email address
 		is the one of your Google account;
 	</li>
 	<li>
 		<strong>erase</strong> it: delete your account yourself from
 		<a class="link-text" href={resolve('/(site)/account')}>your account page</a>, or ask us; the
-		step suggestions and feedback published on GitHub are not removed with your account, so ask us
-		for those;
+		step suggestions and feedback published on GitHub, and the skill names kept in the shared
+		catalogue, are not removed with your account, so ask us for those;
 	</li>
 	<li><strong>restrict</strong> its processing;</li>
 	<li>
@@ -607,10 +703,10 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 
 <h3 id="required">What you have to provide</h3>
 <p>
-	A Google account is needed to sign in: without it you can read portfolios and job descriptions,
-	but not create a portfolio, apply or publish. Booking a meeting needs your name and email address,
-	which the portfolio owner needs to meet you. Everything else, including the résumé import, is
-	optional.
+	A Google account is needed to sign in: without it you can read a portfolio whose address you have,
+	but not create one or write a job description. Booking a meeting needs your name and email
+	address, which the portfolio owner needs to meet you. Everything else, including the résumé
+	import, is optional.
 </p>
 
 <h3 id="ai">AI and automated decisions</h3>
@@ -618,7 +714,7 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	The résumé and job description imports use Claude, an AI model made by Anthropic. Its drafts can
 	be incomplete or wrong: you review and edit them, and nothing is published until you add it. No
 	decision with legal or similarly significant effects on you is made by automated means: the site
-	does not score, rank or filter candidates, and recruiters see applications as they are.
+	does not score, rank or filter candidates.
 </p>
 <p>
 	Where this site enables it, Claude also sorts the feedback you send as a bug, a feature request or
@@ -626,18 +722,28 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 	you can see them, and they only decide how the maintainers file it: nothing about you.
 </p>
 <p>
+	Where this site enables it, Claude also sorts the names of the skills people type: whether a name
+	is a skill, its category, the skill it is part of and its other spellings. It works on names
+	alone, in the background, and it can be wrong. Its sorting changes how skills are grouped and
+	named on portfolios, yours included, and which names are suggested to people who type a skill. It
+	is not used to assess, rank or filter anyone, and no decision about you rests on it. Write to us
+	to have a sorting corrected.
+</p>
+<p>
 	A hiring journey can score the job description a recruiter picks against the owner's perfect job,
 	and open its next steps only from a minimum the owner set. The score is computed by fixed rules,
 	not by an AI model, and it is about the job description, not about a person: the recruiter can
-	complete it, pick another one, or reach the owner another way.
+	write another one that states more (once a job description is opened, what the score reads is
+	locked, so a new version of it is a new job description), pick another one, or reach the owner
+	another way.
 </p>
 
 <h3 id="children">Children</h3>
 <p>
 	The site is not intended for anyone under {MINIMUM_AGE} or below the minimum legal working age of their
-	country. Confirming it is required when you sign up from the home page or claim a portfolio, and using
-	an account means you meet these conditions. If we learn that an account belongs to someone younger,
-	we delete it. Parents and guardians can write to us at
+	country. Confirming it is required when you sign up from the home page, claim a portfolio or open the
+	recruiter space, and using an account means you meet these conditions. If we learn that an account belongs
+	to someone younger, we delete it. Parents and guardians can write to us at
 	<ContactEmail {publisher} {lang} /> to have it deleted.
 </p>
 
@@ -726,5 +832,6 @@ checked against the code (what is stored, sent, logged and for how long); keep i
 <p>
 	When we change this policy materially, we update its date and version, tell you on the site or by
 	email before the change applies, and ask you to accept the new terms when you next sign up or
-	claim a portfolio, or from your account page. This version applies since {legalLastUpdated(lang)}.
+	claim a portfolio, before you use the recruiter space again, or from your account page. This
+	version applies since {legalLastUpdated(lang)}.
 </p>

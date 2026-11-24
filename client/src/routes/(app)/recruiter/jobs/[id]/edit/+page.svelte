@@ -13,17 +13,23 @@
 	import JobEditor from '#components/job-editor/JobEditor.svelte';
 	import EditorPlaceholder from '#components/job-editor/EditorPlaceholder.svelte';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
+	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import { editorPages } from '#components/job-editor/editorPages.messages.ts';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { portfolioApi } from '#services';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
 	import { errorStatus } from '#services/apiErrors.ts';
+	import { isConsentProblem } from '#services/account.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { duplicateJobHref } from '#services/recruiter.ts';
 	import { m } from './page.messages.ts';
 
-	// Edits one of the recruiter's job postings (GET /recruiter/jobs/:id, then PUT /jobs/:id).
-	// Rendered in the browser only (recruiter/+layout.ts).
+	// Edits one of the recruiter's job postings (GET /recruiter/jobs/:id, then PUT /jobs/:id). An
+	// opened posting's terms are read-only in the editor, which leads to its copy
+	// (/recruiter/jobs/new?duplicate=<id>) to change them. A recruiter who has not accepted the
+	// terms in force (422 on `consent`) accepts them first (TermsAcceptance). Rendered in the
+	// browser only (recruiter/+layout.ts).
 
 	type LoadedJob = NonNullable<
 		Awaited<ReturnType<ReturnType<(typeof portfolioApi)['recruiter']['jobs']>['get']>>['data']
@@ -35,6 +41,7 @@
 		| { kind: 'loaded'; key: string; userId: string; job: LoadedJob }
 		| { kind: 'not-found' }
 		| { kind: 'no-space' }
+		| { kind: 'terms' }
 		| { kind: 'error' };
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -72,6 +79,9 @@
 					clearAuthentication();
 				} else if (code === 403) {
 					loadState = { kind: 'no-space' };
+				} else if (isConsentProblem(code, error?.value)) {
+					// The terms in force are not accepted: the page asks for them first
+					loadState = { kind: 'terms' };
 				} else if (code === 404 || code === 422) {
 					// 422: not a posting id at all
 					loadState = { kind: 'not-found' };
@@ -147,6 +157,7 @@
 					job={loadState.job}
 					cancelHref={resolve('/(app)/recruiter/jobs/[id]', { id: loadState.job._id })}
 					{recruiterHref}
+					duplicateHref={duplicateJobHref(resolve('/(app)/recruiter/jobs/new'), loadState.job._id)}
 					{onSaved}
 					onSessionExpired={() => (expiredWhileSaving = true)}
 				/>
@@ -176,6 +187,8 @@
 						</a>
 					{/snippet}
 				</PageNotice>
+			{:else if loadState.kind === 'terms'}
+				<TermsAcceptance {user} source="recruiter" required level={2} onAccepted={retry} />
 			{:else if loadState.kind === 'not-found'}
 				<PageNotice title={m.notFoundTitle} icon={DocumentMagnifyingGlass}>
 					<p>{m.notFound}</p>

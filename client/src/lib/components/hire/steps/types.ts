@@ -29,6 +29,14 @@ export interface StepProps {
 	locked(reason: 'signed-out' | 'locked'): void;
 	/** The step succeeded without a submit (the meeting was booked) */
 	succeeded(): void;
+	/**
+	 * Whether the owner's calendar offers a meeting type to book (GET
+	 * /appointments/domains/:domainName/schedules, asked by the server's render and again in the
+	 * browser); null while it is not known
+	 */
+	bookable: boolean | null;
+	/** How many meeting types a step found when it asked for them: the page follows it */
+	schedulesFound(count: number): void;
 }
 
 /** What the owner's editor gives the settings form of a step */
@@ -44,14 +52,44 @@ export interface SettingsProps {
 	idPrefix: string;
 }
 
-/** For a step a journey leads to (an `access` step): how the Hire page presents itself */
+/**
+ * For a step a journey leads to (an `access` step): what the Hire page says of it under its title
+ * (the page's title is the same for every journey: "Propose a role to <owner>")
+ */
 export interface StepGoal {
-	/** The page's title */
-	heading(ownerName: string): string;
 	/** Under the title when the step is the whole journey */
 	alone: string;
 	/** Under the title after "<owner> asks recruiters to complete N steps first." */
 	after: string;
+	/** What happens once the visitor did it ("Before you start", on the Hire page) */
+	next(ownerName: string): string;
+	/**
+	 * The step books a meeting in the owner's calendar: it can be done only while the calendar offers
+	 * a meeting type (`bookable`). Otherwise the Hire page promises nothing of it: its intro says the
+	 * owner takes no meeting requests online, and neither "Before you start" nor the page's
+	 * description says how long the steps take or what happens next
+	 */
+	booking?: true;
+}
+
+/**
+ * What a visitor needs at hand for a step, beyond what the step asks on the page. Each one is said
+ * once in "Before you start", however many steps need it (its text: `needs` in steps.messages.ts)
+ */
+export type StepNeed = 'googleAccount' | 'jobDescription';
+
+/**
+ * What a step takes from a visitor, said before they start (the Hire page's "Before you start"
+ * card, rendered on the server from the journey as anyone signed out gets it: only the settings
+ * the type's `visitorConfig` makes public)
+ */
+export interface StepEffort {
+	/** What the step asks of the visitor, in a sentence */
+	asks(step: JourneyStep, ownerName: string): string;
+	/** About how many minutes it takes (0: nothing to do, the step is worked out for them) */
+	minutes: number;
+	/** What to have at hand for it; nothing when unset */
+	needs?: readonly StepNeed[];
 }
 
 export interface ClientStep {
@@ -74,14 +112,16 @@ export interface ClientStep {
 	failedNote?(step: JourneyStep): string;
 	/** The address asks for this step: it shows unfolded even when it is done */
 	wantsOpen?(step: JourneyStep, address: URL): boolean;
-	/** What the button unfolding the step says once it is done; "Open" when unset */
-	reopenLabel?: string;
+	/** What the button unfolding the step says once it is done; "Open" when unset (or undefined) */
+	reopenLabel?(step: JourneyStep): string | undefined;
 	/**
 	 * The owner's preview shows the step itself (its Visitor, with `journey.own` set) instead of
 	 * what it asks of recruiters. Only for a step that then offers the owner nothing to submit:
 	 * the API refuses the owner on their own journey
 	 */
 	ownerPreview?: true;
-	/** Required for an `access` type (registry.test.ts): the Hire page is titled after it */
+	/** What the step takes: what it asks, how long, what to have at hand (every type has one) */
+	effort: StepEffort;
+	/** Required for an `access` type (registry.test.ts): what the Hire page says it leads to */
 	goal?: StepGoal;
 }

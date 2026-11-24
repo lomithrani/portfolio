@@ -1,7 +1,7 @@
 <!--
 @component
-The landing page's onboarding card: a candidate goes from nothing to a portfolio of their own in
-three steps, shown as a stepper so they always see where they are.
+The landing page's onboarding card: a candidate goes from nothing to a portfolio of their own, and
+a link worth sharing, in four steps, shown as a stepper so they always see where they are.
 
 The address comes first and is visible from the start, even signed out: the "browser bar" at the
 top shows the full address as it is typed, with its availability (GET /domain/:name/availability,
@@ -13,7 +13,14 @@ a hint: the claim decides). What is typed before signing in is kept through the 
 2. Claim the address (POST /domain/claim), with the checkbox again for an account that signed in
    elsewhere without accepting the terms in force; the candidate space becomes the active one.
 3. Add the résumé: the PDF import of the experiences page (`?import=1` opens it) when the API
-   offers it, else the experiences page to add them by hand.
+   offers it, else the experiences page to add them by hand. Done once the portfolio has an
+   experience.
+4. Set your terms: what they want in a job, the steps recruiters go through, the calendar they
+   book in, all set in the admin's "Get started" tab (/<domain>/admin?tab=start), and "Copy your
+   link". Once they are set, the card says the link is ready, with the same button.
+Where an owner stands in steps 3 and 4 is GET /me/readiness (services/candidateSetup.ts): the
+steps after the claim show a placeholder while it is read, and step 3 when it cannot be (a 401
+there never signs the landing page out).
 
 The server renders the signed-out card, with a neutral placeholder for the steps until the session
 is checked in the browser (no flash of the wrong step). The header offers no sign-in on this page
@@ -28,6 +35,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		ArrowRight,
 		Check,
 		DocumentArrowUp,
+		Cog6Tooth,
 		ExclamationTriangle,
 		InformationCircle,
 		LockClosed,
@@ -41,6 +49,8 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		normalizeDomainName
 	} from 'portfolio-common';
 	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
+	import CopyLink from '#components/share/CopyLink.svelte';
+	import { m as copyMessages } from '#components/share/CopyLink.messages.ts';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { portfolioApi } from '#services';
@@ -60,6 +70,12 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	} from '#services/account.ts';
 	import { accountMessages } from '#services/account.messages.ts';
 	import { isSessionValid, signIn } from '#services/authentication.ts';
+	import {
+		loadReadiness,
+		portfolioLink,
+		termsProgress,
+		type Readiness
+	} from '#services/candidateSetup.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { quotaText, type ImportStatus } from '#services/resumeImport.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
@@ -82,11 +98,43 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	);
 	let ownedDomain = $derived(user?.domain);
 
-	type Step = 1 | 2 | 3;
-	/** The step the candidate is at; null until the session is checked (the server's render) */
-	let current = $derived<Step | null>(
-		!$sessionCheckedStore ? null : !user ? 1 : ownedDomain ? 3 : 2
-	);
+	type Step = 1 | 2 | 3 | 4;
+	/** Where the candidate is: a step, or past the last one (their link is ready) */
+	type Stage = Step | 'ready';
+
+	/**
+	 * What the owner set up (GET /me/readiness), for steps 3 and 4: undefined while it is read,
+	 * null when it could not be
+	 */
+	let readiness = $state.raw<Readiness | null | undefined>(undefined);
+	$effect(() => {
+		const domain = ownedDomain;
+		readiness = undefined;
+		if (!domain) return;
+		const request = new AbortController();
+		loadReadiness(request.signal).then((result) => {
+			if (!request.signal.aborted) readiness = result.ok ? result.readiness : null;
+		});
+		return () => request.abort();
+	});
+
+	/**
+	 * Where the candidate is; null until it is known: the session is checked (the server's render),
+	 * then an owner's setup is read
+	 */
+	let current = $derived.by<Stage | null>(() => {
+		if (!$sessionCheckedStore) return null;
+		if (!user) return 1;
+		if (!ownedDomain) return 2;
+		if (readiness === undefined) return null;
+		// Not read: on with the résumé, as before anything was known of it
+		if (readiness === null || readiness.experiences === 0) return 3;
+		return termsProgress(readiness).complete ? 'ready' : 4;
+	});
+	/** The steps known to be done while `current` is not known: the first two for an owner */
+	let knownDone = $derived($sessionCheckedStore && ownedDomain ? 2 : 0);
+	let terms = $derived(readiness ? termsProgress(readiness) : null);
+	let link = $derived(ownedDomain ? portfolioLink(page.url.origin, ownedDomain) : '');
 
 	// --- The address -------------------------------------------------------------------------
 	let name = $state('');
@@ -374,12 +422,27 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 
 	// --- Focus -------------------------------------------------------------------------------
 	const stepHeadings: Partial<Record<Step, HTMLElement>> = $state({});
+	let readyHeading: HTMLElement | undefined = $state();
 
-	/** Moves the focus to the step the candidate is now at (after a sign-in or a claim) */
+	const headingOf = (stage: Stage) => (stage === 'ready' ? readyHeading : stepHeadings[stage]);
+
+	/**
+	 * Moves the focus to the step the candidate is now at (after a sign-in or a claim), once it is
+	 * known: after a claim, once the portfolio's setup was read
+	 */
+	let focusPending = $state(false);
 	async function focusCurrentStep() {
 		await tick();
-		if (current) stepHeadings[current]?.focus();
+		focusPending = true;
 	}
+	$effect(() => {
+		if (!focusPending || current === null) return;
+		const stage = current;
+		untrack(() => {
+			focusPending = false;
+			tick().then(() => headingOf(stage)?.focus());
+		});
+	});
 
 	/**
 	 * The hero's "Create your portfolio": the address field, or the step to continue from once
@@ -387,7 +450,7 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 	 */
 	export function focusStart(options?: FocusOptions) {
 		if (addressInput) focusAddress(options);
-		else if (current) stepHeadings[current]?.focus(options);
+		else if (current) headingOf(current)?.focus(options);
 	}
 
 	type StepInfo = { n: Step; title: string; done: string; upcoming: string };
@@ -409,13 +472,22 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 		{
 			n: 3,
 			title: m.resume.title,
-			done: '',
+			done: m.resume.done(readiness?.experiences ?? 0),
 			upcoming: m.resume.upcoming
+		},
+		{
+			n: 4,
+			title: m.terms.title,
+			done: m.terms.done,
+			upcoming: m.terms.upcoming
 		}
 	]);
 
-	const stepState = (n: Step): 'done' | 'current' | 'upcoming' | 'unknown' =>
-		current === null ? 'unknown' : n < current ? 'done' : n === current ? 'current' : 'upcoming';
+	const stepState = (n: Step): 'done' | 'current' | 'upcoming' | 'unknown' => {
+		if (current === null) return n <= knownDone ? 'done' : 'unknown';
+		if (current === 'ready') return 'done';
+		return n < current ? 'done' : n === current ? 'current' : 'upcoming';
+	};
 
 	const STEP_STATE_TEXT = {
 		done: m.steps.state.done,
@@ -481,7 +553,13 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				{ownedDomain ? m.title.online : m.title.create}
 			</h2>
 			<p class="text-sm text-surface-700-300">
-				{ownedDomain ? m.subtitle.online : m.subtitle.create}
+				{current === 'ready'
+					? m.subtitle.ready
+					: current === 4
+						? m.subtitle.terms
+						: ownedDomain
+							? m.subtitle.online
+							: m.subtitle.create}
 			</p>
 		</div>
 
@@ -605,11 +683,14 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 								{@render signInStep()}
 							{:else if step.n === 2}
 								{@render claimStep()}
-							{:else}
+							{:else if step.n === 3}
 								{@render resume()}
+							{:else}
+								{@render termsStep()}
 							{/if}
-						{:else if status === 'unknown' && step.n === 1}
-							<!-- The session is being checked: the step to show is not known yet -->
+						{:else if status === 'unknown' && step.n === knownDone + 1}
+							<!-- The session is being checked, or the owner's setup read: the step to show is
+								not known yet -->
 							<div class="space-y-3" aria-hidden="true">
 								<div class="placeholder h-10 w-full animate-pulse motion-reduce:animate-none"></div>
 								<div
@@ -621,6 +702,27 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				</li>
 			{/each}
 		</ol>
+
+		{#if current === 'ready'}
+			<div class="space-y-3 border-t border-surface-200-800 pt-5" data-ready>
+				<h3
+					bind:this={readyHeading}
+					tabindex="-1"
+					class="font-semibold outline-none focus-visible:underline"
+				>
+					{m.ready.title}
+				</h3>
+				<!-- The field above its button: the whole address shows in the card's column -->
+				<CopyLink {link} caption={copyMessages.opens} stacked />
+				<a
+					href={resolve('/[domain]/admin?tab=start', { domain: ownedDomain ?? '' })}
+					class="btn btn-sm -ms-2 px-2 hover:preset-tonal"
+				>
+					{m.ready.review}
+					<ArrowRight size="16" aria-hidden="true" />
+				</a>
+			</div>
+		{/if}
 	</form>
 </section>
 
@@ -779,5 +881,26 @@ is checked in the browser (no flash of the wrong step). The header offers no sig
 				<ArrowRight size="16" aria-hidden="true" />
 			</a>
 		</p>
+	</div>
+{/snippet}
+
+{#snippet termsStep()}
+	<div class="space-y-4">
+		<p class="text-sm text-pretty">{m.terms.intro}</p>
+		<div class="flex flex-wrap items-center gap-3">
+			<a
+				href={resolve('/[domain]/admin?tab=start', { domain: ownedDomain ?? '' })}
+				class="btn preset-filled-primary-700-300 min-h-11 max-sm:w-full"
+			>
+				<Cog6Tooth size="18" aria-hidden="true" />
+				{m.terms.open}
+			</a>
+			{#if terms}
+				<span class="text-xs text-surface-700-300" data-terms-progress>
+					{m.terms.progress(terms.done, terms.total)}
+				</span>
+			{/if}
+		</div>
+		<CopyLink {link} caption={copyMessages.opens} tone="tonal" stacked />
 	</div>
 {/snippet}

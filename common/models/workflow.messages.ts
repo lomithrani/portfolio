@@ -1,8 +1,25 @@
 import { defineMessages } from '../i18n';
 
 // Why a journey cannot be saved (parseWorkflow), as the owner's editor shows it at the step it is
-// about. Step names are the manifests' labels, already in the language in use.
+// about. Step names are the manifests' labels, already in the language in use. And the note the
+// gate template starts with (journeyTemplate), in the owner's words: once saved it is their text,
+// shown as they wrote it (Markdown) in whatever language the recruiter reads the page.
 export const workflowMessages = defineMessages({
+	/**
+	 * The note of the gate template: it asks for the job with its pay range first, says the job is
+	 * scored against the owner's criteria (neutral: never what they look for), and that a meeting
+	 * can be booked once it matches (not "right away": the page for recruiters may not take
+	 * bookings yet, and then says so). Its title is the step's heading on the page for recruiters:
+	 * "Before we talk", not an instruction the step (read and confirm) does not carry out.
+	 * Within NOTE_STEP_LIMITS (client/src/services/tests/workflow.test.ts)
+	 */
+	gateNote: {
+		title: { en: 'Before we talk', fr: "Avant d'échanger" },
+		text: {
+			en: 'Thank you for your interest. Please share the job on this page first: pick one of your job descriptions or write a new one, with its pay range.\n\nThe job is then scored against my criteria. If it is a match, you can book a meeting in my calendar. This saves us both a call about a job that would not fit.',
+			fr: "Merci de votre intérêt. Présentez d'abord le poste sur cette page : choisissez l'une de vos offres d'emploi ou rédigez-en une nouvelle, avec sa fourchette de rémunération.\n\nL'offre est ensuite notée selon mes critères. Si elle correspond, vous pourrez réserver un rendez-vous dans mon agenda. Cela nous évite à tous les deux un appel pour un poste qui ne conviendrait pas."
+		}
+	},
 	tooManySteps: {
 		en: (max: number) => `A journey has at most ${max} steps.`,
 		fr: (max: number) => `Un parcours compte ${max} étapes au maximum.`

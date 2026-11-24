@@ -5,32 +5,26 @@ is scored out of 100 against the owner's perfect job, and the steps after it ope
 minimum the owner set. Nothing is submitted here: the API computes the score at each read, from
 the job description and the owner's criteria as they are now (the step's `view`). It shows the
 score against the minimum and, when the owner shares them, how the job does on each criterion
-(never what the owner asks for). Under the minimum, the recruiter can edit the job description or
-pick another one on the job step, then check again.
+(never what the owner asks for). Under the minimum, the recruiter can pick another job description
+on the job step, or duplicate this one (it was opened to be picked, so its terms are locked) into a
+new one that states more, which comes back here to be opened and picked; Check again reads the
+score again (the owner may have changed their criteria or the minimum).
+The job of a mutual interest of matching (the job step before holds it) is not scored again: its
+score is the one it had when both became interested (`matched`, `frozenAt`), and nothing here
+changes it (no Check again, no duplicate to pick).
 Not for the portfolio's owner: the page shows them the step's description instead.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import {
-		ArrowPath,
-		Check,
-		Minus,
-		PencilSquare,
-		QuestionMarkCircle,
-		XMark
-	} from 'svelte-heros-v2';
-	import { PERFECT_JOB_CRITERION_LABELS } from 'portfolio-common';
-	import {
-		jobMatch,
-		jobMatchMinScore,
-		jobMatchOutcomeText,
-		passesJobMatch
-	} from '#services/workflow.ts';
+	import { ArrowPath, DocumentDuplicate } from 'svelte-heros-v2';
+	import { duplicateJobHref, formatDay, isoDate } from '#services/recruiter.ts';
+	import { JOURNEY_PARAM, jobMatch, jobMatchMinScore, passesJobMatch } from '#services/workflow.ts';
+	import CriterionOutcomes from '#components/matching/CriterionOutcomes.svelte';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { m } from './steps.messages';
 	import type { StepProps } from './types';
 
-	let { step, ownerName, reload }: StepProps = $props();
+	let { step, domainName, ownerName, reload }: StepProps = $props();
 
 	const uid = $props.id();
 
@@ -38,6 +32,12 @@ Not for the portfolio's owner: the page shows them the step's description instea
 	let passed = $derived(match !== undefined && passesJobMatch(match));
 	let minScore = $derived(match?.minScore ?? jobMatchMinScore(step.config));
 	let dealBreaker = $derived(match?.criteria?.some((entry) => entry.dealBreaker) ?? false);
+	// A copy of the job scored, as a new draft, back here once created (to be opened and picked)
+	let duplicateHref = $derived(
+		match
+			? `${duplicateJobHref(resolve('/(app)/recruiter/jobs/new'), match.job._id)}&${JOURNEY_PARAM}=${encodeURIComponent(domainName)}`
+			: ''
+	);
 </script>
 
 {#if !match}
@@ -46,6 +46,22 @@ Not for the portfolio's owner: the page shows them the step's description instea
 	</p>
 {:else}
 	<div class="space-y-4">
+		{#if match.matched}
+			<!-- The score of the job of a mutual interest: the one it had then, frozen -->
+			<div class="space-y-1 text-sm" data-frozen-score>
+				<p class="font-semibold">
+					{#if match.frozenAt}
+						{@const frozenAt = match.frozenAt}
+						<Rich text={m.jobMatch.frozen.on(formatDay(frozenAt))}>
+							{#snippet time(day)}<time datetime={isoDate(frozenAt)}>{day}</time>{/snippet}
+						</Rich>
+					{:else}
+						{m.jobMatch.frozen.undated}
+					{/if}
+				</p>
+				<p class="text-surface-700-300">{m.jobMatch.frozen.holds}</p>
+			</div>
+		{/if}
 		<div class="flex flex-wrap items-center gap-x-5 gap-y-3">
 			<p
 				class={[
@@ -101,80 +117,23 @@ Not for the portfolio's owner: the page shows them the step's description instea
 				<h3 class="text-sm font-semibold" id="{uid}-criteria">
 					{m.jobMatch.criteria(ownerName)}
 				</h3>
-				<ul class="divide-y divide-surface-200-800 rounded-container border border-surface-200-800">
-					{#each match.criteria as entry (entry.criterion)}
-						<li class="flex items-start gap-3 px-3 py-2 text-sm">
-							<span
-								class={[
-									'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full',
-									entry.outcome === 'match'
-										? 'preset-filled-success-500'
-										: entry.outcome === 'partial'
-											? 'preset-filled-warning-500'
-											: entry.outcome === 'unknown'
-												? 'preset-tonal'
-												: 'preset-filled-error-500'
-								]}
-								aria-hidden="true"
-							>
-								{#if entry.outcome === 'match'}
-									<Check size="12" />
-								{:else if entry.outcome === 'partial'}
-									<Minus size="12" />
-								{:else if entry.outcome === 'unknown'}
-									<QuestionMarkCircle size="14" />
-								{:else}
-									<XMark size="12" />
-								{/if}
-							</span>
-							<span class="min-w-0 flex-1">
-								<span class="font-medium">{PERFECT_JOB_CRITERION_LABELS[entry.criterion]}</span>
-								<span class="text-surface-700-300">· {jobMatchOutcomeText(entry)}</span>
-							</span>
-							{#if entry.dealBreaker}
-								<span class="badge preset-filled-error-500 shrink-0">{m.jobMatch.dealBreaker}</span>
-							{/if}
-						</li>
-					{/each}
-				</ul>
-				{#if match.criteria.some((entry) => entry.criterion === 'commute')}
-					<p class="text-xs text-surface-700-300">
-						{m.jobMatch.commute(ownerName)}
-						<Rich text={m.jobMatch.commuteSources[match.transit ?? 'none']}>
-							{#snippet ign(text)}<a
-									class="underline underline-offset-2"
-									href="https://geoservices.ign.fr/"
-									target="_blank"
-									rel="noreferrer">{text}</a
-								>{/snippet}
-							{#snippet here(text)}<a
-									class="underline underline-offset-2"
-									href="https://www.here.com/"
-									target="_blank"
-									rel="noreferrer">{text}</a
-								>{/snippet}
-							{#snippet transitous(text)}<a
-									class="underline underline-offset-2"
-									href="https://transitous.org/sources/"
-									target="_blank"
-									rel="noreferrer">{text}</a
-								>{/snippet}
-							{#snippet osm(text)}<a
-									class="underline underline-offset-2"
-									href="https://www.openstreetmap.org/copyright"
-									target="_blank"
-									rel="noreferrer">{text}</a
-								>{/snippet}
-						</Rich>
-					</p>
-				{/if}
+				<CriterionOutcomes
+					criteria={match.criteria}
+					audience="recruiter"
+					{ownerName}
+					transit={match.transit}
+				/>
 				{#if dealBreaker}
 					<p class="text-sm">{m.jobMatch.dealBreakerMissed(ownerName)}</p>
 				{/if}
 			</section>
 		{/if}
 
-		{#if !passed}
+		<!-- The job of a mutual interest cannot be changed here: nothing to raise its score with, only
+		     the mutual interest to end (its score under the minimum fails closed) -->
+		{#if !passed && match.matched}
+			<p class="text-sm" data-frozen-under>{m.jobMatch.frozen.under}</p>
+		{:else if !passed}
 			<div class="space-y-3">
 				<p class="text-sm">
 					{#if match.criteria && match.criteria.length > 0}
@@ -185,12 +144,10 @@ Not for the portfolio's owner: the page shows them the step's description instea
 					{m.jobMatch.pickAnother}
 				</p>
 				<div class="flex flex-wrap gap-2">
-					<a
-						class="btn preset-tonal min-h-11"
-						href={resolve('/(app)/recruiter/jobs/[id]/edit', { id: match.job._id })}
-					>
-						<PencilSquare size="18" aria-hidden="true" />
-						{m.jobMatch.edit}
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d, with a query -->
+					<a class="btn preset-tonal min-h-11" href={duplicateHref}>
+						<DocumentDuplicate size="18" aria-hidden="true" />
+						{m.jobMatch.duplicate}
 					</a>
 					<button type="button" class="btn preset-tonal min-h-11" onclick={() => reload()}>
 						<ArrowPath size="18" aria-hidden="true" />

@@ -1,9 +1,17 @@
+import { JOB_OF_MUTUAL_INTEREST } from '../apiBodies';
 import { describe, it, expect } from 'vitest';
 import {
+	DEFAULT_JOB_MATCH_MIN_SCORE,
 	DEFAULT_WORKFLOW_STEPS,
+	JOURNEY_TEMPLATES,
+	LOCALES,
+	NOTE_STEP_LIMITS,
 	WORKFLOW_LIMITS,
+	journeyTemplate,
 	parseWorkflow,
 	stepManifest,
+	withLocale,
+	type NoteStepConfig,
 	type WorkflowStep,
 	type WorkflowStepStatus
 } from 'portfolio-common';
@@ -12,6 +20,7 @@ import {
 	activeStepIndex,
 	addStep,
 	addStepProblem,
+	anonymousJourney,
 	asksForAnotherJob,
 	goalStepIndex,
 	initialJobChoice,
@@ -24,11 +33,17 @@ import {
 	jobMatchOutcomeText,
 	jobMatchSettings,
 	jobStepNote,
+	journeyDescription,
+	journeyEffort,
 	journeyIntro,
+	journeyMatch,
 	journeyReturnDomain,
 	journeySummary,
 	moveStep,
+	mutualInterestJob,
+	mutualInterestNext,
 	noteContent,
+	outdatedShare,
 	passesJobMatch,
 	pickJobFailure,
 	pickedJob,
@@ -79,6 +94,60 @@ describe('the step types (portfolio-common)', () => {
 	it('starts every portfolio with booking only', () => {
 		expect(DEFAULT_WORKFLOW_STEPS).toEqual([{ id: 'meeting', type: 'meeting', config: {} }]);
 		expect(parseWorkflow(DEFAULT_WORKFLOW_STEPS)).toMatchObject({ ok: true });
+	});
+
+	it('builds each journey template as a journey the API accepts, in English and in French', () => {
+		for (const locale of LOCALES) {
+			withLocale(locale, () => {
+				for (const name of JOURNEY_TEMPLATES) {
+					const steps = journeyTemplate(name);
+					// Already as parseWorkflow stores it: nothing is trimmed or dropped on save
+					expect(parseWorkflow(steps)).toEqual({ ok: true, steps });
+				}
+				const [note] = journeyTemplate('gate');
+				const { title, text } = note.config as NoteStepConfig;
+				expect(title.length).toBeLessThanOrEqual(NOTE_STEP_LIMITS.title);
+				expect(text.length).toBeLessThanOrEqual(NOTE_STEP_LIMITS.text);
+			});
+		}
+	});
+
+	it('makes the gate a note, a job, its match and a meeting, and the open journey the default one', () => {
+		const gate = journeyTemplate('gate');
+		expect(gate.map(({ id, type }) => [id, type])).toEqual([
+			['note', 'note'],
+			['job', 'job'],
+			['job-match', 'job-match'],
+			['meeting', 'meeting']
+		]);
+		expect(gate[2].config).toEqual({
+			minScore: DEFAULT_JOB_MATCH_MIN_SCORE,
+			showDetails: true
+		});
+		// The ids the editor gives the first step of each type
+		expect(ids(editorSteps('note', 'job', 'job-match', 'meeting'))).toEqual(ids(gate));
+		expect(journeyTemplate('open')).toEqual(DEFAULT_WORKFLOW_STEPS);
+		// A new journey each time: changing one changes neither the next nor the default
+		(journeyTemplate('open')[0].config as Record<string, unknown>).changed = true;
+		expect(journeyTemplate('open')).toEqual(DEFAULT_WORKFLOW_STEPS);
+		expect(DEFAULT_WORKFLOW_STEPS[0].config).toEqual({});
+	});
+
+	it("writes the gate's note in the language in use when it is built, unless it is given", () => {
+		const noteOf = (steps: WorkflowStep[]) => steps[0].config as NoteStepConfig;
+		const english = noteOf(journeyTemplate('gate'));
+		const french = withLocale('fr', () => noteOf(journeyTemplate('gate')));
+		expect(english.title).toBe('Before we talk');
+		expect(english.text).toContain('with its pay range');
+		expect(french.title).toBe("Avant d'échanger");
+		expect(french.text).toContain('fourchette de rémunération');
+		expect(
+			noteOf(journeyTemplate('gate', { noteTitle: 'My terms', noteText: 'Remote only.' }))
+		).toEqual({ title: 'My terms', text: 'Remote only.' });
+		expect(noteOf(journeyTemplate('gate', { noteTitle: 'My terms' }))).toEqual({
+			title: 'My terms',
+			text: english.text
+		});
 	});
 
 	it('accepts an empty journey, and requirements before a step they open', () => {
@@ -211,7 +280,7 @@ describe("the owner's editor", () => {
 			'Recruiters can book a meeting right away.'
 		);
 		expect(journeySummary([])).toBe(
-			'Your Hire page offers nothing: recruiters are asked to reach out directly.'
+			'Your page for recruiters offers nothing: recruiters are asked to reach out directly.'
 		);
 		const steps = withStepConfig(editorSteps('note', 'note', 'job', 'meeting'), 'note', NOTE);
 		expect(journeySummary(steps, title)).toBe(
@@ -325,6 +394,102 @@ describe("the visitor's journey", () => {
 		expect(journeyIntro('Louis', undefined)).toBe(
 			'Louis does not take meeting requests online right now.'
 		);
+		// A meeting nobody can book: no slot promised, and the steps before it wait
+		expect(journeyIntro('Louis', { before: 0, ...texts }, { closed: true })).toBe(
+			'Louis does not take meeting requests online right now.'
+		);
+		expect(journeyIntro('Louis', { before: 2, ...texts }, { closed: true })).toBe(
+			'Louis does not take meeting requests online right now: the steps open once they do.'
+		);
+		expect(
+			withLocale('fr', () => journeyIntro('Louis', { before: 2, ...texts }, { closed: true }))
+		).toBe(
+			"Louis ne prend pas de demandes de rendez-vous en ligne pour le moment\u00a0: les étapes s'ouvriront dès que ce sera le cas."
+		);
+	});
+
+	it("keeps of the server's journey what anyone signed out gets", () => {
+		const answer = {
+			steps: [
+				{ id: 'note', type: 'note', status: 'pending', config: NOTE },
+				{ id: 'job', type: 'job', status: 'pending', view: { job: JOB } },
+				{ id: 'meeting', type: 'meeting', status: 'succeeded' }
+			],
+			own: true
+		};
+		// A view and `own` are a signed-in caller's: never kept, nor written into the page
+		expect(anonymousJourney(answer)).toEqual({
+			steps: [
+				{ id: 'note', type: 'note', status: 'pending', config: NOTE },
+				{ id: 'job', type: 'job', status: 'pending' },
+				{ id: 'meeting', type: 'meeting', status: 'succeeded' }
+			]
+		});
+		expect(anonymousJourney({ steps: [] })).toEqual({ steps: [] });
+		// Anything else is no journey: the browser loads it
+		for (const junk of [
+			null,
+			undefined,
+			'Domain not found',
+			{},
+			{ steps: 'note' },
+			{ steps: [{ id: 'note', type: 'note', status: 'skipped' }] },
+			{ steps: [{ id: 1, type: 'note', status: 'pending' }] },
+			{ steps: [null] }
+		]) {
+			expect(anonymousJourney(junk)).toBeNull();
+		}
+	});
+
+	it('adds up what the steps take, each need said once', () => {
+		expect(
+			journeyEffort([
+				{ minutes: 1, needs: ['account'] },
+				{ minutes: 5, needs: ['account', 'job'] },
+				{ minutes: 0 },
+				undefined,
+				{ minutes: 2 }
+			])
+		).toEqual({ minutes: 8, needs: ['account', 'job'] });
+		// One minute at least
+		expect(journeyEffort([{ minutes: 0 }])).toEqual({ minutes: 1, needs: [] });
+		expect(journeyEffort([])).toEqual({ minutes: 1, needs: [] });
+	});
+
+	it('describes the page with what its journey asks', () => {
+		const gate = [{ type: 'note' }, { type: 'job' }, { type: 'job-match' }, { type: 'meeting' }];
+		expect(journeyDescription('Louis', gate, 8)).toBe(
+			"On Louis's page for recruiters: read a note, select or create a job, get the job scored, then book a meeting, in about 8 minutes."
+		);
+		expect(journeyDescription('Louis', DEFAULT_WORKFLOW_STEPS, 2)).toBe(
+			"On Louis's page for recruiters: book a meeting, in about 2 minutes."
+		);
+		expect(journeyDescription('Louis', [{ type: 'meeting' }], 1)).toBe(
+			"On Louis's page for recruiters: book a meeting, in about a minute."
+		);
+		expect(withLocale('fr', () => journeyDescription('Louis', gate, 8))).toBe(
+			"Sur la page recruteurs de Louis\u00a0: lire une note, choisir ou créer une offre, faire noter l'offre, puis réserver un rendez-vous, en 8 minutes environ."
+		);
+		expect(journeyDescription('Louis', [], 1)).toBe(
+			"Louis's page for recruiters. They do not take meeting requests online right now."
+		);
+		// A meeting nobody can book (the owner's calendar has no meeting type): neither the steps nor
+		// a duration are promised, whatever comes before the meeting
+		for (const steps of [gate, DEFAULT_WORKFLOW_STEPS]) {
+			expect(journeyDescription('Louis', steps, 8, { closed: true })).toBe(
+				"Louis's page for recruiters. They do not take meeting requests online right now."
+			);
+		}
+		expect(withLocale('fr', () => journeyDescription('Louis', gate, 8, { closed: true }))).toBe(
+			'La page recruteurs de Louis. Louis ne prend pas de demandes de rendez-vous en ligne pour le moment.'
+		);
+		expect(withLocale('fr', () => journeyDescription('Louis', [{ type: 'meeting' }], 1))).toBe(
+			'Sur la page recruteurs de Louis\u00a0: réserver un rendez-vous, en une minute environ.'
+		);
+		// The journey is not known (the browser loads it): no step is named
+		expect(journeyDescription('Louis', undefined, 1)).toBe(
+			"Louis's page for recruiters, with the steps they ask you to follow."
+		);
 	});
 
 	it('notes what each step asks, or what the visitor did there', () => {
@@ -404,6 +569,30 @@ describe('the job step', () => {
 		expect(pickedJob('job')).toBeUndefined();
 	});
 
+	it('reads when the version was shared, and whether the job changed since', () => {
+		const sharedAt = '2026-11-12T09:30:00.000Z';
+		expect(pickedJob({ job: { ...JOB, sharedAt } })).toEqual({ ...JOB, sharedAt });
+		expect(pickedJob({ job: { ...JOB, sharedAt, outdated: true } })).toEqual({
+			...JOB,
+			sharedAt,
+			outdated: true
+		});
+		// Not a date, or changed without a version shared: neither is told
+		expect(pickedJob({ job: { ...JOB, sharedAt: 'yesterday', outdated: true } })).toEqual(JOB);
+		expect(pickedJob({ job: { ...JOB, outdated: true } })).toEqual(JOB);
+		expect(pickedJob({ job: { ...JOB, sharedAt, outdated: 'yes' } })).toEqual({ ...JOB, sharedAt });
+
+		// Its new version can be shared while the posting is open
+		expect(outdatedShare({ job: { ...JOB, sharedAt, outdated: true } })).toMatchObject({
+			_id: JOB._id
+		});
+		expect(outdatedShare({ job: { ...JOB, sharedAt } })).toBeUndefined();
+		expect(
+			outdatedShare({ job: { ...JOB, status: 'on_hold', sharedAt, outdated: true } })
+		).toBeUndefined();
+		expect(outdatedShare(undefined)).toBeUndefined();
+	});
+
 	it('lists the open postings first, keeping the order of the API', () => {
 		expect(sortJobChoices(jobs).map((job) => job._id)).toEqual(['2', '4', '1', '3']);
 		expect(isPickable({ status: 'open' })).toBe(true);
@@ -423,11 +612,22 @@ describe('the job step', () => {
 		expect(jobLine({ title: 'Staff Engineer' })).toBe('Staff Engineer');
 	});
 
-	it('notes what the step asks, the job picked, or that it is not open anymore', () => {
+	it('notes what the step asks, the job shared, or why it does not hold', () => {
+		const sharedAt = '2026-11-12T09:30:00.000Z';
 		expect(jobStepNote(undefined, 'open')).toBe('Pick the job you are hiring for, or write it.');
-		expect(jobStepNote({ job: JOB }, 'done')).toBe('Staff Engineer · Acme');
-		expect(jobStepNote({ job: { ...JOB, status: 'filled' } }, 'open')).toBe(
+		expect(jobStepNote({ job: { ...JOB, sharedAt } }, 'done')).toBe('Staff Engineer · Acme');
+		expect(jobStepNote({ job: { ...JOB, sharedAt, outdated: true } }, 'done')).toBe(
+			'Staff Engineer · Acme: changed since you shared it.'
+		);
+		expect(jobStepNote({ job: { ...JOB, status: 'filled', sharedAt } }, 'open')).toBe(
 			'Staff Engineer is filled now: pick an open job description.'
+		);
+		// Open but not held: picked before versions were kept, or the terms in force not accepted
+		expect(jobStepNote({ job: JOB }, 'open')).toBe(
+			'Pick Staff Engineer again to share it and go on.'
+		);
+		expect(jobStepNote({ job: { ...JOB, sharedAt } }, 'open')).toBe(
+			'Accept the terms of use in force to go on with Staff Engineer.'
 		);
 	});
 
@@ -452,6 +652,34 @@ describe('the job step', () => {
 		expect(pickJobFailure(409, 'This hiring journey changed: reload the page').kind).toBe(
 			'changed'
 		);
+		expect(
+			pickJobFailure(422, { type: 'validation', property: 'consent', message: 'Accept the terms' })
+		).toEqual({ message: 'Accept the terms of use in force to pick a job.', kind: 'terms' });
+		// The same rule as the recruiter routes' refusal (isConsentProblem): any consent field
+		expect(pickJobFailure(422, { type: 'validation', property: 'consent.termsVersion' }).kind).toBe(
+			'terms'
+		);
+		expect(pickJobFailure(422, { type: 'validation', property: 'consentSource' }).kind).toBe(
+			'error'
+		);
+		expect(pickJobFailure(422, { type: 'validation', property: 'input.jobId' })).toEqual({
+			message: 'Could not pick this job. Try again in a moment.',
+			kind: 'error'
+		});
+		// A job saved under older rules: the API says what to do, in the visitor's language
+		expect(
+			pickJobFailure(422, {
+				type: 'validation',
+				property: 'input.jobId',
+				message: 'This job description cannot be shared as it is'
+			})
+		).toEqual({ message: 'This job description cannot be shared as it is', kind: 'error' });
+		// The journey scores the jobs shared: as many as a day allows
+		expect(pickJobFailure(429, 'You can share at most 5 jobs a day on this page')).toEqual({
+			message:
+				'Each job shared here is scored, so you can share at most 5 a day on this page. Try again tomorrow.',
+			kind: 'error'
+		});
 		expect(pickJobFailure(503, new TypeError('Failed to fetch'))).toEqual({
 			message: networkError(),
 			kind: 'error'
@@ -475,7 +703,7 @@ describe('the job match step', () => {
 			ok: false,
 			problem: {
 				message:
-					'“Match the perfect job” works on what recruiters did in “Select or create a job”: move it below that step.',
+					'“Get the job scored” works on what recruiters did in “Select or create a job”: move it below that step.',
 				stepId: 'job-match'
 			}
 		});
@@ -488,7 +716,7 @@ describe('the job match step', () => {
 			problem: { stepId: 'job-match', field: 'minScore' }
 		});
 		expect(journeySummary(steps)).toBe(
-			'Recruiters select or create a job, match the perfect job, then book a meeting.'
+			'Recruiters select or create a job, get the job scored, then book a meeting.'
 		);
 	});
 
@@ -563,6 +791,18 @@ describe('the job match step', () => {
 		expect(jobMatchOutcomeText({ ...entry, outcome: 'miss', notStated: true })).toBe(
 			'Not stated in your job description'
 		);
+		// Read by the candidate (a job proposed to them): the job description is not theirs
+		expect(jobMatchOutcomeText({ ...entry, outcome: 'miss', notStated: true }, 'candidate')).toBe(
+			'Not stated in the job description'
+		);
+		expect(jobMatchOutcomeText({ ...entry, outcome: 'partial' }, 'candidate')).toBe(
+			'Partly matches'
+		);
+		withLocale('fr', () =>
+			expect(jobMatchOutcomeText({ ...entry, outcome: 'miss', notStated: true }, 'candidate')).toBe(
+				"Non précisé dans l'offre"
+			)
+		);
 		// A travel time that could not be computed: the criterion is left out of the score
 		expect(jobMatchOutcomeText({ ...entry, criterion: 'commute', outcome: 'unknown' })).toBe(
 			'Could not be computed right now: not counted'
@@ -627,5 +867,268 @@ describe('going back to the journey', () => {
 		expect(asksForAnotherJob({ job: JOB }, hire(`?job=${JOB._id}`))).toBe(false);
 		expect(asksForAnotherJob({ job: JOB }, hire())).toBe(false);
 		expect(asksForAnotherJob(undefined, hire('?job=nope'))).toBe(false);
+	});
+
+	it('never shows it for another job while a mutual interest holds the step with its job', () => {
+		const held = { job: { ...JOB, sharedAt: '2026-11-20T10:00:00.000Z' }, matched: true };
+		expect(asksForAnotherJob(held, hire(`?job=${OTHER}`))).toBe(false);
+		expect(asksForAnotherJob(held, hire(`?job=${JOB._id}`))).toBe(false);
+	});
+});
+
+describe('after a mutual interest (matching)', () => {
+	const MATCH = {
+		_id: 'c'.repeat(24),
+		job: { _id: JOB._id, title: 'Staff Engineer', company: 'Acme' },
+		matchedAt: '2026-11-20T10:00:00.000Z'
+	};
+	const matchedAt = MATCH.matchedAt;
+
+	it("reads the journey's mutual interest, and nothing that is not one", () => {
+		expect(journeyMatch(MATCH)).toEqual(MATCH);
+		expect(journeyMatch({ ...MATCH, changed: true, other: 'kept out' })).toEqual({
+			...MATCH,
+			changed: true
+		});
+		expect(journeyMatch({ ...MATCH, changed: 'yes' })).toEqual(MATCH);
+		// A company that is not one is left out; the rest stays
+		expect(journeyMatch({ ...MATCH, job: { ...MATCH.job, company: '' } })).toEqual({
+			...MATCH,
+			job: { _id: JOB._id, title: 'Staff Engineer' }
+		});
+		for (const bad of [
+			undefined,
+			null,
+			'match',
+			{},
+			{ ...MATCH, _id: 'nope' },
+			{ ...MATCH, _id: 42 },
+			{ ...MATCH, job: undefined },
+			{ ...MATCH, job: { ...MATCH.job, _id: 'nope' } },
+			{ ...MATCH, job: { ...MATCH.job, title: ' ' } },
+			{ ...MATCH, job: { ...MATCH.job, title: 7 } },
+			{ ...MATCH, matchedAt: 'yesterday' },
+			{ ...MATCH, matchedAt: Date.parse(MATCH.matchedAt) }
+		]) {
+			expect(journeyMatch(bad)).toBeUndefined();
+		}
+	});
+
+	it('reads the job the step holds for the mutual interest, which is never said changed', () => {
+		const job = { ...JOB, sharedAt: matchedAt };
+		expect(pickedJob({ job, matched: true })).toEqual({ ...job, matched: true });
+		// The version both said yes to is kept: never outdated, nothing new to share
+		const outdated = { job: { ...job, outdated: true }, matched: true };
+		expect(pickedJob(outdated)).toEqual({ ...job, matched: true });
+		expect(outdatedShare(outdated)).toBeUndefined();
+		// `matched` is a flag of the view: anything else is a job shared
+		expect(pickedJob({ job, matched: 'yes' })).toEqual(job);
+		expect(pickedJob({ job: { ...job, matched: true } })).toEqual(job);
+	});
+
+	it('notes the job of the mutual interest, and what brings it back when it does not hold', () => {
+		const job = { ...JOB, sharedAt: matchedAt };
+		expect(jobStepNote({ job, matched: true }, 'done')).toBe(
+			'Staff Engineer · Acme: the job you are both interested in.'
+		);
+		// On hold: open again, never another job
+		expect(jobStepNote({ job: { ...job, status: 'on_hold' }, matched: true }, 'open')).toBe(
+			'Staff Engineer is on hold now: this page holds it again once you open it again.'
+		);
+		// Open, but the terms in force are not accepted: never to share it again, even undated
+		expect(jobStepNote({ job, matched: true }, 'open')).toBe(
+			'Accept the terms of use in force to go on with Staff Engineer.'
+		);
+		expect(jobStepNote({ job: JOB, matched: true }, 'open')).toBe(
+			'Accept the terms of use in force to go on with Staff Engineer.'
+		);
+	});
+
+	it('says the 409 of a share while a mutual interest holds the step, and loads the journey', () => {
+		const said = {
+			message:
+				'This step now holds the job you are both interested in: you cannot share another while your mutual interest lasts.',
+			kind: 'matched'
+		};
+		expect(pickJobFailure(409, JOB_OF_MUTUAL_INTEREST)).toEqual(said);
+		expect(pickJobFailure(409, ` ${JOB_OF_MUTUAL_INTEREST}\n`)).toEqual(said);
+		// Another 409 is never read as it
+		expect(pickJobFailure(409, 'Something else').kind).toBe('changed');
+	});
+
+	it('reads the frozen score, and when it was frozen, only for the job of a mutual interest', () => {
+		const view = { score: 88, minScore: 70, job: { _id: JOB._id, title: JOB.title } };
+		expect(jobMatch({ ...view, matched: true, frozenAt: matchedAt })).toEqual({
+			...view,
+			matched: true,
+			frozenAt: matchedAt
+		});
+		expect(jobMatch({ ...view, matched: true, frozenAt: 'then' })).toEqual({
+			...view,
+			matched: true
+		});
+		expect(jobMatch({ ...view, frozenAt: matchedAt })).toEqual(view);
+		expect(jobMatch({ ...view, matched: 1, frozenAt: matchedAt })).toEqual(view);
+		expect(jobMatchNote({ view: { ...view, matched: true, frozenAt: matchedAt } })).toBe(
+			'Staff Engineer scored 88 out of 100 when you were both interested.'
+		);
+		// A frozen score under its minimum (never written by a mutual interest) fails closed
+		expect(jobMatchNote({ view: { ...view, score: 40, matched: true } })).toBe(
+			'Staff Engineer scores 40 out of 100: at least 70 is needed.'
+		);
+	});
+
+	describe('what is left before the meeting', () => {
+		const heldJob = (status: WorkflowStepStatus, jobStatus = 'open') => ({
+			id: 'job',
+			type: 'job',
+			status,
+			view: { job: { ...JOB, status: jobStatus, sharedAt: matchedAt }, matched: true }
+		});
+		const frozen = {
+			id: 'job-match',
+			type: 'job-match',
+			status: 'succeeded' as const,
+			view: {
+				score: 90,
+				minScore: 70,
+				job: { _id: JOB._id, title: JOB.title },
+				matched: true,
+				frozenAt: matchedAt
+			}
+		};
+		const gate = (
+			note: WorkflowStepStatus,
+			job: ReturnType<typeof heldJob>,
+			meeting: WorkflowStepStatus = 'pending'
+		): Journey => ({
+			steps: [
+				{ id: 'note', type: 'note', status: note, config: { title: 'Before you book' } },
+				job,
+				frozen,
+				{ id: 'meeting', type: 'meeting', status: meeting }
+			],
+			match: MATCH
+		});
+		const title = (step: { config?: unknown }) => noteContent(step.config).title || undefined;
+
+		it('names the steps still to do, never the job or the score it holds', () => {
+			expect(
+				mutualInterestNext(gate('pending', heldJob('succeeded')), { booking: true, title })
+			).toEqual(['Still to do before the meeting: read a note (“Before you book”).']);
+			expect(mutualInterestNext(gate('pending', heldJob('succeeded')), { booking: true })).toEqual([
+				'Still to do before the meeting: read a note.'
+			]);
+		});
+
+		it('says that nothing else is asked once only the meeting is left, and nothing once booked', () => {
+			expect(
+				mutualInterestNext(gate('succeeded', heldJob('succeeded')), { booking: true })
+			).toEqual(['Nothing else is asked of you: pick a time slot below.']);
+			expect(
+				mutualInterestNext(gate('succeeded', heldJob('succeeded'), 'succeeded'), { booking: true })
+			).toEqual([]);
+		});
+
+		it('says what brings back a job the step does not hold, never that the meeting is next', () => {
+			// On hold: open it again
+			expect(
+				mutualInterestNext(gate('succeeded', heldJob('pending', 'on_hold')), { booking: true })
+			).toEqual([
+				'Your job is on hold now: this page holds it again once you open it again from its page, and takes no other job meanwhile.'
+			]);
+			// Open: the terms in force are what is missing; the note before it is still to do
+			expect(mutualInterestNext(gate('pending', heldJob('pending')), { booking: true })).toEqual([
+				'Accept the terms of use in force: this page holds your job again once you do, and takes no other job meanwhile.',
+				'Still to do before the meeting: read a note.'
+			]);
+			// Said whether or not the meeting can be booked
+			expect(
+				mutualInterestNext(gate('pending', heldJob('pending', 'on_hold')), { booking: false })
+			).toEqual([
+				'Your job is on hold now: this page holds it again once you open it again from its page, and takes no other job meanwhile.'
+			]);
+		});
+
+		it('finds the job the step shows for the mutual interest, and whether it holds it now', () => {
+			expect(mutualInterestJob(gate('pending', heldJob('succeeded')))).toEqual({
+				job: { ...JOB, sharedAt: matchedAt, matched: true },
+				holds: true
+			});
+			expect(mutualInterestJob(gate('pending', heldJob('pending', 'on_hold')))?.holds).toBe(false);
+			// A job shared as anyone's, or no job step: none
+			const shared: Journey = {
+				steps: [{ id: 'job', type: 'job', status: 'succeeded', view: { job: JOB } }]
+			};
+			expect(mutualInterestJob(shared)).toBeUndefined();
+			expect(
+				mutualInterestJob({ steps: [{ id: 'meeting', type: 'meeting', status: 'pending' }] })
+			).toBeUndefined();
+		});
+
+		it('promises no meeting nobody can book, nor one after a step not passed', () => {
+			expect(mutualInterestNext(gate('pending', heldJob('succeeded')), { booking: false })).toEqual(
+				[]
+			);
+			const failed: Journey = {
+				steps: [
+					heldJob('succeeded'),
+					{ ...frozen, status: 'failed', view: { ...frozen.view, score: 40 } },
+					{ id: 'meeting', type: 'meeting', status: 'pending' }
+				]
+			};
+			expect(mutualInterestNext(failed, { booking: true })).toEqual([]);
+		});
+
+		it('says what the steps it holds hold, even while a note before them is to do', () => {
+			const journey = gate('pending', heldJob('succeeded'));
+			const states = stepStates(journey);
+			expect(states).toEqual(['open', 'locked', 'locked', 'locked']);
+			expect(stepNote(journey, 1, states[1], (step, state) => jobStepNote(step.view, state))).toBe(
+				'Staff Engineer · Acme: the job you are both interested in.'
+			);
+			expect(stepNote(journey, 2, states[2], (step) => jobMatchNote(step))).toBe(
+				'Staff Engineer scored 90 out of 100 when you were both interested.'
+			);
+			// A job it holds that does not hold now says what brings it back, even behind the note
+			const waiting = gate('pending', heldJob('pending', 'on_hold'));
+			expect(stepNote(waiting, 1, 'locked', (step, state) => jobStepNote(step.view, state))).toBe(
+				'Staff Engineer is on hold now: this page holds it again once you open it again.'
+			);
+			const terms = gate('pending', heldJob('pending'));
+			expect(stepNote(terms, 1, 'locked', (step, state) => jobStepNote(step.view, state))).toBe(
+				'Accept the terms of use in force to go on with Staff Engineer.'
+			);
+			expect(stepNote(waiting, 3, 'locked', () => 'Book')).toBe('Complete the steps above first.');
+		});
+
+		it('names the steps left on a journey without a job step (the owner took it out since)', () => {
+			const meetingOnly: Journey = {
+				steps: [
+					{ id: 'note', type: 'note', status: 'pending' },
+					{ id: 'meeting', type: 'meeting', status: 'pending' }
+				],
+				match: MATCH
+			};
+			expect(mutualInterestNext(meetingOnly, { booking: true })).toEqual([
+				'Still to do before the meeting: read a note.'
+			]);
+		});
+
+		it('says it in French', () => {
+			const [line] = withLocale('fr', () =>
+				mutualInterestNext(gate('pending', heldJob('succeeded')), { booking: true, title })
+			);
+			// French typography: the spaces inside the quotes do not break
+			expect(line.replace(/[\u00a0\u202f]/g, ' ')).toBe(
+				'Reste à faire avant le rendez-vous : lire une note (« Before you book »).'
+			);
+			const [onHold] = withLocale('fr', () =>
+				mutualInterestNext(gate('succeeded', heldJob('pending', 'on_hold')), { booking: true })
+			);
+			expect(onHold.replace(/[\u00a0\u202f]/g, ' ')).toBe(
+				"Votre offre a maintenant le statut « En pause » : cette page la retient de nouveau dès que vous la rouvrez depuis sa page, et n'en prend pas d'autre d'ici là."
+			);
+		});
 	});
 });

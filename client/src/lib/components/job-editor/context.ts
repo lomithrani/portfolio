@@ -10,6 +10,11 @@ export type JobEditorContext = {
 	/** The error currently shown for the field (reactive) */
 	error: (field: JobFormField) => string | undefined;
 	/**
+	 * Whether the field is one of the terms of a posting opened before: read-only, with a lock (its
+	 * control is made read-only by the editor)
+	 */
+	locked: (field: JobFormField) => boolean;
+	/**
 	 * A list field (ListInput) registers how to add the text typed in it and not added yet: a
 	 * save adds it first. `commit` answers why it could not (the save then stops on the field).
 	 * Returns the unregistration.
@@ -20,6 +25,13 @@ export type JobEditorContext = {
 };
 
 export const [getJobEditorContext, setJobEditorContext] = createContext<JobEditorContext>();
+
+/**
+ * The class of a locked control, added to its `input` class: tinted, without a text cursor. Every
+ * locked control is a read-only text input (a locked choice shows its label in one), never a
+ * disabled one: it stays in the tab order, so its lock is read to screen readers
+ */
+export const LOCKED_CONTROL_CLASS = 'bg-surface-100-900! cursor-default';
 
 /** What a field gives its control (Field.svelte): spread on the input or select */
 export type ControlAttributes = {

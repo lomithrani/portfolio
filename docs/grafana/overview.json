@@ -259,7 +259,7 @@
 		{
 			"type": "stat",
 			"title": "Open job postings",
-			"description": "Job postings open to applications.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"description": "Open job postings: the ones a recruiter can pick on a candidate's Hire page.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
 			"datasource": {
 				"type": "prometheus",
 				"uid": "grafanacloud-prom"
@@ -299,54 +299,7 @@
 			"gridPos": {
 				"x": 0,
 				"y": 4,
-				"w": 6,
-				"h": 3
-			}
-		},
-		{
-			"type": "stat",
-			"title": "Job applications",
-			"description": "Candidates on the applicant lists of all postings.\n\nReported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
-			"datasource": {
-				"type": "prometheus",
-				"uid": "grafanacloud-prom"
-			},
-			"targets": [
-				{
-					"refId": "A",
-					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"job_applications\"})"
-				}
-			],
-			"fieldConfig": {
-				"defaults": {
-					"unit": "none",
-					"decimals": 0,
-					"noValue": "–",
-					"color": {
-						"mode": "fixed",
-						"fixedColor": "orange"
-					}
-				},
-				"overrides": []
-			},
-			"options": {
-				"reduceOptions": {
-					"calcs": [
-						"lastNotNull"
-					],
-					"fields": "",
-					"values": false
-				},
-				"colorMode": "value",
-				"graphMode": "area",
-				"textMode": "value",
-				"justifyMode": "center"
-			},
-			"id": 7,
-			"gridPos": {
-				"x": 6,
-				"y": 4,
-				"w": 6,
+				"w": 8,
 				"h": 3
 			}
 		},
@@ -391,9 +344,9 @@
 			},
 			"id": 8,
 			"gridPos": {
-				"x": 12,
+				"x": 8,
 				"y": 4,
-				"w": 6,
+				"w": 8,
 				"h": 3
 			}
 		},
@@ -438,16 +391,16 @@
 			},
 			"id": 9,
 			"gridPos": {
-				"x": 18,
+				"x": 16,
 				"y": 4,
-				"w": 6,
+				"w": 8,
 				"h": 3
 			}
 		},
 		{
 			"type": "timeseries",
-			"title": "Portfolios, accounts and recruiters",
-			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"title": "Portfolios, accounts, recruiters and candidates with discovery on",
+			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.\n\nDiscovery on: the candidates who turned discovery on (matching, Path 2), their consent in force and active in the last 180 days, those paused for a setting removed since included (an upper bound of the candidates proposed to recruiters). Zero while `MATCHING` is off.",
 			"datasource": {
 				"type": "prometheus",
 				"uid": "grafanacloud-prom"
@@ -467,6 +420,11 @@
 					"refId": "C",
 					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"recruiters\"})",
 					"legendFormat": "Recruiters"
+				},
+				{
+					"refId": "D",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"discoverable_candidates\"})",
+					"legendFormat": "Discovery on"
 				}
 			],
 			"fieldConfig": {
@@ -512,8 +470,8 @@
 		},
 		{
 			"type": "timeseries",
-			"title": "Job postings, applications and journeys",
-			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it.",
+			"title": "Job postings and journeys",
+			"description": "Reported by the API every minute (`portfolio.records`). Empty until the stage runs a version of the API that reports it. The matching series (Path 2) are 0 while `MATCHING` is off.",
 			"datasource": {
 				"type": "prometheus",
 				"uid": "grafanacloud-prom"
@@ -530,14 +488,24 @@
 					"legendFormat": "Open job postings"
 				},
 				{
-					"refId": "C",
-					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"job_applications\"})",
-					"legendFormat": "Job applications"
-				},
-				{
 					"refId": "D",
 					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"journeys_started\"})",
 					"legendFormat": "Journeys started"
+				},
+				{
+					"refId": "E",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"matching_job_postings\"})",
+					"legendFormat": "Proposed to candidates (matching)"
+				},
+				{
+					"refId": "F",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"matching_job_reviews\"})",
+					"legendFormat": "Waiting for a review (matching)"
+				},
+				{
+					"refId": "G",
+					"expr": "max(portfolio_records{service_name=~\"${stage:raw}\", kind=\"active_matches\"})",
+					"legendFormat": "Mutual interests going on (matching)"
 				}
 			],
 			"fieldConfig": {
@@ -830,7 +798,7 @@
 			"gridPos": {
 				"x": 0,
 				"y": 19,
-				"w": 6,
+				"w": 8,
 				"h": 3
 			}
 		},
@@ -876,9 +844,9 @@
 			},
 			"id": 18,
 			"gridPos": {
-				"x": 6,
+				"x": 8,
 				"y": 19,
-				"w": 6,
+				"w": 8,
 				"h": 3
 			}
 		},
@@ -924,57 +892,9 @@
 			},
 			"id": 19,
 			"gridPos": {
-				"x": 12,
+				"x": 16,
 				"y": 19,
-				"w": 6,
-				"h": 3
-			}
-		},
-		{
-			"type": "stat",
-			"title": "Job applications",
-			"description": "Applications to a job posting.",
-			"datasource": {
-				"type": "prometheus",
-				"uid": "grafanacloud-prom"
-			},
-			"targets": [
-				{
-					"refId": "A",
-					"expr": "round(sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/jobs/:id/application\", method=\"POST\", status!~\"[45]..\"}[$__range])))",
-					"instant": true
-				}
-			],
-			"fieldConfig": {
-				"defaults": {
-					"unit": "none",
-					"decimals": 0,
-					"noValue": "–",
-					"color": {
-						"mode": "fixed",
-						"fixedColor": "orange"
-					}
-				},
-				"overrides": []
-			},
-			"options": {
-				"reduceOptions": {
-					"calcs": [
-						"lastNotNull"
-					],
-					"fields": "",
-					"values": false
-				},
-				"colorMode": "value",
-				"graphMode": "none",
-				"textMode": "value",
-				"justifyMode": "center"
-			},
-			"id": 20,
-			"gridPos": {
-				"x": 18,
-				"y": 19,
-				"w": 6,
+				"w": 8,
 				"h": 3
 			}
 		},
@@ -1073,11 +993,6 @@
 					"refId": "E",
 					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/jobs\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
 					"legendFormat": "Job postings created"
-				},
-				{
-					"refId": "F",
-					"expr": "sum(increase(http_server_requests_total{service_name=~\"${stage:raw}\", route=\"/jobs/:id/application\", method=\"POST\", status!~\"[45]..\"}[$__interval]))",
-					"legendFormat": "Job applications"
 				},
 				{
 					"refId": "G",

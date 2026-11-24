@@ -3,12 +3,18 @@
 // legalMessages.ageConfirmation, in the language of the page. The API records each acceptance on
 // the account (version, date, wording key, where it was given), never a birth date: the age is
 // only declared.
+//
+// Also the consent of discovery (Path 2, matching on open jobs, matching.ts): a box of its own,
+// apart from the terms, whose wording (legalMessages.discoveryConsent) confirms the person is 18
+// or over and asks to be proposed to recruiters. Recorded the same way, on the person's discovery
+// profile (server/services/discovery.ts): the version of the terms, the date, the key of the
+// wording ticked; withdrawn at once, which is recorded too.
 
 import { localized, type Localized } from '../i18n';
 import { legalMessages } from './legal.messages';
 
 /** Version (date) of the Terms of use and Privacy policy in force; bump when either changes materially */
-export const LEGAL_VERSION = '2026-11-17';
+export const LEGAL_VERSION = '2026-11-18';
 
 /** Fixed age floor of the confirmation (GDPR art. 8 max threshold, above COPPA 13, French working age 16) */
 export const MINIMUM_AGE = 16;
@@ -28,11 +34,17 @@ export const AGE_CONFIRMATION_KEY = AGE_CONFIRMATION_KEYS.en;
 /** Key of the wording shown in the language in use */
 export const ageConfirmationKey = (): string => localized(AGE_CONFIRMATION_KEYS);
 
-/** What a client sends when the person ticked the confirmation (POST /login, PUT /me/consent, POST /domain/claim) */
+/**
+ * What a client sends when the person ticked the confirmation (POST /login, PUT /me/consent,
+ * POST /domain/claim, PUT /me/mode when it opens the recruiter space)
+ */
 export type ConsentInput = { termsVersion: string; ageConfirmed: true };
 
-/** Where an acceptance was given: the landing page's sign-in, a claim form, the account page */
-export const CONSENT_SOURCES = ['landing', 'claim', 'account'] as const;
+/**
+ * Where an acceptance was given: the landing page's sign-in, a claim form, the account page, or
+ * the recruiter space (its sign-in, its creation, or accepting again from it)
+ */
+export const CONSENT_SOURCES = ['landing', 'claim', 'account', 'recruiter'] as const;
 export type ConsentSource = (typeof CONSENT_SOURCES)[number];
 
 /** Longest termsVersion the API reads (a version is a date: 10 characters) */
@@ -77,4 +89,66 @@ export const consentProblem = (input: unknown): string | null => {
 export const currentConsent = (): ConsentInput => ({
 	termsVersion: LEGAL_VERSION,
 	ageConfirmed: true
+});
+
+/**
+ * Age floor of discovery (Path 2: an anonymous card proposed to recruiters, matching.ts), above
+ * the site's MINIMUM_AGE: being proposed to employers is for adults. Declared, like the other age
+ */
+export const MINIMUM_DISCOVERY_AGE = 18;
+
+/**
+ * Key of the exact wording of the discovery consent the person ticked (stored with it), one per
+ * language: the wordings are legalMessages.discoveryConsent. v2 named every field of the card (v1
+ * left out the total time of professional experience and whether a role is held now); v3 also says
+ * that a job's recruiter sees the candidate's interest in it before both are interested
+ */
+export const DISCOVERY_CONSENT_KEYS: Localized<string> = {
+	en: 'discovery-18-v3',
+	fr: 'discovery-18-v3-fr'
+};
+
+/** Key of the discovery consent's wording in the language in use */
+export const discoveryConsentKey = (): string => localized(DISCOVERY_CONSENT_KEYS);
+
+/**
+ * What a client sends when the person ticked the discovery consent (POST /discovery/consent): the
+ * version of the terms in force it was given under, and the age confirmation
+ */
+export type DiscoveryConsentInput = { termsVersion: string; adultConfirmed: true };
+
+/** The field of a refused discovery consent, as the API names it in a 422 (`property`) */
+export type DiscoveryConsentProblemProperty =
+	'consent' | 'consent.adultConfirmed' | 'consent.termsVersion';
+
+export type DiscoveryConsentResult =
+	| { ok: true; consent: DiscoveryConsentInput }
+	| { ok: false; property: DiscoveryConsentProblemProperty; message: string };
+
+/**
+ * Checks a discovery consent sent by a client (untrusted), as parseConsent checks the terms:
+ * valid only when it is an object with `adultConfirmed === true` and `termsVersion ===
+ * LEGAL_VERSION`. The result keeps only those two fields.
+ */
+export const parseDiscoveryConsent = (input: unknown): DiscoveryConsentResult => {
+	if (!isRecord(input)) {
+		return { ok: false, property: 'consent', message: legalMessages.discoveryConsentRequired };
+	}
+	if (input.adultConfirmed !== true) {
+		return {
+			ok: false,
+			property: 'consent.adultConfirmed',
+			message: legalMessages.discoveryConsentRequired
+		};
+	}
+	if (!isCurrentTermsVersion(input.termsVersion)) {
+		return { ok: false, property: 'consent.termsVersion', message: legalMessages.staleTerms };
+	}
+	return { ok: true, consent: { termsVersion: LEGAL_VERSION, adultConfirmed: true } };
+};
+
+/** The discovery consent, as the client sends it once its box is ticked */
+export const currentDiscoveryConsent = (): DiscoveryConsentInput => ({
+	termsVersion: LEGAL_VERSION,
+	adultConfirmed: true
 });

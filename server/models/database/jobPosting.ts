@@ -5,6 +5,7 @@ import {
   FR_CONTRACT_TYPES,
   JOB_COUNTRIES,
   JOB_STATUSES,
+  MATCHING_REVIEW_STATUSES,
   PAY_CURRENCIES,
   PAY_PERIODS,
   SENIORITY_LEVELS,
@@ -16,8 +17,9 @@ import {
 // A job description of the recruiter space. Its fields are those of
 // portfolio-common's JobPostingInput, normalised and validated there
 // (normalizeJobPosting, validateJobPosting) before they reach this schema,
-// which only guards the shape. Owned by one recruiter; its applications are
-// JobApplication documents (removed with it).
+// which only guards the shape. Owned by one recruiter, who shows it to a
+// candidate by picking it on their Hire page (the job step), or proposes it
+// through matching (`matching`): it is never public.
 
 const locationSchema = new Schema({
   country: { type: String, enum: JOB_COUNTRIES, required: true },
@@ -66,6 +68,28 @@ const requirementsSchema = new Schema({
   languages: { type: [String], default: undefined }
 }, { _id: false });
 
+/**
+ * Where a job in matching stands with the reviewers (MATCHING_REVIEWERS), who read each one before
+ * it reaches a candidate (portfolio-common MATCHING_REVIEW_STATUSES)
+ */
+const matchingReviewSchema = new Schema({
+  status: { type: String, enum: MATCHING_REVIEW_STATUSES, required: true },
+  /** When it was last sent for review: it entered matching, or changed since its review */
+  requestedAt: { type: Date, required: true },
+  /** When a reviewer last decided */
+  reviewedAt: Date,
+  /** Why it was not accepted, as the reviewer wrote it for the recruiter */
+  reason: String,
+  /** The version decided on: a hash of the posting as candidates read it (reviewedVersion) */
+  version: String
+}, { _id: false });
+
+const matchingSchema = new Schema({
+  /** Since when it is in matching; unset while it is off (the review stays, for when it is back) */
+  enabledAt: Date,
+  review: matchingReviewSchema
+}, { _id: false });
+
 export const jobPostingSchema = new Schema({
   recruiter: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   title: { type: String, required: true },
@@ -81,12 +105,24 @@ export const jobPostingSchema = new Schema({
   requirements: requirementsSchema,
   benefits: { type: [String], default: undefined },
   travel: { type: String, enum: TRAVEL_FREQUENCIES },
-  // First time the posting left the draft status (it was then made public)
-  publishedAt: Date
+  // First time the posting left the draft status
+  publishedAt: Date,
+  // Matching (Path 2, behind MATCHING): whether its recruiter proposes it to the candidates whose
+  // criteria it meets, and its review. Not part of the posting (JobPostingInput): its recruiter
+  // turns it on for an open posting that names its company (PUT /jobs/:id/matching, or POST
+  // /jobs), it goes off once the posting is filled, closed or back to draft, and the review keeps
+  // the version it was of (services/jobMatching.ts)
+  matching: { type: matchingSchema, default: undefined }
 }, { timestamps: true });
 
-// The public list (GET /jobs): open postings, most recently published first
-jobPostingSchema.index({ status: 1, publishedAt: -1 });
+// Postings by status, in matching or not, most recently published first: the feeds of matching
+// (open and in matching), the counts of services/siteMetrics.ts (open, open and in matching)
+jobPostingSchema.index({ status: 1, 'matching.enabledAt': 1, publishedAt: -1 });
+// The jobs waiting for a review, the oldest request first (GET /matching/reviews)
+jobPostingSchema.index(
+  { 'matching.review.status': 1, 'matching.review.requestedAt': 1 },
+  { partialFilterExpression: { 'matching.review.status': 'pending' } }
+);
 
 export type JobPosting = InferSchemaType<typeof jobPostingSchema> & { _id: Types.ObjectId };
 export const JobPosting = model('JobPosting', jobPostingSchema);

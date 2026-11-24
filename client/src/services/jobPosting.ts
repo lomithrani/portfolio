@@ -6,11 +6,16 @@ import {
 	FIXED_TERM_CONTRACT_TYPES,
 	FR_FULL_TIME_HOURS_PER_WEEK,
 	JOB_STATUS_LABELS,
+	LOCKED_JOB_FIELDS,
 	PAY_PERIOD_LABELS,
 	SENIORITY_LABELS,
 	TRAVEL_LABELS,
 	WORK_MODE_LABELS,
+	formatPayAmount,
+	highestPayMax,
 	intlLocale,
+	isPayRangeTooWide,
+	jobTermsLocked,
 	normalizeJobPosting,
 	validateJobPosting,
 	type ContractType,
@@ -26,8 +31,8 @@ import {
 } from 'portfolio-common';
 import { m } from './jobPosting.messages.ts';
 
-// Pure helpers of the job posting editor and of every page showing a posting (recruiter
-// dashboard, public job page). The rules live in portfolio-common (normalizeJobPosting,
+// Pure helpers of the job posting editor and of every page showing a posting (the recruiter's
+// dashboard and job pages). The rules live in portfolio-common (normalizeJobPosting,
 // validateJobPosting), shared with the API: the editor shows the API's own messages before
 // saving. Nothing here knows the UI.
 
@@ -321,6 +326,55 @@ export const jobFormFieldOf = (path: string): JobFormField | undefined =>
 		? FIELD_OF_PATH[path as keyof typeof FIELD_OF_PATH]
 		: undefined;
 
+/**
+ * The form fields of a posting's terms (portfolio-common's LOCKED_JOB_FIELDS: what the perfect job
+ * scores): read-only in the editor once the posting is opened, since the API refuses a change of
+ * them then (409)
+ */
+export const LOCKED_FORM_FIELDS: readonly JobFormField[] = LOCKED_JOB_FIELDS.flatMap((path) => {
+	const field = jobFormFieldOf(path);
+	return field ? [field] : [];
+});
+
+/** `form` with the terms of `terms` (LOCKED_FORM_FIELDS): what an opened posting's draft keeps */
+export const withLockedTerms = (form: JobForm, terms: JobForm): JobForm => {
+	const kept: JobForm = { ...form };
+	for (const field of LOCKED_FORM_FIELDS) {
+		const value = terms[field];
+		(kept as Record<JobFormField, unknown>)[field] = Array.isArray(value) ? [...value] : value;
+	}
+	return kept;
+};
+
+/**
+ * The form of an opened posting. Its pay range, when it was saved wider than portfolio-common's
+ * JOB_LIMITS.pay.maxRangeRatio times its bottom (before that cap existed), shows the top it is
+ * scored with: the only maximum its terms take (the API compares that one as unchanged), and one
+ * it can be saved with (validateJobPosting refuses a wider one). `capped` says it was brought down
+ */
+export const openedJobForm = (job: JobPostingLike): { form: JobForm; capped: boolean } => {
+	const form = jobToForm(job);
+	const min = job.pay?.min;
+	const max = job.pay?.max;
+	if (min === undefined || max === undefined || !isPayRangeTooWide({ min, max })) {
+		return { form, capped: false };
+	}
+	return { form: { ...form, payMax: String(highestPayMax(min)) }, capped: true };
+};
+
+/**
+ * The form of a new posting copied from `job` (Duplicate): every field of it, as a draft. The
+ * copy is a posting of its own, never opened: its terms can be changed before it is opened. A copy
+ * of an opened posting starts from what that posting's editor shows (openedJobForm: a range saved
+ * wider than the cap, before it, brought down to the top it is scored with), so it can be saved
+ */
+export const duplicateJobForm = (
+	job: JobPostingLike & { _id?: string; publishedAt?: Date | string | null }
+): JobForm => ({
+	...(jobTermsLocked(job) ? openedJobForm(job).form : jobToForm(job)),
+	status: 'draft'
+});
+
 /** The number fields (how each is named in its message: `notANumber` of jobPosting.messages.ts) */
 const NUMBER_FIELDS = [
 	'openings',
@@ -431,6 +485,15 @@ export const JOB_FORM_FIELDS: readonly JobFormField[] = [
  */
 export const JOB_FIELD_LABELS: Record<JobFormField, string> = m.fieldLabels;
 
+/**
+ * The names of the fields locked once a posting is opened (LOCKED_FORM_FIELDS), as one list in the
+ * page's language: 'Job title, City, … and Travel'. Read when shown
+ */
+export const lockedFieldsText = (): string =>
+	new Intl.ListFormat(intlLocale(), { type: 'conjunction' }).format(
+		LOCKED_FORM_FIELDS.map((field) => JOB_FIELD_LABELS[field])
+	);
+
 export type JobFieldError = { field: JobFormField; label: string; message: string };
 
 /** The errors of jobFormErrors (or any per-field messages), in the editor's order */
@@ -447,14 +510,9 @@ export const orderedJobFormErrors = (
 /** The tag English numbers and dates are written with (French: fr-FR), read when formatting */
 const locale = () => intlLocale('en-GB');
 
-/** '€45,000', '€11.88' */
+/** '€45,000', '€11.88' (portfolio-common's formatPayAmount, as validateJobPosting writes them) */
 export const formatAmount = (amount: number, currency = 'EUR'): string =>
-	new Intl.NumberFormat(locale(), {
-		style: 'currency',
-		currency,
-		minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
-		maximumFractionDigits: 2
-	}).format(amount);
+	formatPayAmount(amount, currency);
 
 /** '€45,000 – €55,000 gross per year', '€500 gross per day' (min equal to max: a fixed pay) */
 export const formatPay = (pay: JobPostingLike['pay']): string => {

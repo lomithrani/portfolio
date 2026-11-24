@@ -3,9 +3,14 @@
 The owner's hiring journey (GET, PUT /workflow): the steps recruiters go through on the Hire
 page, in the order chosen here. Steps are added from the step types of portfolio-common
 (stepManifests), moved, removed, and set with their type's settings form (the client's registry,
-components/hire/steps/). A step that does not exist yet can be suggested (StepSuggestion.svelte). The journey is checked on every change with the rules the API enforces
-(parseWorkflow): what is wrong is said at the step and the setting it is about, and the journey
-cannot be saved until it is fixed.
+components/hire/steps/). A step that does not exist yet can be suggested (StepSuggestion.svelte).
+The journey is checked on every change with the rules the API enforces (parseWorkflow): what is
+wrong is said at the step and the setting it is about, and the journey cannot be saved until it
+is fixed. Discovery's checklist (the Perfect job tab) adds the steps it asks for here, as changes
+not saved yet (addGateSteps): this tab is the only one that saves the steps the owner edits.
+While the owner is visible to recruiters (`visible`), a journey that no longer asks for the job,
+scores it and leads to a meeting says, before it is saved, that saving it pauses that; once saved,
+the page reads discovery again (`onSaved`).
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
@@ -13,6 +18,7 @@ cannot be saved until it is fixed.
 	import { resolve } from '$app/paths';
 	import { ChevronDown, ChevronUp, Eye, PlusCircle, Trash } from 'svelte-heros-v2';
 	import {
+		intlLocale,
 		parseWorkflow,
 		stepManifest,
 		stepManifests,
@@ -25,6 +31,7 @@ cannot be saved until it is fixed.
 	import { accountMessages } from '#services/account.messages.ts';
 	import { networkError, failureText } from '#services/recruiter.ts';
 	import { toaster } from '#services/toaster.ts';
+	import { missingGateSteps, withGateSteps } from '#services/discovery.ts';
 	import {
 		addStep,
 		addStepProblem,
@@ -41,7 +48,17 @@ cannot be saved until it is fixed.
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { m } from './WorkflowsTab.messages.ts';
 
-	let { domainName }: { domainName: string } = $props();
+	let {
+		domainName,
+		visible = false,
+		onSaved
+	}: {
+		domainName: string;
+		/** The owner is visible to recruiters now (discovery on): a journey without the gate pauses it */
+		visible?: boolean;
+		/** The journey was saved here (what discovery asks may have changed) */
+		onSaved?: () => void;
+	} = $props();
 
 	const uid = $props.id();
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -68,11 +85,66 @@ cannot be saved until it is fixed.
 		problem?.stepId === undefined ? -1 : steps.findIndex((step) => step.id === problem.stepId)
 	);
 	let changed = $derived(!sameSteps(steps, saved));
+	// Saving these steps would pause being visible to recruiters: the gate is a requirement of it
+	let pausesDiscovery = $derived(visible && changed && missingGateSteps(steps).length > 0);
+
+	/**
+	 * Whether the owner saved a journey (GET /workflow's `saved`; false: the default one, never
+	 * saved); undefined until it was read
+	 */
+	let journeySaved = $state<boolean | undefined>(undefined);
+
+	/** Whether the journey holds changes not saved yet (the "Get started" tab asks before replacing it) */
+	export function hasChanges(): boolean {
+		return changed;
+	}
+
+	/**
+	 * Whether the owner saved a journey, as this tab read it (undefined while it is not known): the
+	 * "Get started" tab asks before replacing one, whatever its own checklist (perhaps older) says
+	 */
+	export function hasSavedJourney(): boolean | undefined {
+		return journeySaved;
+	}
+
+	/** Asked before the journey was read: done once it is */
+	let gateAsked = false;
+
+	/**
+	 * Adds the steps discovery asks of a journey that it lacks (a job step, then a job match, then a
+	 * meeting: withGateSteps), as changes not saved yet, the way the Add buttons add a step: the
+	 * owner checks them and saves, nothing else writes the journey. The focus goes to the first step
+	 * added, and a toast says what was added (or that nothing was, or could be)
+	 */
+	export async function addGateSteps(): Promise<void> {
+		if (status !== 'ready') {
+			gateAsked = true;
+			return;
+		}
+		const { steps: next, added, refused } = withGateSteps(steps, saved);
+		if (added.length === 0) {
+			toaster.info({ title: refused.length > 0 ? m.gateFull : m.gateNothing });
+			return;
+		}
+		edit(next);
+		const names = new Intl.ListFormat(intlLocale(), { type: 'conjunction' }).format(
+			added.map((step) => stepName(step))
+		);
+		// A toast, seen and read out (the region of toasts is a live one)
+		toaster.info({
+			title:
+				refused.length > 0
+					? `${m.gateAdded(names, added.length)} ${m.gateFull}`
+					: m.gateAdded(names, added.length)
+		});
+		await tick();
+		inStep(added[0].id, '[data-heading]')?.focus();
+	}
 
 	// Unsaved steps hold text the owner wrote (a note): leaving the page asks first. A reload or
 	// a closed tab gets the browser's own prompt (confirm() cannot show there); every link
-	// ("See your Hire page"...), this one, also a link that reloads the page (the language
-	// switch): cancelling it without asking would ignore the click
+	// ("See your page for recruiters"...), this one, also a link that reloads the page (the
+	// language switch): cancelling it without asking would ignore the click
 	beforeNavigate((navigation) => {
 		if (!changed) return;
 		if (navigation.type === 'leave') {
@@ -116,8 +188,13 @@ cannot be saved until it is fixed.
 			}
 			saved = data.steps;
 			steps = saved;
+			journeySaved = data.saved;
 			refused = null;
 			status = 'ready';
+			if (gateAsked) {
+				gateAsked = false;
+				void tick().then(addGateSteps);
+			}
 		} catch {
 			loadError = networkError();
 			status = 'error';
@@ -184,6 +261,8 @@ cannot be saved until it is fixed.
 			}
 			saved = data.steps;
 			steps = saved;
+			journeySaved = true;
+			onSaved?.();
 			toaster.success({
 				title: m.saved,
 				description: journeySummary(saved, ownTitle)
@@ -349,11 +428,25 @@ cannot be saved until it is fixed.
 			<p class="text-sm">{journeySummary(steps, ownTitle)}</p>
 		{/if}
 
+		<!-- Said when it shows (a gate's step removed: it changes only with the gate, never per
+		     keystroke), and read with Save -->
+		<div aria-live="polite">
+			{#if pausesDiscovery}
+				<p
+					id="{uid}-pauses-discovery"
+					class="card preset-tonal-warning p-3 text-sm"
+					data-pauses-discovery
+				>
+					{m.pausesDiscovery}
+				</p>
+			{/if}
+		</div>
 		<div class="flex flex-wrap items-center gap-3">
 			<button
 				type="button"
 				class="btn preset-filled-primary-700-300"
 				disabled={!changed || !!problem || saving}
+				aria-describedby={pausesDiscovery ? `${uid}-pauses-discovery` : undefined}
 				onclick={save}
 			>
 				{saving ? m.saving : m.save}

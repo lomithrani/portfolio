@@ -1,6 +1,7 @@
 // Acceptance of the Terms of use with the age confirmation (services/legal.ts),
 // against a real MongoDB (MONGO_URL, local or from TEST_MONGO_URL): recorded
-// by POST /login and PUT /me/consent, required by POST /domain/claim, shown
+// by POST /login and PUT /me/consent, required by POST /domain/claim (and by
+// the recruiter space: tests/account.test.ts, tests/jobs.test.ts), shown
 // as `termsVersion` in the user DTO. Each test logs in its own users and
 // claims its own domains, named with a suffix unique to that test, and
 // removes them after: tests pass in any order (--randomize).
@@ -194,6 +195,13 @@ describe('POST /login with the age and terms confirmation', () => {
     expect(await acceptances(userId)).toEqual([expect.objectContaining({ version: LEGAL_VERSION, source: 'claim' })]);
   });
 
+  it('records the recruiter space as the source of a sign-in into it, which opens the space', async () => {
+    const { userId, user } = await login('recruiter', { consent: CONSENT, mode: 'recruiter', consentSource: 'recruiter' });
+
+    expect(user).toMatchObject({ activeMode: 'recruiter', recruiter: true, termsVersion: LEGAL_VERSION });
+    expect(await acceptances(userId)).toEqual([expect.objectContaining({ version: LEGAL_VERSION, source: 'recruiter' })]);
+  });
+
   it.each([['account'], ['elsewhere']])('refuses the source %s on sign-in (422), without creating the account', async (source) => {
     const result = await loginCall('bad-source', { consent: CONSENT, consentSource: source });
 
@@ -239,12 +247,12 @@ describe('PUT /me/consent', () => {
     ]);
   });
 
-  it('records where it was given', async () => {
-    const { cookie, userId } = await login('claim-form');
+  it.each([['claim'], ['recruiter']])('records where it was given: %s', async (source) => {
+    const { cookie, userId } = await login('given');
 
-    expect((await accept(cookie, { ...CONSENT, source: 'claim' })).status).toBe(200);
+    expect((await accept(cookie, { ...CONSENT, source })).status).toBe(200);
 
-    expect((await acceptances(userId)).map((entry) => entry.source)).toEqual(['claim']);
+    expect((await acceptances(userId)).map((entry) => entry.source)).toEqual([source]);
   });
 
   it('records a version once, even when sent several times at once', async () => {
@@ -422,6 +430,24 @@ describe('services/legal.ts', () => {
     const userId = new Types.ObjectId().toString();
     await expect(requireCurrentTerms(userId, CONSENT, 'claim')).rejects.toMatchObject({ status: 401 });
     await expect(requireCurrentTerms(userId, undefined, 'claim')).rejects.toMatchObject({ status: 422 });
+  });
+
+  it('says what the terms are needed for: the portfolio, or the recruiter space', async () => {
+    const { userId } = await login('gate');
+
+    await expect(requireCurrentTerms(userId, undefined, 'claim')).rejects.toMatchObject({
+      status: 422,
+      property: 'consent',
+      message: 'Confirm your age and accept the terms of use to create your portfolio.'
+    });
+    await expect(requireCurrentTerms(userId, undefined, 'recruiter')).rejects.toMatchObject({
+      status: 422,
+      property: 'consent',
+      message: 'Confirm your age and accept the terms of use to open your recruiter space.'
+    });
+    // With the confirmation, recorded from where it was given
+    await requireCurrentTerms(userId, CONSENT, 'recruiter');
+    expect(await acceptances(userId)).toEqual([expect.objectContaining({ version: LEGAL_VERSION, source: 'recruiter' })]);
   });
 
   it('records nothing for an account that does not exist', async () => {

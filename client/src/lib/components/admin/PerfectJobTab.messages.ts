@@ -26,15 +26,42 @@ export const m = defineMessages({
 	},
 	loading: { en: 'Loading your perfect job...', fr: 'Chargement de votre poste idéal…' },
 
+	/** Offered while no criterion is rated: the essentials switched on in one click */
+	essentials: {
+		title: { en: 'Not sure where to start?', fr: 'Par où commencer ?' },
+		text: {
+			commute: {
+				en: 'The pay (a deal-breaker), the work mode, your commute and the contract: what most calls end on. You fill them in, then save.',
+				fr: "La rémunération (critère éliminatoire), le mode de travail, votre trajet et le contrat : ce sur quoi la plupart des appels s'arrêtent. Vous les complétez, puis enregistrez."
+			},
+			cities: {
+				en: 'The pay (a deal-breaker), the work mode, the location and the contract: what most calls end on. You fill them in, then save.',
+				fr: "La rémunération (critère éliminatoire), le mode de travail, le lieu et le contrat : ce sur quoi la plupart des appels s'arrêtent. Vous les complétez, puis enregistrez."
+			}
+		},
+		start: { en: 'Start with the essentials', fr: "Commencer par l'essentiel" },
+		/** Read out once they are on */
+		on: {
+			commute: {
+				en: 'The pay, the work mode, the commute and the contract are on: fill them in, then save.',
+				fr: 'La rémunération, le mode de travail, le trajet et le contrat sont activés : complétez-les, puis enregistrez.'
+			},
+			cities: {
+				en: 'The pay, the work mode, the location and the contract are on: fill them in, then save.',
+				fr: 'La rémunération, le mode de travail, le lieu et le contrat sont activés : complétez-les, puis enregistrez.'
+			}
+		}
+	},
+
 	// --- How a job is scored ---
 	scoring: {
 		title: { en: 'How a job is scored', fr: 'Comment une offre est notée' },
 		importance: {
-			en: 'Each criterion you switch on counts for its importance, from 1 to 5. The score is what the job matches out of the total, on 100.',
-			fr: "Chaque critère activé compte selon son importance, de 1 à 5. La note est la part du total à laquelle l'offre correspond, sur 100."
+			en: 'Each criterion you switch on adds its importance, from 1 to 5, to a total. The score, out of 100, is the share of that total the job matches.',
+			fr: "Chaque critère activé ajoute son importance, de 1 à 5, à un total. La note, sur 100, est la part de ce total à laquelle l'offre correspond."
 		},
 		partly: {
-			en: 'Some criteria can match partly: a pay a little under yours, fewer remote days.',
+			en: 'Some criteria can match partly: pay a little under yours, fewer remote days.',
 			fr: 'Certains critères peuvent correspondre en partie : une rémunération un peu inférieure à la vôtre, moins de jours de télétravail.'
 		},
 		notStated: {
@@ -215,12 +242,17 @@ export const m = defineMessages({
 
 	// --- The pay ---
 	pay: {
-		/** `percent`: how far under the pay asked a job stops matching */
+		/**
+		 * How the pay asked matches a job's range (PAY_MATCH). `full`: how far up the range an ask
+		 * still matches fully, in percent; `top`: the share at the top of the range that matches only
+		 * partly, in percent; `over`: how far over the top it still does a little. A fixed pay has no
+		 * top of the range: up to it matches
+		 */
 		description: {
-			en: (percent: number) =>
-				`The gross pay (brut) you ask for, in euros. A job matches when the middle of its range reaches it, partly when it is under, and not at all ${percent}% under.`,
-			fr: (percent: number) =>
-				`La rémunération brute que vous demandez, en euros. Une offre correspond quand le milieu de sa fourchette l'atteint, en partie quand il est en dessous, et plus du tout à ${percent} % en dessous.`
+			en: (full: number, top: number, over: number) =>
+				`The gross pay (brut) you ask for, in euros. A job matches when what you ask is at most ${full}% of the way up its pay range (at most its pay, when the pay is fixed), partly when it is in the top ${top}% of the range, a little up to ${over}% over the top, and not at all further over.`,
+			fr: (full: number, top: number, over: number) =>
+				`La rémunération brute que vous demandez, en euros. Une offre correspond quand votre demande ne dépasse pas les ${full} % inférieurs de sa fourchette (ou sa rémunération, quand elle est fixe), en partie quand elle est dans les ${top} % supérieurs de la fourchette, un peu jusqu'à ${over} % au-dessus du haut de la fourchette, et plus du tout au-delà.`
 		},
 		perYear: { en: 'Per year', fr: 'Par an' },
 		perYearPlaceholder: { en: 'e.g. 70 000', fr: 'ex. : 70 000' },

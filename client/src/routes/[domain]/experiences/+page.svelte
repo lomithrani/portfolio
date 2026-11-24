@@ -6,9 +6,10 @@
 	import { resolve } from '$app/paths';
 	import { onMount, tick, untrack } from 'svelte';
 	import { getLocale } from 'portfolio-common';
-	import { Briefcase, DocumentArrowUp, Plus } from 'svelte-heros-v2';
+	import { ArrowRight, Briefcase, DocumentArrowUp, Plus, RocketLaunch } from 'svelte-heros-v2';
 	import Experience from '#components/Experience.svelte';
 	import ExperienceEditor from '#components/experience-editor/ExperienceEditor.svelte';
+	import OpenGraph from '#components/OpenGraph.svelte';
 	import ProjectPreview from '#components/experience-list/ProjectPreview.svelte';
 	import Timeline from '#components/experience-timeline/Timeline.svelte';
 	import ResumeImport from '#components/resume-import/ResumeImport.svelte';
@@ -19,6 +20,8 @@
 	import { isDomainAdmin } from '#services/authentication.ts';
 	import type { FormData } from '#services/experienceForm.ts';
 	import { importStorageKey, type ImportStatus } from '#services/resumeImport.ts';
+	import { portfolioName, portfolioPreview } from '#services/linkPreview.ts';
+	import { loadReadiness, setupProgress, type Readiness } from '#services/candidateSetup.ts';
 	import {
 		activeFilters,
 		applyFilters,
@@ -26,6 +29,7 @@
 		experienceUsesSkill,
 		filtersFromSearchParams,
 		isSkillHighlighted,
+		skillIndex,
 		type ExperienceFilters
 	} from '#services/filters.ts';
 	import { sortExperiences } from '#services/experienceDates.ts';
@@ -47,9 +51,9 @@
 	// Admin-only UI appears once the session has been checked with the API (in the browser,
 	// after hydration): never for a stale local session, and the SSR markup stays the same
 	let isAdmin = $derived($sessionCheckedStore && isDomainAdmin($authenticationStore, data.domain));
-	// "Hire me" is for everyone but the owner. The server renders it (it cannot know the visitor);
-	// in the browser it steps aside as soon as the kept session says this is the owner's own
-	// portfolio, before the API confirms it (a stale session is cleared, and brings it back)
+	// "Propose a role" is for everyone but the owner. The server renders it (it cannot know the
+	// visitor); in the browser it steps aside as soon as the kept session says this is the owner's
+	// own portfolio, before the API confirms it (a stale session is cleared, and brings it back)
 	let hydrated = $state(false);
 	onMount(() => {
 		hydrated = true;
@@ -91,10 +95,19 @@
 
 	// `data` is replaced (not mutated) by invalidateAll(), which keeps these derivations fresh
 	let allExperiences: ExperienceModel[] = $derived(sortExperiences(data.domain.experiences ?? []));
-	let experiences: ExperienceModel[] = $derived(applyFilters(allExperiences, filters));
+	// The skills of the page, ranked by time used, with their families (a skill can be part of
+	// another: '.NET Core' of '.NET'). Read once here: the filters' panel, the cards' tags, the
+	// timeline and the previews all go by it. Filtering by a skill matches the projects using a
+	// skill that is part of it too
+	let skills = $derived(skillIndex(allExperiences));
+	let experiences: ExperienceModel[] = $derived(
+		applyFilters(allExperiences, filters, skills.taxonomy)
+	);
 	// Without the selections no experience has any more (see activeFilters)
-	let active = $derived(activeFilters(allExperiences, filters));
-	let highlightSkill = $derived((displayName: string) => isSkillHighlighted(active, displayName));
+	let active = $derived(activeFilters(allExperiences, filters, skills.taxonomy));
+	let highlightSkill = $derived((displayName: string) =>
+		isSkillHighlighted(active, displayName, skills.taxonomy)
+	);
 	let knownSkills = $derived(collectKnownSkills(allExperiences));
 
 	// Key of the skill whose tag is hovered or focused (ProjectPreview): its projects are outlined,
@@ -104,7 +117,10 @@
 	// name every skill, those of the experiences the current filters hide too
 	let previewListed = $derived.by(() => {
 		const key = previewSkill;
-		return key !== null && experiences.some((experience) => experienceUsesSkill(experience, key));
+		return (
+			key !== null &&
+			experiences.some((experience) => experienceUsesSkill(experience, key, skills.taxonomy))
+		);
 	});
 
 	// --- Timeline view ------------------------------------------------------------------------
@@ -141,14 +157,10 @@
 		});
 	};
 
-	let ownerName = $derived(
-		data.domain.headerTitle ||
-			data.domainName
-				.split(/[.\-_]+/)
-				.filter(Boolean)
-				.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-				.join(' ')
-	);
+	// The name the portfolio is headed with (its title, or its address name, as the layout's
+	// header): the page's title, its description and its preview all say the same one
+	let ownerName = $derived(portfolioName(data.domain));
+	let preview = $derived(portfolioPreview(data.domain, m.description(ownerName)));
 
 	// One editor for the page: Add, every card's Edit and the résumé import's Edit open it
 	let editorOpen = $state(false);
@@ -249,6 +261,24 @@
 			refreshImportStatus();
 		});
 	});
+
+	// --- How far the owner is in setting up their portfolio (GET /me/readiness) ----------------
+	// A link to the admin's "Get started" while its checklist is not complete. The experiences
+	// count is this page's (it follows what the owner adds here); failures show nothing
+	let ownerReadiness = $state.raw<Readiness | null>(null);
+	$effect(() => {
+		if (!isAdmin) return;
+		const request = new AbortController();
+		loadReadiness(request.signal).then((result) => {
+			if (!request.signal.aborted && result.ok) ownerReadiness = result.readiness;
+		});
+		return () => request.abort();
+	});
+	let setup = $derived(
+		isAdmin && ownerReadiness
+			? setupProgress({ ...ownerReadiness, experiences: allExperiences.length })
+			: null
+	);
 
 	// The editor takes the import's place while it adds one of its drafts (one dialog at a time:
 	// an open dialog makes the rest of the page inert, the other dialog included)
@@ -406,18 +436,27 @@
 	<title>{m.title(ownerName)}</title>
 	<meta name="description" content={m.description(ownerName)} />
 </svelte:head>
+<!-- A shared link's preview: the name the portfolio is headed with and its tagline (or the
+     description above), over the generic picture of a portfolio -->
+<OpenGraph {...preview} image="portfolio" />
 
 <!-- The page's floating corner: the view switch, and next to it what this visitor is most likely
-	here for: "Hire me" for a visitor, "Add experience" for the owner on a small screen once the
-	toolbar has scrolled away. First in the page, so the keyboard reaches it before the list.
-	Always one row (the page's bottom padding and the toasts count on its height): the owner's
-	button reads "Add" there, and the view switch drops its labels on the narrowest screens -->
+	here for: "Propose a role" for a visitor, "Add experience" for the owner on a small screen once
+	the toolbar has scrolled away. First in the page, so the keyboard reaches it before the list.
+	Always one row (the page's bottom padding and the toasts count on its height), in English and
+	French: the owner's button reads "Add" there, the view switch drops its labels under 448 px
+	next to "Propose a role" (under 360 px next to "Add"), "Propose a role" its icon under 400 px,
+	and under 340 px its text is smaller and the view switch's buttons closer -->
 {#if allExperiences.length > 0}
 	<div
 		class="dock pointer-events-none fixed z-10 flex items-stretch justify-end gap-2"
 		data-page-dock
 	>
-		<ViewSwitch bind:view class="pointer-events-auto shadow-xl" />
+		<ViewSwitch
+			bind:view
+			besideLink={!isAdmin && !maybeOwner}
+			class="pointer-events-auto shadow-xl"
+		/>
 		{#if isAdmin}
 			{#if !toolbarVisible}
 				<button
@@ -437,13 +476,15 @@
 				</button>
 			{/if}
 		{:else if !maybeOwner}
+			<!-- Its icon steps aside on phones under 400 px, where the row would not hold it with
+				the French label next to the view switch, and under 340 px its text is smaller -->
 			<a
 				href={resolve('/[domain]/hire', { domain: data.domain.name })}
-				class="btn preset-filled-primary-700-300 pointer-events-auto min-h-11 px-5 font-semibold shadow-xl"
-				data-hire-me
+				class="btn preset-filled-primary-700-300 pointer-events-auto min-h-11 px-5 font-semibold shadow-xl max-[25rem]:px-4 max-[21.25rem]:px-3 max-[21.25rem]:text-sm"
+				data-propose-role
 			>
-				<Briefcase size="20" aria-hidden="true" />
-				{m.hireMe}
+				<Briefcase size="20" class="max-[25rem]:hidden" aria-hidden="true" />
+				{m.proposeRole}
 			</a>
 		{/if}
 	</div>
@@ -475,7 +516,7 @@
 					<h2 id="empty-owner-title" class="text-xl font-bold">
 						{m.emptyOwner.title}
 					</h2>
-					<p class="mx-auto max-w-md text-surface-700-300">
+					<p class="mx-auto max-w-md text-balance text-surface-700-300">
 						{m.emptyOwner.text}
 					</p>
 					<div class="flex flex-wrap justify-center gap-3">
@@ -492,6 +533,7 @@
 							{@render importButton('min-h-11')}
 						{/if}
 					</div>
+					{@render setupLink()}
 				</section>
 			{:else}
 				<section
@@ -513,7 +555,7 @@
 						href={resolve('/[domain]/hire', { domain: data.domain.name })}
 						class="btn preset-tonal-primary min-h-11"
 					>
-						{m.emptyVisitor.contact}
+						{m.proposeRole}
 					</a>
 				</section>
 			{/if}
@@ -523,6 +565,8 @@
 			{#if isAdmin}
 				<div class="flex flex-wrap items-center gap-3">
 					<h2 class="text-xl font-bold md:text-2xl">{m.heading}</h2>
+					<!-- Beside the heading, where the row has room (under it on a phone) -->
+					{@render setupLink()}
 					<div class="ml-auto flex flex-wrap gap-2 max-sm:w-full" bind:this={toolbar}>
 						{#if importAvailable}
 							{@render importButton('min-h-10 max-sm:flex-1')}
@@ -546,7 +590,12 @@
 				</div>
 			{/if}
 
-			<Filters experiences={allExperiences} bind:filters resultCount={experiences.length} />
+			<Filters
+				experiences={allExperiences}
+				{skills}
+				bind:filters
+				resultCount={experiences.length}
+			/>
 
 			{#if view === 'list'}
 				{#each experiences as experience (String(experience._id))}
@@ -557,9 +606,10 @@
 						{highlightSkill}
 						highlighted={highlightedId === String(experience._id)}
 						{previewSkill}
+						{skills}
 						muted={previewListed &&
 							previewSkill !== null &&
-							!experienceUsesSkill(experience, previewSkill)}
+							!experienceUsesSkill(experience, previewSkill, skills.taxonomy)}
 					/>
 				{:else}
 					<div class="card preset-outlined-surface-200-800 space-y-3 p-6 text-center">
@@ -585,6 +635,7 @@
 			<Timeline
 				experiences={allExperiences}
 				filters={active}
+				taxonomy={skills.taxonomy}
 				{previewSkill}
 				{selectedId}
 				onSelect={selectOnTimeline}
@@ -601,6 +652,7 @@
 						highlighted={highlightedId === selectedId}
 						{revealedProject}
 						{previewSkill}
+						{skills}
 					/>
 				{/key}
 			{/if}
@@ -610,7 +662,12 @@
 
 <!-- The projects behind a skill tag (or a bar of the timeline) while it is hovered or focused -->
 {#if allExperiences.length > 0}
-	<ProjectPreview experiences={allExperiences} {view} onSkill={(key) => (previewSkill = key)} />
+	<ProjectPreview
+		experiences={allExperiences}
+		taxonomy={skills.taxonomy}
+		{view}
+		onSkill={(key) => (previewSkill = key)}
+	/>
 {/if}
 
 {#snippet importButton(classes: string)}
@@ -633,6 +690,26 @@
 			>
 		{/if}
 	</button>
+{/snippet}
+
+<!-- The owner's way to the admin's "Get started", while its checklist is not complete -->
+{#snippet setupLink()}
+	{#if setup && !setup.complete}
+		<a
+			href={resolve('/[domain]/admin?tab=start', { domain: data.domain.name })}
+			class="btn btn-sm preset-tonal-primary min-h-9 max-w-full whitespace-normal"
+			data-setup-progress
+		>
+			<RocketLaunch size="16" class="shrink-0" aria-hidden="true" />
+			<!-- Its own line height: the button's is one line's, and two lines would touch -->
+			<span class="leading-snug"
+				><Rich text={m.setup(setup.done, setup.total)}
+					>{#snippet count(text)}<span class="whitespace-nowrap">{text}</span>{/snippet}</Rich
+				></span
+			>
+			<ArrowRight size="16" class="shrink-0" aria-hidden="true" />
+		</a>
+	{/if}
 {/snippet}
 
 <!-- Mounted for the owner; kept after a 401 cleared the session (the drafts and form stay) -->

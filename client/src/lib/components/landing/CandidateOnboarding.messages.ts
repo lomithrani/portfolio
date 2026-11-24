@@ -1,4 +1,4 @@
-import { defineMessages } from 'portfolio-common';
+import { defineMessages, plural } from 'portfolio-common';
 
 export const m = defineMessages({
 	title: {
@@ -6,13 +6,29 @@ export const m = defineMessages({
 		online: { en: 'Your portfolio is online', fr: 'Votre portfolio est en ligne' }
 	},
 	subtitle: {
+		/**
+		 * Backed by: the Terms of use (#service: candidates never pay, article L5321-3 of the Labour
+		 * Code; client/src/lib/components/legal/content/TermsEn.svelte, TermsFr.svelte), and no
+		 * route of the API charges anyone
+		 */
 		create: {
-			en: 'Three steps, a few minutes, free.',
-			fr: 'Trois étapes, quelques minutes, gratuit.'
+			en: 'Four steps, a few minutes. You never pay.',
+			fr: 'Quatre étapes, quelques minutes. Vous ne payez jamais.'
 		},
+		/** An owner at step 3 (or while their setup is read) */
 		online: {
-			en: 'Fill it with your experiences, then share its address.',
-			fr: 'Ajoutez-y vos expériences, puis partagez son adresse.'
+			en: 'Add your experiences and set your terms, then share your link.',
+			fr: 'Ajoutez vos expériences et fixez vos conditions, puis partagez votre lien.'
+		},
+		/** An owner at step 4: the experiences are there */
+		terms: {
+			en: 'Set your terms, then share your link.',
+			fr: 'Fixez vos conditions, puis partagez votre lien.'
+		},
+		/** Every step is done */
+		ready: {
+			en: 'Send your link to the next recruiter who writes to you.',
+			fr: 'Envoyez votre lien au prochain recruteur qui vous écrit.'
 		}
 	},
 	address: {
@@ -21,11 +37,16 @@ export const m = defineMessages({
 		/** The badge of an address the account owns */
 		yours: { en: 'Yours', fr: 'À vous' },
 		label: { en: 'Choose your address', fr: 'Choisissez votre adresse' },
+		/**
+		 * Backed by: client/src/lib/robots.ts and client/src/hooks.server.ts (every page under
+		 * [domain] answers `x-robots-tag: noindex`), PortfolioHead.svelte (its robots meta): asked,
+		 * never "cannot be found"
+		 */
 		hint: {
 			en: (example: string) =>
-				`Lowercase letters, digits, dots and hyphens. Your name works well: ${example}.`,
+				`Lowercase letters, digits, dots and hyphens. Your name works (${example}), or any name you like: search engines are asked not to list your portfolio.`,
 			fr: (example: string) =>
-				`Lettres minuscules, chiffres, points et tirets. Votre nom convient très bien : ${example}.`
+				`Lettres minuscules, chiffres, points et tirets. Votre nom convient (${example}), ou tout autre nom : les moteurs de recherche sont priés de ne pas référencer votre portfolio.`
 		},
 		/** The availability of the address typed, next to the field's label */
 		pill: {
@@ -103,8 +124,8 @@ export const m = defineMessages({
 		},
 		submit: { en: 'Claim this address', fr: 'Réserver cette adresse' },
 		onePerAccount: {
-			en: 'One address per account. It stays yours until you delete your account.',
-			fr: 'Une seule adresse par compte. Elle reste la vôtre tant que vous ne supprimez pas votre compte.'
+			en: 'One address per account. It stays yours as long as you keep your account and follow the terms.',
+			fr: "Une seule adresse par compte. Elle reste la vôtre tant que vous gardez votre compte et respectez les conditions d'utilisation."
 		},
 		/** Under the toast that says the portfolio was claimed */
 		claimed: {
@@ -136,6 +157,42 @@ export const m = defineMessages({
 			fr: "Vous avez utilisé les imports de CV de ce mois-ci : ajoutez vos expériences à la main pour l'instant."
 		},
 		byHand: { en: 'Add my experiences', fr: 'Ajouter mes expériences' },
-		open: { en: 'Open my portfolio', fr: 'Ouvrir mon portfolio' }
+		open: { en: 'Open my portfolio', fr: 'Ouvrir mon portfolio' },
+		done: {
+			en: (count: number) =>
+				`${count} ${plural(count, 'experience', 'experiences')} on your portfolio.`,
+			fr: (count: number) =>
+				`${count} ${plural(count, 'expérience', 'expériences')} sur votre portfolio.`
+		}
+	},
+	/** Step 4: what the owner wants, their steps and their calendar, set in the admin's "Get started" */
+	terms: {
+		title: { en: 'Set your terms', fr: 'Fixer vos conditions' },
+		upcoming: {
+			en: 'Say what you want, choose your steps and open your calendar.',
+			fr: 'Dites ce que vous voulez, choisissez vos étapes et ouvrez votre agenda.'
+		},
+		/**
+		 * Backed by: server/services/workflowSteps/jobMatch.ts (a visitor's view: their score, the
+		 * step's minimum and, with showDetails, each criterion's name and outcome, never what is
+		 * asked; a job is scored only by that step, which the default journey has not),
+		 * server/plugins/perfectJob.ts (the perfect job is read by its owner only)
+		 */
+		intro: {
+			en: 'Say what you want in a job, choose the steps recruiters go through, and open your calendar. Recruiters never see what you ask for: only how their job does against your criteria, and the minimum you set, when your steps score it.',
+			fr: "Dites ce que vous voulez d'un poste, choisissez les étapes que suivent les recruteurs et ouvrez votre agenda. Les recruteurs ne voient jamais ce que vous demandez : seulement le résultat de leur offre face à vos critères, et le minimum que vous fixez, lorsque vos étapes la notent."
+		},
+		open: { en: 'Set my terms', fr: 'Fixer mes conditions' },
+		/** Next to the button: how many of the three are set */
+		progress: {
+			en: (done: number, total: number) => `${done} of ${total} set`,
+			fr: (done: number, total: number) => `${done} sur ${total} ${plural(done, 'réglé', 'réglés')}`
+		},
+		done: { en: 'Your terms are set.', fr: 'Vos conditions sont fixées.' }
+	},
+	/** Past the last step */
+	ready: {
+		title: { en: 'Your link is ready', fr: 'Votre lien est prêt' },
+		review: { en: 'Review my settings', fr: 'Revoir mes réglages' }
 	}
 });

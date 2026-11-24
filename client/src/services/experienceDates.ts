@@ -1,10 +1,23 @@
 // Experience and project dates have month precision: the API stores them as UTC
 // midnight of the 1st of the month. Everything here reads them in UTC, so the server
 // render and every visitor's time zone show the same month.
-import { intlLocale } from 'portfolio-common';
+import {
+	experiencePeriod,
+	intlLocale,
+	monthCount,
+	monthIndex,
+	projectEnd,
+	sortExperiences,
+	toDate,
+	type DateInput,
+	type ExperiencePeriod
+} from 'portfolio-common';
 import { m } from './experienceDates.messages.ts';
 
-type DateInput = Date | string | undefined | null;
+// The month arithmetic (how many months a period lasted, the order experiences are listed in) is
+// portfolio-common's (common/models/experienceMonths.ts), shared with the API; it is exported from
+// here as well, next to the formatting
+export { experiencePeriod, monthIndex, projectEnd, sortExperiences, toDate, type ExperiencePeriod };
 
 const pad = (value: number, length = 2) => String(value).padStart(length, '0');
 
@@ -22,16 +35,6 @@ const monthFormat = (): Intl.DateTimeFormat => {
 	}
 	return format;
 };
-
-/** A valid Date from a stored date, or undefined */
-export function toDate(date: DateInput): Date | undefined {
-	if (date === undefined || date === null || date === '') return undefined;
-	const value = date instanceof Date ? date : new Date(date);
-	return Number.isNaN(value.getTime()) ? undefined : value;
-}
-
-/** Months since year 0 (UTC), to compare dates at month precision */
-export const monthIndex = (date: Date) => date.getUTCFullYear() * 12 + date.getUTCMonth();
 
 /** 'YYYY-MM' month key of a stored date (UTC), or undefined */
 export function toMonthKey(date: DateInput): string | undefined {
@@ -68,12 +71,12 @@ export function formatMonthRange(start?: DateInput, end?: DateInput): string {
 	return m.range(formatMonth(from), formatMonth(to));
 }
 
-/** '2 yrs 3 mos', '8 mos', '1 yr' (inclusive months, end defaults to now); '' when no start */
+/**
+ * '2 yrs 3 mos', '8 mos', '1 yr' (inclusive months, end defaults to now: portfolio-common's
+ * monthCount); '' when no start
+ */
 export function formatDuration(start?: DateInput, end?: DateInput, now: Date = new Date()): string {
-	const from = toDate(start);
-	if (!from) return '';
-	const to = toDate(end) ?? now;
-	const months = monthIndex(to) - monthIndex(from) + 1;
+	const months = monthCount(start, end, now);
 	if (months < 1) return '';
 	return m.duration(Math.floor(months / 12), months % 12);
 }
@@ -84,48 +87,17 @@ export function formatMonthCount(months: number): string {
 	return m.monthCount(Math.floor(months / 12), Math.floor(months % 12));
 }
 
+/**
+ * '9 yrs', '1 yr', '8 mos': a number of months at a glance, for a skill's tag (shorter than
+ * formatDuration's '9 yrs 3 mos': whole years from a year on, months under it); '' under a month
+ */
+export function formatShortDuration(months: number): string {
+	if (!(months >= 1)) return '';
+	const whole = Math.floor(months);
+	return m.shortDuration(Math.floor(whole / 12), whole % 12);
+}
+
 type Dated = { start?: Date | string | null; end?: Date | string | null };
-
-export type ExperiencePeriod = { start?: Date; end?: Date; ongoing: boolean };
-
-/**
- * Period of an experience: its own start/end when it has a start, else derived from its
- * projects (earliest start; end = latest end, or ongoing if a dated project has no end)
- */
-export function experiencePeriod(
-	experience: Dated & { projects?: Dated[] | null }
-): ExperiencePeriod {
-	const start = toDate(experience.start);
-	if (start) {
-		const end = toDate(experience.end);
-		return { start, end, ongoing: !end };
-	}
-
-	let earliest: Date | undefined;
-	let latest: Date | undefined;
-	let ongoing = false;
-	for (const project of experience.projects ?? []) {
-		const projectStart = toDate(project.start);
-		if (!projectStart) continue;
-		if (!earliest || projectStart < earliest) earliest = projectStart;
-		const projectEnd = toDate(project.end);
-		if (!projectEnd) ongoing = true;
-		else if (!latest || projectEnd > latest) latest = projectEnd;
-	}
-	if (!earliest) return { ongoing: false };
-	return ongoing ? { start: earliest, ongoing } : { start: earliest, end: latest, ongoing };
-}
-
-/**
- * When a project of an experience (of this period) ended: its own end; without one it stopped
- * with its experience when that one ended, never before it began. Undefined while it is ongoing.
- */
-export function projectEnd(project: Dated, period: ExperiencePeriod): Date | undefined {
-	const end = toDate(project.end);
-	if (end || period.ongoing || !period.end) return end;
-	const start = toDate(project.start);
-	return start && start > period.end ? start : period.end;
-}
 
 /**
  * 'Jun 2019 – Dec 2020' of a project of an experience (of this period), as its card, its previews
@@ -133,29 +105,6 @@ export function projectEnd(project: Dated, period: ExperiencePeriod): Date | und
  */
 export const formatProjectMonths = (project: Dated, period: ExperiencePeriod): string =>
 	formatMonthRange(project.start, projectEnd(project, period));
-
-/** Sort for display: ongoing first, then by end desc, then start desc; undated last; stable */
-export function sortExperiences<T extends Parameters<typeof experiencePeriod>[0]>(
-	experiences: T[]
-): T[] {
-	const keyed = experiences.map((experience, index) => {
-		const period = experiencePeriod(experience);
-		return {
-			experience,
-			index,
-			dated: period.start !== undefined,
-			end: period.ongoing ? Infinity : period.end ? monthIndex(period.end) : -Infinity,
-			start: period.start ? monthIndex(period.start) : -Infinity
-		};
-	});
-	keyed.sort((a, b) => {
-		if (a.dated !== b.dated) return a.dated ? -1 : 1;
-		if (a.end !== b.end) return b.end - a.end;
-		if (a.start !== b.start) return b.start - a.start;
-		return a.index - b.index;
-	});
-	return keyed.map(({ experience }) => experience);
-}
 
 type WithDates = { start?: DateInput; end?: DateInput };
 type WithProjects = WithDates & { projects?: WithDates[] | null };

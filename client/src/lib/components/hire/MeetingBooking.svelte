@@ -28,8 +28,10 @@ hiring journey; requests carry the session, which the API checks against the ste
 		domainName,
 		ownerName,
 		prefill = {},
+		bookable = null,
 		onLocked,
-		onBooked
+		onBooked,
+		onSchedules
 	}: {
 		/** The portfolio whose owner is booked */
 		domainName: string;
@@ -38,12 +40,20 @@ hiring journey; requests carry the session, which the API checks against the ste
 		/** The signed-in visitor's name and email, to start the form with */
 		prefill?: { name?: string; email?: string };
 		/**
+		 * Whether the owner's calendar offers a meeting type, as the page knows it when this mounts
+		 * (the server's render asked): false shows at once, on the server too, that online booking is
+		 * unavailable, then the meeting types are asked again
+		 */
+		bookable?: boolean | null;
+		/**
 		 * The hiring journey stopped a request: the session expired ('signed-out'), or a step
 		 * before the meeting is not done anymore ('locked'). The page loads the journey again
 		 */
 		onLocked?: (reason: 'signed-out' | 'locked') => void;
 		/** A meeting was booked (the journey's meeting step is done) */
 		onBooked?: () => void;
+		/** The meeting types were loaded: how many there are */
+		onSchedules?: (count: number) => void;
 	} = $props();
 
 	// Sent with every call: the hiring journey lets a signed-in visitor through (the API reads the
@@ -113,7 +123,8 @@ hiring journey; requests carry the session, which the API checks against the ste
 		};
 
 	let schedules = $state<PublicSchedule[]>([]);
-	let schedulesLoading = $state(true);
+	// Known to be none (the server's render found none): said at once, while they are asked again
+	let schedulesLoading = $state(untrack(() => bookable !== false));
 	let selectedSchedule = $state<PublicSchedule | null>(null);
 	// Why the meeting type picked went away (paused or deleted meanwhile): shown above the others
 	let notice = $state('');
@@ -183,15 +194,19 @@ hiring journey; requests carry the session, which the API checks against the ste
 		error: { status: undefined, value: error }
 	});
 
-	/** `autoSelect`: on arrival, a single schedule is selected right away */
-	async function loadSchedules({ autoSelect = false } = {}) {
-		schedulesLoading = true;
+	/**
+	 * `autoSelect`: on arrival, a single schedule is selected right away. `quiet`: what is shown
+	 * stays while they are asked
+	 */
+	async function loadSchedules({ autoSelect = false, quiet = false } = {}) {
+		if (!quiet) schedulesLoading = true;
 		const { data: found, error } = await portfolioApi.appointments
 			.domains({ domainName: encodeURIComponent(domainName) })
 			.schedules.get(withCredentials)
 			.catch(unreachable);
 		if (!error && found) {
 			schedules = found;
+			onSchedules?.(found.length);
 			const gone = selectedSchedule;
 			if (autoSelect && schedules.length === 1) {
 				selectSchedule(schedules[0]);
@@ -408,7 +423,7 @@ hiring journey; requests carry the session, which the API checks against the ste
 		});
 	}
 
-	onMount(() => loadSchedules({ autoSelect: true }));
+	onMount(() => loadSchedules({ autoSelect: true, quiet: !schedulesLoading }));
 </script>
 
 <div class="space-y-8">
@@ -448,8 +463,17 @@ hiring journey; requests carry the session, which the API checks against the ste
 			</button>
 		</section>
 	{:else if schedulesLoading}
-		<p class="text-sm opacity-50">{m.loading}</p>
+		<!-- The meeting types load in the browser: the page's first paint (rendered on the server)
+		     holds their place without words, unless scripts do not run (nothing would load them) -->
+		<div class="space-y-3 noscript:hidden" role="status">
+			<span class="sr-only">{m.loading}</span>
+			<div
+				class="placeholder h-24 w-full animate-pulse motion-reduce:animate-none"
+				aria-hidden="true"
+			></div>
+		</div>
 	{:else if schedules.length === 0}
+		<!-- Also on the server's render, when it found no meeting type -->
 		<section class="card p-6">
 			<p class="opacity-75">{datesMessages.bookingUnavailable}</p>
 		</section>

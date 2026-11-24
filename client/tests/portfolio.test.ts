@@ -84,10 +84,21 @@ test.describe('experiences page', () => {
 		const response = await gotoHydrated(page, `/${DOMAIN}/experiences`);
 
 		expect(response?.status()).toBe(200);
-		await expect(page).toHaveTitle('Louis Gentil | Resume');
+		// Headed with its address name, as its header: the portfolio has no title
+		await expect(page).toHaveTitle(`${DOMAIN} | Experiences`);
 		await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 		await expect(page.getByText('No experiences have been published yet.')).toBeVisible();
 		await expect(page.getByText('This domain is not yet claimed')).toHaveCount(0);
+		// No floating corner without experiences: the empty page leads to the page for recruiters,
+		// with the corner's neutral words
+		const empty = page.getByRole('region', { name: 'No experiences have been published yet.' });
+		await expect(empty).toContainText(
+			'This portfolio is still being written. You can already propose a role.'
+		);
+		await expect(empty.getByRole('link', { name: 'Propose a role' })).toHaveAttribute(
+			'href',
+			`/${DOMAIN}/hire`
+		);
 	});
 
 	test('does not open the "Add Experience" dialog for anonymous visitors', async ({ page }) => {
@@ -286,7 +297,7 @@ test('the hire page renders the booking view inside the hydrated portfolio layou
 
 	expect(response?.status()).toBe(200);
 	expect((await schedules).status()).toBe(200);
-	await expect(page.getByRole('heading', { name: /^Book a meeting with / })).toBeVisible();
+	await expect(page.getByRole('heading', { level: 1, name: /^Propose a role to / })).toBeVisible();
 	// The CI API has no Google Calendar (GOOGLE_CLIENT_SECRET unset): nothing is bookable
 	await expect(page.getByText('Online booking is not available right now.')).toBeVisible();
 });

@@ -1,7 +1,8 @@
 // Records the landing page's two demos (client/static/landing/demo-style.* and demo-journey.*,
 // played by components/landing/DemoVideo.svelte) against the real app running locally, on a
-// phone-sized screen. Record them again when what they show changes (the experiences page, the
-// Hire page, the job match):
+// phone-sized screen. Record them again when what they show changes: the experiences page and its
+// floating corner ("Propose a role") for demo-style; the candidate's page for recruiters (the Hire
+// page, "Propose a role to Jane Doe") and the job match for demo-journey:
 //
 //   bun run db:up && bun run db:seed
 //   COMMUTE_TIMES=true bun run start:server      # the commute needs the travel times
@@ -9,15 +10,26 @@
 //   bun scripts/landing-demos/seed.mjs           # from client/: the fictional candidate and recruiter
 //   bun scripts/landing-demos/record.mjs         # needs ffmpeg with libvpx-vp9 and libx264
 //
+// Name the films to record only some: `bun scripts/landing-demos/record.mjs style`. demo-style
+// films the portfolio signed out: it needs Jane's experiences, not the recruiter or the commute.
+//
 // With an API whose JWT_SECRET is not server/.env.example's, pass it to both scripts
 // (JWT_SECRET=... bun scripts/...): they sign the sessions of the two fictional accounts with it.
 // DEMO_CHROMIUM is the browser to launch when Playwright's own is not installed. Google is never
-// reached; the travel times are the API's (Géoplateforme), cached after the first run.
+// reached. The travel times are the API's, cached after the first run: the Géoplateforme's, or,
+// with the API started offline (from server/: `COMMUTE_TIMES=true bun --preload
+// ../client/scripts/landing-demos/offline-geoplateforme.mjs index.ts`), figures that file computes
+// for seed.mjs's two addresses, nothing outside localhost being asked. The committed film was
+// recorded offline: the film shows the commute's outcome only, never a time. Jane's
+// calendar cannot be connected without Google: demo-journey answers the browser's request for her
+// meeting types with one, so the page is the one a candidate whose calendar is open shows (with
+// "Before you start"; without a meeting type it says no meeting is taken online). The film stops at
+// the job match: nothing asks Google for a slot.
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
-import { JANE, SAM, WEB, film, mongo, signIn } from './lib.mjs';
+import { API, JANE, SAM, WEB, film, mongo, signIn } from './lib.mjs';
 
 const out = fileURLToPath(new URL('../../static/landing/', import.meta.url));
 const frames = path.join(os.tmpdir(), 'landing-demos');
@@ -94,6 +106,29 @@ const journey = async () => {
 		`db.workflowinstances.deleteMany({ owner: ObjectId('${JANE}'), visitor: ObjectId('${SAM}') })`
 	);
 	const page = await phone(SAM);
+	// Jane's meeting types, as the API lists them once her calendar is connected
+	await page.route(`${API}/appointments/domains/jane.doe/schedules`, (route) =>
+		route.fulfill({
+			json: [
+				{
+					id: '65de000000000000000000aa',
+					title: 'Intro call',
+					description: null,
+					durationMinutes: 30,
+					minNoticeHours: 24,
+					maxAdvanceDays: 30,
+					timezone: 'Europe/Paris',
+					locationType: 'google_meet',
+					locationDetails: null,
+					availability: [{ dayOfWeek: 2, startTime: '09:00', endTime: '12:00' }]
+				}
+			],
+			headers: {
+				'access-control-allow-origin': WEB,
+				'access-control-allow-credentials': 'true'
+			}
+		})
+	);
 	await page.goto(`${WEB}/jane.doe/hire`, { waitUntil: 'networkidle' });
 	await page.waitForTimeout(600);
 	const f = await film(page, path.join(frames, 'journey'));
@@ -106,7 +141,10 @@ const journey = async () => {
 		await page.waitForTimeout(300);
 	};
 
-	await f.hold(1500);
+	// The page's title and its "Before you start", then Jane's note, read and confirmed
+	await f.hold(1800);
+	await f.scroll(await f.topOf(heading('My conditions'), 90), 800);
+	await f.hold(1600);
 	await f.tap(page.getByRole('button', { name: 'I have read this' }));
 	await settle();
 	await f.hold(500);
@@ -115,7 +153,7 @@ const journey = async () => {
 	await f.tap(page.getByRole('button', { name: 'Continue with this job' }));
 	await settle();
 	await f.hold(500);
-	await f.scroll(await f.topOf(heading('Match the perfect job'), 20), 700);
+	await f.scroll(await f.topOf(heading('Get the job scored'), 20), 700);
 	await f.hold(1500);
 	await f.scroll(await f.topOf(page.locator('[id$="-score"]'), 14), 800);
 	await f.hold(3400);
@@ -123,6 +161,10 @@ const journey = async () => {
 	await page.context().close();
 };
 
-await style();
-await journey();
+const films = { style, journey };
+const asked = process.argv.slice(2);
+for (const name of asked) if (!(name in films)) throw new Error(`No film named ${name}`);
+for (const [name, record] of Object.entries(films)) {
+	if (!asked.length || asked.includes(name)) await record();
+}
 await browser.close();

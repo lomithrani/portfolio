@@ -7,7 +7,7 @@ import type { PerfectJobDto } from '../services/perfectJobs';
 // The perfect job of the signed-in account (services/perfectJobs.ts): what
 // they look for in a job, criterion by criterion, each with its importance.
 // Only its owner reads it: recruiters get a score (the hiring journey's
-// "Match the perfect job" step), never the criteria.
+// "Get the job scored" step), never the criteria.
 export const perfectJob = new Elysia()
   .use(userLogged)
   .get('/perfect-job', async ({ userId }): Promise<PerfectJobDto> => perfectJobDto(await perfectJobOf(userId)), {

@@ -16,7 +16,7 @@ The overview's "Portfolios loaded" table links each portfolio to its own dashboa
 
 | Data                                                                                         | From                                                             | Kept as            |
 | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------ |
-| `portfolio_records{kind}`: the number of portfolios, accounts, recruiters, experiences, job postings, open job postings, job applications, journeys started, upcoming meetings | `server/services/siteMetrics.ts`, read from MongoDB at most every 5 minutes | Metric (Prometheus) |
+| `portfolio_records{kind}`: the number of portfolios, accounts, recruiters, experiences, job postings, open job postings, journeys started (by a visitor's first step, or by a mutual interest of matching that leads its recruiter there), upcoming meetings, candidates with discovery on (`discoverable_candidates`: their consent in force and active, those paused for a setting removed since included: an upper bound of those proposed), and of matching's jobs: proposed to candidates (`matching_job_postings`: open, in matching and approved, of a recruiter who accepted the terms in force), waiting for a review (`matching_job_reviews`: what tells the reviewers there is something to read) and the mutual interests going on (`active_matches`); the matching kinds are zero while `MATCHING` is off | `server/services/siteMetrics.ts`, read from MongoDB at most every 5 minutes | Metric (Prometheus) |
 | `http_server_requests_total{method, route, status}` and `http_server_request_duration_milliseconds` | `server/app.ts`, every request the API answers                   | Metric (Prometheus) |
 | Warnings, errors and the `memory` line                                                        | `server/services/logger.ts`                                      | Logs (Loki)        |
 | Page renders (`sveltekit.handle.root`, by route) and API requests (by route and path)         | The traces of the web service and the API                        | Traces (Tempo)     |
@@ -24,6 +24,17 @@ The overview's "Portfolios loaded" table links each portfolio to its own dashboa
 Nothing identifies a visitor: these are counts of records and of requests the servers already
 handle. There is no view counter in the browser, so the dashboards cannot tell a signed-in visitor
 from an anonymous one, and what is counted where pages are rendered includes crawlers.
+
+The page for recruiters (the Hire page) is rendered on the server, crawlers and link previews
+included: that render asks the API for the journey and the meeting types with the header
+`x-portfolio-render: server` (`client/src/routes/[domain]/hire/+page.server.ts`), which the API's
+OpenTelemetry plugin records on the span like every request header
+(`http.request.header.x-portfolio-render`). The one-portfolio dashboard's Hire page panels leave
+those requests out (`span."http.request.header.x-portfolio-render" = nil`), so they count what
+browsers did: "Hire page opened" the journey loaded once per visit, "Booking calendar opened" the
+meeting types listed by the booking step (and by the page as it loads when its server render found
+none: it does not ask again when the render found some). A change to that header, or to the
+requests the page makes, means updating those panels.
 
 ## The Stage variable
 
@@ -52,6 +63,19 @@ Variables), in the three dashboards.
   `GET /domain/:name`, scans for `/domain/wp-login.php` included.
 - **"What the site holds"** is empty for a stage until its API runs a version with
   `portfolio.records`, and while `OTEL_METRICS_EXPORTER=none`.
+- **`unmatched` 404s are not all scanners.** While `MATCHING` is off its routes are not registered,
+  and the web client still asks once whether matching is available: `GET /me/notifications` from
+  the header of every signed-in page load (never again in that page once it answered 404), `GET
+  /discovery` from the admin page and from the inbox (`/opportunities`) read signed in, `GET
+  /me/notifications` from the private page of a job and the inbox read signed out, and `GET
+  /matching/reviews` from the reviewers' page (`/recruiter/reviews`), whose address only a reviewer
+  types. Those count as `route="unmatched"`, `status="404"` (the API cannot tell them from a route
+  that never existed).
+- **`GET /skills/search` counts typing, not visits.** The experience editor asks it once per pause
+  while an owner types a skill (at most 120 a minute per account), so the API health dashboard's
+  requests by route show it far above the saves it leads to. The skill catalogue's background job
+  has no route and no metric: its sweeps are log lines (`Skill classification sweep`, counts
+  only), and its failed calls are among the warnings and errors (`Skill classification: ...`).
 
 ## Changing a dashboard
 

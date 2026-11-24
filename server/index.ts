@@ -13,6 +13,7 @@ import { describeJobImport } from './services/jobImport';
 import { describeCommute } from './services/commute';
 import { describeStepSuggestions } from './services/stepSuggestions';
 import { describeFeedback } from './services/feedback';
+import { describeSkillClassification, startSkillClassification } from './services/skillClassificationJob';
 import { registerSiteMetrics } from './services/siteMetrics';
 
 export { app };
@@ -54,7 +55,12 @@ logger.info(`Running at ${formatListenUrl(host, app.server!.port ?? env.PORT, !!
   jobImport: describeJobImport(env),
   stepSuggestions: describeStepSuggestions(env),
   feedback: describeFeedback(env),
-  travelTimes: describeCommute()
+  skillClassification: describeSkillClassification(env),
+  travelTimes: describeCommute(),
+  // Path 2 (CLAUDE.md, Matching): off, its routes answer 404. How many reviewers, never who
+  matching: env.matchingEnabled
+    ? `on (${env.matchingReviewers.size} job ${env.matchingReviewers.size === 1 ? 'reviewer' : 'reviewers'})`
+    : 'off (MATCHING is not true)'
 });
 
 // The number of portfolios, accounts... as a metric (read at each export, only while metrics are on)
@@ -63,10 +69,16 @@ registerSiteMetrics();
 // 'memory' log line at startup, then every MEMORY_LOG_INTERVAL_MS
 const stopMemoryDiagnostics = startMemoryDiagnostics(env.MEMORY_LOG_INTERVAL_MS);
 
+// The skill catalogue's background job: has Claude classify the skills not classified yet, every
+// SKILL_CLASSIFICATION_INTERVAL_MS and shortly after a save (off without ANTHROPIC_API_KEY)
+const stopSkillClassification = startSkillClassification(env.SKILL_CLASSIFICATION_INTERVAL_MS);
+
 // See services/shutdown.ts. A second signal of the same kind exits immediately.
 const shutdown = createShutdown({
   steps: [
     { name: 'memory diagnostics', run: stopMemoryDiagnostics },
+    // Before MongoDB closes: no sweep starts, and one under way gets a moment to save what it has
+    { name: 'skill classification', run: stopSkillClassification },
     { name: 'HTTP server', run: () => app.stop() },
     { name: 'MongoDB', run: () => mongoose.disconnect() },
     // A hung OTLP endpoint must not eat the whole shutdown window

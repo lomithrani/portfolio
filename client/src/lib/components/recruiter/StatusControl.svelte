@@ -1,8 +1,9 @@
 <!--
 @component
 A job description's status: what it means now, and a menu to change it (Draft, Open, On hold,
-Filled, Closed, each with what it means for the public page). Choosing one calls `onChange`: the
-page sends PUT /jobs/:id/status (`busy` meanwhile) and passes the new status back. A menu, not
+Filled, Closed, each with what it means for picking it on a candidate's Hire page). Choosing one
+calls `onChange`: the page sends PUT /jobs/:id/status (`busy` meanwhile) and passes the new status
+back. A menu, not
 radio buttons: moving through the choices with the arrow keys changes nothing until one is picked.
 -->
 <script lang="ts">

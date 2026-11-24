@@ -6,12 +6,14 @@ deployed on [Railway](https://railway.com).
 Candidates get a public portfolio of their experiences and projects that they make their own
 (`/<name>/experiences`: a theme, a list or a timeline, skill filters) and a hiring journey
 recruiters go through before booking a meeting (a note to read, the job to share, its score
-against what the candidate is looking for); recruiters publish job descriptions candidates apply
-to. The home page (`/`) is the candidate landing page: it shows both with two short recordings of
-the app, previews the portfolio's address and checks it is free as you type, then walks through
-three steps (sign in with Google after confirming your age and accepting the terms, claim the
-address, import a PDF résumé). Legal notice, privacy policy, terms
-and cookies are at `/legal`; each account can delete itself at `/account`.
+against what the candidate is looking for); recruiters write job descriptions and share one on a
+candidate's Hire page (there is no job board). The home page (`/`) is the candidate landing
+page: it shows both with two short recordings of the app, previews the portfolio's address and
+checks it is free as you type, then walks through four steps (sign in with Google after
+confirming your age and accepting the terms, claim the address, import a PDF résumé, set your
+terms: what you want in a job, your steps and your calendar, then copy your link). Legal
+notice, privacy policy, terms and cookies are at `/legal`; each account can delete itself at
+`/account`.
 
 The whole site is in English and French: a page opens in the visitor's browser language, and the
 language switch (or `?lang=fr` / `?lang=en` on any address) changes it. How texts are written and
@@ -66,7 +68,7 @@ bun install
 cp server/.env.example server/.env
 cp client/.env.example client/.env
 bun run db:up      # MongoDB 7 (as in production) on 127.0.0.1:27017: Docker, else a local mongod
-bun run db:seed    # owner user + the 'louis.gentil' domain (safe to re-run)
+bun run db:seed    # owner user + the 'louis.gentil' domain + a curated skill catalogue (safe to re-run)
 bun run dev        # API on http://localhost:3000 and web app on http://localhost:5173
 ```
 
@@ -89,7 +91,7 @@ Run from the repository root.
 | `bun run dev:client`   | Web dev server only (`client/`, Vite on port 5173)                                           |
 | `bun run db:up`        | Start the local MongoDB (`compose.yaml`, or a local `mongod` without Docker) until healthy   |
 | `bun run db:down`      | Stop it (keeps the data; `docker compose down -v` deletes it)                                |
-| `bun run db:seed`      | Seed the database at `MONGO_URL` with the owner user and the `louis.gentil` domain           |
+| `bun run db:seed`      | Seed the database at `MONGO_URL` with the owner user, the `louis.gentil` domain and a curated skill catalogue (categories, families, other spellings) |
 | `bun run typecheck`    | `tsc` on the API and `svelte-check` on the web app                                           |
 | `bun run lint`         | Prettier check and ESLint on the web app                                                     |
 | `bun run test`         | API tests (need MongoDB; set `TEST_MONGO_URL`, see [Testing](#testing)) and web unit tests   |

@@ -1,19 +1,99 @@
 // Seeds what the Playwright owner tests sign in as: per test file, a user and the domain it owns,
 // kept for that file alone (its tests add and remove the domain's experiences, so files running in
 // parallel never share one): 'e2e-owner' for client/tests/experiences-owner.test.ts, 'e2e-import'
-// for client/tests/resume-import.test.ts. client/tests/recruiter.test.ts and
-// client/tests/jobs-apply.test.ts sign in as the recruiter 'e2e.recruiter@example.com' (a
-// recruiter space, no domain) and as the owner of 'e2e-applicant', who applies or is added to the
-// applicants. client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
-// and goes through it as the e2e recruiter. client/tests/account.test.ts (and the signed-in steps of
-// client/tests/landing.test.ts) use the candidate 'e2e.candidate@example.com': no domain, no
-// recruiter space, no acceptance of the terms; the tests that would change it (accepting the terms,
-// claiming, deleting the account) answer those requests in the browser, so it stays that way.
+// for client/tests/resume-import.test.ts. client/tests/recruiter.test.ts signs in as the recruiter
+// 'e2e.recruiter@example.com' (a recruiter space, no domain, the terms in force accepted: every
+// run records the version of the code it runs, so a new LEGAL_VERSION never locks the e2e tests
+// out of the recruiter routes, which ask for it). 'e2e-shared' is a portfolio the tests may read
+// or point at but never change: its journey, set here on every run, is a job step then the
+// meeting, on which client/tests/job-view.test.ts alone has the e2e recruiter pick its jobs.
+// client/tests/hire-journey.test.ts changes the hiring journey of 'e2e-journey' alone,
+// and goes through it as the e2e recruiter. client/tests/share-kit.test.ts signs in as the owner of
+// 'e2e-share-kit' (the default journey, never saved: the tests answer the readiness and the perfect
+// job they need in the browser, so it stays that way). 'e2e-preview' is read, never changed, by
+// client/tests/robots.test.ts: its title and tagline, set here on every run, are the preview of a
+// shared link, with characters the HTML must escape. 'e2e-ready' is the owner of the one test of
+// client/tests/landing.test.ts that sets a portfolio up with nothing answered in the browser but
+// what would ask Google (the gate from "Get started", the perfect job's essentials, the landing card then ready): it sets back
+// what it changes at its start, so a run never depends on the one before; it has a calendar
+// (a placeholder grant, a meeting type with hours), which counts on a site that takes Google
+// Calendar. The candidate 'e2e.candidate@example.com' (no domain, no
+// recruiter space, no acceptance of the terms) is signed in as by client/tests/account.test.ts,
+// claim-consent.test.ts, feedback.test.ts, recruiter.test.ts, hire-journey.test.ts, job-view.test.ts
+// and the signed-in steps of landing.test.ts; the tests that would change it (accepting the terms,
+// claiming, opening a recruiter space or recording a space: PUT /me/mode, deleting the account)
+// answer those requests in the browser, so it stays that way.
+// Matching (Path 2), for the test files of its screens, one candidate and one job for each
+// file, so that the two files, which run in parallel, never read what the other decides: 'e2e-match'
+// (fixed id 65e2e0000000000000000003, client/tests/matching-candidate.test.ts, seeded with
+// discovery off: the test turns it on; a withdrawal holds the next opt-in back
+// DISCOVERY_REJOIN_DAYS (429), which only this seed clears, as it empties the profile's consents:
+// that file answers DELETE /discovery/consent in the browser, or this seed runs again before each
+// of its runs; its deck answers the job seeded for it, which only this seed proposes to it again)
+// and 'e2e-match-card' (fixed id
+// 65e2e0000000000000000004, client/tests/matching-recruiter.test.ts, seeded on: the e2e recruiter
+// reads its anonymous card, and answers it in the deck once the candidate said through the API
+// that the job interests them; that mutual interest is the run's, which only this seed removes).
+// Each has everything discovery asks for, set back on every run: the terms in force, a perfect job
+// of three criteria with the pay, the gate journey, a Google Calendar grant (a placeholder: nothing
+// ever asks Google with it) and a meeting type with hours, an experience. The e2e recruiter has two
+// jobs in matching, approved, which no test tag matches (the files that remove their tagged postings
+// leave them): E2E_MATCHING_JOB_ID, a CDI, which only 'e2e-match-card' asks for, and
+// E2E_MATCH_JOB_ID, a CDD, which only 'e2e-match' asks for (the contract is a deal-breaker of each):
+// each candidate is proposed one job, and each job one candidate. Every run also removes what a run
+// before decided or went through: the matches of those jobs and of those candidates, the candidates'
+// journey progress (a note confirmed, a job shared or handed off by a mutual interest, a meeting
+// booked), and the counters of the day's discovery opt-ins, of the hour's feed reads and of the
+// day's decisions. They are proposed only by an API run with MATCHING=true, and with
+// GOOGLE_CLIENT_SECRET set (any value: Calendar counts as configured; nothing asks Google unless a
+// page books or lists slots, which the tests answer in the browser). The reviewer
+// 'e2e.reviewer@example.com' (fixed id 65e2e0000000000000000005, no portfolio, no recruiter space)
+// reviews the jobs put into matching for client/tests/matching-review.test.ts, on an API whose
+// MATCHING_REVIEWERS lists it: that file decides on the jobs it tags alone.
+// The curated part of the skill catalogue (seedSkills.ts) is applied on every run, as `bun run seed`
+// applies it: the skills the tests type have their category, and the catalogue has families and
+// aliases ('.NET Core' is part of '.NET', 'K8s' is 'Kubernetes'), all set by hand ('manual'), so
+// nothing here waits for the classifier, which never runs in the tests.
+// 'e2e-skills' is the portfolio client/tests/skills.test.ts reads, and never changes (its editor
+// test saves nothing): its experiences are set back here on every run, as POST /experiences stores
+// them, after the catalogue (E2E_SKILLS_EXPERIENCES: more technical and soft skills than the
+// filters' panel shows folded, each with its own time, the seeded family of '.NET', 'K8s' typed
+// for Kubernetes, a project with more technical skills than its card shows, and skills the
+// catalogue does not know, which stay pending). E2E_FOREIGN_PENDING_SKILL is a name another
+// account typed, pending too: the search never suggests it to the owner of 'e2e-skills'.
+// This file loads nothing that imports server/env.ts (CI seeds with MONGO_URL and JWT_SECRET only):
+// the review version of the jobs in matching comes from server/services/jobVersion.ts, never from
+// jobMatching.ts.
 // Idempotent: safe to run against a seeded database.
 // Usage: MONGO_URL=mongodb://... bun run seed:e2e
 import mongoose, { Types } from "mongoose";
-import { Domain, User } from "../models/database";
+import {
+  DISCOVERY_CONSENT_KEYS,
+  ExperienceType,
+  LEGAL_VERSION,
+  currentConsent,
+  journeyTemplate,
+  parsePerfectJob
+} from "portfolio-common";
+import {
+  AppointmentSchedule,
+  DiscoveryProfile,
+  Domain,
+  Experience,
+  JobPosting,
+  Match,
+  PerfectJob,
+  RateLimitCounter,
+  Skill,
+  User,
+  Workflow,
+  WorkflowInstance
+} from "../models/database";
+import type { JobPosting as StoredJobPosting } from "../models/database/jobPosting";
+import { reviewedVersion } from "../services/jobVersion";
+import { recordConsent } from "../services/legal";
 import { redactConnectionString } from "../services/redact";
+import { SEED_ALIAS, SEED_FAMILY, seedSkillCatalogue } from "./seedSkills";
 
 const mongoUrl = Bun.env.MONGO_URL;
 if (!mongoUrl) {
@@ -30,9 +110,21 @@ await mongoose.connect(mongoUrl);
 const owners = [
   { email: 'e2e.owner@example.com', name: 'Eve', surname: 'Owner', domain: 'e2e-owner' },
   { email: 'e2e.import@example.com', name: 'Ivy', surname: 'Importer', domain: 'e2e-import' },
-  { email: 'e2e.applicant@example.com', name: 'Ada', surname: 'Applicant', domain: 'e2e-applicant' },
-  { email: 'e2e.journey@example.com', name: 'Jay', surname: 'Journey', domain: 'e2e-journey' }
+  { email: 'e2e.shared@example.com', name: 'Sam', surname: 'Shared', domain: 'e2e-shared' },
+  { email: 'e2e.journey@example.com', name: 'Jay', surname: 'Journey', domain: 'e2e-journey' },
+  { email: 'e2e.sharekit@example.com', name: 'Skye', surname: 'Sharer', domain: 'e2e-share-kit' },
+  { email: 'e2e.preview@example.com', name: 'Pia', surname: 'Preview', domain: 'e2e-preview' },
+  { email: 'e2e.ready@example.com', name: 'Remy', surname: 'Ready', domain: 'e2e-ready' },
+  { email: 'e2e.skills@example.com', name: 'Suki', surname: 'Skills', domain: 'e2e-skills' }
 ];
+
+// The heading of 'e2e-preview', which its link preview carries (og:title, og:description): text
+// its owner wrote, with what an HTML attribute must escape (PREVIEW_HEADING of
+// client/tests/robots.test.ts)
+const E2E_PREVIEW_HEADING = {
+  headerTitle: 'Jane "JD" Doe & Co',
+  headerSubtitle: 'Staff engineer <Lyon> & more'
+};
 
 for (const owner of owners) {
   const user = await User.findOneAndUpdate(
@@ -43,15 +135,63 @@ for (const owner of owners) {
 
   await Domain.findOneAndUpdate(
     { name: owner.domain },
-    { $setOnInsert: { admin: user._id, experiences: [] } },
+    {
+      $setOnInsert: { admin: user._id, experiences: [] },
+      // Set on every run, as PUT /domain stores it (a database seeded before has none)
+      ...(owner.domain === 'e2e-preview' ? { $set: E2E_PREVIEW_HEADING } : {})
+    },
     { upsert: true }
   );
+
+  // A calendar recruiters can book in, on a site that takes Google Calendar (GOOGLE_CLIENT_SECRET
+  // set, as CI's API is for the files of matching): the landing page's ready state then counts it
+  // done. A grant as the API stores it once connected, a placeholder nothing ever sends to Google
+  // (client/tests/landing.test.ts answers in the browser the admin page's calendar requests that
+  // would), and a meeting type with hours; set on every run
+  if (owner.domain === 'e2e-ready') {
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: { 'googleCalendar.refreshToken': 'e2e-placeholder', 'googleCalendar.connectedAt': new Date() },
+        $unset: { 'googleCalendar.revokedAt': 1 }
+      }
+    );
+    await AppointmentSchedule.findOneAndUpdate(
+      { user: user._id, title: 'E2E intro call' },
+      {
+        $set: {
+          timezone: 'Europe/Paris',
+          enabled: true,
+          availability: [1, 2, 3, 4, 5].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '17:00' }))
+        }
+      },
+      { upsert: true }
+    );
+  }
+
+  // A job to pick before the meeting: the e2e recruiter's pick links the job's private page
+  // (/opportunities/:id), which its owner reads. Set on every run (a database seeded before has
+  // the default journey), as PUT /workflow stores it
+  if (owner.domain === 'e2e-shared') {
+    await Workflow.findOneAndUpdate(
+      { user: user._id },
+      {
+        $set: {
+          steps: [
+            { id: 'job', type: 'job', config: {} },
+            { id: 'meeting', type: 'meeting', config: {} }
+          ]
+        }
+      },
+      { upsert: true }
+    );
+  }
 }
 
 // A recruiter space without a domain, on the free plan with no import used. Its id is fixed:
 // with no domain, the e2e tests could not look it up (client/tests/support/owner.ts signs its
 // session with E2E_RECRUITER_ID)
-await User.findOneAndUpdate(
+const recruiter = await User.findOneAndUpdate(
   { email: 'e2e.recruiter@example.com' },
   {
     $setOnInsert: {
@@ -62,8 +202,11 @@ await User.findOneAndUpdate(
       recruiter: { enabledAt: new Date(), plan: 'free', jobImportsUsed: 0 }
     }
   },
-  { upsert: true }
+  { upsert: true, returnDocument: 'after' }
 );
+// The recruiter routes ask for the terms in force: accepted from the recruiter space, once per
+// version (a run after a new LEGAL_VERSION adds it, the next ones change nothing)
+await recordConsent(recruiter._id, currentConsent(), 'recruiter');
 
 // A candidate without a portfolio (nor recruiter space, nor acceptance of the terms). Its id is
 // fixed for the same reason (CANDIDATE_ID of client/tests/account.test.ts and landing.test.ts)
@@ -79,8 +222,330 @@ await User.findOneAndUpdate(
   { upsert: true }
 );
 
+// A reviewer of matching: no portfolio, no recruiter space. Its id is fixed (E2E_REVIEWER_ID of
+// client/tests/support/owner.ts signs its session); the API under test lists its email in
+// MATCHING_REVIEWERS (CI's e2e job does) for client/tests/matching-review.test.ts, which reads the
+// jobs waiting for a review and decides on its own tagged jobs only
+await User.findOneAndUpdate(
+  { email: 'e2e.reviewer@example.com' },
+  {
+    $setOnInsert: {
+      _id: new Types.ObjectId('65e2e0000000000000000005'),
+      name: 'Remy',
+      surname: 'Reviewer'
+    }
+  },
+  { upsert: true }
+);
+
+// ── Matching (Path 2) ──────────────────────────────────────
+
+/** The e2e recruiter's jobs in matching, titled so that no test file's tag matches them */
+const E2E_MATCHING_JOB_TITLE = 'Staff Platform Engineer (e2e matching)';
+const E2E_MATCHING_JOB_ID = new Types.ObjectId('65e2e0000000000000000101');
+const E2E_MATCH_JOB_TITLE = 'Senior Data Engineer (e2e matching)';
+const E2E_MATCH_JOB_ID = new Types.ObjectId('65e2e0000000000000000102');
+
+/**
+ * What a candidate rates: the pay (a deal-breaker), the work mode and the contract (a deal-breaker
+ * too), which the job of that contract passes (55 k€ asked of 60-75 k€, hybrid) and the other job
+ * misses
+ */
+const matchCriteriaFor = (contract: 'cdi' | 'cdd') => {
+  const { criteria, problems } = parsePerfectJob({
+    pay: { importance: 5, dealBreaker: true, perYear: 55_000 },
+    workMode: { importance: 4, modes: ['hybrid', 'on_site'] },
+    contractTypes: { importance: 3, dealBreaker: true, types: [contract] }
+  });
+  if (problems.length > 0) throw new Error(`The e2e perfect job breaks a rule: ${JSON.stringify(problems)}`);
+  return criteria;
+};
+
+// Fixed ids, as the e2e recruiter's and candidate's: the tests sign in as them without a lookup
+const matchCandidates = [
+  {
+    id: new Types.ObjectId('65e2e0000000000000000003'),
+    email: 'e2e.match@example.com',
+    name: 'Mia',
+    surname: 'Match',
+    domain: 'e2e-match',
+    role: 'Backend engineer',
+    contract: 'cdd' as const,
+    discovery: false
+  },
+  {
+    id: new Types.ObjectId('65e2e0000000000000000004'),
+    email: 'e2e.matchcard@example.com',
+    name: 'Cleo',
+    surname: 'Card',
+    domain: 'e2e-match-card',
+    role: 'Platform engineer',
+    contract: 'cdi' as const,
+    discovery: true
+  }
+];
+
+const now = new Date();
+const matchCandidateIds: Types.ObjectId[] = [];
+for (const candidate of matchCandidates) {
+  // Seeded before its id was fixed: that account and what this seed made of it go, so it comes back
+  // with its id (its portfolio is given to it below; the tests' own data of it was set back anyway)
+  const earlier = await User.findOne({ email: candidate.email }, { _id: 1 }).lean<{ _id: Types.ObjectId }>();
+  if (earlier && !earlier._id.equals(candidate.id)) {
+    const byUser = { user: earlier._id };
+    await Promise.all([
+      PerfectJob.deleteMany(byUser),
+      Workflow.deleteMany(byUser),
+      AppointmentSchedule.deleteMany(byUser),
+      DiscoveryProfile.deleteMany(byUser),
+      Match.deleteMany({ candidate: earlier._id }),
+      WorkflowInstance.deleteMany({ owner: earlier._id })
+    ]);
+    await User.deleteOne({ _id: earlier._id });
+  }
+  const user = await User.findOneAndUpdate(
+    { email: candidate.email },
+    {
+      $setOnInsert: { _id: candidate.id, name: candidate.name, surname: candidate.surname },
+      // A grant as the API stores it once connected: a placeholder nothing ever sends to Google
+      $set: { 'googleCalendar.refreshToken': 'e2e-placeholder', 'googleCalendar.connectedAt': now },
+      $unset: { 'googleCalendar.revokedAt': 1 }
+    },
+    { upsert: true, returnDocument: 'after' }
+  );
+  matchCandidateIds.push(user._id);
+  await recordConsent(user._id, currentConsent(), 'account');
+  const domain = await Domain.findOneAndUpdate(
+    { name: candidate.domain },
+    { $set: { admin: user._id }, $setOnInsert: { experiences: [] } },
+    { upsert: true, returnDocument: 'after' }
+  );
+  // One role on the card, when a test left none
+  if (domain.experiences.length === 0) {
+    const experience = await Experience.create({
+      type: ExperienceType.Professional,
+      title: candidate.role,
+      summary: 'Seeded for the end-to-end tests of matching.',
+      start: new Date(Date.UTC(now.getUTCFullYear() - 4, 0, 1)),
+      projects: []
+    });
+    await Domain.updateOne({ _id: domain._id }, { $push: { experiences: experience._id } });
+  }
+  await PerfectJob.findOneAndUpdate(
+    { user: user._id },
+    { $set: { criteria: matchCriteriaFor(candidate.contract) } },
+    { upsert: true }
+  );
+  await Workflow.findOneAndUpdate({ user: user._id }, { $set: { steps: journeyTemplate('gate') } }, { upsert: true });
+  await AppointmentSchedule.findOneAndUpdate(
+    { user: user._id, title: 'E2E intro call' },
+    {
+      $set: {
+        timezone: 'Europe/Paris',
+        enabled: true,
+        availability: [1, 2, 3, 4, 5].map((dayOfWeek) => ({ dayOfWeek, startTime: '09:00', endTime: '17:00' }))
+      }
+    },
+    { upsert: true }
+  );
+  // On: a consent in force, given now (it never lapses between runs), and active. Off: never turned
+  // on (no consent, no withdrawal: the test's opt-in is a first one)
+  await DiscoveryProfile.findOneAndUpdate(
+    { user: user._id },
+    candidate.discovery
+      ? {
+          $set: {
+            enabledAt: now,
+            lastActiveAt: now,
+            consents: [{ action: 'granted', at: now, termsVersion: LEGAL_VERSION, wordingKey: DISCOVERY_CONSENT_KEYS.en }]
+          },
+          $unset: { withdrawnAt: 1, card: 1 }
+        }
+      : { $set: { consents: [] }, $unset: { enabledAt: 1, lastActiveAt: 1, withdrawnAt: 1, card: 1 } },
+    { upsert: true }
+  );
+}
+
+// The e2e recruiter's jobs in matching, approved as they are (set on every run, as the API stores them)
+const matchingJobs = [
+  { id: E2E_MATCHING_JOB_ID, title: E2E_MATCHING_JOB_TITLE, contract: { type: 'cdi' } },
+  { id: E2E_MATCH_JOB_ID, title: E2E_MATCH_JOB_TITLE, contract: { type: 'cdd', durationMonths: 12 } }
+];
+for (const job of matchingJobs) {
+  await JobPosting.findOneAndUpdate(
+    { _id: job.id },
+    {
+      $set: {
+        recruiter: recruiter._id,
+        title: job.title,
+        description: '## The job\n\nRun the platform the product teams build on. Seeded for the end-to-end tests of matching.',
+        company: 'E2E Matching Corp',
+        status: 'open',
+        location: { country: 'FR', city: 'Paris', postalCode: '75011', workMode: 'hybrid', remoteDaysPerWeek: 2 },
+        contract: job.contract,
+        workingTime: { arrangement: 'weekly_hours', hoursPerWeek: 35 },
+        pay: { min: 60_000, max: 75_000, currency: 'EUR', period: 'year' }
+      },
+      $setOnInsert: { publishedAt: now }
+    },
+    { upsert: true }
+  );
+  const stored = (await JobPosting.findById(job.id).lean<StoredJobPosting>())!;
+  await JobPosting.updateOne(
+    { _id: job.id },
+    {
+      $set: {
+        matching: {
+          enabledAt: now,
+          review: { status: 'approved', requestedAt: now, reviewedAt: now, version: reviewedVersion(stored) }
+        }
+      }
+    },
+    { timestamps: false }
+  );
+}
+
+// What the matching test files decided, on those jobs or about those candidates (decisions, mutual
+// interests), and what the e2e recruiter went through on the candidates' pages for recruiters (a
+// note confirmed, a job shared or handed off by a mutual interest, a meeting booked): every run
+// starts from none, so the jobs and the cards are proposed again, and the journeys start from their
+// first step, whatever a run before recorded
+const matchingJobIds = matchingJobs.map((job) => job.id);
+await Match.deleteMany({ $or: [{ job: { $in: matchingJobIds } }, { candidate: { $in: matchCandidateIds } }] });
+await WorkflowInstance.deleteMany({ owner: { $in: matchCandidateIds } });
+
+// The jobs shared on a journey that scores them are counted, per owner and recruiter and per UTC
+// day (JOB_SHARES_PER_DAY of services/workflowSteps/job.ts, keyed 'job-share:<hash>'): every run
+// starts from none, so the e2e recruiter's picks never depend on the runs before it on the same day
+// (client/tests/hire-journey.test.ts shares jobs on the scored journey of 'e2e-journey'). So do the
+// discovery opt-ins of a day (DISCOVERY_GRANTS_PER_DAY of services/discovery.ts, 'discovery-grant:',
+// which client/tests/matching-candidate.test.ts uses turning discovery on), the reads of the feeds
+// of an hour (MATCHING_FEED_READS of services/matchFeeds.ts, 'matching-feed:') and the decisions of
+// a day (MATCHING_DECISIONS of services/matches.ts, 'matching-decision:'): keyed by a hash of the
+// account, they are cleared for every account of the e2e database
+await RateLimitCounter.deleteMany({ _id: /^(job-share|discovery-grant|matching-feed|matching-decision):/ });
+
+// The curated skills of the catalogue, with their categories, families and aliases
+await seedSkillCatalogue();
+
+// ── The skills of a portfolio (client/tests/skills.test.ts) ──────────────────
+
+/** A stored date: UTC midnight of the 1st of a 'YYYY-MM' month */
+const monthOf = (value: string) => new Date(`${value}-01T00:00:00.000Z`);
+const skillsNamed = (names: readonly string[]) => names.map((name) => ({ name, level: -1 }));
+const skillsProject = (
+  name: string,
+  [start, end]: [string, string],
+  hard: readonly string[],
+  soft: readonly string[]
+) => ({
+  name,
+  summary: '',
+  start: monthOf(start),
+  end: monthOf(end),
+  hardSkills: skillsNamed(hard),
+  softSkills: skillsNamed(soft)
+});
+
+/** Skills the curated catalogue does not have: they stay pending (no category), a technical one and two soft ones */
+const E2E_PENDING_SKILLS = ['Quorvex', 'Facilitation', 'Public speaking'] as const;
+/** A name another account typed, pending too, which no experience of 'e2e-skills' uses */
+const E2E_FOREIGN_PENDING_SKILL = 'Zentrafuge';
+
+const [netCore, netFramework] = SEED_FAMILY.children;
+
+// Fictional, and all in the past: the time on each skill never changes with the day the tests run.
+// The months each skill adds up to (each calendar month once, both ends included) are all
+// different among the skills the panel shows folded; client/tests/skills.test.ts holds the same
+// figures (SKILLS there). Projects: Billing 36 months, Observability 24, Invoicing 18, Pipelines
+// 42, and the CLI toolkit's 8, which ran during Billing.
+const E2E_SKILLS_EXPERIENCES = [
+  {
+    type: ExperienceType.Professional,
+    title: 'Lead Platform Engineer',
+    summary: 'Seeded for the end-to-end tests of the skills.',
+    company: { name: 'Brightloop' },
+    start: monthOf('2019-01'),
+    end: monthOf('2023-12'),
+    projects: [
+      skillsProject(
+        'Billing platform',
+        ['2019-01', '2021-12'],
+        // Typed as another spelling of a skill: stored as typed, shown as the skill it stands for
+        ['Git', 'Docker', 'SQL', netCore, 'C#', SEED_ALIAS.alias],
+        ['Communication', 'Leadership', 'Mentoring']
+      ),
+      // More technical skills than a card shows before its "+N"
+      skillsProject(
+        'Observability rollout',
+        ['2022-01', '2023-12'],
+        ['Git', 'Docker', netCore, 'Kafka', 'TypeScript', 'Quorvex', 'Grafana', 'Prometheus', 'Terraform', 'Redis'],
+        ['Communication', 'Leadership', 'Facilitation']
+      )
+    ]
+  },
+  {
+    type: ExperienceType.Professional,
+    title: 'Software Engineer',
+    summary: 'Seeded for the end-to-end tests of the skills.',
+    company: { name: 'Tidewater Labs' },
+    start: monthOf('2014-01'),
+    end: monthOf('2018-12'),
+    projects: [
+      skillsProject(
+        'Legacy invoicing',
+        ['2014-01', '2015-06'],
+        ['Git', 'SQL', netFramework, 'C#', 'Python'],
+        ['Leadership', 'Teamwork']
+      ),
+      skillsProject(
+        'Data pipelines',
+        ['2015-07', '2018-12'],
+        ['Git', 'Docker', 'SQL', 'Kafka', 'PostgreSQL'],
+        ['Communication', 'Teamwork', 'Problem solving']
+      )
+    ]
+  },
+  {
+    type: ExperienceType.Personal,
+    title: 'Open-source maintainer',
+    summary: 'Seeded for the end-to-end tests of the skills.',
+    start: monthOf('2020-03'),
+    end: monthOf('2020-10'),
+    projects: [skillsProject('CLI toolkit', ['2020-03', '2020-10'], ['Go', 'Quorvex'], ['Public speaking'])]
+  }
+];
+
+// Its experiences are replaced on every run: whatever the database held (an earlier version of
+// this list), the portfolio is this one. Saved as POST /experiences saves them
+// (Experience.fromRequest: each skill found or created under the spelling typed)
+const skillsDomain = await Domain.findOne({ name: 'e2e-skills' }).lean<{
+  _id: Types.ObjectId;
+  experiences: Types.ObjectId[];
+}>();
+if (!skillsDomain) throw new Error("The 'e2e-skills' portfolio was not seeded");
+await Experience.deleteMany({ _id: { $in: skillsDomain.experiences } });
+const skillsExperiences = [];
+for (const request of E2E_SKILLS_EXPERIENCES) {
+  const experience = await Experience.fromRequest(request);
+  await experience.save();
+  skillsExperiences.push(experience._id);
+}
+await Domain.updateOne({ _id: skillsDomain._id }, { $set: { experiences: skillsExperiences } });
+
+// What the catalogue does not know stays as a save leaves it, pending, whatever a classifier run
+// against this database made of it since: no category, no family, no other spelling
+await Skill.findOrCreate(E2E_FOREIGN_PENDING_SKILL);
+await Skill.updateMany(
+  { displayName: { $in: [...E2E_PENDING_SKILLS, E2E_FOREIGN_PENDING_SKILL] } },
+  { $unset: { category: 1, parent: 1, aliasOf: 1, classification: 1 } }
+);
+
 console.log(
-  `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate`
+  `Seeded the e2e owners: ${owners.map((owner) => owner.domain).join(', ')}, the e2e recruiter and the e2e candidate, ` +
+    `and for matching: ${matchCandidates.map((candidate) => candidate.domain).join(', ')}, the jobs ` +
+    matchingJobs.map((job) => `"${job.title}"`).join(', ') +
+    ' and the e2e reviewer'
 );
 await mongoose.disconnect();
 process.exit(0);

@@ -1,5 +1,5 @@
 import { EXPERIENCE_LIMITS, ExperienceType } from 'portfolio-common';
-import type { Experience, Skill } from 'portfolio-api/models/database';
+import type { Experience, PresentedSkill } from 'portfolio-api/models/database';
 import type { portfolioApi } from '#services';
 import { fromMonthKey, toMonthKey } from './experienceDates';
 import { m } from './experienceForm.messages.ts';
@@ -117,7 +117,7 @@ export const normalizeSkillNames = (names: string[], known: readonly string[] = 
 
 const knownSkills = (skills: Experience['projects'][number]['hardSkills']): SkillRequest[] =>
 	skills.flatMap((entry) => {
-		const name = (entry.skill as Skill | undefined)?.displayName;
+		const name = (entry.skill as PresentedSkill | undefined)?.displayName;
 		return name ? [{ name, level: typeof entry.level === 'number' ? entry.level : -1 }] : [];
 	});
 

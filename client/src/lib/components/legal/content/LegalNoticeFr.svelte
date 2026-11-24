@@ -85,8 +85,12 @@ l'éditeur vient uniquement des variables LEGAL_* (PublisherDetails).
 <h3 id="report">Signaler un contenu illicite</h3>
 <p>
 	Toute personne peut nous signaler un contenu de ce site qu'elle estime illicite : un portfolio,
-	une offre d'emploi, une note d'un parcours de recrutement ou tout autre contenu publié par les
-	utilisateurs. Écrivez à <ContactEmail {publisher} {lang} subject="Signalement" /> avec l'objet
+	une offre d'emploi partagée dans un parcours de recrutement, une note d'un parcours de recrutement
+	ou tout autre contenu que les utilisateurs mettent sur le site. Écrivez à <ContactEmail
+		{publisher}
+		{lang}
+		subject="Signalement"
+	/> avec l'objet
 	<strong>Signalement</strong>, en indiquant :
 </p>
 <ol>
@@ -128,9 +132,9 @@ l'éditeur vient uniquement des variables LEGAL_* (PublisherDetails).
 	concédants, sauf mention contraire, et sont protégés par le droit de la propriété intellectuelle.
 </p>
 <p>
-	Les contenus publiés par les utilisateurs (portfolios, expériences et projets, offres d'emploi,
-	notes des parcours de recrutement) appartiennent aux personnes qui les ont publiés. Elles
-	accordent à ce site uniquement la licence décrite dans les
+	Les contenus que les utilisateurs mettent sur le site (portfolios, expériences et projets, offres
+	d'emploi, notes des parcours de recrutement) appartiennent aux personnes qui les ont rédigés.
+	Elles accordent à ce site uniquement la licence décrite dans les
 	<LegalDocLink doc="terms" {lang} hash="content">conditions d'utilisation</LegalDocLink>, pour les
 	héberger et les afficher tant qu'ils sont en ligne. Les noms, logos et marques des entreprises
 	cités dans les portfolios et les offres appartiennent à leurs titulaires.

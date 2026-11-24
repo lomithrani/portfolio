@@ -16,11 +16,10 @@ export {
 } from "./appointmentRequest.models";
 export {
   jobPostingRequest,
+  jobPostingCreateRequest,
   jobPostingEditRequest,
   jobStatus,
   jobStatusRequest,
-  jobApplicantRequest,
-  jobApplicantParams,
   userMode,
   jobImportRequest
 } from "./jobPostingRequest.models";
@@ -28,3 +27,15 @@ export { perfectJobRequest } from "./perfectJobRequest.models";
 export { consentRequest, acceptTermsRequest, deleteAccountRequest, loginConsentSource } from "./legalRequest.models";
 export { addressSearchRequest, officePlaceRequest } from "./addressRequest.models";
 export { feedbackRequest } from "./feedbackRequest.models";
+export { skillSearchQuery } from "./skillRequest.models";
+export {
+  discoveryConsentRequest,
+  discoveryCardRequest,
+  jobMatchingRequest,
+  matchingReviewRequest,
+  opportunitiesQuery,
+  candidateDecisionRequest,
+  recruiterDecisionRequest,
+  recruiterUndoRequest,
+  matchesQuery
+} from "./matchRequest.models";

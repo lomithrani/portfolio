@@ -565,7 +565,7 @@ test.describe('résumé import', () => {
 		await expect(dialog.getByText(/Adding \d of 3…/)).toBeVisible();
 		// The button keeps the focus while it works
 		await expect(dialog.getByRole('button', { name: 'Adding…' })).toBeFocused();
-		// A link (here the rail's "Hire") does not leave the page meanwhile
+		// A link (here the rail's "Propose a role") does not leave the page meanwhile
 		await page.evaluate(() =>
 			document.querySelector<HTMLAnchorElement>('a[href$="/hire"]')?.click()
 		);

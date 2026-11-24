@@ -30,6 +30,17 @@ body {
 	@apply h-full overflow-hidden;
 }
 
+/*
+ * The lightest success shade of these themes (wintry, the site's own pages' and a portfolio's
+ * default, mona, vintage) is the same pale yellow as their lightest warning shade: in light mode a
+ * `preset-tonal-success` (a job proposed to candidates, a score that passed, a role held now) read
+ * as a warning. A pale green of the theme's own success hue instead; dark mode, which reads it as
+ * the text of that preset, stays legible
+ */
+:root:is([data-theme='wintry'], [data-theme='mona'], [data-theme='vintage']) {
+	--color-success-50: oklch(95% 0.06 142deg);
+}
+
 /* Fields flagged invalid (aria-invalid) keep an error-coloured edge, focused or not */
 :is(.input, .select, .textarea)[aria-invalid='true'] {
 	--tw-ring-color: var(--color-error-500);

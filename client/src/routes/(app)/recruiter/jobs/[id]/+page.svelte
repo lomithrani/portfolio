@@ -1,58 +1,74 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import {
 		ArrowLeft,
-		ArrowTopRightOnSquare,
 		Briefcase,
-		Check,
+		DocumentDuplicate,
 		DocumentMagnifyingGlass,
 		ExclamationTriangle,
-		Link,
 		LockClosed,
 		PencilSquare,
 		Trash
 	} from 'svelte-heros-v2';
-	import type { JobStatus } from 'portfolio-common';
+	import {
+		JOB_LIMITS,
+		JOB_STATUS_LABELS,
+		highestPayMax,
+		isPayRangeTooWide,
+		jobTermsLocked,
+		locksJobTerms,
+		type JobStatus
+	} from 'portfolio-common';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
 	import { SIGN_IN_ID } from '#components/Login.svelte';
 	import JobDetails from '#components/jobs/JobDetails.svelte';
 	import EditorPlaceholder from '#components/job-editor/EditorPlaceholder.svelte';
 	import PageNotice from '#components/job-editor/PageNotice.svelte';
-	import AddApplicantForm from '#components/recruiter/AddApplicantForm.svelte';
-	import ApplicantList from '#components/recruiter/ApplicantList.svelte';
+	import TermsAcceptance from '#components/account/TermsAcceptance.svelte';
 	import ConfirmDialog from '#components/recruiter/ConfirmDialog.svelte';
+	import MatchingPanel from '#components/recruiter/MatchingPanel.svelte';
+	import OpenJobDialog from '#components/recruiter/OpenJobDialog.svelte';
 	import StatusControl from '#components/recruiter/StatusControl.svelte';
 	import { portfolioApi } from '#services';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { clearAuthentication, isSessionValid } from '#services/authentication.ts';
-	import { errorStatus } from '#services/apiErrors.ts';
+	import { bodyProperty, errorStatus } from '#services/apiErrors.ts';
+	import { formatAmount } from '#services/jobPosting.ts';
+	import { isConsentProblem } from '#services/account.ts';
 	import { clearJobDraft, jobDraftStorageKey } from '#services/jobDrafts.ts';
 	import { toaster } from '#services/toaster.ts';
 	import {
+		duplicateJobHref,
 		networkError,
-		applicantName,
-		deleteJobText,
 		failureText,
 		formatDay,
-		hasPublicPage,
-		isJobPostingGone,
 		isoDate,
-		removeApplicantText,
 		statusChangedText,
-		type Applicant,
 		type RecruiterJobDetail
 	} from '#services/recruiter.ts';
 	import { m as recruiterMessages } from '#services/recruiter.messages.ts';
+	import {
+		deleteMatchingDetails,
+		leavingMatchingText,
+		readJobMatching
+	} from '#services/recruiterMatching.ts';
+	import { m as matchingTexts } from '#services/recruiterMatching.messages.ts';
 	import { m } from './page.messages.ts';
 
 	// One of the recruiter's job descriptions (GET /recruiter/jobs/:id): the posting as candidates
-	// read it, its status (PUT /jobs/:id/status), its public page, its applicants (added with
-	// POST /jobs/:id/applicants, removed with DELETE /jobs/:id/applicants/:applicationId) and its
-	// deletion. Rendered in the browser only (recruiter/+layout.ts).
+	// read it, its status (PUT /jobs/:id/status, confirmed first when it opens the posting: its
+	// terms lock, OpenJobDialog; and when it takes a job put into matching out of it, filled, closed
+	// or back to draft: its pending answers dropped, its mutual interests ended), its copy (Duplicate:
+	// /recruiter/jobs/new?duplicate=<id>) and its deletion (which, for a job put into matching, says
+	// that its matches go too). It is never public: the recruiter shows it to a candidate by picking it on their
+	// Hire page, or proposes it to the candidates whose criteria it meets (matching, while the
+	// posting carries `matching`: MatchingPanel, under its status). A recruiter who has not
+	// accepted the terms in force (422 on `consent`) accepts them first (TermsAcceptance). Rendered
+	// in the browser only (recruiter/+layout.ts).
 
 	type LoadState =
 		| { kind: 'idle' }
@@ -60,6 +76,7 @@
 		| { kind: 'loaded'; key: string; userId: string; job: RecruiterJobDetail }
 		| { kind: 'not-found' }
 		| { kind: 'no-space' }
+		| { kind: 'terms' }
 		| { kind: 'error' };
 
 	const withCredentials = { fetch: { credentials: 'include' } } as const;
@@ -78,14 +95,13 @@
 	// What was asked for last (account and posting): an older answer is ignored
 	let requested: string | null = null;
 
-	let applicantsHeading: HTMLElement | undefined = $state();
-
 	async function load(userId: string, id: string) {
 		const key = `${userId}:${id}`;
 		requested = key;
 		loadState = { kind: 'loading', key };
 		deleting = null;
-		removing = null;
+		confirmingStatus = null;
+		leavingMatching = null;
 		try {
 			const { data, error } = await portfolioApi.recruiter.jobs({ id }).get(withCredentials);
 			if (requested !== key) return;
@@ -97,6 +113,9 @@
 					clearAuthentication();
 				} else if (code === 403) {
 					loadState = { kind: 'no-space' };
+				} else if (isConsentProblem(code, error?.value)) {
+					// The terms in force are not accepted: the page asks for them first
+					loadState = { kind: 'terms' };
 				} else if (code === 404 || code === 422) {
 					// 422: not a posting id at all
 					loadState = { kind: 'not-found' };
@@ -106,12 +125,6 @@
 				return;
 			}
 			loadState = { kind: 'loaded', key, userId, job: data };
-			// Opened from a card's applicant count: the list is the point
-			if (page.url.hash === '#applicants') {
-				await tick();
-				applicantsHeading?.scrollIntoView({ block: 'start' });
-				applicantsHeading?.focus({ preventScroll: true });
-			}
 		} catch {
 			if (requested === key) loadState = { kind: 'error' };
 		}
@@ -137,6 +150,7 @@
 	let job = $derived(
 		loadState.kind === 'loaded' && loadState.userId === user?._id ? loadState.job : null
 	);
+	let loadedFor = $derived(loadState.kind === 'loaded' ? loadState.userId : '');
 	const recruiterHref = resolve('/(app)/recruiter');
 
 	/** Updates the loaded posting (still the same one) */
@@ -154,10 +168,54 @@
 	// --- Status ----------------------------------------------------------------------------
 
 	let changingStatus = $state(false);
+	// The status asked for, until the recruiter confirms it opens the posting (its terms lock)
+	let confirmingStatus = $state<JobStatus | null>(null);
+	// The status asked for, until the recruiter confirms it takes the job out of matching, with
+	// what that takes from it (its pending answers, its mutual interests)
+	let leavingMatching = $state<{ status: JobStatus; text: string } | null>(null);
+
+	/**
+	 * A posting whose range was saved wider than the cap before it cannot be opened (the API answers
+	 * 422 on pay.max): the toast says so, with the way to its editor
+	 */
+	function narrowPayToOpen(id: string, payMin: number) {
+		toaster.error({
+			title: m.narrowPayToOpen.title,
+			description: m.narrowPayToOpen.text(
+				formatAmount(highestPayMax(payMin)),
+				JOB_LIMITS.pay.maxRangeRatio
+			),
+			action: {
+				label: common.edit,
+				onClick: () => goto(resolve('/(app)/recruiter/jobs/[id]/edit', { id }))
+			}
+		});
+	}
+
+	/**
+	 * The status control's choice: confirmed first when it opens a posting never opened, unless it
+	 * cannot be opened as it is (its range is wider than the cap: nothing to confirm)
+	 */
+	function chooseStatus(status: JobStatus) {
+		if (!job || changingStatus) return;
+		if (locksJobTerms(status, job) && isPayRangeTooWide(job.pay)) {
+			narrowPayToOpen(job._id, job.pay.min);
+			return;
+		}
+		if (locksJobTerms(status, job)) {
+			confirmingStatus = status;
+			return;
+		}
+		// A job put into matching, filled, closed or back to draft: what it loses is asked first
+		const leaving = leavingMatchingText(readJobMatching(job.matching), job.status, status);
+		if (leaving) leavingMatching = { status, text: leaving };
+		else changeStatus(status);
+	}
 
 	async function changeStatus(status: JobStatus) {
 		if (!job || changingStatus) return;
 		const id = job._id;
+		const payMin = job.pay.min;
 		changingStatus = true;
 		try {
 			const { data, error } = await portfolioApi
@@ -167,43 +225,23 @@
 				const code = errorStatus(error);
 				if (code === 401) sessionExpired();
 				else if (code === 404) loadState = { kind: 'not-found' };
-				else {
+				else if (code === 422 && bodyProperty(error?.value) === 'pay.max') {
+					// Its range was saved wider than the cap before it (in another tab since this page
+					// loaded): narrowed in the editor first
+					narrowPayToOpen(id, payMin);
+				} else {
 					toaster.error({
 						title: failureText(error?.value, m.statusFailed)
 					});
 				}
 				return;
 			}
-			// The answer has no applicants: they stay as listed
-			updateJob((current) => ({ ...current, ...data, applicants: current.applicants }));
+			updateJob((current) => ({ ...current, ...data }));
 			toaster.success(statusChangedText(data.status));
 		} catch {
 			toaster.error({ title: networkError() });
 		} finally {
 			changingStatus = false;
-		}
-	}
-
-	// --- Public page -----------------------------------------------------------------------
-
-	let publicUrl = $derived(
-		job ? new URL(resolve('/(app)/jobs/[id]', { id: job._id }), page.url.origin).href : ''
-	);
-	let copied = $state(false);
-	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
-	$effect(() => () => clearTimeout(copiedTimer));
-
-	async function copyLink() {
-		try {
-			await navigator.clipboard.writeText(publicUrl);
-			copied = true;
-			clearTimeout(copiedTimer);
-			copiedTimer = setTimeout(() => (copied = false), 2500);
-		} catch {
-			toaster.error({
-				title: m.publicPage.copyFailed,
-				description: m.publicPage.copyFailedDescription
-			});
 		}
 	}
 
@@ -241,85 +279,14 @@
 		}
 	}
 
-	// --- Applicants ------------------------------------------------------------------------
-
-	let removing = $state<{ applicant: Applicant; busy: boolean; error: string } | null>(null);
-	// Where the focus goes once the dialog closes after a removal: the next Remove button
-	let focusAfterRemove: HTMLElement | null = null;
-
-	function onAdded(applicant: Applicant) {
-		updateJob((current) =>
-			current.applicants.some((listed) => listed._id === applicant._id)
-				? current
-				: { ...current, applicants: [...current.applicants, applicant] }
-		);
-		toaster.success({ title: m.applicants.added(applicantName(applicant)) });
-	}
-
-	function askRemove(applicant: Applicant) {
-		focusAfterRemove = null;
-		removing = { applicant, busy: false, error: '' };
-	}
-
-	function dropApplicant(applicationId: string) {
-		const applicants = job?.applicants ?? [];
-		const index = applicants.findIndex((applicant) => applicant._id === applicationId);
-		const neighbour = applicants[index + 1] ?? applicants[index - 1];
-		focusAfterRemove = neighbour
-			? document.querySelector<HTMLElement>(`[data-remove-applicant="${neighbour._id}"]`)
-			: (applicantsHeading ?? null);
-		updateJob((current) => ({
-			...current,
-			applicants: current.applicants.filter((applicant) => applicant._id !== applicationId)
-		}));
-	}
-
-	async function confirmRemove() {
-		const current = removing;
-		if (!job || !current || current.busy) return;
-		const { applicant } = current;
-		removing = { ...current, busy: true, error: '' };
-		try {
-			const { error } = await portfolioApi
-				.jobs({ id: job._id })
-				.applicants({ applicationId: applicant._id })
-				.delete(undefined, withCredentials);
-			const code = errorStatus(error);
-			if (error && isJobPostingGone(code, error.value)) {
-				// The posting itself is gone (deleted in another tab): the page says so
-				removing = null;
-				loadState = { kind: 'not-found' };
-				return;
-			}
-			if (error && code !== 404) {
-				if (code === 401) {
-					removing = null;
-					sessionExpired();
-				} else {
-					removing = {
-						applicant,
-						busy: false,
-						error: failureText(error.value, m.applicants.removeFailed)
-					};
-				}
-				return;
-			}
-			// Another 404: the applicant was already removed (or withdrew): the same outcome
-			dropApplicant(applicant._id);
-			removing = null;
-			toaster.success({ title: m.applicants.removed(applicantName(applicant)) });
-		} catch {
-			removing = { applicant, busy: false, error: networkError() };
-		}
-	}
-
 	/** After a dialog closed on an expired session: the header's sign-in (else the default) */
 	const signedOutFocus = () => (user ? null : document.getElementById(SIGN_IN_ID));
 
 	beforeNavigate(() => {
 		// Close the dialogs before the page unmounts (their focus trap would read a destroyed page)
 		deleting = null;
-		removing = null;
+		confirmingStatus = null;
+		leavingMatching = null;
 	});
 </script>
 
@@ -345,6 +312,15 @@
 							<PencilSquare size="18" aria-hidden="true" />
 							{common.edit}
 						</a>
+						<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve()d, with a query -->
+						<a
+							href={duplicateJobHref(resolve('/(app)/recruiter/jobs/new'), job._id)}
+							class="btn preset-tonal min-h-10 max-sm:flex-1"
+						>
+							<DocumentDuplicate size="18" aria-hidden="true" />
+							{m.duplicate}
+						</a>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 						<button
 							type="button"
 							class="btn min-h-10 text-error-700-300 hover:preset-tonal-error max-sm:flex-1"
@@ -368,7 +344,7 @@
 							</span>
 							{#if job.publishedAt}
 								<span>
-									<Rich text={m.published(formatDay(job.publishedAt))}>
+									<Rich text={m.opened(formatDay(job.publishedAt))}>
 										{#snippet time(day)}
 											<time datetime={isoDate(job.publishedAt)}>{day}</time>
 										{/snippet}
@@ -376,97 +352,31 @@
 								</span>
 							{/if}
 						</p>
+						{#if jobTermsLocked(job)}
+							<p class="mt-1 flex items-start gap-1.5">
+								<LockClosed size="16" class="mt-0.5 shrink-0" aria-hidden="true" />
+								<span>{m.termsLocked}</span>
+							</p>
+						{/if}
 						<!-- Small screens: the management panel comes after the description -->
 						<a href="#manage" class="mt-2 inline-block font-medium underline lg:hidden">
-							{m.manageLink(job.applicants.length)}
+							{m.manageLink}
 						</a>
 					{/snippet}
 				</JobDetails>
 
 				<aside id="manage" class="space-y-4" aria-label={m.manage}>
-					<StatusControl status={job.status} busy={changingStatus} onChange={changeStatus} />
-
-					<section
-						class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-3 p-4"
-						aria-labelledby="public-page-title"
-					>
-						<h3 id="public-page-title" class="font-semibold">{m.publicPage.title}</h3>
-						{#if hasPublicPage(job.status)}
-							<p class="text-sm text-surface-700-300">
-								{job.status === 'open' ? m.publicPage.whenOpen : m.publicPage.whenNotOpen}
-							</p>
-							<input
-								type="text"
-								readonly
-								value={publicUrl}
-								class="input text-sm"
-								aria-label={m.publicPage.address}
-								onfocus={(event) => event.currentTarget.select()}
-							/>
-							<div class="flex flex-wrap gap-2">
-								<button
-									type="button"
-									class="btn btn-sm preset-tonal min-h-9 flex-1"
-									onclick={copyLink}
-								>
-									{#if copied}
-										<Check size="16" aria-hidden="true" />
-										{m.publicPage.copied}
-									{:else}
-										<Link size="16" aria-hidden="true" />
-										{m.publicPage.copyLink}
-									{/if}
-								</button>
-								<a
-									href={resolve('/(app)/jobs/[id]', { id: job._id })}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="btn btn-sm preset-tonal min-h-9 flex-1"
-								>
-									<ArrowTopRightOnSquare size="16" aria-hidden="true" />
-									{m.publicPage.open}<span class="sr-only">{` ${m.publicPage.openSuffix}`}</span>
-								</a>
-							</div>
-							<p class="sr-only" aria-live="polite">{copied ? m.publicPage.linkCopied : ''}</p>
-						{:else}
-							<p class="text-sm text-surface-700-300">{m.publicPage.whenDraft}</p>
-						{/if}
-					</section>
-
-					<section
-						id="applicants"
-						class="card preset-outlined-surface-200-800 bg-surface-50-950 space-y-4 p-4"
-						aria-labelledby="applicants-title"
-					>
-						<div class="flex items-center justify-between gap-2">
-							<h3
-								bind:this={applicantsHeading}
-								id="applicants-title"
-								tabindex="-1"
-								class="font-semibold outline-none"
-							>
-								{m.applicants.title}
-							</h3>
-							<span class="badge preset-tonal text-xs tabular-nums">
-								<span class="sr-only">{m.applicants.count}</span>
-								{job.applicants.length}
-							</span>
-						</div>
-						{#if job.applicants.length === 0}
-							<p class="text-sm text-surface-700-300">
-								{job.status === 'open' ? m.applicants.noneOpen : m.applicants.noneNotOpen}
-							</p>
-						{:else}
-							<ApplicantList
-								applicants={job.applicants}
-								removingId={removing?.busy ? removing.applicant._id : null}
-								onRemove={askRemove}
-							/>
-						{/if}
-						<div class="border-t border-surface-200-800 pt-4">
-							<AddApplicantForm jobId={job._id} {onAdded} />
-						</div>
-					</section>
+					<StatusControl status={job.status} busy={changingStatus} onChange={chooseStatus} />
+					<MatchingPanel
+						{job}
+						userId={loadedFor}
+						onChange={(updated) => updateJob((current) => ({ ...current, ...updated }))}
+						onReload={retry}
+						onSessionExpired={sessionExpired}
+						onTerms={() => (loadState = { kind: 'terms' })}
+						onGone={() => (loadState = { kind: 'not-found' })}
+						onNoSpace={() => (loadState = { kind: 'no-space' })}
+					/>
 				</aside>
 			</div>
 		{:else if !$sessionCheckedStore || loadState.kind === 'loading' || (user && loadState.kind === 'idle' && user.recruiter !== false)}
@@ -491,6 +401,8 @@
 							</a>
 						{/snippet}
 					</PageNotice>
+				{:else if loadState.kind === 'terms'}
+					<TermsAcceptance {user} source="recruiter" required level={2} onAccepted={retry} />
 				{:else if loadState.kind === 'not-found'}
 					<PageNotice title={m.notFound.title} icon={DocumentMagnifyingGlass}>
 						<p>{m.notFound.text}</p>
@@ -523,7 +435,8 @@
 <ConfirmDialog
 	open={!!deleting && !!job}
 	title={job ? recruiterMessages.deleteJobTitle(job.title) : ''}
-	description={job ? deleteJobText(job.applicants.length) : ''}
+	description={recruiterMessages.deleteJob}
+	details={job ? deleteMatchingDetails(job.matching) : ''}
 	confirmLabel={common.delete}
 	busy={deleting?.busy ?? false}
 	error={deleting?.error ?? ''}
@@ -533,14 +446,27 @@
 />
 
 <ConfirmDialog
-	open={!!removing && !!job}
-	title={removing ? m.applicants.removeTitle(applicantName(removing.applicant)) : ''}
-	description={removing ? removeApplicantText(removing.applicant) : ''}
-	confirmLabel={common.remove}
-	busyLabel={m.applicants.removing}
-	busy={removing?.busy ?? false}
-	error={removing?.error ?? ''}
-	onConfirm={confirmRemove}
-	onCancel={() => (removing = null)}
-	finalFocusEl={() => (focusAfterRemove?.isConnected ? focusAfterRemove : signedOutFocus())}
+	open={!!job && !!leavingMatching}
+	title={leavingMatching
+		? matchingTexts.statusDialog.title(JOB_STATUS_LABELS[leavingMatching.status])
+		: ''}
+	description={leavingMatching?.text ?? ''}
+	confirmLabel={matchingTexts.statusDialog.confirm}
+	onConfirm={() => {
+		const status = leavingMatching?.status;
+		leavingMatching = null;
+		if (status) changeStatus(status);
+	}}
+	onCancel={() => (leavingMatching = null)}
+	finalFocusEl={signedOutFocus}
+/>
+
+<OpenJobDialog
+	status={job ? confirmingStatus : null}
+	onConfirm={(status) => {
+		confirmingStatus = null;
+		changeStatus(status);
+	}}
+	onCancel={() => (confirmingStatus = null)}
+	finalFocusEl={signedOutFocus}
 />

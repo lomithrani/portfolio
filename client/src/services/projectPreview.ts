@@ -1,16 +1,21 @@
 import {
+	projectUsesSkillFamily,
+	skillDisplayName,
+	skillMonths as monthsOfSkill,
+	skillTaxonomy,
+	type SkillTaxonomy
+} from 'portfolio-common';
+import {
 	experiencePeriod,
 	formatDuration,
 	formatMonthCount,
 	formatMonthRange,
 	formatProjectMonths,
-	monthIndex,
 	projectEnd
 } from '#services/experienceDates.ts';
-import { normalizeSkill, projectMatchesFilters, skillOptions } from '#services/filters.ts';
+import { normalizeSkill } from '#services/filters.ts';
 import {
 	buildTimeline,
-	projectMonthSpan,
 	timelineAxis,
 	type MonthSpan,
 	type TimelineYear
@@ -19,7 +24,8 @@ import { m } from '#services/projectPreview.messages.ts';
 
 // The preview shown while a skill tag (or a bar of the timeline) is hovered or focused: a short
 // card with only the projects concerned, without their descriptions. On the timeline view a
-// skill's projects are drawn as a small timeline of their own (skillTimeline).
+// skill's projects are drawn as a small timeline of their own (skillTimeline). A skill that others
+// are part of ('.NET', with '.NET Core') counts and lists its family's projects, and says so.
 
 type Dated = { start?: Date | string | null; end?: Date | string | null };
 type SkillEntry = { skill?: unknown };
@@ -58,6 +64,11 @@ export type Preview = {
 	entries: PreviewEntry[];
 	/** A project's own skills, by display name */
 	skills: { hard: string[]; soft: string[] };
+	/**
+	 * Under the caption of a skill that others are part of: its projects and its time are its
+	 * family's, named the most used first ('Counts the skills that are part of it: .NET Core, WPF')
+	 */
+	family?: string;
 };
 
 /** A project of a skill's small timeline: its line of text, and where its bar goes */
@@ -94,12 +105,7 @@ const joined = (...parts: (string | undefined | null)[]) =>
 		.join(SEPARATOR);
 
 const skillNames = (entries: SkillEntry[] | null | undefined): string[] =>
-	(entries ?? []).flatMap((entry) => {
-		const skill = entry.skill;
-		if (!skill || typeof skill !== 'object' || !('displayName' in skill)) return [];
-		const name = (skill as { displayName?: unknown }).displayName;
-		return typeof name === 'string' && name.trim() ? [name.trim()] : [];
-	});
+	(entries ?? []).flatMap((entry) => skillDisplayName(entry) ?? []);
 
 const experienceContext = (experience: PreviewedExperience) =>
 	joined(experience.title, experience.company?.name);
@@ -117,51 +123,38 @@ const projectMonths = (project: PreviewedProject, experience: PreviewedExperienc
 const noSkills = () => ({ hard: [], soft: [] });
 
 /**
- * The months a skill (by key) was used in all: the calendar months of the projects using it, as
- * the timeline places them (see projectMonthSpan), each counted once however many of them ran
- * that month, up to the current month (a project planned later, or to a later end, was not used
- * yet). Projects of an experience without dates count for nothing.
+ * The months a skill (by key) was used in all, as portfolio-common's skillMonths counts them
+ * (common/models/experienceMonths.ts, shared with the API): the calendar months of the
+ * projects using it, or a skill that is part of it (projectUsesSkillFamily), as the timeline
+ * places them (see projectMonthSpan), each counted once however many of them ran that month, up
+ * to the current month (a project planned later, or to a later end, was not used yet). Projects
+ * of an experience without dates count for nothing. `taxonomy`: the one of these experiences,
+ * when the caller has it already.
  */
-export function skillMonths(
+export const skillMonths = (
 	experiences: PreviewedExperience[],
 	key: string,
-	now: Date = new Date()
-): number {
-	const filters = { skills: [normalizeSkill(key)] };
-	// The month after the current one: nothing is counted from there on
-	const until = monthIndex(now) + 1;
-	const spans: MonthSpan[] = [];
-	for (const experience of experiences) {
-		for (const project of experience.projects ?? []) {
-			if (!projectMatchesFilters(project, filters)) continue;
-			const span = projectMonthSpan(project, experience, now);
-			if (span && span.start < until) {
-				spans.push({ start: span.start, end: Math.min(span.end, until) });
-			}
-		}
-	}
-	spans.sort((a, b) => a.start - b.start);
-	let months = 0;
-	let counted = -Infinity;
-	for (const span of spans) {
-		const from = Math.max(span.start, counted);
-		if (span.end > from) months += span.end - from;
-		counted = Math.max(counted, span.end);
-	}
-	return months;
-}
+	now: Date = new Date(),
+	taxonomy: SkillTaxonomy = skillTaxonomy(experiences)
+): number =>
+	monthsOfSkill(experiences, (project) => projectUsesSkillFamily(project, key, taxonomy), now);
 
-/** The projects using a skill (by key, see normalizeSkill), in the experiences' order */
+/**
+ * The projects using a skill (by key, see normalizeSkill) or a skill that is part of it, in the
+ * experiences' order: those skillMonths counts the months of (projectUsesSkillFamily). `family`
+ * says so, naming the skills that are part of it, when it has some.
+ */
 export function skillPreview(
 	experiences: PreviewedExperience[],
 	key: string,
-	now: Date = new Date()
+	now: Date = new Date(),
+	taxonomy: SkillTaxonomy = skillTaxonomy(experiences)
 ): Preview | undefined {
 	const skill = normalizeSkill(key);
 	const entries: PreviewEntry[] = [];
 	for (const experience of experiences) {
 		for (const project of experience.projects ?? []) {
-			if (!projectMatchesFilters(project, { skills: [skill] })) continue;
+			if (!projectUsesSkillFamily(project, skill, taxonomy)) continue;
 			entries.push({
 				name: project.name?.trim() ?? '',
 				context: experienceContext(experience),
@@ -170,16 +163,24 @@ export function skillPreview(
 		}
 	}
 	if (entries.length === 0) return undefined;
-	const options = skillOptions(experiences);
-	const label = [...options.hard, ...options.soft].find((option) => option.key === skill)?.label;
-	const time = formatMonthCount(skillMonths(experiences, skill, now));
+	const node = taxonomy.get(skill);
+	// The most used first, as the filters list them
+	const family = (node?.childKeys ?? [])
+		.map((child) => ({
+			label: taxonomy.get(child)?.label ?? child,
+			months: skillMonths(experiences, child, now, taxonomy)
+		}))
+		.sort((a, b) => b.months - a.months)
+		.map((child) => child.label);
+	const time = formatMonthCount(skillMonths(experiences, skill, now, taxonomy));
 	return {
 		kind: 'skill',
-		title: label ?? key,
+		title: node?.label || key,
 		caption: m.usedIn(entries.length, time),
 		period: '',
 		entries,
-		skills: noSkills()
+		skills: noSkills(),
+		...(family.length > 0 ? { family: m.countsFamily(family) } : {})
 	};
 }
 
@@ -189,18 +190,19 @@ const PREVIEW_YEAR_LABELS = 5;
 /**
  * The projects using a skill (by key) as a small timeline, for the timeline view: placed as the
  * page's timeline places them (see buildTimeline), each on a line of its own. Undefined when none
- * of them can be placed (the list of skillPreview is all there is to show).
+ * of them can be placed (the list of skillPreview is all there is to show). As skillPreview, a
+ * skill that others are part of draws its family's projects.
  */
 export function skillTimeline(
 	experiences: PreviewedExperience[],
 	key: string,
-	now: Date = new Date()
+	now: Date = new Date(),
+	taxonomy: SkillTaxonomy = skillTaxonomy(experiences)
 ): PreviewTimeline | undefined {
-	const filters = { skills: [normalizeSkill(key)] };
 	const timeline = buildTimeline(experiences, now);
 	const bars: PreviewBar[] = timeline.items.flatMap((item) =>
 		item.projects
-			.filter((entry) => projectMatchesFilters(entry.project, filters))
+			.filter((entry) => projectUsesSkillFamily(entry.project, key, taxonomy))
 			.map((entry) => ({
 				name: entry.project.name?.trim() ?? '',
 				context: experienceContext(item.experience),
@@ -214,7 +216,7 @@ export function skillTimeline(
 	bars.sort((a, b) => a.span.start - b.span.start || a.span.end - b.span.end);
 	const undated: PreviewEntry[] = timeline.undated.flatMap((experience) =>
 		(experience.projects ?? [])
-			.filter((project) => projectMatchesFilters(project, filters))
+			.filter((project) => projectUsesSkillFamily(project, key, taxonomy))
 			.map((project) => ({
 				name: project.name?.trim() ?? '',
 				context: experienceContext(experience),
@@ -278,13 +280,14 @@ export function experiencePreview(
 export function resolvePreview(
 	experiences: PreviewedExperience[],
 	target: string,
-	now: Date = new Date()
+	now: Date = new Date(),
+	taxonomy?: SkillTaxonomy
 ): Preview | undefined {
 	const separator = target.indexOf(':');
 	if (separator === -1) return undefined;
 	const kind = target.slice(0, separator);
 	const rest = target.slice(separator + 1);
-	if (kind === 'skill') return skillPreview(experiences, rest, now);
+	if (kind === 'skill') return skillPreview(experiences, rest, now, taxonomy);
 	const byId = (id: string) => experiences.find((experience) => String(experience._id) === id);
 	if (kind === 'experience') {
 		const experience = byId(rest);

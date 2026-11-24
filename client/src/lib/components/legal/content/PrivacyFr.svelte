@@ -35,6 +35,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	import LegalDocLink from '../LegalDocLink.svelte';
 	import PublisherDetails from '../PublisherDetails.svelte';
 	import {
+		CLOUDFLARE_LOG_RETENTION,
 		LOG_RETENTION,
 		SITE_NAME,
 		legalLastUpdated,
@@ -53,6 +54,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 	const lang = 'fr';
 	const logRetention = LOG_RETENTION.fr;
+	const cloudflareLogRetention = CLOUDFLARE_LOG_RETENTION.fr;
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- the links left are external sites, mailto: and in-page anchors (facts.ts); the site's pages go through resolve() (LegalDocLink) -->
@@ -64,13 +66,21 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			adresse e-mail. Le nom et la photo de votre compte Google ne sont pas conservés.
 		</li>
 		<li>
-			Ce que vous mettez dans votre portfolio est public : c'est le principe du site. Ne publiez pas
-			ce que vous souhaitez garder privé.
+			Ce que vous mettez dans votre portfolio est public : toute personne qui a son adresse peut le
+			lire, c'est le principe du site. Nous demandons aux moteurs de recherche de ne pas le
+			référencer. Ne publiez pas ce que vous souhaitez garder privé.
 		</li>
 		<li>
 			Si vous importez un CV, le PDF est envoyé à Anthropic (États-Unis) pour rédiger vos
 			expériences. Nous ne conservons pas le PDF, et rien n'est publié tant que vous ne l'ajoutez
 			pas vous-même.
+		</li>
+		<li>
+			Les noms des compétences que vous saisissez sont conservés dans un catalogue partagé par tout
+			le site, sans indication de qui les a saisis. Lorsque ce site l'active, Claude d'Anthropic
+			(États-Unis) classe ces noms, et rien d'autre, en arrière-plan ; un nom reconnu comme une
+			compétence peut ensuite être suggéré aux autres personnes connectées qui saisissent une
+			compétence.
 		</li>
 		<li>
 			Les avis que vous nous donnez sont publiés sous forme de ticket public sur GitHub, sans votre
@@ -114,19 +124,66 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <h4 id="data-portfolio">Votre portfolio (public)</h4>
 <p>
 	Lorsque vous créez un portfolio, son adresse (par exemple <code>{page.url.host}/jane.doe</code>)
-	et tout ce que vous y ajoutez sont <strong>publics</strong> : tout le monde peut les lire et les moteurs
-	de recherche peuvent les indexer. Cela comprend le titre et le sous-titre de l'en-tête (généralement
-	votre nom), le thème, vos expériences avec leurs entreprises, lieux, dates et descriptions, vos projets
-	et compétences, votre parcours de recrutement et ses notes, et la partie publique de vos agendas de
-	rendez-vous (titre, description, fuseau horaire, lieu du rendez-vous et créneaux disponibles). Les données
-	publiques d'un portfolio contiennent aussi un identifiant interne aléatoire du compte de son propriétaire,
-	jamais son adresse e-mail.
+	et tout ce que vous y ajoutez sont <strong>publics</strong> : toute personne qui a l'adresse peut les
+	lire. Cela comprend le titre et le sous-titre de l'en-tête (généralement votre nom), le thème, vos expériences
+	avec leurs entreprises, lieux, dates et descriptions, vos projets et compétences, votre parcours de
+	recrutement et ses notes, et la partie publique de vos agendas de rendez-vous (titre, description, fuseau
+	horaire, lieu du rendez-vous et créneaux disponibles). Les données publiques d'un portfolio contiennent
+	aussi un identifiant interne aléatoire du compte de son propriétaire, jamais son adresse e-mail.
+</p>
+<p>
+	Nous demandons aux moteurs de recherche de ne pas référencer les portfolios : chaque page d'un
+	portfolio, et chaque réponse de l'API du site, porte une demande <code>noindex</code>, que
+	respectent les principaux moteurs de recherche, comme Google et Bing. Une page qu'ils avaient déjà
+	référencée sort de leurs résultats lorsqu'ils la consultent à nouveau, ce qui peut prendre
+	quelques semaines. C'est une demande, pas un verrou : un service peut l'ignorer, et toute personne
+	qui a l'adresse de votre portfolio, ou à qui on la donne, peut toujours l'ouvrir. Les sites où
+	vous partagez l'adresse, comme LinkedIn, lisent la page pour en afficher un aperçu.
 </p>
 <p>
 	Les descriptions des expériences et des projets peuvent afficher des images hébergées sur d'autres
 	sites, choisies par le propriétaire du portfolio. Le navigateur des visiteurs les charge depuis
 	ces sites, qui reçoivent alors l'adresse IP du visiteur et des informations sur son navigateur,
 	selon leurs propres règles. Nous ne choisissons ni ne contrôlons ces images.
+</p>
+
+<h4 id="data-skills">Noms de compétences et catalogue partagé</h4>
+<p>
+	Les compétences que vous ajoutez à un projet sont publiques, comme le reste de votre portfolio.
+	Leurs <strong>noms</strong> sont aussi conservés dans un catalogue partagé par tout le site : une entrée
+	par nom saisi, sans votre compte, votre portfolio ni vos expériences. C'est ce qui permet à une page
+	de regrouper les compétences, de compter le temps passé sur chacune, et d'en suggérer pendant la saisie.
+</p>
+<p>
+	Lorsque ce site l'active, les noms qui ne sont pas encore classés sont envoyés au modèle Claude
+	d'Anthropic (États-Unis), en arrière-plan et non pendant votre saisie : les noms et rien d'autre,
+	accompagnés de noms que le catalogue contient déjà, jamais un compte, un portfolio ni une
+	expérience. Claude indique si un nom désigne bien une compétence et, dans ce cas, sa catégorie, la
+	compétence dont elle fait partie (« .NET Core » fait partie de « .NET ») et celle dont ce nom est
+	un autre nom (« K8s » pour « Kubernetes »). Un nom qui ne peut pas être une compétence, comme un
+	lien, une adresse e-mail, un numéro de téléphone ou une phrase entière, n'est jamais envoyé. Sur
+	votre portfolio, vos compétences sont alors regroupées par catégorie, une compétence compte le
+	temps de celles qui en font partie, et un autre nom s'affiche sous le nom habituel de la
+	compétence. Les majuscules et les espaces d'un nom peuvent être corrigés (« c# » devient « C# »),
+	de même qu'une lettre saisie sous une forme particulière (pleine chasse, cerclée), remplacée par
+	la lettre ordinaire ; pour le reste, vos expériences gardent le nom que vous avez saisi, si bien
+	qu'un classement erroné peut être annulé : écrivez à
+	<ContactEmail {publisher} {lang} /> pour en faire corriger un.
+</p>
+<p>
+	Une fois reconnu comme une compétence, par Claude ou par nous, un nom peut être suggéré aux autres
+	personnes connectées pendant qu'elles saisissent une compétence dans leur propre portfolio, sans
+	jamais dire qui l'a saisi. Un nom qui n'est pas reconnu n'est suggéré à personne : il reste, tel
+	que saisi, sur le portfolio de ceux qui l'ont saisi. Pendant que vous saisissez une compétence, le
+	texte déjà tapé est envoyé à notre serveur pour trouver des suggestions. Il n'est pas conservé :
+	il n'est ni enregistré dans notre base de données ni écrit dans le journal de nos serveurs. Nous
+	comptons seulement ces recherches, ainsi que les nouveaux noms de compétences que vous ajoutez
+	chaque jour (au-delà de 200 par jour, ils restent sur votre portfolio tels que saisis et ne sont
+	pas envoyés au classement dans l'immédiat), avec des compteurs identifiés par une empreinte de
+	l'identifiant de votre compte. Comme un nom de compétence peut être suggéré à d'autres et reste
+	dans le catalogue (voir
+	<a class="link-text" href="#retention">durées de conservation</a>), ne saisissez rien de personnel
+	comme compétence.
 </p>
 
 <h4 id="data-resume">Import de CV (facultatif)</h4>
@@ -148,24 +205,19 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <h4 id="data-recruiter">Espace recruteur et offres d'emploi</h4>
 <p>
 	Les recruteurs rédigent des offres d'emploi : intitulé, entreprise, lieu, mode de travail,
-	contrat, temps de travail, rémunération, prérequis, avantages et description. Une fois publiée,
-	une offre est publique, mais elle ne nomme jamais le compte du recruteur. Une offre peut aussi
-	être importée depuis un PDF : il est envoyé à Anthropic comme un CV, et nous ne le conservons pas.
-	Lorsque ce site calcule des temps de trajet (voir <a class="link-text" href="#data-perfect-job"
-		>poste idéal</a
-	>), l'adresse du lieu de travail d'une offre (rue, code postal et ville) est transmise à la
-	Géoplateforme de l'IGN, le service cartographique qui la localise : pendant sa saisie dans
-	l'éditeur d'offre, lorsque ses champs sont quittés, et lorsque l'offre est notée dans un parcours
-	de recrutement comportant un critère de trajet, même pour un brouillon jamais publié.
-</p>
-
-<h4 id="data-applications">Candidatures</h4>
-<p>
-	Lorsque vous postulez à une offre avec votre portfolio, le recruteur qui l'a publiée voit votre
-	candidature avec l'adresse et le titre de l'en-tête de votre portfolio. Un recruteur peut aussi
-	ajouter un portfolio public à la liste des candidats de l'une de ses offres ; le propriétaire de
-	ce portfolio peut alors figurer dans la liste du recruteur. Vous pouvez retirer une candidature,
-	et le recruteur peut la retirer de sa liste ; elle est supprimée avec l'offre.
+	contrat, temps de travail, rémunération, prérequis, avantages et description. Une offre n'est pas
+	publique : le site ne publie ni ne liste aucune offre. Son recruteur la conserve dans son espace
+	recruteur, et la présente au propriétaire d'un portfolio en la choisissant dans le <a
+		class="link-text"
+		href="#data-journey">parcours de recrutement</a
+	>
+	de celui-ci. Une offre peut aussi être importée depuis un PDF : il est envoyé à Anthropic comme un CV,
+	et nous ne le conservons pas. Lorsque ce site calcule des temps de trajet (voir
+	<a class="link-text" href="#data-perfect-job">poste idéal</a>), l'adresse du lieu de travail d'une
+	offre (rue, code postal et ville) est transmise à la Géoplateforme de l'IGN, le service
+	cartographique qui la localise : pendant sa saisie dans l'éditeur d'offre (brouillons compris),
+	lorsque ses champs sont quittés, et lorsque l'offre est notée dans un parcours de recrutement
+	comportant un critère de trajet.
 </p>
 
 <h4 id="data-journey">Parcours de recrutement et rendez-vous</h4>
@@ -173,7 +225,12 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Le propriétaire d'un portfolio peut demander aux visiteurs de suivre des étapes avant de réserver
 	un rendez-vous (lire une note, choisir l'une de leurs offres d'emploi, puis réserver). Pour un
 	visiteur connecté, nous enregistrons sa progression dans chaque parcours : les étapes terminées et
-	leur date, l'offre choisie, et la date de réservation d'un rendez-vous.
+	leur date, l'offre choisie, et la date de réservation d'un rendez-vous. L'offre choisie est
+	conservée telle qu'elle était quand le recruteur l'a partagée : c'est cette version que lit le
+	propriétaire du portfolio et, si son parcours note les offres, celle qui est notée. Une
+	modification ultérieure de l'offre ne change ni l'une ni l'autre tant que le recruteur ne l'a pas
+	partagée à nouveau dans ce parcours. Elle est conservée avec la progression (voir
+	<a class="link-text" href="#retention">durées de conservation</a>).
 </p>
 <p>
 	Pour réserver un rendez-vous, vous indiquez votre <strong>nom</strong>, votre
@@ -182,12 +239,16 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	avec vous comme invité et vous envoie l'invitation par e-mail. Le propriétaire du portfolio est aussi
 	invité, avec l'adresse e-mail de son compte, pour recevoir l'invitation lui aussi : chacun de vous voit
 	l'adresse de l'autre dans l'invitation. L'invitation contient aussi les éléments des étapes précédentes
-	(par exemple l'intitulé, l'entreprise et le lien de l'offre choisie). Nous ne gardons qu'une réservation
-	du créneau (l'horaire, l'agenda, l'identifiant de l'événement, son lien Google Meet et une empreinte
-	de votre adresse e-mail calculée avec une clé secrète) et, si vous réservez en étant connecté, votre
-	compte, pour que le rendez-vous figure parmi vos prochains rendez-vous dans votre espace recruteur,
-	avec son lien pour le rejoindre. Elle est supprimée automatiquement à la fin du créneau ou à l'annulation
-	du rendez-vous.
+	(par exemple l'intitulé, l'entreprise et le lien de l'offre choisie). Ce lien ouvre une page privée
+	de ce site : seuls le recruteur et les propriétaires de portfolio dans le parcours desquels le recruteur
+	a choisi cette offre peuvent l'ouvrir, une fois connectés (chaque propriétaire y lit la version partagée
+	dans son parcours), chaque propriétaire seulement tant qu'il s'agit de la dernière offre choisie par
+	le recruteur dans son parcours et qu'elle n'est pas un brouillon ; toute autre personne à qui l'invitation
+	parvient lit qu'elle n'est pas partagée avec elle. Nous ne gardons qu'une réservation du créneau (l'horaire,
+	l'agenda, l'identifiant de l'événement, son lien Google Meet et une empreinte de votre adresse e-mail
+	calculée avec une clé secrète) et, si vous réservez en étant connecté, votre compte, pour que le rendez-vous
+	figure parmi vos prochains rendez-vous dans votre espace recruteur, avec son lien pour le rejoindre.
+	Elle est supprimée automatiquement à la fin du créneau ou à l'annulation du rendez-vous.
 </p>
 
 <h4 id="data-perfect-job">Votre poste idéal (privé)</h4>
@@ -273,7 +334,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	et, lorsque la supervision est activée, notre prestataire de supervision reçoit des traces des
 	requêtes, qui comprennent l'adresse IP, l'agent utilisateur du navigateur, l'adresse de la page
 	sans ses paramètres et les en-têtes de la requête (les cookies, les en-têtes d'autorisation, les
-	paramètres d'adresse et le corps des requêtes sont retirés avant l'envoi).
+	paramètres d'adresse et le corps des requêtes sont retirés avant l'envoi). Les requêtes vers les
+	pages du site, mais pas celles vers son API, passent d'abord par Cloudflare, qui voit donc aussi
+	votre adresse IP (voir <a class="link-text" href="#recipients">qui reçoit vos données</a>).
 </p>
 
 <h4 id="data-device">Sur votre appareil</h4>
@@ -316,7 +379,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				<td>Contrat, art. 6(1)(b)</td>
 			</tr>
 			<tr>
-				<td>Espace recruteur, pages publiques des offres et candidatures</td>
+				<td>Espace recruteur et ses offres d'emploi</td>
 				<td>Contrat, art. 6(1)(b)</td>
 			</tr>
 			<tr>
@@ -342,6 +405,18 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				<td>
 					Contrat, art. 6(1)(b), pour leur dépôt à votre demande ; intérêt légitime, art. 6(1)(f),
 					pour leur tri : traiter rapidement les avis
+				</td>
+			</tr>
+			<tr>
+				<td>
+					Tenir le catalogue de compétences : classer les noms des compétences saisies (lorsque ce
+					site l'active, par un modèle d'IA) et suggérer ceux qui sont reconnus aux personnes qui
+					saisissent une compétence
+				</td>
+				<td>
+					Intérêt légitime, art. 6(1)(f) : présenter les compétences de façon cohérente et en
+					faciliter la saisie. Seuls les noms sont utilisés, jamais l'identité de qui les a saisis ;
+					vous pouvez vous y opposer (voir <a class="link-text" href="#rights">vos droits</a>)
 				</td>
 			</tr>
 			<tr>
@@ -383,22 +458,27 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <h3 id="recipients">Qui reçoit vos données</h3>
 <ul>
 	<li>
-		<strong>Le public</strong> : le contenu des portfolios, les offres d'emploi publiées (sans l'identité
-		du recruteur), les notes des parcours et la partie publique des agendas de rendez-vous ; sur GitHub,
-		les suggestions d'étapes et les avis que vous envoyez (sans votre nom).
+		<strong>Le public</strong> : le contenu des portfolios, les notes des parcours et la partie publique
+		des agendas de rendez-vous ; sur GitHub, les suggestions d'étapes et les avis que vous envoyez (sans
+		votre nom).
 	</li>
 	<li>
-		<strong>Les recruteurs</strong> : l'adresse et le titre de l'en-tête des portfolios figurant dans
-		la liste des candidats de leurs offres.
-	</li>
-	<li>
-		<strong>Les propriétaires de portfolio</strong> : le nom, l'adresse e-mail et la note d'un visiteur
-		qui réserve un rendez-vous, avec les éléments des étapes précédentes du parcours, dans l'invitation
-		de leur agenda Google.
+		<strong>Les propriétaires de portfolio</strong> : le nom, l'adresse e-mail et la note d'un
+		visiteur qui réserve un rendez-vous, avec les éléments des étapes précédentes du parcours (comme
+		l'intitulé et l'entreprise de l'offre choisie par un recruteur), dans l'invitation de leur
+		agenda Google ; et l'offre qu'un recruteur a choisie dans leur parcours, telle qu'il l'a
+		partagée, sur sa page privée (voir
+		<a class="link-text" href="#data-journey">parcours de recrutement</a>).
 	</li>
 	<li>
 		<strong>Les visiteurs qui réservent un rendez-vous</strong> : l'adresse e-mail du compte du propriétaire
 		du portfolio, invité au même rendez-vous.
+	</li>
+	<li>
+		<strong>Les autres personnes connectées</strong> : le nom d'une compétence que vous avez saisie,
+		une fois reconnu comme une compétence, peut leur être suggéré pendant qu'elles en saisissent
+		une, sans jamais dire qui l'a saisi (voir
+		<a class="link-text" href="#data-skills">noms de compétences</a>).
 	</li>
 	<li>
 		<strong>Nos sous-traitants</strong>, qui agissent sur nos instructions :
@@ -412,8 +492,17 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				>) ;
 			</li>
 			<li>
-				Anthropic PBC (États-Unis) : lecture des PDF de CV et d'offres d'emploi que vous importez,
-				et tri des avis que vous envoyez, lorsque ce site l'active. Selon les <a
+				Cloudflare, Inc. (États-Unis) : le réseau de diffusion de contenu et le proxy par lesquels
+				passent les pages du site (l'API est jointe sans lui). Il reçoit chaque requête vers une
+				page, avec votre adresse IP et les informations de votre navigateur, ainsi que la page
+				renvoyée (<a class="link-text" href={LINKS.cloudflarePrivacy} rel="noopener noreferrer"
+					>politique de confidentialité</a
+				>) ;
+			</li>
+			<li>
+				Anthropic PBC (États-Unis) : lecture des PDF de CV et d'offres d'emploi que vous importez
+				et, lorsque ce site l'active, tri des avis que vous envoyez et classement des noms de
+				compétences du catalogue (les noms seuls). Selon les <a
 					class="link-text"
 					href={LINKS.anthropicCommercialTerms}
 					rel="noopener noreferrer">conditions commerciales</a
@@ -468,9 +557,9 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 <h3 id="transfers">Transferts hors de l'Union européenne</h3>
 <p>
-	Notre hébergeur, Anthropic, Google, GitHub et notre prestataire de supervision peuvent traiter des
-	données aux <strong>États-Unis</strong> ; la base de données y est hébergée. Ces transferts
-	reposent sur le
+	Notre hébergeur, Cloudflare, Anthropic, Google, GitHub et notre prestataire de supervision peuvent
+	traiter des données aux <strong>États-Unis</strong> ; la base de données y est hébergée. Ces
+	transferts reposent sur le
 	<a class="link-text" href={LINKS.dpf} rel="noopener noreferrer"
 		>cadre de protection des données UE-États-Unis</a
 	>
@@ -498,9 +587,18 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			<tr>
 				<td>
 					Portfolio, expériences, parcours de recrutement, poste idéal (y compris l'adresse d'où
-					vous partez), agendas de rendez-vous, offres d'emploi, candidatures
+					vous partez), agendas de rendez-vous, offres d'emploi
 				</td>
 				<td>Jusqu'à ce que vous les supprimiez, ou votre compte</td>
+			</tr>
+			<tr>
+				<td>Noms de compétences du catalogue partagé</td>
+				<td>
+					Conservés dans le catalogue, où ils ne sont rattachés à aucun compte, y compris après la
+					suppression de l'expérience ou du compte qui les a apportés : écrivez-nous pour en faire
+					retirer un. Les noms classés par Claude ne sont gardés par Anthropic que pendant une durée
+					limitée, selon ses conditions commerciales
+				</td>
 			</tr>
 			<tr>
 				<td>Temps de trajet, et position des adresses des offres d'emploi</td>
@@ -511,10 +609,14 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 				</td>
 			</tr>
 			<tr>
-				<td>Votre progression dans les parcours d'autres portfolios</td>
+				<td>
+					Votre progression dans les parcours d'autres portfolios, avec la version de l'offre que
+					vous y avez partagée
+				</td>
 				<td>
 					Jusqu'à la suppression de votre compte, ou jusqu'à ce que le propriétaire retire l'étape
-					ou supprime son compte
+					ou supprime son compte ; la version d'une offre, au plus tard jusqu'à ce que vous
+					supprimiez cette offre
 				</td>
 			</tr>
 			<tr>
@@ -550,7 +652,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			<tr>
 				<td>Compteurs de limitation et de quotas (empreintes)</td>
 				<td>
-					Supprimés automatiquement à la fin de leur période : d'une heure à 30 jours. Quand vous
+					Supprimés automatiquement à la fin de leur période : d'une minute à 30 jours. Quand vous
 					supprimez votre compte, les quotas que vous avez utilisés (imports de CV et d'offres,
 					suggestions d'étapes, avis, et imports d'offres de votre offre recruteur) sont reportés
 					sur des compteurs identifiés par une empreinte de l'identifiant de votre compte Google,
@@ -561,6 +663,10 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 			<tr>
 				<td>Journaux du serveur, journaux de l'hébergeur et traces</td>
 				<td>{logRetention}</td>
+			</tr>
+			<tr>
+				<td>Ce que Cloudflare conserve des requêtes vers les pages du site</td>
+				<td>{cloudflareLogRetention}</td>
 			</tr>
 			<tr>
 				<td>Messages que vous nous envoyez (demandes, signalements)</td>
@@ -589,18 +695,19 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	>
 	est immédiate : votre compte, votre portfolio et ses expériences, votre parcours de recrutement et la
 	progression de ses visiteurs, votre progression dans d'autres parcours, vos agendas et réservations
-	de rendez-vous, vos offres d'emploi et leurs candidatures, ainsi que vos candidatures sont aussitôt
-	retirés de notre base de données, les jetons Google Agenda sont supprimés et nous demandons à Google
-	de révoquer l'accès (vous pouvez le vérifier dans les
+	de rendez-vous, ainsi que vos offres d'emploi sont aussitôt retirés de notre base de données, les jetons
+	Google Agenda sont supprimés et nous demandons à Google de révoquer l'accès (vous pouvez le vérifier
+	dans les
 	<a class="link-text" href={LINKS.googlePermissions} rel="noopener noreferrer"
 		>autorisations de votre compte Google</a
 	>), et l'adresse de votre portfolio redevient disponible. Ce qui reste : les noms de compétences
-	du catalogue partagé (ils ne sont liés à personne), les suggestions d'étapes et les avis déjà
-	publiés sur GitHub (écrivez-nous pour en faire retirer un), les créneaux que vous avez réservés
-	comme invité d'autres portfolios (jusqu'à la fin du créneau, sans lien avec votre compte), les
-	compteurs contre les abus et de quotas (empreintes, supprimées à la fin de leur période, 30 jours
-	au plus ; les quotas utilisés sont reportés sur une empreinte de l'identifiant de votre compte
-	Google, comme indiqué ci-dessus), et les journaux jusqu'à leur expiration.
+	du catalogue partagé (ils ne sont liés à personne ; écrivez-nous pour en faire retirer un), les
+	suggestions d'étapes et les avis déjà publiés sur GitHub (écrivez-nous pour en faire retirer un),
+	les créneaux que vous avez réservés comme invité d'autres portfolios (jusqu'à la fin du créneau,
+	sans lien avec votre compte), les compteurs contre les abus et de quotas (empreintes, supprimées à
+	la fin de leur période, 30 jours au plus ; les quotas utilisés sont reportés sur une empreinte de
+	l'identifiant de votre compte Google, comme indiqué ci-dessus), et les journaux jusqu'à leur
+	expiration.
 </p>
 
 <h3 id="rights">Vos droits</h3>
@@ -608,14 +715,16 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 <ul>
 	<li><strong>accéder</strong> à vos données et en obtenir une copie ;</li>
 	<li>
-		les <strong>rectifier</strong> : vous modifiez vous-même votre portfolio et vos offres ; votre adresse
-		e-mail est celle de votre compte Google ;
+		les <strong>rectifier</strong> : vous modifiez vous-même votre portfolio et vos offres (une fois une
+		offre ouverte, sa rémunération et ses conditions ne peuvent plus être modifiées : supprimez-la, ou
+		écrivez-nous) ; votre adresse e-mail est celle de votre compte Google ;
 	</li>
 	<li>
 		les <strong>effacer</strong> : supprimez vous-même votre compte depuis
 		<a class="link-text" href={resolve('/(site)/account')}>la page de votre compte</a>, ou
-		demandez-le-nous ; les suggestions d'étapes et les avis publiés sur GitHub ne sont pas retirés
-		avec votre compte : demandez-le-nous pour ceux-là ;
+		demandez-le-nous ; les suggestions d'étapes et les avis publiés sur GitHub, ainsi que les noms
+		de compétences conservés dans le catalogue partagé, ne sont pas retirés avec votre compte :
+		demandez-le-nous pour ceux-là ;
 	</li>
 	<li>en <strong>limiter</strong> le traitement ;</li>
 	<li>
@@ -642,8 +751,8 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 
 <h3 id="required">Ce que vous devez fournir</h3>
 <p>
-	Un compte Google est nécessaire pour vous connecter : sans lui, vous pouvez lire les portfolios et
-	les offres d'emploi, mais pas créer de portfolio, postuler ni publier. La réservation d'un
+	Un compte Google est nécessaire pour vous connecter : sans lui, vous pouvez lire un portfolio dont
+	vous avez l'adresse, mais pas en créer un ni rédiger d'offre d'emploi. La réservation d'un
 	rendez-vous nécessite votre nom et votre adresse e-mail, dont le propriétaire du portfolio a
 	besoin pour vous rencontrer. Tout le reste, y compris l'import de CV, est facultatif.
 </p>
@@ -654,7 +763,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	brouillons peuvent être incomplets ou erronés : vous les relisez et les modifiez, et rien n'est
 	publié tant que vous ne l'ajoutez pas. Aucune décision produisant des effets juridiques ou vous
 	affectant de manière significative n'est prise par des moyens automatisés : le site ne note, ne
-	classe ni ne filtre les candidats, et les recruteurs voient les candidatures telles qu'elles sont.
+	classe ni ne filtre les candidats.
 </p>
 <p>
 	Lorsque ce site l'active, Claude trie aussi les avis que vous envoyez (bug, demande de
@@ -663,20 +772,33 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	classent : rien qui vous concerne.
 </p>
 <p>
+	Lorsque ce site l'active, Claude classe aussi les noms des compétences saisies : si un nom désigne
+	bien une compétence, sa catégorie, la compétence dont elle fait partie et ses autres noms. Il
+	travaille sur les noms seuls, en arrière-plan, et peut se tromper. Son classement change la façon
+	dont les compétences sont regroupées et nommées sur les portfolios, le vôtre compris, et les noms
+	suggérés aux personnes qui saisissent une compétence. Il ne sert ni à évaluer, ni à classer, ni à
+	filtrer qui que ce soit, et aucune décision vous concernant ne repose sur lui. Écrivez-nous pour
+	faire corriger un classement.
+</p>
+<p>
 	Un parcours de recrutement peut noter l'offre choisie par un recruteur au regard du poste idéal du
 	propriétaire, et n'ouvrir ses étapes suivantes qu'à partir d'un minimum fixé par celui-ci. La note
 	est calculée selon des règles fixes, et non par un modèle d'IA, et elle porte sur l'offre, non sur
-	une personne : le recruteur peut la compléter, en choisir une autre, ou joindre le propriétaire
-	autrement.
+	une personne : le recruteur peut en rédiger une autre qui en précise davantage (une fois l'offre
+	ouverte, ce que la note prend en compte est verrouillé : une nouvelle version est une nouvelle
+	offre), en choisir une autre, ou joindre le propriétaire autrement.
 </p>
 
 <h3 id="children">Mineurs</h3>
 <p>
 	Le site ne s'adresse pas aux personnes de moins de {MINIMUM_AGE} ans ou n'ayant pas atteint l'âge légal
 	minimum pour travailler dans leur pays. Le confirmer est exigé lors de l'inscription depuis la page
-	d'accueil ou de la création d'un portfolio, et utiliser un compte signifie que vous remplissez ces conditions.
-	Si nous apprenons qu'un compte appartient à une personne plus jeune, nous le supprimons. Les parents
-	et tuteurs peuvent nous écrire à <ContactEmail {publisher} {lang} /> pour en demander la suppression.
+	d'accueil, de la création d'un portfolio ou de l'ouverture de l'espace recruteur, et utiliser un compte
+	signifie que vous remplissez ces conditions. Si nous apprenons qu'un compte appartient à une personne
+	plus jeune, nous le supprimons. Les parents et tuteurs peuvent nous écrire à <ContactEmail
+		{publisher}
+		{lang}
+	/> pour en demander la suppression.
 </p>
 
 <h3 id="security">Sécurité</h3>
@@ -780,6 +902,7 @@ CalOPPA (Do Not Track, suivi par des tiers), politique de Google sur les donnée
 	Lorsque nous modifions cette politique de manière importante, nous mettons à jour sa date et sa
 	version, vous en informons sur le site ou par e-mail avant que la modification ne s'applique, et
 	vous demandons d'accepter les nouvelles conditions lors de votre prochaine inscription ou création
-	d'un portfolio, ou depuis la page de votre compte. Cette version s'applique depuis le
+	d'un portfolio, avant d'utiliser de nouveau l'espace recruteur, ou depuis la page de votre compte.
+	Cette version s'applique depuis le
 	{legalLastUpdated(lang)}.
 </p>

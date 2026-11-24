@@ -3,8 +3,8 @@ import { defineMessages, plural } from 'portfolio-common';
 export const m = defineMessages({
 	/** The page's <title> and description, with the name the portfolio is headed with */
 	title: {
-		en: (owner: string) => `${owner} | Resume`,
-		fr: (owner: string) => `${owner} | CV`
+		en: (owner: string) => `${owner} | Experiences`,
+		fr: (owner: string) => `${owner} | Expériences`
 	},
 	description: {
 		en: (owner: string) =>
@@ -12,10 +12,24 @@ export const m = defineMessages({
 		fr: (owner: string) =>
 			`${owner} : expériences professionnelles, projets personnels, formations et cours.`
 	},
-	/** The floating corner's link to the Hire page: one line next to the view switch at 390 px */
-	hireMe: { en: 'Hire me', fr: 'Me recruter' },
+	/**
+	 * The floating corner's link to the page for recruiters (/hire): one line next to the view
+	 * switch at 390 px. Neutral: having a portfolio says nothing about looking for a job
+	 */
+	proposeRole: { en: 'Propose a role', fr: 'Proposer un poste' },
 	/** The owner's heading above their buttons */
 	heading: { en: 'Experiences', fr: 'Expériences' },
+	/**
+	 * The owner's link to the admin's "Get started" while its checklist is not complete, with how
+	 * far it is. The passage marked `count` stays on one line: a phone breaks the line before it,
+	 * never inside it
+	 */
+	setup: {
+		en: (done: number, total: number) =>
+			`Get ready to share your link <count>(${done} of ${total})</count>`,
+		fr: (done: number, total: number) =>
+			`Préparez-vous à partager votre lien <count>(${done} sur ${total})</count>`
+	},
 	/**
 	 * The owner's "Add experience" button. In the floating corner it is short to fit the row: the
 	 * passage marked `hidden` is only read by screen readers (the button's name stays "Add
@@ -37,17 +51,19 @@ export const m = defineMessages({
 		},
 		add: { en: 'Add your first experience', fr: 'Ajouter votre première expérience' }
 	},
-	/** A visitor's page of a portfolio without experiences */
+	/**
+	 * A visitor's page of a portfolio without experiences (no floating corner there): its button
+	 * leads to the page for recruiters, with the corner's neutral words (`proposeRole`)
+	 */
 	emptyVisitor: {
 		title: {
 			en: 'No experiences have been published yet.',
 			fr: "Aucune expérience n'a encore été publiée."
 		},
 		text: {
-			en: 'This portfolio is still being written. Have a project in mind? Let’s talk.',
-			fr: 'Ce portfolio est en cours de rédaction. Un projet en tête ? Parlons-en.'
-		},
-		contact: { en: 'Get in touch', fr: 'Prendre contact' }
+			en: 'This portfolio is still being written. You can already propose a role.',
+			fr: 'Ce portfolio est en cours de rédaction. Vous pouvez déjà proposer un poste.'
+		}
 	},
 	/** The list when the filters keep nothing */
 	noMatch: {

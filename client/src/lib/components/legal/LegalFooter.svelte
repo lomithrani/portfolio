@@ -1,9 +1,10 @@
 <!--
 @component
 The footer of the site's own pages (the landing page, the legal pages, the account page): the site's
-links (the job board, the recruiter space: these pages have no other way there for a visitor who is
-not signed in; "Send feedback" for a signed-in account), the language switch and the light/dark switch, then the links to the legal notice,
-the privacy policy, the terms of use and the cookies page, and the copyright line.
+links (the recruiter space: these pages have no other way there for a visitor who is not signed in;
+"Send feedback" for a signed-in account), the language switch and the light/dark switch, then the
+links to the legal notice, the privacy policy, the terms of use and the cookies page, and the
+copyright line.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -25,9 +26,6 @@ the privacy policy, the terms of use and the cookies page, and the copyright lin
 		<div class="flex items-center justify-between gap-4">
 			<nav aria-label={m.footer.label}>
 				<ul class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-medium">
-					<li>
-						<a href={resolve('/(app)/jobs')} class={linkClass}>{m.footer.jobs}</a>
-					</li>
 					<li>
 						<a href={resolve('/(app)/recruiter')} class={linkClass}>{m.footer.recruiters}</a>
 					</li>

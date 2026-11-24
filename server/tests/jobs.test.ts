@@ -1,17 +1,18 @@
-// Job postings, their applicants and the public job pages against a real
-// MongoDB (MONGO_URL, which must be local or come from TEST_MONGO_URL). Each
-// test creates its own users (recruiters, candidates), recruiter spaces,
-// domains and postings, all named with a suffix unique to that test, and
-// removes them after: tests pass in any order (--randomize).
+// Job postings of the recruiter space against a real MongoDB (MONGO_URL,
+// which must be local or come from TEST_MONGO_URL), and the routes of the
+// job board and its applications, which are gone. Each test creates its own
+// users (recruiters, candidates), recruiter spaces, domains and postings, all
+// named with a suffix unique to that test, and removes them after: tests pass
+// in any order (--randomize).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import mongoose, { Types } from 'mongoose';
-import { JOB_LIMITS, normalizeJobPosting } from 'portfolio-common';
-import type { JobPostingInput } from 'portfolio-common';
+import { JOB_FIELD_CRITERIA, JOB_FIELD_PATHS, JOB_LIMITS, LOCKED_JOB_FIELDS, changedLockedFields, normalizeJobPosting } from 'portfolio-common';
+import type { JobFieldPath, JobPostingInput } from 'portfolio-common';
 import { env } from '../env';
 import { createApp } from '../app';
-import { Domain, JobApplication, JobPosting, User } from '../models/database';
-import { enableRecruiterSpace } from '../services/recruiters';
-import { authCookie } from './helpers';
+import { Domain, JobPosting, User } from '../models/database';
+import { JOB_TERMS_LOCKED } from '../protocol';
+import { CONSENT, authCookie, openRecruiterSpace } from './helpers';
 import { assertDisposableDatabase } from './testDatabase';
 
 /** Names unique to one test: everything it creates carries its suffix */
@@ -54,9 +55,14 @@ const richJob = (overrides: Record<string, unknown> = {}) =>
 
 let app: ReturnType<typeof createApp>;
 
-const call = async (method: string, path: string, { body, cookie }: { body?: unknown; cookie?: string } = {}) => {
+const call = async (
+  method: string,
+  path: string,
+  { body, cookie, language }: { body?: unknown; cookie?: string; language?: string } = {}
+) => {
   const headers: Record<string, string> = {};
   if (cookie) headers.Cookie = cookie;
+  if (language) headers['Accept-Language'] = language;
   const text = body === undefined ? undefined : JSON.stringify(body);
   if (text !== undefined) headers['Content-Type'] = 'application/json';
   const response = await app.fetch(new Request(`http://localhost${path}`, { method, headers, body: text }));
@@ -90,7 +96,7 @@ const createUser = async (
   const googleId = t.id(`sub-${name}`);
   const user = await User.create({ email, googleId, name: `${name}-first`, surname: `${name}-last` });
   const id = user._id.toString();
-  if (recruiter) expect(await enableRecruiterSpace(id)).toBe(true);
+  if (recruiter) expect(await openRecruiterSpace(id)).toBe(true);
   let domainName: string | undefined;
   if (domain) {
     domainName = t.id(name);
@@ -109,17 +115,11 @@ const createJob = async (recruiter: TestUser, body: Record<string, unknown> = sa
   return result.json();
 };
 
-/** POST /jobs/:id/application as `candidate`, with the JSON body the route requires */
-const apply = (jobId: string, candidate: TestUser) =>
-  call('POST', `/jobs/${jobId}/application`, { body: {}, cookie: candidate.cookie });
-
-/** Removes what a test created: its users, their domains, postings and applications */
+/** Removes what a test created: its users, their domains and postings */
 const removeTestData = async (suffix: string) => {
   const named = new RegExp(`-${suffix}(@|$)`);
   const users = (await User.find({ email: named }, '_id').lean()).map((user) => user._id);
-  const jobs = (await JobPosting.find({ recruiter: { $in: users } }, '_id').lean()).map((job) => job._id);
-  await JobApplication.deleteMany({ $or: [{ job: { $in: jobs } }, { candidate: { $in: users } }] });
-  await JobPosting.deleteMany({ _id: { $in: jobs } });
+  await JobPosting.deleteMany({ recruiter: { $in: users } });
   await Domain.deleteMany({ $or: [{ admin: { $in: users } }, { name: named }] });
   await User.deleteMany({ _id: { $in: users } });
 };
@@ -130,8 +130,7 @@ beforeAll(async () => {
   assertDisposableDatabase(env.MONGO_URL);
   await mongoose.connect(env.MONGO_URL, { serverSelectionTimeoutMS: 5000 });
   connected = true;
-  // The unique indexes the routes rely on (one application per candidate)
-  await Promise.all([User.init(), Domain.init(), JobPosting.init(), JobApplication.init()]);
+  await Promise.all([User.init(), Domain.init(), JobPosting.init()]);
 });
 
 afterAll(async () => {
@@ -158,12 +157,7 @@ describe('access', () => {
     ['POST', '/jobs', sampleJob()],
     ['PUT', job, sampleJob()],
     ['PUT', `${job}/status`, { status: 'closed' }],
-    ['DELETE', job],
-    ['POST', `${job}/applicants`, { domain: 'someone' }],
-    ['DELETE', `${job}/applicants/${UNKNOWN_ID}`],
-    ['GET', `${job}/application`],
-    ['POST', `${job}/application`],
-    ['DELETE', `${job}/application`]
+    ['DELETE', job]
   ];
 
   it.each(sessionRoutes)('%s %s requires a session (401)', async (method, path, body) => {
@@ -171,14 +165,33 @@ describe('access', () => {
     expect(result.status).toBe(401);
   });
 
-  it('serves the public pages without a session', async () => {
+  it('serves no job board, no public posting and no applications (404), signed in or not', async () => {
     const recruiter = await createRecruiter();
     const created = await createJob(recruiter);
+    const candidate = await createCandidate();
+    const id = created._id;
 
-    expect((await call('GET', '/jobs')).status).toBe(200);
-    const page = await call('GET', `/jobs/${created._id}`);
-    expect(page.status).toBe(200);
-    expect(page.json()._id).toBe(created._id);
+    const gone: [string, string, unknown?][] = [
+      ['GET', '/jobs'],
+      ['GET', `/jobs/${id}`],
+      ['GET', `/jobs/${id}/application`],
+      ['POST', `/jobs/${id}/application`, {}],
+      ['DELETE', `/jobs/${id}/application`],
+      ['POST', `/jobs/${id}/applicants`, { domain: candidate.domain }],
+      ['DELETE', `/jobs/${id}/applicants/${UNKNOWN_ID}`]
+    ];
+    for (const cookie of [undefined, candidate.cookie, recruiter.cookie]) {
+      for (const [method, path, body] of gone) {
+        const result = await call(method, path, { body, cookie });
+        expect([method, path, result.status]).toEqual([method, path, 404]);
+        // Never the posting
+        expect(result.text).not.toContain('Senior Backend Engineer');
+      }
+    }
+    // The recruiter's own read has no applicants
+    const detail = await call('GET', `/recruiter/jobs/${id}`, { cookie: recruiter.cookie });
+    expect(detail.status).toBe(200);
+    expect(detail.json()).not.toHaveProperty('applicants');
   });
 
   it('refuses the recruiter routes to an account without a recruiter space (403), creating nothing', async () => {
@@ -194,9 +207,7 @@ describe('access', () => {
       ['POST', '/jobs', sampleJob()],
       ['PUT', `/jobs/${id}`, sampleJob({ title: 'Taken over' })],
       ['PUT', `/jobs/${id}/status`, { status: 'closed' }],
-      ['DELETE', `/jobs/${id}`],
-      ['POST', `/jobs/${id}/applicants`, { domain: visitor.domain }],
-      ['DELETE', `/jobs/${id}/applicants/${UNKNOWN_ID}`]
+      ['DELETE', `/jobs/${id}`]
     ];
     for (const [method, path, body] of attempts) {
       const result = await call(method, path, { body, cookie: visitor.cookie });
@@ -207,14 +218,70 @@ describe('access', () => {
     const stored = await JobPosting.findById(id).lean();
     expect(stored?.title).toBe('Senior Backend Engineer');
     expect(stored?.status).toBe('open');
-    expect(await JobApplication.countDocuments({ job: id })).toBe(0);
+  });
+
+  it('refuses the recruiter routes to a recruiter without the terms in force (422 on consent), until accepted again', async () => {
+    const recruiter = await createRecruiter();
+    const created = await createJob(recruiter);
+    const id = created._id;
+    // Accepted before the terms in force changed
+    const older = { version: '2025-01-01', acceptedAt: new Date('2025-01-02'), ageConfirmationKey: 'age-v0', source: 'recruiter' };
+    await User.updateOne({ _id: recruiter.id }, { $set: { legalAcceptances: [older] } });
+
+    const attempts: [string, string, unknown?][] = [
+      ['GET', '/recruiter/jobs'],
+      ['GET', `/recruiter/jobs/${id}`],
+      ['POST', '/jobs', sampleJob({ title: 'Another one' })],
+      ['PUT', `/jobs/${id}`, sampleJob({ title: 'Changed' })],
+      ['PUT', `/jobs/${id}/status`, { status: 'closed' }],
+      ['DELETE', `/jobs/${id}`],
+      ['GET', '/jobs/import']
+    ];
+    for (const [method, path, body] of attempts) {
+      const result = await call(method, path, { body, cookie: recruiter.cookie });
+      expect([method, path, result.status, result.json()]).toEqual([
+        method,
+        path,
+        422,
+        {
+          type: 'validation',
+          on: 'body',
+          property: 'consent',
+          message: 'Accept the terms of use in force to use your recruiter space.'
+        }
+      ]);
+    }
+    expect(await JobPosting.countDocuments({ recruiter: recruiter.id })).toBe(1);
+    const stored = await JobPosting.findById(id).lean();
+    expect(stored?.title).toBe('Senior Backend Engineer');
+    expect(stored?.status).toBe('open');
+
+    // A space opened before recruiters accepted the terms has none at all: the same
+    await User.updateOne({ _id: recruiter.id }, { $unset: { legalAcceptances: 1 } });
+    expect((await call('GET', '/recruiter/jobs', { cookie: recruiter.cookie })).json()).toMatchObject({ property: 'consent' });
+
+    // Accepted again from the recruiter space: back in
+    const accepted = await call('PUT', '/me/consent', { body: { ...CONSENT, source: 'recruiter' }, cookie: recruiter.cookie });
+    expect(accepted.status).toBe(200);
+    const list = await call('GET', '/recruiter/jobs', { cookie: recruiter.cookie });
+    expect(list.status).toBe(200);
+    expect(list.json().jobs.map((job: { _id: string }) => job._id)).toEqual([id]);
+    const [acceptance] = (await User.findById(recruiter.id).lean())?.legalAcceptances ?? [];
+    expect(acceptance).toMatchObject({ version: CONSENT.termsVersion, source: 'recruiter' });
+  });
+
+  it('asks an account without a recruiter space to create one first (403), whatever its terms', async () => {
+    // Neither a space nor the terms: the space is what is missing first
+    const user = await createUser('nothing');
+    const result = await call('GET', '/recruiter/jobs', { cookie: user.cookie });
+    expect([result.status, result.text]).toEqual([403, 'Create your recruiter space first']);
   });
 
   it('rejects ids that are not ObjectIds (422)', async () => {
     const recruiter = await createRecruiter();
-    expect((await call('GET', '/jobs/not-an-id')).status).toBe(422);
     expect((await call('GET', '/recruiter/jobs/not-an-id', { cookie: recruiter.cookie })).status).toBe(422);
-    expect((await call('DELETE', `/jobs/${UNKNOWN_ID}/applicants/nope`, { cookie: recruiter.cookie })).status).toBe(422);
+    expect((await call('PUT', '/jobs/not-an-id/status', { body: { status: 'open' }, cookie: recruiter.cookie })).status).toBe(422);
+    expect((await call('DELETE', '/jobs/not-an-id', { cookie: recruiter.cookie })).status).toBe(422);
   });
 });
 
@@ -248,6 +315,12 @@ describe('validation', () => {
       'Maximum pay must not be below the minimum'
     ],
     [
+      'a maximum pay over 1.5 times the minimum',
+      sampleJob({ pay: { min: 40000, max: 60001, currency: 'EUR', period: 'year' } }),
+      'pay.max',
+      'Maximum pay must be at most €60,000 (1.5 times the minimum)'
+    ],
+    [
       'a start date that is not a date',
       sampleJob({ contract: { type: 'cdi', startDate: '2027-02-30' } }),
       'contract.startDate',
@@ -279,6 +352,41 @@ describe('validation', () => {
     expect(result.status).toBe(422);
     expect(result.json()).toEqual({ type: 'validation', on: 'body', property, message });
     expect(await JobPosting.countDocuments({ recruiter: recruiter.id })).toBe(0);
+  });
+
+  it('takes a pay range up to 1.5 times its bottom, and says in the visitor\'s language the most it can be', async () => {
+    const recruiter = await createRecruiter();
+    const pay = (min: number, max: number, period: 'year' | 'hour' | 'day' = 'year') => ({ min, max, currency: 'EUR' as const, period });
+
+    // Exactly 1.5 times the bottom, and a single figure
+    const created = await createJob(recruiter, sampleJob({ status: 'draft', pay: pay(40000, 60000) }));
+    expect(created.pay).toEqual(pay(40000, 60000));
+    expect((await createJob(recruiter, sampleJob({ status: 'draft', pay: pay(500, 500, 'day') }))).pay).toEqual(pay(500, 500, 'day'));
+
+    // In cents, rounded down: 1.5 times 33.33 is 49.995, so 49.99 at most; in French, as French writes it
+    const french = await call('POST', '/jobs', {
+      body: sampleJob({ pay: pay(33.33, 50, 'hour') }),
+      cookie: recruiter.cookie,
+      language: 'fr'
+    });
+    expect(french.status).toBe(422);
+    expect(french.json()).toEqual({
+      type: 'validation',
+      on: 'body',
+      property: 'pay.max',
+      message: 'Rémunération maximale\u00a0: indiquez 49,99\u00a0€ au maximum (1,5 fois la minimale)'
+    });
+    const english = await call('POST', '/jobs', { body: sampleJob({ pay: pay(33.33, 49.99, 'hour') }), cookie: recruiter.cookie });
+    expect(english.status).toBe(200);
+
+    // An edit too, leaving the posting as it was
+    const widened = await call('PUT', `/jobs/${created._id}`, {
+      body: sampleJob({ status: 'draft', pay: pay(40000, 80000) }),
+      cookie: recruiter.cookie
+    });
+    expect([widened.status, widened.json().property]).toEqual([422, 'pay.max']);
+    expect((await JobPosting.findById(created._id).lean())?.pay).toEqual(pay(40000, 60000));
+    expect(await JobPosting.countDocuments({ recruiter: recruiter.id })).toBe(3);
   });
 
   it('refuses an unknown contract type with a schema 422', async () => {
@@ -394,11 +502,15 @@ describe('normalisation', () => {
 
   it('drops the remote days when an edit makes the job on site', async () => {
     const recruiter = await createRecruiter();
-    const created = await createJob(recruiter);
+    // A draft: the work mode of a posting opened before is locked
+    const created = await createJob(recruiter, sampleJob({ status: 'draft' }));
     expect(created.location.remoteDaysPerWeek).toBe(2);
 
     const result = await call('PUT', `/jobs/${created._id}`, {
-      body: sampleJob({ location: { country: 'FR', city: 'Lyon', workMode: 'on_site', remoteDaysPerWeek: 2 } }),
+      body: sampleJob({
+        status: 'draft',
+        location: { country: 'FR', city: 'Lyon', workMode: 'on_site', remoteDaysPerWeek: 2 }
+      }),
       cookie: recruiter.cookie
     });
 
@@ -431,9 +543,9 @@ describe('postings', () => {
     // The same posting on every read
     const detail = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
     expect(detail.status).toBe(200);
-    expect(detail.json()).toEqual({ ...created, applicants: [] });
-    const page = await call('GET', `/jobs/${created._id}`);
-    expect(page.json()).toEqual(created);
+    expect(detail.json()).toEqual(created);
+    const list = await call('GET', '/recruiter/jobs', { cookie: recruiter.cookie });
+    expect(list.json()).toEqual({ jobs: [created] });
   });
 
   it('publishes a posting the first time it leaves draft, and keeps that date', async () => {
@@ -457,7 +569,7 @@ describe('postings', () => {
     expect(backToDraft.json()).toMatchObject({ status: 'draft', publishedAt });
 
     const edited = await call('PUT', `/jobs/${draft._id}`, {
-      body: sampleJob({ status: 'filled' }),
+      body: sampleJob({ status: 'filled', title: 'Still a draft' }),
       cookie: recruiter.cookie
     });
     expect(edited.json()).toMatchObject({ status: 'filled', publishedAt });
@@ -476,22 +588,22 @@ describe('postings', () => {
 
   it('replaces every field on edit: optional fields left out are removed', async () => {
     const recruiter = await createRecruiter();
-    const created = await createJob(recruiter, richJob());
+    // A draft: the terms of a posting opened before are locked (see "terms locked once opened")
+    const created = await createJob(recruiter, richJob({ status: 'draft' }));
 
     const result = await call('PUT', `/jobs/${created._id}`, {
-      body: sampleJob({ title: 'Staff Engineer', company: undefined }),
+      body: sampleJob({ status: 'draft', title: 'Staff Engineer', company: undefined }),
       cookie: recruiter.cookie
     });
 
     expect(result.status).toBe(200);
     const edited = result.json();
-    const { company: _company, ...withoutCompany } = sampleJob({ title: 'Staff Engineer' });
+    const { company: _company, ...withoutCompany } = sampleJob({ status: 'draft', title: 'Staff Engineer' });
     expect(edited).toEqual({
       ...withoutCompany,
       _id: created._id,
       createdAt: created.createdAt,
-      updatedAt: expect.stringMatching(ISO_INSTANT),
-      publishedAt: created.publishedAt
+      updatedAt: expect.stringMatching(ISO_INSTANT)
     });
     expect(new Date(edited.updatedAt).getTime()).toBeGreaterThanOrEqual(new Date(created.updatedAt).getTime());
 
@@ -560,7 +672,8 @@ describe('postings', () => {
     const opened = await call('PUT', `/jobs/${created._id}/status`, { body: { status: 'open' }, cookie: recruiter.cookie });
     expect(opened.status).toBe(200);
 
-    // The editor's stale form: its status is still draft
+    // The editor's stale form: its status is still draft. Its title is locked now that the
+    // posting was opened, but the version is what it is refused on: reloaded, the editor shows that
     const stale = await call('PUT', `/jobs/${created._id}`, {
       body: { ...sampleJob({ status: 'draft', title: 'Typo fixed' }), updatedAt: created.updatedAt },
       cookie: recruiter.cookie
@@ -568,7 +681,6 @@ describe('postings', () => {
 
     expect([stale.status, stale.text]).toEqual([409, 'This job posting was changed since you opened it']);
     expect(await JobPosting.findById(created._id).lean()).toMatchObject({ status: 'open', title: 'Senior Backend Engineer' });
-    expect((await call('GET', `/jobs/${created._id}`)).status).toBe(200);
 
     // Unchanged forms are refused too: nothing to save, but the posting is not the one the editor showed
     const unchanged = await call('PUT', `/jobs/${created._id}`, {
@@ -580,15 +692,18 @@ describe('postings', () => {
     // From the current version: saved
     const current = opened.json().updatedAt;
     const edited = await call('PUT', `/jobs/${created._id}`, {
-      body: { ...sampleJob({ status: 'open', title: 'Typo fixed' }), updatedAt: current },
+      body: { ...sampleJob({ status: 'open', description: 'Typo fixed.' }), updatedAt: current },
       cookie: recruiter.cookie
     });
     expect(edited.status).toBe(200);
-    expect(edited.json()).toMatchObject({ status: 'open', title: 'Typo fixed' });
+    expect(edited.json()).toMatchObject({ status: 'open', description: 'Typo fixed.' });
     expect(edited.json()).not.toHaveProperty('updatedAt', current);
     // Without updatedAt, the last edit wins (API clients that do not track versions)
-    const blind = await call('PUT', `/jobs/${created._id}`, { body: sampleJob({ title: 'Blind' }), cookie: recruiter.cookie });
-    expect([blind.status, blind.json().title]).toEqual([200, 'Blind']);
+    const blind = await call('PUT', `/jobs/${created._id}`, {
+      body: sampleJob({ description: 'Blind.' }),
+      cookie: recruiter.cookie
+    });
+    expect([blind.status, blind.json().description]).toEqual([200, 'Blind.']);
   });
 
   it('refuses an updatedAt that is not a date (422)', async () => {
@@ -604,31 +719,23 @@ describe('postings', () => {
     expect((await JobPosting.findById(created._id).lean())?.title).toBe('Senior Backend Engineer');
   });
 
-  it('deletes a posting with its applications', async () => {
+  it('deletes a posting', async () => {
     const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const other = await createCandidate('other');
     const created = await createJob(recruiter);
     const kept = await createJob(recruiter, sampleJob({ title: 'Kept' }));
-    expect((await apply(created._id, candidate)).status).toBe(200);
-    expect((await apply(kept._id, candidate)).status).toBe(200);
-    const added = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: other.domain }, cookie: recruiter.cookie });
-    expect(added.status).toBe(200);
 
     const result = await call('DELETE', `/jobs/${created._id}`, { cookie: recruiter.cookie });
 
     expect(result.status).toBe(200);
     expect(result.json()).toEqual({ id: created._id });
     expect(await JobPosting.exists({ _id: created._id })).toBeNull();
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-    // The recruiter's other posting keeps its applicant
-    expect(await JobApplication.countDocuments({ job: kept._id })).toBe(1);
+    // The recruiter's other posting stays
+    expect(await JobPosting.exists({ _id: kept._id })).not.toBeNull();
     expect((await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie })).status).toBe(404);
-    expect((await call('GET', `/jobs/${created._id}`)).status).toBe(404);
     expect((await call('DELETE', `/jobs/${created._id}`, { cookie: recruiter.cookie })).status).toBe(404);
   });
 
-  it("lists the recruiter's own postings, most recently updated first, with their applicant counts", async () => {
+  it("lists the recruiter's own postings, most recently updated first", async () => {
     const recruiter = await createRecruiter();
     const other = await createRecruiter('other-recruiter');
     const first = await createJob(recruiter, sampleJob({ title: 'First', status: 'draft' }));
@@ -638,24 +745,17 @@ describe('postings', () => {
     // Edited last: now the most recently updated
     await Bun.sleep(5);
     expect((await call('PUT', `/jobs/${first._id}/status`, { body: { status: 'open' }, cookie: recruiter.cookie })).status).toBe(200);
-    const [alice, bob] = await Promise.all([createCandidate('alice'), createCandidate('bob')]);
-    for (const candidate of [alice, bob]) {
-      expect((await apply(second._id, candidate)).status).toBe(200);
-    }
-    expect(
-      (await call('POST', `/jobs/${first._id}/applicants`, { body: { domain: alice.domain }, cookie: recruiter.cookie })).status
-    ).toBe(200);
 
     const result = await call('GET', '/recruiter/jobs', { cookie: recruiter.cookie });
 
     expect(result.status).toBe(200);
-    const { jobs } = result.json<{ jobs: { _id: string; title: string; applicantCount: number }[] }>();
-    expect(jobs.map(({ title, applicantCount }) => [title, applicantCount])).toEqual([
-      ['First', 1],
-      ['Third', 0],
-      ['Second', 2]
+    const { jobs } = result.json<{ jobs: { _id: string; title: string }[] }>();
+    expect(jobs.map(({ _id, title }) => [_id, title])).toEqual([
+      [first._id, 'First'],
+      [third._id, 'Third'],
+      [second._id, 'Second']
     ]);
-    expect(jobs[1]).toEqual({ ...third, applicantCount: 0 });
+    expect(jobs[1]).toEqual(third);
 
     // A recruiter space with no posting yet
     const newcomer = await createRecruiter('newcomer');
@@ -701,24 +801,295 @@ describe('postings', () => {
   });
 });
 
+// ── Terms locked once opened ────────────────────────────────
+
+describe('terms locked once opened', () => {
+  /** The sample with every field the perfect job scores set, the office's street included */
+  const termsJob = (overrides: Record<string, unknown> = {}) =>
+    richJob({
+      location: {
+        country: 'FR',
+        city: 'Lyon',
+        postalCode: '69002',
+        address: '12 rue de la République',
+        workMode: 'hybrid',
+        remoteDaysPerWeek: 2
+      },
+      ...overrides
+    });
+  const days = { arrangement: 'annual_days', daysPerYear: 218, rttDaysPerYear: 10 };
+
+  /**
+   * One change of each locked field: `base` overrides what the posting starts from (a forfait
+   * jours for its days), `change` what the edit sends. Every locked field has one: a field that
+   * becomes locked fails this test until it has
+   */
+  const changes: Record<string, { base?: Record<string, unknown>; change: Record<string, unknown> }> = {
+    title: { change: { title: 'Staff Backend Engineer' } },
+    'location.city': {
+      change: { location: { country: 'FR', city: 'Villeurbanne', postalCode: '69002', address: '12 rue de la République', workMode: 'hybrid', remoteDaysPerWeek: 2 } }
+    },
+    'location.postalCode': {
+      change: { location: { country: 'FR', city: 'Lyon', postalCode: '69003', address: '12 rue de la République', workMode: 'hybrid', remoteDaysPerWeek: 2 } }
+    },
+    'location.address': {
+      // Left out: the street goes too
+      change: { location: { country: 'FR', city: 'Lyon', postalCode: '69002', workMode: 'hybrid', remoteDaysPerWeek: 2 } }
+    },
+    'location.workMode': {
+      change: { location: { country: 'FR', city: 'Lyon', postalCode: '69002', address: '12 rue de la République', workMode: 'on_site' } }
+    },
+    'location.remoteDaysPerWeek': {
+      change: { location: { country: 'FR', city: 'Lyon', postalCode: '69002', address: '12 rue de la République', workMode: 'hybrid', remoteDaysPerWeek: 3 } }
+    },
+    'contract.type': {
+      change: { contract: { type: 'cdd', durationMonths: 12, startDate: '2027-01-04', trialPeriodMonths: 4, collectiveAgreement: 'Syntec' } }
+    },
+    'workingTime.arrangement': { change: { workingTime: days } },
+    'workingTime.hoursPerWeek': { change: { workingTime: { arrangement: 'weekly_hours', hoursPerWeek: 35, rttDaysPerYear: 10 } } },
+    'workingTime.daysPerYear': { base: { workingTime: days }, change: { workingTime: { ...days, daysPerYear: 210 } } },
+    'workingTime.rttDaysPerYear': { change: { workingTime: { arrangement: 'weekly_hours', hoursPerWeek: 39, rttDaysPerYear: 12 } } },
+    'pay.min': { change: { pay: { min: 46000, max: 55000, currency: 'EUR', period: 'year', variable: '10% bonus' } } },
+    'pay.max': { change: { pay: { min: 45000, max: 56000, currency: 'EUR', period: 'year', variable: '10% bonus' } } },
+    'pay.period': { change: { pay: { min: 450, max: 550, currency: 'EUR', period: 'day', variable: '10% bonus' } } },
+    'organization.directReports': { change: { organization: { directReports: 4, peers: 5, levelsToCeo: 2 } } },
+    'requirements.seniority': {
+      change: { requirements: { seniority: 'lead', education: 'bac_5', skills: ['Go', 'Kafka'], languages: ['English (C1)'] } }
+    },
+    'requirements.skills': {
+      change: { requirements: { seniority: 'senior', education: 'bac_5', skills: ['Go', 'Kafka', 'Rust'], languages: ['English (C1)'] } }
+    },
+    // Left out: no travel stated any more
+    travel: { change: { travel: undefined } }
+  };
+
+  it('locks every field a criterion reads, and only those', () => {
+    const scored = JOB_FIELD_PATHS.filter((path) => JOB_FIELD_CRITERIA[path].length > 0);
+    expect([...LOCKED_JOB_FIELDS]).toEqual(scored);
+    expect(Object.keys(changes).sort()).toEqual([...LOCKED_JOB_FIELDS].sort());
+  });
+
+  it.each(Object.entries(changes))('refuses (409) a change of %s once the posting was opened, leaving it unchanged', async (field, { base, change }) => {
+    // The case changes the field it is named after (some change others with it: the remote days
+    // go with a hybrid job, the hours with a weekly arrangement, the amounts with the period)
+    const normalised = (posting: Record<string, unknown>) => normalizeJobPosting(posting as unknown as JobPostingInput);
+    expect(changedLockedFields(normalised(termsJob(base)), normalised(termsJob({ ...base, ...change })))).toContain(field as JobFieldPath);
+    const recruiter = await createRecruiter();
+    const created = await createJob(recruiter, termsJob(base));
+    expect(created.publishedAt).toMatch(ISO_INSTANT);
+
+    const result = await call('PUT', `/jobs/${created._id}`, {
+      body: { ...termsJob({ ...base, ...change }), updatedAt: created.updatedAt },
+      cookie: recruiter.cookie,
+      // Matched by the client, not shown: English whatever the language
+      language: 'fr'
+    });
+
+    expect([result.status, result.text]).toEqual([409, JOB_TERMS_LOCKED]);
+    expect((await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie })).json()).toEqual(created);
+  });
+
+  it.each(Object.entries(changes))('takes a change of %s on a draft never opened', async (_field, { base, change }) => {
+    const recruiter = await createRecruiter();
+    const created = await createJob(recruiter, termsJob({ ...base, status: 'draft' }));
+
+    const result = await call('PUT', `/jobs/${created._id}`, {
+      body: termsJob({ ...base, ...change, status: 'draft' }),
+      cookie: recruiter.cookie
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.json()).not.toHaveProperty('publishedAt');
+  });
+
+  it('takes the save that opens a posting whatever it changes, then locks its terms', async () => {
+    const recruiter = await createRecruiter();
+    const draft = await createJob(recruiter, termsJob({ status: 'draft' }));
+    const changed = termsJob({
+      status: 'open',
+      title: 'Staff Backend Engineer',
+      pay: { min: 50000, max: 60000, currency: 'EUR', period: 'year' },
+      requirements: { skills: ['Rust'] }
+    });
+
+    const opened = await call('PUT', `/jobs/${draft._id}`, { body: changed, cookie: recruiter.cookie });
+    expect(opened.status).toBe(200);
+    expect(opened.json()).toMatchObject({ status: 'open', title: 'Staff Backend Engineer', publishedAt: expect.stringMatching(ISO_INSTANT) });
+
+    // The same terms again, typed differently: nothing locked changes once normalised
+    const same = await call('PUT', `/jobs/${draft._id}`, {
+      body: { ...changed, title: '  Staff   Backend Engineer ', requirements: { skills: [' Rust ', 'rust'] }, description: 'Typo fixed.' },
+      cookie: recruiter.cookie
+    });
+    expect([same.status, same.json().description]).toEqual([200, 'Typo fixed.']);
+
+    const later = await call('PUT', `/jobs/${draft._id}`, {
+      body: { ...changed, title: 'Principal Backend Engineer' },
+      cookie: recruiter.cookie
+    });
+    expect([later.status, later.text]).toEqual([409, JOB_TERMS_LOCKED]);
+    expect((await JobPosting.findById(draft._id).lean())?.title).toBe('Staff Backend Engineer');
+  });
+
+  it('keeps the description, the fields no criterion reads and the status editable once opened', async () => {
+    const recruiter = await createRecruiter();
+    const created = await createJob(recruiter, termsJob());
+    const edit = termsJob({
+      status: 'on_hold',
+      description: '## The job\n\nBuild the billing platform, and the invoices.',
+      company: 'Acme Group',
+      openings: 3,
+      contract: { type: 'cdi', startDate: '2027-03-01', trialPeriodMonths: 3, collectiveAgreement: 'Syntec (IDCC 1486)' },
+      pay: { min: 45000, max: 55000, currency: 'EUR', period: 'year', variable: '15% bonus' },
+      organization: { directReports: 3, peers: 8, levelsToCeo: 3 },
+      requirements: { seniority: 'senior', education: 'bac_3', skills: ['Go', 'Kafka'], languages: ['English (B2)', 'German'] },
+      benefits: ['Meal vouchers']
+    });
+    // Every field no criterion reads, but the ones with a single value, changes
+    const unscored = JOB_FIELD_PATHS.filter((path) => !LOCKED_JOB_FIELDS.includes(path));
+    const fixed: JobFieldPath[] = ['location.country', 'pay.currency', 'contract.durationMonths'];
+    const value = (job: Record<string, unknown>, path: string) =>
+      path.split('.').reduce<unknown>((item, key) => (item as Record<string, unknown> | undefined)?.[key], job);
+    expect(unscored.filter((path) => !fixed.includes(path) && JSON.stringify(value(edit, path)) === JSON.stringify(value(created, path)))).toEqual([]);
+
+    const result = await call('PUT', `/jobs/${created._id}`, { body: edit, cookie: recruiter.cookie });
+
+    expect(result.status).toBe(200);
+    expect(result.json()).toEqual({
+      ...edit,
+      _id: created._id,
+      createdAt: created.createdAt,
+      updatedAt: expect.stringMatching(ISO_INSTANT),
+      publishedAt: created.publishedAt
+    });
+    const status = await call('PUT', `/jobs/${created._id}/status`, { body: { status: 'open' }, cookie: recruiter.cookie });
+    expect([status.status, status.json().status]).toEqual([200, 'open']);
+  });
+
+  it.each(['on_hold', 'filled', 'closed', 'draft'])('stays locked once the posting is %s, also created so', async (status) => {
+    const recruiter = await createRecruiter();
+    const opened = await createJob(recruiter, termsJob());
+    expect((await call('PUT', `/jobs/${opened._id}/status`, { body: { status }, cookie: recruiter.cookie })).status).toBe(200);
+
+    for (const id of [opened._id, (await createJob(recruiter, termsJob({ status: 'on_hold' })))._id]) {
+      const result = await call('PUT', `/jobs/${id}`, {
+        body: termsJob({ status, pay: { min: 40000, max: 55000, currency: 'EUR', period: 'year', variable: '10% bonus' } }),
+        cookie: recruiter.cookie
+      });
+      expect([result.status, result.text]).toEqual([409, JOB_TERMS_LOCKED]);
+      expect((await JobPosting.findById(id).lean())?.pay.min).toBe(45000);
+    }
+    // A created draft was never opened: not locked
+    const draft = await createJob(recruiter, termsJob({ status: 'draft' }));
+    expect(draft).not.toHaveProperty('publishedAt');
+  });
+
+  it('refuses (409) an edit without updatedAt that would change the terms of a posting opened meanwhile', async () => {
+    const recruiter = await createRecruiter();
+    const created = await createJob(recruiter, termsJob({ status: 'draft' }));
+    // Loaded by the edit while a draft, then opened from its status (another tab) before it is saved
+    const loaded = await JobPosting.findById(created._id);
+    const opened = await call('PUT', `/jobs/${created._id}/status`, { body: { status: 'open' }, cookie: recruiter.cookie });
+    expect(opened.status).toBe(200);
+    spyOn(JobPosting, 'findOne').mockResolvedValueOnce(loaded as never);
+
+    // No updatedAt (an API client that does not track versions): the terms it changes do not land
+    const result = await call('PUT', `/jobs/${created._id}`, {
+      body: termsJob({ status: 'draft', title: 'Staff Backend Engineer', pay: { min: 50000, max: 60000, currency: 'EUR', period: 'year' } }),
+      cookie: recruiter.cookie
+    });
+
+    expect([result.status, result.text]).toEqual([409, 'This job posting was changed since you opened it']);
+    const stored = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
+    expect(stored.json()).toEqual(opened.json());
+    expect(stored.json()).toMatchObject({ status: 'open', title: created.title, pay: created.pay, publishedAt: expect.stringMatching(ISO_INSTANT) });
+  });
+
+  it('lets a range saved wider than 1.5 times its bottom come down to the top it was scored with, and no further', async () => {
+    const recruiter = await createRecruiter();
+    const created = await createJob(recruiter, termsJob());
+    // Saved before the cap: 45-80 k€, scored as 45-67.5 k€
+    await JobPosting.updateOne({ _id: created._id }, { $set: { 'pay.max': 80000 } });
+    const pay = (max: number) => ({ min: 45000, max, currency: 'EUR', period: 'year', variable: '10% bonus' });
+
+    // As it is, it cannot be saved (the cap), whatever else changes
+    const asItIs = await call('PUT', `/jobs/${created._id}`, { body: termsJob({ pay: pay(80000), description: 'Edited.' }), cookie: recruiter.cookie });
+    expect([asItIs.status, asItIs.json().property]).toEqual([422, 'pay.max']);
+    // Down to its scored top: nothing a match reads changes
+    const capped = await call('PUT', `/jobs/${created._id}`, { body: termsJob({ pay: pay(67500), description: 'Edited.' }), cookie: recruiter.cookie });
+    expect([capped.status, capped.json().pay.max, capped.json().description]).toEqual([200, 67500, 'Edited.']);
+    // Any other top is a change of its terms
+    const lower = await call('PUT', `/jobs/${created._id}`, { body: termsJob({ pay: pay(60000) }), cookie: recruiter.cookie });
+    expect([lower.status, lower.text]).toEqual([409, JOB_TERMS_LOCKED]);
+    expect((await JobPosting.findById(created._id).lean())?.pay.max).toBe(67500);
+  });
+});
+
+describe('a pay range saved wider than 1.5 times its bottom, before that cap', () => {
+  const widePay = { min: 45000, max: 80000, currency: 'EUR', period: 'year' };
+  /** A posting of `recruiter` whose range was saved 45-80 k€ before the cap (validation bypassed) */
+  const legacyJob = async (recruiter: TestUser, status: 'open' | 'draft') => {
+    const created = await createJob(recruiter, sampleJob({ status }));
+    await JobPosting.updateOne({ _id: created._id }, { $set: { 'pay.max': widePay.max } });
+    return created._id as string;
+  };
+
+  it('stays readable and keeps its status changes once opened, and is refused only by an edit that keeps it', async () => {
+    const recruiter = await createRecruiter();
+    const id = await legacyJob(recruiter, 'open');
+
+    const read = await call('GET', `/recruiter/jobs/${id}`, { cookie: recruiter.cookie });
+    expect([read.status, read.json().pay]).toEqual([200, widePay]);
+    for (const status of ['on_hold', 'open', 'filled']) {
+      const changed = await call('PUT', `/jobs/${id}/status`, { body: { status }, cookie: recruiter.cookie });
+      expect([changed.status, changed.json().status, changed.json().pay]).toEqual([200, status, widePay]);
+    }
+    const kept = await call('PUT', `/jobs/${id}`, { body: sampleJob({ status: 'filled', pay: widePay }), cookie: recruiter.cookie });
+    expect(kept.status).toBe(422);
+    expect(kept.json()).toMatchObject({ property: 'pay.max', message: 'Maximum pay must be at most €67,500 (1.5 times the minimum)' });
+  });
+
+  it('is narrowed before a draft is first opened from its status (422 on pay.max), leaving it a draft', async () => {
+    const recruiter = await createRecruiter();
+    const id = await legacyJob(recruiter, 'draft');
+
+    for (const [status, language, message] of [
+      ['open', 'en', 'Maximum pay must be at most €67,500 (1.5 times the minimum)'],
+      ['on_hold', 'fr', 'Rémunération maximale\u00a0: indiquez 67\u202f500\u00a0€ au maximum (1,5 fois la minimale)']
+    ]) {
+      const opened = await call('PUT', `/jobs/${id}/status`, { body: { status }, cookie: recruiter.cookie, language });
+      expect(opened.status).toBe(422);
+      expect(opened.json()).toEqual({ type: 'validation', on: 'body', property: 'pay.max', message });
+    }
+    const stored = await JobPosting.findById(id).lean();
+    expect([stored?.status, stored?.publishedAt, stored?.pay.max]).toEqual(['draft', undefined, widePay.max]);
+    // Staying a draft is no opening
+    expect((await call('PUT', `/jobs/${id}/status`, { body: { status: 'draft' }, cookie: recruiter.cookie })).status).toBe(200);
+
+    // Narrowed in the editor, it opens
+    const narrowed = await call('PUT', `/jobs/${id}`, {
+      body: sampleJob({ status: 'draft', pay: { ...widePay, max: 60000 } }),
+      cookie: recruiter.cookie
+    });
+    expect(narrowed.status).toBe(200);
+    const opened = await call('PUT', `/jobs/${id}/status`, { body: { status: 'open' }, cookie: recruiter.cookie });
+    expect([opened.status, opened.json().status, opened.json().pay.max]).toEqual([200, 'open', 60000]);
+    expect(opened.json().publishedAt).toMatch(ISO_INSTANT);
+  });
+});
+
 describe("another recruiter's posting", () => {
   it('is not found (404) by every recruiter route, and stays unchanged', async () => {
     const owner = await createRecruiter('owner');
     const intruder = await createUser('intruder', { recruiter: true, domain: true });
-    const candidate = await createCandidate();
     const created = await createJob(owner);
-    const listed = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: candidate.domain }, cookie: owner.cookie });
-    expect(listed.status).toBe(200);
-    const applicationId = listed.json()._id;
     const id = created._id;
 
     const attempts: [string, string, unknown?][] = [
       ['GET', `/recruiter/jobs/${id}`],
       ['PUT', `/jobs/${id}`, sampleJob({ title: 'Taken over' })],
       ['PUT', `/jobs/${id}/status`, { status: 'closed' }],
-      ['DELETE', `/jobs/${id}`],
-      ['POST', `/jobs/${id}/applicants`, { domain: intruder.domain }],
-      ['DELETE', `/jobs/${id}/applicants/${applicationId}`]
+      ['DELETE', `/jobs/${id}`]
     ];
     for (const [method, path, body] of attempts) {
       const result = await call(method, path, { body, cookie: intruder.cookie });
@@ -730,377 +1101,6 @@ describe("another recruiter's posting", () => {
 
     const stored = await JobPosting.findById(id).lean();
     expect(stored).toMatchObject({ title: 'Senior Backend Engineer', status: 'open' });
-    expect(await JobApplication.countDocuments({ job: id })).toBe(1);
     expect((await call('GET', '/recruiter/jobs', { cookie: intruder.cookie })).json()).toEqual({ jobs: [] });
-  });
-});
-
-// ── Public pages ────────────────────────────────────────────
-
-describe('public pages', () => {
-  it('show a posting unless it is a draft', async () => {
-    const recruiter = await createRecruiter();
-    const draft = await createJob(recruiter, sampleJob({ status: 'draft' }));
-
-    const hidden = await call('GET', `/jobs/${draft._id}`);
-    expect(hidden.status).toBe(404);
-    expect(hidden.text).toBe('Job posting not found');
-    expect((await call('GET', `/jobs/${UNKNOWN_ID}`)).status).toBe(404);
-
-    for (const status of ['open', 'on_hold', 'filled', 'closed']) {
-      await call('PUT', `/jobs/${draft._id}/status`, { body: { status }, cookie: recruiter.cookie });
-      const page = await call('GET', `/jobs/${draft._id}`);
-      expect([status, page.status, page.json().status]).toEqual([status, 200, status]);
-    }
-  });
-
-  it('list the open postings only, most recently published first, without their descriptions', async () => {
-    const recruiter = await createRecruiter();
-    const older = await createJob(recruiter, sampleJob({ title: t.id('older') }));
-    await Bun.sleep(5);
-    const newer = await createJob(recruiter, sampleJob({ title: t.id('newer') }));
-    const hidden = await Promise.all(
-      ['draft', 'on_hold', 'filled', 'closed'].map((status) => createJob(recruiter, sampleJob({ title: t.id(status), status })))
-    );
-    // An edit does not move a posting up the list
-    await Bun.sleep(5);
-    const edited = await call('PUT', `/jobs/${older._id}`, {
-      body: sampleJob({ title: t.id('older'), company: 'Edited' }),
-      cookie: recruiter.cookie
-    });
-    expect(edited.status).toBe(200);
-
-    const result = await call('GET', '/jobs');
-
-    expect(result.status).toBe(200);
-    const { jobs } = result.json<{ jobs: { _id: string; status: string }[] }>();
-    expect(jobs.length).toBeLessThanOrEqual(100);
-    expect(jobs.every((job) => job.status === 'open')).toBe(true);
-    const mine = jobs.filter((job) => [older._id, newer._id, ...hidden.map((job) => job._id)].includes(job._id));
-    const { description: _newer, ...newerSummary } = newer;
-    const { description: _older, ...olderSummary } = edited.json();
-    expect(mine).toEqual([newerSummary, olderSummary]);
-  });
-
-  it('list 10 postings of one recruiter at most: no account can push the others out', async () => {
-    const employer = await createRecruiter('employer');
-    const flooder = await createRecruiter('flooder');
-    const kept = await createJob(employer, sampleJob({ title: t.id('kept') }));
-    await Bun.sleep(5);
-    const flood = [];
-    for (let n = 0; n < 12; n++) flood.push(await createJob(flooder, sampleJob({ title: t.id(`flood-${n}`) })));
-
-    const { jobs } = (await call('GET', '/jobs')).json<{ jobs: { _id: string }[] }>();
-
-    const ids = jobs.map((job) => job._id);
-    expect(ids).toContain(kept._id);
-    const listedFlood = flood.filter((job) => ids.includes(job._id));
-    // The 10 most recently published of the flood
-    expect(listedFlood.map((job) => job._id)).toEqual(flood.slice(2).map((job) => job._id));
-  });
-
-  it('never tell who posted a posting (no user id)', async () => {
-    const recruiter = await createUser('recruiter', { recruiter: true, domain: true });
-    const created = await createJob(recruiter, sampleJob({ title: t.id('confidential') }));
-    const candidate = await createCandidate();
-
-    const responses = [
-      await call('GET', '/jobs'),
-      await call('GET', `/jobs/${created._id}`),
-      await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })
-    ];
-
-    for (const response of responses) {
-      expect(response.status).toBe(200);
-      expect(response.text).not.toContain(recruiter.id);
-    }
-    expect(responses[0].text).toContain(created._id);
-  });
-});
-
-// ── Applications ────────────────────────────────────────────
-
-describe('applying', () => {
-  it('lists a candidate who applies with their portfolio, never their email', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-
-    expect((await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })).json()).toEqual({
-      applied: false
-    });
-    const applied = await apply(created._id, candidate);
-
-    expect(applied.status).toBe(200);
-    const appliedAt = applied.json().appliedAt;
-    expect(applied.json()).toEqual({ applied: true, appliedAt: expect.stringMatching(ISO_INSTANT), source: 'applied' });
-    expect((await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })).json()).toEqual({
-      applied: true,
-      appliedAt,
-      source: 'applied'
-    });
-
-    const detail = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
-    expect(detail.json().applicants).toEqual([
-      {
-        _id: expect.stringMatching(/^[0-9a-f]{24}$/),
-        appliedAt,
-        source: 'applied',
-        candidate: { name: 'candidate-first', surname: 'candidate-last' },
-        domain: { name: candidate.domain, headerTitle: 'candidate portfolio' }
-      }
-    ]);
-    expect(detail.text).not.toContain(candidate.email);
-    expect(detail.text).not.toContain(candidate.googleId);
-    expect(detail.text).not.toContain(candidate.id);
-  });
-
-  it('accepts one application per candidate (409), even when two arrive at once', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-
-    const results = await Promise.all(
-      [1, 2].map(() => apply(created._id, candidate))
-    );
-
-    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
-    expect(results.find((result) => result.status === 409)?.text).toBe('You already applied');
-    const again = await apply(created._id, candidate);
-    expect([again.status, again.text]).toEqual([409, 'You already applied']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(1);
-  });
-
-  it('needs a JSON body, so a cross-site request without a preflight never applies', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-    const url = `http://localhost/jobs/${created._id}/application`;
-
-    // What a no-cors fetch from another site sends with the cookie: no body,
-    // no Content-Type (a simple request, no CORS preflight)
-    const bodyless = await app.fetch(
-      new Request(url, { method: 'POST', headers: { Cookie: candidate.cookie, Origin: 'https://evil.example' } })
-    );
-    // An HTML form: refused before the route (app.ts)
-    const form = await app.fetch(
-      new Request(url, { method: 'POST', headers: { Cookie: candidate.cookie, 'Content-Type': 'text/plain' }, body: '{}' })
-    );
-
-    expect([bodyless.status, form.status]).toEqual([415, 415]);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-    expect((await apply(created._id, candidate)).status).toBe(200);
-  });
-
-  it('takes applications while the posting is open only', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter, sampleJob({ status: 'draft' }));
-
-    const toDraft = await apply(created._id, candidate);
-    expect([toDraft.status, toDraft.text]).toEqual([404, 'Job posting not found']);
-    expect((await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })).status).toBe(404);
-    expect((await apply(UNKNOWN_ID, candidate)).status).toBe(404);
-
-    for (const status of ['on_hold', 'filled', 'closed']) {
-      await call('PUT', `/jobs/${created._id}/status`, { body: { status }, cookie: recruiter.cookie });
-      const result = await apply(created._id, candidate);
-      expect([status, result.status, result.text]).toEqual([status, 409, 'This job posting is not taking applications']);
-    }
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-  });
-
-  it('needs a portfolio', async () => {
-    const recruiter = await createRecruiter();
-    const visitor = await createUser('visitor');
-    const created = await createJob(recruiter);
-
-    const result = await apply(created._id, visitor);
-
-    expect([result.status, result.text]).toEqual([403, 'Claim a portfolio before applying']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-  });
-
-  it("is not for the posting's own recruiter", async () => {
-    const recruiter = await createUser('recruiter', { recruiter: true, domain: true });
-    const created = await createJob(recruiter);
-
-    const result = await apply(created._id, recruiter);
-
-    expect([result.status, result.text]).toEqual([403, 'You cannot apply to your own job posting']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-    // What the job page asks to offer "Manage it": told to the recruiter alone
-    const own = await call('GET', `/jobs/${created._id}/application`, { cookie: recruiter.cookie });
-    expect([own.status, own.json()]).toEqual([200, { applied: false, own: true }]);
-    const candidate = await createCandidate();
-    const other = await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie });
-    expect([other.status, other.json()]).toEqual([200, { applied: false }]);
-  });
-
-  it('can be withdrawn, whoever listed the candidate', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-    const other = await createJob(recruiter, sampleJob({ title: 'Other' }));
-    expect((await apply(created._id, candidate)).status).toBe(200);
-    expect(
-      (await call('POST', `/jobs/${other._id}/applicants`, { body: { domain: candidate.domain }, cookie: recruiter.cookie })).status
-    ).toBe(200);
-    // Withdrawn even once the posting is no longer open
-    await call('PUT', `/jobs/${other._id}/status`, { body: { status: 'closed' }, cookie: recruiter.cookie });
-
-    for (const job of [created, other]) {
-      const withdrawn = await call('DELETE', `/jobs/${job._id}/application`, { cookie: candidate.cookie });
-      expect([withdrawn.status, withdrawn.json()]).toEqual([200, { applied: false }]);
-      const again = await call('DELETE', `/jobs/${job._id}/application`, { cookie: candidate.cookie });
-      expect([again.status, again.text]).toEqual([404, 'You have not applied to this job posting']);
-    }
-    expect((await call('GET', `/jobs/${created._id}/application`, { cookie: candidate.cookie })).json()).toEqual({
-      applied: false
-    });
-    expect(await JobApplication.countDocuments({ candidate: candidate.id })).toBe(0);
-  });
-
-  it(`stops at ${JOB_LIMITS.applicantsPerJob} applicants (409)`, async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-    // Applications of portfolios that do not exist: left out of the list
-    await JobApplication.insertMany(
-      Array.from({ length: JOB_LIMITS.applicantsPerJob }, () => ({
-        job: created._id,
-        candidate: new Types.ObjectId(),
-        domain: new Types.ObjectId(),
-        source: 'applied'
-      }))
-    );
-
-    const result = await apply(created._id, candidate);
-    const added = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: candidate.domain }, cookie: recruiter.cookie });
-
-    const full = `This job posting has reached its limit of ${JOB_LIMITS.applicantsPerJob} applicants`;
-    expect([result.status, result.text]).toEqual([409, full]);
-    expect([added.status, added.text]).toEqual([409, full]);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(JOB_LIMITS.applicantsPerJob);
-    expect((await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie })).json().applicants).toEqual([]);
-  });
-
-  it('never goes over the applicant limit, even when applications arrive at once', async () => {
-    const recruiter = await createRecruiter();
-    const created = await createJob(recruiter);
-    await JobApplication.insertMany(
-      Array.from({ length: JOB_LIMITS.applicantsPerJob - 1 }, () => ({
-        job: created._id,
-        candidate: new Types.ObjectId(),
-        domain: new Types.ObjectId(),
-        source: 'applied'
-      }))
-    );
-    const candidates = await Promise.all([1, 2, 3, 4, 5, 6].map((n) => createCandidate(`candidate-${n}`)));
-
-    const results = await Promise.all(candidates.map((candidate) => apply(created._id, candidate)));
-
-    // One place left: one application at most takes it, the others are refused
-    const accepted = results.filter((result) => result.status === 200).length;
-    expect(accepted).toBeLessThanOrEqual(1);
-    const full = `This job posting has reached its limit of ${JOB_LIMITS.applicantsPerJob} applicants`;
-    expect(results.filter((result) => result.status !== 200).map((result) => [result.status, result.text])).toEqual(
-      Array.from({ length: candidates.length - accepted }, () => [409, full])
-    );
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(JOB_LIMITS.applicantsPerJob - 1 + accepted);
-  });
-});
-
-describe('applicants managed by the recruiter', () => {
-  it('adds a portfolio by its domain name, and removes it', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter, sampleJob({ status: 'draft' }));
-
-    const added = await call('POST', `/jobs/${created._id}/applicants`, {
-      body: { domain: `  ${candidate.domain!.toUpperCase()} ` },
-      cookie: recruiter.cookie
-    });
-
-    expect(added.status).toBe(200);
-    const applicant = added.json();
-    expect(applicant).toEqual({
-      _id: expect.stringMatching(/^[0-9a-f]{24}$/),
-      appliedAt: expect.stringMatching(ISO_INSTANT),
-      source: 'added_by_recruiter',
-      // The portfolio's public data only: the candidate shared nothing else
-      candidate: {},
-      domain: { name: candidate.domain, headerTitle: 'candidate portfolio' }
-    });
-    expect(added.text).not.toContain(candidate.email);
-    const detail = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
-    expect(detail.json().applicants).toEqual([applicant]);
-
-    const again = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: candidate.domain }, cookie: recruiter.cookie });
-    expect([again.status, again.text]).toEqual([409, 'Already an applicant']);
-
-    const removed = await call('DELETE', `/jobs/${created._id}/applicants/${applicant._id}`, { cookie: recruiter.cookie });
-    expect([removed.status, removed.json()]).toEqual([200, { id: applicant._id }]);
-    const removedAgain = await call('DELETE', `/jobs/${created._id}/applicants/${applicant._id}`, { cookie: recruiter.cookie });
-    expect([removedAgain.status, removedAgain.text]).toEqual([404, 'Applicant not found']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(0);
-  });
-
-  it('refuses an unknown domain, the recruiter\'s own portfolio and a candidate who already applied', async () => {
-    const recruiter = await createUser('recruiter', { recruiter: true, domain: true });
-    const candidate = await createCandidate();
-    const created = await createJob(recruiter);
-    expect((await apply(created._id, candidate)).status).toBe(200);
-
-    const add = (domain: string) =>
-      call('POST', `/jobs/${created._id}/applicants`, { body: { domain }, cookie: recruiter.cookie });
-    const unknown = await add(t.id('nobody'));
-    const own = await add(recruiter.domain!);
-    const listed = await add(candidate.domain!);
-
-    expect([unknown.status, unknown.text]).toEqual([404, 'Domain not found']);
-    expect([own.status, own.text]).toEqual([403, 'You cannot add your own portfolio']);
-    expect([listed.status, listed.text]).toEqual([409, 'Already an applicant']);
-    expect(await JobApplication.countDocuments({ job: created._id })).toBe(1);
-  });
-
-  it("never shows the account name of a portfolio it adds, only that of a candidate who applied", async () => {
-    const recruiter = await createRecruiter();
-    const applicant = await createCandidate('applicant');
-    const added = await createCandidate('added');
-    const created = await createJob(recruiter);
-    expect((await apply(created._id, applicant)).status).toBe(200);
-
-    // Any recruiter space can add any portfolio: the owner's account name
-    // (from Google) is not public, only the portfolio is
-    const listed = await call('POST', `/jobs/${created._id}/applicants`, { body: { domain: added.domain }, cookie: recruiter.cookie });
-
-    expect(listed.status).toBe(200);
-    const { source, candidate, domain } = listed.json();
-    expect([source, candidate, domain.name]).toEqual(['added_by_recruiter', {}, added.domain]);
-    const detail = await call('GET', `/recruiter/jobs/${created._id}`, { cookie: recruiter.cookie });
-    const applicants = detail.json<{ applicants: { source: string; candidate: object; domain: { name: string } }[] }>().applicants;
-    expect(applicants.map((listed): unknown[] => [listed.source, listed.candidate, listed.domain.name])).toEqual([
-      ['applied', { name: 'applicant-first', surname: 'applicant-last' }, applicant.domain],
-      ['added_by_recruiter', {}, added.domain]
-    ]);
-    for (const text of [listed.text, detail.text]) {
-      expect(text).not.toContain('added-first');
-      expect(text).not.toContain('added-last');
-    }
-  });
-
-  it('removes only an applicant of that posting', async () => {
-    const recruiter = await createRecruiter();
-    const candidate = await createCandidate();
-    const first = await createJob(recruiter);
-    const second = await createJob(recruiter, sampleJob({ title: 'Second' }));
-    const added = await call('POST', `/jobs/${first._id}/applicants`, { body: { domain: candidate.domain }, cookie: recruiter.cookie });
-    const applicationId = added.json()._id;
-
-    const result = await call('DELETE', `/jobs/${second._id}/applicants/${applicationId}`, { cookie: recruiter.cookie });
-
-    expect([result.status, result.text]).toEqual([404, 'Applicant not found']);
-    expect(await JobApplication.exists({ _id: applicationId })).not.toBeNull();
   });
 });

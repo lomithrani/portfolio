@@ -22,15 +22,15 @@ export const m = defineMessages({
 			fr: (domain: string) => `Accédez à votre portfolio ${domain}.`
 		},
 		claimPortfolio: {
-			en: 'Claim your portfolio to show your experience and apply to job descriptions.',
-			fr: "Réservez votre portfolio pour présenter votre expérience et postuler à des offres d'emploi."
+			en: 'Claim your portfolio to show your experience to recruiters.',
+			fr: 'Réservez votre portfolio pour présenter votre expérience aux recruteurs.'
 		}
 	},
 	recruiter: {
 		title: { en: 'Recruiter', fr: 'Recruteur' },
 		description: {
-			en: 'Post job descriptions and review the candidates who apply.',
-			fr: "Publiez des offres d'emploi et consultez les candidats qui postulent."
+			en: "Write job descriptions and bring them to candidates' pages for recruiters.",
+			fr: "Rédigez des offres d'emploi et présentez-les sur la page recruteurs des candidats."
 		}
 	},
 	lastUsed: { en: 'Last used', fr: 'Dernier utilisé' },

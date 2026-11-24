@@ -1,18 +1,20 @@
 <!--
 @component
-/recruiter for a visitor who is not signed in: what the recruiter space is for (finding people
-by what a portfolio shows of each skill: the projects it was used in and for how long), and a
-"Sign in with Google" button that signs in straight into it (POST /login with mode 'recruiter':
-the space is created the first time). `onSignedIn` runs once the session is stored.
+/recruiter for a visitor who is not signed in: what the recruiter space is for (judging a candidate
+who shared their portfolio by what it shows of each skill: the projects it was used in and for how
+long; there is no search of portfolios), and the sign-in that opens it: the age and terms checkbox
+(AgeTermsConsent, with what the terms ask of recruiters) comes first, then "Sign in with Google",
+which signs in straight into the recruiter space (POST /login with the mode 'recruiter' and the
+confirmation, recorded from the source 'recruiter': the space is created the first time, and needs
+the terms in force). `onSignedIn` runs once the session is stored.
 
-Google's sign-in is loaded only once the visitor asks for it: a local "Sign in with Google" button
-first (nothing reaches accounts.google.com before), then Google's button and its One Tap prompt.
-Google Identity Services routes every credential to the handler registered last: this page
-registers its own when its button is clicked, and the header's sign-in takes the role back when
-it is clicked in turn. googleIdentity.ts cannot give the role back yet (`release` clears it):
-after a click here that did not end in a sign-in (popup closed, sign-in failed), a sign-in from
-the header's button (if it was set up before) comes here, and once this page is gone, signs in
-without choosing a space.
+Google's script is loaded, and its button rendered, only once the box is ticked (as on the landing
+page): before that nothing is asked from accounts.google.com. Google Identity Services routes every
+credential to the handler registered last: this page registers its own when the box is ticked,
+and again when its button is clicked, and the header's sign-in takes the role back when it is
+clicked in turn. googleIdentity.ts cannot give the role back yet (`release` clears it): once this
+page is gone, a sign-in from the header's button (if it was set up before) signs in without
+choosing a space.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -29,10 +31,11 @@ without choosing a space.
 		Sparkles,
 		Users
 	} from 'svelte-heros-v2';
-	import { getLocale } from 'portfolio-common';
+	import { currentConsent, getLocale, legalMessages } from 'portfolio-common';
+	import AgeTermsConsent from '#components/legal/AgeTermsConsent.svelte';
 	import Rich from '#lib/i18n/Rich.svelte';
 	import { common } from '#lib/i18n/common.messages.ts';
-	import { login } from '#services/authentication.ts';
+	import { login, signIn } from '#services/authentication.ts';
 	import { setupGoogleIdentity } from '#services/googleIdentity.ts';
 	import { toaster } from '#services/toaster.ts';
 	import { FREE_PLAN_IMPORTS } from '#services/jobImport.ts';
@@ -43,12 +46,14 @@ without choosing a space.
 	let { onSignedIn }: { onSignedIn?: () => void } = $props();
 
 	const uid = $props.id();
+	const consentId = `${uid}-consent`;
+	let consent = $state(false);
+	let consentError = $state('');
 	let buttonContainer: HTMLDivElement | undefined = $state();
-	let gsiState = $state<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
-	/** Loads Google's sign-in (set once mounted) */
-	let start: () => void = () => {};
+	let gsiState = $state<'loading' | 'ready' | 'unavailable'>('loading');
 	let signingIn = $state(false);
 	let errorMessage = $state('');
+	let mounted = false;
 
 	/** What a portfolio shows of a skill (the experiences page's filters, previews and timeline) */
 	const skills = [
@@ -60,7 +65,7 @@ without choosing a space.
 	const features = [
 		{ icon: DocumentText, ...m.features.job },
 		{ icon: ChartBar, ...m.features.match },
-		{ icon: Users, ...m.features.applicants },
+		{ icon: Users, ...m.features.meetings },
 		{
 			icon: DocumentArrowUp,
 			title: m.features.pdf.title,
@@ -70,57 +75,75 @@ without choosing a space.
 
 	const isDark = () => document.documentElement.classList.contains('dark');
 
-	onMount(() => {
-		let mounted = true;
+	/** Google's answer to its button: signs in to the recruiter space with the box ticked above */
+	const onCredential = async ({ credential }: google.accounts.id.CredentialResponse) => {
+		if (!mounted) {
+			// This page is gone, and its handler was the last registered (see above)
+			if (!(await login(credential))) toaster.error({ title: common.signInFailed });
+			return;
+		}
+		// The box may have been unticked since the button showed
+		if (!consent) {
+			consentError = m.tickToSignIn;
+			document.getElementById(consentId)?.focus();
+			return;
+		}
+		errorMessage = '';
+		signingIn = true;
+		// Read before signing in: this component unmounts as soon as the session is stored
+		const notify = onSignedIn;
+		const result = await signIn(credential, {
+			mode: 'recruiter',
+			consent: currentConsent(),
+			consentSource: 'recruiter'
+		});
+		signingIn = false;
+		if (!result.ok) {
+			// Terms changed since the page loaded: retrying sends the same version, only a reload helps
+			errorMessage =
+				result.reason === 'stale-terms' ? legalMessages.staleTerms : common.signInFailed;
+			return;
+		}
+		toaster.success({ title: m.welcome.title, description: m.welcome.description });
+		notify?.();
+	};
 
-		const onCredential = async ({ credential }: google.accounts.id.CredentialResponse) => {
-			if (!mounted) {
-				// This page is gone, and its handler was the last registered (see above)
-				if (!(await login(credential))) toaster.error({ title: common.signInFailed });
-				return;
-			}
-			errorMessage = '';
-			signingIn = true;
-			// Read before signing in: this component unmounts as soon as the session is stored
-			const notify = onSignedIn;
-			const ok = await login(credential, 'recruiter');
-			signingIn = false;
-			if (!ok) {
-				errorMessage = common.signInFailed;
-				return;
-			}
-			toaster.success({ title: m.welcome.title, description: m.welcome.description });
-			notify?.();
-		};
-
-		start = () => {
-			if (gsiState === 'loading' || gsiState === 'ready') return;
-			gsiState = 'loading';
-			// Asked for here: this page takes the credential callback (into the recruiter space)
-			setupGoogleIdentity(onCredential)
-				.then(({ id }) => {
-					if (!mounted || !buttonContainer) return;
-					id.renderButton(buttonContainer, {
-						theme: isDark() ? 'filled_black' : 'outline',
-						size: 'large',
-						type: 'standard',
-						text: 'signin_with',
-						shape: 'pill',
-						logo_alignment: 'left',
-						// Google's button, in the page's language
-						locale: getLocale(),
-						width: Math.min(320, Math.max(200, buttonContainer.clientWidth)),
-						// Clicked after the header's sign-in took the callback back: here again
-						click_listener: () => void setupGoogleIdentity(onCredential).catch(() => {})
-					});
-					gsiState = 'ready';
-					id.prompt();
-				})
-				.catch(() => {
-					if (mounted) gsiState = 'unavailable';
+	// Google's script and button, once the box is ticked (and for as long as it stays ticked: the
+	// button goes away with the tick, the script stays loaded)
+	$effect(() => {
+		const container = buttonContainer;
+		if (!consent || !container) return;
+		let cancelled = false;
+		gsiState = 'loading';
+		// Asked for here: this page takes the credential callback (into the recruiter space)
+		setupGoogleIdentity(onCredential)
+			.then(({ id }) => {
+				if (cancelled) return;
+				id.renderButton(container, {
+					theme: isDark() ? 'filled_black' : 'outline',
+					size: 'large',
+					type: 'standard',
+					text: 'signin_with',
+					shape: 'pill',
+					logo_alignment: 'left',
+					// Google's button, in the page's language
+					locale: getLocale(),
+					width: Math.min(320, Math.max(200, container.clientWidth)),
+					// Clicked after the header's sign-in took the callback back: here again
+					click_listener: () => void setupGoogleIdentity(onCredential).catch(() => {})
 				});
+				gsiState = 'ready';
+			})
+			.catch(() => {
+				if (!cancelled) gsiState = 'unavailable';
+			});
+		return () => {
+			cancelled = true;
 		};
+	});
 
+	onMount(() => {
+		mounted = true;
 		return () => {
 			mounted = false;
 		};
@@ -136,7 +159,17 @@ without choosing a space.
 		<p class="mx-auto max-w-2xl text-surface-700-300 md:text-lg">{m.lead}</p>
 	</div>
 
-	<div class="flex flex-col items-center gap-3 text-center">
+	<div class="mx-auto flex max-w-md flex-col items-center gap-4">
+		<!-- The box first: Google is asked for nothing before it is ticked -->
+		<div class="w-full text-start">
+			<AgeTermsConsent
+				bind:checked={consent}
+				error={consent ? undefined : consentError || undefined}
+				disabled={signingIn}
+				id={consentId}
+				recruiter
+			/>
+		</div>
 		{#if errorMessage}
 			<p
 				class="flex items-start gap-2 rounded-base border border-error-500/60 preset-tonal-error p-3 text-sm text-surface-950-50"
@@ -156,34 +189,34 @@ without choosing a space.
 				{common.signingIn}
 			</p>
 		{/if}
-		{#if gsiState === 'idle' || gsiState === 'unavailable'}
-			<button
-				type="button"
-				class="btn preset-filled-primary-700-300 min-h-11 w-full max-w-80 rounded-full"
-				onclick={() => start()}
+		{#if consent}
+			<!-- Google renders its button in there; a placeholder of its size until it does -->
+			<div
+				class={['relative flex min-h-11 w-full max-w-80 justify-center', { invisible: signingIn }]}
 			>
-				{common.signInWithGoogle}
-			</button>
-		{/if}
-		<!-- Google renders its button in there; a placeholder of its size until it does -->
-		<div
-			class={[
-				'relative flex min-h-11 w-full max-w-80 justify-center',
-				{ invisible: signingIn, hidden: gsiState === 'idle' || gsiState === 'unavailable' }
-			]}
-		>
-			<div bind:this={buttonContainer} class="flex w-full justify-center"></div>
-			{#if gsiState === 'loading'}
 				<div
-					class="absolute inset-0 animate-pulse rounded-full bg-surface-200-800 motion-reduce:animate-none"
-					aria-hidden="true"
+					bind:this={buttonContainer}
+					class="flex w-full justify-center"
+					data-testid="google-button"
 				></div>
+				{#if gsiState === 'loading'}
+					<div
+						class="absolute inset-0 animate-pulse rounded-full bg-surface-200-800 motion-reduce:animate-none"
+						aria-hidden="true"
+					></div>
+				{/if}
+			</div>
+			{#if gsiState === 'unavailable'}
+				<p class="text-sm text-error-700-300" role="alert">{common.googleUnavailable}</p>
 			{/if}
-		</div>
-		{#if gsiState === 'unavailable'}
-			<p class="max-w-md text-sm text-error-700-300" role="alert">{common.googleUnavailable}</p>
+		{:else}
+			<p
+				class="flex min-h-11 w-full max-w-80 items-center justify-center rounded-full border border-dashed border-surface-300-700 px-4 text-center text-sm text-surface-700-300"
+			>
+				{m.tickToContinue}
+			</p>
 		{/if}
-		<p class="max-w-md text-sm text-surface-700-300">{m.free}</p>
+		<p class="text-center text-sm text-surface-700-300">{m.free}</p>
 	</div>
 
 	<!-- What a portfolio says about a skill: the reason to recruit here -->
@@ -226,10 +259,4 @@ without choosing a space.
 			</li>
 		{/each}
 	</ul>
-
-	<p class="text-center">
-		<a href={resolve('/(app)/jobs')} class="btn btn-sm hover:preset-tonal underline">
-			{m.browse}
-		</a>
-	</p>
 </section>

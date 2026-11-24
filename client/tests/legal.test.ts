@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import { stepManifest, withLocale } from 'portfolio-common';
 
 // The legal pages (legal notice, privacy policy, terms of use, cookies), in English and in French
 // (?lang=fr), and the legal links every page shows: the footer of the site's own pages, the
-// compact links at the end of the portfolios and of the job pages. Runs against the CI seed (the
+// compact links at the end of the portfolios and of the recruiter space. Runs against the CI seed (the
 // 'louis.gentil' portfolio exists); the visitor is anonymous. The publisher's details come from
 // the web server's LEGAL_* variables, which CI does not set: the pages then say so.
 
@@ -60,6 +61,42 @@ const forbidGoogle = (page: Page) => {
 };
 
 const legalNav = (page: Page) => page.getByRole('navigation', { name: 'Legal' });
+
+/**
+ * The text of a section of the document on the page: what follows its heading (`h3#id`) up to the
+ * next section's, with its spaces collapsed
+ */
+const sectionText = (page: Page, id: string) =>
+	page.locator(`article[data-legal-document] h3#${id}`).evaluate((heading) => {
+		const parts: string[] = [];
+		let node = heading.nextElementSibling;
+		while (node && node.tagName !== 'H3') {
+			parts.push(node.textContent ?? '');
+			node = node.nextElementSibling;
+		}
+		return parts.join(' ').replace(/\s+/g, ' ');
+	});
+
+const CLOUDFLARE_PRIVACY = 'https://www.cloudflare.com/privacypolicy/';
+
+/**
+ * The text of a sub-section (`h4#id`): what follows its heading up to the next heading, with its
+ * spaces collapsed
+ */
+const subsectionText = (page: Page, id: string) =>
+	page.locator(`article[data-legal-document] h4#${id}`).evaluate((heading) => {
+		const parts: string[] = [];
+		let node = heading.nextElementSibling;
+		while (node && node.tagName !== 'H3' && node.tagName !== 'H4') {
+			parts.push(node.textContent ?? '');
+			node = node.nextElementSibling;
+		}
+		return parts.join(' ').replace(/\s+/g, ' ');
+	});
+
+/** The name of the job match step, as the owner's editor shows it, in each language */
+const jobMatchLabel = (locale: 'en' | 'fr') =>
+	withLocale(locale, () => stepManifest('job-match')!.label);
 
 test.describe('legal pages', () => {
 	for (const doc of PAGES) {
@@ -176,10 +213,8 @@ test.describe('legal pages', () => {
 		await expect(page.locator('nav:not(header nav, main nav)')).toHaveCount(0);
 		await expect(page.getByRole('navigation', { name: 'Site' })).toHaveCount(1);
 		const site = page.locator('main > footer').getByRole('navigation', { name: 'Site' });
-		await expect(site.getByRole('link', { name: "Offres d'emploi" })).toHaveAttribute(
-			'href',
-			'/jobs'
-		);
+		// The job board is gone: no link to it
+		await expect(site.getByRole('link', { name: "Offres d'emploi" })).toHaveCount(0);
 		await expect(site.getByRole('link', { name: 'Pour les recruteurs' })).toHaveAttribute(
 			'href',
 			'/recruiter'
@@ -235,6 +270,177 @@ test.describe('legal pages', () => {
 		}
 	});
 
+	test('the terms say candidates never pay and what the site does in hiring', async ({ page }) => {
+		await page.goto('/legal/terms');
+		const service = await sectionText(page, 'service');
+		expect(service).toContain(
+			'Candidates never pay for the service: French law forbids asking people looking for a job for anything, directly or indirectly, in return for placement services (article L5321-3 of the French Labour Code).'
+		);
+		expect(service).toContain('The service is currently free for recruiters too');
+		expect(service).toContain('There is no exclusivity');
+		expect(service).toContain(
+			'to contact each other or sign a contract without going through the site.'
+		);
+		expect(service).toContain('it is not a party to any contract between them');
+		expect(await sectionText(page, 'content')).toContain(
+			'anyone who has its address can read it, even though search engines are asked not to list it.'
+		);
+		const recruiters = await sectionText(page, 'recruiters');
+		expect(recruiters).toContain(
+			'the site carries out a placement activity within the meaning of article L5321-1 of the French Labour Code: it puts candidates and recruiters in touch.'
+		);
+		expect(recruiters).toContain(
+			'The publisher takes no part in their decisions, hiring decisions included, is not the employer, and is not a party to the employment contract that may follow.'
+		);
+		// The site scores job descriptions on a candidate's journey: it never says it scores nothing
+		expect(recruiters).toContain('The only score it computes is that of a job description');
+		// ...on the step that computes it, named as the owner's editor names it
+		expect(recruiters).toContain(
+			`when the candidate adds the step "${jobMatchLabel('en')}" to their hiring journey`
+		);
+		// An opened job description's terms are locked (the job editor, PUT /jobs/:id)
+		expect(recruiters).toContain(
+			"Once a job description is opened, its pay range and the conditions candidates' matches are computed on can no longer be changed: a new version of them is a new job description."
+		);
+		const article = page.locator('article[data-legal-document]');
+		await expect(article).not.toContainText('recruitment agency');
+		await expect(article).not.toContainText('does not select, score or rank');
+
+		await page.goto('/legal/terms?lang=fr');
+		const serviceFr = await sectionText(page, 'service');
+		expect(serviceFr).toContain(
+			"Les candidats ne paient jamais le service : la loi française interdit d'exiger des personnes à la recherche d'un emploi une quelconque rétribution, directe ou indirecte, en contrepartie de services de placement (article L5321-3 du code du travail)."
+		);
+		expect(serviceFr).toContain('Le service est actuellement gratuit pour les recruteurs aussi');
+		expect(serviceFr).toContain("Il n'y a aucune exclusivité");
+		expect(serviceFr).toContain(
+			'de se contacter ou de conclure un contrat sans passer par le site.'
+		);
+		expect(await sectionText(page, 'content')).toContain(
+			'toute personne qui a son adresse peut le lire, même si les moteurs de recherche sont priés de ne pas le référencer.'
+		);
+		const recruitersFr = await sectionText(page, 'recruiters');
+		expect(recruitersFr).toContain(
+			"le site exerce une activité de placement au sens de l'article L5321-1 du code du travail : il met en relation candidats et recruteurs."
+		);
+		expect(recruitersFr).toContain(
+			"L'éditeur ne prend part à aucune de leurs décisions, notamment d'embauche, n'est pas l'employeur et n'est pas partie au contrat de travail qui peut en découler."
+		);
+		expect(recruitersFr).toContain("La seule note qu'il calcule est celle d'une offre d'emploi");
+		expect(recruitersFr).toContain(
+			`lorsque le candidat ajoute l'étape « ${jobMatchLabel('fr')} » à son parcours de recrutement`
+		);
+		expect(recruitersFr).toContain(
+			"Une fois une offre d'emploi ouverte, sa fourchette de rémunération et les conditions sur lesquelles les correspondances des candidats sont calculées ne peuvent plus être modifiées : une nouvelle version de celles-ci est une nouvelle offre d'emploi."
+		);
+		await expect(article).not.toContainText('cabinet de recrutement');
+	});
+
+	test('the privacy policy says what an opened job description keeps', async ({ page }) => {
+		// Its scored fields are locked (PUT /jobs/:id answers 409): it is never "completed" in place
+		await page.goto('/legal/privacy');
+		expect(await sectionText(page, 'ai')).toContain(
+			'the recruiter can write another one that states more (once a job description is opened, what the score reads is locked, so a new version of it is a new job description), pick another one, or reach the owner another way.'
+		);
+		expect(await sectionText(page, 'rights')).toContain(
+			'you edit your portfolio and job descriptions yourself (once a job description is opened, its pay and conditions can no longer be changed: delete it, or ask us);'
+		);
+		const article = page.locator('article[data-legal-document]');
+		await expect(article).not.toContainText('the recruiter can complete it');
+
+		await page.goto('/legal/privacy?lang=fr');
+		expect(await sectionText(page, 'ai')).toContain(
+			"le recruteur peut en rédiger une autre qui en précise davantage (une fois l'offre ouverte, ce que la note prend en compte est verrouillé : une nouvelle version est une nouvelle offre), en choisir une autre, ou joindre le propriétaire autrement."
+		);
+		expect(await sectionText(page, 'rights')).toContain(
+			'vous modifiez vous-même votre portfolio et vos offres (une fois une offre ouverte, sa rémunération et ses conditions ne peuvent plus être modifiées : supprimez-la, ou écrivez-nous) ;'
+		);
+		await expect(article).not.toContainText('le recruteur peut la compléter');
+	});
+
+	test('the privacy policy names Cloudflare in front of the pages, not the API', async ({
+		page
+	}) => {
+		await page.goto('/legal/privacy');
+		const recipients = await sectionText(page, 'recipients');
+		expect(recipients).toContain(
+			"Cloudflare, Inc. (USA): the content delivery network and proxy that the site's pages are served through (the API is reached without it). It receives each request for a page, with your IP address and your browser's details, and the page sent back (privacy policy);"
+		);
+		// Its Network Error Logging is off (docs/DEPLOYMENT.md, "Legal pages"): no failure reports
+		expect(recipients).not.toContain('connections to these pages that fail');
+		expect(await subsectionText(page, 'data-technical')).toContain(
+			"The requests for the site's pages, though not those to its API, first go through Cloudflare, which therefore also sees your IP address"
+		);
+		expect(await sectionText(page, 'transfers')).toContain(
+			'Our host, Cloudflare, Anthropic, Google, GitHub and our monitoring provider may process data in the United States'
+		);
+		await expect(
+			page.locator('#retention ~ .legal-table tr', {
+				hasText: "What Cloudflare keeps of the requests for the site's pages"
+			})
+		).toContainText('up to 31 days');
+		await expect(page.locator(`article a[href="${CLOUDFLARE_PRIVACY}"]`)).toHaveCount(1);
+
+		await page.goto('/legal/privacy?lang=fr');
+		const recipientsFr = await sectionText(page, 'recipients');
+		expect(recipientsFr).toContain(
+			"Cloudflare, Inc. (États-Unis) : le réseau de diffusion de contenu et le proxy par lesquels passent les pages du site (l'API est jointe sans lui). Il reçoit chaque requête vers une page, avec votre adresse IP et les informations de votre navigateur, ainsi que la page renvoyée (politique de confidentialité) ;"
+		);
+		expect(recipientsFr).not.toContain('connexions à ces pages qui échouent');
+		expect(await subsectionText(page, 'data-technical')).toContain(
+			"Les requêtes vers les pages du site, mais pas celles vers son API, passent d'abord par Cloudflare, qui voit donc aussi votre adresse IP"
+		);
+		expect(await sectionText(page, 'transfers')).toContain(
+			'Notre hébergeur, Cloudflare, Anthropic, Google, GitHub et notre prestataire de supervision peuvent traiter des données aux États-Unis'
+		);
+		await expect(
+			page.locator('#retention ~ .legal-table tr', {
+				hasText: 'Ce que Cloudflare conserve des requêtes vers les pages du site'
+			})
+		).toContainText("jusqu'à 31 jours");
+		await expect(page.locator(`article a[href="${CLOUDFLARE_PRIVACY}"]`)).toHaveCount(1);
+	});
+
+	test('the cookies page names Cloudflare, which stores nothing in the browser', async ({
+		page
+	}) => {
+		await page.goto('/legal/cookies');
+		expect(await sectionText(page, 'summary')).toContain(
+			"The site's pages are served through Cloudflare, a content delivery network, which sets no cookie and adds no script on this site (see the privacy policy)."
+		);
+		await expect(
+			page.locator('#summary ~ p a[href="/legal/privacy#recipients"]', {
+				hasText: 'privacy policy'
+			})
+		).toHaveCount(1);
+
+		await page.goto('/legal/cookies?lang=fr');
+		expect(await sectionText(page, 'summary')).toContain(
+			"Les pages du site passent par Cloudflare, un réseau de diffusion de contenu, qui ne dépose aucun cookie et n'ajoute aucun script sur ce site (voir la politique de confidentialité)."
+		);
+	});
+
+	test('the legal notice counts job descriptions as content shared, not published', async ({
+		page
+	}) => {
+		await page.goto('/legal');
+		expect(await sectionText(page, 'report')).toContain(
+			'a portfolio, a job description shared on a hiring journey, a hiring journey note or anything else users put on the site.'
+		);
+		expect(await sectionText(page, 'intellectual-property')).toContain(
+			'Content that users put on the site (portfolios, experiences and projects, job descriptions, hiring journey notes) belongs to the people who wrote it.'
+		);
+		await expect(page.locator('article[data-legal-document]')).not.toContainText('users publish');
+
+		await page.goto('/legal?lang=fr');
+		expect(await sectionText(page, 'report')).toContain(
+			"un portfolio, une offre d'emploi partagée dans un parcours de recrutement, une note d'un parcours de recrutement ou tout autre contenu que les utilisateurs mettent sur le site."
+		);
+		await expect(page.locator('article[data-legal-document]')).not.toContainText(
+			'publiés par les utilisateurs'
+		);
+	});
+
 	test('the privacy policy carries the Google Limited Use statement', async ({ page }) => {
 		await page.goto('/legal/privacy');
 		await expect(
@@ -281,8 +487,8 @@ test.describe('legal links', () => {
 		await expect(page.getByRole('heading', { level: 2, name: 'Privacy policy' })).toBeVisible();
 	});
 
-	test('the job pages link the legal pages at the end of the page', async ({ page }) => {
-		await page.goto('/jobs');
+	test('the recruiter space links the legal pages at the end of the page', async ({ page }) => {
+		await page.goto('/recruiter');
 		const nav = legalNav(page);
 		for (const name of COMPACT) {
 			await expect(nav.getByRole('link', { name, exact: true })).toBeAttached();

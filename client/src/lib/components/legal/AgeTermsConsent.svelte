@@ -10,6 +10,8 @@ sends portfolio-common's currentConsent() with its request.
 - `error`: shown under the box, which is then marked invalid (aria-invalid)
 - `disabled`: while the form is busy
 - `id`: id of the checkbox (generated when not given), e.g. to focus it
+- `recruiter`: where the recruiter space is opened: the notice also names what the terms ask of
+  recruiters, with a link to that section (#recruiters)
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
@@ -21,12 +23,14 @@ sends portfolio-common's currentConsent() with its request.
 		checked = $bindable(false),
 		error,
 		disabled = false,
-		id
+		id,
+		recruiter = false
 	}: {
 		checked?: boolean;
 		error?: string;
 		disabled?: boolean;
 		id?: string;
+		recruiter?: boolean;
 	} = $props();
 
 	const uid = $props.id();
@@ -54,10 +58,16 @@ sends portfolio-common's currentConsent() with its request.
 		<span class="text-surface-950-50">{legalMessages.ageConfirmation}</span>
 	</label>
 	<p id={noticeId} class="ps-7 text-xs text-surface-700-300">
-		<Rich text={m.consent.notice}>
+		<Rich text={recruiter ? m.consent.recruiterNotice : m.consent.notice}>
 			{#snippet terms(text: string)}<a
 					class="link-text"
 					href={resolve('/(site)/legal/terms')}
+					target="_blank"
+					rel="noopener noreferrer">{text}<span class="sr-only">{` ${m.consent.newTab}`}</span></a
+				>{/snippet}
+			{#snippet recruiters(text: string)}<a
+					class="link-text"
+					href="{resolve('/(site)/legal/terms')}#recruiters"
 					target="_blank"
 					rel="noopener noreferrer">{text}<span class="sr-only">{` ${m.consent.newTab}`}</span></a
 				>{/snippet}

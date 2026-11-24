@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { isLogged, isSessionValid, watchSessionExpiry } from '#services/authentication.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
+	import { resetNotifications, startNotifications } from '#services/notifications.ts';
 	import Login, { SIGN_IN_ID } from '#components/Login.svelte';
 	import AccountMenu, { ACCOUNT_MENU_TRIGGER_ID } from '#components/AccountMenu.svelte';
 	import SpaceChooser from '#components/SpaceChooser.svelte';
@@ -29,8 +30,8 @@
 		 */
 		showSignIn?: boolean;
 		/**
-		 * true: the logo is a link to the landing page (the site's own pages, the job pages and the
-		 * recruiter space: nothing else on them leads there). A portfolio's header keeps a plain logo.
+		 * true: the logo is a link to the landing page (the site's own pages and the recruiter
+		 * space: nothing else on them leads there). A portfolio's header keeps a plain logo.
 		 */
 		homeLink?: boolean;
 	} = $props();
@@ -65,6 +66,17 @@
 	let signedIn = $derived(!!user);
 	$effect(() => {
 		if (!signedIn) chooserOpen = false;
+	});
+
+	// What matching brought that the account has not seen (the account menu's badge): read once
+	// signed in and each time the page comes back in view, per account; nothing once signed out
+	let userId = $derived(user?._id);
+	$effect(() => {
+		if (!userId) {
+			resetNotifications();
+			return;
+		}
+		return startNotifications(userId);
 	});
 
 	/** Back to the account menu; once the session ended, to the sign-in that replaced it */
@@ -104,8 +116,11 @@
 		</AppBar.Headline>
 		<AppBar.Trail class="items-center">
 			{#if !$sessionCheckedStore}
-				<!-- The session is being checked: neither sign-in nor account yet (no flash of either) -->
-				<span class="block size-10 animate-pulse rounded-full bg-surface-200-800" aria-hidden="true"
+				<!-- The session is being checked: neither sign-in nor account yet (no flash of either).
+				     Never on a page without scripts, which never checks it -->
+				<span
+					class="block size-10 animate-pulse rounded-full bg-surface-200-800 noscript:hidden"
+					aria-hidden="true"
 				></span>
 			{:else if user}
 				<AccountMenu {user} onClaimPortfolio={() => openChooser('claim')} />

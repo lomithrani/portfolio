@@ -68,6 +68,23 @@ export async function takeRateLimit(key: string, { limit, windowMs }: RateLimit)
 }
 
 /**
+ * Counts `amount` at once against `key` in the current fixed window, and says
+ * how many of them fit under the limit (`allowed`: from 0 to `amount`). All
+ * of them are counted, those over the limit too. Atomic, like takeRateLimit
+ */
+export async function takeRateLimitAmount(key: string, { limit, windowMs }: RateLimit, amount: number) {
+  const { counterId, resetsAt } = windowOf(key, windowMs, Date.now())
+  const wanted = Math.max(0, Math.floor(amount))
+  const counter = await RateLimitCounter.findOneAndUpdate(
+    { _id: counterId },
+    { $inc: { count: wanted }, $setOnInsert: { expiresAt: resetsAt } },
+    { upsert: true, returnDocument: 'after' }
+  ).lean()
+  const count = counter?.count ?? wanted
+  return { count, resetsAt, allowed: Math.max(0, Math.min(wanted, limit - (count - wanted))) }
+}
+
+/**
  * Counts one request against `key` in the current fixed window. Returns the
  * seconds until the window ends when this request is over the limit, null
  * when it is allowed. Atomic: concurrent requests each get their own count.

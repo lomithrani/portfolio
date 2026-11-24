@@ -10,6 +10,7 @@
 	import { refreshAccount, spaceLabel, userDisplayName } from '#services/account.ts';
 	import { accountMessages } from '#services/account.messages.ts';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
+	import { NOINDEX } from '#lib/robots.ts';
 	import { m } from './page.messages.ts';
 
 	// /account: what the site keeps for the signed-in account, the terms it accepted, links to the
@@ -45,7 +46,7 @@
 
 <svelte:head>
 	<title>{accountMessages.accountPrivacy} | Portfolio</title>
-	<meta name="robots" content="noindex" />
+	<meta name="robots" content={NOINDEX} />
 </svelte:head>
 
 <div class="p-4 md:p-6">
@@ -158,6 +159,7 @@
 				<ul class="list-disc space-y-1.5 ps-5 text-sm text-surface-700-300">
 					<li>{m.data.google}</li>
 					<li>{m.data.portfolio}</li>
+					<li>{m.data.skills}</li>
 					<li>{m.data.jobs}</li>
 					<li>{m.data.terms}</li>
 				</ul>

@@ -38,7 +38,7 @@ export type FeedbackTheme = (typeof FEEDBACK_THEMES)[number];
  * (its User-Agent and Accept-Language headers), never the client's
  */
 export interface FeedbackContext {
-	/** SvelteKit route id of the page, e.g. `/[domain]/experiences` or `/(app)/jobs/[id]` */
+	/** SvelteKit route id of the page, e.g. `/[domain]/experiences` or `/(app)/recruiter/jobs/[id]` */
 	route?: string;
 	/** Size of the browser's viewport in CSS pixels */
 	viewport?: { width: number; height: number };

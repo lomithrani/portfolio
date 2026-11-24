@@ -5,7 +5,7 @@ export const m = defineMessages({
 	title: { en: 'Status', fr: 'Statut' },
 	change: { en: 'Change status', fr: 'Changer le statut' },
 	note: {
-		en: 'Only Open job descriptions take applications. Drafts are hidden from the public.',
-		fr: 'Seules les offres au statut « Ouverte » acceptent les candidatures. Les brouillons ne sont pas visibles du public.'
+		en: "Drafts are yours alone. Pick an Open job description on a candidate's page for recruiters: only that candidate reads it.",
+		fr: "Les brouillons ne sont visibles que de vous. Choisissez une offre au statut « Ouverte » sur la page recruteurs d'un candidat : lui seul la lit."
 	}
 });

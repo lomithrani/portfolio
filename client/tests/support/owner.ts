@@ -1,7 +1,9 @@
 import { expect, request as playwrightRequest, type Page } from '@playwright/test';
 
-// Signing in as the owner of an e2e domain, or as the e2e recruiter (both seeded by
-// `bun run --cwd server seed:e2e`), without Google: a session JWT signed with the API's
+// Signing in as the owner of an e2e domain, as the e2e recruiter, as the e2e candidate
+// (candidateSession: no domain, no recruiter space, no acceptance of the terms; the tests answer in
+// the browser every request that would change it), or as the e2e reviewer of matching, all seeded
+// by `bun run --cwd server seed:e2e`, without Google: a session JWT signed with the API's
 // JWT_SECRET (the claims POST /login issues), set as the API's auth cookie, plus the persisted
 // session of the client.
 
@@ -54,6 +56,32 @@ export const E2E_RECRUITER_ID = '65e2e0000000000000000001';
 export const recruiterSession = async (): Promise<OwnerSession> => {
 	const exp = Math.floor(Date.now() / 1000) + 3600;
 	return { ownerId: E2E_RECRUITER_ID, token: await signSession(E2E_RECRUITER_ID, exp), exp };
+};
+
+/**
+ * The e2e candidate ('e2e.candidate@example.com', seeded by `seed:e2e` without a domain, a
+ * recruiter space or an acceptance of the terms): the tests that sign in as it answer every request
+ * that would change it in the browser, so it stays that way
+ */
+export const E2E_CANDIDATE_ID = '65e2e0000000000000000002';
+
+/** A session for the e2e candidate, valid for an hour */
+export const candidateSession = async (): Promise<OwnerSession> => {
+	const exp = Math.floor(Date.now() / 1000) + 3600;
+	return { ownerId: E2E_CANDIDATE_ID, token: await signSession(E2E_CANDIDATE_ID, exp), exp };
+};
+
+/**
+ * The e2e reviewer of matching ('e2e.reviewer@example.com', seeded by `seed:e2e` without a domain
+ * or a recruiter space): a reviewer on an API whose MATCHING_REVIEWERS lists its email
+ * (client/tests/matching-review.test.ts)
+ */
+export const E2E_REVIEWER_ID = '65e2e0000000000000000005';
+
+/** A session for the e2e reviewer, valid for an hour */
+export const reviewerSession = async (): Promise<OwnerSession> => {
+	const exp = Math.floor(Date.now() / 1000) + 3600;
+	return { ownerId: E2E_REVIEWER_ID, token: await signSession(E2E_REVIEWER_ID, exp), exp };
 };
 
 /** An API client that sends the session's auth cookie (to set up and clean up through the API) */

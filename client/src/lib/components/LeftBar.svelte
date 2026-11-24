@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { Navigation } from '@skeletonlabs/skeleton-svelte';
 	import type { Domain, Experience } from 'portfolio-api/models/database';
-	import { AcademicCap, ComputerDesktop, WrenchScrewdriver, ChevronRight } from 'svelte-heros-v2';
+	import { Briefcase, ComputerDesktop, WrenchScrewdriver, ChevronRight } from 'svelte-heros-v2';
 	import { authenticationStore, sessionCheckedStore } from '#services/stores/index.ts';
 	import { isDomainAdmin } from '#services/authentication.ts';
 	import ThemeToggle from '#components/ThemeToggle.svelte';
@@ -27,9 +27,14 @@
 		},
 		{
 			path: '/hire',
-			label: m.links.hire,
+			// Visitors propose a role (the server renders this: it cannot know the visitor); the owner
+			// reads what the page is to them, once the session says it is theirs
+			get label() {
+				return isAdmin ? m.links.hireOwner : m.links.hire;
+			},
 			selected: pathStartsWith,
-			icon: AcademicCap
+			// As on the floating corner's "Propose a role"
+			icon: Briefcase
 		},
 		{
 			path: '/admin',
@@ -241,10 +246,14 @@
 		height: 1.5rem;
 	}
 
-	/* The labels fit the rail: "Experiences" at the page's text size is wider than its link */
+	/* The labels fit the rail: "Experiences" at the page's text size is wider than its link, and
+	   a label of several words ("Proposer un poste") goes on two lines, centred */
 	.drawer-content :global([data-scope='navigation'][data-part='trigger-text'][data-layout='rail']) {
 		font-size: var(--text-xs);
 		line-height: var(--text-xs--line-height);
+		white-space: normal;
+		text-align: center;
+		text-wrap: balance;
 	}
 
 	.drawer-handle {

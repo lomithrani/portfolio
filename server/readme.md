@@ -33,6 +33,8 @@ with a message listing every problem.
 | `RESUME_IMPORT_MONTHLY_LIMIT` | no | `3` | Résumé imports per user per 30-day window; `0` turns the feature off |
 | `RESUME_IMPORT_DAILY_LIMIT` | no | `30` | Résumé imports per UTC day across all users; `0` turns the feature off |
 | `RESUME_IMPORT_ATTEMPTS_PER_DAY` | no | `10` | Résumé import attempts per user per UTC day, failed ones included and never given back; `0` turns the feature off |
+| `MATCHING` | no | | `true` turns matching (Path 2: discovery, jobs in matching and their review, the feeds, the decisions and mutual interests, `plugins/matches.ts`) on; off, its routes are not registered and answer 404, and journeys read no mutual interest |
+| `MATCHING_REVIEWERS` | no | | Emails of the accounts that review each job put into matching, separated by commas (never logged); none: no job is ever proposed to a candidate |
 | `API_DOCS` | no | | `true` serves the OpenAPI docs (`/swagger`) in production; always on otherwise |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | | Enables OpenTelemetry (traces, metrics, logs); fully off when unset |
 | `OTEL_EXPORTER_OTLP_HEADERS` | no | | e.g. the Grafana Cloud authorization header |
@@ -129,6 +131,7 @@ TEST_MONGO_URL=mongodb://127.0.0.1:27017/portfolio-test bun run test
 - `ALLOWED_DOMAINS` must be a JSON array of strings and `MONGO_URL` must start
   with `mongodb://` or `mongodb+srv://`, or the server exits at startup with
   the list of problems. Check the Railway service variables first.
-- No data migration: the app was never in production, so start from a fresh
-  database (drop the old data, then run `bun run seed` against the production
-  `MONGO_URL`) rather than carrying documents written by older versions.
+- Production holds real data: never drop it. Each release's data steps are in
+  its pull request's deployment notes and in `docs/DEPLOYMENT.md` (its one-off
+  sections). Only a fresh database is seeded (`bun run seed` against its
+  `MONGO_URL`: the owner's user and the `louis.gentil` domain).
