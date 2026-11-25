@@ -36,7 +36,7 @@ import type { ExtractedExperience } from './resumeExtraction'
 import { m as shared } from './claudePdfExtraction.messages'
 import { m } from './resumeImport.messages'
 
-// Résumé import: a portfolio owner uploads a PDF résumé, Claude Haiku extracts
+// Résumé import: a portfolio owner uploads a PDF résumé, Claude Sonnet extracts
 // its experiences, and the API answers with drafts the client shows for
 // review (it saves the accepted ones through POST /experiences; nothing is
 // stored here). Calls are billed to the operator's ANTHROPIC_API_KEY, so they
@@ -308,7 +308,7 @@ const readExtraction = (message: Anthropic.Message) => {
       experiences,
       inputTokens: message.usage.input_tokens,
       outputTokens: message.usage.output_tokens,
-      estimatedCostUsd: estimateCostUsd(message.usage),
+      estimatedCostUsd: estimateCostUsd(RESUME_IMPORT_MODEL, message.usage),
       stopReason: message.stop_reason ?? undefined
     })
 
