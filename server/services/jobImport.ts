@@ -43,7 +43,7 @@ import { m as shared } from './claudePdfExtraction.messages'
 import { m } from './jobImport.messages'
 
 // Job description import: a recruiter uploads a job description as a PDF,
-// Claude Haiku extracts a job posting, and the API answers with a draft the
+// Claude Sonnet extracts a job posting, and the API answers with a draft the
 // client fills its editor with (saved through POST /jobs; nothing is stored
 // here). The same safety rules as the résumé import (services/resumeImport.ts,
 // with which it shares services/claudePdfExtraction.ts): calls are billed to
@@ -322,7 +322,7 @@ const readExtraction = (message: Anthropic.Message): JobExtraction => {
       fields,
       inputTokens: message.usage.input_tokens,
       outputTokens: message.usage.output_tokens,
-      estimatedCostUsd: estimateCostUsd(message.usage),
+      estimatedCostUsd: estimateCostUsd(JOB_IMPORT_MODEL, message.usage),
       stopReason: message.stop_reason ?? undefined
     })
 

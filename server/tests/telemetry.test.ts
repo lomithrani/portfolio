@@ -221,7 +221,7 @@ describe('exported spans', () => {
           id: 'msg_test',
           type: 'message',
           role: 'assistant',
-          model: 'claude-haiku-5-5',
+          model: 'claude-sonnet-5-5',
           content: [
             {
               type: 'text',

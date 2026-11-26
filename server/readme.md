@@ -83,7 +83,7 @@ with a message listing every problem.
   of the caller's allowance (`{enabled, limit, remaining, resetsAt}`).
   `POST /experiences/import` (`{file: base64 PDF, fileName?}`, the caller must
   own a domain) answers `{experiences, warnings, quota}`: drafts extracted by
-  Claude Haiku 5.5, normalised, never saved. Errors: `404` feature off or no
+  Claude Sonnet 5.5, normalised, never saved. Errors: `404` feature off or no
   domain, `422` not base64 / not a PDF / over ~10 pages / refused
   by the model / too much content, `413` over 4 MB, `429` (`Retry-After`) over
   a quota or the day's attempts, `503` Claude unavailable or refusing the key
