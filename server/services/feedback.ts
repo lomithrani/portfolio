@@ -13,7 +13,7 @@ import type { FeedbackInput, FeedbackKind, Locale } from 'portfolio-common'
 import { env } from '../env'
 import type { ServerEnv } from '../env'
 import { FieldValidationError, ResourceNotFoundError, ServiceUnavailableError, TooManyRequestsError } from '../errors'
-import { PDF_IMPORT_MODEL, createClaudeClient, estimateCostUsd, outputJson } from './claudePdfExtraction'
+import { CLASSIFIER_MODEL, createClaudeClient, estimateCostUsd, outputJson } from './claudePdfExtraction'
 import { createGithubIssue, fenced, issueTitleText } from './githubIssues'
 import type { GithubIssue, GithubIssueResult } from './githubIssues'
 import { logger } from './logger'
@@ -81,8 +81,8 @@ export const feedbackTimeouts = { classifyMs: 8_000, githubMs: 12_000 }
 /** Least time left for the request without a type to be worth sending */
 const MIN_RETRY_MS = 1_000
 
-/** Model that classifies feedback: the imports' */
-export const FEEDBACK_MODEL = PDF_IMPORT_MODEL
+/** Model that classifies feedback (Claude Haiku 5.5): the skill classifier's too */
+export const FEEDBACK_MODEL = CLASSIFIER_MODEL
 /** Longest title Claude's is cut to */
 export const FEEDBACK_TITLE_MAX = 80
 /** Longest summary Claude's is cut to */
@@ -266,7 +266,7 @@ export async function classifyFeedback(message: string): Promise<FeedbackClassif
     stopReason: response.stop_reason ?? undefined,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
-    estimatedCostUsd: estimateCostUsd(response.usage)
+    estimatedCostUsd: estimateCostUsd(FEEDBACK_MODEL, response.usage)
   })
   return classification
 }

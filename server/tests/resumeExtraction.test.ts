@@ -3,7 +3,8 @@
 import { describe, it, expect } from 'bun:test';
 import { ExperienceType } from 'portfolio-common';
 import { EXTRACTION_LIMITS, normalizeExtraction } from '../services/resumeExtraction';
-import { describeResumeImport, estimateCostUsd } from '../services/resumeImport';
+import { CLASSIFIER_MODEL } from '../services/claudePdfExtraction';
+import { RESUME_IMPORT_MODEL, describeResumeImport, estimateCostUsd } from '../services/resumeImport';
 
 const project = (overrides: Record<string, unknown> = {}) => ({
   name: 'Main work',
@@ -220,16 +221,26 @@ describe('normalizeExtraction', () => {
 });
 
 describe('estimateCostUsd', () => {
-  it('prices Claude Haiku 5.5 on the standard rate card up to a 100K-token prompt', () => {
-    expect(estimateCostUsd({ input_tokens: 10_000, output_tokens: 2_000, cache_creation_input_tokens: null, cache_read_input_tokens: null })).toBe(0.002);
-    expect(estimateCostUsd({ input_tokens: 100_000, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 })).toBe(0.01);
+  it('prices the imports at Claude Sonnet 5.5 rates, one rate card for any prompt', () => {
+    expect(RESUME_IMPORT_MODEL).toBe('claude-sonnet-5-5');
+    // 10,000 × $2 + 2,000 × $10 per million tokens
+    expect(estimateCostUsd(RESUME_IMPORT_MODEL, { input_tokens: 10_000, output_tokens: 2_000, cache_creation_input_tokens: null, cache_read_input_tokens: null })).toBe(0.04);
+    // The most an import can cost: 60,000 input tokens, 16,000 output tokens
+    expect(estimateCostUsd(RESUME_IMPORT_MODEL, { input_tokens: 60_000, output_tokens: 16_000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 })).toBe(0.28);
+    expect(estimateCostUsd(RESUME_IMPORT_MODEL, { input_tokens: 200_000, output_tokens: 2_000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 })).toBe(0.42);
   });
 
-  it('switches to the long-prompt rate card above 100K prompt tokens', () => {
+  it('prices the classifications at Claude Haiku 5.5 rates, on the standard rate card up to a 100K-token prompt', () => {
+    expect(CLASSIFIER_MODEL).toBe('claude-haiku-5-5');
+    expect(estimateCostUsd(CLASSIFIER_MODEL, { input_tokens: 10_000, output_tokens: 2_000, cache_creation_input_tokens: null, cache_read_input_tokens: null })).toBe(0.002);
+    expect(estimateCostUsd(CLASSIFIER_MODEL, { input_tokens: 100_000, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 })).toBe(0.01);
+  });
+
+  it('switches Claude Haiku 5.5 to the long-prompt rate card above 100K prompt tokens', () => {
     // 200,000 × $0.50 + 2,000 × $2.50 per million tokens
-    expect(estimateCostUsd({ input_tokens: 200_000, output_tokens: 2_000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 })).toBe(0.105);
+    expect(estimateCostUsd(CLASSIFIER_MODEL, { input_tokens: 200_000, output_tokens: 2_000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 })).toBe(0.105);
     // Cached prompt tokens count toward the 100K threshold
-    expect(estimateCostUsd({ input_tokens: 1_000, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 100_000 })).toBe(0.0005);
+    expect(estimateCostUsd(CLASSIFIER_MODEL, { input_tokens: 1_000, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 100_000 })).toBe(0.0005);
   });
 });
 

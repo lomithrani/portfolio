@@ -13,8 +13,19 @@ import { m } from './claudePdfExtraction.messages'
 // carry request bodies), and traces in metadata_only mode whatever the
 // ANTHROPIC_OPEN_TELEMETRY_* variables say.
 
-/** Model of the PDF imports */
-export const PDF_IMPORT_MODEL = 'claude-haiku-5-5'
+/**
+ * Model of the PDF imports (résumé, job description): Claude Sonnet 5.5, for
+ * drafts people keep with few corrections
+ */
+export const PDF_IMPORT_MODEL = 'claude-sonnet-5-5'
+/**
+ * Model of the short classifications that share this client (feedback,
+ * services/feedback.ts; the skill catalogue, services/skillClassifier.ts):
+ * many small calls with a tight deadline
+ */
+export const CLASSIFIER_MODEL = 'claude-haiku-5-5'
+
+export type ClaudeModel = typeof PDF_IMPORT_MODEL | typeof CLASSIFIER_MODEL
 /** Largest PDF accepted, decoded */
 export const MAX_PDF_BYTES = 4 * 1024 * 1024
 /**
@@ -23,12 +34,20 @@ export const MAX_PDF_BYTES = 4 * 1024 * 1024
  */
 export const MAX_PDF_INPUT_TOKENS = 60_000
 
-// Claude Haiku 5.5 prices in USD per million tokens: one rate card for prompts
-// up to 100K tokens, another above (never reached under MAX_PDF_INPUT_TOKENS)
-const PRICING = {
-  longPromptTokens: 100_000,
-  standard: { input: 0.1, output: 0.5 },
-  longPrompt: { input: 0.5, output: 2.5 }
+interface RateCard {
+  input: number
+  output: number
+}
+
+// Prices in USD per million tokens. Claude Haiku 5.5 has one rate card for
+// prompts up to 100K tokens and another above; Claude Sonnet 5.5 one for its
+// whole context (the imports stay under MAX_PDF_INPUT_TOKENS anyway)
+const PRICING: Record<ClaudeModel, { standard: RateCard; longPrompt?: { aboveTokens: number; card: RateCard } }> = {
+  'claude-sonnet-5-5': { standard: { input: 2, output: 10 } },
+  'claude-haiku-5-5': {
+    standard: { input: 0.1, output: 0.5 },
+    longPrompt: { aboveTokens: 100_000, card: { input: 0.5, output: 2.5 } }
+  }
 }
 
 /**
@@ -134,8 +153,9 @@ export const pdfExtractionRequest = (options: {
       ]
     }
   ],
-  // Thinking stays adaptive (the default of this model), at low effort. No
-  // temperature/top_p/top_k and no prefill: Claude Haiku 5.5 refuses them
+  // Thinking stays adaptive (the default of this model), at low effort (the
+  // starting point for extraction; Sonnet's default is high). No
+  // temperature/top_p/top_k and no prefill: Claude Sonnet 5.5 refuses them
   output_config: {
     effort: 'low' as const,
     format: { type: 'json_schema' as const, schema: options.schema }
@@ -145,13 +165,17 @@ export const pdfExtractionRequest = (options: {
 export type PdfExtractionRequest = ReturnType<typeof pdfExtractionRequest>
 
 /**
- * Estimated cost of a Claude Haiku 5.5 response, in USD (6 decimals). The
- * imports use no prompt caching: cache tokens only count toward the size of
- * the prompt that picks the rate card
+ * Estimated cost of a response of `model`, in USD (6 decimals). The calls use
+ * no prompt caching: cache tokens only count toward the size of the prompt
+ * that picks the rate card
  */
-export const estimateCostUsd = (usage: Pick<Anthropic.Usage, 'input_tokens' | 'output_tokens' | 'cache_creation_input_tokens' | 'cache_read_input_tokens'>) => {
+export const estimateCostUsd = (
+  model: ClaudeModel,
+  usage: Pick<Anthropic.Usage, 'input_tokens' | 'output_tokens' | 'cache_creation_input_tokens' | 'cache_read_input_tokens'>
+) => {
   const prompt = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0)
-  const card = prompt > PRICING.longPromptTokens ? PRICING.longPrompt : PRICING.standard
+  const { standard, longPrompt } = PRICING[model]
+  const card = longPrompt && prompt > longPrompt.aboveTokens ? longPrompt.card : standard
   const usd = (usage.input_tokens * card.input + usage.output_tokens * card.output) / 1_000_000
   return Math.round(usd * 1_000_000) / 1_000_000
 }

@@ -489,8 +489,8 @@ name stops the deployment with `CLIENT_IP_HEADER must be an HTTP header name`.
 
 ## Résumé import
 
-Portfolio owners can upload a PDF résumé: the API (`POST /experiences/import`) has **Claude Haiku
-5.5** (`claude-haiku-5-5`) extract its experiences and answers with drafts the admin reviews; only
+Portfolio owners can upload a PDF résumé: the API (`POST /experiences/import`) has **Claude Sonnet
+5.5** (`claude-sonnet-5-5`) extract its experiences and answers with drafts the admin reviews; only
 the drafts the owner accepts are saved (through `POST /experiences`). Every import is billed to
 the operator's Anthropic API key, so the feature is **off until `ANTHROPIC_API_KEY` is set**: the
 API boots without it, `GET /experiences/import` answers `enabled: false` and `POST` answers 404.
@@ -498,7 +498,8 @@ API boots without it, `GET /experiences/import` answers `enabled: false` and `PO
 To enable it on Railway (services `portfolio api` and `portfolio api develop`):
 
 1. In the [Claude Console](https://platform.claude.com), **Settings, Workspaces**: create a
-   workspace for this site (e.g. `portfolio`) and give it a **monthly spend limit** (e.g. $5).
+   workspace for this site (e.g. `portfolio`) and give it a **monthly spend limit** (e.g. $20: an
+   import costs a few cents, see **Cost** below).
    Spend limits cannot be set on the Default workspace, hence the dedicated one. Once the limit is
    reached, Claude refuses the workspace's requests until the next month: imports answer `503`
    ("Résumé import is temporarily unavailable"), are not counted against anyone's imports (each
@@ -518,15 +519,17 @@ To enable it on Railway (services `portfolio api` and `portfolio api develop`):
 | `RESUME_IMPORT_DAILY_LIMIT`   | `30`    | Imports per UTC day across all users, a cap on the site's daily spend; `0` turns the feature off |
 | `RESUME_IMPORT_ATTEMPTS_PER_DAY` | `10` | Attempts per user per UTC day, whatever their outcome and never given back, so no failure can be retried in a loop; `0` turns the feature off (there is no unlimited setting) |
 
-**Cost.** A one- or two-page résumé costs about **$0.002 to $0.005** per import (Haiku 5.5: $0.10
-per million input tokens and $0.50 per million output tokens for prompts up to 100K tokens; a PDF
-page is roughly 2,000 to 5,000 tokens, text and page image together). The API caps each import at
-a 4 MB PDF, about 10 pages (60,000 input tokens, counted for free before the paid call, a longer
-PDF gets `422`) and 16,000 output tokens, and sends the paid request once (never retried), so one
-import costs at most about $0.015 (60,000 × $0.10 + 16,000 × $0.50 per million). Every paid
-request that may have been billed counts against both limits (see below), so at the defaults the
-site spends at most 30 imports a day (about $0.42), each user at most 3 per 30 days, and the
-workspace's spend limit is the hard stop. Each answered import logs one line,
+**Cost.** A one- or two-page résumé costs about **$0.04 to $0.10** per import (Sonnet 5.5: $2 per
+million input tokens and $10 per million output tokens; a PDF page is roughly 2,000 to 5,000
+tokens, text and page image together). The API caps each import at a 4 MB PDF, about 10 pages
+(60,000 input tokens, counted for free before the paid call, a longer PDF gets `422`) and 16,000
+output tokens, and sends the paid request once (never retried), so one import costs at most about
+$0.28 (60,000 × $2 + 16,000 × $10 per million). Every paid request that may have been billed
+counts against both limits (see below), so at the defaults the site spends at most 30 imports a
+day (about $8.40), each user at most 3 per 30 days, and the workspace's spend limit is the hard
+stop: once it is reached, the imports, the feedback's classification and the skill catalogue's all
+stop until the next month, so size it for the imports you expect (lower
+`RESUME_IMPORT_DAILY_LIMIT` and `JOB_IMPORT_DAILY_LIMIT` to cap a day's worst case). Each answered import logs one line,
 `Résumé import {"experiences":…,"inputTokens":…,"outputTokens":…,"estimatedCostUsd":…,"stopReason":…}`,
 with nothing about the résumé or its owner.
 
@@ -591,7 +594,7 @@ hold a PDF, nor what a person typed in a query string.
 ## Job description import
 
 Recruiters can upload a job description as a PDF: the API (`POST /jobs/import`) has the same
-model (**Claude Haiku 5.5**) extract a job posting draft, which the recruiter completes and saves
+model (**Claude Sonnet 5.5**) extract a job posting draft, which the recruiter completes and saves
 through `POST /jobs` (nothing is saved by the import). It uses the same `ANTHROPIC_API_KEY`, so it
 is off while the key is unset (`GET /jobs/import` answers `enabled: false`, `POST` answers 404),
 and follows the résumé import's rules above: the same file checks (4 MB, about 10 pages), the
@@ -607,7 +610,7 @@ back. The startup line `Running at ...` says `"jobImport":"on (...)"` or why it 
 portfolio-common), not by a variable: every recruiter is on the free plan, which includes **3
 imports for the lifetime of the account** (`users.recruiter.jobImportsUsed` counts them). Past them
 the API answers `402` ("Paid plans are coming soon"), without calling Claude. At the defaults the
-site spends at most 30 job imports a day (about $0.45), on top of the résumé imports.
+site spends at most 30 job imports a day (about $8.40), on top of the résumé imports.
 
 ## Step suggestions
 

@@ -13,7 +13,7 @@ import { env } from '../env'
 import { Skill } from '../models/database'
 import { PENDING_SKILLS, SUGGESTABLE_SKILLS } from '../models/database/skill'
 import type { Skill as SkillFields } from '../models/database/skill'
-import { PDF_IMPORT_MODEL, createClaudeClient, estimateCostUsd, outputJson } from './claudePdfExtraction'
+import { CLASSIFIER_MODEL, createClaudeClient, estimateCostUsd, outputJson } from './claudePdfExtraction'
 import { logger } from './logger'
 import { isDuplicateKeyError } from './mongoErrors'
 
@@ -51,8 +51,8 @@ import { isDuplicateKeyError } from './mongoErrors'
 // that skill. So one wrong answer is undone by changing one document.
 // Nothing here is read by matching, which counts with the names alone.
 
-/** Model that classifies skills: the imports' and the feedback's */
-export const SKILL_CLASSIFIER_MODEL = PDF_IMPORT_MODEL
+/** Model that classifies skills (Claude Haiku 5.5): the feedback's too */
+export const SKILL_CLASSIFIER_MODEL = CLASSIFIER_MODEL
 
 /** How long Claude has to classify a batch, sent once: a property so tests can shorten it */
 export const skillClassifierTimeouts = { classifyMs: 30_000 }
@@ -255,7 +255,7 @@ export async function classifySkillNames(names: readonly string[], known: readon
   const usage = {
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
-    estimatedCostUsd: estimateCostUsd(response.usage)
+    estimatedCostUsd: estimateCostUsd(SKILL_CLASSIFIER_MODEL, response.usage)
   }
   // A refusal or a cut answer does not follow the schema; an answer that is not JSON has nothing to read
   const output = response.stop_reason === 'end_turn' ? outputJson(response) : undefined
